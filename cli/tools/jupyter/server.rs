@@ -408,25 +408,84 @@ impl JupyterServer {
       tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     } else {
       let exception_details = exception_details.unwrap();
-      let name = if let Some(exception) = exception_details.exception {
-        if let Some(description) = exception.description {
-          description
-        } else if let Some(value) = exception.value {
-          value.to_string()
+
+      // Determine the exception value and name
+      let (name, message, stack) =
+        if let Some(exception) = exception_details.exception {
+          let result = self
+            .repl_session
+            .call_function_on_args(
+              r#"
+          function(object) {
+            if (object instanceof Error) {
+              const name = "name" in object ? String(object.name) : "";
+              const message = "message" in object ? String(object.message) : "";
+              const stack = "stack" in object ? String(object.stack) : "";
+              return JSON.stringify({ name, message, stack });
+            } else {
+              const message = String(object);
+              return JSON.stringify({ name: "", message, stack: "" });
+            }
+          }
+        "#
+              .into(),
+              &[exception],
+            )
+            .await?;
+
+          match result.result.value {
+            Some(serde_json::Value::String(str)) => {
+              if let Ok(object) =
+                serde_json::from_str::<HashMap<String, String>>(&str)
+              {
+                let get = |k| object.get(k).cloned().unwrap_or_default();
+                (get("name"), get("message"), get("stack"))
+              } else {
+                eprintln!("Unexpected result while parsing JSON {str}");
+                ("".into(), "".into(), "".into())
+              }
+            }
+            _ => {
+              eprintln!("Unexpected result while parsing exception {result:?}");
+              ("".into(), "".into(), "".into())
+            }
+          }
         } else {
-          "undefined".to_string()
-        }
+          eprintln!("Unexpectedly missing exception {exception_details:?}");
+          ("".into(), "".into(), "".into())
+        };
+
+      let stack = if stack.is_empty() {
+        format!(
+          "{}\n    at <unknown>",
+          serde_json::to_string(&message).unwrap()
+        )
       } else {
-        "Unknown exception".to_string()
+        stack
+      };
+      let traceback = format!("Stack trace:\n{stack}")
+        .split('\n')
+        .map(|s| s.to_owned())
+        .collect::<Vec<_>>();
+
+      let ename = if name.is_empty() {
+        "Unknown error".into()
+      } else {
+        name
       };
 
-      // TODO(bartlomieju): fill all the fields
+      let evalue = if message.is_empty() {
+        "(none)".into()
+      } else {
+        message
+      };
+
       msg
         .new_message("error")
         .with_content(json!({
-          "ename": name,
-          "evalue": " ", // Fake value, otherwise old Jupyter frontends don't show the error
-          "traceback": [],
+          "ename": ename,
+          "evalue": evalue,
+          "traceback": traceback,
         }))
         .send(&mut *self.iopub_socket.lock().await)
         .await?;
