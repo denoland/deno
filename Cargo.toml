@@ -40,7 +40,7 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "0.29.3", features = ["transpiling"] }
 
-deno_core = { version = "0.213.0" }
+deno_core = { version = "0.214.0" }
 
 deno_runtime = { version = "0.126.0", path = "./runtime" }
 napi_sym = { version = "0.48.0", path = "./cli/napi/sym" }
@@ -82,11 +82,7 @@ brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
-chrono = { version = "0.4", default-features = false, features = [
-  "std",
-  "serde",
-  "clock",
-] }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"
 data-encoding = "2.3.3"
@@ -95,9 +91,7 @@ encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
 fastwebsockets = "=0.4.4"
 filetime = "0.2.16"
-flate2 = { version = "1.0.26", features = [
-  "zlib-ng",
-], default-features = false }
+flate2 = { version = "1.0.26", features = ["zlib-ng"], default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
@@ -127,14 +121,7 @@ prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
 lazy-regex = "3"
-reqwest = { version = "0.11.20", default-features = false, features = [
-  "rustls-tls",
-  "stream",
-  "gzip",
-  "brotli",
-  "socks",
-  "json",
-] }
+reqwest = { version = "0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
 ring = "=0.16.20"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.0"
@@ -163,23 +150,13 @@ tower-lsp = { version = "=0.17.0", features = ["proposed"] }
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 zstd = "=0.12.4"
-elliptic-curve = { version = "0.13.4", features = [
-  "alloc",
-  "arithmetic",
-  "ecdh",
-  "std",
-  "pem",
-] }
+elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
 p224 = { version = "0.13.0", features = ["ecdh"] }
 p256 = { version = "0.13.2", features = ["ecdh"] }
 p384 = { version = "0.13.0", features = ["ecdh"] }
 
 # crypto
-rsa = { version = "0.7.0", default-features = false, features = [
-  "std",
-  "pem",
-  "hazmat",
-] } # hazmat needed for PrehashSigner in ext/node
+rsa = { version = "0.7.0", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 hkdf = "0.12.3"
 
 # macros
@@ -201,7 +178,7 @@ windows-sys = { version = "0.48.0", features = ["Win32_Media"] }
 codegen-units = 1
 incremental = true
 lto = true
-opt-level = 'z'    # Optimize for size
+opt-level = 'z' # Optimize for size
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
@@ -213,7 +190,7 @@ debug = true
 codegen-units = 1
 incremental = true
 lto = true
-opt-level = 'z'    # Optimize for size
+opt-level = 'z' # Optimize for size
 
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
@@ -355,6 +332,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
-
-[patch.crates-io]
-deno_core = { path = "../deno_core/core" }

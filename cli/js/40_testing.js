@@ -150,18 +150,14 @@ const OP_DETAILS = {
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
 
-let opIdHostRecvMessage = Number.MAX_SAFE_INTEGER;
-let opIdHostRecvCtrl = Number.MAX_SAFE_INTEGER;
+let opIdHostRecvMessage = -1;
+let opIdHostRecvCtrl = -1;
 let opNames = null;
 
 function populateOpNames() {
   opNames = core.ops.op_op_names();
   opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
   opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
-  if (opIdHostRecvMessage < 0 || opIdHostRecvCtrl < 0) {
-    opIdHostRecvMessage = Number.MAX_SAFE_INTEGER;
-    opIdHostRecvCtrl = Number.MAX_SAFE_INTEGER;
-  }
 }
 
 // Wrap test function in additional assertion that makes sure
@@ -190,10 +186,11 @@ function assertOps(fn) {
     }
     const preTraces = new Map(core.opCallTraces);
     let postTraces;
-    let finishRes = 0;
+    let report = null;
 
     try {
       const innerResult = await fn(desc);
+      hasErrored = false;
       if (innerResult) return innerResult;
     } finally {
       finishRes = core.ops.op_test_op_sanitizer_finish(
@@ -212,10 +209,12 @@ function assertOps(fn) {
         );
       }
       postTraces = new Map(core.opCallTraces);
+      if (finishRes === 3) {
+        report = core.ops.op_test_op_sanitizer_report(desc.id);
+      }
     }
 
-    if (finishRes === 0) return null;
-    const report = core.ops.op_test_op_sanitizer_report(desc.id);
+    if (report === null) return null;
 
     const details = [];
     for (const opReport in report) {

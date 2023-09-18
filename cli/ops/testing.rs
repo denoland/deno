@@ -212,11 +212,11 @@ fn op_dispatch_test_event(
 enum TestOpSanitizerState {
   None,
   Collecting {
-    test_id: usize,
+    test_id: u32,
     metrics: Vec<OpMetrics>,
   },
   Finished {
-    test_id: usize,
+    test_id: u32,
     report: Vec<TestOpSanitizerReport>,
   },
 }
@@ -263,7 +263,7 @@ fn try_collect_metrics(
 // 2 - for more accurate results, delay(1ms) and call again with force=true
 fn op_test_op_sanitizer_collect(
   state: &mut OpState,
-  #[smi] id: usize,
+  #[smi] id: u32,
   force: bool,
   #[smi] op_id_host_recv_msg: usize,
   #[smi] op_id_host_recv_ctrl: usize,
@@ -312,7 +312,7 @@ struct TestOpSanitizerReport {
 // 3 - sanitizer finished with pending ops, collect the report with op_test_op_sanitizer_report
 fn op_test_op_sanitizer_finish(
   state: &mut OpState,
-  #[smi] id: usize,
+  #[smi] id: u32,
   force: bool,
   #[smi] op_id_host_recv_msg: usize,
   #[smi] op_id_host_recv_ctrl: usize,
@@ -387,7 +387,7 @@ fn op_test_op_sanitizer_finish(
 #[serde]
 fn op_test_op_sanitizer_report(
   state: &mut OpState,
-  #[smi] id: usize,
+  #[smi] id: u32,
 ) -> Result<Vec<TestOpSanitizerReport>, AnyError> {
   let op_sanitizer_state = state.borrow_mut::<TestOpSanitizerState>();
   match std::mem::replace(op_sanitizer_state, TestOpSanitizerState::None) {
