@@ -193,14 +193,14 @@ function assertOps(fn) {
       hasErrored = false;
       if (innerResult) return innerResult;
     } finally {
-      finishRes = core.ops.op_test_op_sanitizer_finish(
+      const res = core.ops.op_test_op_sanitizer_finish(
         desc.id,
         false,
         opIdHostRecvMessage,
         opIdHostRecvCtrl,
       );
-      if (finishRes === 1 || finishRes === 2) {
-        await opSanitizerDelay(finishRes === 2);
+      if (res === 1 || res === 2) {
+        await opSanitizerDelay(res === 2);
         core.ops.op_test_op_sanitizer_finish(
           desc.id,
           true,
@@ -209,7 +209,7 @@ function assertOps(fn) {
         );
       }
       postTraces = new Map(core.opCallTraces);
-      if (finishRes === 3) {
+      if (res === 3) {
         report = core.ops.op_test_op_sanitizer_report(desc.id);
       }
     }
