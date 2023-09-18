@@ -1024,6 +1024,7 @@ dependencies = [
  "fwdansi",
  "glibc_version",
  "glob",
+ "hex",
  "http",
  "hyper 0.14.27",
  "import_map",
@@ -1588,9 +1589,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.15.0"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b266a37deae9bc36785d44e9cc1c52d504940b89e5fea63b65119bef44b128a3"
+checksum = "7aba69155a585297af4b9ba8d204567bcd51b25af77b5f4c8856b867019093ba"
 dependencies = [
  "anyhow",
  "async-trait",

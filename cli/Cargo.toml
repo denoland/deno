@@ -85,6 +85,7 @@ fastwebsockets.workspace = true
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
+hex.workspace = true
 http.workspace = true
 hyper.workspace = true
 import_map = "=0.15.0"
