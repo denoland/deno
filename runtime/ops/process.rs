@@ -290,10 +290,14 @@ fn spawn_child(
     let mut _cmd = command.as_std();
 
     if let Some(cwd) = _cmd.get_current_dir() {
+      // launching a sub process always depends on the real
+      // file system so using these methods directly is ok
+      #[allow(clippy::disallowed_methods)]
       if !cwd.exists() {
         return format!("Can't find cwd path '{}'", cwd.to_string_lossy());
       }
 
+      #[allow(clippy::disallowed_methods)]
       if !cwd.is_dir() {
         return format!(
           "cwd path is not a directory '{}'",
