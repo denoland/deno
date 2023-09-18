@@ -291,12 +291,12 @@ fn spawn_child(
 
     if let Some(cwd) = _cmd.get_current_dir() {
       if !cwd.exists() {
-        return format!("Can't find cwd path `{}`", cwd.to_string_lossy());
+        return format!("Can't find cwd path '{}'", cwd.to_string_lossy());
       }
 
       if !cwd.is_dir() {
         return format!(
-          "cwd path is not a directory `{}`",
+          "cwd path is not a directory '{}'",
           cwd.to_string_lossy()
         );
       }
