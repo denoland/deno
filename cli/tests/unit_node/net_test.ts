@@ -5,7 +5,7 @@ import {
   assert,
   assertEquals,
 } from "../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
+import { Deferred, deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import * as http from "node:http";
 
@@ -131,59 +131,73 @@ Deno.test("[node/net] connection event has socket value", async () => {
   await Promise.all([p, p2]);
 });
 
+/// We need to make sure that any shared buffers are never used concurrently by two reads.
 // https://github.com/denoland/deno/issues/20188
 Deno.test("[node/net] multiple Sockets should get correct server data", async () => {
-  const p = deferred();
-  const p2 = deferred();
+  const socketCount = 9;
 
-  const dataReceived1 = deferred();
-  const dataReceived2 = deferred();
+  class TestSocket {
+    dataReceived: Deferred<undefined> = deferred();
+    events: string[] = [];
+    socket: net.Socket | undefined;
+  }
 
-  const events1: string[] = [];
-  const events2: string[] = [];
-
+  const finished = deferred();
+  const serverSocketsClosed: Deferred<undefined>[] = [];
   const server = net.createServer();
   server.on("connection", (socket) => {
     assert(socket !== undefined);
+    const i = serverSocketsClosed.push(deferred());
     socket.on("data", (data) => {
       socket.write(new TextDecoder().decode(data));
     });
+    socket.on("close", () => {
+      serverSocketsClosed[i - 1].resolve();
+    });
   });
+
+  const sockets: TestSocket[] = [];
+  for (let i = 0; i < socketCount; i++) {
+    sockets[i] = new TestSocket();
+  }
 
   server.listen(async () => {
     // deno-lint-ignore no-explicit-any
     const { port } = server.address() as any;
 
-    const socket1 = net.createConnection(port);
-    const socket2 = net.createConnection(port);
+    for (let i = 0; i < socketCount; i++) {
+      const socket = sockets[i].socket = net.createConnection(port);
+      socket.on("data", (data) => {
+        const count = sockets[i].events.length;
+        sockets[i].events.push(new TextDecoder().decode(data));
+        if (count === 0) {
+          // Trigger an immediate second write
+          sockets[i].socket?.write(`${i}`.repeat(3));
+        } else {
+          sockets[i].dataReceived.resolve();
+        }
+      });
+    }
 
-    socket1.on("data", (data) => {
-      events1.push(new TextDecoder().decode(data));
-      dataReceived1.resolve();
-    });
+    for (let i = 0; i < socketCount; i++) {
+      sockets[i].socket?.write(`${i}`.repeat(3));
+    }
 
-    socket2.on("data", (data) => {
-      events2.push(new TextDecoder().decode(data));
-      dataReceived2.resolve();
-    });
+    await Promise.all(sockets.map((socket) => socket.dataReceived));
 
-    socket1.write("111");
-    socket2.write("222");
-
-    await Promise.all([dataReceived1, dataReceived2]);
-
-    socket1.end();
-    socket2.end();
+    for (let i = 0; i < socketCount; i++) {
+      sockets[i].socket?.end();
+    }
 
     server.close(() => {
-      p.resolve();
+      finished.resolve();
     });
-
-    p2.resolve();
   });
 
-  await Promise.all([p, p2]);
+  await finished;
+  await Promise.all(serverSocketsClosed);
 
-  assertEquals(events1, ["111"]);
-  assertEquals(events2, ["222"]);
+  for (let i = 0; i < socketCount; i++) {
+    assertEquals(sockets[i].events, [`${i}`.repeat(3), `${i}`.repeat(3)]);
+  }
 });

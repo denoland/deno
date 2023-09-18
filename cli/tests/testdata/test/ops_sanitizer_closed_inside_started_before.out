@@ -1,0 +1,19 @@
+Check [WILDCARD]test/ops_sanitizer_closed_inside_started_before.ts
+running 1 test from ./test/ops_sanitizer_closed_inside_started_before.ts
+test 1 ... FAILED [WILDCARD]
+
+ ERRORS 
+
+test 1 => ./test/ops_sanitizer_closed_inside_started_before.ts:[WILDCARD]
+error: Leaking async ops:
+  - 1 async operation to sleep for a duration was started before this test, but was completed during the test. Async operations should not complete in a test if they were not started in that test. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
+    at [WILDCARD]
+    at [WILDCARD]/cli/tests/testdata/test/ops_sanitizer_closed_inside_started_before.ts:[WILDCARD]
+
+ FAILURES 
+
+test 1 => ./test/ops_sanitizer_closed_inside_started_before.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed [WILDCARD]
+
+error: Test failed

@@ -116,6 +116,7 @@ impl Loader for TestLoader {
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
+    _cache_setting: deno_graph::source::CacheSetting,
   ) -> LoadFuture {
     let specifier = self.redirects.get(specifier).unwrap_or(specifier);
     let result = self.files.get(specifier).map(|result| match result {

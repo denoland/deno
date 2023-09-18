@@ -91,6 +91,11 @@ itest!(test_with_malformed_config {
   output: "test/collect_with_malformed_config.out",
 });
 
+itest!(test_filtered_out_only {
+  args: "test --quiet --filter foo test/filtered_out_only.ts",
+  output: "test/filtered_out_only.out",
+});
+
 itest!(parallel_flag {
   args: "test test/short-pass.ts --parallel",
   exit_code: 0,
@@ -177,7 +182,7 @@ itest!(quiet {
 });
 
 itest!(fail_fast {
-  args: "test --fail-fast test/fail_fast.ts",
+  args: "test --fail-fast test/fail_fast.ts test/fail_fast_other.ts",
   exit_code: 1,
   output: "test/fail_fast.out",
 });
@@ -250,6 +255,12 @@ itest!(trace_ops_catch_error {
 //  output: "test/ops_sanitizer_missing_details.out",
 // });
 
+itest!(ops_sanitizer_closed_inside_started_before {
+  args: "test --trace-ops test/ops_sanitizer_closed_inside_started_before.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_closed_inside_started_before.out",
+});
+
 itest!(ops_sanitizer_nexttick {
   args: "test --no-check test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",
@@ -276,6 +287,12 @@ itest!(clear_timeout {
   args: "test test/clear_timeout.ts",
   exit_code: 0,
   output: "test/clear_timeout.out",
+});
+
+itest!(hide_empty_suites {
+  args: "test --filter none test/pass.ts",
+  exit_code: 0,
+  output: "test/hide_empty_suites.out",
 });
 
 itest!(finally_timeout {

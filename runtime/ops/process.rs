@@ -5,7 +5,7 @@ use crate::permissions::PermissionsContainer;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -286,12 +286,53 @@ fn spawn_child(
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let mut child = command.spawn().with_context(|| {
-    format!(
-      "Failed to spawn: {}",
-      command.as_std().get_program().to_string_lossy()
-    )
-  })?;
+  let mut child = match command.spawn() {
+    Ok(child) => child,
+    Err(err) => {
+      let command = command.as_std();
+      let command_name = command.get_program().to_string_lossy();
+
+      if let Some(cwd) = command.get_current_dir() {
+        // launching a sub process always depends on the real
+        // file system so using these methods directly is ok
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.exists() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn '{}': No such cwd '{}'",
+                command_name,
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
+
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.is_dir() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn '{}': cwd is not a directory '{}'",
+                command_name,
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
+      }
+
+      return Err(AnyError::from(err).context(format!(
+        "Failed to spawn '{}'",
+        command.get_program().to_string_lossy()
+      )));
+    }
+  };
+
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
@@ -322,46 +363,47 @@ fn spawn_child(
   })
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_spawn_child(
   state: &mut OpState,
-  args: SpawnArgs,
-  api_name: String,
+  #[serde] args: SpawnArgs,
+  #[string] api_name: String,
 ) -> Result<Child, AnyError> {
   let command = create_command(state, args, &api_name)?;
   spawn_child(state, command)
 }
 
-#[op]
+#[op2(async)]
+#[allow(clippy::await_holding_refcell_ref)]
+#[serde]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ChildStatus, AnyError> {
-  #![allow(clippy::await_holding_refcell_ref)]
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<ChildResource>(rid)?;
   let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
-  state
-    .borrow_mut()
-    .resource_table
-    .close(rid)
-    .expect("shouldn't have closed until now");
+  if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
+    resource.close();
+  }
   result
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_spawn_sync(
   state: &mut OpState,
-  args: SpawnArgs,
+  #[serde] args: SpawnArgs,
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
   let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
     format!(
-      "Failed to spawn: {}",
+      "Failed to spawn '{}'",
       command.get_program().to_string_lossy()
     )
   })?;
@@ -381,11 +423,11 @@ fn op_spawn_sync(
   })
 }
 
-#[op]
+#[op2(fast)]
 fn op_spawn_kill(
   state: &mut OpState,
-  rid: ResourceId,
-  signal: String,
+  #[smi] rid: ResourceId,
+  #[string] signal: String,
 ) -> Result<(), AnyError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     deprecated::kill(child_resource.1 as i32, &signal)?;
@@ -432,7 +474,7 @@ mod deprecated {
   #[derive(Serialize)]
   #[serde(rename_all = "camelCase")]
   // TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
-  struct RunInfo {
+  pub struct RunInfo {
     rid: ResourceId,
     pid: Option<u32>,
     stdin_rid: Option<ResourceId>,
@@ -440,10 +482,11 @@ mod deprecated {
     stderr_rid: Option<ResourceId>,
   }
 
-  #[op]
-  fn op_run(
+  #[op2]
+  #[serde]
+  pub fn op_run(
     state: &mut OpState,
-    run_args: RunArgs,
+    #[serde] run_args: RunArgs,
   ) -> Result<RunInfo, AnyError> {
     let args = run_args.cmd;
     state
@@ -557,16 +600,17 @@ mod deprecated {
 
   #[derive(Serialize)]
   #[serde(rename_all = "camelCase")]
-  struct ProcessStatus {
+  pub struct ProcessStatus {
     got_signal: bool,
     exit_code: i32,
     exit_signal: i32,
   }
 
-  #[op]
-  async fn op_run_status(
+  #[op2(async)]
+  #[serde]
+  pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
-    rid: ResourceId,
+    #[smi] rid: ResourceId,
   ) -> Result<ProcessStatus, AnyError> {
     let resource = state
       .borrow_mut()
@@ -648,12 +692,12 @@ mod deprecated {
     }
   }
 
-  #[op]
-  fn op_kill(
+  #[op2(fast)]
+  pub fn op_kill(
     state: &mut OpState,
-    pid: i32,
-    signal: String,
-    api_name: String,
+    #[smi] pid: i32,
+    #[string] signal: String,
+    #[string] api_name: String,
   ) -> Result<(), AnyError> {
     state
       .borrow_mut::<PermissionsContainer>()

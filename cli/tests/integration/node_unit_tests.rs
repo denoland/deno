@@ -54,6 +54,7 @@ util::unit_test_factory!(
     buffer_test,
     child_process_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
+    crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_hash_test = crypto / crypto_hash_test,
     crypto_key_test = crypto / crypto_key_test,
     crypto_sign_test = crypto / crypto_sign_test,
@@ -109,6 +110,7 @@ fn node_unit_test(test: String) {
         .join("unit_node")
         .join(format!("{test}.ts")),
     )
+    .envs(env_vars_for_npm_tests())
     .stderr(Stdio::piped())
     .stdout(Stdio::piped())
     .spawn()

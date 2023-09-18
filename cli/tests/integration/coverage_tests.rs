@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json;
 use std::fs;
 use test_util as util;
 use test_util::TempDir;
+use util::assert_starts_with;
+use util::env_vars_for_npm_tests;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -326,7 +329,7 @@ fn no_tests_included(test_name: &str, extension: &str) {
 
 #[test]
 fn no_npm_cache_coverage() {
-  let context = TestContext::default();
+  let context = TestContext::with_http_server();
   let tempdir = context.temp_dir();
   let tempdir = tempdir.path().join("cov");
 
@@ -339,6 +342,7 @@ fn no_npm_cache_coverage() {
       format!("--coverage={}", tempdir),
       format!("coverage/no_npm_coverage/no_npm_coverage_test.ts"),
     ])
+    .envs(env_vars_for_npm_tests())
     .run();
 
   output.assert_exit_code(0);
@@ -436,4 +440,67 @@ fn no_transpiled_lines() {
   }
 
   output.assert_exit_code(0);
+}
+
+#[test]
+fn no_internal_code() {
+  let context = TestContext::default();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/no_internal_code_test.ts".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // Check that coverage files contain no internal urls
+  let paths = fs::read_dir(tempdir).unwrap();
+  for path in paths {
+    let unwrapped = path.unwrap().path();
+    let data = fs::read_to_string(&unwrapped.clone()).unwrap();
+
+    let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+    let url = value["url"].as_str().unwrap();
+    assert_starts_with!(url, "file:");
+  }
+}
+
+#[test]
+fn no_internal_node_code() {
+  let context = TestContext::default();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--no-check".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/no_internal_node_code_test.ts".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // Check that coverage files contain no internal urls
+  let paths = fs::read_dir(tempdir).unwrap();
+  for path in paths {
+    let unwrapped = path.unwrap().path();
+    let data = fs::read_to_string(&unwrapped.clone()).unwrap();
+
+    let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+    let url = value["url"].as_str().unwrap();
+    assert_starts_with!(url, "file:");
+  }
 }

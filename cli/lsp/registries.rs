@@ -15,6 +15,7 @@ use super::path_to_regex::Token;
 use crate::args::CacheSetting;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
 
@@ -415,7 +416,7 @@ enum VariableItems {
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
-  file_fetcher: FileFetcher,
+  pub file_fetcher: FileFetcher,
   http_cache: Arc<GlobalHttpCache>,
 }
 
@@ -509,11 +510,12 @@ impl ModuleRegistry {
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
     let fetch_result = self
       .file_fetcher
-      .fetch_with_accept(
+      .fetch_with_options(FetchOptions {
         specifier,
-        PermissionsContainer::allow_all(),
-        Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-      )
+        permissions: PermissionsContainer::allow_all(),
+        maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+        maybe_cache_setting: None,
+      })
       .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
@@ -753,7 +755,10 @@ impl ModuleRegistry {
                             Some(lsp::Command {
                               title: "".to_string(),
                               command: "deno.cache".to_string(),
-                              arguments: Some(vec![json!([item_specifier])]),
+                              arguments: Some(vec![
+                                json!([item_specifier]),
+                                json!(&specifier),
+                              ]),
                             })
                           } else {
                             None
@@ -887,7 +892,10 @@ impl ModuleRegistry {
                               Some(lsp::Command {
                                 title: "".to_string(),
                                 command: "deno.cache".to_string(),
-                                arguments: Some(vec![json!([item_specifier])]),
+                                arguments: Some(vec![
+                                  json!([item_specifier]),
+                                  json!(&specifier),
+                                ]),
                               })
                             } else {
                               None

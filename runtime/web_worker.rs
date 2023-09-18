@@ -3,8 +3,8 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
-use crate::worker::runtime;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -236,10 +236,10 @@ pub struct WebWorkerHandle {
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
+  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn get_control_event(
     &self,
   ) -> Result<Option<WorkerControlEvent>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut receiver = self.receiver.borrow_mut();
     Ok(receiver.next().await)
   }
@@ -484,7 +484,7 @@ impl WebWorker {
       }
       #[cfg(feature = "__runtime_js_sources")]
       {
-        use crate::worker::maybe_transpile_source;
+        use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
           maybe_transpile_source(source).unwrap();
         }

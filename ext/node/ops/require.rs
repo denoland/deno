@@ -4,7 +4,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
@@ -35,7 +35,8 @@ where
   resolver.ensure_read_permission(permissions, file_path)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_require_init_paths() -> Vec<String> {
   // todo(dsherret): this code is node compat mode specific and
   // we probably don't want it for small mammal, so ignore it for now
@@ -85,10 +86,11 @@ pub fn op_require_init_paths() -> Vec<String> {
   vec![]
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_require_node_module_paths<P>(
   state: &mut OpState,
-  from: String,
+  #[string] from: String,
 ) -> Result<Vec<String>, AnyError>
 where
   P: NodePermissions + 'static,
@@ -142,8 +144,9 @@ where
   Ok(paths)
 }
 
-#[op]
-fn op_require_proxy_path(filename: String) -> String {
+#[op2]
+#[string]
+pub fn op_require_proxy_path(#[string] filename: String) -> String {
   // Allow a directory to be passed as the filename
   let trailing_slash = if cfg!(windows) {
     // Node also counts a trailing forward slash as a
@@ -162,8 +165,8 @@ fn op_require_proxy_path(filename: String) -> String {
   }
 }
 
-#[op]
-fn op_require_is_request_relative(request: String) -> bool {
+#[op2(fast)]
+pub fn op_require_is_request_relative(#[string] request: String) -> bool {
   if request.starts_with("./") || request.starts_with("../") || request == ".."
   {
     return true;
@@ -182,11 +185,12 @@ fn op_require_is_request_relative(request: String) -> bool {
   false
 }
 
-#[op]
-fn op_require_resolve_deno_dir(
+#[op2]
+#[string]
+pub fn op_require_resolve_deno_dir(
   state: &mut OpState,
-  request: String,
-  parent_filename: String,
+  #[string] request: String,
+  #[string] parent_filename: String,
 ) -> Option<String> {
   let resolver = state.borrow::<NpmResolverRc>();
   resolver
@@ -199,17 +203,21 @@ fn op_require_resolve_deno_dir(
     .map(|p| p.to_string_lossy().to_string())
 }
 
-#[op]
-fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
+#[op2(fast)]
+pub fn op_require_is_deno_dir_package(
+  state: &mut OpState,
+  #[string] path: String,
+) -> bool {
   let resolver = state.borrow::<NpmResolverRc>();
   resolver.in_npm_package_at_path(&PathBuf::from(path))
 }
 
-#[op]
-fn op_require_resolve_lookup_paths(
-  request: String,
-  maybe_parent_paths: Option<Vec<String>>,
-  parent_filename: String,
+#[op2]
+#[serde]
+pub fn op_require_resolve_lookup_paths(
+  #[string] request: String,
+  #[serde] maybe_parent_paths: Option<Vec<String>>,
+  #[string] parent_filename: String,
 ) -> Option<Vec<String>> {
   if !request.starts_with('.')
     || (request.len() > 1
@@ -246,15 +254,15 @@ fn op_require_resolve_lookup_paths(
   Some(vec![p.parent().unwrap().to_string_lossy().to_string()])
 }
 
-#[op]
-fn op_require_path_is_absolute(p: String) -> bool {
+#[op2(fast)]
+pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
-#[op]
-fn op_require_stat<P>(
+#[op2(fast)]
+pub fn op_require_stat<P>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<i32, AnyError>
 where
   P: NodePermissions + 'static,
@@ -273,10 +281,11 @@ where
   Ok(-1)
 }
 
-#[op]
-fn op_require_real_path<P>(
+#[op2]
+#[string]
+pub fn op_require_real_path<P>(
   state: &mut OpState,
-  request: String,
+  #[string] request: String,
 ) -> Result<String, AnyError>
 where
   P: NodePermissions + 'static,
@@ -300,13 +309,17 @@ fn path_resolve(parts: Vec<String>) -> String {
   normalize_path(p).to_string_lossy().to_string()
 }
 
-#[op]
-fn op_require_path_resolve(parts: Vec<String>) -> String {
+#[op2]
+#[string]
+pub fn op_require_path_resolve(#[serde] parts: Vec<String>) -> String {
   path_resolve(parts)
 }
 
-#[op]
-fn op_require_path_dirname(request: String) -> Result<String, AnyError> {
+#[op2]
+#[string]
+pub fn op_require_path_dirname(
+  #[string] request: String,
+) -> Result<String, AnyError> {
   let p = PathBuf::from(request);
   if let Some(parent) = p.parent() {
     Ok(parent.to_string_lossy().to_string())
@@ -315,8 +328,11 @@ fn op_require_path_dirname(request: String) -> Result<String, AnyError> {
   }
 }
 
-#[op]
-fn op_require_path_basename(request: String) -> Result<String, AnyError> {
+#[op2]
+#[string]
+pub fn op_require_path_basename(
+  #[string] request: String,
+) -> Result<String, AnyError> {
   let p = PathBuf::from(request);
   if let Some(path) = p.file_name() {
     Ok(path.to_string_lossy().to_string())
@@ -325,12 +341,13 @@ fn op_require_path_basename(request: String) -> Result<String, AnyError> {
   }
 }
 
-#[op]
-fn op_require_try_self_parent_path<P>(
+#[op2]
+#[string]
+pub fn op_require_try_self_parent_path<P>(
   state: &mut OpState,
   has_parent: bool,
-  maybe_parent_filename: Option<String>,
-  maybe_parent_id: Option<String>,
+  #[string] maybe_parent_filename: Option<String>,
+  #[string] maybe_parent_id: Option<String>,
 ) -> Result<Option<String>, AnyError>
 where
   P: NodePermissions + 'static,
@@ -355,11 +372,12 @@ where
   Ok(None)
 }
 
-#[op]
-fn op_require_try_self<P>(
+#[op2]
+#[string]
+pub fn op_require_try_self<P>(
   state: &mut OpState,
-  parent_path: Option<String>,
-  request: String,
+  #[string] parent_path: Option<String>,
+  #[string] request: String,
 ) -> Result<Option<String>, AnyError>
 where
   P: NodePermissions + 'static,
@@ -419,10 +437,11 @@ where
   }
 }
 
-#[op]
-fn op_require_read_file<P>(
+#[op2]
+#[string]
+pub fn op_require_read_file<P>(
   state: &mut OpState,
-  file_path: String,
+  #[string] file_path: String,
 ) -> Result<String, AnyError>
 where
   P: NodePermissions + 'static,
@@ -433,8 +452,9 @@ where
   Ok(fs.read_text_file_sync(&file_path)?)
 }
 
-#[op]
-pub fn op_require_as_file_path(file_or_url: String) -> String {
+#[op2]
+#[string]
+pub fn op_require_as_file_path(#[string] file_or_url: String) -> String {
   if let Ok(url) = Url::parse(&file_or_url) {
     if let Ok(p) = url.to_file_path() {
       return p.to_string_lossy().to_string();
@@ -444,15 +464,16 @@ pub fn op_require_as_file_path(file_or_url: String) -> String {
   file_or_url
 }
 
-#[op]
-fn op_require_resolve_exports<P>(
+#[op2]
+#[string]
+pub fn op_require_resolve_exports<P>(
   state: &mut OpState,
   uses_local_node_modules_dir: bool,
-  modules_path: String,
-  _request: String,
-  name: String,
-  expansion: String,
-  parent_path: String,
+  #[string] modules_path: String,
+  #[string] _request: String,
+  #[string] name: String,
+  #[string] expansion: String,
+  #[string] parent_path: String,
 ) -> Result<Option<String>, AnyError>
 where
   P: NodePermissions + 'static,
@@ -500,10 +521,11 @@ where
   }
 }
 
-#[op]
-fn op_require_read_closest_package_json<P>(
+#[op2]
+#[serde]
+pub fn op_require_read_closest_package_json<P>(
   state: &mut OpState,
-  filename: String,
+  #[string] filename: String,
 ) -> Result<Option<PackageJson>, AnyError>
 where
   P: NodePermissions + 'static,
@@ -520,10 +542,11 @@ where
   )
 }
 
-#[op]
-fn op_require_read_package_scope<P>(
+#[op2]
+#[serde]
+pub fn op_require_read_package_scope<P>(
   state: &mut OpState,
-  package_json_path: String,
+  #[string] package_json_path: String,
 ) -> Option<PackageJson>
 where
   P: NodePermissions + 'static,
@@ -536,11 +559,12 @@ where
     .ok()
 }
 
-#[op]
-fn op_require_package_imports_resolve<P>(
+#[op2]
+#[string]
+pub fn op_require_package_imports_resolve<P>(
   state: &mut OpState,
-  parent_filename: String,
-  request: String,
+  #[string] parent_filename: String,
+  #[string] request: String,
 ) -> Result<Option<String>, AnyError>
 where
   P: NodePermissions + 'static,
@@ -570,8 +594,8 @@ where
   }
 }
 
-#[op]
-fn op_require_break_on_next_statement(state: &mut OpState) {
+#[op2(fast)]
+pub fn op_require_break_on_next_statement(state: &mut OpState) {
   let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
   inspector
     .borrow_mut()

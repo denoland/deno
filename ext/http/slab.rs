@@ -20,6 +20,10 @@ pub type Request = hyper1::Request<Incoming>;
 pub type Response = hyper1::Response<ResponseBytes>;
 pub type SlabId = u32;
 
+#[repr(transparent)]
+#[derive(Clone, Default)]
+pub struct RefCount(pub Rc<()>);
+
 enum RequestBodyState {
   Incoming(Incoming),
   Resource(HttpRequestBodyAutocloser),
@@ -42,7 +46,9 @@ impl HttpRequestBodyAutocloser {
 
 impl Drop for HttpRequestBodyAutocloser {
   fn drop(&mut self) {
-    _ = self.1.borrow_mut().resource_table.close(self.0);
+    if let Ok(res) = self.1.borrow_mut().resource_table.take_any(self.0) {
+      res.close();
+    }
   }
 }
 
@@ -50,24 +56,27 @@ pub struct HttpSlabRecord {
   request_info: HttpConnectionProperties,
   request_parts: Parts,
   request_body: Option<RequestBodyState>,
-  // The response may get taken before we tear this down
+  /// The response may get taken before we tear this down
   response: Option<Response>,
   promise: CompletionHandle,
   trailers: Rc<RefCell<Option<HeaderMap>>>,
   been_dropped: bool,
+  /// Use a `Rc` to keep track of outstanding requests. We don't use this, but
+  /// when it drops, it decrements the refcount of the server itself.
+  refcount: Option<RefCount>,
   #[cfg(feature = "__zombie_http_tracking")]
   alive: bool,
 }
 
 thread_local! {
-  static SLAB: RefCell<Slab<HttpSlabRecord>> = const { RefCell::new(Slab::new()) };
+  pub(crate) static SLAB: RefCell<Slab<HttpSlabRecord>> = const { RefCell::new(Slab::new()) };
 }
 
 macro_rules! http_trace {
   ($index:expr, $args:tt) => {
     #[cfg(feature = "__http_tracing")]
     {
-      let total = SLAB.with(|x| x.try_borrow().map(|x| x.len()));
+      let total = $crate::slab::SLAB.with(|x| x.try_borrow().map(|x| x.len()));
       if let Ok(total) = total {
         println!("HTTP id={} total={}: {}", $index, total, format!($args));
       } else {
@@ -76,6 +85,8 @@ macro_rules! http_trace {
     }
   };
 }
+
+pub(crate) use http_trace;
 
 /// Hold a lock on the slab table and a reference to one entry in the table.
 pub struct SlabEntry(
@@ -121,6 +132,7 @@ fn slab_insert_raw(
   request_parts: Parts,
   request_body: Option<Incoming>,
   request_info: HttpConnectionProperties,
+  refcount: RefCount,
 ) -> SlabId {
   let index = SLAB.with(|slab| {
     let mut slab = slab.borrow_mut();
@@ -135,6 +147,7 @@ fn slab_insert_raw(
       trailers,
       been_dropped: false,
       promise: CompletionHandle::default(),
+      refcount: Some(refcount),
       #[cfg(feature = "__zombie_http_tracking")]
       alive: true,
     })
@@ -146,9 +159,10 @@ fn slab_insert_raw(
 pub fn slab_insert(
   request: Request,
   request_info: HttpConnectionProperties,
+  refcount: RefCount,
 ) -> SlabId {
   let (request_parts, request_body) = request.into_parts();
-  slab_insert_raw(request_parts, Some(request_body), request_info)
+  slab_insert_raw(request_parts, Some(request_body), request_info, refcount)
 }
 
 pub fn slab_drop(index: SlabId) {
@@ -159,10 +173,21 @@ pub fn slab_drop(index: SlabId) {
     !record.been_dropped,
     "HTTP state error: Entry has already been dropped"
   );
+
+  // The logic here is somewhat complicated. A slab record cannot be expunged until it has been dropped by Rust AND
+  // the promise has been completed (indicating that JavaScript is done processing). However, if Rust has finished
+  // dealing with this entry, we DO want to clean up some of the associated items -- namely the request body, which
+  // might include actual resources, and the refcount, which is keeping the server alive.
   record.been_dropped = true;
   if record.promise.is_completed() {
     drop(entry);
     slab_expunge(index);
+  } else {
+    // Take the request body, as the future has been dropped and this will allow some resources to close
+    record.request_body.take();
+    // Take the refcount keeping the server alive. The future is no longer alive, which means this request
+    // is toast.
+    record.refcount.take();
   }
 }
 
@@ -234,7 +259,7 @@ impl SlabEntry {
     self.self_mut().request_body = Some(RequestBodyState::Resource(res));
   }
 
-  /// Complete this entry, potentially expunging it if it is complete.
+  /// Complete this entry, potentially expunging it if it is fully complete (ie: dropped as well).
   pub fn complete(self) {
     let promise = &self.self_ref().promise;
     assert!(
@@ -249,6 +274,12 @@ impl SlabEntry {
       drop(self);
       slab_expunge(index);
     }
+  }
+
+  /// Has the future for this entry been dropped? ie, has the underlying TCP connection
+  /// been closed?
+  pub fn cancelled(&self) -> bool {
+    self.self_ref().been_dropped
   }
 
   /// Get a mutable reference to the response.
@@ -312,6 +343,7 @@ mod tests {
         local_port: None,
         stream_type: NetworkStreamType::Tcp,
       },
+      RefCount::default(),
     );
     let entry = slab_get(id);
     entry.complete();

@@ -114,6 +114,7 @@ export class LibuvStreamWrap extends HandleWrap {
   writeQueueSize = 0;
   bytesRead = 0;
   bytesWritten = 0;
+  #buf = new Uint8Array(SUGGESTED_SIZE);
 
   onread!: (_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined;
 
@@ -311,61 +312,53 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    const isOwnedBuf = bufLocked;
-    let buf = bufLocked ? new Uint8Array(SUGGESTED_SIZE) : BUF;
-    bufLocked = true;
+    let buf = this.#buf;
+    let nread: number | null;
+    const ridBefore = this[kStreamBaseField]!.rid;
     try {
-      let nread: number | null;
-      const ridBefore = this[kStreamBaseField]!.rid;
-      try {
-        nread = await this[kStreamBaseField]!.read(buf);
-      } catch (e) {
-        // Try to read again if the underlying stream resource
-        // changed. This can happen during TLS upgrades (eg. STARTTLS)
-        if (ridBefore != this[kStreamBaseField]!.rid) {
-          return this.#read();
-        }
-
-        if (
-          e instanceof Deno.errors.Interrupted ||
-          e instanceof Deno.errors.BadResource
-        ) {
-          nread = codeMap.get("EOF")!;
-        } else if (
-          e instanceof Deno.errors.ConnectionReset ||
-          e instanceof Deno.errors.ConnectionAborted
-        ) {
-          nread = codeMap.get("ECONNRESET")!;
-        } else {
-          nread = codeMap.get("UNKNOWN")!;
-        }
-
-        buf = new Uint8Array(0);
+      nread = await this[kStreamBaseField]!.read(buf);
+    } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]!.rid) {
+        return this.#read();
       }
 
-      nread ??= codeMap.get("EOF")!;
-
-      streamBaseState[kReadBytesOrError] = nread;
-
-      if (nread > 0) {
-        this.bytesRead += nread;
+      if (
+        e instanceof Deno.errors.Interrupted ||
+        e instanceof Deno.errors.BadResource
+      ) {
+        nread = codeMap.get("EOF")!;
+      } else if (
+        e instanceof Deno.errors.ConnectionReset ||
+        e instanceof Deno.errors.ConnectionAborted
+      ) {
+        nread = codeMap.get("ECONNRESET")!;
+      } else {
+        nread = codeMap.get("UNKNOWN")!;
       }
+    }
 
-      buf = isOwnedBuf ? buf.subarray(0, nread) : buf.slice(0, nread);
+    nread ??= codeMap.get("EOF")!;
 
-      streamBaseState[kArrayBufferOffset] = 0;
+    streamBaseState[kReadBytesOrError] = nread;
 
-      try {
-        this.onread!(buf, nread);
-      } catch {
-        // swallow callback errors.
-      }
+    if (nread > 0) {
+      this.bytesRead += nread;
+    }
 
-      if (nread >= 0 && this.#reading) {
-        this.#read();
-      }
-    } finally {
-      bufLocked = false;
+    buf = buf.slice(0, nread);
+
+    streamBaseState[kArrayBufferOffset] = 0;
+
+    try {
+      this.onread!(buf, nread);
+    } catch {
+      // swallow callback errors.
+    }
+
+    if (nread >= 0 && this.#reading) {
+      this.#read();
     }
   }
 
@@ -427,8 +420,3 @@ export class LibuvStreamWrap extends HandleWrap {
     return;
   }
 }
-
-// Used in #read above
-const BUF = new Uint8Array(SUGGESTED_SIZE);
-// We need to ensure that only one inflight read request uses the cached buffer above
-let bufLocked = false;

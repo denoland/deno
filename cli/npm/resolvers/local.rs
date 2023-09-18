@@ -42,7 +42,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::npm::cache::mixed_case_package_name_encode;
-use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::NpmCache;
 use crate::util::fs::copy_dir_recursive;
@@ -300,14 +299,8 @@ async fn sync_resolution_with_fs(
   //
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
   // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
-  let sync_download = should_sync_download();
-  let mut package_partitions =
+  let package_partitions =
     snapshot.all_system_packages_partitioned(system_info);
-  if sync_download {
-    // we're running the tests not with --quiet
-    // and we want the output to be deterministic
-    package_partitions.packages.sort_by(|a, b| a.id.cmp(&b.id));
-  }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
@@ -363,11 +356,7 @@ async fn sync_resolution_with_fs(
         drop(pb_guard); // explicit for clarity
         Ok(())
       });
-      if sync_download {
-        handle.await??;
-      } else {
-        handles.push(handle);
-      }
+      handles.push(handle);
     }
   }
 

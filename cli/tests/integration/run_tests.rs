@@ -3,6 +3,7 @@
 use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
+use pretty_assertions::assert_eq;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
@@ -14,7 +15,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::env_vars_for_npm_tests_no_sync_download;
+use util::env_vars_for_npm_tests;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -869,7 +870,7 @@ itest!(lock_write_fetch {
 
 itest!(lock_check_ok {
   args:
-    "run --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -916,7 +917,7 @@ itest!(lock_flag_overrides_config_file_lock_path {
 
 itest!(lock_v2_check_ok {
   args:
-    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -970,6 +971,100 @@ fn lock_no_declaration_files() {
     context
       .testdata_path()
       .join("lockfile/no_dts/deno.lock.out"),
+  );
+}
+
+#[test]
+fn lock_redirects() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}"); // cause a lockfile to be created
+  temp_dir.write(
+    "main.ts",
+    "import 'http://localhost:4546/run/001_hello.js';",
+  );
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
+  let initial_lockfile_text = r#"{
+  "version": "3",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}
+"#;
+  assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text("Hello World\n");
+  assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
+
+  // now try changing where the redirect occurs in the lockfile
+  temp_dir.write("deno.lock", r#"{
+  "version": "3",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}
+"#);
+
+  // also, add some npm dependency to ensure it doesn't end up in
+  // the redirects as they're currently stored separately
+  temp_dir.write(
+    "main.ts",
+    "import 'http://localhost:4546/run/001_hello.js';\n import 'npm:@denotest/esm-basic';\n",
+  );
+
+  // it should use the echo script instead
+  context
+    .new_command()
+    .args("run main.ts Hi there")
+    .run()
+    .assert_matches_text(
+      concat!(
+        "Download http://localhost:4545/echo.ts\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+        "Hi, there",
+    ));
+  util::assertions::assert_wildcard_match(
+    &temp_dir.read_to_string("deno.lock"),
+    r#"{
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": "sha512-[WILDCARD]",
+        "dependencies": {}
+      }
+    }
+  },
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
+  "remote": {
+    "http://localhost:4545/echo.ts": "829eb4d67015a695d70b2a33c78b631b29eea1dbac491a6bfcf394af2a2671c2",
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}
+"#,
   );
 }
 
@@ -1971,14 +2066,14 @@ itest!(shebang_swc {
 });
 
 itest!(shebang_with_json_imports_tsc {
-  args: "run --quiet import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
 itest!(shebang_with_json_imports_swc {
-  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet --no-check import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
@@ -2955,36 +3050,36 @@ itest!(issue_13562 {
   output: "run/issue13562.ts.out",
 });
 
-itest!(import_assertions_static_import {
-  args: "run --allow-read import_assertions/static_import.ts",
-  output: "import_assertions/static_import.out",
+itest!(import_attributes_static_import {
+  args: "run --allow-read import_attributes/static_import.ts",
+  output: "import_attributes/static_import.out",
 });
 
-itest!(import_assertions_static_export {
-  args: "run --allow-read import_assertions/static_export.ts",
-  output: "import_assertions/static_export.out",
+itest!(import_attributes_static_export {
+  args: "run --allow-read import_attributes/static_export.ts",
+  output: "import_attributes/static_export.out",
 });
 
-itest!(import_assertions_static_error {
-  args: "run --allow-read import_assertions/static_error.ts",
-  output: "import_assertions/static_error.out",
+itest!(import_attributes_static_error {
+  args: "run --allow-read import_attributes/static_error.ts",
+  output: "import_attributes/static_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_dynamic_import {
-  args: "run --allow-read import_assertions/dynamic_import.ts",
-  output: "import_assertions/dynamic_import.out",
+itest!(import_attributes_dynamic_import {
+  args: "run --allow-read --check import_attributes/dynamic_import.ts",
+  output: "import_attributes/dynamic_import.out",
 });
 
-itest!(import_assertions_dynamic_error {
-  args: "run --allow-read import_assertions/dynamic_error.ts",
-  output: "import_assertions/dynamic_error.out",
+itest!(import_attributes_dynamic_error {
+  args: "run --allow-read import_attributes/dynamic_error.ts",
+  output: "import_attributes/dynamic_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_type_check {
-  args: "run --allow-read --check import_assertions/type_check.ts",
-  output: "import_assertions/type_check.out",
+itest!(import_attributes_type_check {
+  args: "run --allow-read --check import_attributes/type_check.ts",
+  output: "import_attributes/type_check.out",
   exit_code: 1,
 });
 
@@ -3027,7 +3122,7 @@ itest!(package_json_auto_discovered_for_local_script_arg {
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -3039,7 +3134,7 @@ itest!(
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
     copy_temp_dir: Some("run/with_package_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
     exit_code: 1,
   }
@@ -3070,7 +3165,7 @@ itest!(
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
     copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
   }
 );
@@ -3080,7 +3175,7 @@ itest!(package_json_auto_discovered_for_npm_binary {
   output: "run/with_package_json/npm_binary/main.out",
   cwd: Some("run/with_package_json/npm_binary/"),
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -3520,6 +3615,11 @@ itest!(spawn_kill_permissions {
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read run/followup_dyn_import_resolves/main.ts",
   output: "run/followup_dyn_import_resolves/main.ts.out",
+});
+
+itest!(allow_run_allowlist_resolution {
+  args: "run --quiet --unstable -A allow_run_allowlist_resolution.ts",
+  output: "allow_run_allowlist_resolution.ts.out",
 });
 
 itest!(unhandled_rejection {
@@ -4415,9 +4515,16 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.write_line(
       r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
     );
-    console.expect(
-      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\".",
-    )
+    // will be uppercase on windows
+    let env_name = if cfg!(windows) {
+      "DO YOU LIKE ICE CREAM? Y/N"
+    } else {
+      "Do you like ice cream? y/n"
+    };
+    console.expect(format!(
+      "┌ ⚠️  Deno requests env access to \"{}\".",
+      env_name
+    ))
   });
 
   util::with_pty(&["repl"], |mut console| {
@@ -4458,21 +4565,21 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
 itest!(node_builtin_modules_ts {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_builtin_modules_js {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
   output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
 });
 
@@ -4594,3 +4701,8 @@ console.log(returnsHi());"#,
 ")
     .assert_exit_code(1);
 }
+
+itest!(explicit_resource_management {
+  args: "run --quiet --check run/explicit_resource_management/main.ts",
+  output: "run/explicit_resource_management/main.out",
+});
