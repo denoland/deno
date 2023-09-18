@@ -426,21 +426,23 @@ Deno.test({ permissions: { run: true } }, function commandSyncNotFound() {
 
 Deno.test({ permissions: { run: true } }, function cwdNotFound() {
   assertThrows(
-    () => new Deno.Command(Deno.execPath(), {
-      cwd: Deno.cwd() + "/non-existent-directory"
-    }).output(),
+    () =>
+      new Deno.Command(Deno.execPath(), {
+        cwd: Deno.cwd() + "/non-existent-directory",
+      }).output(),
     Deno.errors.NotFound,
-    "non-existent-directory\`: No such file or directory"
+    "non-existent-directory\`: No such file or directory",
   );
 });
 
 Deno.test({ permissions: { run: true } }, function cwdNotDirectory() {
   assertThrows(
-    () => new Deno.Command(Deno.execPath(), {
-      cwd: Deno.execPath()
-    }).output(),
+    () =>
+      new Deno.Command(Deno.execPath(), {
+        cwd: Deno.execPath(),
+      }).output(),
     Deno.errors.NotFound,
-    `cwd path is not a directory \`${Deno.execPath()}\`: Not a directory`
+    `cwd path is not a directory \`${Deno.execPath()}\`: Not a directory`,
   );
 });
 
