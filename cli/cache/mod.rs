@@ -274,14 +274,19 @@ impl Loader for FetchCacher {
           }))
         })
         .unwrap_or_else(|err| {
-          if let Some(err) = err.downcast_ref::<std::io::Error>() {
-            if err.kind() == std::io::ErrorKind::NotFound {
+          if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+            if io_err.kind() == std::io::ErrorKind::NotFound {
               return Ok(None);
+            } else {
+              return Err(err);
             }
-          } else if get_error_class_name(&err) == "NotFound" {
-            return Ok(None);
           }
-          Err(err)
+          let error_class_name = get_error_class_name(&err);
+          match error_class_name {
+            "NotFound" => Ok(None),
+            "NotCached" if cache_setting == LoaderCacheSetting::Only => Ok(None),
+            _ => Err(err),
+          }
         })
     }
     .boxed()

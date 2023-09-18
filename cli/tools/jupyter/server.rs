@@ -482,32 +482,49 @@ async fn get_jupyter_display(
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
   let response = session
     .call_function_on_args(
-      r#"function (object) {{
-      return JSON.stringify(object[Symbol.for("Jupyter.display")]());
-    }}"#
+      r#"function (object) {
+        const display = object[Symbol.for("Jupyter.display")];
+        if (typeof display === "function") {
+          return JSON.stringify(display());
+        } else {
+          return null;
+        }
+      }"#
         .to_string(),
       &[evaluate_result.clone()],
     )
     .await?;
 
   if let Some(exception_details) = &response.exception_details {
-    // TODO(rgbkrk): Return an error in userspace instead of Jupyter logs
+    // If the object doesn't have a Jupyter.display method or it throws an
+    // exception, we just ignore it and let the caller handle it.
     eprintln!("Exception encountered: {}", exception_details.text);
     return Ok(None);
   }
 
-  if let Some(serde_json::Value::String(json_str)) = response.result.value {
-    let data: HashMap<String, serde_json::Value> =
-      serde_json::from_str(&json_str)?;
+  match response.result.value {
+    Some(serde_json::Value::String(json_str)) => {
+      let Ok(data) =
+        serde_json::from_str::<HashMap<String, serde_json::Value>>(&json_str)
+      else {
+        eprintln!("Unexpected response from Jupyter.display: {json_str}");
+        return Ok(None);
+      };
 
-    if !data.is_empty() {
-      return Ok(Some(data));
+      if !data.is_empty() {
+        return Ok(Some(data));
+      }
     }
-  } else {
-    eprintln!(
-      "Unexpected response from Jupyter.display: {:?}",
-      response.result.clone().value
-    );
+    Some(serde_json::Value::Null) => {
+      // Object did not have the Jupyter display spec
+      return Ok(None);
+    }
+    _ => {
+      eprintln!(
+        "Unexpected response from Jupyter.display: {:?}",
+        response.result
+      )
+    }
   }
 
   Ok(None)
