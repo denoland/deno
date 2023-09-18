@@ -213,10 +213,6 @@ function assertOps(fn) {
       }
     }
 
-    console.log("preTraces", preTraces);
-    console.log("postTraces", postTraces);
-    console.log("report", report);
-
     if (report === null) return null;
 
     const details = [];
@@ -263,8 +259,8 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of preTraces) {
-          if (opName !== key) continue;
+        for (const [id, { opName: traceOpName, stack }] of preTraces) {
+          if (opName !== traceOpName) continue;
           if (MapPrototypeHas(postTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
