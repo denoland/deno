@@ -410,87 +410,81 @@ impl JupyterServer {
       let exception_details = exception_details.unwrap();
 
       // Determine the exception value and name
-      let (value, name) = if let Some(exception) = &exception_details.exception {
-        // Determine the exception name based on class_name or default to "Uncaught"
-        let name = if let Some(class_name) = &exception.class_name {
-            format!("Uncaught {}", class_name)
+      let (name, message, stack) =
+        if let Some(exception) = exception_details.exception {
+          let result = self
+            .repl_session
+            .call_function_on_args(
+              r#"
+          function(object) {
+            if (object instanceof Error) {
+              const name = "name" in object ? String(object.name) : "";
+              const message = "message" in object ? String(object.message) : "";
+              const stack = "stack" in object ? String(object.stack) : "";
+              return JSON.stringify({ name, message, stack });
+            } else {
+              const message = String(object);
+              return JSON.stringify({ name: "", message, stack: "" });
+            }
+          }
+        "#
+              .into(),
+              &[exception],
+            )
+            .await?;
+
+          match result.result.value {
+            Some(serde_json::Value::String(str)) => {
+              if let Ok(object) =
+                serde_json::from_str::<HashMap<String, String>>(&str)
+              {
+                let get = |k| object.get(k).cloned().unwrap_or_default();
+                (get("name"), get("message"), get("stack"))
+              } else {
+                eprintln!("Unexpected result while parsing JSON {str}");
+                ("".into(), "".into(), "".into())
+              }
+            }
+            _ => {
+              eprintln!("Unexpected result while parsing exception {result:?}");
+              ("".into(), "".into(), "".into())
+            }
+          }
         } else {
-            "Unknown exception".to_string()
+          eprintln!("Unexpectedly missing exception {exception_details:?}");
+          ("".into(), "".into(), "".into())
         };
 
-        let remote_object = exception;
-
-        let value: serde_json::Value = match remote_object.kind.as_str() {
-            "string" => remote_object.value.clone().unwrap_or_else(|| json!(" ")),
-            "object" => {
-                match remote_object.subtype.as_deref() {
-                    Some("error") => {
-                        if let Some(message) = remote_object.value.clone().and_then(|v| v.get("message").cloned()) {
-                          json!(message)
-                        } else if let Some(description) = remote_object.description.clone() {
-                          json!(description)
-                        } else {
-                          json!("wat")
-                        }
-                    },
-                    _ => remote_object.value.clone().unwrap_or_else(|| json!(" ")),
-                }
-            },
-            _ => remote_object.value.clone().unwrap_or_else(|| json!(" ")),
-        };
-
-        (name, value)
+      let stack = if stack.is_empty() {
+        format!(
+          "{}\n    at <unknown>",
+          serde_json::to_string(&message).unwrap()
+        )
       } else {
-        ("Unknown exception".to_string(), json!("Unknown exception"))
+        stack
+      };
+      let traceback = format!("Stack trace (most recent call last):\n{stack}")
+        .split("\n")
+        .map(|s| s.to_owned())
+        .collect::<Vec<_>>();
+
+      let ename = if name.is_empty() {
+        "Unknown error".into()
+      } else {
+        name
       };
 
+      let evalue = if message.is_empty() {
+        "(none)".into()
+      } else {
+        message
+      };
 
-
-      let mut traceback: Vec<String> = Vec::new();
-
-      if let Some(stack_trace) = &exception_details.stack_trace {
-          traceback = stack_trace.call_frames
-              .iter()
-              .map(|frame| {
-                  let file_name = &frame.url;
-                  let line_number = frame.line_number;
-                  let column_number = frame.column_number;
-
-                  // If the filename is blank, assume it's the REPL / cell
-                  // itself.
-                  let file_prefix = if file_name.is_empty() {
-                    "<cell>".to_string()
-                  } else {
-                    // File "<file_name>", line 1, column 1
-                    format!("File \"{}\"", file_name)
-                  };
-
-                  format!(
-                    r#"  {file_prefix}, line {line_number}, column {column_number}"#,
-                    file_prefix = file_prefix,
-                    line_number = line_number,
-                    column_number = column_number,)
-                })
-                .collect();
-      }
-
-      if !traceback.is_empty() {
-        // Include the error name and value at the top of the traceback
-        traceback.insert(0, format!("{}: {}", name, value));
-
-        // Insert the traceback header
-        traceback.insert(1, "Traceback (most recent call last):".to_string());
-    
-    }
-
-
-
-      // TODO(bartlomieju): fill all the fields
       msg
         .new_message("error")
         .with_content(json!({
-          "ename": name,
-          "evalue": value,
+          "ename": ename,
+          "evalue": evalue,
           "traceback": traceback,
         }))
         .send(&mut *self.iopub_socket.lock().await)
