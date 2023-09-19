@@ -1057,6 +1057,7 @@ Deno.test(function consoleTestWithConstructorError() {
       if (name == "constructor") {
         throw "yikes";
       }
+      return undefined;
     },
   });
   assertEquals(Deno.inspect(obj), "{}");
