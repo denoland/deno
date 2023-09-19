@@ -31,6 +31,7 @@ use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -3167,7 +3168,8 @@ struct State {
   performance: Arc<Performance>,
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
-  specifiers: HashMap<String, String>,
+  normalized_specifiers: HashMap<String, ModuleSpecifier>,
+  denormalized_specifiers: HashMap<ModuleSpecifier, String>,
   token: CancellationToken,
 }
 
@@ -3181,36 +3183,55 @@ impl State {
       performance,
       response: None,
       state_snapshot,
-      specifiers: HashMap::default(),
+      normalized_specifiers: HashMap::default(),
+      denormalized_specifiers: HashMap::default(),
       token: Default::default(),
     }
   }
 
-  /// If a normalized version of the specifier has been stored for tsc, this
-  /// will "restore" it for communicating back to the tsc language server,
-  /// otherwise it will just convert the specifier to a string.
-  fn denormalize_specifier(&self, specifier: &ModuleSpecifier) -> String {
-    let specifier_str = specifier.to_string();
-    self
-      .specifiers
-      .get(&specifier_str)
-      .unwrap_or(&specifier_str)
-      .to_string()
+  /// Convert the specifier to one compatible with tsc. Cache the resulting
+  /// mapping in case it needs to be reversed.
+  fn denormalize_specifier(&mut self, specifier: &ModuleSpecifier) -> String {
+    let original = specifier;
+    if let Some(specifier) = self.denormalized_specifiers.get(original) {
+      return specifier.to_string();
+    }
+    let mut specifier = original.to_string();
+    let media_type = MediaType::from_specifier(original);
+    // If the URL-inferred media type doesn't correspond to tsc's path-inferred
+    // media type, force it to be the same by appending an extension.
+    if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
+      specifier += media_type.as_ts_extension();
+    }
+    if specifier != original.as_str() {
+      self
+        .normalized_specifiers
+        .insert(specifier.clone(), original.clone());
+    }
+    specifier
   }
 
-  /// In certain situations, tsc can request "invalid" specifiers and this will
-  /// normalize and memoize the specifier.
+  /// Convert the specifier from one compatible with tsc. Cache the resulting
+  /// mapping in case it needs to be reversed.
   fn normalize_specifier<S: AsRef<str>>(
     &mut self,
     specifier: S,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let specifier_str = specifier.as_ref().replace(".d.ts.d.ts", ".d.ts");
-    if specifier_str != specifier.as_ref() {
-      self
-        .specifiers
-        .insert(specifier_str.clone(), specifier.as_ref().to_string());
+    let original = specifier.as_ref();
+    if let Some(specifier) = self.normalized_specifiers.get(original) {
+      return Ok(specifier.clone());
     }
-    ModuleSpecifier::parse(&specifier_str).map_err(|err| err.into())
+    let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
+    let specifier = match ModuleSpecifier::parse(&specifier_str) {
+      Ok(s) => s,
+      Err(err) => return Err(err.into()),
+    };
+    if specifier.as_str() != original {
+      self
+        .denormalized_specifiers
+        .insert(specifier.clone(), original.to_string());
+    }
+    Ok(specifier)
   }
 
   fn get_asset_or_document(
@@ -3324,7 +3345,12 @@ fn op_resolve(
         resolved
           .into_iter()
           .map(|o| {
-            o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
+            o.map(|(s, mt)| {
+              (
+                state.denormalize_specifier(&s),
+                mt.as_ts_extension().to_string(),
+              )
+            })
           })
           .collect(),
       )
@@ -3861,7 +3887,7 @@ enum RequestMethod {
 }
 
 impl RequestMethod {
-  fn to_value(&self, state: &State, id: usize) -> Value {
+  fn to_value(&self, state: &mut State, id: usize) -> Value {
     match self {
       RequestMethod::Configure(config) => json!({
         "id": id,
