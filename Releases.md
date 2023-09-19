@@ -8,41 +8,29 @@ https://github.com/denoland/deno_install
 
 ### 1.37.0 / 2023.09.19
 
-- Reland "feat(lsp): enable via config file detection (#20334)" (#20349)
-- Reland "refactor(lsp): clean up "enablePaths" handling (#20388)" (#20423)
-- Revert "feat(lsp): enable via config file detection (#20334)" (#20347)
-- Revert "refactor(lsp): clean up "enablePaths" handling (#20388)" (#20419)
-- Revert "refactor: rewrite ops that use 'deferred' to use 'op2(async(lazy))'
-  (#20303) (#20370)
-- feat(cli): allow --log-level=trace for additional deep debugging (#20426)
-- feat(cli/tools): add TAP test reporter (#14390) (#20073)
+- feat: Add "deno jupyter" subcommand (#20337, #20552, #20530, #20537, #20546)
+- feat(test): add TAP test reporter (#14390, #20073)
 - feat(ext/node): http2.connect() API (#19671)
-- feat(ext/web): Add name to Deno.customInspect of File objects (#20415)
-- feat(jupyter-kernel): accept nested objects from display calls (#20537)
-- feat(lint): --rules print all rules (#20256)
+- feat(ext/web): Add name to `Deno.customInspect` of File objects (#20415)
+- feat(lint): `--rules` print all rules (#20256)
 - feat(lockfile): add redirects to the lockfile (#20262)
 - feat(lsp): WorkspaceSettings::disablePaths (#20475)
-- feat(lsp): enable via config file detection (#20334)
+- feat(lsp): enable via config file detection (#20334, #20349)
 - feat(lsp): include source in auto import completion label (#20523)
 - feat(lsp): npm specifier completions (#20121)
 - feat(lsp): provide the deno.cache command server-side (#20111)
 - feat(lsp): update imports on file rename (#20245)
 - feat(test): Add Deno.test.ignore and Deno.test.only (#20365)
 - feat(unstable): package manager (#20517)
-- feat: Add "deno jupyter" subcommand (#20337)
 - feat: TypeScript 5.2 (#20425)
 - feat: explicit resource management in TypeScript (#20506)
 - feat: lockfile v3 (#20424)
 - feat: support import attributes (#20342)
-- fix(cli): Enhanced errors for Jupyter (#20530)
 - fix(cli): ensure that an exception in getOwnPropertyDescriptor('constructor')
   doesn't break Deno.inspect (#20568)
-- fix(cli): fetch works in Jupyter (#20552)
 - fix(cli): for main-module that exists in package.json, use the version defined
   in package.json directly (#20328)
 - fix(compile): support providing flags as args (#20422)
-- fix(devcontainer): Add build deps and update extension in devcontainer
-  (#20467)
 - fix(evt/kv): Add serde feature to uuid (#20350)
 - fix(ext/crypto): remove EdDSA alg key checks and export (#20331)
 - fix(ext/http): create a graceful shutdown API (#20387)
@@ -55,8 +43,6 @@ https://github.com/denoland/deno_install
   (#20301)
 - fix(fmt/markdown): improve ignore comment handling (#20421)
 - fix(init): skip existing files instead of erroring (#20434)
-- fix(jupyter-kernel): don't log errors from objects without a
-  `Symbol.for("Jupyter.display")` (#20546)
 - fix(lsp): always enable semantic tokens responses (#20440)
 - fix(lsp): force correct media type detection from tsc (#20562)
 - fix(lsp): include JSON modules in local import completions (#20536)
@@ -92,7 +78,6 @@ https://github.com/denoland/deno_install
 - perf(node/net): optimize socket reads for 'npm:ws' package (#20449)
 - perf: improve async op santizer speed and accuracy (#20501)
 - perf: make `deno test` 10x faster (#20550)
-- set `evalue` to a one space string for truthiness on old jupyter (#20531)
 
 ### 1.36.4 / 2023.09.01
 
