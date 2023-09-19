@@ -95,7 +95,7 @@ impl BoundedBufferChannelInner {
   }
 
   /// # Safety
-  /// 
+  ///
   /// This doesn't check whether `ring_consumer` is valid, so you'd better make sure it is before
   /// calling this.
   #[inline(always)]
@@ -156,6 +156,8 @@ impl BoundedBufferChannelInner {
       if let Some(waker) = self.write_waker.take() {
         waker.wake();
       }
+
+      println!("aggregate! {}", bytes.len());
 
       return Ok(Some(BufView::from(bytes.freeze())));
     }
@@ -322,6 +324,11 @@ impl BoundedBufferChannel {
 
   pub fn closed(&self) -> bool {
     self.inner().closed
+  }
+
+  #[cfg(test)]
+  pub fn byte_size(&self) -> usize {
+    self.inner().current_size
   }
 
   pub fn close(&self) {
@@ -515,6 +522,7 @@ mod tests {
   use super::*;
   use deno_core::v8;
   use std::cell::OnceCell;
+  use std::sync::atomic::AtomicUsize;
   use std::time::Duration;
 
   thread_local! {
@@ -562,7 +570,9 @@ mod tests {
     let a = deno_core::unsync::spawn(async move {
       for _ in 0..BUFFER_CHANNEL_SIZE * 2 {
         poll_fn(|cx| channel_send.poll_write_ready(cx)).await;
-        channel_send.write(create_buffer(1024)).unwrap();
+        channel_send
+          .write(create_buffer(BUFFER_AGGREGATION_LIMIT))
+          .unwrap();
       }
     });
 
@@ -571,11 +581,58 @@ mod tests {
       for _ in 0..BUFFER_CHANNEL_SIZE * 2 {
         tokio::time::sleep(Duration::from_millis(1)).await;
         poll_fn(|cx| channel.poll_read_ready(cx)).await;
-        channel.read(1024).unwrap();
+        channel.read(BUFFER_AGGREGATION_LIMIT).unwrap();
       }
     });
 
     a.await.unwrap();
     b.await.unwrap();
+  }
+
+  #[tokio::test(flavor = "current_thread")]
+  async fn test_multi_task_small_reads() {
+    let channel = BoundedBufferChannel::default();
+    let channel_send = channel.clone();
+
+    let total_send = Rc::new(AtomicUsize::new(0));
+    let total_send_task = total_send.clone();
+    let total_recv = Rc::new(AtomicUsize::new(0));
+    let total_recv_task = total_recv.clone();
+
+    // Fast writer
+    let a = deno_core::unsync::spawn(async move {
+      for _ in 0..BUFFER_CHANNEL_SIZE * 2 {
+        poll_fn(|cx| channel_send.poll_write_ready(cx)).await;
+        channel_send.write(create_buffer(16)).unwrap();
+        total_send_task.fetch_add(16, std::sync::atomic::Ordering::SeqCst);
+      }
+      // We need to close because we may get aggregated packets and we want a signal
+      channel_send.close();
+    });
+
+    // Slightly slower reader
+    let b = deno_core::unsync::spawn(async move {
+      for _ in 0..BUFFER_CHANNEL_SIZE * 2 {
+        poll_fn(|cx| channel.poll_read_ready(cx)).await;
+        // We want to make sure we're aggregating at least some packets
+        while channel.byte_size() <= 16 && !channel.closed() {
+          tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        let len = channel
+          .read(1024)
+          .unwrap()
+          .map(|b| b.len())
+          .unwrap_or_default();
+        total_recv_task.fetch_add(len, std::sync::atomic::Ordering::SeqCst);
+      }
+    });
+
+    a.await.unwrap();
+    b.await.unwrap();
+
+    assert_eq!(
+      total_send.load(std::sync::atomic::Ordering::SeqCst),
+      total_recv.load(std::sync::atomic::Ordering::SeqCst)
+    );
   }
 }
