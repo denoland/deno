@@ -22,7 +22,6 @@ const {
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
@@ -151,26 +150,14 @@ const OP_DETAILS = {
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
 
-function collectReliableOpMetrics() {
-  let metrics = core.metrics();
-  if (metrics.opsDispatched > metrics.opsCompleted) {
-    // If there are still async ops pending, we drain the event loop to the
-    // point where all ops that can return `Poll::Ready` have done so, to ensure
-    // that any ops are ready because of user cleanup code are completed.
-    const hasPendingWorkerOps = metrics.ops.op_host_recv_message && (
-      metrics.ops.op_host_recv_message.opsDispatched >
-        metrics.ops.op_host_recv_message.opsCompleted ||
-      metrics.ops.op_host_recv_ctrl.opsDispatched >
-        metrics.ops.op_host_recv_ctrl.opsCompleted
-    );
-    return opSanitizerDelay(hasPendingWorkerOps).then(() => {
-      metrics = core.metrics();
-      const traces = new Map(core.opCallTraces);
-      return { metrics, traces };
-    });
-  }
-  const traces = new Map(core.opCallTraces);
-  return { metrics, traces };
+let opIdHostRecvMessage = -1;
+let opIdHostRecvCtrl = -1;
+let opNames = null;
+
+function populateOpNames() {
+  opNames = core.ops.op_op_names();
+  opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
+  opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
 }
 
 // Wrap test function in additional assertion that makes sure
@@ -181,50 +168,61 @@ function collectReliableOpMetrics() {
 function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
-    let metrics = collectReliableOpMetrics();
-    if (metrics.then) {
-      // We're delaying so await to get the result asynchronously.
-      metrics = await metrics;
+    if (opNames === null) populateOpNames();
+    const res = core.ops.op_test_op_sanitizer_collect(
+      desc.id,
+      false,
+      opIdHostRecvMessage,
+      opIdHostRecvCtrl,
+    );
+    if (res !== 0) {
+      await opSanitizerDelay(res === 2);
+      core.ops.op_test_op_sanitizer_collect(
+        desc.id,
+        true,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
     }
-    const { metrics: pre, traces: preTraces } = metrics;
-    let post;
+    const preTraces = new Map(core.opCallTraces);
     let postTraces;
+    let report = null;
 
     try {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      let metrics = collectReliableOpMetrics();
-      if (metrics.then) {
-        // We're delaying so await to get the result asynchronously.
-        metrics = await metrics;
+      let res = core.ops.op_test_op_sanitizer_finish(
+        desc.id,
+        false,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
+      if (res === 1 || res === 2) {
+        await opSanitizerDelay(res === 2);
+        res = core.ops.op_test_op_sanitizer_finish(
+          desc.id,
+          true,
+          opIdHostRecvMessage,
+          opIdHostRecvCtrl,
+        );
       }
-      ({ metrics: post, traces: postTraces } = metrics);
+      postTraces = new Map(core.opCallTraces);
+      if (res === 3) {
+        report = core.ops.op_test_op_sanitizer_report(desc.id);
+      }
     }
 
-    // We're checking diff because one might spawn HTTP server in the background
-    // that will be a pending async op before test starts.
-    const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
-    const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
-
-    if (dispatchedDiff === completedDiff) return null;
+    if (report === null) return null;
 
     const details = [];
-    for (const key in post.ops) {
-      if (!ObjectHasOwn(post.ops, key)) {
-        continue;
-      }
-      const preOp = pre.ops[key] ??
-        { opsDispatchedAsync: 0, opsCompletedAsync: 0 };
-      const postOp = post.ops[key];
-      const dispatchedDiff = postOp.opsDispatchedAsync -
-        preOp.opsDispatchedAsync;
-      const completedDiff = postOp.opsCompletedAsync -
-        preOp.opsCompletedAsync;
+    for (const opReport of report) {
+      const opName = opNames[opReport.id];
+      const diff = opReport.diff;
 
-      if (dispatchedDiff > completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = dispatchedDiff - completedDiff;
+      if (diff > 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
         } to ${name} ${
@@ -234,8 +232,8 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of postTraces) {
-          if (opName !== key) continue;
+        for (const [id, { opName: traceOpName, stack }] of postTraces) {
+          if (traceOpName !== opName) continue;
           if (MapPrototypeHas(preTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
@@ -247,9 +245,9 @@ function assertOps(fn) {
           message += ArrayPrototypeJoin(traces, "\n\n");
         }
         ArrayPrototypePush(details, message);
-      } else if (dispatchedDiff < completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = completedDiff - dispatchedDiff;
+      } else if (diff < 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = -diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
         } to ${name} ${
@@ -261,8 +259,8 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of preTraces) {
-          if (opName !== key) continue;
+        for (const [id, { opName: traceOpName, stack }] of preTraces) {
+          if (opName !== traceOpName) continue;
           if (MapPrototypeHas(postTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
@@ -274,6 +272,8 @@ function assertOps(fn) {
           message += ArrayPrototypeJoin(traces, "\n\n");
         }
         ArrayPrototypePush(details, message);
+      } else {
+        throw new Error("unreachable");
       }
     }
 
