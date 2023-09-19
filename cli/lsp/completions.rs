@@ -167,10 +167,11 @@ pub async fn get_import_completions(
       items: get_local_completions(specifier, &text, &range)?,
     }))
   } else if text.starts_with("npm:") {
+    let items =
+      get_npm_completions(specifier, &text, &range, npm_search_api).await?;
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: false,
-      items: get_npm_completions(specifier, &text, &range, npm_search_api)
-        .await?,
+      is_incomplete: !items.is_empty(),
+      items,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
