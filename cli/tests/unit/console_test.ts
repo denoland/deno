@@ -1051,6 +1051,17 @@ Deno.test(function consoleTestWithCustomInspectorUsingInspectFunc() {
   assertEquals(stringify(new A()), "b { c: 1 }");
 });
 
+Deno.test(function consoleTestWithConstructorError() {
+  let obj = new Proxy({}, {
+    getOwnPropertyDescriptor(_target, name) {
+      if (name == "constructor") {
+        throw "yikes";
+      }
+    },
+  });
+  assertEquals(Deno.inspect(obj), "{}");
+});
+
 Deno.test(function consoleTestWithCustomInspectorError() {
   class A {
     [customInspect](): never {
