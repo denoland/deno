@@ -1052,7 +1052,7 @@ Deno.test(function consoleTestWithCustomInspectorUsingInspectFunc() {
 });
 
 Deno.test(function consoleTestWithConstructorError() {
-  let obj = new Proxy({}, {
+  const obj = new Proxy({}, {
     getOwnPropertyDescriptor(_target, name) {
       if (name == "constructor") {
         throw "yikes";
