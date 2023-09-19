@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { fail } from "https://deno.land/std@v0.42.0/testing/asserts.ts";
-import { assertEquals, Deferred, deferred } from "./test_util.ts";
+import { assertEquals, Deferred, deferred, fail } from "./test_util.ts";
 
 const {
   core,

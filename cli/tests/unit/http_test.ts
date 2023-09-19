@@ -198,12 +198,14 @@ Deno.test(
       await respondWith(new Response(stream.readable));
     })();
 
-    const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
+    const client = Deno.createHttpClient({});
+    const resp = await fetch(`http://127.0.0.1:${listenPort}/`, { client });
     const respBody = await resp.text();
     assertEquals("hello world", respBody);
     await promise;
     httpConn!.close();
     listener.close();
+    client.close();
   },
 );
 
@@ -216,8 +218,8 @@ Deno.test(
     writer.write(new TextEncoder().encode("world"));
     writer.close();
 
+    const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
-      const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
       const evt = await httpConn.nextRequest();
@@ -235,14 +237,17 @@ Deno.test(
       listener.close();
     })();
 
+    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`, {
       body: stream.readable,
       method: "POST",
       headers: { "connection": "close" },
+      client,
     });
 
     await resp.arrayBuffer();
     await promise;
+    client.close();
   },
 );
 
@@ -375,9 +380,11 @@ Deno.test(
       await respondWith(new Response("response"));
     })();
 
+    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`, {
       method: "POST",
       body: "request",
+      client,
     });
     const respBody = await resp.text();
     assertEquals("response", respBody);
@@ -385,6 +392,7 @@ Deno.test(
 
     httpConn!.close();
     listener.close();
+    client.close();
   },
 );
 
@@ -427,9 +435,11 @@ Deno.test(
       listener.close();
     })();
 
+    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
     await resp.body!.cancel();
     await promise;
+    client.close();
   },
 );
 
@@ -788,7 +798,11 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
       socket.send(m.data);
       socket.close(1001);
     };
+    const close = new Promise<void>((resolve) => {
+      socket.onclose = () => resolve();
+    });
     await respondWith(response);
+    await close;
   })();
 
   const def = deferred();
@@ -1268,11 +1282,15 @@ Deno.test(
     async function client() {
       const socket = new WebSocket(`ws://${hostname}:${port}/`);
       socket.onopen = () => socket.send("bla bla");
+      const closed = new Promise<void>((resolve) => {
+        socket.onclose = () => resolve();
+      });
       const { data } = await new Promise<MessageEvent<string>>((res) =>
         socket.onmessage = res
       );
       assertStrictEquals(data, "bla bla");
       socket.close();
+      await closed;
     }
 
     await Promise.all([server(), client()]);

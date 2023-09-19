@@ -18,7 +18,7 @@ use codec::encode_key;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_core::ByteString;
@@ -95,10 +95,11 @@ impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
   }
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
-  path: Option<String>,
+  #[string] path: Option<String>,
 ) -> Result<ResourceId, AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -234,12 +235,13 @@ type SnapshotReadRange = (
   Option<ByteString>,
 );
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_kv_snapshot_read<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  ranges: Vec<SnapshotReadRange>,
-  consistency: V8Consistency,
+  #[smi] rid: ResourceId,
+  #[serde] ranges: Vec<SnapshotReadRange>,
+  #[serde] consistency: V8Consistency,
 ) -> Result<Vec<Vec<ToV8KvEntry>>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -315,10 +317,11 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ToJsBuffer, ResourceId), AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -339,10 +342,10 @@ where
   Ok((payload, handle_rid))
 }
 
-#[op]
+#[op2(async)]
 async fn op_kv_finish_dequeued_message<DBH>(
   state: Rc<RefCell<OpState>>,
-  handle_rid: ResourceId,
+  #[smi] handle_rid: ResourceId,
   success: bool,
 ) -> Result<(), AnyError>
 where
@@ -598,13 +601,14 @@ fn decode_selector_and_cursor(
   Ok((first_key, last_key))
 }
 
-#[op]
+#[op2(async)]
+#[string]
 async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  checks: Vec<V8KvCheck>,
-  mutations: Vec<V8KvMutation>,
-  enqueues: Vec<V8Enqueue>,
+  #[smi] rid: ResourceId,
+  #[serde] checks: Vec<V8KvCheck>,
+  #[serde] mutations: Vec<V8KvMutation>,
+  #[serde] enqueues: Vec<V8Enqueue>,
 ) -> Result<Option<String>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -697,10 +701,11 @@ where
 // (prefix, start, end)
 type EncodeCursorRangeSelector = (Option<KvKey>, Option<KvKey>, Option<KvKey>);
 
-#[op]
+#[op2]
+#[string]
 fn op_kv_encode_cursor(
-  (prefix, start, end): EncodeCursorRangeSelector,
-  boundary_key: KvKey,
+  #[serde] (prefix, start, end): EncodeCursorRangeSelector,
+  #[serde] boundary_key: KvKey,
 ) -> Result<String, AnyError> {
   let selector = RawSelector::from_tuple(prefix, start, end)?;
   let boundary_key = encode_v8_key(boundary_key)?;

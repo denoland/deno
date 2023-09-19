@@ -182,7 +182,7 @@ itest!(quiet {
 });
 
 itest!(fail_fast {
-  args: "test --fail-fast test/fail_fast.ts",
+  args: "test --fail-fast test/fail_fast.ts test/fail_fast_other.ts",
   exit_code: 1,
   output: "test/fail_fast.out",
 });
@@ -254,6 +254,12 @@ itest!(trace_ops_catch_error {
 //  exit_code: 1,
 //  output: "test/ops_sanitizer_missing_details.out",
 // });
+
+itest!(ops_sanitizer_closed_inside_started_before {
+  args: "test --trace-ops test/ops_sanitizer_closed_inside_started_before.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_closed_inside_started_before.out",
+});
 
 itest!(ops_sanitizer_nexttick {
   args: "test --no-check test/ops_sanitizer_nexttick.ts",
