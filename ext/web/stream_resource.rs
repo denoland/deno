@@ -107,7 +107,7 @@ impl BoundedBufferChannelInner {
   }
 
   /// # Safety
-  /// 
+  ///
   /// This doesn't check whether `ring_consumer` is valid, so you'd better make sure it is before
   /// calling this.
   #[inline(always)]
