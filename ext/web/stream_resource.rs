@@ -526,19 +526,25 @@ mod tests {
   use deno_core::v8;
   use std::cell::OnceCell;
   use std::sync::atomic::AtomicUsize;
+  use std::sync::OnceLock;
   use std::time::Duration;
+
+  static V8_GLOBAL: OnceLock<()> = OnceLock::new();
 
   thread_local! {
     static ISOLATE: OnceCell<std::sync::Mutex<v8::OwnedIsolate>> = OnceCell::new();
   }
 
   fn with_isolate<T>(mut f: impl FnMut(&mut v8::Isolate) -> T) -> T {
+    V8_GLOBAL.get_or_init(|| {
+      let platform =
+        v8::new_unprotected_default_platform(0, false).make_shared();
+      v8::V8::initialize_platform(platform);
+      v8::V8::initialize();
+    });
     ISOLATE.with(|cell| {
       let mut isolate = cell
         .get_or_init(|| {
-          let platform = v8::new_default_platform(0, false).make_shared();
-          v8::V8::initialize_platform(platform);
-          v8::V8::initialize();
           std::sync::Mutex::new(v8::Isolate::new(Default::default()))
         })
         .try_lock()
