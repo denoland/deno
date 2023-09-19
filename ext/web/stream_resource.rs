@@ -4,6 +4,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_v8::V8Slice;
+use deno_core::unsync::TaskQueue;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::CancelFuture;
@@ -336,6 +337,7 @@ impl BoundedBufferChannel {
 
 #[allow(clippy::type_complexity)]
 struct ReadableStreamResource {
+  read_queue: Rc<TaskQueue>,
   channel: BoundedBufferChannel,
   cancel_handle: CancelHandle,
   data: ReadableStreamResourceData,
@@ -348,6 +350,8 @@ impl ReadableStreamResource {
 
   async fn read(self: Rc<Self>, limit: usize) -> Result<BufView, AnyError> {
     let cancel_handle = self.cancel_handle();
+    // Serialize all the reads using a task queue.
+    let _read_permit = self.read_queue.acquire().await;
     poll_fn(|cx| self.channel.poll_read_ready(cx))
       .or_cancel(cancel_handle)
       .await?;
@@ -421,6 +425,7 @@ impl Future for CompletionHandle {
 pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
   let completion = CompletionHandle::default();
   let resource = ReadableStreamResource {
+    read_queue: Default::default(),
     cancel_handle: Default::default(),
     channel: BoundedBufferChannel::default(),
     data: ReadableStreamResourceData { completion },
