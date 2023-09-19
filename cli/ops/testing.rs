@@ -21,6 +21,8 @@ use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use std::cell::Ref;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
@@ -47,7 +49,7 @@ deno_core::extension!(deno_test,
   state = |state, options| {
     state.put(options.sender);
     state.put(TestContainer::default());
-    state.put(TestOpSanitizerState::None);
+    state.put(TestOpSanitizers::default());
   },
 );
 
@@ -209,16 +211,12 @@ fn op_dispatch_test_event(
   Ok(())
 }
 
+#[derive(Default)]
+struct TestOpSanitizers(HashMap<u32, TestOpSanitizerState>);
+
 enum TestOpSanitizerState {
-  None,
-  Collecting {
-    test_id: u32,
-    metrics: Vec<OpMetrics>,
-  },
-  Finished {
-    test_id: u32,
-    report: Vec<TestOpSanitizerReport>,
-  },
+  Collecting { metrics: Vec<OpMetrics> },
+  Finished { report: Vec<TestOpSanitizerReport> },
 }
 
 fn try_collect_metrics(
@@ -285,14 +283,17 @@ fn op_test_op_sanitizer_collect(
     };
     metrics.clone()
   };
-  let op_sanitizer_state = state.borrow_mut::<TestOpSanitizerState>();
-  if !matches!(op_sanitizer_state, TestOpSanitizerState::None) {
-    return Err(generic_error("Test metrics already being collected"));
+  let op_sanitizers = state.borrow_mut::<TestOpSanitizers>();
+  match op_sanitizers.0.entry(id) {
+    Entry::Vacant(entry) => {
+      entry.insert(TestOpSanitizerState::Collecting { metrics });
+    }
+    Entry::Occupied(_) => {
+      return Err(generic_error(format!(
+        "Test metrics already being collected for test id {id}",
+      )));
+    }
   }
-  *op_sanitizer_state = TestOpSanitizerState::Collecting {
-    test_id: id,
-    metrics,
-  };
   Ok(0)
 }
 
@@ -333,20 +334,15 @@ fn op_test_op_sanitizer_finish(
       }
     };
 
-    let op_sanitizer_state = state.borrow::<TestOpSanitizerState>();
-    let before_metrics = match op_sanitizer_state {
-      TestOpSanitizerState::Collecting { test_id, metrics }
-        if *test_id == id =>
-      {
-        metrics
-      }
+    let op_sanitizers = state.borrow::<TestOpSanitizers>();
+    let before_metrics = match op_sanitizers.0.get(&id) {
+      Some(TestOpSanitizerState::Collecting { metrics }) => metrics,
       _ => {
         return Err(generic_error(format!(
           "Metrics not collected before for test id {id}",
         )));
       }
     };
-
     let mut report = vec![];
 
     for (id, (before, after)) in
@@ -369,16 +365,19 @@ fn op_test_op_sanitizer_finish(
     report
   };
 
-  let op_sanitizer_state = state.borrow_mut::<TestOpSanitizerState>();
+  let op_sanitizers = state.borrow_mut::<TestOpSanitizers>();
 
   if report.is_empty() {
-    *op_sanitizer_state = TestOpSanitizerState::None;
+    op_sanitizers
+      .0
+      .remove(&id)
+      .expect("TestOpSanitizerState::Collecting");
     Ok(0)
   } else {
-    *op_sanitizer_state = TestOpSanitizerState::Finished {
-      test_id: id,
-      report,
-    };
+    op_sanitizers
+      .0
+      .insert(id, TestOpSanitizerState::Finished { report })
+      .expect("TestOpSanitizerState::Collecting");
     Ok(3)
   }
 }
@@ -389,11 +388,11 @@ fn op_test_op_sanitizer_report(
   state: &mut OpState,
   #[smi] id: u32,
 ) -> Result<Vec<TestOpSanitizerReport>, AnyError> {
-  let op_sanitizer_state = state.borrow_mut::<TestOpSanitizerState>();
-  match std::mem::replace(op_sanitizer_state, TestOpSanitizerState::None) {
-    TestOpSanitizerState::Finished { test_id, report } if test_id == id => {
-      Ok(report)
-    }
-    _ => Err(generic_error(format!("No report prepared for {id}"))),
+  let op_sanitizers = state.borrow_mut::<TestOpSanitizers>();
+  match op_sanitizers.0.remove(&id) {
+    Some(TestOpSanitizerState::Finished { report }) => Ok(report),
+    _ => Err(generic_error(format!(
+      "Metrics not finished collecting for test id {id}",
+    ))),
   }
 }
