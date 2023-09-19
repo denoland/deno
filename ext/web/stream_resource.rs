@@ -157,8 +157,6 @@ impl BoundedBufferChannelInner {
         waker.wake();
       }
 
-      println!("aggregate! {}", bytes.len());
-
       return Ok(Some(BufView::from(bytes.freeze())));
     }
 
