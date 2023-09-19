@@ -205,7 +205,7 @@ dependencies = [
  "asn1-rs-derive",
  "asn1-rs-impl",
  "displaydoc",
- "nom",
+ "nom 7.1.3",
  "num-traits",
  "rusticata-macros",
  "thiserror",
@@ -1210,6 +1210,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_cron"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "deno_core",
+ "deno_unsync 0.1.1",
+ "saffron",
+ "tokio",
+]
+
+[[package]]
 name = "deno_crypto"
 version = "0.135.0"
 dependencies = [
@@ -1603,6 +1616,7 @@ dependencies = [
  "deno_cache",
  "deno_console",
  "deno_core",
+ "deno_cron",
  "deno_crypto",
  "deno_fetch",
  "deno_ffi",
@@ -1806,7 +1820,7 @@ checksum = "dbd676fbbab537128ef0278adb5576cf363cff6aa22a7b24effe97347cfab61e"
 dependencies = [
  "asn1-rs",
  "displaydoc",
- "nom",
+ "nom 7.1.3",
  "num-bigint",
  "num-traits",
  "rusticata-macros",
@@ -3412,6 +3426,16 @@ dependencies = [
 
 [[package]]
 name = "nom"
+version = "5.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08959a387a676302eebf4ddbcbc611da04285579f76f88ee0506c63b1a61dd4b"
+dependencies = [
+ "memchr",
+ "version_check",
+]
+
+[[package]]
+name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
@@ -4432,7 +4456,7 @@ version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf0c4a6ece9950b9abdb62b1cfcf2a68b3b67a10ba445b3bb85be2a293d0632"
 dependencies = [
- "nom",
+ "nom 7.1.3",
 ]
 
 [[package]]
@@ -4541,6 +4565,16 @@ name = "ryu-js"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4950d85bc52415f8432144c97c4791bd0c4f7954de32a7270ee9cccd3c22b12b"
+
+[[package]]
+name = "saffron"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03fb9a628596fc7590eb7edbf7b0613287be78df107f5f97b118aad59fb2eea9"
+dependencies = [
+ "chrono",
+ "nom 5.1.3",
+]
 
 [[package]]
 name = "salsa20"
@@ -6617,7 +6651,7 @@ dependencies = [
  "data-encoding",
  "der-parser",
  "lazy_static",
- "nom",
+ "nom 7.1.3",
  "oid-registry",
  "rusticata-macros",
  "thiserror",

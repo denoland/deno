@@ -31,6 +31,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -263,6 +264,7 @@ impl MainWorker {
           options.origin_storage_dir.clone(),
         ),
       ),
+      deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),

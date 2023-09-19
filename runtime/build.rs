@@ -223,6 +223,9 @@ mod startup_snapshot {
       deno_kv::deno_kv::init_ops_and_esm(deno_kv::sqlite::SqliteDbHandler::<
         Permissions,
       >::new(None)),
+      deno_cron::deno_cron::init_ops_and_esm(
+        deno_cron::local::LocalCronHandler::new(),
+      ),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
