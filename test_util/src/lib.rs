@@ -7,6 +7,7 @@ use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
 use hyper::header::HeaderValue;
+use hyper::http;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
@@ -57,6 +58,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls;
+use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use url::Url;
 
@@ -102,6 +104,8 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
+const H2_GRPC_PORT: u16 = 4246;
+const H2S_GRPC_PORT: u16 = 4247;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -110,21 +114,18 @@ pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 static GUARD: Lazy<Mutex<HttpServerCount>> =
   Lazy::new(|| Mutex::new(HttpServerCount::default()));
 
-pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
 
-pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
-  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
-  env_vars.push((
-    // make downloads deterministic
-    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
-    "1".to_string(),
-  ));
-  env_vars
+pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
+  vec![
+    ("DENO_REGISTRY_URL".to_string(), jsr_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
 }
 
 pub fn root_path() -> PathRef {
@@ -162,6 +163,10 @@ pub fn npm_registry_url() -> String {
 
 pub fn npm_registry_unset_url() -> String {
   "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
+}
+
+pub fn jsr_registry_url() -> String {
+  "http://localhost:4545/jsr/registry/".to_string()
 }
 
 pub fn std_path() -> PathRef {
@@ -1664,17 +1669,7 @@ async fn wrap_https_h1_only_tls_server() {
 async fn wrap_https_h2_only_tls_server() {
   let main_server_https_addr =
     SocketAddr::from(([127, 0, 0, 1], H2_ONLY_TLS_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(
-    cert_file,
-    key_file,
-    ca_cert_file,
-    SupportedHttpVersions::Http2Only,
-  )
-  .await
-  .unwrap();
+  let tls_config = create_tls_server_config().await;
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
@@ -1707,6 +1702,20 @@ async fn wrap_https_h2_only_tls_server() {
   }
 }
 
+async fn create_tls_server_config() -> Arc<rustls::ServerConfig> {
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  get_tls_config(
+    cert_file,
+    key_file,
+    ca_cert_file,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await
+  .unwrap()
+}
+
 async fn wrap_https_h1_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
 
@@ -1727,6 +1736,103 @@ async fn wrap_https_h2_only_server() {
     .http2_only(true)
     .serve(main_server_http_svc);
   let _ = main_server_http.await;
+}
+
+async fn h2_grpc_server() {
+  let addr = SocketAddr::from(([127, 0, 0, 1], H2_GRPC_PORT));
+  let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+
+  let addr_tls = SocketAddr::from(([127, 0, 0, 1], H2S_GRPC_PORT));
+  let listener_tls = tokio::net::TcpListener::bind(addr_tls).await.unwrap();
+  let tls_config = create_tls_server_config().await;
+
+  async fn serve(socket: TcpStream) -> Result<(), anyhow::Error> {
+    let mut connection = h2::server::handshake(socket).await?;
+
+    while let Some(result) = connection.accept().await {
+      let (request, respond) = result?;
+      tokio::spawn(async move {
+        let _ = handle_request(request, respond).await;
+      });
+    }
+
+    Ok(())
+  }
+
+  async fn serve_tls(
+    socket: TlsStream<TcpStream>,
+  ) -> Result<(), anyhow::Error> {
+    let mut connection = h2::server::handshake(socket).await?;
+
+    while let Some(result) = connection.accept().await {
+      let (request, respond) = result?;
+      tokio::spawn(async move {
+        let _ = handle_request(request, respond).await;
+      });
+    }
+
+    Ok(())
+  }
+
+  async fn handle_request(
+    mut request: http::Request<h2::RecvStream>,
+    mut respond: h2::server::SendResponse<bytes::Bytes>,
+  ) -> Result<(), anyhow::Error> {
+    let body = request.body_mut();
+    while let Some(data) = body.data().await {
+      let data = data?;
+      let _ = body.flow_control().release_capacity(data.len());
+    }
+
+    let maybe_recv_trailers = body.trailers().await?;
+
+    let response = http::Response::new(());
+    let mut send = respond.send_response(response, false)?;
+    send.send_data(bytes::Bytes::from_static(b"hello "), false)?;
+    send.send_data(bytes::Bytes::from_static(b"world\n"), false)?;
+    let mut trailers = http::HeaderMap::new();
+    trailers.insert(
+      http::HeaderName::from_static("abc"),
+      HeaderValue::from_static("def"),
+    );
+    trailers.insert(
+      http::HeaderName::from_static("opr"),
+      HeaderValue::from_static("stv"),
+    );
+    if let Some(recv_trailers) = maybe_recv_trailers {
+      for (key, value) in recv_trailers {
+        trailers.insert(key.unwrap(), value);
+      }
+    }
+    send.send_trailers(trailers)?;
+
+    Ok(())
+  }
+
+  let http = tokio::spawn(async move {
+    loop {
+      if let Ok((socket, _peer_addr)) = listener.accept().await {
+        tokio::spawn(async move {
+          let _ = serve(socket).await;
+        });
+      }
+    }
+  });
+
+  let https = tokio::spawn(async move {
+    loop {
+      if let Ok((socket, _peer_addr)) = listener_tls.accept().await {
+        let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+        let tls = tls_acceptor.accept(socket).await.unwrap();
+        tokio::spawn(async move {
+          let _ = serve_tls(tls).await;
+        });
+      }
+    }
+  });
+
+  http.await.unwrap();
+  https.await.unwrap();
 }
 
 async fn wrap_client_auth_https_server() {
@@ -1821,6 +1927,7 @@ pub async fn run_all_servers() {
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
   let h1_only_server_fut = wrap_https_h1_only_server();
   let h2_only_server_fut = wrap_https_h2_only_server();
+  let h2_grpc_server_fut = h2_grpc_server();
 
   let mut server_fut = async {
     futures::join!(
@@ -1843,7 +1950,8 @@ pub async fn run_all_servers() {
       h1_only_server_tls_fut,
       h2_only_server_tls_fut,
       h1_only_server_fut,
-      h2_only_server_fut
+      h2_only_server_fut,
+      h2_grpc_server_fut,
     )
   }
   .boxed();
@@ -2513,6 +2621,21 @@ pub fn wildcard_match_detailed(
                 ))
               ));
             }
+            let actual_next_text = &current_text[max_found_index..];
+            let max_next_text_len = 40;
+            let next_text_len =
+              std::cmp::min(max_next_text_len, actual_next_text.len());
+            output_lines.push(format!(
+              "==== NEXT ACTUAL TEXT ====\n{}{}",
+              colors::red(annotate_whitespace(
+                &actual_next_text[..next_text_len]
+              )),
+              if actual_next_text.len() > max_next_text_len {
+                "[TRUNCATED]"
+              } else {
+                ""
+              },
+            ));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
         }
@@ -2566,9 +2689,13 @@ pub fn wildcard_match_detailed(
               colors::green(annotate_whitespace(expected))
             ));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
+          } else {
+            output_lines.push(format!(
+              "<FOUND>{}</FOUND>",
+              colors::gray(annotate_whitespace(expected))
+            ));
           }
         }
-        output_lines.push("# Found matching unordered lines".to_string());
       }
     }
     was_last_wildcard = matches!(part, WildcardPatternPart::Wildcard);

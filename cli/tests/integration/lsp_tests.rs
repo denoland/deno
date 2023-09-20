@@ -4189,6 +4189,98 @@ fn lsp_code_actions() {
 }
 
 #[test]
+fn test_lsp_code_actions_ordering() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+          import "https://deno.land/x/a/mod.ts";
+          let a = "a";
+          console.log(a);
+          export function b(): void {
+            await Promise.resolve("b");
+          }
+        "#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 1, "character": 11 },
+        "end": { "line": 6, "character": 12 }
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"]
+      }
+    }),
+  );
+
+  // Simplify the serialization to `{ title, source }` for this test.
+  let mut actions: Vec<Value> = serde_json::from_value(res).unwrap();
+  for action in &mut actions {
+    let action = action.as_object_mut().unwrap();
+    let title = action.get("title").unwrap().as_str().unwrap().to_string();
+    let diagnostics = action.get("diagnostics").unwrap().as_array().unwrap();
+    let diagnostic = diagnostics.get(0).unwrap().as_object().unwrap();
+    let source = diagnostic.get("source").unwrap();
+    let source = source.as_str().unwrap().to_string();
+    action.clear();
+    action.insert("title".to_string(), serde_json::to_value(title).unwrap());
+    action.insert("source".to_string(), serde_json::to_value(source).unwrap());
+  }
+  let res = serde_json::to_value(actions).unwrap();
+
+  // Ensure ordering is "deno-ts" -> "deno" -> "deno-lint".
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add async modifier to containing function",
+        "source": "deno-ts",
+      },
+      {
+        "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+        "source": "deno",
+      },
+      {
+        "title": "Disable prefer-const for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable prefer-const for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+    ])
+  );
+}
+
+#[test]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4815,6 +4907,174 @@ fn lsp_code_actions_refactor() {
 }
 
 #[test]
+fn lsp_code_actions_imports_respects_fmt_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "./deno.jsonc",
+    json!({
+      "fmt": {
+        "semiColons": false,
+        "singleQuote": true,
+      }
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "file00.ts",
+    r#"
+    export interface MallardDuckConfigOptions extends DuckConfigOptions {
+      kind: "mallard";
+    }
+  "#,
+  );
+  temp_dir.write(
+    "file01.ts",
+    r#"
+    export interface DuckConfigOptions {
+      kind: string;
+      quacks: boolean;
+    }
+  "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file00.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file00.ts"),
+    }
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file01.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file01.ts"),
+    }
+  }));
+
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file00.ts").unwrap()
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 4, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 1, "character": 55 },
+            "end": { "line": 1, "character": 64 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'DuckConfigOptions'."
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"./file01.ts\"",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 55 },
+          "end": { "line": 1, "character": 64 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+          }]
+        }]
+      }
+    }])
+  );
+  let res = client.write_request(
+    "codeAction/resolve",
+    json!({
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 55 },
+          "end": { "line": 1, "character": 64 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "data": {
+        "specifier": temp_dir.uri().join("file00.ts").unwrap(),
+        "fixId": "fixMissingImport"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 55 },
+          "end": { "line": 1, "character": 64 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
+          }]
+        }]
+      },
+      "data": {
+        "specifier": temp_dir.uri().join("file00.ts").unwrap(),
+        "fixId": "fixMissingImport"
+      }
+    })
+  );
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5212,8 +5472,11 @@ fn lsp_completions_auto_import() {
 
   let req = json!({
     "label": "foo",
+    "labelDetails": {
+      "description": "./b.ts",
+    },
     "kind": 6,
-    "sortText": "￿16",
+    "sortText": "￿16_0",
     "commitCharacters": [
       ".",
       ",",
@@ -5243,13 +5506,16 @@ fn lsp_completions_auto_import() {
     res,
     json!({
       "label": "foo",
+      "labelDetails": {
+        "description": "./b.ts",
+      },
       "kind": 6,
       "detail": "const foo: \"foo\"",
       "documentation": {
         "kind": "markdown",
         "value": ""
       },
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
@@ -5323,13 +5589,16 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "npm:@denotest/types-exports-subpaths@1/client",
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
       },
-      "sortText": "￿16",
+      "sortText": "￿16_1",
       "additionalTextEdits": [
         {
           "range": {
@@ -5435,8 +5704,11 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "npm:chalk@5.0",
+      },
       "kind": 6,
-      "sortText": "￿16",
+      "sortText": "￿16_1",
       "additionalTextEdits": [
         {
           "range": {
@@ -5635,13 +5907,16 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "types-exports-subpaths/client",
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
       },
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
@@ -5747,8 +6022,11 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "chalk",
+      },
       "kind": 6,
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
@@ -5854,8 +6132,11 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "printHello",
+      "labelDetails": {
+        "description": "print_hello",
+      },
       "kind": 3,
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
@@ -7567,6 +7848,40 @@ fn lsp_json_no_diagnostics() {
 }
 
 #[test]
+fn lsp_json_import_with_query_string() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("data.json", r#"{"k": "v"}"#);
+  temp_dir.write(
+    "main.ts",
+    r#"
+      import data from "./data.json?1" with { type: "json" };
+      console.log(data);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("data.json").unwrap(),
+      "languageId": "json",
+      "version": 1,
+      "text": temp_dir.read_to_string("data.json"),
+    }
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("main.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("main.ts"),
+    }
+  }));
+  assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[test]
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8917,7 +9232,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
         "end": { "line": 1, "character": 1 }
       }
     }, {
-      "uri": "deno:/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8/data_url.ts",
+      "uri": "deno:/5c42b5916c4a3fb55be33fdb0c3b1f438639420592d150fca1b6dc043c1df3d9/data_url.ts",
       "range": {
         "start": { "line": 0, "character": 7 },
         "end": {"line": 0, "character": 14 },

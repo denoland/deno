@@ -40,7 +40,9 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReqReference;
 
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
@@ -89,6 +91,7 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub maybe_package_json_deps: Option<PackageJsonDeps>,
 }
 
 struct SharedWorkerState {
@@ -356,6 +359,29 @@ impl CliMainWorkerFactory {
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
+      let package_ref = if package_ref.req().version_req.version_text() == "*" {
+        // When using the wildcard version, select the same version used in the
+        // package.json deps in order to prevent adding new dependency version
+        shared
+          .options
+          .maybe_package_json_deps
+          .as_ref()
+          .and_then(|deps| {
+            deps
+              .values()
+              .filter_map(|v| v.as_ref().ok())
+              .find(|dep| dep.name == package_ref.req().name)
+              .map(|dep| {
+                NpmPackageReqReference::new(PackageReqReference {
+                  req: dep.clone(),
+                  sub_path: package_ref.sub_path().map(|s| s.to_string()),
+                })
+              })
+          })
+          .unwrap_or(package_ref)
+      } else {
+        package_ref
+      };
       shared
         .npm_resolver
         .add_package_reqs(&[package_ref.req().clone()])
