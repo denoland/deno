@@ -240,3 +240,19 @@ fn is_conditional_exports_main_sugar(exports: &Value) -> bool {
 
   is_conditional_sugar
 }
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn null_exports_should_not_crash() {
+    let package_json = PackageJson::load_from_string(
+      PathBuf::from("/package.json"),
+      r#"{ "exports": null }"#.to_string(),
+    )
+    .unwrap();
+
+    assert!(package_json.exports.is_none());
+  }
+}
