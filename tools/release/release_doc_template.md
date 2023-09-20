@@ -166,8 +166,6 @@ verify on GitHub that everything looks correct.
       https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
       and merge he PR.
 
-- [ ] Update https://github.com/denoland/deno-docs/blob/main/replacements.json
-
 - [ ] For minor releases: make sure https://github.com/mdn/browser-compat-data
       has been updated to reflect Web API changes in this release. Usually done
       ahead of time by @lucacasonato.
