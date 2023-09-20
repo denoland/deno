@@ -114,14 +114,14 @@ impl PackageJson {
     let version_val = package_json.get("version");
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
-    let exports = package_json.get("exports").map(|exports| {
-      if is_conditional_exports_main_sugar(exports) {
+    let exports = package_json.get("exports").and_then(|exports| {
+      Some(if is_conditional_exports_main_sugar(exports) {
         let mut map = Map::new();
         map.insert(".".to_string(), exports.to_owned());
         map
       } else {
-        exports.as_object().unwrap().to_owned()
-      }
+        exports.as_object()?.to_owned()
+      })
     });
 
     let imports = imports_val
