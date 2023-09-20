@@ -1202,7 +1202,12 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   let firstProto;
   const tmp = obj;
   while (obj || isUndetectableObject(obj)) {
-    const descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
+    let descriptor;
+    try {
+      descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
+    } catch {
+      /* this could fail */
+    }
     if (
       descriptor !== undefined &&
       typeof descriptor.value === "function" &&
