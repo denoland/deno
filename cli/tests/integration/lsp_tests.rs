@@ -776,12 +776,12 @@ fn lsp_import_attributes() {
         "text": "{\"a\":1}"
       }
     }),
-    json!([{
+    &json!({ "deno": {
       "enable": true,
       "codeLens": {
         "test": true
       }
-    }]),
+    } }),
   );
 
   let diagnostics = client.did_open(json!({
@@ -1131,7 +1131,7 @@ fn lsp_hover_disabled() {
         "text": "console.log(Date.now());\n"
       }
     }),
-    json!([{ "enable": false }]),
+    &json!({ "deno": { "enable": false } }),
   );
 
   let res = client.write_request(
@@ -1329,11 +1329,11 @@ fn lsp_workspace_disable_enable_paths() {
           }])
           .set_deno_enable(false);
       },
-      json!([{
+      json!({ "deno": {
         "enable": false,
         "disablePaths": ["./worker/node.ts"],
         "enablePaths": ["./worker"],
-      }]),
+      } }),
     );
 
     client.did_open(json!({
@@ -3552,12 +3552,12 @@ fn lsp_code_lens_test_disabled() {
         }
       }),
       // disable test code lens
-      json!([{
+      &json!({ "deno": {
         "enable": true,
         "codeLens": {
           "test": false
         }
-      }]),
+      } }),
     );
   let res = client.write_request(
     "textDocument/codeLens",
@@ -5160,7 +5160,7 @@ fn lsp_code_actions_deadlock() {
       "text": large_file_text,
     }
   }));
-  client.handle_configuration_request(json!([{ "enable": true }]));
+  client.handle_configuration_request(&json!({ "deno": { "enable": true } }));
   client.write_request(
     "textDocument/semanticTokens/full",
     json!({
@@ -5796,9 +5796,9 @@ fn lsp_semantic_tokens_for_disabled_module() {
     |builder| {
       builder.set_deno_enable(false);
     },
-    json!({
+    json!({ "deno": {
       "enable": false
-    }),
+    } }),
   );
   client.did_open(json!({
     "textDocument": {
@@ -8096,7 +8096,7 @@ fn lsp_configuration_did_change() {
       "settings": {}
     }),
   );
-  let request = json!([{
+  let settings = json!({ "deno": {
     "enable": true,
     "codeLens": {
       "implementations": true,
@@ -8116,11 +8116,11 @@ fn lsp_configuration_did_change() {
       }
     },
     "unstable": false
-  }]);
+  } });
   // one for the workspace
-  client.handle_configuration_request(request.clone());
+  client.handle_configuration_request(&settings);
   // one for the specifier
-  client.handle_configuration_request(request);
+  client.handle_configuration_request(&settings);
 
   let list = client.get_completion_list(
     "file:///a/file.ts",
@@ -8192,16 +8192,20 @@ fn lsp_completions_complete_function_calls() {
       "settings": {}
     }),
   );
-  let request = json!([{
-    "enable": true,
-    "suggest": {
-      "completeFunctionCalls": true,
+  let settings = json!({
+    "deno": {
+      "enable": true,
     },
-  }]);
+    "typescript": {
+      "suggest": {
+        "completeFunctionCalls": true,
+      },
+    },
+  });
   // one for the workspace
-  client.handle_configuration_request(request.clone());
+  client.handle_configuration_request(&settings);
   // one for the specifier
-  client.handle_configuration_request(request);
+  client.handle_configuration_request(&settings);
 
   let list = client.get_completion_list(
     "file:///a/file.ts",
@@ -9304,7 +9308,7 @@ fn lsp_node_modules_dir() {
       }),
     );
 
-    let request = json!([{
+    let settings = json!({ "deno": {
       "enable": true,
       "config": "./deno.json",
       "codeLens": {
@@ -9321,11 +9325,11 @@ fn lsp_node_modules_dir() {
         "imports": {}
       },
       "unstable": false
-    }]);
+    } });
     // one for the workspace
-    client.handle_configuration_request(request.clone());
+    client.handle_configuration_request(&settings);
     // one for the specifier
-    client.handle_configuration_request(request);
+    client.handle_configuration_request(&settings);
   };
   refresh_config(&mut client);
 
@@ -9439,7 +9443,7 @@ fn lsp_vendor_dir() {
       }),
     );
 
-    let request = json!([{
+    let settings = json!({ "deno": {
       "enable": true,
       "config": "./deno.json",
       "codeLens": {
@@ -9456,11 +9460,11 @@ fn lsp_vendor_dir() {
         "imports": {}
       },
       "unstable": false
-    }]);
+    } });
     // one for the workspace
-    client.handle_configuration_request(request.clone());
+    client.handle_configuration_request(&settings);
     // one for the specifier
-    client.handle_configuration_request(request);
+    client.handle_configuration_request(&settings);
   };
   refresh_config(&mut client);
 
