@@ -4734,6 +4734,32 @@ const asyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
 const _iteratorNext = Symbol("[[iteratorNext]]");
 const _iteratorFinished = Symbol("[[iteratorFinished]]");
 
+class ReadableStreamAsyncIteratorReadRequest {
+  constructor(reader, promise) {
+    this.reader = reader;
+    this.promise = promise;
+  }
+
+  chunkSteps(chunk) {
+    this.reader[_iteratorNext] = null;
+    this.promise.resolve({ value: chunk, done: false });
+  }
+
+  closeSteps() {
+    this.reader[_iteratorNext] = null;
+    this.reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.reader);
+    this.promise.resolve({ value: undefined, done: true });
+  }
+
+  errorSteps(e) {
+    this.reader[_iteratorNext] = null;
+    this.reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.reader);
+    this.promise.reject(e);
+  }
+}
+
 /** @type {AsyncIterator<unknown>} */
 const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
   /** @returns {Promise<IteratorResult<unknown>>} */
@@ -4755,34 +4781,13 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
 
       /** @type {Deferred<IteratorResult<any>>} */
       const promise = new Deferred();
-      /** @type {ReadRequest} */
-      const readRequest = {
-        chunkSteps(chunk) {
-          promise.resolve({ value: chunk, done: false });
-        },
-        closeSteps() {
-          readableStreamDefaultReaderRelease(reader);
-          promise.resolve({ value: undefined, done: true });
-        },
-        errorSteps(e) {
-          readableStreamDefaultReaderRelease(reader);
-          promise.reject(e);
-        },
-      };
+      const readRequest = new ReadableStreamAsyncIteratorReadRequest(
+        reader,
+        promise,
+      );
 
       readableStreamDefaultReaderRead(reader, readRequest);
-      return PromisePrototypeThen(promise.promise, (result) => {
-        reader[_iteratorNext] = null;
-        if (result.done === true) {
-          reader[_iteratorFinished] = true;
-          return { value: undefined, done: true };
-        }
-        return result;
-      }, (reason) => {
-        reader[_iteratorNext] = null;
-        reader[_iteratorFinished] = true;
-        throw reason;
-      });
+      return PromisePrototypeThen(promise.promise);
     }
 
     reader[_iteratorNext] = reader[_iteratorNext]
