@@ -61,6 +61,7 @@ function longStream() {
 }
 
 // Long stream with Lorem Ipsum text.
+// deno-lint-ignore no-explicit-any
 function longAsyncStream(completion?: Deferred<any>) {
   let currentTimeout: number | undefined = undefined;
   return new ReadableStream({

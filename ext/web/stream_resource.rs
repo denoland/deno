@@ -313,10 +313,6 @@ impl BoundedBufferChannel {
     self.inner().write_error(error)
   }
 
-  pub fn can_read(&self) -> bool {
-    self.inner().can_read()
-  }
-
   pub fn can_write(&self) -> bool {
     self.inner().can_write()
   }
@@ -489,12 +485,14 @@ pub fn op_readable_stream_resource_write_sync(
   let sender = get_sender(sender);
   if sender.can_write() {
     if sender.closed() {
-      return 0;
+      0
+    } else {
+      sender.write(buffer.into_parts()).unwrap();
+      1
     }
-    sender.write(buffer.into_parts()).unwrap();
-    return 1;
+  } else {
+    2
   }
-  return 2;
 }
 
 #[op2(fast)]

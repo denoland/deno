@@ -721,9 +721,11 @@ function extractStringErrorFromError(error) {
 }
 
 // We don't want to leak resources associated with our sink, even if something bad happens
-const READABLE_STREAM_SOURCE_REGISTRY = new SafeFinalizationRegistry(external => {
-  op_readable_stream_resource_close(external);
-});
+const READABLE_STREAM_SOURCE_REGISTRY = new SafeFinalizationRegistry(
+  (external) => {
+    op_readable_stream_resource_close(external);
+  },
+);
 
 class ResourceStreamResourceSink {
   external;
@@ -843,7 +845,9 @@ function resourceForReadableStream(stream) {
   );
 
   // This allocation is freed when readableStreamReadFn is completed
-  const sink = new ResourceStreamResourceSink(op_readable_stream_resource_get_sink(rid));
+  const sink = new ResourceStreamResourceSink(
+    op_readable_stream_resource_get_sink(rid),
+  );
 
   // Trigger the first read
   readableStreamReadFn(reader, sink);
