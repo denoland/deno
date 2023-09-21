@@ -1936,6 +1936,17 @@ declare namespace Deno {
     /** The value of this unsigned 64-bit integer, represented as a bigint. */
     readonly value: bigint;
   }
+
+  /** An instance of the server created using `Deno.serve()` API.
+   *
+   * @category HTTP Server
+   */
+  export interface Server {
+    /** Gracefully close the server. No more new connections will be accepted,
+     * while pending requests will be allowed to finish.
+     */
+    shutdown(): Promise<void>;
+  }
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

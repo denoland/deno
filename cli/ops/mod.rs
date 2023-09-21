@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::npm::CliNpmResolver;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::Extension;
 use deno_core::OpState;
 
@@ -46,7 +46,8 @@ deno_core::extension!(cli,
   },
 );
 
-#[op]
+#[op2]
+#[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
   let npm_resolver = state.borrow_mut::<Arc<CliNpmResolver>>();
   Ok(npm_resolver.get_npm_process_state())

@@ -388,6 +388,12 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_disable_paths(&mut self, value: Vec<String>) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("disablePaths".to_string(), value.into());
+    self
+  }
+
   pub fn set_enable_paths(&mut self, value: Vec<String>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("enablePaths".to_string(), value.into());
@@ -679,9 +685,9 @@ impl LspClient {
   ) {
     self.initialize_with_config(
       do_build,
-      json!([{
+      json!({"deno":{
         "enable": true
-      }]),
+      }}),
     )
   }
 
@@ -703,18 +709,18 @@ impl LspClient {
     self.write_notification("initialized", json!({}));
     self.config = config;
     if self.supports_workspace_configuration {
-      self.handle_configuration_request(self.config.clone());
+      self.handle_configuration_request(&self.config.clone());
     }
   }
 
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
-    self.did_open_with_config(params, self.config.clone())
+    self.did_open_with_config(params, &self.config.clone())
   }
 
   pub fn did_open_with_config(
     &mut self,
     params: Value,
-    config: Value,
+    config: &Value,
   ) -> CollectedDiagnostics {
     self.did_open_raw(params);
     if self.supports_workspace_configuration {
@@ -727,9 +733,18 @@ impl LspClient {
     self.write_notification("textDocument/didOpen", params);
   }
 
-  pub fn handle_configuration_request(&mut self, result: Value) {
-    let (id, method, _) = self.read_request::<Value>();
+  pub fn handle_configuration_request(&mut self, settings: &Value) {
+    let (id, method, args) = self.read_request::<Value>();
     assert_eq!(method, "workspace/configuration");
+    let params = args.as_ref().unwrap().as_object().unwrap();
+    let items = params.get("items").unwrap().as_array().unwrap();
+    let settings_object = settings.as_object().unwrap();
+    let mut result = vec![];
+    for item in items {
+      let item = item.as_object().unwrap();
+      let section = item.get("section").unwrap().as_str().unwrap();
+      result.push(settings_object.get(section).cloned().unwrap_or_default());
+    }
     self.write_response(id, result);
   }
 

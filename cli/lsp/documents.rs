@@ -803,7 +803,8 @@ impl FileSystemDocuments {
 }
 
 pub struct UpdateDocumentConfigOptions<'a> {
-  pub enabled_urls: Vec<Url>,
+  pub enabled_paths: Vec<PathBuf>,
+  pub disabled_paths: Vec<PathBuf>,
   pub document_preload_limit: usize,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
@@ -1182,7 +1183,7 @@ impl Documents {
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     fn calculate_resolver_config_hash(
-      enabled_urls: &[Url],
+      enabled_paths: &[PathBuf],
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
@@ -1193,9 +1194,9 @@ impl Documents {
       hasher.write_hashable(document_preload_limit);
       hasher.write_hashable(&{
         // ensure these are sorted so the hashing is deterministic
-        let mut enabled_urls = enabled_urls.to_vec();
-        enabled_urls.sort_unstable();
-        enabled_urls
+        let mut enabled_paths = enabled_paths.to_vec();
+        enabled_paths.sort_unstable();
+        enabled_paths
       });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
@@ -1232,7 +1233,7 @@ impl Documents {
       .maybe_config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &options.enabled_urls,
+      &options.enabled_paths,
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
@@ -1277,20 +1278,8 @@ impl Documents {
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
       self.refresh_dependencies(
-        options
-          .enabled_urls
-          .iter()
-          .filter_map(|url| specifier_to_file_path(url).ok())
-          .collect(),
-        options
-          .maybe_config_file
-          .and_then(|cf| {
-            cf.to_files_config()
-              .ok()
-              .flatten()
-              .map(|files| files.exclude)
-          })
-          .unwrap_or_default(),
+        options.enabled_paths,
+        options.disabled_paths,
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
@@ -1713,14 +1702,18 @@ impl PreloadDocumentFinder {
     // initialize the finder with the initial paths
     let mut dirs = Vec::with_capacity(options.enabled_paths.len());
     for path in options.enabled_paths {
-      if path.is_dir() {
-        if is_allowed_root_dir(&path) {
-          dirs.push(path);
+      if !finder.disabled_paths.contains(&path)
+        && !finder.disabled_globs.matches_path(&path)
+      {
+        if path.is_dir() {
+          if is_allowed_root_dir(&path) {
+            dirs.push(path);
+          }
+        } else {
+          finder
+            .pending_entries
+            .push_back(PendingEntry::SpecifiedRootFile(path));
         }
-      } else {
-        finder
-          .pending_entries
-          .push_back(PendingEntry::SpecifiedRootFile(path));
       }
     }
     for dir in sort_and_remove_non_leaf_dirs(dirs) {
@@ -2031,7 +2024,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_urls: vec![],
+        enabled_paths: vec![],
+        disabled_paths: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2072,7 +2066,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_urls: vec![],
+        enabled_paths: vec![],
+        disabled_paths: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,

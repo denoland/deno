@@ -21,6 +21,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
@@ -411,10 +412,11 @@ pub struct FetchResponse {
   pub remote_addr_port: Option<u16>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -463,10 +465,11 @@ pub async fn op_fetch_send(
   })
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 pub async fn op_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ResourceId, AnyError> {
   let raw_response = state
     .borrow_mut()
@@ -811,10 +814,11 @@ fn default_true() -> bool {
   true
 }
 
-#[op]
+#[op2]
+#[smi]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  args: CreateHttpClientArgs,
+  #[serde] args: CreateHttpClientArgs,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,

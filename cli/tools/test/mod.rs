@@ -18,7 +18,7 @@ use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
 use crate::worker::CliMainWorkerFactory;
 
@@ -433,6 +433,13 @@ pub async fn test_specifier(
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
+  if options.trace_ops {
+    worker.execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].core.enableOpCallTracing();",
+    )?;
+  }
+
   // We execute the main module as a side module so that import.meta.main is not set.
   match worker.execute_side_module_possibly_with_npm().await {
     Ok(()) => {}
@@ -450,12 +457,7 @@ pub async fn test_specifier(
   }
 
   let mut worker = worker.into_main_worker();
-  if options.trace_ops {
-    worker.js_runtime.execute_script_static(
-      located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
-    )?;
-  }
+
   worker.dispatch_load_event(located_script_name!())?;
 
   let tests = {
@@ -826,12 +828,13 @@ async fn test_specifiers(
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
   let mut reporter = get_test_reporter(&options);
+  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
-    let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+    let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
@@ -989,7 +992,7 @@ pub(crate) fn is_supported_test_path(path: &Path) -> bool {
     (basename.ends_with("_test")
       || basename.ends_with(".test")
       || basename == "test")
-      && is_supported_ext(path)
+      && is_script_ext(path)
   } else {
     false
   }
