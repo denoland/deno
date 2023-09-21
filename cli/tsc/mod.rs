@@ -736,9 +736,8 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
-// TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
-#[op]
-fn op_respond(state: &mut OpState, args: RespondArgs) {
+#[op2]
+fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   let state = state.borrow_mut::<State>();
   state.maybe_response = Some(args);
 }
