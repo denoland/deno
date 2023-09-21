@@ -60,6 +60,7 @@ const _response = Symbol("response");
 const _headers = Symbol("headers");
 const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
+const _brand = webidl.brand;
 
 /**
  * @typedef InnerResponse
@@ -305,8 +306,8 @@ class Response {
    * @param {ResponseInit} init
    */
   constructor(body = null, init = undefined) {
-    if (body === webidl.brand) {
-      this[body] = body;
+    if (body === _brand) {
+      this[_brand] = _brand;
       return;
     }
 
@@ -325,7 +326,7 @@ class Response {
       bodyWithType = extractBody(body);
     }
     initializeAResponse(this, init, bodyWithType);
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
   }
 
   /**
@@ -494,7 +495,7 @@ function toInnerResponse(response) {
  * @returns {Response}
  */
 function fromInnerResponse(inner, guard) {
-  const response = new Response(webidl.brand);
+  const response = new Response(_brand);
   response[_response] = inner;
   response[_headers] = headersFromHeaderList(inner.headerList, guard);
   return response;
