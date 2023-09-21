@@ -12,7 +12,6 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_v8;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::ffi::CString;
