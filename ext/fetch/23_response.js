@@ -306,7 +306,7 @@ class Response {
    */
   constructor(body = null, init = undefined) {
     if (body === webidl.brand) {
-      this[webidl.brand] = webidl.brand;
+      this[body] = body;
       return;
     }
 

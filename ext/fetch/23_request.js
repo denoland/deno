@@ -276,7 +276,7 @@ class Request {
    */
   constructor(input, init = {}) {
     if (input === webidl.brand) {
-      this[webidl.brand] = webidl.brand;
+      this[input] = input;
       return;
     }
 

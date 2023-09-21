@@ -287,7 +287,7 @@ class Headers {
   /** @param {HeadersInit} [init] */
   constructor(init = undefined) {
     if (init === webidl.brand) {
-      this[webidl.brand] = webidl.brand;
+      this[init] = init;
       return;
     }
 
