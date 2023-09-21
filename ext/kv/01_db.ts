@@ -259,6 +259,9 @@ class Kv {
           "op_kv_dequeue_next_message",
           this.#rid,
         );
+        if (next === null) {
+          break;
+        }
       } catch (error) {
         if (this.#closed) {
           break;
@@ -311,6 +314,10 @@ class Kv {
   close() {
     core.close(this.#rid);
     this.#closed = true;
+  }
+
+  get rid() {
+    return this.#rid;
   }
 }
 

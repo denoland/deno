@@ -322,7 +322,7 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ToJsBuffer, ResourceId), AnyError>
+) -> Result<Option<(ToJsBuffer, ResourceId)>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
@@ -333,13 +333,15 @@ where
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message(state.clone()).await?;
+  let Some(mut handle) = db.dequeue_next_message(state.clone()).await? else {
+    return Ok(None);
+  };
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
     state.resource_table.add(QueueMessageResource { handle })
   };
-  Ok((payload, handle_rid))
+  Ok(Some((payload, handle_rid)))
 }
 
 #[op2(async)]

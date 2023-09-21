@@ -132,7 +132,7 @@ pub trait DynamicDb {
   async fn dyn_dequeue_next_message(
     &self,
     state: Rc<RefCell<OpState>>,
-  ) -> Result<Box<dyn QueueMessageHandle>, AnyError>;
+  ) -> Result<Option<Box<dyn QueueMessageHandle>>, AnyError>;
 
   fn dyn_close(&self);
 }
@@ -161,7 +161,7 @@ impl Database for Box<dyn DynamicDb> {
   async fn dequeue_next_message(
     &self,
     state: Rc<RefCell<OpState>>,
-  ) -> Result<Box<dyn QueueMessageHandle>, AnyError> {
+  ) -> Result<Option<Box<dyn QueueMessageHandle>>, AnyError> {
     (**self).dyn_dequeue_next_message(state).await
   }
 
@@ -196,8 +196,13 @@ where
   async fn dyn_dequeue_next_message(
     &self,
     state: Rc<RefCell<OpState>>,
-  ) -> Result<Box<dyn QueueMessageHandle>, AnyError> {
-    Ok(Box::new(self.dequeue_next_message(state).await?))
+  ) -> Result<Option<Box<dyn QueueMessageHandle>>, AnyError> {
+    Ok(
+      self
+        .dequeue_next_message(state)
+        .await?
+        .map(|x| Box::new(x) as Box<dyn QueueMessageHandle>),
+    )
   }
 
   fn dyn_close(&self) {
