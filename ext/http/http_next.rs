@@ -25,7 +25,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::serde_v8::from_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
@@ -229,11 +228,11 @@ pub fn op_http_set_promise_complete(#[smi] slab_id: SlabId, status: u16) {
   http.complete();
 }
 
-#[op(v8)]
+#[op2]
 pub fn op_http_get_request_method_and_url<'scope, HTTP>(
   scope: &mut v8::HandleScope<'scope>,
-  slab_id: SlabId,
-) -> serde_v8::Value<'scope>
+  #[smi] slab_id: SlabId,
+) -> v8::Local<'scope, v8::Array>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -290,10 +289,7 @@ where
   };
 
   let vec = [method, authority, path, peer_address, port];
-  let array = v8::Array::new_with_elements(scope, vec.as_slice());
-  let array_value: v8::Local<v8::Value> = array.into();
-
-  array_value.into()
+  v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
 #[op2]
@@ -307,11 +303,11 @@ pub fn op_http_get_request_header(
   value.map(|value| value.as_bytes().into())
 }
 
-#[op(v8)]
+#[op2]
 pub fn op_http_get_request_headers<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  slab_id: SlabId,
-) -> serde_v8::Value<'scope> {
+  #[smi] slab_id: SlabId,
+) -> v8::Local<'scope, v8::Array> {
   let http = slab_get(slab_id);
   let headers = &http.request_parts().headers;
   // Two slots for each header key/value pair
@@ -372,16 +368,14 @@ pub fn op_http_get_request_headers<'scope>(
     );
   }
 
-  let array = v8::Array::new_with_elements(scope, vec.as_slice());
-  let array_value: v8::Local<v8::Value> = array.into();
-
-  array_value.into()
+  v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
-#[op(fast)]
+#[op2(fast)]
+#[smi]
 pub fn op_http_read_request_body(
   state: Rc<RefCell<OpState>>,
-  slab_id: SlabId,
+  #[smi] slab_id: SlabId,
 ) -> ResourceId {
   let mut http = slab_get(slab_id);
   let rid = if let Some(incoming) = http.take_body() {
