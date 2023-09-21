@@ -13,7 +13,7 @@ use deno_runtime::worker::WorkerOptions;
 
 deno_core::extension!(hello_runtime, ops = [op_hello]);
 
-#[op2]
+#[op2(fast)]
 fn op_hello(#[string] text: &str) {
   println!("Hello {}!", text);
 }
