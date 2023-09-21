@@ -6,6 +6,7 @@ use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::OpState;
@@ -29,7 +30,7 @@ where
   Ok(ptr_number as *mut c_void)
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_ptr_equals<FP>(
   state: &mut OpState,
   a: *const c_void,
@@ -88,11 +89,11 @@ unsafe extern "C" fn noop_deleter_callback(
 ) {
 }
 
-#[op(fast)]
-fn op_ffi_ptr_value<FP>(
+#[op2(fast)]
+pub fn op_ffi_ptr_value<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
-  out: &mut [u32],
+  #[buffer] out: &mut [u32],
 ) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
