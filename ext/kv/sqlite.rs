@@ -3,7 +3,9 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::env::current_dir;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
@@ -24,6 +26,7 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::OpState;
+use deno_node::PathClean;
 use rand::Rng;
 use rusqlite::params;
 use rusqlite::OpenFlags;
@@ -228,9 +231,10 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
               (Some(path), _) => {
                 let flags =
                   OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
+                let resolved_path = canonicalize_path(&PathBuf::from(path))?;
                 (
                   rusqlite::Connection::open_with_flags(path, flags)?,
-                  Some(PathBuf::from(path)),
+                  Some(resolved_path),
                 )
               }
               (None, Some(path)) => {
@@ -1074,4 +1078,33 @@ fn shared_queue_waker_channel(
     });
 
   (waker_tx.clone(), waker_tx.subscribe())
+}
+
+/// Same as Path::canonicalize, but also handles non-existing paths.
+fn canonicalize_path(path: &Path) -> Result<PathBuf, AnyError> {
+  let path = path.to_path_buf().clean();
+  let mut path = path;
+  let mut names_stack = Vec::new();
+  loop {
+    match path.canonicalize() {
+      Ok(mut canonicalized_path) => {
+        for name in names_stack.into_iter().rev() {
+          canonicalized_path = canonicalized_path.join(name);
+        }
+        return Ok(canonicalized_path);
+      }
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        let file_name = path.file_name().map(|os_str| os_str.to_os_string());
+        if let Some(file_name) = file_name {
+          names_stack.push(file_name.to_str().unwrap().to_string());
+          path = path.parent().unwrap().to_path_buf();
+        } else {
+          names_stack.push(path.to_str().unwrap().to_string());
+          let current_dir = current_dir()?;
+          path = current_dir.clone();
+        }
+      }
+      Err(err) => return Err(err.into()),
+    }
+  }
 }
