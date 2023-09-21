@@ -60,6 +60,27 @@ function longStream() {
   }).pipeThrough(new TextEncoderStream());
 }
 
+// Long stream with Lorem Ipsum text.
+function longAsyncStream(completion?: Deferred<any>) {
+  let currentTimeout: number | undefined = undefined;
+  return new ReadableStream({
+    async start(controller) {
+      for (let i = 0; i < 100; i++) {
+        await new Promise((r) => currentTimeout = setTimeout(r, 1));
+        currentTimeout = undefined;
+        controller.enqueue(LOREM);
+      }
+      controller.close();
+    },
+    cancel(reason) {
+      completion?.resolve(reason);
+      if (currentTimeout !== undefined) {
+        clearTimeout(currentTimeout);
+      }
+    },
+  }).pipeThrough(new TextEncoderStream());
+}
+
 // Empty stream, closes either immediately or on a call to pull.
 function emptyStream(onPull: boolean) {
   return new ReadableStream({
@@ -179,6 +200,14 @@ Deno.test(async function readableStreamCloseWithoutRead() {
   assertEquals(await cancel, "resource closed");
 });
 
+// Close the stream without reading anything
+Deno.test(async function readableStreamCloseWithoutRead2() {
+  const cancel = deferred();
+  const rid = resourceForReadableStream(longAsyncStream(cancel));
+  core.ops.op_close(rid);
+  assertEquals(await cancel, "resource closed");
+});
+
 Deno.test(async function readableStreamPartial() {
   const rid = resourceForReadableStream(helloWorldStream());
   const buffer = new Uint8Array(5);
@@ -194,6 +223,13 @@ Deno.test(async function readableStreamLongReadAll() {
   const rid = resourceForReadableStream(longStream());
   const buffer = await core.ops.op_read_all(rid);
   assertEquals(buffer.length, LOREM.length * 4);
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamLongAsyncReadAll() {
+  const rid = resourceForReadableStream(longAsyncStream());
+  const buffer = await core.ops.op_read_all(rid);
+  assertEquals(buffer.length, LOREM.length * 100);
   core.ops.op_close(rid);
 });
 
