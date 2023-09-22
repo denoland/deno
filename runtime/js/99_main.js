@@ -328,8 +328,6 @@ function runtimeStart(
   core.setBuildInfo(target);
   util.setLogLevel(logLevel, source);
   setNoColor(noColor || !isTty);
-  // deno-lint-ignore prefer-primordials
-  Error.prepareStackTrace = core.prepareStackTrace;
 }
 
 const pendingRejections = [];
