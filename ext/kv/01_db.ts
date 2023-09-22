@@ -26,14 +26,14 @@ async function openKv(path: string) {
   return new Kv(rid, kvSymbol);
 }
 
-const millisecondsInOneWeek = 7 * 24 * 60 * 60 * 1000;
+const maxQueueDelay = 30 * 24 * 60 * 60 * 1000;
 
 function validateQueueDelay(delay: number) {
   if (delay < 0) {
     throw new TypeError("delay cannot be negative");
   }
-  if (delay > millisecondsInOneWeek) {
-    throw new TypeError("delay cannot be greater than one week");
+  if (delay > maxQueueDelay) {
+    throw new TypeError("delay cannot be greater than 30 days");
   }
   if (isNaN(delay)) {
     throw new TypeError("delay cannot be NaN");
