@@ -714,9 +714,7 @@ function extractStringErrorFromError(error) {
     return error;
   }
   const message = error?.message;
-  const stringMessage = typeof message == "string"
-    ? message
-    : String(message);
+  const stringMessage = typeof message == "string" ? message : String(message);
   return stringMessage;
 }
 
