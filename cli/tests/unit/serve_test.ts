@@ -2776,7 +2776,7 @@ Deno.test(
   async function httpServerCancelFetch() {
     const request2 = deferred();
     const request2Aborted = deferred();
-    const { finished, abort, shutdown } = await makeServer(async (req) => {
+    const { finished, abort } = await makeServer(async (req) => {
       if (req.url.endsWith("/1")) {
         const fetchRecursive = await fetch(`http://localhost:${servePort}/2`);
         return new Response(fetchRecursive.body);
