@@ -358,9 +358,9 @@ impl JupyterServer {
           .call_function_on_args(
             format!(
               r#"function save(object) {{
-            globalThis.Out = globalThis.Out || [];
-            globalThis.Out[{}] = object;
-          }}"#,
+                globalThis.Out = globalThis.Out || [];
+                globalThis.Out[{}] = object;
+              }}"#,
               self.execution_count
             ),
             &[eval_response.value.result.clone()],
