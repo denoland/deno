@@ -352,7 +352,25 @@ impl JupyterServer {
       .await;
 
     let evaluate_response = match result {
-      Ok(eval_response) => eval_response,
+      Ok(eval_response) => {
+        let res = self
+          .repl_session
+          .call_function_on_args(
+            format!(
+              r#"function save(object) {{
+            globalThis.Out = globalThis.Out || [];
+            globalThis.Out[{}] = object;
+          }}"#,
+              self.execution_count
+            ),
+            &[eval_response.value.result.clone()],
+          )
+          .await;
+        if let Err(err) = res {
+          eprintln!("Failed to save Out: {err:?}");
+        }
+        eval_response
+      }
       Err(err) => {
         msg
           .new_message("error")
