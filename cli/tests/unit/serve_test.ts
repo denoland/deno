@@ -2699,7 +2699,8 @@ Deno.test(
 
 for (const url of ["text", "file", "stream"]) {
   // Ensure that we don't panic when the incoming TCP request was dropped
-  // https://github.com/denoland/deno/issues/20315
+  // https://github.com/denoland/deno/issues/20315 and that we correctly
+  // close/cancel the response
   Deno.test({
     permissions: { read: true, write: true, net: true },
     name: `httpServerTcpCancellation_${url}`,
@@ -2769,6 +2770,40 @@ for (const url of ["text", "file", "stream"]) {
     },
   });
 }
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCancelFetch() {
+    const request2 = deferred();
+    const request2Aborted = deferred();
+    const { finished, abort, shutdown } = await makeServer(async (req) => {
+      if (req.url.endsWith('/1')) {
+        const fetchRecursive = await fetch(`http://localhost:${servePort}/2`);
+        return new Response(fetchRecursive.body);
+      } else if (req.url.endsWith('/2')) {
+        request2.resolve();
+        return new Response(new ReadableStream({
+          start(_controller) { /* just hang */ },
+          cancel(reason) { 
+            request2Aborted.resolve(reason);
+          }
+        }));
+      }
+      fail();
+    });
+    const fetchAbort = new AbortController();
+    const fetchPromise = await fetch(`http://localhost:${servePort}/1`, {
+      signal: fetchAbort.signal,
+    });
+    await fetchPromise;
+    await request2;
+    fetchAbort.abort();
+    assertEquals("resource closed", await request2Aborted);
+
+    abort();
+    await finished;
+  },
+);
 
 Deno.test(
   { permissions: { read: true, net: true } },
