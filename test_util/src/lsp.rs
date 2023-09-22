@@ -748,6 +748,10 @@ impl LspClient {
     self.write_response(id, result);
   }
 
+  pub fn did_save(&mut self, params: Value) {
+    self.write_notification("textDocument/didSave", params);
+  }
+
   pub fn did_change_watched_files(&mut self, params: Value) {
     self.write_notification("workspace/didChangeWatchedFiles", params);
   }

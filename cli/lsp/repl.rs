@@ -292,6 +292,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     config: None,
     certificate_stores: None,
     cache: None,
+    cache_on_save: false,
     import_map: None,
     code_lens: Default::default(),
     internal_debug: false,
