@@ -126,6 +126,20 @@ function emptyChunkStream() {
   });
 }
 
+// Try to blow up any recursive reads. Note that because of the use of Array.shift in
+// ReadableStream, this might not actually be able to complete with larger values of
+// length.
+function veryLongTinyPacketStream(length: number) {
+  return new ReadableStream({
+    start(controller) {
+      for (let i = 0; i < length; i++) {
+        controller.enqueue(new Uint8Array([1]));
+      }
+      controller.close();
+    },
+  });
+}
+
 // Creates a stream with the given number of packets, a configurable delay between packets, and a final
 // action (either "Throw" or "Close").
 function makeStreamWithCount(
@@ -231,6 +245,13 @@ Deno.test(async function readableStreamLongAsyncReadAll() {
   const rid = resourceForReadableStream(longAsyncStream());
   const buffer = await core.ops.op_read_all(rid);
   assertEquals(buffer.length, LOREM.length * 100);
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamVeryLongReadAll() {
+  const rid = resourceForReadableStream(veryLongTinyPacketStream(10000));
+  const buffer = await core.ops.op_read_all(rid);
+  assertEquals(buffer.length, 10000);
   core.ops.op_close(rid);
 });
 
