@@ -2705,6 +2705,7 @@ for (const url of ["text", "file", "stream"]) {
     name: `httpServerTcpCancellation_${url}`,
     fn: async function () {
       const ac = new AbortController();
+      const streamCancelled = url == "stream" ? deferred() : undefined;
       const listeningPromise = deferred();
       const waitForAbort = deferred();
       const waitForRequest = deferred();
@@ -2727,7 +2728,9 @@ for (const url of ["text", "file", "stream"]) {
                 start(controller) {
                   _body = null;
                   controller.enqueue(new Uint8Array([1]));
-                  controller.close();
+                },
+                cancel(reason) {
+                  streamCancelled!.resolve(reason);
                 },
               }),
             );
@@ -2753,9 +2756,15 @@ for (const url of ["text", "file", "stream"]) {
       // Give it a few milliseconds for the serve machinery to work
       await new Promise((r) => setTimeout(r, 10));
 
+      // Wait for cancellation before we shut the server down
+      if (streamCancelled !== undefined) {
+        await streamCancelled;
+      }
+
       // Since the handler has a chance of creating resources or running async ops, we need to use a
       // graceful shutdown here to ensure they have fully drained.
       await server.shutdown();
+
       await server.finished;
     },
   });

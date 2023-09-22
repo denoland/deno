@@ -584,10 +584,13 @@ fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
   );
 }
 
+/// Sets the appropriate response body. Use `force_instantiate_body` if you need
+/// to ensure that the response is cleaned up correctly (eg: for resources).
 fn set_response(
   slab_id: SlabId,
   length: Option<usize>,
   status: u16,
+  force_instantiate_body: bool,
   response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
 ) {
   let mut http = slab_get(slab_id);
@@ -609,7 +612,10 @@ fn set_response(
     if let Ok(code) = StatusCode::from_u16(status) {
       *response.status_mut() = code;
     }
+  } else if force_instantiate_body {
+    response_fn(Compression::None).abort();
   }
+
   http.complete();
 }
 
@@ -641,6 +647,7 @@ pub fn op_http_set_response_body_resource(
     slab_id,
     resource.size_hint().1.map(|s| s as usize),
     status,
+    true,
     move |compression| {
       ResponseBytesInner::from_resource(compression, resource, auto_close)
     },
@@ -656,7 +663,7 @@ pub fn op_http_set_response_body_text(
   status: u16,
 ) {
   if !text.is_empty() {
-    set_response(slab_id, Some(text.len()), status, |compression| {
+    set_response(slab_id, Some(text.len()), status, false, |compression| {
       ResponseBytesInner::from_vec(compression, text.into_bytes())
     });
   } else {
@@ -672,7 +679,7 @@ pub fn op_http_set_response_body_bytes(
   status: u16,
 ) {
   if !buffer.is_empty() {
-    set_response(slab_id, Some(buffer.len()), status, |compression| {
+    set_response(slab_id, Some(buffer.len()), status, false, |compression| {
       ResponseBytesInner::from_bufview(compression, BufView::from(buffer))
     });
   } else {
