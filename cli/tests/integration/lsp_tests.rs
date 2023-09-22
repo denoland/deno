@@ -4457,11 +4457,17 @@ fn lsp_code_actions_deno_cache_npm() {
 
 #[test]
 fn lsp_cache_on_save() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "./file.ts",
-    "import chalk from \"npm:chalk\";\n\nconsole.log(chalk.green);\n",
+    "file.ts",
+    r#"
+      import { printHello } from "http://localhost:4545/subdir/print_hello.ts";
+      printHello();
+    "#,
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -4496,14 +4502,14 @@ fn lsp_cache_on_save() {
       "uri": temp_dir.uri().join("file.ts").unwrap(),
       "diagnostics": [{
         "range": {
-          "start": { "line": 0, "character": 18 },
-          "end": { "line": 0, "character": 29 }
+          "start": { "line": 1, "character": 33 },
+          "end": { "line": 1, "character": 78 }
         },
         "severity": 1,
-        "code": "no-cache-npm",
+        "code": "no-cache",
         "source": "deno",
-        "message": "Uncached or missing npm package: chalk",
-        "data": { "specifier": "npm:chalk" }
+        "message": "Uncached or missing remote URL: http://localhost:4545/subdir/print_hello.ts",
+        "data": { "specifier": "http://localhost:4545/subdir/print_hello.ts" }
       }],
       "version": 1
     }))
@@ -4512,20 +4518,7 @@ fn lsp_cache_on_save() {
   client.did_save(json!({
     "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
   }));
-  // client.read_diagnostics() gives outdated results here due to the buffering
-  // it does while the cache is happening. Instead use the raw notification.
-  // TODO(nayeemrmn): Investigate and fix.
-  let (method, response) =
-    client.read_latest_notification::<lsp::PublishDiagnosticsParams>();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  assert_eq!(
-    response,
-    Some(lsp::PublishDiagnosticsParams {
-      uri: temp_dir.uri().join("file.ts").unwrap(),
-      diagnostics: vec![],
-      version: Some(1),
-    })
-  );
+  assert_eq!(client.read_diagnostics().all(), vec![]);
 
   client.shutdown();
 }
