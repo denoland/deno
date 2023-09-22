@@ -8,9 +8,7 @@ import {
 } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import { Buffer } from "node:buffer";
 import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
-import {
-  ERR_INVALID_ARG_TYPE,
-} from "ext:deno_node/internal/errors.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
 
@@ -67,9 +65,10 @@ export default function randomFill(
 export function randomFillSync(buf, offset = 0, size) {
   if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
     throw new ERR_INVALID_ARG_TYPE(
-      'buf',
-      ['ArrayBuffer', 'ArrayBufferView'],
-      buf);
+      "buf",
+      ["ArrayBuffer", "ArrayBufferView"],
+      buf,
+    );
   }
 
   offset = assertOffset(offset, buf.byteLength);
@@ -80,8 +79,9 @@ export function randomFillSync(buf, offset = 0, size) {
     size = assertSize(size, offset, buf.byteLength);
   }
 
-  if (size === 0)
+  if (size === 0) {
     return buf;
+  }
 
   const bytes = new Uint8Array(buf.buffer ? buf.buffer : buf, offset, size);
   ops.op_node_generate_secret(bytes);
