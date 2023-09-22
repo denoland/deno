@@ -2777,17 +2777,19 @@ Deno.test(
     const request2 = deferred();
     const request2Aborted = deferred();
     const { finished, abort, shutdown } = await makeServer(async (req) => {
-      if (req.url.endsWith('/1')) {
+      if (req.url.endsWith("/1")) {
         const fetchRecursive = await fetch(`http://localhost:${servePort}/2`);
         return new Response(fetchRecursive.body);
-      } else if (req.url.endsWith('/2')) {
+      } else if (req.url.endsWith("/2")) {
         request2.resolve();
-        return new Response(new ReadableStream({
-          start(_controller) { /* just hang */ },
-          cancel(reason) { 
-            request2Aborted.resolve(reason);
-          }
-        }));
+        return new Response(
+          new ReadableStream({
+            start(_controller) {/* just hang */},
+            cancel(reason) {
+              request2Aborted.resolve(reason);
+            },
+          }),
+        );
       }
       fail();
     });
