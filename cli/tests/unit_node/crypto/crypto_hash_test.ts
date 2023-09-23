@@ -1,5 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { createHash, createHmac, getHashes, randomUUID } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  getHashes,
+  randomFillSync,
+  randomUUID,
+} from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import {
@@ -123,4 +129,14 @@ Deno.test("[node/crypto.getHashes]", () => {
 Deno.test("[node/crypto.getRandomUUID] works the same way as Web Crypto API", () => {
   assertEquals(randomUUID().length, crypto.randomUUID().length);
   assertEquals(typeof randomUUID(), typeof crypto.randomUUID());
+});
+
+Deno.test("[node/crypto.randomFillSync] supported arguments", () => {
+  const buf = new Uint8Array(10);
+
+  assert(randomFillSync(buf));
+  assert(randomFillSync(buf, 0));
+  // @ts-ignore: arraybuffer arguments are valid.
+  assert(randomFillSync(buf.buffer));
+  assert(randomFillSync(new DataView(buf.buffer)));
 });

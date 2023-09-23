@@ -1550,9 +1550,9 @@ dbTest("queue nan delay", async (db) => {
 });
 
 dbTest("queue large delay", async (db) => {
-  await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 });
+  await db.enqueue("test", { delay: 30 * 24 * 60 * 60 * 1000 });
   await assertRejects(async () => {
-    await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 + 1 });
+    await db.enqueue("test", { delay: 30 * 24 * 60 * 60 * 1000 + 1 });
   }, TypeError);
 });
 

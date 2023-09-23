@@ -7,7 +7,6 @@ use brotli::ffi::decompressor::*;
 use brotli::Decompressor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
@@ -23,13 +22,14 @@ fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, AnyError> {
   unsafe { Ok(std::mem::transmute::<u32, BrotliEncoderMode>(mode)) }
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 pub fn op_brotli_compress(
-  buffer: &[u8],
-  out: &mut [u8],
-  quality: i32,
-  lgwin: i32,
-  mode: u32,
+  #[buffer] buffer: &[u8],
+  #[buffer] out: &mut [u8],
+  #[smi] quality: i32,
+  #[smi] lgwin: i32,
+  #[smi] mode: u32,
 ) -> Result<usize, AnyError> {
   let in_buffer = buffer.as_ptr();
   let in_size = buffer.len();
@@ -151,12 +151,13 @@ fn encoder_param(param: u8) -> BrotliEncoderParameter {
   unsafe { std::mem::transmute(param as u32) }
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 pub fn op_brotli_compress_stream(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
 
@@ -186,11 +187,12 @@ pub fn op_brotli_compress_stream(
   }
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 pub fn op_brotli_compress_stream_end(
   state: &mut OpState,
-  rid: u32,
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] output: &mut [u8],
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.take::<BrotliCompressCtx>(rid)?;
 
@@ -263,12 +265,13 @@ pub fn op_create_brotli_decompress(state: &mut OpState) -> u32 {
   state.resource_table.add(BrotliDecompressCtx { inst })
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 pub fn op_brotli_decompress_stream(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
 
@@ -299,11 +302,12 @@ pub fn op_brotli_decompress_stream(
   }
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 pub fn op_brotli_decompress_stream_end(
   state: &mut OpState,
-  rid: u32,
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] output: &mut [u8],
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
 
