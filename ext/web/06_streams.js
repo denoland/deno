@@ -210,42 +210,46 @@ function uponPromise(promise, onFulfilled, onRejected) {
 }
 
 class Queue {
-  head = null;
-  tail = null;
-  size = 0;
+  #head = null;
+  #tail = null;
+  #size = 0;
 
   enqueue(value) {
     const node = { value, next: null };
-    if (this.head === null) {
-      this.head = node;
-      this.tail = node;
+    if (this.#head === null) {
+      this.#head = node;
+      this.#tail = node;
     } else {
-      this.tail.next = node;
-      this.tail = node;
+      this.#tail.next = node;
+      this.#tail = node;
     }
-    return ++this.size;
+    return ++this.#size;
   }
 
   dequeue() {
-    const node = this.head;
+    const node = this.#head;
     if (node === null) {
       return null;
     }
 
-    if (this.head === this.tail) {
-      this.tail = null;
+    if (this.#head === this.#tail) {
+      this.#tail = null;
     }
-    this.head = this.head.next;
-    this.size--;
+    this.#head = this.#head.next;
+    this.#size--;
     return node.value;
   }
 
   peek() {
-    if (this.head === null) {
+    if (this.#head === null) {
       return null;
     }
 
-    return this.head.value;
+    return this.#head.value;
+  }
+
+  get size() {
+    return this.#size;
   }
 }
 
