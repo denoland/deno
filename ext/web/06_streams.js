@@ -380,6 +380,7 @@ const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
 const _writer = Symbol("[[writer]]");
 const _writeRequests = Symbol("[[writeRequests]]");
+const _brand = webidl.brand;
 
 /**
  * @template R
@@ -387,7 +388,9 @@ const _writeRequests = Symbol("[[writeRequests]]");
  * @returns {ReadableStreamDefaultReader<R>}
  */
 function acquireReadableStreamDefaultReader(stream) {
-  return new ReadableStreamDefaultReader(stream);
+  const reader = new ReadableStreamDefaultReader(_brand);
+  setUpReadableStreamDefaultReader(reader, stream);
+  return reader;
 }
 
 /**
@@ -396,7 +399,7 @@ function acquireReadableStreamDefaultReader(stream) {
  * @returns {ReadableStreamBYOBReader<R>}
  */
 function acquireReadableStreamBYOBReader(stream) {
-  const reader = webidl.createBranded(ReadableStreamBYOBReader);
+  const reader = new ReadableStreamBYOBReader(_brand);
   setUpReadableStreamBYOBReader(reader, stream);
   return reader;
 }
@@ -428,9 +431,9 @@ function createReadableStream(
 ) {
   assert(isNonNegativeNumber(highWaterMark));
   /** @type {ReadableStream} */
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   initializeReadableStream(stream);
-  const controller = webidl.createBranded(ReadableStreamDefaultController);
+  const controller = new ReadableStreamDefaultController(_brand);
   setUpReadableStreamDefaultController(
     stream,
     controller,
@@ -462,9 +465,9 @@ function createWritableStream(
   sizeAlgorithm,
 ) {
   assert(isNonNegativeNumber(highWaterMark));
-  const stream = webidl.createBranded(WritableStream);
+  const stream = new WritableStream(_brand);
   initializeWritableStream(stream);
-  const controller = webidl.createBranded(WritableStreamDefaultController);
+  const controller = new WritableStreamDefaultController(_brand);
   setUpWritableStreamDefaultController(
     stream,
     controller,
@@ -559,9 +562,9 @@ function createReadableByteStream(
   pullAlgorithm,
   cancelAlgorithm,
 ) {
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   initializeReadableStream(stream);
-  const controller = webidl.createBranded(ReadableByteStreamController);
+  const controller = new ReadableByteStreamController(_brand);
   setUpReadableByteStreamController(
     stream,
     controller,
@@ -886,7 +889,7 @@ const _original = Symbol("[[original]]");
  * @returns {ReadableStream<Uint8Array>}
  */
 function readableStreamForRid(rid, autoClose = true) {
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -956,7 +959,7 @@ const _isUnref = Symbol("isUnref");
  * @returns {ReadableStream<Uint8Array>}
  */
 function readableStreamForRidUnrefable(rid) {
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   stream[promiseIdSymbol] = undefined;
   stream[_isUnref] = false;
   stream[_resourceBackingUnrefable] = { rid, autoClose: true };
@@ -1107,7 +1110,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * @returns {ReadableStream<Uint8Array>}
  */
 function writableStreamForRid(rid, autoClose = true) {
-  const stream = webidl.createBranded(WritableStream);
+  const stream = new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -1489,7 +1492,7 @@ function readableByteStreamControllerGetBYOBRequest(controller) {
       // deno-lint-ignore prefer-primordials
       firstDescriptor.byteLength - firstDescriptor.bytesFilled,
     );
-    const byobRequest = webidl.createBranded(ReadableStreamBYOBRequest);
+    const byobRequest = new ReadableStreamBYOBRequest(_brand);
     byobRequest[_controller] = controller;
     byobRequest[_view] = view;
     controller[_byobRequest] = byobRequest;
@@ -3496,7 +3499,7 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   underlyingSourceDict,
   highWaterMark,
 ) {
-  const controller = webidl.createBranded(ReadableByteStreamController);
+  const controller = new ReadableByteStreamController(_brand);
   /** @type {() => void} */
   let startAlgorithm = () => undefined;
   /** @type {() => Promise<void>} */
@@ -3609,7 +3612,7 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
   highWaterMark,
   sizeAlgorithm,
 ) {
-  const controller = webidl.createBranded(ReadableStreamDefaultController);
+  const controller = new ReadableStreamDefaultController(_brand);
   /** @type {() => Promise<void>} */
   let startAlgorithm = () => undefined;
   /** @type {() => Promise<void>} */
@@ -3727,7 +3730,7 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   transformerDict,
 ) {
   /** @type {TransformStreamDefaultController<O>} */
-  const controller = webidl.createBranded(TransformStreamDefaultController);
+  const controller = new TransformStreamDefaultController(_brand);
   /** @type {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} */
   let transformAlgorithm = (chunk) => {
     try {
@@ -3834,7 +3837,7 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
   highWaterMark,
   sizeAlgorithm,
 ) {
-  const controller = webidl.createBranded(WritableStreamDefaultController);
+  const controller = new WritableStreamDefaultController(_brand);
   /** @type {(controller: WritableStreamDefaultController<W>) => any} */
   let startAlgorithm = () => undefined;
   /** @type {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} */
@@ -4847,7 +4850,7 @@ class ByteLengthQueuingStrategy {
     const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
@@ -4901,7 +4904,7 @@ class CountQueuingStrategy {
     const prefix = "Failed to construct 'CountQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
@@ -4999,6 +5002,11 @@ class ReadableStream {
    * @param {QueuingStrategy<R>=} strategy
    */
   constructor(underlyingSource = undefined, strategy = undefined) {
+    if (underlyingSource === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'ReadableStream'";
     if (underlyingSource !== undefined) {
       underlyingSource = webidl.converters.object(
@@ -5018,7 +5026,7 @@ class ReadableStream {
     } else {
       strategy = {};
     }
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     let underlyingSourceDict = {};
     if (underlyingSource !== undefined) {
       underlyingSourceDict = webidl.converters.UnderlyingSource(
@@ -5286,10 +5294,14 @@ class ReadableStreamDefaultReader {
 
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
+    if (stream === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpReadableStreamDefaultReader(this, stream);
   }
 
@@ -5383,10 +5395,14 @@ class ReadableStreamBYOBReader {
 
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
+    if (stream === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'ReadableStreamBYOBReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpReadableStreamBYOBReader(this, stream);
   }
 
@@ -5513,8 +5529,11 @@ class ReadableStreamBYOBRequest {
     return this[_view];
   }
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   respond(bytesWritten) {
@@ -5609,8 +5628,11 @@ class ReadableByteStreamController {
   /** @type {ReadableStream<ArrayBuffer>} */
   [_stream];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {ReadableStreamBYOBRequest | null} */
@@ -5804,8 +5826,11 @@ class ReadableStreamDefaultController {
   /** @type {ReadableStream<R>} */
   [_stream];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {number | null} */
@@ -5944,7 +5969,7 @@ class TransformStream {
       prefix,
       "Argument 3",
     );
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     if (transformer === undefined) {
       transformer = null;
     }
@@ -6028,8 +6053,11 @@ class TransformStreamDefaultController {
   /** @type {(chunk: O, controller: this) => Promise<void>} */
   [_transformAlgorithm];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {number | null} */
@@ -6117,6 +6145,10 @@ class WritableStream {
    * @param {QueuingStrategy<W>=} strategy
    */
   constructor(underlyingSink = undefined, strategy = {}) {
+    if (underlyingSink === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'WritableStream'";
     if (underlyingSink !== undefined) {
       underlyingSink = webidl.converters.object(
@@ -6130,7 +6162,7 @@ class WritableStream {
       prefix,
       "Argument 2",
     );
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     if (underlyingSink === undefined) {
       underlyingSink = null;
     }
@@ -6239,7 +6271,7 @@ class WritableStreamDefaultWriter {
     const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.WritableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpWritableStreamDefaultWriter(this, stream);
   }
 
@@ -6396,8 +6428,11 @@ class WritableStreamDefaultController {
     return this[_signal];
   }
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /**
