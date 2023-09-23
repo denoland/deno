@@ -1051,13 +1051,8 @@ impl Inner {
             lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
           }
         }
-        if let Ok(url) = Url::from_file_path(&import_map_str) {
+        if let Ok(url) = Url::parse(&import_map_str) {
           Some(url)
-        } else if import_map_str.starts_with("data:") {
-          let import_map_url = Url::parse(&import_map_str).map_err(|_| {
-            anyhow!("Bad data url for import map: {}", import_map_str)
-          })?;
-          Some(import_map_url)
         } else if let Some(root_uri) = self.config.root_uri() {
           let root_path = specifier_to_file_path(root_uri)?;
           let import_map_path = root_path.join(&import_map_str);

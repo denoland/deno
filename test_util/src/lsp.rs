@@ -220,6 +220,7 @@ impl InitializeParamsBuilder {
         }),
         root_uri: None,
         initialization_options: Some(json!({
+          "enableBuiltinCommands": true,
           "enable": true,
           "cache": null,
           "certificateStores": null,
