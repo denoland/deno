@@ -3512,7 +3512,7 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   /** @type {() => Promise<void>} */
   let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason: any) => Promise<void>} */
-  let cancelAlgorithm = (_reason) => PromiseResolve(undefined);
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
