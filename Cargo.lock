@@ -1216,9 +1216,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.216.0"
+version = "0.217.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28278061bf4a75c3ec368e6a23c719da1f6484ca91e81059f64ea6445bc07a45"
+checksum = "b8687cbbc86b83048cdb34d1af43d6e9cee6803e746c56c319fa4a8d49ac83f7"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1605,9 +1605,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.92.0"
+version = "0.93.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d58eed3067316c73b2edf802dca6466ddd8ada6c71b5343a9a32764cf63bba4"
+checksum = "928171e00d6b464fa101c894d8afd41cefe18d016bb6e829dcc1ab6af0692489"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -4832,9 +4832,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.125.0"
+version = "0.126.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38b1c706e561399a8bcc88fbc87dc4ec8ccb11bfd6773a41419ec3cb09601b20"
+checksum = "4ed3b48e2b806cca27514de69a9c870bf5fcb46c8b02ebe0a15a1fa8aba0c556"
 dependencies = [
  "bytes",
  "derive_more",
