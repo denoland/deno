@@ -155,7 +155,7 @@ fn op_dispatch_bench_event(state: &mut OpState, #[serde] event: BenchEvent) {
   sender.send(event).ok();
 }
 
-#[op2]
+#[op2(fast)]
 #[number]
 fn op_bench_now(state: &mut OpState) -> Result<u64, AnyError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
