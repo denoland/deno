@@ -5013,25 +5013,20 @@ class ReadableStream {
     }
 
     const prefix = "Failed to construct 'ReadableStream'";
-    if (underlyingSource !== undefined) {
-      underlyingSource = webidl.converters.object(
+    underlyingSource = underlyingSource !== undefined
+      ? webidl.converters.object(
         underlyingSource,
         prefix,
         "Argument 1",
-      );
-    } else {
-      underlyingSource = null;
-    }
-    if (strategy !== undefined) {
-      strategy = webidl.converters.QueuingStrategy(
+      )
+      : null;
+    strategy = strategy !== undefined
+      ? webidl.converters.QueuingStrategy(
         strategy,
         prefix,
         "Argument 2",
-      );
-    } else {
-      strategy = {};
-    }
-    this[_brand] = _brand;
+      )
+      : {};
 
     const underlyingSourceDict = underlyingSource !== undefined
       ? webidl.converters.UnderlyingSource(
@@ -5040,6 +5035,7 @@ class ReadableStream {
         "underlyingSource",
       )
       : {};
+    this[_brand] = _brand;
 
     initializeReadableStream(this);
     if (underlyingSourceDict.type === "bytes") {
@@ -6169,11 +6165,13 @@ class WritableStream {
         "Argument 1",
       );
     }
-    strategy = strategy !== undefined ? webidl.converters.QueuingStrategy(
-      strategy,
-      prefix,
-      "Argument 2",
-    ) : {};
+    strategy = strategy !== undefined
+      ? webidl.converters.QueuingStrategy(
+        strategy,
+        prefix,
+        "Argument 2",
+      )
+      : {};
     this[_brand] = _brand;
     if (underlyingSink === undefined) {
       underlyingSink = null;
