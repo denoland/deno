@@ -20,7 +20,6 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
@@ -215,16 +214,18 @@ pub fn get_or_create_client_from_state(
   }
 }
 
-#[op]
+#[op2]
+#[serde]
+#[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  method: ByteString,
-  url: String,
-  headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
+  #[serde] method: ByteString,
+  #[string] url: String,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[smi] client_rid: Option<u32>,
   has_body: bool,
-  body_length: Option<u64>,
-  data: Option<JsBuffer>,
+  #[number] body_length: Option<u64>,
+  #[buffer] data: Option<JsBuffer>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,

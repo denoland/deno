@@ -6,7 +6,6 @@ use std::time;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
@@ -156,8 +155,8 @@ fn op_dispatch_bench_event(state: &mut OpState, #[serde] event: BenchEvent) {
   sender.send(event).ok();
 }
 
-// TODO(bartlomieju): op2 forces to use bigint, but JS doesn't expect a bigint
-#[op]
+#[op2]
+#[number]
 fn op_bench_now(state: &mut OpState) -> Result<u64, AnyError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
   let ns_u64 = u64::try_from(ns)?;
