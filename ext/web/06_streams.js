@@ -383,6 +383,16 @@ const _writer = Symbol("[[writer]]");
 const _writeRequests = Symbol("[[writeRequests]]");
 const _brand = webidl.brand;
 
+function noop() {}
+async function noopAsync() {}
+const _defaultStartAlgorithm = noop;
+const _defaultWriteAlgorithm = noopAsync;
+const _defaultCloseAlgorithm = noopAsync;
+const _defaultAbortAlgorithm = noopAsync;
+const _defaultPullAlgorithm = noopAsync;
+const _defaultFlushAlgorithm = noopAsync;
+const _defaultCancelAlgorithm = noopAsync;
+
 /**
  * @template R
  * @param {ReadableStream<R>} stream
@@ -1618,7 +1628,7 @@ function readableStreamCancel(stream, reason) {
   }
   /** @type {Promise<void>} */
   const sourceCancelPromise = stream[_controller][_cancelSteps](reason);
-  return PromisePrototypeThen(sourceCancelPromise, () => undefined);
+  return PromisePrototypeThen(sourceCancelPromise, noop);
 }
 
 /**
@@ -3498,9 +3508,9 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
 ) {
   const controller = new ReadableByteStreamController(_brand);
   /** @type {() => void} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => PromiseResolve(undefined);
+  let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason: any) => Promise<void>} */
   let cancelAlgorithm = (_reason) => PromiseResolve(undefined);
   if (underlyingSourceDict.start !== undefined) {
@@ -3611,11 +3621,11 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
 ) {
   const controller = new ReadableStreamDefaultController(_brand);
   /** @type {() => Promise<void>} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => PromiseResolve(undefined);
+  let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
-  let cancelAlgorithm = () => PromiseResolve(undefined);
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
@@ -3738,7 +3748,7 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     return PromiseResolve(undefined);
   };
   /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
-  let flushAlgorithm = () => PromiseResolve(undefined);
+  let flushAlgorithm = _defaultFlushAlgorithm;
   if (transformerDict.transform !== undefined) {
     transformAlgorithm = (chunk, controller) =>
       webidl.invokeCallbackFunction(
@@ -3836,12 +3846,12 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
 ) {
   const controller = new WritableStreamDefaultController(_brand);
   /** @type {(controller: WritableStreamDefaultController<W>) => any} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} */
-  let writeAlgorithm = () => PromiseResolve(undefined);
-  let closeAlgorithm = () => PromiseResolve(undefined);
+  let writeAlgorithm = _defaultWriteAlgorithm;
+  let closeAlgorithm = _defaultCloseAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
-  let abortAlgorithm = () => PromiseResolve(undefined);
+  let abortAlgorithm = _defaultAbortAlgorithm;
 
   if (underlyingSinkDict.start !== undefined) {
     startAlgorithm = () =>
@@ -5069,7 +5079,7 @@ class ReadableStream {
 
     const iterator = getIterator(asyncIterable, true);
 
-    const stream = createReadableStream(() => undefined, async () => {
+    const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
       const res = await iterator.next();
       if (typeof res !== "object") {
@@ -6146,7 +6156,7 @@ class WritableStream {
    * @param {UnderlyingSink<W>=} underlyingSink
    * @param {QueuingStrategy<W>=} strategy
    */
-  constructor(underlyingSink = undefined, strategy = {}) {
+  constructor(underlyingSink = undefined, strategy = undefined) {
     if (underlyingSink === _brand) {
       this[_brand] = _brand;
       return;
@@ -6159,11 +6169,11 @@ class WritableStream {
         "Argument 1",
       );
     }
-    strategy = webidl.converters.QueuingStrategy(
+    strategy = strategy !== undefined ? webidl.converters.QueuingStrategy(
       strategy,
       prefix,
       "Argument 2",
-    );
+    ) : {};
     this[_brand] = _brand;
     if (underlyingSink === undefined) {
       underlyingSink = null;
