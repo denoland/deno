@@ -109,11 +109,12 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op]
+#[op2]
+#[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
-  api_name: String,
-  url: String,
+  #[string] api_name: String,
+  #[string] url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
 where
@@ -168,14 +169,15 @@ async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
   Ok((stream, response))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  api_name: String,
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-  headers: Option<Vec<(ByteString, ByteString)>>,
+  #[string] api_name: String,
+  #[string] url: String,
+  #[string] protocols: String,
+  #[smi] cancel_handle: Option<ResourceId>,
+  #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -543,12 +545,12 @@ pub async fn op_ws_send_ping(
     .await
 }
 
-#[op(deferred)]
+#[op2(async(lazy))]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  code: Option<u16>,
-  reason: Option<String>,
+  #[smi] rid: ResourceId,
+  #[smi] code: Option<u16>,
+  #[string] reason: Option<String>,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
