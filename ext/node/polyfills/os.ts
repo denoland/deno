@@ -126,7 +126,7 @@ export function arch(): string {
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
 
 export function cpus(): CPUCoreInfo[] {
-  return Array.from(Array(navigator.hardwareConcurrency)).map(() => {
+  return Array.from(Array(navigator.hardwareConcurrency), () => {
     return {
       model: "",
       speed: 0,
