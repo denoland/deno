@@ -371,11 +371,11 @@ where
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_stat_sync<P>(
   state: &mut OpState,
-  path: String,
-  stat_out_buf: &mut [u32],
+  #[string] path: String,
+  #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -414,11 +414,11 @@ where
   Ok(SerializableStat::from(stat))
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_lstat_sync<P>(
   state: &mut OpState,
-  path: String,
-  stat_out_buf: &mut [u32],
+  #[string] path: String,
+  #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1123,16 +1123,17 @@ where
   Ok(())
 }
 
-#[op]
+#[op2(async)]
+#[allow(clippy::too_many_arguments)]
 pub async fn op_fs_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  mode: Option<u32>,
+  #[string] path: String,
+  #[smi] mode: Option<u32>,
   append: bool,
   create: bool,
   create_new: bool,
-  data: JsBuffer,
-  cancel_rid: Option<ResourceId>,
+  #[buffer] data: JsBuffer,
+  #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1189,11 +1190,12 @@ where
   Ok(buf.into())
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  cancel_rid: Option<ResourceId>,
+  #[string] path: String,
+  #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<ToJsBuffer, AnyError>
 where
   P: FsPermissions + 'static,
@@ -1228,10 +1230,11 @@ where
   Ok(buf.into())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
@@ -1247,11 +1250,12 @@ where
   Ok(string_from_utf8_lossy(buf))
 }
 
-#[op]
+#[op2(async)]
+#[string]
 pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  cancel_rid: Option<ResourceId>,
+  #[string] path: String,
+  #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
@@ -1375,11 +1379,11 @@ pub async fn op_fs_fsync_async(
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_fstat_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  stat_out_buf: &mut [u32],
+  #[smi] rid: ResourceId,
+  #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError> {
   let file = FileResource::get_file(state, rid)?;
   let stat = file.stat_sync()?;

@@ -10,9 +10,8 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_v8;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::ffi::CString;
@@ -536,13 +535,13 @@ pub unsafe fn weak_local(
   value
 }
 
-#[op(v8)]
+#[op2]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: &mut OpState,
-  path: String,
-  global: serde_v8::Value,
-) -> std::result::Result<serde_v8::Value<'scope>, AnyError>
+  #[string] path: String,
+  global: v8::Local<'scope, v8::Value>,
+) -> std::result::Result<v8::Local<'scope, v8::Value>, AnyError>
 where
   NP: NapiPermissions + 'static,
 {
@@ -582,7 +581,7 @@ where
   let mut env = Env::new(
     isolate_ptr,
     v8::Global::new(scope, ctx),
-    v8::Global::new(scope, global.v8_value),
+    v8::Global::new(scope, global),
     async_work_sender,
     tsfn_sender,
     cleanup_hooks,
@@ -640,7 +639,7 @@ where
     // NAPI addons can't be unloaded, so we're going to "forget" the library
     // object so it lives till the program exit.
     std::mem::forget(library);
-    return Ok(serde_v8::Value { v8_value: exports });
+    return Ok(exports);
   }
 
   // Initializer callback.
@@ -673,5 +672,5 @@ where
   // NAPI addons can't be unloaded, so we're going to "forget" the library
   // object so it lives till the program exit.
   std::mem::forget(library);
-  Ok(serde_v8::Value { v8_value: exports })
+  Ok(exports)
 }
