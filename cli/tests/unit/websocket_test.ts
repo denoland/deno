@@ -7,6 +7,9 @@ import {
   fail,
 } from "./test_util.ts";
 
+const servePort = 4248;
+const serveUrl = `ws://localhost:${servePort}/`;
+
 Deno.test({ permissions: "none" }, function websocketPermissionless() {
   assertThrows(
     () => new WebSocket("ws://localhost"),
@@ -81,13 +84,13 @@ Deno.test(
       signal: ac.signal,
       onListen: () => listeningPromise.resolve(),
       hostname: "localhost",
-      port: 4246,
+      port: servePort,
     });
 
     await listeningPromise;
     const promise = deferred();
-    const ws = new WebSocket("ws://localhost:4246/");
-    assertEquals(ws.url, "ws://localhost:4246/");
+    const ws = new WebSocket(serveUrl);
+    assertEquals(ws.url, serveUrl);
     ws.onerror = () => fail();
     ws.onmessage = (e) => {
       assertEquals(e.data, "Hello");
@@ -133,13 +136,13 @@ Deno.test({
     signal: ac.signal,
     onListen: () => listeningPromise.resolve(),
     hostname: "localhost",
-    port: 4247,
+    port: servePort,
   });
 
   await listeningPromise;
 
-  const ws = new WebSocket("ws://localhost:4247/");
-  assertEquals(ws.url, "ws://localhost:4247/");
+  const ws = new WebSocket(serveUrl);
+  assertEquals(ws.url, serveUrl);
   ws.onerror = () => fail();
   ws.onmessage = () => ws.send("bye");
   ws.onclose = () => {
@@ -173,13 +176,13 @@ Deno.test({
     signal: ac.signal,
     onListen: () => listeningPromise.resolve(),
     hostname: "localhost",
-    port: 4247,
+    port: servePort,
   });
 
   await listeningPromise;
 
-  const ws = new WebSocket("ws://localhost:4247/");
-  assertEquals(ws.url, "ws://localhost:4247/");
+  const ws = new WebSocket(serveUrl);
+  assertEquals(ws.url, serveUrl);
   let seenBye = false;
   ws.onerror = () => fail();
   ws.onmessage = ({ data }) => {

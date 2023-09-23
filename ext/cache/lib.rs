@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ByteString;
@@ -117,10 +117,11 @@ pub trait Cache: Clone + 'static {
     -> Result<bool, AnyError>;
 }
 
-#[op]
+#[op2(async)]
+#[number]
 pub async fn op_cache_storage_open<CA>(
   state: Rc<RefCell<OpState>>,
-  cache_name: String,
+  #[string] cache_name: String,
 ) -> Result<i64, AnyError>
 where
   CA: Cache,
@@ -129,10 +130,10 @@ where
   cache.storage_open(cache_name).await
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_cache_storage_has<CA>(
   state: Rc<RefCell<OpState>>,
-  cache_name: String,
+  #[string] cache_name: String,
 ) -> Result<bool, AnyError>
 where
   CA: Cache,
@@ -141,10 +142,10 @@ where
   cache.storage_has(cache_name).await
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_cache_storage_delete<CA>(
   state: Rc<RefCell<OpState>>,
-  cache_name: String,
+  #[string] cache_name: String,
 ) -> Result<bool, AnyError>
 where
   CA: Cache,
@@ -153,10 +154,11 @@ where
   cache.storage_delete(cache_name).await
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 pub async fn op_cache_put<CA>(
   state: Rc<RefCell<OpState>>,
-  request_response: CachePutRequest,
+  #[serde] request_response: CachePutRequest,
 ) -> Result<Option<ResourceId>, AnyError>
 where
   CA: Cache,
@@ -171,10 +173,10 @@ where
   }
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_cache_put_finish<CA>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError>
 where
   CA: Cache,
@@ -187,10 +189,11 @@ where
   cache.put_finish(resource).await
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_cache_match<CA>(
   state: Rc<RefCell<OpState>>,
-  request: CacheMatchRequest,
+  #[serde] request: CacheMatchRequest,
 ) -> Result<Option<CacheMatchResponse>, AnyError>
 where
   CA: Cache,
@@ -206,10 +209,10 @@ where
   }
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_cache_delete<CA>(
   state: Rc<RefCell<OpState>>,
-  request: CacheDeleteRequest,
+  #[serde] request: CacheDeleteRequest,
 ) -> Result<bool, AnyError>
 where
   CA: Cache,

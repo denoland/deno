@@ -7,9 +7,7 @@ use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
-use deno_core::serde_json;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
@@ -20,8 +18,8 @@ use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -95,12 +93,12 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Resolves an npm package folder path from a Deno module.
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_nv: &NpmPackageNv,
+    pkg_nv: &PackageNv,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_pkg_id_from_pkg_req(
     &self,
-    req: &NpmPackageReq,
+    req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
@@ -130,19 +128,20 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set
 });
 
-#[op]
+#[op2]
+#[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op(fast)]
-fn op_is_any_arraybuffer(value: serde_v8::Value) -> bool {
-  value.v8_value.is_array_buffer() || value.v8_value.is_shared_array_buffer()
+#[op2(fast)]
+fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
+  value.is_array_buffer() || value.is_shared_array_buffer()
 }
 
-#[op(fast)]
-fn op_node_is_promise_rejected(value: serde_v8::Value) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value.v8_value) else {
+#[op2(fast)]
+fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
+  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
     return false;
   };
 
@@ -156,6 +155,8 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
+    ops::crypto::op_node_cipheriv_set_aad,
+    ops::crypto::op_node_decipheriv_set_aad,
     ops::crypto::op_node_create_cipheriv,
     ops::crypto::op_node_create_hash,
     ops::crypto::op_node_get_hashes,
@@ -242,6 +243,19 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http2::op_http2_connect,
+    ops::http2::op_http2_poll_client_connection,
+    ops::http2::op_http2_client_request,
+    ops::http2::op_http2_client_get_response,
+    ops::http2::op_http2_client_get_response_body_chunk,
+    ops::http2::op_http2_client_send_data,
+    ops::http2::op_http2_client_end_stream,
+    ops::http2::op_http2_client_reset_stream,
+    ops::http2::op_http2_client_send_trailers,
+    ops::http2::op_http2_client_get_response_trailers,
+    ops::http2::op_http2_accept,
+    ops::http2::op_http2_listen,
+    ops::http2::op_http2_send_response,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
@@ -374,7 +388,7 @@ deno_core::extension!(deno_node,
     "internal/constants.ts",
     "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
-    "internal/crypto/_randomFill.ts",
+    "internal/crypto/_randomFill.mjs",
     "internal/crypto/_randomInt.ts",
     "internal/crypto/certificate.ts",
     "internal/crypto/cipher.ts",
@@ -557,29 +571,6 @@ deno_core::extension!(deno_node,
     ext.external_references.to_mut().extend(external_references);
   },
 );
-
-pub fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-  uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<&str>,
-) -> Result<(), AnyError> {
-  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name)?
-  } else {
-    "undefined".to_string()
-  };
-  let source_code = format!(
-    r#"(function loadBuiltinNodeModules(usesLocalNodeModulesDir, argv0) {{
-      Deno[Deno.internal].node.initialize(
-        usesLocalNodeModulesDir,
-        argv0
-      );
-    }})({uses_local_node_modules_dir}, {argv0});"#,
-  );
-
-  js_runtime.execute_script(located_script_name!(), source_code.into())?;
-  Ok(())
-}
 
 pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,

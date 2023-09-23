@@ -21,8 +21,8 @@ use deno_core::url::Url;
 use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::permissions::PermissionsOptions;
-use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmVersionReqSpecifierParseError;
+use deno_semver::package::PackageReq;
+use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -81,7 +81,7 @@ impl SerializablePackageJsonDepValueParseError {
       }
       SerializablePackageJsonDepValueParseError::Specifier(source) => {
         PackageJsonDepValueParseError::Specifier(
-          NpmVersionReqSpecifierParseError {
+          VersionReqSpecifierParseError {
             source: monch::ParseErrorFailureError::new(source),
           },
         )
@@ -97,7 +97,7 @@ impl SerializablePackageJsonDepValueParseError {
 pub struct SerializablePackageJsonDeps(
   BTreeMap<
     String,
-    Result<NpmPackageReq, SerializablePackageJsonDepValueParseError>,
+    Result<PackageReq, SerializablePackageJsonDepValueParseError>,
   >,
 );
 

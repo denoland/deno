@@ -114,6 +114,7 @@ export class LibuvStreamWrap extends HandleWrap {
   writeQueueSize = 0;
   bytesRead = 0;
   bytesWritten = 0;
+  #buf = new Uint8Array(SUGGESTED_SIZE);
 
   onread!: (_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined;
 
@@ -311,8 +312,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    let buf = BUF;
-
+    let buf = this.#buf;
     let nread: number | null;
     const ridBefore = this[kStreamBaseField]!.rid;
     try {
@@ -337,8 +337,6 @@ export class LibuvStreamWrap extends HandleWrap {
       } else {
         nread = codeMap.get("UNKNOWN")!;
       }
-
-      buf = new Uint8Array(0);
     }
 
     nread ??= codeMap.get("EOF")!;
@@ -422,5 +420,3 @@ export class LibuvStreamWrap extends HandleWrap {
     return;
   }
 }
-
-const BUF = new Uint8Array(SUGGESTED_SIZE);

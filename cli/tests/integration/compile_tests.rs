@@ -120,9 +120,9 @@ fn standalone_error() {
   assert_contains!(stderr, "error: Uncaught Error: boom!");
   assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at boom (file://");
-  assert_contains!(stderr, "standalone_error.ts:2:11");
+  assert_contains!(stderr, "standalone_error.ts:2:9");
   assert_contains!(stderr, "at foo (file://");
-  assert_contains!(stderr, "standalone_error.ts:5:5");
+  assert_contains!(stderr, "standalone_error.ts:5:3");
   assert_contains!(stderr, "standalone_error.ts:7:1");
 }
 
@@ -792,10 +792,7 @@ fn dynamic_import_unanalyzable() {
 
 #[test]
 fn compile_npm_specifiers() {
-  let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
   let temp_dir = context.temp_dir();
   temp_dir.write(
@@ -1012,10 +1009,7 @@ struct RunNpmBinCompileOptions<'a> {
 }
 
 fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
-  let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
   let temp_dir = context.temp_dir();
   let testdata_path = context.testdata_path();
@@ -1066,7 +1060,6 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
 #[test]
 fn compile_node_modules_symlink_outside() {
   let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
     .use_copy_temp_dir("compile/node_modules_symlink_outside")
     .cwd("compile/node_modules_symlink_outside")
     .build();

@@ -15,11 +15,10 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::util::checksum;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
 use crate::worker::CliMainWorkerFactory;
 
@@ -40,8 +39,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -89,6 +88,7 @@ use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
+use reporters::TapTestReporter;
 use reporters::TestReporter;
 
 /// The test mode is used to determine how a specifier is to be tested.
@@ -171,12 +171,6 @@ pub struct TestDescription {
   pub only: bool,
   pub origin: String,
   pub location: TestLocation,
-}
-
-impl TestDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[self.location.file_name.as_bytes(), self.name.as_bytes()])
-  }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -296,16 +290,6 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-impl TestStepDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[
-      self.location.file_name.as_bytes(),
-      &self.level.to_be_bytes(),
-      self.name.as_bytes(),
-    ])
-  }
-}
-
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -359,6 +343,7 @@ struct TestSpecifiersOptions {
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
+  filter: bool,
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
@@ -400,10 +385,14 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
+      options.filter,
     )),
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
     }
+    TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+    )),
   };
 
   if let Some(junit_path) = &options.junit_path {
@@ -444,6 +433,13 @@ pub async fn test_specifier(
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
+  if options.trace_ops {
+    worker.execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].core.enableOpCallTracing();",
+    )?;
+  }
+
   // We execute the main module as a side module so that import.meta.main is not set.
   match worker.execute_side_module_possibly_with_npm().await {
     Ok(()) => {}
@@ -461,12 +457,7 @@ pub async fn test_specifier(
   }
 
   let mut worker = worker.into_main_worker();
-  if options.trace_ops {
-    worker.js_runtime.execute_script_static(
-      located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
-    )?;
-  }
+
   worker.dispatch_load_event(located_script_name!())?;
 
   let tests = {
@@ -475,14 +466,14 @@ pub async fn test_specifier(
     std::mem::take(&mut state.borrow_mut::<ops::testing::TestContainer>().0)
   };
   let unfiltered = tests.len();
-  let (only, no_only): (Vec<_>, Vec<_>) =
-    tests.into_iter().partition(|(d, _)| d.only);
-  let used_only = !only.is_empty();
-  let tests = if used_only { only } else { no_only };
-  let mut tests = tests
+  let tests = tests
     .into_iter()
     .filter(|(d, _)| options.filter.includes(&d.name))
     .collect::<Vec<_>>();
+  let (only, no_only): (Vec<_>, Vec<_>) =
+    tests.into_iter().partition(|(d, _)| d.only);
+  let used_only = !only.is_empty();
+  let mut tests = if used_only { only } else { no_only };
   if let Some(seed) = options.shuffle {
     tests.shuffle(&mut SmallRng::seed_from_u64(seed));
   }
@@ -837,12 +828,13 @@ async fn test_specifiers(
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
   let mut reporter = get_test_reporter(&options);
+  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
-    let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+    let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
@@ -1000,7 +992,7 @@ pub(crate) fn is_supported_test_path(path: &Path) -> bool {
     (basename.ends_with("_test")
       || basename.ends_with(".test")
       || basename == "test")
-      && is_supported_ext(path)
+      && is_script_ext(path)
   } else {
     false
   }
@@ -1157,6 +1149,7 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
+      filter: test_options.filter.is_some(),
       reporter: test_options.reporter,
       junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
@@ -1209,7 +1202,9 @@ pub async fn run_tests_with_watch(
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = sender.send(cli_options.watch_paths());
-        let _ = sender.send(test_options.files.include.clone());
+        if let Some(include) = &test_options.files.include {
+          let _ = sender.send(include.clone());
+        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
@@ -1289,6 +1284,7 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
+            filter: test_options.filter.is_some(),
             reporter: test_options.reporter,
             junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {

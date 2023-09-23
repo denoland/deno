@@ -128,9 +128,6 @@ jobs:
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
-      - name: Clone submodule ./third_party
-        run: git submodule update --init --recursive --depth=1 -- ./third_party
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
@@ -150,7 +147,7 @@ jobs:
               -czvf target/release/deno_src.tar.gz -C .. deno
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
-      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' || matrix.job == ''test'')'
+      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
         uses: denoland/setup-deno@v1
         with:
@@ -173,6 +170,12 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 18
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          version: '21.12'
+          repo-token: '${{ secrets.GITHUB_TOKEN }}'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
@@ -252,8 +255,8 @@ jobs:
           sudo mount --rbind /home /sysroot/home
           sudo mount -t proc /proc /sysroot/proc
 
-          cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
-          cp third_party/prebuilt/linux64/libdl/libdl.a .
+          wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
+          wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
 
           sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
           sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
@@ -303,6 +306,7 @@ jobs:
           if [ "${{ matrix.job }}" == "bench" ]
           then
             node -v
+            ./tools/install_prebuilt.js wrk hyperfine
           fi
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Cache Cargo home
@@ -311,8 +315,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-          key: '49-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '49-cargo-home-${{ matrix.os }}'
+          key: '53-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '53-cargo-home-${{ matrix.os }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
@@ -324,7 +328,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '49-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '53-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -332,7 +336,7 @@ jobs:
           cache-path: ./target
       - name: test_format.js
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && startsWith(matrix.os, ''ubuntu''))'
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
+        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
       - name: Lint PR title
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && startsWith(matrix.os, ''ubuntu''))'
         env:
@@ -340,7 +344,7 @@ jobs:
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
+        run: deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js
       - name: node_compat/setup.ts --check
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && startsWith(matrix.os, ''ubuntu''))'
         run: deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check
@@ -612,7 +616,7 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '49-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '53-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

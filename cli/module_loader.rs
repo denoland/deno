@@ -145,6 +145,8 @@ impl ModuleLoadPreparer {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          // todo(dsherret): workspace support
+          workspace_members: vec![],
         },
       )
       .await?;
@@ -328,7 +330,10 @@ impl CliModuleLoaderFactory {
         lib_window: options.ts_type_lib_window(),
         lib_worker: options.ts_type_lib_worker(),
         is_inspecting: options.is_inspecting(),
-        is_repl: matches!(options.sub_command(), DenoSubcommand::Repl(_)),
+        is_repl: matches!(
+          options.sub_command(),
+          DenoSubcommand::Repl(_) | DenoSubcommand::Jupyter(_)
+        ),
         prepared_module_loader: PreparedModuleLoader {
           emitter,
           graph_container: graph_container.clone(),

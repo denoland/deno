@@ -14,13 +14,22 @@ fn create_file(
   filename: &str,
   content: &str,
 ) -> Result<(), AnyError> {
-  let mut file = std::fs::OpenOptions::new()
-    .write(true)
-    .create_new(true)
-    .open(dir.join(filename))
-    .with_context(|| format!("Failed to create {filename} file"))?;
-  file.write_all(content.as_bytes())?;
-  Ok(())
+  let path = dir.join(filename);
+  if path.exists() {
+    info!(
+      "ℹ️ {}",
+      colors::gray(format!("Skipped creating {filename} as it already exists"))
+    );
+    Ok(())
+  } else {
+    let mut file = std::fs::OpenOptions::new()
+      .write(true)
+      .create_new(true)
+      .open(path)
+      .with_context(|| format!("Failed to create {filename} file"))?;
+    file.write_all(content.as_bytes())?;
+    Ok(())
+  }
 }
 
 pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
@@ -40,10 +49,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   let main_test_ts = include_str!("./templates/main_test.ts")
     .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL_STR);
   create_file(&dir, "main_test.ts", &main_test_ts)?;
-  let main_bench_ts = include_str!("./templates/main_bench.ts");
-  create_file(&dir, "main_bench.ts", main_bench_ts)?;
-
-  create_file(&dir, "deno.jsonc", include_str!("./templates/deno.jsonc"))?;
+  create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
 
   info!("✅ {}", colors::green("Project initialized"));
   info!("");
@@ -64,8 +70,5 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   info!("");
   info!("  {}", colors::gray("# Run the tests"));
   info!("  deno test");
-  info!("");
-  info!("  {}", colors::gray("# Run the benchmarks"));
-  info!("  deno bench");
   Ok(())
 }

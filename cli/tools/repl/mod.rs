@@ -8,12 +8,12 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
 
-mod cdp;
+pub(crate) mod cdp;
 mod channel;
 mod editor;
 mod session;
@@ -24,15 +24,16 @@ use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncResponse;
 use editor::EditorHelper;
 use editor::ReplEditor;
-use session::EvaluationOutput;
-use session::ReplSession;
+pub use session::EvaluationOutput;
+pub use session::ReplSession;
+pub use session::REPL_INTERNALS_NAME;
 
+#[allow(clippy::await_holding_refcell_ref)]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
-  #![allow(clippy::await_holding_refcell_ref)]
   let mut line_fut = spawn_blocking(move || editor.readline());
   let mut poll_worker = true;
   let notifications_rc = repl_session.notifications.clone();

@@ -23,10 +23,10 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op;
+use deno_core::op2;
 
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -779,10 +779,11 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
-  args: StartTlsArgs,
+  #[serde] args: StartTlsArgs,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -860,11 +861,12 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
-  addr: IpAddr,
-  args: ConnectTlsArgs,
+  #[serde] addr: IpAddr,
+  #[serde] args: ConnectTlsArgs,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1000,11 +1002,12 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
-  addr: IpAddr,
-  args: ListenTlsArgs,
+  #[serde] addr: IpAddr,
+  #[serde] args: ListenTlsArgs,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1055,7 +1058,13 @@ where
     .with_safe_defaults()
     .with_no_client_auth()
     .with_single_cert(cert_chain, key_der)
-    .expect("invalid key or certificate");
+    .map_err(|e| {
+      custom_error(
+        "InvalidData",
+        format!("Error creating TLS certificate: {:?}", e),
+      )
+    })?;
+
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
@@ -1095,10 +1104,11 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
   let resource = state
     .borrow()
@@ -1136,10 +1146,11 @@ pub async fn op_net_accept_tls(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()

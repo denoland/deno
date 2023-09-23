@@ -71,6 +71,11 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
 
+// deno-lint-ignore prefer-primordials
+Symbol.dispose ??= Symbol("Symbol.dispose");
+// deno-lint-ignore prefer-primordials
+Symbol.asyncDispose ??= Symbol("Symbol.asyncDispose");
+
 let windowIsClosing = false;
 let globalThis_;
 
@@ -323,8 +328,6 @@ function runtimeStart(
   core.setBuildInfo(target);
   util.setLogLevel(logLevel, source);
   setNoColor(noColor || !isTty);
-  // deno-lint-ignore prefer-primordials
-  Error.prepareStackTrace = core.prepareStackTrace;
 }
 
 const pendingRejections = [];
@@ -438,6 +441,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
+  const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
     0: args,
@@ -456,6 +460,8 @@ function bootstrapMainRuntime(runtimeOptions) {
     13: userAgent,
     14: inspectFlag,
     // 15: enableTestingFeaturesFlag
+    16: hasNodeModulesDir,
+    17: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -464,12 +470,13 @@ function bootstrapMainRuntime(runtimeOptions) {
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
+  delete globalThis.nodeBootstrap;
   hasBootstrapped = true;
 
   // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
   // writable, so that they can mock it themselves if they like. If the flag was
   // set, define `globalThis.location`, using the provided value.
-  if (location_ === undefined) {
+  if (location_ == null) {
     mainRuntimeGlobalProperties.location = {
       writable: true,
     };
@@ -542,6 +549,10 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
   util.log("args", args);
+
+  if (nodeBootstrap) {
+    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+  }
 }
 
 function bootstrapWorkerRuntime(
@@ -552,6 +563,8 @@ function bootstrapWorkerRuntime(
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
+
+  const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
     0: args,
@@ -567,9 +580,11 @@ function bootstrapWorkerRuntime(
     10: pid,
     11: target,
     12: v8Version,
-    // 13: userAgent,
+    13: userAgent,
     // 14: inspectFlag,
     15: enableTestingFeaturesFlag,
+    16: hasNodeModulesDir,
+    17: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -580,6 +595,7 @@ function bootstrapWorkerRuntime(
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
+  delete globalThis.nodeBootstrap;
   hasBootstrapped = true;
 
   if (unstableFlag) {
@@ -633,6 +649,7 @@ function bootstrapWorkerRuntime(
   location.setLocationHref(location_);
 
   setNumCpus(cpuCount);
+  setUserAgent(userAgent);
   setLanguage(locale);
 
   globalThis.pollForMessages = pollForMessages;
@@ -648,6 +665,10 @@ function bootstrapWorkerRuntime(
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+
+  if (nodeBootstrap) {
+    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+  }
 }
 
 globalThis.bootstrap = {

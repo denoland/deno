@@ -13,8 +13,7 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalFutureObj;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -40,10 +39,6 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
   + Sync
   + Send;
 
-pub type WorkerEventCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
-  + Sync
-  + Send;
-
 /// A holder for callback that is used to create a new
 /// WebWorker. It's a struct instead of a type alias
 /// because `GothamState` used in `OpState` overrides
@@ -53,12 +48,6 @@ struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 #[derive(Clone)]
 struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
-
-#[derive(Clone)]
-struct PreloadModuleCbHolder(Arc<WorkerEventCb>);
-
-#[derive(Clone)]
-struct PreExecuteModuleCbHolder(Arc<WorkerEventCb>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
@@ -98,8 +87,6 @@ deno_core::extension!(
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
-    preload_module_cb: Arc<WorkerEventCb>,
-    pre_execute_module_cb: Arc<WorkerEventCb>,
     format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   },
   state = |state, options| {
@@ -109,12 +96,6 @@ deno_core::extension!(
     let create_web_worker_cb_holder =
       CreateWebWorkerCbHolder(options.create_web_worker_cb);
     state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
-    let preload_module_cb_holder =
-      PreloadModuleCbHolder(options.preload_module_cb);
-    state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
-    let pre_execute_module_cb_holder =
-      PreExecuteModuleCbHolder(options.pre_execute_module_cb);
-    state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb_holder);
     let format_js_error_fn_holder =
       FormatJsErrorFnHolder(options.format_js_error_fn);
     state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
@@ -133,10 +114,11 @@ pub struct CreateWorkerArgs {
 }
 
 /// Create worker as the host
-#[op]
+#[op2]
+#[serde]
 fn op_create_worker(
   state: &mut OpState,
-  args: CreateWorkerArgs,
+  #[serde] args: CreateWorkerArgs,
 ) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -174,10 +156,6 @@ fn op_create_worker(
   let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
-  let preload_module_cb = state.take::<PreloadModuleCbHolder>();
-  state.put::<PreloadModuleCbHolder>(preload_module_cb.clone());
-  let pre_execute_module_cb = state.take::<PreExecuteModuleCbHolder>();
-  state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb.clone());
   let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
   state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
   state.put::<WorkerId>(worker_id.next().unwrap());
@@ -221,8 +199,6 @@ fn op_create_worker(
       worker,
       module_specifier,
       maybe_source_code,
-      preload_module_cb.0,
-      pre_execute_module_cb.0,
       format_js_error_fn.0,
     )
   })?;
@@ -246,8 +222,8 @@ fn op_create_worker(
   Ok(worker_id)
 }
 
-#[op]
-fn op_host_terminate_worker(state: &mut OpState, id: WorkerId) {
+#[op2]
+fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
     worker_thread.terminate();
   } else {
@@ -296,10 +272,11 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
-  id: WorkerId,
+  #[serde] id: WorkerId,
 ) -> Result<WorkerControlEvent, AnyError> {
   let (worker_handle, cancel_handle) = {
     let state = state.borrow();
@@ -338,10 +315,11 @@ async fn op_host_recv_ctrl(
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
-  id: WorkerId,
+  #[serde] id: WorkerId,
 ) -> Result<Option<JsMessageData>, AnyError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
@@ -376,11 +354,11 @@ async fn op_host_recv_message(
 }
 
 /// Post message to guest worker as host
-#[op]
+#[op2]
 fn op_host_post_message(
   state: &mut OpState,
-  id: WorkerId,
-  data: JsMessageData,
+  #[serde] id: WorkerId,
+  #[serde] data: JsMessageData,
 ) -> Result<(), AnyError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
     debug!("post message to worker {}", id);

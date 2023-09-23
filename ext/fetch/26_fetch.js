@@ -268,6 +268,7 @@ async function mainFetch(req, recursive, terminator) {
         }
       }
       WeakMapPrototypeDelete(requestBodyReaders, req);
+      reader.releaseLock();
       core.tryClose(requestBodyRid);
     })();
   }
@@ -282,6 +283,9 @@ async function mainFetch(req, recursive, terminator) {
       throw new TypeError("Failed to fetch: request body stream errored", {
         cause: requestSendError,
       });
+    }
+    if (requestBodyRid !== null) {
+      core.tryClose(requestBodyRid);
     }
     throw err;
   } finally {

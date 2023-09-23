@@ -21,6 +21,7 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -31,6 +32,7 @@ use deno_ast::SourceTextInfo;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
@@ -42,8 +44,8 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
@@ -801,7 +803,8 @@ impl FileSystemDocuments {
 }
 
 pub struct UpdateDocumentConfigOptions<'a> {
-  pub enabled_urls: Vec<Url>,
+  pub enabled_paths: Vec<PathBuf>,
+  pub disabled_paths: Vec<PathBuf>,
   pub document_preload_limit: usize,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
@@ -845,7 +848,7 @@ pub struct Documents {
   /// settings.
   resolver: Arc<CliGraphResolver>,
   /// The npm package requirements found in npm specifiers.
-  npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
+  npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
@@ -1016,7 +1019,7 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Arc<Vec<NpmPackageReq>> {
+  pub fn npm_package_reqs(&mut self) -> Arc<Vec<PackageReq>> {
     self.calculate_dependents_if_dirty();
     self.npm_specifier_reqs.clone()
   }
@@ -1180,7 +1183,7 @@ impl Documents {
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     fn calculate_resolver_config_hash(
-      enabled_urls: &[Url],
+      enabled_paths: &[PathBuf],
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
@@ -1191,9 +1194,9 @@ impl Documents {
       hasher.write_hashable(document_preload_limit);
       hasher.write_hashable(&{
         // ensure these are sorted so the hashing is deterministic
-        let mut enabled_urls = enabled_urls.to_vec();
-        enabled_urls.sort_unstable();
-        enabled_urls
+        let mut enabled_paths = enabled_paths.to_vec();
+        enabled_paths.sort_unstable();
+        enabled_paths
       });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
@@ -1230,7 +1233,7 @@ impl Documents {
       .maybe_config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &options.enabled_urls,
+      &options.enabled_paths,
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
@@ -1241,13 +1244,19 @@ impl Documents {
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
     let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
-      maybe_jsx_config,
-      options.maybe_import_map,
-      false,
       options.npm_registry_api,
       options.npm_resolution,
       deps_provider,
       deps_installer,
+      CliGraphResolverOptions {
+        maybe_jsx_import_source_config: maybe_jsx_config,
+        maybe_import_map: options.maybe_import_map,
+        maybe_vendor_dir: options
+          .maybe_config_file
+          .and_then(|c| c.vendor_dir_path())
+          .as_ref(),
+        no_npm: false,
+      },
     ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
@@ -1255,13 +1264,10 @@ impl Documents {
       {
         imports
           .into_iter()
-          .map(|import| {
-            let graph_import = GraphImport::new(
-              &import.referrer,
-              import.imports,
-              Some(self.get_resolver()),
-            );
-            (import.referrer, graph_import)
+          .map(|(referrer, imports)| {
+            let graph_import =
+              GraphImport::new(&referrer, imports, Some(self.get_resolver()));
+            (referrer, graph_import)
           })
           .collect()
       } else {
@@ -1272,20 +1278,8 @@ impl Documents {
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
       self.refresh_dependencies(
-        options
-          .enabled_urls
-          .iter()
-          .filter_map(|url| specifier_to_file_path(url).ok())
-          .collect(),
-        options
-          .maybe_config_file
-          .and_then(|cf| {
-            cf.to_files_config()
-              .ok()
-              .flatten()
-              .map(|files| files.exclude)
-          })
-          .unwrap_or_default(),
+        options.enabled_paths,
+        options.disabled_paths,
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
@@ -1391,7 +1385,7 @@ impl Documents {
       dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
       analyzed_specifiers: HashSet<ModuleSpecifier>,
       pending_specifiers: VecDeque<ModuleSpecifier>,
-      npm_reqs: HashSet<NpmPackageReq>,
+      npm_reqs: HashSet<PackageReq>,
       has_node_builtin_specifier: bool,
     }
 
@@ -1403,7 +1397,7 @@ impl Documents {
           // been analyzed in order to not cause an extra file system lookup
           self.pending_specifiers.push_back(dep.clone());
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            self.npm_reqs.insert(reference.req);
+            self.npm_reqs.insert(reference.into_inner().req);
           }
         }
 
@@ -1461,7 +1455,7 @@ impl Documents {
       .has_node_builtin_specifier
       && !npm_reqs.iter().any(|r| r.name == "@types/node");
     if self.has_injected_types_node_package {
-      npm_reqs.insert(NpmPackageReq::from_str("@types/node").unwrap());
+      npm_reqs.insert(PackageReq::from_str("@types/node").unwrap());
     }
 
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
@@ -1547,24 +1541,53 @@ pub struct OpenDocumentsGraphLoader<'a> {
   pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
 }
 
+impl<'a> OpenDocumentsGraphLoader<'a> {
+  fn load_from_docs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<deno_graph::source::LoadFuture> {
+    if specifier.scheme() == "file" {
+      if let Some(doc) = self.open_docs.get(specifier) {
+        return Some(
+          future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
+            content: doc.content(),
+            specifier: doc.specifier().clone(),
+            maybe_headers: None,
+          })))
+          .boxed_local(),
+        );
+      }
+    }
+    None
+  }
+}
+
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
+  fn registry_url(&self) -> &Url {
+    self.inner_loader.registry_url()
+  }
+
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
+    cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
-    if specifier.scheme() == "file" {
-      if let Some(doc) = self.open_docs.get(specifier) {
-        return Box::pin(future::ready(Ok(Some(
-          deno_graph::source::LoadResponse::Module {
-            content: doc.content(),
-            specifier: doc.specifier().clone(),
-            maybe_headers: None,
-          },
-        ))));
-      }
+    match self.load_from_docs(specifier) {
+      Some(fut) => fut,
+      None => self.inner_loader.load(specifier, is_dynamic, cache_setting),
     }
-    self.inner_loader.load(specifier, is_dynamic)
+  }
+
+  fn cache_module_info(
+    &mut self,
+    specifier: &deno_ast::ModuleSpecifier,
+    source: &str,
+    module_info: &deno_graph::ModuleInfo,
+  ) {
+    self
+      .inner_loader
+      .cache_module_info(specifier, source, module_info)
   }
 }
 
@@ -1679,14 +1702,18 @@ impl PreloadDocumentFinder {
     // initialize the finder with the initial paths
     let mut dirs = Vec::with_capacity(options.enabled_paths.len());
     for path in options.enabled_paths {
-      if path.is_dir() {
-        if is_allowed_root_dir(&path) {
-          dirs.push(path);
+      if !finder.disabled_paths.contains(&path)
+        && !finder.disabled_globs.matches_path(&path)
+      {
+        if path.is_dir() {
+          if is_allowed_root_dir(&path) {
+            dirs.push(path);
+          }
+        } else {
+          finder
+            .pending_entries
+            .push_back(PendingEntry::SpecifiedRootFile(path));
         }
-      } else {
-        finder
-          .pending_entries
-          .push_back(PendingEntry::SpecifiedRootFile(path));
       }
     }
     for dir in sort_and_remove_non_leaf_dirs(dirs) {
@@ -1997,7 +2024,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_urls: vec![],
+        enabled_paths: vec![],
+        disabled_paths: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2038,7 +2066,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_urls: vec![],
+        enabled_paths: vec![],
+        disabled_paths: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,

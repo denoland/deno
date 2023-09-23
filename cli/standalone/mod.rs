@@ -26,7 +26,6 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::HasNodeSpecifierChecker;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
@@ -184,10 +183,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
       };
     }
 
-    let Some(module) = self.shared.eszip.get_module(original_specifier.as_str()) else {
+    let Some(module) =
+      self.shared.eszip.get_module(original_specifier.as_str())
+    else {
       return Box::pin(deno_core::futures::future::ready(Err(type_error(
         format!("Module not found: {}", original_specifier),
-      ))))
+      ))));
     };
     let original_specifier = original_specifier.clone();
     let found_specifier =
@@ -263,14 +264,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     &self,
   ) -> Option<Box<dyn deno_core::SourceMapGetter>> {
     None
-  }
-}
-
-struct StandaloneHasNodeSpecifierChecker;
-
-impl HasNodeSpecifierChecker for StandaloneHasNodeSpecifierChecker {
-  fn has_node_specifier(&self) -> bool {
-    false
   }
 }
 
@@ -438,7 +431,6 @@ pub async fn run(
     StorageKeyResolver::empty(),
     npm_resolver.clone(),
     node_resolver,
-    Box::new(StandaloneHasNodeSpecifierChecker),
     Default::default(),
     Box::new(module_loader_factory),
     root_cert_store_provider,
@@ -466,6 +458,7 @@ pub async fn run(
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable,
+      maybe_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
   );
 

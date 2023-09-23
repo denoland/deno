@@ -26,14 +26,14 @@ async function openKv(path: string) {
   return new Kv(rid, kvSymbol);
 }
 
-const millisecondsInOneWeek = 7 * 24 * 60 * 60 * 1000;
+const maxQueueDelay = 30 * 24 * 60 * 60 * 1000;
 
 function validateQueueDelay(delay: number) {
   if (delay < 0) {
     throw new TypeError("delay cannot be negative");
   }
-  if (delay > millisecondsInOneWeek) {
-    throw new TypeError("delay cannot be greater than one week");
+  if (delay > maxQueueDelay) {
+    throw new TypeError("delay cannot be greater than 30 days");
   }
   if (isNaN(delay)) {
     throw new TypeError("delay cannot be NaN");
@@ -130,12 +130,12 @@ class Kv {
     });
   }
 
-  async set(key: Deno.KvKey, value: unknown) {
+  async set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }) {
     value = serializeValue(value);
 
     const checks: Deno.AtomicCheck[] = [];
     const mutations = [
-      [key, "set", value],
+      [key, "set", value, options?.expireIn],
     ];
 
     const versionstamp = await core.opAsync(
@@ -152,7 +152,7 @@ class Kv {
   async delete(key: Deno.KvKey) {
     const checks: Deno.AtomicCheck[] = [];
     const mutations = [
-      [key, "delete", null],
+      [key, "delete", null, undefined],
     ];
 
     const result = await core.opAsync(
@@ -318,7 +318,7 @@ class AtomicOperation {
   #rid: number;
 
   #checks: [Deno.KvKey, string | null][] = [];
-  #mutations: [Deno.KvKey, string, RawValue | null][] = [];
+  #mutations: [Deno.KvKey, string, RawValue | null, number | undefined][] = [];
   #enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][] = [];
 
   constructor(rid: number) {
@@ -337,6 +337,7 @@ class AtomicOperation {
       const key = mutation.key;
       let type: string;
       let value: RawValue | null;
+      let expireIn: number | undefined = undefined;
       switch (mutation.type) {
         case "delete":
           type = "delete";
@@ -345,6 +346,10 @@ class AtomicOperation {
           }
           break;
         case "set":
+          if (typeof mutation.expireIn === "number") {
+            expireIn = mutation.expireIn;
+          }
+          /* falls through */
         case "sum":
         case "min":
         case "max":
@@ -357,33 +362,42 @@ class AtomicOperation {
         default:
           throw new TypeError("Invalid mutation type");
       }
-      this.#mutations.push([key, type, value]);
+      this.#mutations.push([key, type, value, expireIn]);
     }
     return this;
   }
 
   sum(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push([key, "sum", serializeValue(new KvU64(n))]);
+    this.#mutations.push([key, "sum", serializeValue(new KvU64(n)), undefined]);
     return this;
   }
 
   min(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push([key, "min", serializeValue(new KvU64(n))]);
+    this.#mutations.push([key, "min", serializeValue(new KvU64(n)), undefined]);
     return this;
   }
 
   max(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push([key, "max", serializeValue(new KvU64(n))]);
+    this.#mutations.push([key, "max", serializeValue(new KvU64(n)), undefined]);
     return this;
   }
 
-  set(key: Deno.KvKey, value: unknown): this {
-    this.#mutations.push([key, "set", serializeValue(value)]);
+  set(
+    key: Deno.KvKey,
+    value: unknown,
+    options?: { expireIn?: number },
+  ): this {
+    this.#mutations.push([
+      key,
+      "set",
+      serializeValue(value),
+      options?.expireIn,
+    ]);
     return this;
   }
 
   delete(key: Deno.KvKey): this {
-    this.#mutations.push([key, "delete", null]);
+    this.#mutations.push([key, "delete", null, undefined]);
     return this;
   }
 

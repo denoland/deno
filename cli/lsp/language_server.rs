@@ -8,7 +8,7 @@ use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
@@ -44,6 +44,8 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
+use super::config::ConfigSnapshot;
+use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticServerUpdateMessage;
@@ -59,6 +61,7 @@ use super::documents::UpdateDocumentConfigOptions;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
+use super::npm::CliNpmSearchApi;
 use super::parent_process_checker;
 use super::performance::Performance;
 use super::performance::PerformanceMark;
@@ -69,6 +72,7 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
 use super::urls::LspClientUrl;
@@ -93,6 +97,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
@@ -121,6 +126,8 @@ struct LspNpmServices {
   config_hash: LspNpmConfigHash,
   /// Npm's registry api.
   api: Arc<CliNpmRegistryApi>,
+  /// Npm's search api.
+  search_api: CliNpmSearchApi,
   /// Npm cache
   cache: Arc<NpmCache>,
   /// Npm resolution that is stored in memory.
@@ -152,6 +159,7 @@ pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
+  pub config: Arc<ConfigSnapshot>,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_node_resolver: Option<Arc<NodeResolver>>,
@@ -398,47 +406,32 @@ impl LanguageServer {
   }
 
   pub async fn refresh_specifiers_from_client(&self) -> bool {
-    let (client, specifiers) =
+    let (client, specifiers) = {
+      let ls = self.0.read().await;
+      let specifiers = if ls.config.client_capabilities.workspace_configuration
       {
-        let ls = self.0.read().await;
-        let specifiers =
-          if ls.config.client_capabilities.workspace_configuration {
-            let root_capacity = match &ls.config.workspace_folders {
-              Some(folder) => folder.len(),
-              None => 1,
-            };
-            let config_specifiers = ls.config.get_specifiers();
-            let mut specifiers =
-              HashMap::with_capacity(root_capacity + config_specifiers.len());
-            match &ls.config.workspace_folders {
-              Some(entry) => {
-                for (specifier, folder) in entry {
-                  specifiers.insert(
-                    specifier.clone(),
-                    LspClientUrl::new(folder.uri.clone()),
-                  );
-                }
-              }
-              None => {
-                if let Some(root_uri) = &ls.config.root_uri {
-                  specifiers.insert(
-                    root_uri.clone(),
-                    ls.url_map.normalize_specifier(root_uri).unwrap(),
-                  );
-                }
-              }
-            }
-            specifiers.extend(ls.config.get_specifiers().iter().map(|s| {
-              (s.clone(), ls.url_map.normalize_specifier(s).unwrap())
-            }));
+        let root_capacity = std::cmp::max(ls.config.workspace_folders.len(), 1);
+        let config_specifiers = ls.config.get_specifiers();
+        let mut specifiers =
+          HashMap::with_capacity(root_capacity + config_specifiers.len());
+        for (specifier, folder) in &ls.config.workspace_folders {
+          specifiers
+            .insert(specifier.clone(), LspClientUrl::new(folder.uri.clone()));
+        }
+        specifiers.extend(
+          ls.config
+            .get_specifiers()
+            .iter()
+            .map(|s| (s.clone(), ls.url_map.normalize_specifier(s).unwrap())),
+        );
 
-            Some(specifiers.into_iter().collect::<Vec<_>>())
-          } else {
-            None
-          };
-
-        (ls.client.clone(), specifiers)
+        Some(specifiers.into_iter().collect::<Vec<_>>())
+      } else {
+        None
       };
+
+      (ls.client.clone(), specifiers)
+    };
 
     let mut touched = false;
     if let Some(specifiers) = specifiers {
@@ -471,10 +464,6 @@ impl LanguageServer {
             }
           }
         }
-      }
-
-      if ls.config.update_enabled_paths() {
-        touched = true;
       }
     }
     touched
@@ -554,6 +543,8 @@ impl Inner {
       module_registries_location.clone(),
       http_client.clone(),
     );
+    let npm_search_api =
+      CliNpmSearchApi::new(module_registries.file_fetcher.clone(), None);
     let location = dir.deps_folder_path();
     let deps_http_cache = Arc::new(GlobalHttpCache::new(
       location,
@@ -610,6 +601,7 @@ impl Inner {
       npm: LspNpmServices {
         config_hash: LspNpmConfigHash(0), // this will be updated in initialize
         api: npm_api,
+        search_api: npm_search_api,
         cache: npm_cache,
         resolution: npm_resolution,
         resolver: npm_resolver,
@@ -693,7 +685,7 @@ impl Inner {
         lsp_log!("Setting Deno configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
-        } else if let Some(root_uri) = &self.config.root_uri {
+        } else if let Some(root_uri) = self.config.root_uri() {
           root_uri.join(config_str).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
           })
@@ -715,7 +707,7 @@ impl Inner {
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
-    if let Some(root_uri) = &self.config.root_uri {
+    if let Some(root_uri) = self.config.root_uri() {
       let root_path = specifier_to_file_path(root_uri)?;
       let mut checked = std::collections::HashSet::new();
       let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
@@ -739,7 +731,7 @@ impl Inner {
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
-    if let Some(root_uri) = &self.config.root_uri {
+    if let Some(root_uri) = self.config.root_uri() {
       let root_path = specifier_to_file_path(root_uri)?;
       let maybe_package_json = package_json::discover_from(
         &root_path,
@@ -823,6 +815,7 @@ impl Inner {
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
+      config: self.config.snapshot(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_node_resolver: Some(node_resolver),
@@ -838,7 +831,7 @@ impl Inner {
       lsp_log!("Setting global cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
-      } else if let Some(root_uri) = &self.config.root_uri {
+      } else if let Some(root_uri) = self.config.root_uri() {
         let root_path = specifier_to_file_path(root_uri)?;
         let cache_path = root_path.join(cache_str);
         Url::from_file_path(cache_path).map_err(|_| {
@@ -884,8 +877,7 @@ impl Inner {
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
-      .root_uri
-      .as_ref()
+      .root_uri()
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
@@ -905,6 +897,8 @@ impl Inner {
       module_registries_location.clone(),
       self.http_client.clone(),
     );
+    self.npm.search_api =
+      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone(), None);
     self.module_registries_location = module_registries_location;
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(
@@ -1064,7 +1058,7 @@ impl Inner {
             anyhow!("Bad data url for import map: {}", import_map_str)
           })?;
           Some(import_map_url)
-        } else if let Some(root_uri) = &self.config.root_uri {
+        } else if let Some(root_uri) = self.config.root_uri() {
           let root_path = specifier_to_file_path(root_uri)?;
           let import_map_path = root_path.join(&import_map_str);
           let import_map_url =
@@ -1228,7 +1222,24 @@ impl Inner {
       parent_process_checker::start(parent_pid)
     }
 
-    let capabilities = capabilities::server_capabilities(&params.capabilities);
+    // TODO(nayeemrmn): This flag exists to avoid breaking the extension for the
+    // 1.37.0 release. Eventually make this always true.
+    // See https://github.com/denoland/deno/pull/20111#issuecomment-1705776794.
+    let mut enable_builtin_commands = false;
+    if let Some(value) = &params.initialization_options {
+      if let Some(object) = value.as_object() {
+        if let Some(value) = object.get("enableBuiltinCommands") {
+          if value.as_bool() == Some(true) {
+            enable_builtin_commands = true;
+          }
+        }
+      }
+    }
+
+    let capabilities = capabilities::server_capabilities(
+      &params.capabilities,
+      enable_builtin_commands,
+    );
 
     let version = format!(
       "{} ({}, {})",
@@ -1255,19 +1266,13 @@ impl Inner {
     }
 
     {
-      // sometimes this root uri may not have a trailing slash, so force it to
-      self.config.root_uri = params
-        .root_uri
-        .map(|s| self.url_map.normalize_url(&s, LspUrlKind::Folder));
-
-      if let Some(value) = params.initialization_options {
-        self.config.set_workspace_settings(value).map_err(|err| {
-          error!("Cannot set workspace settings: {}", err);
-          LspError::internal_error()
-        })?;
+      if let Some(options) = params.initialization_options {
+        self.config.set_workspace_settings(
+          WorkspaceSettings::from_initialization_options(options),
+        );
       }
-      self.config.workspace_folders = params.workspace_folders.map(|folders| {
-        folders
+      if let Some(folders) = params.workspace_folders {
+        self.config.workspace_folders = folders
           .into_iter()
           .map(|folder| {
             (
@@ -1275,8 +1280,31 @@ impl Inner {
               folder,
             )
           })
-          .collect()
-      });
+          .collect();
+      }
+      // rootUri is deprecated by the LSP spec. If it's specified, merge it into
+      // workspace_folders.
+      if let Some(root_uri) = params.root_uri {
+        if !self
+          .config
+          .workspace_folders
+          .iter()
+          .any(|(_, f)| f.uri == root_uri)
+        {
+          let name = root_uri.path_segments().and_then(|s| s.last());
+          let name = name.unwrap_or_default().to_string();
+          self.config.workspace_folders.insert(
+            0,
+            (
+              self.url_map.normalize_url(&root_uri, LspUrlKind::Folder),
+              WorkspaceFolder {
+                uri: root_uri,
+                name,
+              },
+            ),
+          );
+        }
+      }
       self.config.update_capabilities(&params.capabilities);
     }
 
@@ -1325,7 +1353,8 @@ impl Inner {
 
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
-      enabled_urls: self.config.enabled_urls(),
+      enabled_paths: self.config.get_enabled_paths(),
+      disabled_paths: self.config.get_disabled_paths(),
       document_preload_limit: self
         .config
         .workspace_settings()
@@ -1443,24 +1472,26 @@ impl Inner {
 
   async fn did_change_configuration(
     &mut self,
-    client_workspace_config: Option<Value>,
+    client_workspace_config: Option<WorkspaceSettings>,
     params: DidChangeConfigurationParams,
   ) {
     let maybe_config =
       if self.config.client_capabilities.workspace_configuration {
         client_workspace_config
       } else {
-        params
-          .settings
-          .as_object()
-          .and_then(|settings| settings.get(SETTINGS_SECTION))
-          .cloned()
+        params.settings.as_object().map(|settings| {
+          let deno =
+            serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
+          let javascript =
+            serde_json::to_value(settings.get("javascript")).unwrap();
+          let typescript =
+            serde_json::to_value(settings.get("typescript")).unwrap();
+          WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
+        })
       };
 
-    if let Some(value) = maybe_config {
-      if let Err(err) = self.config.set_workspace_settings(value) {
-        error!("failed to update settings: {}", err);
-      }
+    if let Some(settings) = maybe_config {
+      self.config.set_workspace_settings(settings);
     }
 
     self.update_debug_flag();
@@ -1627,18 +1658,16 @@ impl Inner {
         )
       })
       .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
-    if let Some(current_folders) = &self.config.workspace_folders {
-      for (specifier, folder) in current_folders {
-        if !params.event.removed.is_empty()
-          && params.event.removed.iter().any(|f| f.uri == folder.uri)
-        {
-          continue;
-        }
-        workspace_folders.push((specifier.clone(), folder.clone()));
+    for (specifier, folder) in &self.config.workspace_folders {
+      if !params.event.removed.is_empty()
+        && params.event.removed.iter().any(|f| f.uri == folder.uri)
+      {
+        continue;
       }
+      workspace_folders.push((specifier.clone(), folder.clone()));
     }
 
-    self.config.workspace_folders = Some(workspace_folders);
+    self.config.workspace_folders = workspace_folders;
   }
 
   async fn document_symbol(
@@ -1704,7 +1733,7 @@ impl Inner {
     }
 
     // spawn a blocking task to allow doing other work while this is occurring
-    let format_result = deno_core::task::spawn_blocking({
+    let format_result = deno_core::unsync::spawn_blocking({
       let fmt_options = self.fmt_options.options.clone();
       let document = document.clone();
       move || {
@@ -1871,7 +1900,7 @@ impl Inner {
             }
             _ => false,
           },
-          "deno-lint" => matches!(&d.code, Some(_)),
+          "deno-lint" => d.code.is_some(),
           "deno" => diagnostics::DenoDiagnostic::is_fixable(d),
           _ => false,
         },
@@ -1899,6 +1928,14 @@ impl Inner {
                 line_index.offset_tsc(diagnostic.range.start)?
                   ..line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
+                (&self.fmt_options.options).into(),
+                tsc::UserPreferences {
+                  quote_preference: Some((&self.fmt_options.options).into()),
+                  ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+                    self.config.workspace_settings(),
+                    &specifier,
+                  )
+                },
               )
               .await;
             for action in actions {
@@ -1956,6 +1993,13 @@ impl Inner {
         specifier.clone(),
         line_index.offset_tsc(params.range.start)?
           ..line_index.offset_tsc(params.range.end)?,
+        Some(tsc::UserPreferences {
+          quote_preference: Some((&self.fmt_options.options).into()),
+          ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+            self.config.workspace_settings(),
+            &specifier,
+          )
+        }),
         only,
       )
       .await?;
@@ -2007,7 +2051,18 @@ impl Inner {
         })?;
       let combined_code_actions = self
         .ts_server
-        .get_combined_code_fix(self.snapshot(), &code_action_data)
+        .get_combined_code_fix(
+          self.snapshot(),
+          &code_action_data,
+          (&self.fmt_options.options).into(),
+          tsc::UserPreferences {
+            quote_preference: Some((&self.fmt_options.options).into()),
+            ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+              self.config.workspace_settings(),
+              &code_action_data.specifier,
+            )
+          },
+        )
         .await?;
       if combined_code_actions.commands.is_some() {
         error!("Deno does not support code actions with commands.");
@@ -2046,20 +2101,22 @@ impl Inner {
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
-          action_data.specifier,
+          action_data.specifier.clone(),
+          (&self.fmt_options.options).into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name,
           action_data.action_name,
+          Some(tsc::UserPreferences {
+            quote_preference: Some((&self.fmt_options.options).into()),
+            ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+              self.config.workspace_settings(),
+              &action_data.specifier,
+            )
+          }),
         )
         .await?;
-      code_action.edit = refactor_edit_info
-        .to_workspace_edit(self)
-        .await
-        .map_err(|err| {
-          error!("Unable to convert changes to edits: {}", err);
-          LspError::internal_error()
-        })?;
+      code_action.edit = refactor_edit_info.to_workspace_edit(self).await?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -2343,6 +2400,7 @@ impl Inner {
       &self.config.snapshot(),
       &self.client,
       &self.module_registries,
+      &self.npm.search_api,
       &self.documents,
       self.maybe_import_map.clone(),
     )
@@ -2371,6 +2429,7 @@ impl Inner {
           position,
           tsc::GetCompletionsAtPositionOptions {
             user_preferences: tsc::UserPreferences {
+              quote_preference: Some((&self.fmt_options.options).into()),
               allow_incomplete_completions: Some(true),
               allow_text_changes_in_new_files: Some(
                 specifier.scheme() == "file",
@@ -2380,9 +2439,11 @@ impl Inner {
               ),
               include_automatic_optional_chain_completions: Some(true),
               include_completions_for_import_statements: Some(true),
-              include_completions_for_module_exports: Some(
-                self.config.workspace_settings().suggest.auto_imports,
-              ),
+              include_completions_for_module_exports: self
+                .config
+                .workspace_settings()
+                .language_settings_for_specifier(&specifier)
+                .map(|s| s.suggest.auto_imports),
               include_completions_with_object_literal_method_snippets: Some(
                 use_snippets,
               ),
@@ -2402,15 +2463,23 @@ impl Inner {
             trigger_character,
             trigger_kind,
           },
+          (&self.fmt_options.options).into(),
         )
         .await;
 
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
           line_index,
-          &self.config.workspace_settings().suggest,
+          &self
+            .config
+            .workspace_settings()
+            .language_settings_for_specifier(&specifier)
+            .cloned()
+            .unwrap_or_default()
+            .suggest,
           &specifier,
           position,
+          self,
         );
         Some(results)
       } else {
@@ -2436,9 +2505,17 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
+        let mut args = GetCompletionDetailsArgs {
+          format_code_settings: Some((&self.fmt_options.options).into()),
+          ..data.into()
+        };
+        args
+          .preferences
+          .get_or_insert(Default::default())
+          .quote_preference = Some((&self.fmt_options.options).into());
         let result = self
           .ts_server
-          .get_completion_details(self.snapshot(), data.into())
+          .get_completion_details(self.snapshot(), args)
           .await;
         match result {
           Ok(maybe_completion_info) => {
@@ -2592,8 +2669,7 @@ impl Inner {
 
     let maybe_root_path_owned = self
       .config
-      .root_uri
-      .as_ref()
+      .root_uri()
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
@@ -2636,8 +2712,7 @@ impl Inner {
 
     let maybe_root_path_owned = self
       .config
-      .root_uri
-      .as_ref()
+      .root_uri()
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
@@ -2685,8 +2760,7 @@ impl Inner {
     let response = if let Some(one_or_many) = maybe_one_or_many {
       let maybe_root_path_owned = self
         .config
-        .root_uri
-        .as_ref()
+        .root_uri()
         .and_then(|uri| specifier_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
@@ -2803,9 +2877,7 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&specifier)
-      || !self.config.specifier_enabled(&specifier)
-    {
+    if !self.is_diagnosable(&specifier) {
       return Ok(None);
     }
 
@@ -2840,9 +2912,7 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&specifier)
-      || !self.config.specifier_enabled(&specifier)
-    {
+    if !self.is_diagnosable(&specifier) {
       return Ok(None);
     }
 
@@ -2922,6 +2992,38 @@ impl Inner {
     }
   }
 
+  async fn will_rename_files(
+    &self,
+    params: RenameFilesParams,
+  ) -> LspResult<Option<WorkspaceEdit>> {
+    let mut changes = vec![];
+    for rename in params.files {
+      changes.extend(
+        self
+          .ts_server
+          .get_edits_for_file_rename(
+            self.snapshot(),
+            self.url_map.normalize_url(
+              &resolve_url(&rename.old_uri).unwrap(),
+              LspUrlKind::File,
+            ),
+            self.url_map.normalize_url(
+              &resolve_url(&rename.new_uri).unwrap(),
+              LspUrlKind::File,
+            ),
+            (&self.fmt_options.options).into(),
+            tsc::UserPreferences {
+              allow_text_changes_in_new_files: Some(true),
+              quote_preference: Some((&self.fmt_options.options).into()),
+              ..Default::default()
+            },
+          )
+          .await?,
+      );
+    }
+    file_text_changes_to_workspace_edit(&changes, self)
+  }
+
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -2982,6 +3084,34 @@ impl Inner {
 
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for LanguageServer {
+  async fn execute_command(
+    &self,
+    params: ExecuteCommandParams,
+  ) -> LspResult<Option<Value>> {
+    if params.command == "deno.cache" {
+      let mut arguments = params.arguments.into_iter();
+      let uris = serde_json::to_value(arguments.next()).unwrap();
+      let uris: Vec<Url> = serde_json::from_value(uris)
+        .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      let referrer = serde_json::to_value(arguments.next()).unwrap();
+      let referrer: Url = serde_json::from_value(referrer)
+        .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      return self
+        .cache_request(Some(
+          serde_json::to_value(lsp_custom::CacheParams {
+            referrer: TextDocumentIdentifier { uri: referrer },
+            uris: uris
+              .into_iter()
+              .map(|uri| TextDocumentIdentifier { uri })
+              .collect(),
+          })
+          .expect("well formed json"),
+        ))
+        .await;
+    }
+    Ok(None)
+  }
+
   async fn initialize(
     &self,
     params: InitializeParams,
@@ -2992,7 +3122,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn initialized(&self, _: InitializedParams) {
-    let mut maybe_registration = None;
+    let mut registrations = Vec::with_capacity(2);
     let client = {
       let mut ls = self.0.write().await;
       if ls
@@ -3003,19 +3133,33 @@ impl tower_lsp::LanguageServer for LanguageServer {
         // we are going to watch all the JSON files in the workspace, and the
         // notification handler will pick up any of the changes of those files we
         // are interested in.
-        let watch_registration_options =
-          DidChangeWatchedFilesRegistrationOptions {
-            watchers: vec![FileSystemWatcher {
-              glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
-              kind: Some(WatchKind::Change),
-            }],
-          };
-        maybe_registration = Some(Registration {
+        let options = DidChangeWatchedFilesRegistrationOptions {
+          watchers: vec![FileSystemWatcher {
+            glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
+            kind: None,
+          }],
+        };
+        registrations.push(Registration {
           id: "workspace/didChangeWatchedFiles".to_string(),
           method: "workspace/didChangeWatchedFiles".to_string(),
-          register_options: Some(
-            serde_json::to_value(watch_registration_options).unwrap(),
-          ),
+          register_options: Some(serde_json::to_value(options).unwrap()),
+        });
+      }
+      if ls.config.client_capabilities.workspace_will_rename_files {
+        let options = FileOperationRegistrationOptions {
+          filters: vec![FileOperationFilter {
+            scheme: Some("file".to_string()),
+            pattern: FileOperationPattern {
+              glob: "**/*".to_string(),
+              matches: None,
+              options: None,
+            },
+          }],
+        };
+        registrations.push(Registration {
+          id: "workspace/willRenameFiles".to_string(),
+          method: "workspace/willRenameFiles".to_string(),
+          register_options: Some(serde_json::to_value(options).unwrap()),
         });
       }
 
@@ -3023,14 +3167,14 @@ impl tower_lsp::LanguageServer for LanguageServer {
         let test_server = testing::TestServer::new(
           ls.client.clone(),
           ls.performance.clone(),
-          ls.config.root_uri.clone(),
+          ls.config.root_uri().cloned(),
         );
         ls.maybe_testing_server = Some(test_server);
       }
       ls.client.clone()
     };
 
-    if let Some(registration) = maybe_registration {
+    for registration in registrations {
       if let Err(err) = client
         .when_outside_lsp_lock()
         .register_capability(vec![registration])
@@ -3064,7 +3208,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       return;
     }
 
-    let (client, client_uri, specifier, had_specifier_settings) = {
+    let (client, client_uri, specifier, should_get_specifier_settings) = {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
       let client_uri = LspClientUrl::new(params.text_document.uri.clone());
@@ -3072,24 +3216,25 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .url_map
         .normalize_url(client_uri.as_url(), LspUrlKind::File);
       let document = inner.did_open(&specifier, params).await;
-      let has_specifier_settings =
-        inner.config.has_specifier_settings(&specifier);
+      let should_get_specifier_settings =
+        !inner.config.has_specifier_settings(&specifier)
+          && inner.config.client_capabilities.workspace_configuration;
       if document.is_diagnosable() {
         inner.refresh_npm_specifiers().await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings
-        if has_specifier_settings {
+        if !should_get_specifier_settings {
           inner.send_diagnostics_update();
           inner.send_testing_update();
         }
       }
-      (client, client_uri, specifier, has_specifier_settings)
+      (client, client_uri, specifier, should_get_specifier_settings)
     };
 
     // retrieve the specifier settings outside the lock if
     // they haven't been asked for yet
-    if !had_specifier_settings {
+    if should_get_specifier_settings {
       let response = client
         .when_outside_lsp_lock()
         .specifier_configuration(&client_uri)
@@ -3099,7 +3244,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
         Ok(specifier_settings) => {
           ls.config
             .set_specifier_settings(specifier.clone(), specifier_settings);
-          ls.config.update_enabled_paths();
         }
         Err(err) => {
           error!("{}", err);
@@ -3162,7 +3306,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .workspace_configuration()
         .await;
       match config_response {
-        Ok(value) => Some(value),
+        Ok(settings) => Some(settings),
         Err(err) => {
           error!("{}", err);
           None
@@ -3364,6 +3508,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.0.read().await.signature_help(params).await
   }
 
+  async fn will_rename_files(
+    &self,
+    params: RenameFilesParams,
+  ) -> LspResult<Option<WorkspaceEdit>> {
+    self.0.read().await.will_rename_files(params).await
+  }
+
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -3472,7 +3623,7 @@ impl Inner {
     let workspace_settings = self.config.workspace_settings();
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !workspace_settings.enabled_inlay_hints()
+      || !workspace_settings.enabled_inlay_hints(&specifier)
     {
       return Ok(None);
     }
@@ -3491,9 +3642,15 @@ impl Inner {
       .ts_server
       .provide_inlay_hints(
         self.snapshot(),
-        specifier,
+        specifier.clone(),
         text_span,
-        workspace_settings.into(),
+        tsc::UserPreferences {
+          quote_preference: Some((&self.fmt_options.options).into()),
+          ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+            workspace_settings,
+            &specifier,
+          )
+        },
       )
       .await?;
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {

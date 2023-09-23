@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
@@ -9,7 +8,6 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
-  _skipInternalInit,
   CloseEvent,
   defineEventHandler,
   dispatch,
@@ -47,8 +45,7 @@ const {
   SymbolFor,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
-const op_ws_check_permission_and_cancel_handle =
-  core.ops.op_ws_check_permission_and_cancel_handle;
+const { op_ws_check_permission_and_cancel_handle } = core.ops;
 const {
   op_ws_create,
   op_ws_close,
@@ -450,7 +447,6 @@ class WebSocket extends EventTarget {
           const event = new MessageEvent("message", {
             data,
             origin: this[_url],
-            [_skipInternalInit]: true,
           });
           setIsTrusted(event, true);
           dispatch(this, event);

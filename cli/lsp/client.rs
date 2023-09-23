@@ -7,14 +7,14 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
 use crate::lsp::repl::get_repl_workspace_settings;
 
 use super::config::SpecifierSettings;
+use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
@@ -148,7 +148,9 @@ impl OutsideLockClient {
     }
   }
 
-  pub async fn workspace_configuration(&self) -> Result<Value, AnyError> {
+  pub async fn workspace_configuration(
+    &self,
+  ) -> Result<WorkspaceSettings, AnyError> {
     self.0.workspace_configuration().await
   }
 
@@ -186,7 +188,9 @@ trait ClientTrait: Send + Sync {
     &self,
     uris: Vec<lsp::Url>,
   ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>;
-  async fn workspace_configuration(&self) -> Result<Value, AnyError>;
+  async fn workspace_configuration(
+    &self,
+  ) -> Result<WorkspaceSettings, AnyError>;
   async fn show_message(&self, message_type: lsp::MessageType, text: String);
   async fn register_capability(
     &self,
@@ -284,19 +288,36 @@ impl ClientTrait for TowerClient {
     )
   }
 
-  async fn workspace_configuration(&self) -> Result<Value, AnyError> {
+  async fn workspace_configuration(
+    &self,
+  ) -> Result<WorkspaceSettings, AnyError> {
     let config_response = self
       .0
-      .configuration(vec![ConfigurationItem {
-        scope_uri: None,
-        section: Some(SETTINGS_SECTION.to_string()),
-      }])
+      .configuration(vec![
+        ConfigurationItem {
+          scope_uri: None,
+          section: Some(SETTINGS_SECTION.to_string()),
+        },
+        ConfigurationItem {
+          scope_uri: None,
+          section: Some("javascript".to_string()),
+        },
+        ConfigurationItem {
+          scope_uri: None,
+          section: Some("typescript".to_string()),
+        },
+      ])
       .await;
     match config_response {
-      Ok(value_vec) => match value_vec.get(0).cloned() {
-        Some(value) => Ok(value),
-        None => bail!("Missing response workspace configuration."),
-      },
+      Ok(configs) => {
+        let mut configs = configs.into_iter();
+        let deno = serde_json::to_value(configs.next()).unwrap();
+        let javascript = serde_json::to_value(configs.next()).unwrap();
+        let typescript = serde_json::to_value(configs.next()).unwrap();
+        Ok(WorkspaceSettings::from_raw_settings(
+          deno, javascript, typescript,
+        ))
+      }
       Err(err) => {
         bail!("Error getting workspace configuration: {}", err)
       }
@@ -359,7 +380,7 @@ impl ClientTrait for ReplClient {
       .into_iter()
       .map(|_| {
         Ok(SpecifierSettings {
-          enable: true,
+          enable: Some(true),
           ..Default::default()
         })
       })
@@ -367,8 +388,10 @@ impl ClientTrait for ReplClient {
     Ok(settings)
   }
 
-  async fn workspace_configuration(&self) -> Result<Value, AnyError> {
-    Ok(serde_json::to_value(get_repl_workspace_settings()).unwrap())
+  async fn workspace_configuration(
+    &self,
+  ) -> Result<WorkspaceSettings, AnyError> {
+    Ok(get_repl_workspace_settings())
   }
 
   async fn show_message(

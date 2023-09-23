@@ -52,6 +52,7 @@ const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
 const _url = Symbol("url");
 const _method = Symbol("method");
+const _brand = webidl.brand;
 
 /**
  * @param {(() => string)[]} urlList
@@ -202,31 +203,29 @@ function cloneInnerRequest(request, skipBody = false) {
   };
 }
 
-/**
- * @param {string} m
- * @returns {boolean}
- */
-function isKnownMethod(m) {
-  return (
-    m === "DELETE" ||
-    m === "GET" ||
-    m === "HEAD" ||
-    m === "OPTIONS" ||
-    m === "POST" ||
-    m === "PUT"
-  );
-}
+// method => normalized method
+const KNOWN_METHODS = {
+  "DELETE": "DELETE",
+  "delete": "DELETE",
+  "GET": "GET",
+  "get": "GET",
+  "HEAD": "HEAD",
+  "head": "HEAD",
+  "OPTIONS": "OPTIONS",
+  "options": "OPTIONS",
+  "PATCH": "PATCH",
+  "patch": "PATCH",
+  "POST": "POST",
+  "post": "POST",
+  "PUT": "PUT",
+  "put": "PUT",
+};
+
 /**
  * @param {string} m
  * @returns {string}
  */
 function validateAndNormalizeMethod(m) {
-  // Fast path for well-known methods
-  if (isKnownMethod(m)) {
-    return m;
-  }
-
-  // Regular path
   if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid.");
   }
@@ -277,6 +276,11 @@ class Request {
    * @param {RequestInit} init
    */
   constructor(input, init = {}) {
+    if (input === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Request'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters["RequestInfo_DOMString"](
@@ -286,7 +290,7 @@ class Request {
     );
     init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
 
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
 
     /** @type {InnerRequest} */
     let request;
@@ -325,9 +329,10 @@ class Request {
 
     // 25.
     if (init.method !== undefined) {
-      let method = init.method;
-      method = validateAndNormalizeMethod(method);
-      request.method = method;
+      const method = init.method;
+      // fast path: check for known methods
+      request.method = KNOWN_METHODS[method] ??
+        validateAndNormalizeMethod(method);
     }
 
     // 26.
@@ -366,20 +371,16 @@ class Request {
     this[_headers] = headersFromHeaderList(request.headerList, "request");
 
     // 32.
-    if (ObjectKeys(init).length > 0) {
-      let headers = ArrayPrototypeSlice(
-        headerListFromHeaders(this[_headers]),
+    if (init.headers || ObjectKeys(init).length > 0) {
+      const headerList = headerListFromHeaders(this[_headers]);
+      const headers = init.headers ?? ArrayPrototypeSlice(
+        headerList,
         0,
-        headerListFromHeaders(this[_headers]).length,
+        headerList.length,
       );
-      if (init.headers !== undefined) {
-        headers = init.headers;
+      if (headerList.length !== 0) {
+        ArrayPrototypeSplice(headerList, 0, headerList.length);
       }
-      ArrayPrototypeSplice(
-        headerListFromHeaders(this[_headers]),
-        0,
-        headerListFromHeaders(this[_headers]).length,
-      );
       fillHeaders(this[_headers], headers);
     }
 
@@ -559,7 +560,7 @@ function toInnerRequest(request) {
  * @returns {Request}
  */
 function fromInnerRequest(inner, signal, guard) {
-  const request = webidl.createBranded(Request);
+  const request = new Request(_brand);
   request[_request] = inner;
   request[_signal] = signal;
   request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);

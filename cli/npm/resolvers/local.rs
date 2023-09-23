@@ -24,8 +24,8 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
@@ -37,12 +37,11 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
-use deno_semver::npm::NpmPackageNv;
+use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::npm::cache::mixed_case_package_name_encode;
-use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::NpmCache;
 use crate::util::fs::copy_dir_recursive;
@@ -110,7 +109,9 @@ impl LocalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(relative_url) = self.root_node_modules_url.make_relative(specifier) else {
+    let Some(relative_url) =
+      self.root_node_modules_url.make_relative(specifier)
+    else {
       return Ok(None);
     };
     if relative_url.starts_with("../") {
@@ -230,7 +231,9 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
-    let Some(folder_path) = self.resolve_package_folder_from_specifier(specifier)? else {
+    let Some(folder_path) =
+      self.resolve_package_folder_from_specifier(specifier)?
+    else {
       return Ok(None);
     };
     let folder_name = folder_path.parent().unwrap().to_string_lossy();
@@ -296,14 +299,8 @@ async fn sync_resolution_with_fs(
   //
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
   // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
-  let sync_download = should_sync_download();
-  let mut package_partitions =
+  let package_partitions =
     snapshot.all_system_packages_partitioned(system_info);
-  if sync_download {
-    // we're running the tests not with --quiet
-    // and we want the output to be deterministic
-    package_partitions.packages.sort_by(|a, b| a.id.cmp(&b.id));
-  }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
@@ -359,11 +356,7 @@ async fn sync_resolution_with_fs(
         drop(pb_guard); // explicit for clarity
         Ok(())
       });
-      if sync_download {
-        handle.await??;
-      } else {
-        handles.push(handle);
-      }
+      handles.push(handle);
     }
   }
 
@@ -657,7 +650,7 @@ fn get_package_folder_id_from_folder_name(
   };
   let version = deno_semver::Version::parse_from_npm(raw_version).ok()?;
   Some(NpmPackageCacheFolderId {
-    nv: NpmPackageNv { name, version },
+    nv: PackageNv { name, version },
     copy_index,
   })
 }
@@ -726,7 +719,7 @@ fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
 #[cfg(test)]
 mod test {
   use deno_npm::NpmPackageCacheFolderId;
-  use deno_semver::npm::NpmPackageNv;
+  use deno_semver::package::PackageNv;
   use test_util::TempDir;
 
   use super::*;
@@ -736,20 +729,14 @@ mod test {
     let cases = vec![
       (
         NpmPackageCacheFolderId {
-          nv: NpmPackageNv {
-            name: "@types/foo".to_string(),
-            version: deno_semver::Version::parse_standard("1.2.3").unwrap(),
-          },
+          nv: PackageNv::from_str("@types/foo@1.2.3").unwrap(),
           copy_index: 1,
         },
         "@types+foo@1.2.3_1".to_string(),
       ),
       (
         NpmPackageCacheFolderId {
-          nv: NpmPackageNv {
-            name: "JSON".to_string(),
-            version: deno_semver::Version::parse_standard("3.2.1").unwrap(),
-          },
+          nv: PackageNv::from_str("JSON@3.2.1").unwrap(),
           copy_index: 0,
         },
         "_jjju6tq@3.2.1".to_string(),

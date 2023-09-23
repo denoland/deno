@@ -1,0 +1,10 @@
+Check [WILDCARD]/cli/tests/testdata/test/ops_sanitizer_step_leak.ts
+running 1 test from ./cli/tests/testdata/test/ops_sanitizer_step_leak.ts
+timeout ...
+  step ... ok [WILDCARD]
+------- output -------
+done
+----- output end -----
+timeout ... ok [WILDCARD]
+
+ok | 1 passed (1 step) | 0 failed [WILDCARD]

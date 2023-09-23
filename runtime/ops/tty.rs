@@ -1,10 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Error;
+use std::io::IsTerminal;
 
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
+use deno_core::ResourceHandle;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -70,7 +72,7 @@ fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
   original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
 }
 
-#[op(fast)]
+#[op2(fast)]
 fn op_stdin_set_raw(
   state: &mut OpState,
   is_raw: bool,
@@ -162,38 +164,33 @@ fn op_stdin_set_raw(
   }
 }
 
-#[op(fast)]
-fn op_isatty(
-  state: &mut OpState,
-  rid: u32,
-  out: &mut [u8],
-) -> Result<(), AnyError> {
-  let raw_fd = state.resource_table.get_fd(rid)?;
-  #[cfg(windows)]
-  {
-    use winapi::shared::minwindef::FALSE;
-    use winapi::um::consoleapi;
-
-    let handle = raw_fd;
-    let mut test_mode: DWORD = 0;
-    // If I cannot get mode out of console, it is not a console.
-    out[0] =
-      // SAFETY: Windows API
-      unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE }
-        as u8;
-  }
-  #[cfg(unix)]
-  {
-    // SAFETY: Posix API
-    out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
-  }
-  Ok(())
+#[op2(fast)]
+fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
+  let handle = state.resource_table.get_handle(rid)?;
+  // TODO(mmastrac): this can migrate to the deno_core implementation when it lands
+  Ok(match handle {
+    ResourceHandle::Fd(fd) if handle.is_valid() => {
+      #[cfg(windows)]
+      {
+        // SAFETY: The resource remains open for the for the duration of borrow_raw
+        unsafe {
+          std::os::windows::io::BorrowedHandle::borrow_raw(fd).is_terminal()
+        }
+      }
+      #[cfg(unix)]
+      {
+        // SAFETY: The resource remains open for the for the duration of borrow_raw
+        unsafe { std::os::fd::BorrowedFd::borrow_raw(fd).is_terminal() }
+      }
+    }
+    _ => false,
+  })
 }
 
-#[op(fast)]
+#[op2(fast)]
 fn op_console_size(
   state: &mut OpState,
-  result: &mut [u32],
+  #[buffer] result: &mut [u32],
 ) -> Result<(), AnyError> {
   fn check_console_size(
     state: &mut OpState,

@@ -8,10 +8,11 @@ use crate::tools::test::TestStepDescription;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::OpMetrics;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
@@ -19,6 +20,9 @@ use deno_runtime::permissions::PermissionsContainer;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
+use std::cell::Ref;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
@@ -35,6 +39,9 @@ deno_core::extension!(deno_test,
     op_register_test,
     op_register_test_step,
     op_dispatch_test_event,
+    op_test_op_sanitizer_collect,
+    op_test_op_sanitizer_finish,
+    op_test_op_sanitizer_report,
   ],
   options = {
     sender: TestEventSender,
@@ -42,16 +49,18 @@ deno_core::extension!(deno_test,
   state = |state, options| {
     state.put(options.sender);
     state.put(TestContainer::default());
+    state.put(TestOpSanitizers::default());
   },
 );
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
-  args: ChildPermissionsArg,
+  #[serde] args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
@@ -73,10 +82,10 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
-#[op]
+#[op2]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
-  token: Uuid,
+  #[serde] token: Uuid,
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -113,11 +122,12 @@ struct TestRegisterResult {
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[op(v8)]
+#[op2]
+#[serde]
 fn op_register_test<'a>(
   scope: &mut v8::HandleScope<'a>,
   state: &mut OpState,
-  info: TestInfo<'a>,
+  #[serde] info: TestInfo<'a>,
 ) -> Result<TestRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
@@ -164,10 +174,11 @@ struct TestStepInfo {
   root_name: String,
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_register_test_step(
   state: &mut OpState,
-  info: TestStepInfo,
+  #[serde] info: TestStepInfo,
 ) -> Result<TestRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
@@ -186,10 +197,10 @@ fn op_register_test_step(
   Ok(TestRegisterResult { id, origin })
 }
 
-#[op]
+#[op2]
 fn op_dispatch_test_event(
   state: &mut OpState,
-  event: TestEvent,
+  #[serde] event: TestEvent,
 ) -> Result<(), AnyError> {
   assert!(
     matches!(event, TestEvent::StepWait(_) | TestEvent::StepResult(..)),
@@ -198,4 +209,190 @@ fn op_dispatch_test_event(
   let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(event).ok();
   Ok(())
+}
+
+#[derive(Default)]
+struct TestOpSanitizers(HashMap<u32, TestOpSanitizerState>);
+
+enum TestOpSanitizerState {
+  Collecting { metrics: Vec<OpMetrics> },
+  Finished { report: Vec<TestOpSanitizerReport> },
+}
+
+fn try_collect_metrics(
+  state: &OpState,
+  force: bool,
+  op_id_host_recv_msg: usize,
+  op_id_host_recv_ctrl: usize,
+) -> Result<Ref<Vec<OpMetrics>>, bool> {
+  let metrics = state.tracker.per_op();
+  for op_metric in &*metrics {
+    let has_pending_ops = op_metric.ops_dispatched_async
+      + op_metric.ops_dispatched_async_unref
+      > op_metric.ops_completed_async + op_metric.ops_completed_async_unref;
+    if has_pending_ops && !force {
+      let host_recv_msg = metrics
+        .get(op_id_host_recv_msg)
+        .map(|op_metric| {
+          op_metric.ops_dispatched_async + op_metric.ops_dispatched_async_unref
+            > op_metric.ops_completed_async
+              + op_metric.ops_completed_async_unref
+        })
+        .unwrap_or(false);
+      let host_recv_ctrl = metrics
+        .get(op_id_host_recv_ctrl)
+        .map(|op_metric| {
+          op_metric.ops_dispatched_async + op_metric.ops_dispatched_async_unref
+            > op_metric.ops_completed_async
+              + op_metric.ops_completed_async_unref
+        })
+        .unwrap_or(false);
+      return Err(host_recv_msg || host_recv_ctrl);
+    }
+  }
+  Ok(metrics)
+}
+
+#[op2(fast)]
+#[smi]
+// Returns:
+// 0 - success
+// 1 - for more accurate results, spin event loop and call again with force=true
+// 2 - for more accurate results, delay(1ms) and call again with force=true
+fn op_test_op_sanitizer_collect(
+  state: &mut OpState,
+  #[smi] id: u32,
+  force: bool,
+  #[smi] op_id_host_recv_msg: usize,
+  #[smi] op_id_host_recv_ctrl: usize,
+) -> Result<u8, AnyError> {
+  let metrics = {
+    let metrics = match try_collect_metrics(
+      state,
+      force,
+      op_id_host_recv_msg,
+      op_id_host_recv_ctrl,
+    ) {
+      Ok(metrics) => metrics,
+      Err(false) => {
+        return Ok(1);
+      }
+      Err(true) => {
+        return Ok(2);
+      }
+    };
+    metrics.clone()
+  };
+  let op_sanitizers = state.borrow_mut::<TestOpSanitizers>();
+  match op_sanitizers.0.entry(id) {
+    Entry::Vacant(entry) => {
+      entry.insert(TestOpSanitizerState::Collecting { metrics });
+    }
+    Entry::Occupied(_) => {
+      return Err(generic_error(format!(
+        "Test metrics already being collected for test id {id}",
+      )));
+    }
+  }
+  Ok(0)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TestOpSanitizerReport {
+  id: usize,
+  diff: i64,
+}
+
+#[op2(fast)]
+#[smi]
+// Returns:
+// 0 - sanitizer finished with no pending ops
+// 1 - for more accurate results, spin event loop and call again with force=true
+// 2 - for more accurate results, delay(1ms) and call again with force=true
+// 3 - sanitizer finished with pending ops, collect the report with op_test_op_sanitizer_report
+fn op_test_op_sanitizer_finish(
+  state: &mut OpState,
+  #[smi] id: u32,
+  force: bool,
+  #[smi] op_id_host_recv_msg: usize,
+  #[smi] op_id_host_recv_ctrl: usize,
+) -> Result<u8, AnyError> {
+  let report = {
+    let after_metrics = match try_collect_metrics(
+      state,
+      force,
+      op_id_host_recv_msg,
+      op_id_host_recv_ctrl,
+    ) {
+      Ok(metrics) => metrics,
+      Err(false) => {
+        return Ok(1);
+      }
+      Err(true) => {
+        return Ok(2);
+      }
+    };
+
+    let op_sanitizers = state.borrow::<TestOpSanitizers>();
+    let before_metrics = match op_sanitizers.0.get(&id) {
+      Some(TestOpSanitizerState::Collecting { metrics }) => metrics,
+      _ => {
+        return Err(generic_error(format!(
+          "Metrics not collected before for test id {id}",
+        )));
+      }
+    };
+    let mut report = vec![];
+
+    for (id, (before, after)) in
+      before_metrics.iter().zip(after_metrics.iter()).enumerate()
+    {
+      let async_pending_before = before.ops_dispatched_async
+        + before.ops_dispatched_async_unref
+        - before.ops_completed_async
+        - before.ops_completed_async_unref;
+      let async_pending_after = after.ops_dispatched_async
+        + after.ops_dispatched_async_unref
+        - after.ops_completed_async
+        - after.ops_completed_async_unref;
+      let diff = async_pending_after as i64 - async_pending_before as i64;
+      if diff != 0 {
+        report.push(TestOpSanitizerReport { id, diff });
+      }
+    }
+
+    report
+  };
+
+  let op_sanitizers = state.borrow_mut::<TestOpSanitizers>();
+
+  if report.is_empty() {
+    op_sanitizers
+      .0
+      .remove(&id)
+      .expect("TestOpSanitizerState::Collecting");
+    Ok(0)
+  } else {
+    op_sanitizers
+      .0
+      .insert(id, TestOpSanitizerState::Finished { report })
+      .expect("TestOpSanitizerState::Collecting");
+    Ok(3)
+  }
+}
+
+#[op2]
+#[serde]
+fn op_test_op_sanitizer_report(
+  state: &mut OpState,
+  #[smi] id: u32,
+) -> Result<Vec<TestOpSanitizerReport>, AnyError> {
+  let op_sanitizers = state.borrow_mut::<TestOpSanitizers>();
+  match op_sanitizers.0.remove(&id) {
+    Some(TestOpSanitizerState::Finished { report }) => Ok(report),
+    _ => Err(generic_error(format!(
+      "Metrics not finished collecting for test id {id}",
+    ))),
+  }
 }

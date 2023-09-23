@@ -25,7 +25,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_graph::source::Resolver;
-use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
@@ -117,13 +116,13 @@ pub fn result_to_evaluation_output(
   }
 }
 
-struct TsEvaluateResponse {
-  ts_code: String,
-  value: cdp::EvaluateResponse,
+#[derive(Debug)]
+pub struct TsEvaluateResponse {
+  pub ts_code: String,
+  pub value: cdp::EvaluateResponse,
 }
 
 pub struct ReplSession {
-  has_node_modules_dir: bool,
   npm_resolver: Arc<CliNpmResolver>,
   resolver: Arc<CliGraphResolver>,
   pub worker: MainWorker,
@@ -131,7 +130,6 @@ pub struct ReplSession {
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
   pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
-  has_initialized_node_runtime: bool,
   referrer: ModuleSpecifier,
 }
 
@@ -183,14 +181,12 @@ impl ReplSession {
         .unwrap();
 
     let mut repl_session = ReplSession {
-      has_node_modules_dir: cli_options.has_node_modules_dir(),
       npm_resolver,
       resolver,
       worker,
       session,
       context_id,
       language_server,
-      has_initialized_node_runtime: false,
       referrer,
       notifications: Rc::new(RefCell::new(notification_rx)),
     };
@@ -310,7 +306,7 @@ impl ReplSession {
     result_to_evaluation_output(result)
   }
 
-  async fn evaluate_line_with_object_wrapping(
+  pub async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
@@ -400,29 +396,24 @@ impl ReplSession {
     Ok(())
   }
 
-  pub async fn get_eval_value(
+  pub async fn call_function_on_args(
     &mut self,
-    evaluate_result: &cdp::RemoteObject,
-  ) -> Result<String, AnyError> {
-    // TODO(caspervonb) we should investigate using previews here but to keep things
-    // consistent with the previous implementation we just get the preview result from
-    // Deno.inspectArgs.
+    function_declaration: String,
+    args: &[cdp::RemoteObject],
+  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
+    let arguments: Option<Vec<cdp::CallArgument>> = if args.is_empty() {
+      None
+    } else {
+      Some(args.iter().map(|a| a.into()).collect())
+    };
+
     let inspect_response = self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{
-          try {{
-            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-          }} catch (err) {{
-            return {0}.inspectArgs(["%o", err]);
-          }}
-        }}"#,
-            *REPL_INTERNALS_NAME
-          ),
+          function_declaration,
           object_id: None,
-          arguments: Some(vec![evaluate_result.into()]),
+          arguments,
           silent: None,
           return_by_value: None,
           generate_preview: None,
@@ -437,6 +428,31 @@ impl ReplSession {
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
+    Ok(response)
+  }
+
+  pub async fn get_eval_value(
+    &mut self,
+    evaluate_result: &cdp::RemoteObject,
+  ) -> Result<String, AnyError> {
+    // TODO(caspervonb) we should investigate using previews here but to keep things
+    // consistent with the previous implementation we just get the preview result from
+    // Deno.inspectArgs.
+    let response = self
+      .call_function_on_args(
+        format!(
+          r#"function (object) {{
+          try {{
+            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+          }} catch (err) {{
+            return {0}.inspectArgs(["%o", err]);
+          }}
+        }}"#,
+          *REPL_INTERNALS_NAME
+        ),
+        &[evaluate_result.clone()],
+      )
+      .await?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
 
@@ -510,20 +526,11 @@ impl ReplSession {
     let npm_imports = resolved_imports
       .iter()
       .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
-      .map(|r| r.req)
+      .map(|r| r.into_inner().req)
       .collect::<Vec<_>>();
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      if !self.has_initialized_node_runtime {
-        deno_node::initialize_runtime(
-          &mut self.worker.js_runtime,
-          self.has_node_modules_dir,
-          None,
-        )?;
-        self.has_initialized_node_runtime = true;
-      }
-
       self.npm_resolver.add_package_reqs(&npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached

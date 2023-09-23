@@ -64,6 +64,7 @@ declare global {
     | GetAssets
     | GetApplicableRefactors
     | GetEditsForRefactor
+    | GetEditsForFileRename
     | GetCodeFixes
     | GetCombinedCodeFix
     | GetCompletionDetails
@@ -115,15 +116,26 @@ declare global {
     method: "getApplicableRefactors";
     specifier: string;
     range: ts.TextRange;
+    preferences?: ts.UserPreferences;
     kind: string;
   }
 
   interface GetEditsForRefactor extends BaseLanguageServerRequest {
     method: "getEditsForRefactor";
     specifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
     range: ts.TextRange;
     refactorName: string;
     actionName: string;
+    preferences?: ts.UserPreferences;
+  }
+
+  interface GetEditsForFileRename extends BaseLanguageServerRequest {
+    method: "getEditsForFileRename";
+    oldSpecifier: string;
+    newSpecifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
+    preferences?: ts.UserPreferences;
   }
 
   interface GetCodeFixes extends BaseLanguageServerRequest {
@@ -132,6 +144,8 @@ declare global {
     startPosition: number;
     endPosition: number;
     errorCodes: string[];
+    formatCodeSettings: ts.FormatCodeSettings;
+    preferences: ts.UserPreferences;
   }
 
   interface GetCombinedCodeFix extends BaseLanguageServerRequest {
@@ -139,6 +153,8 @@ declare global {
     specifier: string;
     // deno-lint-ignore ban-types
     fixId: {};
+    formatCodeSettings: ts.FormatCodeSettings;
+    preferences: ts.UserPreferences;
   }
 
   interface GetCompletionDetails extends BaseLanguageServerRequest {
@@ -147,6 +163,7 @@ declare global {
       specifier: string;
       position: number;
       name: string;
+      formatCodeSettings: ts.FormatCodeSettings;
       source?: string;
       preferences?: ts.UserPreferences;
       data?: ts.CompletionEntryData;
@@ -158,6 +175,7 @@ declare global {
     specifier: string;
     position: number;
     preferences: ts.GetCompletionsAtPositionOptions;
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {

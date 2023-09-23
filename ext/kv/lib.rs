@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub mod codec;
+pub mod dynamic;
 mod interface;
+mod proto;
+pub mod remote;
 pub mod sqlite;
 
 use std::borrow::Cow;
@@ -9,12 +12,13 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use chrono::Utc;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_core::ByteString;
@@ -35,7 +39,9 @@ const MAX_VALUE_SIZE_BYTES: usize = 65536;
 const MAX_READ_RANGES: usize = 10;
 const MAX_READ_ENTRIES: usize = 1000;
 const MAX_CHECKS: usize = 10;
-const MAX_MUTATIONS: usize = 10;
+const MAX_MUTATIONS: usize = 1000;
+const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
+const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
 
 struct UnstableChecker {
   pub unstable: bool,
@@ -89,10 +95,11 @@ impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
   }
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
-  path: Option<String>,
+  #[string] path: Option<String>,
 ) -> Result<ResourceId, AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -228,12 +235,13 @@ type SnapshotReadRange = (
   Option<ByteString>,
 );
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_kv_snapshot_read<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  ranges: Vec<SnapshotReadRange>,
-  consistency: V8Consistency,
+  #[smi] rid: ResourceId,
+  #[serde] ranges: Vec<SnapshotReadRange>,
+  #[serde] consistency: V8Consistency,
 ) -> Result<Vec<Vec<ToV8KvEntry>>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -285,7 +293,8 @@ where
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
   };
-  let output_ranges = db.snapshot_read(read_ranges, opts).await?;
+  let output_ranges =
+    db.snapshot_read(state.clone(), read_ranges, opts).await?;
   let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
@@ -308,10 +317,11 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ToJsBuffer, ResourceId), AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -323,7 +333,7 @@ where
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message().await?;
+  let mut handle = db.dequeue_next_message(state.clone()).await?;
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
@@ -332,10 +342,10 @@ where
   Ok((payload, handle_rid))
 }
 
-#[op]
+#[op2(async)]
 async fn op_kv_finish_dequeued_message<DBH>(
   state: Rc<RefCell<OpState>>,
-  handle_rid: ResourceId,
+  #[smi] handle_rid: ResourceId,
   success: bool,
 ) -> Result<(), AnyError>
 where
@@ -375,11 +385,13 @@ impl TryFrom<V8KvCheck> for KvCheck {
   }
 }
 
-type V8KvMutation = (KvKey, String, Option<FromV8Value>);
+type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
 
-impl TryFrom<V8KvMutation> for KvMutation {
+impl TryFrom<(V8KvMutation, u64)> for KvMutation {
   type Error = AnyError;
-  fn try_from(value: V8KvMutation) -> Result<Self, AnyError> {
+  fn try_from(
+    (value, current_timstamp): (V8KvMutation, u64),
+  ) -> Result<Self, AnyError> {
     let key = encode_v8_key(value.0)?;
     let kind = match (value.1.as_str(), value.2) {
       ("set", Some(value)) => MutationKind::Set(value.try_into()?),
@@ -396,7 +408,11 @@ impl TryFrom<V8KvMutation> for KvMutation {
         )))
       }
     };
-    Ok(KvMutation { key, kind })
+    Ok(KvMutation {
+      key,
+      kind,
+      expire_at: value.3.map(|expire_in| current_timstamp + expire_in),
+    })
   }
 }
 
@@ -585,17 +601,19 @@ fn decode_selector_and_cursor(
   Ok((first_key, last_key))
 }
 
-#[op]
+#[op2(async)]
+#[string]
 async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  checks: Vec<V8KvCheck>,
-  mutations: Vec<V8KvMutation>,
-  enqueues: Vec<V8Enqueue>,
+  #[smi] rid: ResourceId,
+  #[serde] checks: Vec<V8KvCheck>,
+  #[serde] mutations: Vec<V8KvMutation>,
+  #[serde] enqueues: Vec<V8Enqueue>,
 ) -> Result<Option<String>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
+  let current_timestamp = Utc::now().timestamp_millis() as u64;
   let db = {
     let state = state.borrow();
     let resource =
@@ -621,7 +639,7 @@ where
     .with_context(|| "invalid check")?;
   let mutations = mutations
     .into_iter()
-    .map(TryInto::try_into)
+    .map(|mutation| TryFrom::try_from((mutation, current_timestamp)))
     .collect::<Result<Vec<KvMutation>, AnyError>>()
     .with_context(|| "invalid mutation")?;
   let enqueues = enqueues
@@ -629,6 +647,9 @@ where
     .map(TryInto::try_into)
     .collect::<Result<Vec<Enqueue>, AnyError>>()
     .with_context(|| "invalid enqueue")?;
+
+  let mut total_payload_size = 0usize;
+  let mut total_key_size = 0usize;
 
   for key in checks
     .iter()
@@ -639,15 +660,31 @@ where
       return Err(type_error("key cannot be empty"));
     }
 
-    check_write_key_size(key)?;
+    let checked_size = check_write_key_size(key)?;
+    total_payload_size += checked_size;
+    total_key_size += checked_size;
   }
 
   for value in mutations.iter().flat_map(|m| m.kind.value()) {
-    check_value_size(value)?;
+    total_payload_size += check_value_size(value)?;
   }
 
   for enqueue in &enqueues {
-    check_enqueue_payload_size(&enqueue.payload)?;
+    total_payload_size += check_enqueue_payload_size(&enqueue.payload)?;
+  }
+
+  if total_payload_size > MAX_TOTAL_MUTATION_SIZE_BYTES {
+    return Err(type_error(format!(
+      "total mutation size too large (max {} bytes)",
+      MAX_TOTAL_MUTATION_SIZE_BYTES
+    )));
+  }
+
+  if total_key_size > MAX_TOTAL_KEY_SIZE_BYTES {
+    return Err(type_error(format!(
+      "total key size too large (max {} bytes)",
+      MAX_TOTAL_KEY_SIZE_BYTES
+    )));
   }
 
   let atomic_write = AtomicWrite {
@@ -656,7 +693,7 @@ where
     enqueues,
   };
 
-  let result = db.atomic_write(atomic_write).await?;
+  let result = db.atomic_write(state.clone(), atomic_write).await?;
 
   Ok(result.map(|res| hex::encode(res.versionstamp)))
 }
@@ -664,10 +701,11 @@ where
 // (prefix, start, end)
 type EncodeCursorRangeSelector = (Option<KvKey>, Option<KvKey>, Option<KvKey>);
 
-#[op]
+#[op2]
+#[string]
 fn op_kv_encode_cursor(
-  (prefix, start, end): EncodeCursorRangeSelector,
-  boundary_key: KvKey,
+  #[serde] (prefix, start, end): EncodeCursorRangeSelector,
+  #[serde] boundary_key: KvKey,
 ) -> Result<String, AnyError> {
   let selector = RawSelector::from_tuple(prefix, start, end)?;
   let boundary_key = encode_v8_key(boundary_key)?;
@@ -686,22 +724,22 @@ fn check_read_key_size(key: &[u8]) -> Result<(), AnyError> {
   }
 }
 
-fn check_write_key_size(key: &[u8]) -> Result<(), AnyError> {
+fn check_write_key_size(key: &[u8]) -> Result<usize, AnyError> {
   if key.len() > MAX_WRITE_KEY_SIZE_BYTES {
     Err(type_error(format!(
       "key too large for write (max {} bytes)",
       MAX_WRITE_KEY_SIZE_BYTES
     )))
   } else {
-    Ok(())
+    Ok(key.len())
   }
 }
 
-fn check_value_size(value: &Value) -> Result<(), AnyError> {
+fn check_value_size(value: &Value) -> Result<usize, AnyError> {
   let payload = match value {
     Value::Bytes(x) => x,
     Value::V8(x) => x,
-    Value::U64(_) => return Ok(()),
+    Value::U64(_) => return Ok(8),
   };
 
   if payload.len() > MAX_VALUE_SIZE_BYTES {
@@ -710,17 +748,17 @@ fn check_value_size(value: &Value) -> Result<(), AnyError> {
       MAX_VALUE_SIZE_BYTES
     )))
   } else {
-    Ok(())
+    Ok(payload.len())
   }
 }
 
-fn check_enqueue_payload_size(payload: &[u8]) -> Result<(), AnyError> {
+fn check_enqueue_payload_size(payload: &[u8]) -> Result<usize, AnyError> {
   if payload.len() > MAX_VALUE_SIZE_BYTES {
     Err(type_error(format!(
       "enqueue payload too large (max {} bytes)",
       MAX_VALUE_SIZE_BYTES
     )))
   } else {
-    Ok(())
+    Ok(payload.len())
   }
 }

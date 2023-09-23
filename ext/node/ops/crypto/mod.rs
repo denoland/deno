@@ -3,8 +3,9 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -78,8 +79,12 @@ pub fn op_node_check_prime_bytes_async(
   })
 }
 
-#[op(fast)]
-pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
+#[op2(fast)]
+#[smi]
+pub fn op_node_create_hash(
+  state: &mut OpState,
+  #[string] algorithm: &str,
+) -> u32 {
   state
     .resource_table
     .add(match digest::Context::new(algorithm) {
@@ -88,13 +93,18 @@ pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
     })
 }
 
-#[op(fast)]
+#[op2]
+#[serde]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
 }
 
-#[op(fast)]
-pub fn op_node_hash_update(state: &mut OpState, rid: u32, data: &[u8]) -> bool {
+#[op2(fast)]
+pub fn op_node_hash_update(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[buffer] data: &[u8],
+) -> bool {
   let context = match state.resource_table.get::<digest::Context>(rid) {
     Ok(context) => context,
     _ => return false,
@@ -103,11 +113,11 @@ pub fn op_node_hash_update(state: &mut OpState, rid: u32, data: &[u8]) -> bool {
   true
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_node_hash_update_str(
   state: &mut OpState,
-  rid: u32,
-  data: &str,
+  #[smi] rid: u32,
+  #[string] data: &str,
 ) -> bool {
   let context = match state.resource_table.get::<digest::Context>(rid) {
     Ok(context) => context,
@@ -117,10 +127,11 @@ pub fn op_node_hash_update_str(
   true
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_hash_digest(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ToJsBuffer, AnyError> {
   let context = state.resource_table.take::<digest::Context>(rid)?;
   let context = Rc::try_unwrap(context)
@@ -128,10 +139,11 @@ pub fn op_node_hash_digest(
   Ok(context.digest()?.into())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_hash_digest_hex(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<String, AnyError> {
   let context = state.resource_table.take::<digest::Context>(rid)?;
   let context = Rc::try_unwrap(context)
@@ -140,20 +152,22 @@ pub fn op_node_hash_digest_hex(
   Ok(hex::encode(digest))
 }
 
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_node_hash_clone(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ResourceId, AnyError> {
   let context = state.resource_table.get::<digest::Context>(rid)?;
   Ok(state.resource_table.add(context.as_ref().clone()))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_private_encrypt(
-  key: StringOrBuffer,
-  msg: StringOrBuffer,
-  padding: u32,
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
@@ -173,11 +187,12 @@ pub fn op_node_private_encrypt(
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_private_decrypt(
-  key: StringOrBuffer,
-  msg: StringOrBuffer,
-  padding: u32,
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
@@ -196,11 +211,12 @@ pub fn op_node_private_decrypt(
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_public_encrypt(
-  key: StringOrBuffer,
-  msg: StringOrBuffer,
-  padding: u32,
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPublicKey::from_public_key_pem((&key).try_into()?)?;
 
@@ -220,12 +236,13 @@ pub fn op_node_public_encrypt(
   }
 }
 
-#[op(fast)]
+#[op2(fast)]
+#[smi]
 pub fn op_node_create_cipheriv(
   state: &mut OpState,
-  algorithm: &str,
-  key: &[u8],
-  iv: &[u8],
+  #[string] algorithm: &str,
+  #[buffer] key: &[u8],
+  #[buffer] iv: &[u8],
 ) -> u32 {
   state.resource_table.add(
     match cipher::CipherContext::new(algorithm, key, iv) {
@@ -235,12 +252,26 @@ pub fn op_node_create_cipheriv(
   )
 }
 
-#[op(fast)]
+#[op2(fast)]
+pub fn op_node_cipheriv_set_aad(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[buffer] aad: &[u8],
+) -> bool {
+  let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.set_aad(aad);
+  true
+}
+
+#[op2(fast)]
 pub fn op_node_cipheriv_encrypt(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
 ) -> bool {
   let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
     Ok(context) => context,
@@ -250,25 +281,27 @@ pub fn op_node_cipheriv_encrypt(
   true
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_cipheriv_final(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
-) -> Result<(), AnyError> {
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
+) -> Result<Option<Vec<u8>>, AnyError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
   context.r#final(input, output)
 }
 
-#[op(fast)]
+#[op2(fast)]
+#[smi]
 pub fn op_node_create_decipheriv(
   state: &mut OpState,
-  algorithm: &str,
-  key: &[u8],
-  iv: &[u8],
+  #[string] algorithm: &str,
+  #[buffer] key: &[u8],
+  #[buffer] iv: &[u8],
 ) -> u32 {
   state.resource_table.add(
     match cipher::DecipherContext::new(algorithm, key, iv) {
@@ -278,12 +311,26 @@ pub fn op_node_create_decipheriv(
   )
 }
 
-#[op(fast)]
+#[op2(fast)]
+pub fn op_node_decipheriv_set_aad(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[buffer] aad: &[u8],
+) -> bool {
+  let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.set_aad(aad);
+  true
+}
+
+#[op2(fast)]
 pub fn op_node_decipheriv_decrypt(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
 ) -> bool {
   let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
     Ok(context) => context,
@@ -293,26 +340,28 @@ pub fn op_node_decipheriv_decrypt(
   true
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_decipheriv_final(
   state: &mut OpState,
-  rid: u32,
-  input: &[u8],
-  output: &mut [u8],
+  #[smi] rid: u32,
+  #[buffer] input: &[u8],
+  #[buffer] output: &mut [u8],
+  #[buffer] auth_tag: &[u8],
 ) -> Result<(), AnyError> {
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
-  context.r#final(input, output)
+  context.r#final(input, output, auth_tag)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_sign(
-  digest: &[u8],
-  digest_type: &str,
-  key: StringOrBuffer,
-  key_type: &str,
-  key_format: &str,
+  #[buffer] digest: &[u8],
+  #[string] digest_type: &str,
+  #[serde] key: StringOrBuffer,
+  #[string] key_type: &str,
+  #[string] key_format: &str,
 ) -> Result<ToJsBuffer, AnyError> {
   match key_type {
     "rsa" => {
@@ -364,14 +413,14 @@ pub fn op_node_sign(
   }
 }
 
-#[op]
-fn op_node_verify(
-  digest: &[u8],
-  digest_type: &str,
-  key: StringOrBuffer,
-  key_type: &str,
-  key_format: &str,
-  signature: &[u8],
+#[op2]
+pub fn op_node_verify(
+  #[buffer] digest: &[u8],
+  #[string] digest_type: &str,
+  #[serde] key: StringOrBuffer,
+  #[string] key_type: &str,
+  #[string] key_format: &str,
+  #[buffer] signature: &[u8],
 ) -> Result<bool, AnyError> {
   match key_type {
     "rsa" => {
@@ -444,13 +493,13 @@ fn pbkdf2_sync(
   Ok(())
 }
 
-#[op]
+#[op2]
 pub fn op_node_pbkdf2(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  iterations: u32,
-  digest: &str,
-  derived_key: &mut [u8],
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] iterations: u32,
+  #[string] digest: &str,
+  #[buffer] derived_key: &mut [u8],
 ) -> bool {
   pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
 }
@@ -471,13 +520,14 @@ pub async fn op_node_pbkdf2_async(
   .await?
 }
 
-#[op]
-pub fn op_node_generate_secret(buf: &mut [u8]) {
+#[op2(fast)]
+pub fn op_node_generate_secret(#[buffer] buf: &mut [u8]) {
   rand::thread_rng().fill(buf);
 }
 
-#[op]
-pub async fn op_node_generate_secret_async(len: i32) -> ToJsBuffer {
+#[op2(async)]
+#[serde]
+pub async fn op_node_generate_secret_async(#[smi] len: i32) -> ToJsBuffer {
   spawn_blocking(move || {
     let mut buf = vec![0u8; len as usize];
     rand::thread_rng().fill(&mut buf[..]);
@@ -517,13 +567,13 @@ fn hkdf_sync(
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_hkdf(
-  hash: &str,
-  ikm: &[u8],
-  salt: &[u8],
-  info: &[u8],
-  okm: &mut [u8],
+  #[string] hash: &str,
+  #[buffer] ikm: &[u8],
+  #[buffer] salt: &[u8],
+  #[buffer] info: &[u8],
+  #[buffer] okm: &mut [u8],
 ) -> Result<(), AnyError> {
   hkdf_sync(hash, ikm, salt, info, okm)
 }
@@ -661,16 +711,18 @@ fn ec_generate(
   Ok((pkcs8.as_ref().to_vec().into(), public_key.into()))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_ec_generate(
-  named_curve: &str,
+  #[string] named_curve: &str,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   ec_generate(named_curve)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_ec_generate_async(
-  named_curve: String,
+  #[string] named_curve: String,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   spawn_blocking(move || ec_generate(&named_curve)).await?
 }
@@ -690,13 +742,15 @@ fn ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   Ok((seed.into(), public_key.into()))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError>
 {
   ed25519_generate()
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_ed25519_generate_async(
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   spawn_blocking(ed25519_generate).await?
@@ -725,12 +779,14 @@ fn x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   Ok((pkey_copy.into(), pubkey.to_vec().into()))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   x25519_generate()
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_x25519_generate_async(
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   spawn_blocking(x25519_generate).await?
@@ -755,16 +811,18 @@ fn dh_generate_group(
   ))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_dh_generate_group(
-  group_name: &str,
+  #[string] group_name: &str,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   dh_generate_group(group_name)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_dh_generate_group_async(
-  group_name: String,
+  #[string] group_name: String,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   spawn_blocking(move || dh_generate_group(&group_name)).await?
 }
@@ -804,11 +862,12 @@ pub fn op_node_dh_generate2(
   dh_generate(Some(prime).as_deref(), prime_len, generator)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_dh_compute_secret(
-  prime: JsBuffer,
-  private_key: JsBuffer,
-  their_public_key: JsBuffer,
+  #[buffer] prime: JsBuffer,
+  #[buffer] private_key: JsBuffer,
+  #[buffer] their_public_key: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let pubkey: BigUint = BigUint::from_bytes_be(their_public_key.as_ref());
   let privkey: BigUint = BigUint::from_bytes_be(private_key.as_ref());
@@ -828,8 +887,12 @@ pub async fn op_node_dh_generate_async(
     .await?
 }
 
-#[op]
-pub fn op_node_random_int(min: i32, max: i32) -> Result<i32, AnyError> {
+#[op2(fast)]
+#[smi]
+pub fn op_node_random_int(
+  #[smi] min: i32,
+  #[smi] max: i32,
+) -> Result<i32, AnyError> {
   let mut rng = rand::thread_rng();
   // Uniform distribution is required to avoid Modulo Bias
   // https://en.wikipedia.org/wiki/Fisher–Yates_shuffle#Modulo_bias
@@ -891,15 +954,16 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_scrypt_async(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  maxmem: u32,
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] keylen: u32,
+  #[smi] cost: u32,
+  #[smi] block_size: u32,
+  #[smi] parallelization: u32,
+  #[smi] maxmem: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
@@ -924,11 +988,12 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_node_ecdh_generate_keys(
-  curve: &str,
-  pubbuf: &mut [u8],
-  privbuf: &mut [u8],
+  #[string] curve: &str,
+  #[buffer] pubbuf: &mut [u8],
+  #[buffer] privbuf: &mut [u8],
 ) -> Result<ResourceId, AnyError> {
   let mut rng = rand::thread_rng();
   match curve {
@@ -965,12 +1030,12 @@ pub fn op_node_ecdh_generate_keys(
   }
 }
 
-#[op]
+#[op2]
 pub fn op_node_ecdh_compute_secret(
-  curve: &str,
-  this_priv: Option<JsBuffer>,
-  their_pub: &mut [u8],
-  secret: &mut [u8],
+  #[string] curve: &str,
+  #[buffer] this_priv: Option<JsBuffer>,
+  #[buffer] their_pub: &mut [u8],
+  #[buffer] secret: &mut [u8],
 ) -> Result<(), AnyError> {
   match curve {
     "secp256k1" => {
@@ -1038,11 +1103,11 @@ pub fn op_node_ecdh_compute_secret(
   }
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_ecdh_compute_public_key(
-  curve: &str,
-  privkey: &[u8],
-  pubkey: &mut [u8],
+  #[string] curve: &str,
+  #[buffer] privkey: &[u8],
+  #[buffer] pubkey: &mut [u8],
 ) -> Result<(), AnyError> {
   match curve {
     "secp256k1" => {

@@ -19,8 +19,8 @@ use ctr::Ctr64BE;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::task::spawn_blocking;
+use deno_core::op2;
+use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use rsa::pkcs1::DecodeRsaPrivateKey;
@@ -75,10 +75,11 @@ pub enum DecryptAlgorithm {
   },
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_crypto_decrypt(
-  opts: DecryptOptions,
-  data: JsBuffer,
+  #[serde] opts: DecryptOptions,
+  #[buffer] data: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
