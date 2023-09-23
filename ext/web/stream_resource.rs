@@ -502,7 +502,6 @@ pub fn op_readable_stream_resource_write_error(
 ) -> bool {
   let sender = get_sender(sender);
   // We can always write an error, no polling required
-  // TODO(mmastrac): we can remove async from this method
   sender.write_error(type_error(Cow::Owned(error)));
   !sender.closed()
 }
