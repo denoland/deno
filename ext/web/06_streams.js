@@ -143,15 +143,6 @@ class Deferred {
   }
 }
 
-/**
- * @template T
- * @param {T | PromiseLike<T>} value
- * @returns {Promise<T>}
- */
-function resolvePromiseWith(value) {
-  return new Promise((resolve) => resolve(value));
-}
-
 /** @param {any} e */
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
@@ -642,7 +633,7 @@ function initializeTransformStream(
 
   function cancelAlgorithm(reason) {
     transformStreamErrorWritableAndUnblockWrite(stream, reason);
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
 
   stream[_readable] = createReadableStream(
@@ -1609,7 +1600,7 @@ function readableStreamAddReadIntoRequest(stream, readRequest) {
 function readableStreamCancel(stream, reason) {
   stream[_disturbed] = true;
   if (stream[_state] === "closed") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (stream[_state] === "errored") {
     return PromiseReject(stream[_storedError]);
@@ -2639,7 +2630,7 @@ function readableStreamPipeTo(
   const writer = acquireWritableStreamDefaultWriter(dest);
   source[_disturbed] = true;
   let shuttingDown = false;
-  let currentWrite = resolvePromiseWith(undefined);
+  let currentWrite = PromiseResolve(undefined);
   /** @type {Deferred<void>} */
   const promise = new Deferred();
   /** @type {() => void} */
@@ -2654,7 +2645,7 @@ function readableStreamPipeTo(
           if (dest[_state] === "writable") {
             return writableStreamAbort(dest, error);
           } else {
-            return resolvePromiseWith(undefined);
+            return PromiseResolve(undefined);
           }
         });
       }
@@ -2663,7 +2654,7 @@ function readableStreamPipeTo(
           if (source[_state] === "readable") {
             return readableStreamCancel(source, error);
           } else {
-            return resolvePromiseWith(undefined);
+            return PromiseResolve(undefined);
           }
         });
       }
@@ -2698,7 +2689,7 @@ function readableStreamPipeTo(
   /** @returns {Promise<boolean>} */
   function pipeStep() {
     if (shuttingDown === true) {
-      return resolvePromiseWith(true);
+      return PromiseResolve(true);
     }
 
     return transformPromiseWith(writer[_readyPromise].promise, () => {
@@ -3015,7 +3006,7 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
   function pullAlgorithm() {
     if (reading === true) {
       readAgain = true;
-      return resolvePromiseWith(undefined);
+      return PromiseResolve(undefined);
     }
     reading = true;
     /** @type {ReadRequest<R>} */
@@ -3091,7 +3082,7 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
       },
     };
     readableStreamDefaultReaderRead(reader, readRequest);
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
 
   /**
@@ -3476,7 +3467,7 @@ function setUpReadableByteStreamController(
   controller[_pendingPullIntos] = [];
   stream[_controller] = controller;
   const startResult = startAlgorithm();
-  const startPromise = resolvePromiseWith(startResult);
+  const startPromise = PromiseResolve(startResult);
   setPromiseIsHandledToTrue(
     PromisePrototypeThen(
       startPromise,
@@ -3509,9 +3500,9 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   /** @type {() => void} */
   let startAlgorithm = () => undefined;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => resolvePromiseWith(undefined);
+  let pullAlgorithm = () => PromiseResolve(undefined);
   /** @type {(reason: any) => Promise<void>} */
-  let cancelAlgorithm = (_reason) => resolvePromiseWith(undefined);
+  let cancelAlgorithm = (_reason) => PromiseResolve(undefined);
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
@@ -3592,7 +3583,7 @@ function setUpReadableStreamDefaultController(
   controller[_cancelAlgorithm] = cancelAlgorithm;
   stream[_controller] = controller;
   const startResult = startAlgorithm(controller);
-  const startPromise = resolvePromiseWith(startResult);
+  const startPromise = PromiseResolve(startResult);
   uponPromise(startPromise, () => {
     controller[_started] = true;
     assert(controller[_pulling] === false);
@@ -3622,9 +3613,9 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
   /** @type {() => Promise<void>} */
   let startAlgorithm = () => undefined;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => resolvePromiseWith(undefined);
+  let pullAlgorithm = () => PromiseResolve(undefined);
   /** @type {(reason?: any) => Promise<void>} */
-  let cancelAlgorithm = () => resolvePromiseWith(undefined);
+  let cancelAlgorithm = () => PromiseResolve(undefined);
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
@@ -3744,10 +3735,10 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     } catch (e) {
       return PromiseReject(e);
     }
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   };
   /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
-  let flushAlgorithm = () => resolvePromiseWith(undefined);
+  let flushAlgorithm = () => PromiseResolve(undefined);
   if (transformerDict.transform !== undefined) {
     transformAlgorithm = (chunk, controller) =>
       webidl.invokeCallbackFunction(
@@ -3816,7 +3807,7 @@ function setUpWritableStreamDefaultController(
   );
   writableStreamUpdateBackpressure(stream, backpressure);
   const startResult = startAlgorithm(controller);
-  const startPromise = resolvePromiseWith(startResult);
+  const startPromise = PromiseResolve(startResult);
   uponPromise(startPromise, () => {
     assert(stream[_state] === "writable" || stream[_state] === "erroring");
     controller[_started] = true;
@@ -3847,10 +3838,10 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
   /** @type {(controller: WritableStreamDefaultController<W>) => any} */
   let startAlgorithm = () => undefined;
   /** @type {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} */
-  let writeAlgorithm = () => resolvePromiseWith(undefined);
-  let closeAlgorithm = () => resolvePromiseWith(undefined);
+  let writeAlgorithm = () => PromiseResolve(undefined);
+  let closeAlgorithm = () => PromiseResolve(undefined);
   /** @type {(reason?: any) => Promise<void>} */
-  let abortAlgorithm = () => resolvePromiseWith(undefined);
+  let abortAlgorithm = () => PromiseResolve(undefined);
 
   if (underlyingSinkDict.start !== undefined) {
     startAlgorithm = () =>
@@ -4031,7 +4022,7 @@ function transformStreamDefaultControllerTerminate(controller) {
  */
 function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
   transformStreamError(stream, reason);
-  return resolvePromiseWith(undefined);
+  return PromiseResolve(undefined);
 }
 
 /**
@@ -4148,11 +4139,11 @@ function transformStreamSetBackpressure(stream, backpressure) {
 function writableStreamAbort(stream, reason) {
   const state = stream[_state];
   if (state === "closed" || state === "errored") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   stream[_controller][_signal][signalAbort](reason);
   if (state === "closed" || state === "errored") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (stream[_pendingAbortRequest] !== undefined) {
     return stream[_pendingAbortRequest].deferred.promise;
@@ -4448,7 +4439,7 @@ function writableStreamDefaultWriterCloseWithErrorPropagation(writer) {
   if (
     writableStreamCloseQueuedOrInFlight(stream) === true || state === "closed"
   ) {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (state === "errored") {
     return PromiseReject(stream[_storedError]);
