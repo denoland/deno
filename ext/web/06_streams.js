@@ -5435,16 +5435,19 @@ class ReadableStreamBYOBReader {
         new TypeError("view must have non-zero byteLength"),
       );
     }
+
     if (getArrayBufferByteLength(buffer) === 0) {
+      if (isDetachedBuffer(buffer)) {
+        return PromiseReject(
+          new TypeError("view's buffer has been detached"),
+        );
+      }
+
       return PromiseReject(
         new TypeError("view's buffer must have non-zero byteLength"),
       );
     }
-    if (isDetachedBuffer(buffer)) {
-      return PromiseReject(
-        new TypeError("view's buffer has been detached"),
-      );
-    }
+
     if (this[_stream] === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
