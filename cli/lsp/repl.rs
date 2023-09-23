@@ -33,7 +33,9 @@ use tower_lsp::LanguageServer;
 
 use super::client::Client;
 use super::config::CompletionSettings;
+use super::config::DenoCompletionSettings;
 use super::config::ImportCompletionSettings;
+use super::config::LanguageWorkspaceSettings;
 use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
 
@@ -292,23 +294,36 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     cache: None,
     import_map: None,
     code_lens: Default::default(),
-    inlay_hints: Default::default(),
     internal_debug: false,
     lint: false,
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
     unstable: false,
-    suggest: CompletionSettings {
-      complete_function_calls: false,
-      names: false,
-      paths: false,
-      auto_imports: false,
+    suggest: DenoCompletionSettings {
       imports: ImportCompletionSettings {
         auto_discover: false,
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
     },
     testing: TestingSettings { args: vec![] },
+    javascript: LanguageWorkspaceSettings {
+      inlay_hints: Default::default(),
+      suggest: CompletionSettings {
+        complete_function_calls: false,
+        names: false,
+        paths: false,
+        auto_imports: false,
+      },
+    },
+    typescript: LanguageWorkspaceSettings {
+      inlay_hints: Default::default(),
+      suggest: CompletionSettings {
+        complete_function_calls: false,
+        names: false,
+        paths: false,
+        auto_imports: false,
+      },
+    },
   }
 }

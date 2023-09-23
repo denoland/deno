@@ -3665,36 +3665,35 @@ pub struct UserPreferences {
   pub auto_import_file_exclude_patterns: Option<Vec<String>>,
 }
 
-impl From<&config::WorkspaceSettings> for UserPreferences {
-  fn from(workspace_settings: &config::WorkspaceSettings) -> Self {
-    let inlay_hints = &workspace_settings.inlay_hints;
+impl UserPreferences {
+  pub fn from_workspace_settings_for_specifier(
+    settings: &config::WorkspaceSettings,
+    specifier: &ModuleSpecifier,
+  ) -> Self {
+    let language_settings = settings.language_settings_for_specifier(specifier);
     Self {
-      include_inlay_parameter_name_hints: Some(
-        (&inlay_hints.parameter_names.enabled).into(),
-      ),
-      include_inlay_parameter_name_hints_when_argument_matches_name: Some(
-        !inlay_hints
-          .parameter_names
-          .suppress_when_argument_matches_name,
-      ),
-      include_inlay_function_parameter_type_hints: Some(
-        inlay_hints.parameter_types.enabled,
-      ),
-      include_inlay_variable_type_hints: Some(
-        inlay_hints.variable_types.enabled,
-      ),
-      include_inlay_variable_type_hints_when_type_matches_name: Some(
-        !inlay_hints.variable_types.suppress_when_type_matches_name,
-      ),
-      include_inlay_property_declaration_type_hints: Some(
-        inlay_hints.property_declaration_types.enabled,
-      ),
-      include_inlay_function_like_return_type_hints: Some(
-        inlay_hints.function_like_return_types.enabled,
-      ),
-      include_inlay_enum_member_value_hints: Some(
-        inlay_hints.enum_member_values.enabled,
-      ),
+      include_inlay_parameter_name_hints: language_settings
+        .map(|s| (&s.inlay_hints.parameter_names.enabled).into()),
+      include_inlay_parameter_name_hints_when_argument_matches_name:
+        language_settings.map(|s| {
+          !s.inlay_hints
+            .parameter_names
+            .suppress_when_argument_matches_name
+        }),
+      include_inlay_function_parameter_type_hints: language_settings
+        .map(|s| s.inlay_hints.parameter_types.enabled),
+      include_inlay_variable_type_hints: language_settings
+        .map(|s| s.inlay_hints.variable_types.enabled),
+      include_inlay_variable_type_hints_when_type_matches_name:
+        language_settings.map(|s| {
+          !s.inlay_hints.variable_types.suppress_when_type_matches_name
+        }),
+      include_inlay_property_declaration_type_hints: language_settings
+        .map(|s| s.inlay_hints.property_declaration_types.enabled),
+      include_inlay_function_like_return_type_hints: language_settings
+        .map(|s| s.inlay_hints.function_like_return_types.enabled),
+      include_inlay_enum_member_value_hints: language_settings
+        .map(|s| s.inlay_hints.enum_member_values.enabled),
       ..Default::default()
     }
   }
@@ -5153,14 +5152,20 @@ mod tests {
   fn include_suppress_inlay_hit_settings() {
     let mut settings = WorkspaceSettings::default();
     settings
+      .typescript
       .inlay_hints
       .parameter_names
       .suppress_when_argument_matches_name = true;
     settings
+      .typescript
       .inlay_hints
       .variable_types
       .suppress_when_type_matches_name = true;
-    let user_preferences: UserPreferences = (&settings).into();
+    let user_preferences =
+      UserPreferences::from_workspace_settings_for_specifier(
+        &settings,
+        &ModuleSpecifier::parse("file:///foo.ts").unwrap(),
+      );
     assert_eq!(
       user_preferences.include_inlay_variable_type_hints_when_type_matches_name,
       Some(false)

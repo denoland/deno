@@ -250,9 +250,9 @@ fn op_system_memory_info(
   Ok(sys_info::mem_info())
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(not(windows))]
-#[op]
+#[op2]
+#[smi]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -264,9 +264,9 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   }
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(windows)]
-#[op]
+#[op2]
+#[smi]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -274,9 +274,9 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   Ok(None)
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(not(windows))]
-#[op]
+#[op2]
+#[smi]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -288,9 +288,9 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   }
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(windows)]
-#[op]
+#[op2]
+#[smi]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()

@@ -52,6 +52,7 @@ const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
 const _url = Symbol("url");
 const _method = Symbol("method");
+const _brand = webidl.brand;
 
 /**
  * @param {(() => string)[]} urlList
@@ -275,6 +276,11 @@ class Request {
    * @param {RequestInit} init
    */
   constructor(input, init = {}) {
+    if (input === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Request'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters["RequestInfo_DOMString"](
@@ -284,7 +290,7 @@ class Request {
     );
     init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
 
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
 
     /** @type {InnerRequest} */
     let request;
@@ -554,7 +560,7 @@ function toInnerRequest(request) {
  * @returns {Request}
  */
 function fromInnerRequest(inner, signal, guard) {
-  const request = webidl.createBranded(Request);
+  const request = new Request(_brand);
   request[_request] = inner;
   request[_signal] = signal;
   request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);

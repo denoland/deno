@@ -45,6 +45,7 @@ use super::code_lens;
 use super::completions;
 use super::config::Config;
 use super::config::ConfigSnapshot;
+use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticServerUpdateMessage;
@@ -1265,11 +1266,10 @@ impl Inner {
     }
 
     {
-      if let Some(value) = params.initialization_options {
-        self.config.set_workspace_settings(value).map_err(|err| {
-          error!("Cannot set workspace settings: {}", err);
-          LspError::internal_error()
-        })?;
+      if let Some(options) = params.initialization_options {
+        self.config.set_workspace_settings(
+          WorkspaceSettings::from_initialization_options(options),
+        );
       }
       if let Some(folders) = params.workspace_folders {
         self.config.workspace_folders = folders
@@ -1472,24 +1472,26 @@ impl Inner {
 
   async fn did_change_configuration(
     &mut self,
-    client_workspace_config: Option<Value>,
+    client_workspace_config: Option<WorkspaceSettings>,
     params: DidChangeConfigurationParams,
   ) {
     let maybe_config =
       if self.config.client_capabilities.workspace_configuration {
         client_workspace_config
       } else {
-        params
-          .settings
-          .as_object()
-          .and_then(|settings| settings.get(SETTINGS_SECTION))
-          .cloned()
+        params.settings.as_object().map(|settings| {
+          let deno =
+            serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
+          let javascript =
+            serde_json::to_value(settings.get("javascript")).unwrap();
+          let typescript =
+            serde_json::to_value(settings.get("typescript")).unwrap();
+          WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
+        })
       };
 
-    if let Some(value) = maybe_config {
-      if let Err(err) = self.config.set_workspace_settings(value) {
-        error!("failed to update settings: {}", err);
-      }
+    if let Some(settings) = maybe_config {
+      self.config.set_workspace_settings(settings);
     }
 
     self.update_debug_flag();
@@ -1929,7 +1931,10 @@ impl Inner {
                 (&self.fmt_options.options).into(),
                 tsc::UserPreferences {
                   quote_preference: Some((&self.fmt_options.options).into()),
-                  ..self.config.workspace_settings().into()
+                  ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+                    self.config.workspace_settings(),
+                    &specifier,
+                  )
                 },
               )
               .await;
@@ -1990,7 +1995,10 @@ impl Inner {
           ..line_index.offset_tsc(params.range.end)?,
         Some(tsc::UserPreferences {
           quote_preference: Some((&self.fmt_options.options).into()),
-          ..self.config.workspace_settings().into()
+          ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+            self.config.workspace_settings(),
+            &specifier,
+          )
         }),
         only,
       )
@@ -2049,7 +2057,10 @@ impl Inner {
           (&self.fmt_options.options).into(),
           tsc::UserPreferences {
             quote_preference: Some((&self.fmt_options.options).into()),
-            ..self.config.workspace_settings().into()
+            ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+              self.config.workspace_settings(),
+              &code_action_data.specifier,
+            )
           },
         )
         .await?;
@@ -2090,7 +2101,7 @@ impl Inner {
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
-          action_data.specifier,
+          action_data.specifier.clone(),
           (&self.fmt_options.options).into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
@@ -2098,7 +2109,10 @@ impl Inner {
           action_data.action_name,
           Some(tsc::UserPreferences {
             quote_preference: Some((&self.fmt_options.options).into()),
-            ..self.config.workspace_settings().into()
+            ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+              self.config.workspace_settings(),
+              &action_data.specifier,
+            )
           }),
         )
         .await?;
@@ -2425,9 +2439,11 @@ impl Inner {
               ),
               include_automatic_optional_chain_completions: Some(true),
               include_completions_for_import_statements: Some(true),
-              include_completions_for_module_exports: Some(
-                self.config.workspace_settings().suggest.auto_imports,
-              ),
+              include_completions_for_module_exports: self
+                .config
+                .workspace_settings()
+                .language_settings_for_specifier(&specifier)
+                .map(|s| s.suggest.auto_imports),
               include_completions_with_object_literal_method_snippets: Some(
                 use_snippets,
               ),
@@ -2454,7 +2470,13 @@ impl Inner {
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
           line_index,
-          &self.config.workspace_settings().suggest,
+          &self
+            .config
+            .workspace_settings()
+            .language_settings_for_specifier(&specifier)
+            .cloned()
+            .unwrap_or_default()
+            .suggest,
           &specifier,
           position,
           self,
@@ -3284,7 +3306,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .workspace_configuration()
         .await;
       match config_response {
-        Ok(value) => Some(value),
+        Ok(settings) => Some(settings),
         Err(err) => {
           error!("{}", err);
           None
@@ -3601,7 +3623,7 @@ impl Inner {
     let workspace_settings = self.config.workspace_settings();
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !workspace_settings.enabled_inlay_hints()
+      || !workspace_settings.enabled_inlay_hints(&specifier)
     {
       return Ok(None);
     }
@@ -3620,11 +3642,14 @@ impl Inner {
       .ts_server
       .provide_inlay_hints(
         self.snapshot(),
-        specifier,
+        specifier.clone(),
         text_span,
         tsc::UserPreferences {
           quote_preference: Some((&self.fmt_options.options).into()),
-          ..workspace_settings.into()
+          ..tsc::UserPreferences::from_workspace_settings_for_specifier(
+            workspace_settings,
+            &specifier,
+          )
         },
       )
       .await?;
