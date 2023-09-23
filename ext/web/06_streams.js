@@ -5027,14 +5027,15 @@ class ReadableStream {
       strategy = {};
     }
     this[_brand] = _brand;
-    let underlyingSourceDict = {};
-    if (underlyingSource !== undefined) {
-      underlyingSourceDict = webidl.converters.UnderlyingSource(
+
+    const underlyingSourceDict = underlyingSource !== undefined
+      ? webidl.converters.UnderlyingSource(
         underlyingSource,
         prefix,
         "underlyingSource",
-      );
-    }
+      )
+      : {};
+
     initializeReadableStream(this);
     if (underlyingSourceDict.type === "bytes") {
       if (strategy.size !== undefined) {
@@ -5051,7 +5052,6 @@ class ReadableStream {
         highWaterMark,
       );
     } else {
-      assert(!(ReflectHas(underlyingSourceDict, "type")));
       const sizeAlgorithm = extractSizeAlgorithm(strategy);
       const highWaterMark = extractHighWaterMark(strategy, 1);
       setUpReadableStreamDefaultControllerFromUnderlyingSource(
