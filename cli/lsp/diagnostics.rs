@@ -338,6 +338,10 @@ impl DiagnosticsState {
     }
   }
 
+  pub fn clear(&mut self, specifier: &ModuleSpecifier) {
+    self.specifiers.remove(specifier);
+  }
+
   pub fn has_no_cache_diagnostic(&self, specifier: &ModuleSpecifier) -> bool {
     self
       .specifiers
