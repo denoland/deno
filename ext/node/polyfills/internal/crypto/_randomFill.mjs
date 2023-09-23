@@ -71,12 +71,12 @@ export function randomFillSync(buf, offset = 0, size) {
     );
   }
 
-  offset = assertOffset(offset, buf.byteLength);
+  assertOffset(offset, buf.byteLength);
 
   if (size === undefined) {
     size = buf.byteLength - offset;
   } else {
-    size = assertSize(size, offset, buf.byteLength);
+    assertSize(size, offset, buf.byteLength);
   }
 
   if (size === 0) {
