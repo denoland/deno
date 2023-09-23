@@ -249,9 +249,9 @@ Deno.test(async function readableStreamLongAsyncReadAll() {
 });
 
 Deno.test(async function readableStreamVeryLongReadAll() {
-  const rid = resourceForReadableStream(veryLongTinyPacketStream(10000));
+  const rid = resourceForReadableStream(veryLongTinyPacketStream(1_000_000));
   const buffer = await core.ops.op_read_all(rid);
-  assertEquals(buffer.length, 10000);
+  assertEquals(buffer.length, 1_000_000);
   core.ops.op_close(rid);
 });
 
