@@ -689,10 +689,7 @@ function isReadableStream(value) {
  * @returns {boolean}
  */
 function isReadableStreamLocked(stream) {
-  if (stream[_reader] === undefined) {
-    return false;
-  }
-  return true;
+  return stream[_reader] !== undefined;
 }
 
 /**
@@ -1640,7 +1637,6 @@ function readableStreamClose(stream) {
   if (isReadableStreamDefaultReader(reader)) {
     /** @type {Array<ReadRequest<R>>} */
     const readRequests = reader[_readRequests];
-    // reader[_readRequests] = new Queue();
     while (readRequests.size !== 0) {
       const readRequest = readRequests.dequeue();
       readRequest.closeSteps();
@@ -1860,7 +1856,6 @@ function readableStreamBYOBReaderRelease(reader) {
  */
 function readableStreamDefaultReaderErrorReadRequests(reader, e) {
   const readRequests = reader[_readRequests];
-  reader[_readRequests] = new Queue();
   while (readRequests.size !== 0) {
     const readRequest = readRequests.dequeue();
     readRequest.errorSteps(e);
