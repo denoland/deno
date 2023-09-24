@@ -3306,18 +3306,14 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !is_importable_ext(&path) {
       return;
     }
-    let diagnostics_state = {
+    {
       let inner = self.0.read().await;
       if !inner.config.workspace_settings().cache_on_save
         || !inner.config.specifier_enabled(uri)
+        || !inner.diagnostics_state.has_no_cache_diagnostics(uri)
       {
         return;
       }
-      inner.diagnostics_state.clone()
-    };
-    // Call this outside of the language server lock, it sync locks internally.
-    if !diagnostics_state.has_no_cache_diagnostics(uri) {
-      return;
     }
     if let Err(err) = self
       .cache_request(Some(

@@ -349,7 +349,8 @@ impl DiagnosticsState {
       .specifiers
       .read()
       .get(specifier)
-      .map_or(false, |s| !s.no_cache_diagnostics.is_empty())
+      .map(|s| !s.no_cache_diagnostics.is_empty())
+      .unwrap_or(false)
   }
 
   pub fn no_cache_diagnostics(
@@ -360,7 +361,8 @@ impl DiagnosticsState {
       .specifiers
       .read()
       .get(specifier)
-      .map_or(vec![], |s| s.no_cache_diagnostics.clone())
+      .map(|s| s.no_cache_diagnostics.clone())
+      .unwrap_or_default()
   }
 }
 
