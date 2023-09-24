@@ -24,6 +24,7 @@ use crate::tools::lint::get_configured_rules;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -48,7 +49,6 @@ use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
@@ -96,13 +96,13 @@ type DiagnosticsBySource = HashMap<DiagnosticSource, VersionedDiagnostics>;
 #[derive(Debug)]
 struct DiagnosticsPublisher {
   client: Client,
-  state: Arc<RwLock<DiagnosticsState>>,
+  state: Arc<DiagnosticsState>,
   diagnostics_by_specifier:
     Mutex<HashMap<ModuleSpecifier, DiagnosticsBySource>>,
 }
 
 impl DiagnosticsPublisher {
-  pub fn new(client: Client, state: Arc<RwLock<DiagnosticsState>>) -> Self {
+  pub fn new(client: Client, state: Arc<DiagnosticsState>) -> Self {
     Self {
       client,
       state,
@@ -119,7 +119,6 @@ impl DiagnosticsPublisher {
   ) -> usize {
     let mut diagnostics_by_specifier =
       self.diagnostics_by_specifier.lock().await;
-    let mut state = self.state.write().await;
     let mut seen_specifiers = HashSet::with_capacity(diagnostics.len());
     let mut messages_sent = 0;
 
@@ -146,7 +145,9 @@ impl DiagnosticsPublisher {
         .cloned()
         .collect::<Vec<_>>();
 
-      state.update(&record.specifier, version, &all_specifier_diagnostics);
+      self
+        .state
+        .update(&record.specifier, version, &all_specifier_diagnostics);
       self
         .client
         .when_outside_lsp_lock()
@@ -177,7 +178,7 @@ impl DiagnosticsPublisher {
         specifiers_to_remove.push(specifier.clone());
         if let Some(removed_value) = maybe_removed_value {
           // clear out any diagnostics for this specifier
-          state.update(specifier, removed_value.version, &[]);
+          self.state.update(specifier, removed_value.version, &[]);
           self
             .client
             .when_outside_lsp_lock()
@@ -296,57 +297,72 @@ struct ChannelUpdateMessage {
   batch_index: Option<usize>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct SpecifierState {
-  has_no_cache_diagnostic: bool,
+  version: Option<i32>,
+  no_cache_diagnostics: Vec<lsp::Diagnostic>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct DiagnosticsState {
-  specifiers: HashMap<ModuleSpecifier, (Option<i32>, SpecifierState)>,
+  specifiers: RwLock<HashMap<ModuleSpecifier, SpecifierState>>,
 }
 
 impl DiagnosticsState {
   fn update(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     version: Option<i32>,
     diagnostics: &[lsp::Diagnostic],
   ) {
-    let current_version = self.specifiers.get(specifier).and_then(|s| s.0);
-    let is_new = match (version, current_version) {
-      (Some(arg), Some(existing)) => arg >= existing,
-      _ => true,
-    };
-    if is_new {
-      self.specifiers.insert(
-        specifier.clone(),
-        (
-          version,
-          SpecifierState {
-            has_no_cache_diagnostic: diagnostics.iter().any(|d| {
-              d.code
-                == Some(lsp::NumberOrString::String("no-cache".to_string()))
-                || d.code
-                  == Some(lsp::NumberOrString::String(
-                    "no-cache-npm".to_string(),
-                  ))
-            }),
-          },
-        ),
-      );
+    let mut specifiers = self.specifiers.write();
+    let current_version = specifiers.get(specifier).and_then(|s| s.version);
+    match (version, current_version) {
+      (Some(arg), Some(existing)) if arg < existing => return,
+      _ => {}
     }
+    let mut no_cache_diagnostics = vec![];
+    for diagnostic in diagnostics {
+      if diagnostic.code
+        == Some(lsp::NumberOrString::String("no-cache".to_string()))
+        || diagnostic.code
+          == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
+      {
+        no_cache_diagnostics.push(diagnostic.clone());
+      }
+    }
+    specifiers.insert(
+      specifier.clone(),
+      SpecifierState {
+        version,
+        no_cache_diagnostics,
+      },
+    );
   }
 
-  pub fn clear(&mut self, specifier: &ModuleSpecifier) {
-    self.specifiers.remove(specifier);
+  pub fn clear(&self, specifier: &ModuleSpecifier) {
+    self.specifiers.write().remove(specifier);
   }
 
-  pub fn has_no_cache_diagnostic(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn has_no_cache_diagnostics(&self, specifier: &ModuleSpecifier) -> bool {
     self
       .specifiers
+      .read()
       .get(specifier)
-      .map_or(false, |s| s.1.has_no_cache_diagnostic)
+      .map(|s| !s.no_cache_diagnostics.is_empty())
+      .unwrap_or(false)
+  }
+
+  pub fn no_cache_diagnostics(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<lsp::Diagnostic> {
+    self
+      .specifiers
+      .read()
+      .get(specifier)
+      .map(|s| s.no_cache_diagnostics.clone())
+      .unwrap_or_default()
   }
 }
 
@@ -358,7 +374,7 @@ pub struct DiagnosticsServer {
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
   batch_counter: DiagnosticBatchCounter,
-  state: Arc<RwLock<DiagnosticsState>>,
+  state: Arc<DiagnosticsState>,
 }
 
 impl DiagnosticsServer {
@@ -366,6 +382,7 @@ impl DiagnosticsServer {
     client: Client,
     performance: Arc<Performance>,
     ts_server: Arc<TsServer>,
+    state: Arc<DiagnosticsState>,
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),
@@ -374,12 +391,8 @@ impl DiagnosticsServer {
       performance,
       ts_server,
       batch_counter: Default::default(),
-      state: Default::default(),
+      state,
     }
-  }
-
-  pub fn state(&self) -> Arc<RwLock<DiagnosticsState>> {
-    self.state.clone()
   }
 
   pub fn get_ts_diagnostics(
@@ -906,7 +919,7 @@ async fn generate_ts_diagnostics(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DiagnosticDataSpecifier {
+pub struct DiagnosticDataSpecifier {
   pub specifier: ModuleSpecifier,
 }
 
@@ -1050,14 +1063,11 @@ impl DenoDiagnostic {
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
           let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
-          let title = match code.as_str() {
-            "no-cache" | "no-cache-npm" => {
-              format!("Cache \"{}\" and its dependencies.", data.specifier)
-            }
-            _ => "Cache the data URL and its dependencies.".to_string(),
-          };
           lsp::CodeAction {
-            title,
+            title: format!(
+              "Cache \"{}\" and its dependencies.",
+              data.specifier
+            ),
             kind: Some(lsp::CodeActionKind::QUICKFIX),
             diagnostics: Some(vec![diagnostic.clone()]),
             command: Some(lsp::Command {

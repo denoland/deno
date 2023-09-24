@@ -4504,6 +4504,151 @@ fn lsp_code_actions_deno_cache_npm() {
 }
 
 #[test]
+fn lsp_code_actions_deno_cache_all() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import * as a from "https://deno.land/x/a/mod.ts";
+        import chalk from "npm:chalk";
+        console.log(a);
+        console.log(chalk);
+      "#,
+    }
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    serde_json::from_value(json!({
+      "uri": "file:///a/file.ts",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 1, "character": 27 },
+            "end": { "line": 1, "character": 57 },
+          },
+          "severity": 1,
+          "code": "no-cache",
+          "source": "deno",
+          "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+          "data": { "specifier": "https://deno.land/x/a/mod.ts" },
+        },
+        {
+          "range": {
+            "start": { "line": 2, "character": 26 },
+            "end": { "line": 2, "character": 37 },
+          },
+          "severity": 1,
+          "code": "no-cache-npm",
+          "source": "deno",
+          "message": "Uncached or missing npm package: chalk",
+          "data": { "specifier": "npm:chalk" },
+        },
+      ],
+      "version": 1,
+    })).unwrap()
+  );
+
+  let res =
+    client
+    .write_request(      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": { "line": 1, "character": 27 },
+          "end": { "line": 1, "character": 57 },
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 1, "character": 27 },
+              "end": { "line": 1, "character": 57 },
+            },
+            "severity": 1,
+            "code": "no-cache",
+            "source": "deno",
+            "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+            "data": {
+              "specifier": "https://deno.land/x/a/mod.ts",
+            },
+          }],
+          "only": ["quickfix"],
+        }
+      }),
+    )
+    ;
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+        "kind": "quickfix",
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 1, "character": 27 },
+            "end": { "line": 1, "character": 57 },
+          },
+          "severity": 1,
+          "code": "no-cache",
+          "source": "deno",
+          "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+          "data": {
+            "specifier": "https://deno.land/x/a/mod.ts",
+          },
+        }],
+        "command": {
+          "title": "",
+          "command": "deno.cache",
+          "arguments": [["https://deno.land/x/a/mod.ts"], "file:///a/file.ts"],
+        }
+      },
+      {
+        "title": "Cache all dependencies of this module.",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 27 },
+              "end": { "line": 1, "character": 57 },
+            },
+            "severity": 1,
+            "code": "no-cache",
+            "source": "deno",
+            "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+            "data": {
+              "specifier": "https://deno.land/x/a/mod.ts",
+            },
+          },
+          {
+            "range": {
+              "start": { "line": 2, "character": 26 },
+              "end": { "line": 2, "character": 37 },
+            },
+            "severity": 1,
+            "code": "no-cache-npm",
+            "source": "deno",
+            "message": "Uncached or missing npm package: chalk",
+            "data": { "specifier": "npm:chalk" },
+          },
+        ],
+        "command": {
+          "title": "",
+          "command": "deno.cache",
+          "arguments": [[], "file:///a/file.ts"],
+        }
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_cache_on_save() {
   let context = TestContextBuilder::new()
     .use_http_server()
