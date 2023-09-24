@@ -1,5 +1,6 @@
 {
   "imports": {
+    "print_hello": "./print_hello.ts",
     "moment": "./moment/moment.ts",
     "moment/": "./moment/",
     "lodash": "./lodash/lodash.ts",
