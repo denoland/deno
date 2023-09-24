@@ -7351,7 +7351,24 @@ fn lsp_diagnostics_deprecated() {
           "code": 6385,
           "source": "deno-ts",
           "message": "'a' is deprecated.",
-          "relatedInformation": [],
+          "relatedInformation": [
+            {
+              "location": {
+                "uri": "file:///a/file.ts",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4,
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 16,
+                  },
+                },
+              },
+              "message": "The declaration was marked as deprecated here.",
+            },
+          ],
           "tags": [2]
         }
       ],
