@@ -646,10 +646,10 @@ fn to_lsp_related_information(
     related
       .iter()
       .filter_map(|ri| {
-        if let (Some(source), Some(start), Some(end)) =
-          (&ri.source, &ri.start, &ri.end)
+        if let (Some(file_name), Some(start), Some(end)) =
+          (&ri.file_name, &ri.start, &ri.end)
         {
-          let uri = lsp::Url::parse(source).unwrap();
+          let uri = lsp::Url::parse(file_name).unwrap();
           Some(lsp::DiagnosticRelatedInformation {
             location: lsp::Location {
               uri,
