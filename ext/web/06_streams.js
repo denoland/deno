@@ -4758,28 +4758,31 @@ const _iteratorNext = Symbol("[[iteratorNext]]");
 const _iteratorFinished = Symbol("[[iteratorFinished]]");
 
 class ReadableStreamAsyncIteratorReadRequest {
+  #reader;
+  #promise;
+
   constructor(reader, promise) {
-    this.reader = reader;
-    this.promise = promise;
+    this.#reader = reader;
+    this.#promise = promise;
   }
 
   chunkSteps(chunk) {
-    this.reader[_iteratorNext] = null;
-    this.promise.resolve({ value: chunk, done: false });
+    this.#reader[_iteratorNext] = null;
+    this.#promise.resolve({ value: chunk, done: false });
   }
 
   closeSteps() {
-    this.reader[_iteratorNext] = null;
-    this.reader[_iteratorFinished] = true;
-    readableStreamDefaultReaderRelease(this.reader);
-    this.promise.resolve({ value: undefined, done: true });
+    this.#reader[_iteratorNext] = null;
+    this.#reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.#reader);
+    this.#promise.resolve({ value: undefined, done: true });
   }
 
   errorSteps(e) {
-    this.reader[_iteratorNext] = null;
-    this.reader[_iteratorFinished] = true;
-    readableStreamDefaultReaderRelease(this.reader);
-    this.promise.reject(e);
+    this.#reader[_iteratorNext] = null;
+    this.#reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.#reader);
+    this.#promise.reject(e);
   }
 }
 
