@@ -301,7 +301,7 @@ struct ChannelUpdateMessage {
   batch_index: Option<usize>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct SpecifierState {
   version: Option<i32>,
   no_cache_diagnostics: Vec<lsp::Diagnostic>,
