@@ -59,6 +59,12 @@ impl JupyterServer {
     let iopub_socket = Arc::new(Mutex::new(iopub_socket));
     let last_execution_request = Rc::new(RefCell::new(None));
 
+    // Store `iopub_socket` in the op state so it's accessible to the runtime API.
+    {
+      let op_state_rc = repl_session.worker.js_runtime.op_state();
+      op_state_rc.borrow_mut().put(iopub_socket.clone());
+    }
+
     let cancel_handle = CancelHandle::new_rc();
     let cancel_handle2 = CancelHandle::new_rc();
 

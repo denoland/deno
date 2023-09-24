@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::tools::repl;
@@ -16,10 +20,14 @@ use deno_core::Op;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use tokio::sync::Mutex;
 
 mod install;
 mod jupyter_msg;
 mod server;
+
+use jupyter_msg::Connection;
+use jupyter_msg::JupyterMessage;
 
 pub async fn kernel(
   flags: Flags,
@@ -93,6 +101,9 @@ pub async fn kernel(
 }
 
 deno_core::extension!(deno_jupyter,
+  ops = [
+    op_send_io,
+  ],
   options = {
     sender: mpsc::UnboundedSender<server::StdioMsg>,
   },
@@ -104,6 +115,23 @@ deno_core::extension!(deno_jupyter,
     state.put(options.sender);
   },
 );
+
+#[op2(async)]
+pub async fn op_send_io(state: Rc<RefCell<OpState>>) -> Result<(), AnyError> {
+  let (iopub_socket, last_execution_request) = {
+    let s = state.borrow();
+
+    (
+      s.borrow::<Arc<Mutex<Connection<zeromq::PubSocket>>>>()
+        .clone(),
+      s.borrow::<Rc<RefCell<Option<JupyterMessage>>>>().clone(),
+    )
+  };
+
+  if let Some(last_request) = last_execution_request.clone() {}
+
+  Ok(())
+}
 
 #[op2(fast)]
 pub fn op_print(
