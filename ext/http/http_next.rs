@@ -23,7 +23,6 @@ use crate::LocalExecutor;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
 use deno_core::unsync::spawn;
