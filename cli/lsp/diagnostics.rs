@@ -24,6 +24,7 @@ use crate::tools::lint::get_configured_rules;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -48,7 +49,6 @@ use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
@@ -96,13 +96,13 @@ type DiagnosticsBySource = HashMap<DiagnosticSource, VersionedDiagnostics>;
 #[derive(Debug)]
 struct DiagnosticsPublisher {
   client: Client,
-  state: DiagnosticsState,
+  state: Arc<DiagnosticsState>,
   diagnostics_by_specifier:
     Mutex<HashMap<ModuleSpecifier, DiagnosticsBySource>>,
 }
 
 impl DiagnosticsPublisher {
-  pub fn new(client: Client, state: DiagnosticsState) -> Self {
+  pub fn new(client: Client, state: Arc<DiagnosticsState>) -> Self {
     Self {
       client,
       state,
@@ -147,8 +147,7 @@ impl DiagnosticsPublisher {
 
       self
         .state
-        .update(&record.specifier, version, &all_specifier_diagnostics)
-        .await;
+        .update(&record.specifier, version, &all_specifier_diagnostics);
       self
         .client
         .when_outside_lsp_lock()
@@ -179,10 +178,7 @@ impl DiagnosticsPublisher {
         specifiers_to_remove.push(specifier.clone());
         if let Some(removed_value) = maybe_removed_value {
           // clear out any diagnostics for this specifier
-          self
-            .state
-            .update(specifier, removed_value.version, &[])
-            .await;
+          self.state.update(specifier, removed_value.version, &[]);
           self
             .client
             .when_outside_lsp_lock()
@@ -307,19 +303,19 @@ struct SpecifierState {
   no_cache_diagnostics: Vec<lsp::Diagnostic>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct DiagnosticsState {
-  specifiers: Arc<RwLock<HashMap<ModuleSpecifier, SpecifierState>>>,
+  specifiers: RwLock<HashMap<ModuleSpecifier, SpecifierState>>,
 }
 
 impl DiagnosticsState {
-  async fn update(
+  fn update(
     &self,
     specifier: &ModuleSpecifier,
     version: Option<i32>,
     diagnostics: &[lsp::Diagnostic],
   ) {
-    let mut specifiers = self.specifiers.write().await;
+    let mut specifiers = self.specifiers.write();
     let current_version = specifiers.get(specifier).and_then(|s| s.version);
     match (version, current_version) {
       (Some(arg), Some(existing)) if arg < existing => return,
@@ -344,27 +340,25 @@ impl DiagnosticsState {
     );
   }
 
-  pub async fn clear(&self, specifier: &ModuleSpecifier) {
-    let mut specifiers = self.specifiers.write().await;
-    specifiers.remove(specifier);
+  pub fn clear(&self, specifier: &ModuleSpecifier) {
+    self.specifiers.write().remove(specifier);
   }
 
-  pub async fn has_no_cache_diagnostics(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> bool {
-    let specifiers = self.specifiers.read().await;
-    specifiers
+  pub fn has_no_cache_diagnostics(&self, specifier: &ModuleSpecifier) -> bool {
+    self
+      .specifiers
+      .read()
       .get(specifier)
       .map_or(false, |s| !s.no_cache_diagnostics.is_empty())
   }
 
-  pub async fn no_cache_diagnostics(
+  pub fn no_cache_diagnostics(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Vec<lsp::Diagnostic> {
-    let specifiers = self.specifiers.read().await;
-    specifiers
+    self
+      .specifiers
+      .read()
       .get(specifier)
       .map_or(vec![], |s| s.no_cache_diagnostics.clone())
   }
@@ -378,7 +372,7 @@ pub struct DiagnosticsServer {
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
   batch_counter: DiagnosticBatchCounter,
-  state: DiagnosticsState,
+  state: Arc<DiagnosticsState>,
 }
 
 impl DiagnosticsServer {
@@ -386,7 +380,7 @@ impl DiagnosticsServer {
     client: Client,
     performance: Arc<Performance>,
     ts_server: Arc<TsServer>,
-    state: DiagnosticsState,
+    state: Arc<DiagnosticsState>,
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),

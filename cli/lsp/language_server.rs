@@ -182,7 +182,7 @@ pub struct Inner {
   /// Configuration information.
   pub config: Config,
   deps_http_cache: Arc<dyn HttpCache>,
-  diagnostics_state: diagnostics::DiagnosticsState,
+  diagnostics_state: Arc<diagnostics::DiagnosticsState>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -560,7 +560,7 @@ impl Inner {
     let ts_server =
       Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
-    let diagnostics_state = DiagnosticsState::default();
+    let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
       performance.clone(),
@@ -1448,10 +1448,7 @@ impl Inner {
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark("did_close", Some(&params));
-    self
-      .diagnostics_state
-      .clear(&params.text_document.uri)
-      .await;
+    self.diagnostics_state.clear(&params.text_document.uri);
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
@@ -1992,10 +1989,8 @@ impl Inner {
         }
       }
       if includes_no_cache {
-        let no_cache_diagnostics = self
-          .diagnostics_state
-          .no_cache_diagnostics(&specifier)
-          .await;
+        let no_cache_diagnostics =
+          self.diagnostics_state.no_cache_diagnostics(&specifier);
         let uncached_deps = no_cache_diagnostics
           .iter()
           .filter_map(|d| {
@@ -3320,7 +3315,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
       inner.diagnostics_state.clone()
     };
-    if !diagnostics_state.has_no_cache_diagnostics(uri).await {
+    // Call this outside of the language server lock, it sync locks internally.
+    if !diagnostics_state.has_no_cache_diagnostics(uri) {
       return;
     }
     if let Err(err) = self
