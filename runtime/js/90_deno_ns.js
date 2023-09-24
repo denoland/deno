@@ -179,8 +179,8 @@ const denoNsUnstable = {
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,
   jupyter: {
-    sendIo(content) {
-      return core.opAsync("op_jupyter_send_io", content);
+    async sendIo(content) {
+      await core.opAsync("op_jupyter_send_io", content);
     },
   },
 };
