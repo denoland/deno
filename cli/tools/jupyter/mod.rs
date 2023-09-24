@@ -102,7 +102,7 @@ pub async fn kernel(
 
 deno_core::extension!(deno_jupyter,
   ops = [
-    op_send_io,
+    op_jupyter_send_io,
   ],
   options = {
     sender: mpsc::UnboundedSender<server::StdioMsg>,
@@ -117,7 +117,10 @@ deno_core::extension!(deno_jupyter,
 );
 
 #[op2(async)]
-pub async fn op_send_io(state: Rc<RefCell<OpState>>) -> Result<(), AnyError> {
+pub async fn op_jupyter_send_io(
+  state: Rc<RefCell<OpState>>,
+  #[serde] content: serde_json::Value,
+) -> Result<(), AnyError> {
   let (iopub_socket, last_execution_request) = {
     let s = state.borrow();
 
@@ -128,7 +131,13 @@ pub async fn op_send_io(state: Rc<RefCell<OpState>>) -> Result<(), AnyError> {
     )
   };
 
-  if let Some(last_request) = last_execution_request.clone() {}
+  if let Some(last_request) = last_execution_request.borrow().clone() {
+    last_request
+      .new_message("display_data")
+      .with_content(content)
+      .send(&mut *iopub_socket.lock().await)
+      .await?;
+  }
 
   Ok(())
 }

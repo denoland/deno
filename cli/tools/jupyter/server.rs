@@ -44,7 +44,7 @@ impl JupyterServer {
   pub async fn start(
     spec: ConnectionSpec,
     mut stdio_rx: mpsc::UnboundedReceiver<StdioMsg>,
-    repl_session: repl::ReplSession,
+    mut repl_session: repl::ReplSession,
   ) -> Result<(), AnyError> {
     let mut heartbeat =
       bind_socket::<zeromq::RepSocket>(&spec, spec.hb_port).await?;
@@ -62,7 +62,9 @@ impl JupyterServer {
     // Store `iopub_socket` in the op state so it's accessible to the runtime API.
     {
       let op_state_rc = repl_session.worker.js_runtime.op_state();
-      op_state_rc.borrow_mut().put(iopub_socket.clone());
+      let mut op_state = op_state_rc.borrow_mut();
+      op_state.put(iopub_socket.clone());
+      op_state.put(last_execution_request.clone());
     }
 
     let cancel_handle = CancelHandle::new_rc();
