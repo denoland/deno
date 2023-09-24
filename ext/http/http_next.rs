@@ -23,7 +23,6 @@ use crate::LocalExecutor;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
 use deno_core::unsync::spawn;
@@ -1264,13 +1263,13 @@ pub fn op_can_write_vectored(
   state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
-// TODO(bartlomieju): op2 doesn't want to handle `usize` in the return type
-#[op]
+#[op2(async)]
+#[number]
 pub async fn op_raw_write_vectored(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  buf1: JsBuffer,
-  buf2: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[buffer] buf1: JsBuffer,
+  #[buffer] buf2: JsBuffer,
 ) -> Result<usize, AnyError> {
   let resource: Rc<UpgradeStream> =
     state.borrow().resource_table.get::<UpgradeStream>(rid)?;

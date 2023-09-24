@@ -8,7 +8,6 @@ use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::CancelFuture;
 
@@ -128,12 +127,13 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op]
-async fn op_net_send_udp<NP>(
+#[op2(async)]
+#[number]
+pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  addr: IpAddr,
-  zero_copy: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[serde] addr: IpAddr,
+  #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
