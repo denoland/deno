@@ -48,8 +48,10 @@ use super::config::ConfigSnapshot;
 use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
+use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
+use super::diagnostics::DiagnosticsState;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
@@ -180,6 +182,7 @@ pub struct Inner {
   /// Configuration information.
   pub config: Config,
   deps_http_cache: Arc<dyn HttpCache>,
+  diagnostics_state: diagnostics::DiagnosticsState,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -557,10 +560,12 @@ impl Inner {
     let ts_server =
       Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
+    let diagnostics_state = DiagnosticsState::default();
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
       performance.clone(),
       ts_server.clone(),
+      diagnostics_state.clone(),
     );
     let assets = Assets::new(ts_server.clone());
     let registry_url = CliNpmRegistryApi::default_url();
@@ -587,6 +592,7 @@ impl Inner {
       client,
       config,
       deps_http_cache,
+      diagnostics_state,
       diagnostics_server,
       documents,
       http_client,
@@ -1443,11 +1449,9 @@ impl Inner {
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark("did_close", Some(&params));
     self
-      .diagnostics_server
-      .state()
-      .write()
-      .await
-      .clear(&params.text_document.uri);
+      .diagnostics_state
+      .clear(&params.text_document.uri)
+      .await;
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
@@ -1914,6 +1918,7 @@ impl Inner {
       let file_diagnostics = self
         .diagnostics_server
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
+      let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
           Some("deno-ts") => {
@@ -1957,12 +1962,21 @@ impl Inner {
               }
             }
           }
-          Some("deno") => code_actions
-            .add_deno_fix_action(&specifier, diagnostic)
-            .map_err(|err| {
-              error!("{}", err);
-              LspError::internal_error()
-            })?,
+          Some("deno") => {
+            if diagnostic.code
+              == Some(NumberOrString::String("no-cache".to_string()))
+              || diagnostic.code
+                == Some(NumberOrString::String("no-cache-npm".to_string()))
+            {
+              includes_no_cache = true;
+            }
+            code_actions
+              .add_deno_fix_action(&specifier, diagnostic)
+              .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?
+          }
           Some("deno-lint") => code_actions
             .add_deno_lint_ignore_action(
               &specifier,
@@ -1975,6 +1989,26 @@ impl Inner {
               LspError::internal_error()
             })?,
           _ => (),
+        }
+      }
+      if includes_no_cache {
+        let no_cache_diagnostics = self
+          .diagnostics_state
+          .no_cache_diagnostics(&specifier)
+          .await;
+        let uncached_deps = no_cache_diagnostics
+          .iter()
+          .filter_map(|d| {
+            let data = serde_json::from_value::<DiagnosticDataSpecifier>(
+              d.data.clone().into(),
+            )
+            .ok()?;
+            Some(data.specifier)
+          })
+          .collect::<HashSet<_>>();
+        if uncached_deps.len() > 1 {
+          code_actions
+            .add_cache_all_action(&specifier, no_cache_diagnostics.to_owned());
         }
       }
       code_actions.set_preferred_fixes();
@@ -3284,9 +3318,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
       {
         return;
       }
-      inner.diagnostics_server.state()
+      inner.diagnostics_state.clone()
     };
-    if !diagnostics_state.read().await.has_no_cache_diagnostic(uri) {
+    if !diagnostics_state.has_no_cache_diagnostics(uri).await {
       return;
     }
     if let Err(err) = self
