@@ -1721,7 +1721,7 @@ Deno.test({
         if (count == 3) {
           promise.resolve();
         }
-        await sleep(60000);
+        await new Promise(() => {});
       });
 
       // Enqueue 3 messages.
