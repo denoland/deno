@@ -108,6 +108,7 @@ use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
+use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -1446,6 +1447,12 @@ impl Inner {
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark("did_close", Some(&params));
+    self
+      .diagnostics_server
+      .state()
+      .write()
+      .await
+      .clear(&params.text_document.uri);
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
@@ -3267,9 +3274,38 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.0.write().await.did_change(params).await
   }
 
-  async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-    // We don't need to do anything on save at the moment, but if this isn't
-    // implemented, lspower complains about it not being implemented.
+  async fn did_save(&self, params: DidSaveTextDocumentParams) {
+    let uri = &params.text_document.uri;
+    let Ok(path) = specifier_to_file_path(uri) else {
+      return;
+    };
+    if !is_importable_ext(&path) {
+      return;
+    }
+    let diagnostics_state = {
+      let inner = self.0.read().await;
+      if !inner.config.workspace_settings().cache_on_save
+        || !inner.config.specifier_enabled(uri)
+      {
+        return;
+      }
+      inner.diagnostics_server.state()
+    };
+    if !diagnostics_state.read().await.has_no_cache_diagnostic(uri) {
+      return;
+    }
+    if let Err(err) = self
+      .cache_request(Some(
+        serde_json::to_value(lsp_custom::CacheParams {
+          referrer: TextDocumentIdentifier { uri: uri.clone() },
+          uris: vec![TextDocumentIdentifier { uri: uri.clone() }],
+        })
+        .unwrap(),
+      ))
+      .await
+    {
+      lsp_warn!("Failed to cache \"{}\" on save: {}", uri.to_string(), err);
+    }
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {

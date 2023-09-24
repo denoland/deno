@@ -4456,6 +4456,74 @@ fn lsp_code_actions_deno_cache_npm() {
 }
 
 #[test]
+fn lsp_cache_on_save() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "file.ts",
+    r#"
+      import { printHello } from "http://localhost:4545/subdir/print_hello.ts";
+      printHello();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_notification(
+    "workspace/didChangeConfiguration",
+    json!({
+      "settings": {}
+    }),
+  );
+  let settings = json!({
+    "deno": {
+      "enable": true,
+      "cacheOnSave": true,
+    },
+  });
+  // one for the workspace
+  client.handle_configuration_request(&settings);
+  // one for the specifier
+  client.handle_configuration_request(&settings);
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    serde_json::from_value(json!({
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 33 },
+          "end": { "line": 1, "character": 78 }
+        },
+        "severity": 1,
+        "code": "no-cache",
+        "source": "deno",
+        "message": "Uncached or missing remote URL: http://localhost:4545/subdir/print_hello.ts",
+        "data": { "specifier": "http://localhost:4545/subdir/print_hello.ts" }
+      }],
+      "version": 1
+    }))
+    .unwrap()
+  );
+  client.did_save(json!({
+    "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+  }));
+  assert_eq!(client.read_diagnostics().all(), vec![]);
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

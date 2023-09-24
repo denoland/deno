@@ -748,6 +748,10 @@ impl LspClient {
     self.write_response(id, result);
   }
 
+  pub fn did_save(&mut self, params: Value) {
+    self.write_notification("textDocument/didSave", params);
+  }
+
   pub fn did_change_watched_files(&mut self, params: Value) {
     self.write_notification("workspace/didChangeWatchedFiles", params);
   }
@@ -760,11 +764,7 @@ impl LspClient {
 
   /// Reads the latest diagnostics. It's assumed that
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
-    // ask the server what the latest diagnostic batch index is
-    let latest_diagnostic_batch_index =
-      self.get_latest_diagnostic_batch_index();
-
-    // now wait for three (deno, lint, and typescript diagnostics) batch
+    // wait for three (deno, lint, and typescript diagnostics) batch
     // notification messages for that index
     let mut read = 0;
     let mut total_messages_len = 0;
@@ -773,7 +773,7 @@ impl LspClient {
         self.read_notification::<DiagnosticBatchNotificationParams>();
       assert_eq!(method, "deno/internalTestDiagnosticBatch");
       let response = response.unwrap();
-      if response.batch_index == latest_diagnostic_batch_index {
+      if response.batch_index == self.get_latest_diagnostic_batch_index() {
         read += 1;
         total_messages_len += response.messages_len;
       }

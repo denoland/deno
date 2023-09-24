@@ -48,6 +48,7 @@ use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
@@ -95,14 +96,16 @@ type DiagnosticsBySource = HashMap<DiagnosticSource, VersionedDiagnostics>;
 #[derive(Debug)]
 struct DiagnosticsPublisher {
   client: Client,
+  state: Arc<RwLock<DiagnosticsState>>,
   diagnostics_by_specifier:
     Mutex<HashMap<ModuleSpecifier, DiagnosticsBySource>>,
 }
 
 impl DiagnosticsPublisher {
-  pub fn new(client: Client) -> Self {
+  pub fn new(client: Client, state: Arc<RwLock<DiagnosticsState>>) -> Self {
     Self {
       client,
+      state,
       diagnostics_by_specifier: Default::default(),
     }
   }
@@ -116,6 +119,7 @@ impl DiagnosticsPublisher {
   ) -> usize {
     let mut diagnostics_by_specifier =
       self.diagnostics_by_specifier.lock().await;
+    let mut state = self.state.write().await;
     let mut seen_specifiers = HashSet::with_capacity(diagnostics.len());
     let mut messages_sent = 0;
 
@@ -142,6 +146,7 @@ impl DiagnosticsPublisher {
         .cloned()
         .collect::<Vec<_>>();
 
+      state.update(&record.specifier, version, &all_specifier_diagnostics);
       self
         .client
         .when_outside_lsp_lock()
@@ -172,6 +177,7 @@ impl DiagnosticsPublisher {
         specifiers_to_remove.push(specifier.clone());
         if let Some(removed_value) = maybe_removed_value {
           // clear out any diagnostics for this specifier
+          state.update(specifier, removed_value.version, &[]);
           self
             .client
             .when_outside_lsp_lock()
@@ -290,6 +296,60 @@ struct ChannelUpdateMessage {
   batch_index: Option<usize>,
 }
 
+#[derive(Clone, Debug)]
+struct SpecifierState {
+  has_no_cache_diagnostic: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DiagnosticsState {
+  specifiers: HashMap<ModuleSpecifier, (Option<i32>, SpecifierState)>,
+}
+
+impl DiagnosticsState {
+  fn update(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    version: Option<i32>,
+    diagnostics: &[lsp::Diagnostic],
+  ) {
+    let current_version = self.specifiers.get(specifier).and_then(|s| s.0);
+    let is_new = match (version, current_version) {
+      (Some(arg), Some(existing)) => arg >= existing,
+      _ => true,
+    };
+    if is_new {
+      self.specifiers.insert(
+        specifier.clone(),
+        (
+          version,
+          SpecifierState {
+            has_no_cache_diagnostic: diagnostics.iter().any(|d| {
+              d.code
+                == Some(lsp::NumberOrString::String("no-cache".to_string()))
+                || d.code
+                  == Some(lsp::NumberOrString::String(
+                    "no-cache-npm".to_string(),
+                  ))
+            }),
+          },
+        ),
+      );
+    }
+  }
+
+  pub fn clear(&mut self, specifier: &ModuleSpecifier) {
+    self.specifiers.remove(specifier);
+  }
+
+  pub fn has_no_cache_diagnostic(&self, specifier: &ModuleSpecifier) -> bool {
+    self
+      .specifiers
+      .get(specifier)
+      .map_or(false, |s| s.1.has_no_cache_diagnostic)
+  }
+}
+
 #[derive(Debug)]
 pub struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<ChannelMessage>>,
@@ -298,6 +358,7 @@ pub struct DiagnosticsServer {
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
   batch_counter: DiagnosticBatchCounter,
+  state: Arc<RwLock<DiagnosticsState>>,
 }
 
 impl DiagnosticsServer {
@@ -313,7 +374,12 @@ impl DiagnosticsServer {
       performance,
       ts_server,
       batch_counter: Default::default(),
+      state: Default::default(),
     }
+  }
+
+  pub fn state(&self) -> Arc<RwLock<DiagnosticsState>> {
+    self.state.clone()
   }
 
   pub fn get_ts_diagnostics(
@@ -340,6 +406,7 @@ impl DiagnosticsServer {
     let (tx, mut rx) = mpsc::unbounded_channel::<ChannelMessage>();
     self.channel = Some(tx);
     let client = self.client.clone();
+    let state = self.state.clone();
     let performance = self.performance.clone();
     let ts_diagnostics_store = self.ts_diagnostics.clone();
     let ts_server = self.ts_server.clone();
@@ -353,7 +420,7 @@ impl DiagnosticsServer {
         let mut lint_handle: Option<JoinHandle<()>> = None;
         let mut deps_handle: Option<JoinHandle<()>> = None;
         let diagnostics_publisher =
-          Arc::new(DiagnosticsPublisher::new(client.clone()));
+          Arc::new(DiagnosticsPublisher::new(client.clone(), state.clone()));
 
         loop {
           match rx.recv().await {

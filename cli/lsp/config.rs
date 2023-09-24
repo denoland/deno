@@ -315,6 +315,11 @@ pub struct WorkspaceSettings {
   #[serde(default, deserialize_with = "empty_string_none")]
   pub cache: Option<String>,
 
+  /// Cache local modules and their dependencies on `textDocument/didSave`
+  /// notifications corresponding to them.
+  #[serde(default)]
+  pub cache_on_save: bool,
+
   /// Override the default stores used to validate certificates. This overrides
   /// the environment variable `DENO_TLS_CA_STORE` if present.
   pub certificate_stores: Option<Vec<String>>,
@@ -379,6 +384,7 @@ impl Default for WorkspaceSettings {
       disable_paths: vec![],
       enable_paths: None,
       cache: None,
+      cache_on_save: false,
       certificate_stores: None,
       config: None,
       import_map: None,
@@ -1192,6 +1198,7 @@ mod tests {
         disable_paths: vec![],
         enable_paths: None,
         cache: None,
+        cache_on_save: false,
         certificate_stores: None,
         config: None,
         import_map: None,
