@@ -364,6 +364,15 @@ impl ReadableStreamResource {
       .read(limit)
       .map(|buf| buf.unwrap_or_else(BufView::empty))
   }
+
+  fn close_channel(&self) {
+    // Trigger the promise in JS to cancel the stream if necessarily
+    self.data.completion.complete(true);
+    // Cancel any outstanding read requests
+    self.cancel_handle.cancel();
+    // Close the channel to wake up anyone waiting
+    self.channel.close();
+  }
 }
 
 impl Resource for ReadableStreamResource {
@@ -376,8 +385,13 @@ impl Resource for ReadableStreamResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-    self.channel.close();
+    self.close_channel();
+  }
+}
+
+impl Drop for ReadableStreamResource {
+  fn drop(&mut self) {
+    self.close_channel();
   }
 }
 
