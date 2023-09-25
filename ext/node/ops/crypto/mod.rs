@@ -46,6 +46,7 @@ pub fn op_node_check_prime(num: serde_v8::BigInt, checks: usize) -> bool {
   primes::is_probably_prime(&num, checks)
 }
 
+// TODO(bartlomieju): blocked on `op2` crashing on `ArrayBufferView`
 #[op]
 pub fn op_node_check_prime_bytes(
   bytes: &[u8],
@@ -64,6 +65,7 @@ pub async fn op_node_check_prime_async(
   Ok(spawn_blocking(move || primes::is_probably_prime(&num, checks)).await?)
 }
 
+// TODO(bartlomieju): blocked on `op2` supporting returning a future
 #[op]
 pub fn op_node_check_prime_bytes_async(
   bytes: &[u8],
@@ -504,13 +506,14 @@ pub fn op_node_pbkdf2(
   pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_pbkdf2_async(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  iterations: u32,
-  digest: String,
-  keylen: usize,
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] iterations: u32,
+  #[string] digest: String,
+  #[number] keylen: usize,
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut derived_key = vec![0; keylen];
@@ -578,13 +581,14 @@ pub fn op_node_hkdf(
   hkdf_sync(hash, ikm, salt, info, okm)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_hkdf_async(
-  hash: String,
-  ikm: JsBuffer,
-  salt: JsBuffer,
-  info: JsBuffer,
-  okm_len: usize,
+  #[string] hash: String,
+  #[buffer] ikm: JsBuffer,
+  #[buffer] salt: JsBuffer,
+  #[buffer] info: JsBuffer,
+  #[number] okm_len: usize,
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
@@ -616,18 +620,20 @@ fn generate_rsa(
   Ok((private_key_der.into(), public_key_der.into()))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_generate_rsa(
-  modulus_length: usize,
-  public_exponent: usize,
+  #[number] modulus_length: usize,
+  #[number] public_exponent: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   generate_rsa(modulus_length, public_exponent)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_generate_rsa_async(
-  modulus_length: usize,
-  public_exponent: usize,
+  #[number] modulus_length: usize,
+  #[number] public_exponent: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
 }
@@ -670,18 +676,20 @@ fn dsa_generate(
   ))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_dsa_generate(
-  modulus_length: usize,
-  divisor_length: usize,
+  #[number] modulus_length: usize,
+  #[number] divisor_length: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   dsa_generate(modulus_length, divisor_length)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_dsa_generate_async(
-  modulus_length: usize,
-  divisor_length: usize,
+  #[number] modulus_length: usize,
+  #[number] divisor_length: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   spawn_blocking(move || dsa_generate(modulus_length, divisor_length)).await?
 }
@@ -843,21 +851,23 @@ fn dh_generate(
   ))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_dh_generate(
-  prime: Option<&[u8]>,
-  prime_len: usize,
-  generator: usize,
+  #[serde] prime: Option<&[u8]>,
+  #[number] prime_len: usize,
+  #[number] generator: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   dh_generate(prime, prime_len, generator)
 }
 
 // TODO(lev): This duplication should be avoided.
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_dh_generate2(
-  prime: JsBuffer,
-  prime_len: usize,
-  generator: usize,
+  #[buffer] prime: JsBuffer,
+  #[number] prime_len: usize,
+  #[number] generator: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   dh_generate(Some(prime).as_deref(), prime_len, generator)
 }
@@ -877,11 +887,12 @@ pub fn op_node_dh_compute_secret(
   Ok(shared_secret.to_bytes_be().into())
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_dh_generate_async(
-  prime: Option<JsBuffer>,
-  prime_len: usize,
-  generator: usize,
+  #[buffer] prime: Option<JsBuffer>,
+  #[number] prime_len: usize,
+  #[number] generator: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   spawn_blocking(move || dh_generate(prime.as_deref(), prime_len, generator))
     .await?
@@ -931,16 +942,17 @@ fn scrypt(
   }
 }
 
-#[op]
+#[allow(clippy::too_many_arguments)]
+#[op2]
 pub fn op_node_scrypt_sync(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  maxmem: u32,
-  output_buffer: &mut [u8],
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] keylen: u32,
+  #[smi] cost: u32,
+  #[smi] block_size: u32,
+  #[smi] parallelization: u32,
+  #[smi] maxmem: u32,
+  #[buffer] output_buffer: &mut [u8],
 ) -> Result<(), AnyError> {
   scrypt(
     password,
@@ -1153,14 +1165,16 @@ fn gen_prime(size: usize) -> ToJsBuffer {
   primes::Prime::generate(size).0.to_bytes_be().into()
 }
 
-#[op]
-pub fn op_node_gen_prime(size: usize) -> ToJsBuffer {
+#[op2]
+#[serde]
+pub fn op_node_gen_prime(#[number] size: usize) -> ToJsBuffer {
   gen_prime(size)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_gen_prime_async(
-  size: usize,
+  #[number] size: usize,
 ) -> Result<ToJsBuffer, AnyError> {
   Ok(spawn_blocking(move || gen_prime(size)).await?)
 }
