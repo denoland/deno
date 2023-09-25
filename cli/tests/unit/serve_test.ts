@@ -2715,29 +2715,28 @@ for (const url of ["text", "file", "stream"]) {
         signal: ac.signal,
         onListen: onListen(listeningPromise),
         handler: async (req: Request) => {
-          waitForRequest.resolve();
-          await waitForAbort;
-          // Allocate the request body
-          let _body = req.body;
+          let respBody = null;
           if (req.url.includes("/text")) {
-            return new Response("text");
+            respBody = "text";
           } else if (req.url.includes("/file")) {
-            return new Response((await makeTempFile(1024)).readable);
+            respBody = (await makeTempFile(1024)).readable;
           } else if (req.url.includes("/stream")) {
-            return new Response(
-              new ReadableStream({
-                start(controller) {
-                  _body = null;
-                  controller.enqueue(new Uint8Array([1]));
-                },
-                cancel(reason) {
-                  streamCancelled!.resolve(reason);
-                },
-              }),
-            );
+            respBody = new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array([1]));
+              },
+              cancel(reason) {
+                streamCancelled!.resolve(reason);
+              },
+            });
           } else {
             fail();
           }
+          waitForRequest.resolve();
+          await waitForAbort;
+          // Allocate the request body
+          req.body;
+          return new Response(respBody);
         },
       });
 
@@ -2746,24 +2745,20 @@ for (const url of ["text", "file", "stream"]) {
       // Create a POST request and drop it once the server has received it
       const conn = await Deno.connect({ port: servePort });
       const writer = conn.writable.getWriter();
-      writer.write(new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`));
+      await writer.write(new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`));
       await waitForRequest;
-      writer.close();
+      await writer.close();
 
-      // Give it a few milliseconds for the serve machinery to work
-      await new Promise((r) => setTimeout(r, 10));
       waitForAbort.resolve();
-
-      // Give it a few milliseconds for the serve machinery to work
-      await new Promise((r) => setTimeout(r, 10));
 
       // Wait for cancellation before we shut the server down
       if (streamCancelled !== undefined) {
         await streamCancelled;
       }
 
-      // Since the handler has a chance of creating resources or running async ops, we need to use a
-      // graceful shutdown here to ensure they have fully drained.
+      // Since the handler has a chance of creating resources or running async
+      // ops, we need to use a graceful shutdown here to ensure they have fully
+      // drained.
       await server.shutdown();
 
       await server.finished;
