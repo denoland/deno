@@ -309,22 +309,18 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     },
     testing: TestingSettings { args: vec![] },
     javascript: LanguageWorkspaceSettings {
-      inlay_hints: Default::default(),
       suggest: CompletionSettings {
-        complete_function_calls: false,
-        names: false,
-        paths: false,
-        auto_imports: false,
+        enabled: false,
+        ..Default::default()
       },
+      ..Default::default()
     },
     typescript: LanguageWorkspaceSettings {
-      inlay_hints: Default::default(),
       suggest: CompletionSettings {
-        complete_function_calls: false,
-        names: false,
-        paths: false,
-        auto_imports: false,
+        enabled: false,
+        ..Default::default()
       },
+      ..Default::default()
     },
   }
 }

@@ -3532,14 +3532,7 @@ impl From<&FmtOptionsConfig> for QuotePreference {
   }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
-pub enum ImportModuleSpecifierPreference {
-  Auto,
-  Relative,
-  NonRelative,
-}
+pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -3581,14 +3574,7 @@ pub enum IncludePackageJsonAutoImports {
   Off,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
-pub enum JsxAttributeCompletionStyle {
-  Auto,
-  Braces,
-  None,
-}
+pub type JsxAttributeCompletionStyle = config::JsxAttributeCompletionStyle;
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3666,35 +3652,115 @@ pub struct UserPreferences {
 }
 
 impl UserPreferences {
-  pub fn from_workspace_settings_for_specifier(
-    settings: &config::WorkspaceSettings,
+  pub fn from_config_for_specifier(
+    config: &config::Config,
+    fmt_config: &FmtOptionsConfig,
     specifier: &ModuleSpecifier,
   ) -> Self {
-    let language_settings = settings.language_settings_for_specifier(specifier);
-    Self {
-      include_inlay_parameter_name_hints: language_settings
-        .map(|s| (&s.inlay_hints.parameter_names.enabled).into()),
-      include_inlay_parameter_name_hints_when_argument_matches_name:
-        language_settings.map(|s| {
-          !s.inlay_hints
-            .parameter_names
-            .suppress_when_argument_matches_name
-        }),
-      include_inlay_function_parameter_type_hints: language_settings
-        .map(|s| s.inlay_hints.parameter_types.enabled),
-      include_inlay_variable_type_hints: language_settings
-        .map(|s| s.inlay_hints.variable_types.enabled),
-      include_inlay_variable_type_hints_when_type_matches_name:
-        language_settings.map(|s| {
-          !s.inlay_hints.variable_types.suppress_when_type_matches_name
-        }),
-      include_inlay_property_declaration_type_hints: language_settings
-        .map(|s| s.inlay_hints.property_declaration_types.enabled),
-      include_inlay_function_like_return_type_hints: language_settings
-        .map(|s| s.inlay_hints.function_like_return_types.enabled),
-      include_inlay_enum_member_value_hints: language_settings
-        .map(|s| s.inlay_hints.enum_member_values.enabled),
+    let base_preferences = Self {
+      allow_incomplete_completions: Some(true),
+      allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
+      // TODO(nayeemrmn): Investigate why we use `Index` here.
+      import_module_specifier_ending: Some(ImportModuleSpecifierEnding::Index),
+      include_completions_with_snippet_text: Some(
+        config.client_capabilities.snippet_support,
+      ),
+      provide_refactor_not_applicable_reason: Some(true),
+      quote_preference: Some(fmt_config.into()),
+      use_label_details_in_completion_entries: Some(true),
       ..Default::default()
+    };
+    let Some(language_settings) = config
+      .workspace_settings()
+      .language_settings_for_specifier(specifier)
+    else {
+      return base_preferences;
+    };
+    Self {
+      auto_import_file_exclude_patterns: Some(
+        language_settings
+          .preferences
+          .auto_import_file_exclude_patterns
+          .clone(),
+      ),
+      include_automatic_optional_chain_completions: Some(
+        language_settings.suggest.enabled
+          && language_settings
+            .suggest
+            .include_automatic_optional_chain_completions,
+      ),
+      include_completions_for_import_statements: Some(
+        language_settings.suggest.enabled
+          && language_settings
+            .suggest
+            .include_completions_for_import_statements,
+      ),
+      include_completions_for_module_exports: Some(
+        language_settings.suggest.enabled
+          && language_settings.suggest.auto_imports,
+      ),
+      include_completions_with_class_member_snippets: Some(
+        language_settings.suggest.enabled
+          && language_settings.suggest.class_member_snippets.enabled
+          && config.client_capabilities.snippet_support,
+      ),
+      include_completions_with_insert_text: Some(
+        language_settings.suggest.enabled,
+      ),
+      include_completions_with_object_literal_method_snippets: Some(
+        language_settings.suggest.enabled
+          && language_settings
+            .suggest
+            .object_literal_method_snippets
+            .enabled
+          && config.client_capabilities.snippet_support,
+      ),
+      import_module_specifier_preference: Some(
+        language_settings.preferences.import_module_specifier,
+      ),
+      include_inlay_parameter_name_hints: Some(
+        (&language_settings.inlay_hints.parameter_names.enabled).into(),
+      ),
+      include_inlay_parameter_name_hints_when_argument_matches_name: Some(
+        !language_settings
+          .inlay_hints
+          .parameter_names
+          .suppress_when_argument_matches_name,
+      ),
+      include_inlay_function_parameter_type_hints: Some(
+        language_settings.inlay_hints.parameter_types.enabled,
+      ),
+      include_inlay_variable_type_hints: Some(
+        language_settings.inlay_hints.variable_types.enabled,
+      ),
+      include_inlay_variable_type_hints_when_type_matches_name: Some(
+        !language_settings
+          .inlay_hints
+          .variable_types
+          .suppress_when_type_matches_name,
+      ),
+      include_inlay_property_declaration_type_hints: Some(
+        language_settings
+          .inlay_hints
+          .property_declaration_types
+          .enabled,
+      ),
+      include_inlay_function_like_return_type_hints: Some(
+        language_settings
+          .inlay_hints
+          .function_like_return_types
+          .enabled,
+      ),
+      include_inlay_enum_member_value_hints: Some(
+        language_settings.inlay_hints.enum_member_values.enabled,
+      ),
+      jsx_attribute_completion_style: Some(
+        language_settings.preferences.jsx_attribute_completion_style,
+      ),
+      provide_prefix_and_suffix_text_for_rename: Some(
+        language_settings.preferences.use_aliases_for_renames,
+      ),
+      ..base_preferences
     }
   }
 }
@@ -5149,7 +5215,7 @@ mod tests {
   }
 
   #[test]
-  fn include_suppress_inlay_hit_settings() {
+  fn include_suppress_inlay_hint_settings() {
     let mut settings = WorkspaceSettings::default();
     settings
       .typescript
@@ -5161,11 +5227,13 @@ mod tests {
       .inlay_hints
       .variable_types
       .suppress_when_type_matches_name = true;
-    let user_preferences =
-      UserPreferences::from_workspace_settings_for_specifier(
-        &settings,
-        &ModuleSpecifier::parse("file:///foo.ts").unwrap(),
-      );
+    let mut config = config::Config::new();
+    config.set_workspace_settings(settings);
+    let user_preferences = UserPreferences::from_config_for_specifier(
+      &config,
+      &Default::default(),
+      &ModuleSpecifier::parse("file:///foo.ts").unwrap(),
+    );
     assert_eq!(
       user_preferences.include_inlay_variable_type_hints_when_type_matches_name,
       Some(false)
