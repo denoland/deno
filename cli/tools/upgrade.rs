@@ -503,7 +503,7 @@ pub fn unpack_into_dir(
     .extension()
     .and_then(|ext| ext.to_str())
     .unwrap();
-  let output = match archive_ext {
+  let unpack_status = match archive_ext {
     "zip" if cfg!(windows) => {
       fs::write(&archive_path, &archive_data)?;
       Command::new("powershell.exe")
@@ -526,7 +526,7 @@ pub fn unpack_into_dir(
         .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
         .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
-        .output()
+        .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
@@ -537,13 +537,14 @@ pub fn unpack_into_dir(
             err
           }
         })?
+        .wait()?
     }
     "zip" => {
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
         .current_dir(temp_dir_path)
         .arg(&archive_path)
-        .output()
+        .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
@@ -554,12 +555,11 @@ pub fn unpack_into_dir(
             err
           }
         })?
+        .wait()?
     }
     ext => bail!("Unsupported archive type: '{ext}'"),
   };
-  if !output.status.success() {
-    eprintln!("{}", String::from_utf8_lossy(&output.stdout));
-    eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+  if !unpack_status.success() {
     bail!("Failed to unpack archive.");
   }
   assert!(exe_path.exists());
