@@ -2992,6 +2992,7 @@ impl OutliningSpan {
         Some(range.end.character)
       },
       kind: self.get_folding_range_kind(&self.kind),
+      collapsed_text: None,
     }
   }
 
