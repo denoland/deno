@@ -96,24 +96,65 @@ pub struct DenoCompletionSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ClassMemberSnippets {
+  #[serde(default = "is_true")]
+  pub enabled: bool,
+}
+
+impl Default for ClassMemberSnippets {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectLiteralMethodSnippets {
+  #[serde(default = "is_true")]
+  pub enabled: bool,
+}
+
+impl Default for ObjectLiteralMethodSnippets {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
   pub complete_function_calls: bool,
+  #[serde(default = "is_true")]
+  pub include_automatic_optional_chain_completions: bool,
+  #[serde(default = "is_true")]
+  pub include_completions_for_import_statements: bool,
   #[serde(default = "is_true")]
   pub names: bool,
   #[serde(default = "is_true")]
   pub paths: bool,
   #[serde(default = "is_true")]
   pub auto_imports: bool,
+  #[serde(default = "is_true")]
+  pub enabled: bool,
+  #[serde(default)]
+  pub class_member_snippets: ClassMemberSnippets,
+  #[serde(default)]
+  pub object_literal_method_snippets: ObjectLiteralMethodSnippets,
 }
 
 impl Default for CompletionSettings {
   fn default() -> Self {
     Self {
       complete_function_calls: false,
+      include_automatic_optional_chain_completions: true,
+      include_completions_for_import_statements: true,
       names: true,
       paths: true,
       auto_imports: true,
+      enabled: true,
+      class_member_snippets: Default::default(),
+      object_literal_method_snippets: Default::default(),
     }
   }
 }
@@ -286,13 +327,91 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   Ok(o.filter(|s| !s.is_empty()))
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImportModuleSpecifier {
+  NonRelative,
+  ProjectRelative,
+  Relative,
+  Shortest,
+}
+
+impl Default for ImportModuleSpecifier {
+  fn default() -> Self {
+    Self::Shortest
+  }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum JsxAttributeCompletionStyle {
+  Auto,
+  Braces,
+  None,
+}
+
+impl Default for JsxAttributeCompletionStyle {
+  fn default() -> Self {
+    Self::Auto
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguagePreferences {
+  #[serde(default)]
+  pub import_module_specifier: ImportModuleSpecifier,
+  #[serde(default)]
+  pub jsx_attribute_completion_style: JsxAttributeCompletionStyle,
+  #[serde(default)]
+  pub auto_import_file_exclude_patterns: Vec<String>,
+  #[serde(default = "is_true")]
+  pub use_aliases_for_renames: bool,
+}
+
+impl Default for LanguagePreferences {
+  fn default() -> Self {
+    LanguagePreferences {
+      import_module_specifier: Default::default(),
+      jsx_attribute_completion_style: Default::default(),
+      auto_import_file_exclude_patterns: vec![],
+      use_aliases_for_renames: true,
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateImportsOnFileMoveOptions {
+  #[serde(default)]
+  pub enabled: UpdateImportsOnFileMoveEnabled,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdateImportsOnFileMoveEnabled {
+  Always,
+  Prompt,
+  Never,
+}
+
+impl Default for UpdateImportsOnFileMoveEnabled {
+  fn default() -> Self {
+    Self::Prompt
+  }
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageWorkspaceSettings {
   #[serde(default)]
   pub inlay_hints: InlayHintsSettings,
   #[serde(default)]
+  pub preferences: LanguagePreferences,
+  #[serde(default)]
   pub suggest: CompletionSettings,
+  #[serde(default)]
+  pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
 }
 
 /// Deno language server specific settings that are applied to a workspace.
@@ -1244,12 +1363,28 @@ mod tests {
               enabled: false
             },
           },
+          preferences: LanguagePreferences {
+            import_module_specifier: ImportModuleSpecifier::Shortest,
+            jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
+            auto_import_file_exclude_patterns: vec![],
+            use_aliases_for_renames: true,
+          },
           suggest: CompletionSettings {
             complete_function_calls: false,
+            include_automatic_optional_chain_completions: true,
+            include_completions_for_import_statements: true,
             names: true,
             paths: true,
             auto_imports: true,
+            enabled: true,
+            class_member_snippets: ClassMemberSnippets { enabled: true },
+            object_literal_method_snippets: ObjectLiteralMethodSnippets {
+              enabled: true,
+            },
           },
+          update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
+            enabled: UpdateImportsOnFileMoveEnabled::Prompt
+          }
         },
         typescript: LanguageWorkspaceSettings {
           inlay_hints: InlayHintsSettings {
@@ -1272,12 +1407,28 @@ mod tests {
               enabled: false
             },
           },
+          preferences: LanguagePreferences {
+            import_module_specifier: ImportModuleSpecifier::Shortest,
+            jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
+            auto_import_file_exclude_patterns: vec![],
+            use_aliases_for_renames: true,
+          },
           suggest: CompletionSettings {
             complete_function_calls: false,
+            include_automatic_optional_chain_completions: true,
+            include_completions_for_import_statements: true,
             names: true,
             paths: true,
             auto_imports: true,
+            enabled: true,
+            class_member_snippets: ClassMemberSnippets { enabled: true },
+            object_literal_method_snippets: ObjectLiteralMethodSnippets {
+              enabled: true,
+            },
           },
+          update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
+            enabled: UpdateImportsOnFileMoveEnabled::Prompt
+          }
         },
       }
     );
