@@ -491,7 +491,7 @@ pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
   temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, std::io::Error> {
+) -> Result<PathBuf, AnyError> {
   const EXE_NAME: &str = "deno";
   let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
@@ -557,9 +557,11 @@ pub fn unpack_into_dir(
         })?
         .wait()?
     }
-    ext => panic!("Unsupported archive type: '{ext}'"),
+    ext => bail!("Unsupported archive type: '{ext}'"),
   };
-  assert!(unpack_status.success());
+  if !unpack_status.success() {
+    bail!("Failed to unpack archive.");
+  }
   assert!(exe_path.exists());
   fs::remove_file(&archive_path)?;
   Ok(exe_path)
