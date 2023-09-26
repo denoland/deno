@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -24,7 +23,6 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
-use deno_runtime::deno_node::PathClean;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use global::GlobalNpmPackageResolver;
@@ -174,13 +172,6 @@ impl CliNpmResolver {
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
-  /// Gets if the provided specifier is in an npm package.
-  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    let root_dir_url = self.fs_resolver.root_dir_url();
-    debug_assert!(root_dir_url.as_str().ends_with('/'));
-    specifier.as_ref().starts_with(root_dir_url.as_str())
-  }
-
   /// Adds package requirements to the resolver and ensures everything is setup.
   pub async fn add_package_reqs(
     &self,
@@ -273,9 +264,8 @@ impl NpmResolver for CliNpmResolver {
 
   fn resolve_package_folder_from_path(
     &self,
-    path: &Path,
+    specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let specifier = path_to_specifier(path)?;
     self.resolve_package_folder_from_specifier(&specifier)
   }
 
@@ -295,10 +285,9 @@ impl NpmResolver for CliNpmResolver {
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self
-      .resolve_package_folder_from_specifier(specifier)
-      .map(|p| p.is_some())
-      .unwrap_or(false)
+    let root_dir_url = self.fs_resolver.root_dir_url();
+    debug_assert!(root_dir_url.as_str().ends_with('/'));
+    specifier.as_ref().starts_with(root_dir_url.as_str())
   }
 
   fn ensure_read_permission(
@@ -336,12 +325,5 @@ pub fn create_npm_fs_resolver(
       resolution,
       system_info,
     )),
-  }
-}
-
-fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
-  match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
-    Ok(specifier) => Ok(specifier),
-    Err(()) => bail!("Could not convert '{}' to url.", path.display()),
   }
 }
