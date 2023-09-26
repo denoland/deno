@@ -207,6 +207,54 @@ fn lsp_import_map() {
 }
 
 #[test]
+fn lsp_import_map_remote() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "importMap": "http://localhost:4545/import_maps/import_map.json",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "file.ts",
+    r#"
+      import { printHello } from "print_hello";
+      printHello();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_import_map("http://localhost:4545/import_maps/import_map.json");
+  });
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [
+        [],
+        temp_dir.uri().join("file.ts").unwrap(),
+      ],
+    }),
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[test]
 fn lsp_import_map_data_url() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4456,6 +4504,219 @@ fn lsp_code_actions_deno_cache_npm() {
 }
 
 #[test]
+fn lsp_code_actions_deno_cache_all() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import * as a from "https://deno.land/x/a/mod.ts";
+        import chalk from "npm:chalk";
+        console.log(a);
+        console.log(chalk);
+      "#,
+    }
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    serde_json::from_value(json!({
+      "uri": "file:///a/file.ts",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 1, "character": 27 },
+            "end": { "line": 1, "character": 57 },
+          },
+          "severity": 1,
+          "code": "no-cache",
+          "source": "deno",
+          "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+          "data": { "specifier": "https://deno.land/x/a/mod.ts" },
+        },
+        {
+          "range": {
+            "start": { "line": 2, "character": 26 },
+            "end": { "line": 2, "character": 37 },
+          },
+          "severity": 1,
+          "code": "no-cache-npm",
+          "source": "deno",
+          "message": "Uncached or missing npm package: chalk",
+          "data": { "specifier": "npm:chalk" },
+        },
+      ],
+      "version": 1,
+    })).unwrap()
+  );
+
+  let res =
+    client
+    .write_request(      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": { "line": 1, "character": 27 },
+          "end": { "line": 1, "character": 57 },
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 1, "character": 27 },
+              "end": { "line": 1, "character": 57 },
+            },
+            "severity": 1,
+            "code": "no-cache",
+            "source": "deno",
+            "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+            "data": {
+              "specifier": "https://deno.land/x/a/mod.ts",
+            },
+          }],
+          "only": ["quickfix"],
+        }
+      }),
+    )
+    ;
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+        "kind": "quickfix",
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 1, "character": 27 },
+            "end": { "line": 1, "character": 57 },
+          },
+          "severity": 1,
+          "code": "no-cache",
+          "source": "deno",
+          "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+          "data": {
+            "specifier": "https://deno.land/x/a/mod.ts",
+          },
+        }],
+        "command": {
+          "title": "",
+          "command": "deno.cache",
+          "arguments": [["https://deno.land/x/a/mod.ts"], "file:///a/file.ts"],
+        }
+      },
+      {
+        "title": "Cache all dependencies of this module.",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 27 },
+              "end": { "line": 1, "character": 57 },
+            },
+            "severity": 1,
+            "code": "no-cache",
+            "source": "deno",
+            "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
+            "data": {
+              "specifier": "https://deno.land/x/a/mod.ts",
+            },
+          },
+          {
+            "range": {
+              "start": { "line": 2, "character": 26 },
+              "end": { "line": 2, "character": 37 },
+            },
+            "severity": 1,
+            "code": "no-cache-npm",
+            "source": "deno",
+            "message": "Uncached or missing npm package: chalk",
+            "data": { "specifier": "npm:chalk" },
+          },
+        ],
+        "command": {
+          "title": "",
+          "command": "deno.cache",
+          "arguments": [[], "file:///a/file.ts"],
+        }
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_cache_on_save() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "file.ts",
+    r#"
+      import { printHello } from "http://localhost:4545/subdir/print_hello.ts";
+      printHello();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_notification(
+    "workspace/didChangeConfiguration",
+    json!({
+      "settings": {}
+    }),
+  );
+  let settings = json!({
+    "deno": {
+      "enable": true,
+      "cacheOnSave": true,
+    },
+  });
+  // one for the workspace
+  client.handle_configuration_request(&settings);
+  // one for the specifier
+  client.handle_configuration_request(&settings);
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    serde_json::from_value(json!({
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 33 },
+          "end": { "line": 1, "character": 78 }
+        },
+        "severity": 1,
+        "code": "no-cache",
+        "source": "deno",
+        "message": "Uncached or missing remote URL: http://localhost:4545/subdir/print_hello.ts",
+        "data": { "specifier": "http://localhost:4545/subdir/print_hello.ts" }
+      }],
+      "version": 1
+    }))
+    .unwrap()
+  );
+  client.did_save(json!({
+    "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+  }));
+  assert_eq!(client.read_diagnostics().all(), vec![]);
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7351,7 +7612,24 @@ fn lsp_diagnostics_deprecated() {
           "code": 6385,
           "source": "deno-ts",
           "message": "'a' is deprecated.",
-          "relatedInformation": [],
+          "relatedInformation": [
+            {
+              "location": {
+                "uri": "file:///a/file.ts",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4,
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 16,
+                  },
+                },
+              },
+              "message": "The declaration was marked as deprecated here.",
+            },
+          ],
           "tags": [2]
         }
       ],

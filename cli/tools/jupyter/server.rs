@@ -540,19 +540,29 @@ async fn get_jupyter_display(
   evaluate_result: &cdp::RemoteObject,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
   let response = session
-    .call_function_on_args(
-      r#"function (object) {
-        const display = object[Symbol.for("Jupyter.display")];
-        if (typeof display === "function") {
-          return JSON.stringify(display());
-        } else {
-          return null;
-        }
-      }"#
-        .to_string(),
-      &[evaluate_result.clone()],
+    .post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "functionDeclaration": r#"function (object) {
+      const display = object[Symbol.for("Jupyter.display")];
+
+      if (typeof display !== "function") {
+        return null;
+      }
+      
+      try {
+        return JSON.stringify(display());
+      } catch {
+        return null;
+      }
+    }"#,
+        "arguments": [cdp::CallArgument::from(evaluate_result)],
+        "executionContextId": session.context_id,
+        "awaitPromise": true,
+      })),
     )
     .await?;
+  let response: cdp::CallFunctionOnResponse = serde_json::from_value(response)?;
 
   if let Some(exception_details) = &response.exception_details {
     // If the object doesn't have a Jupyter.display method or it throws an
@@ -599,8 +609,12 @@ async fn get_jupyter_display_or_eval_value(
     return Ok(HashMap::default());
   }
 
-  if let Some(data) = get_jupyter_display(session, evaluate_result).await? {
-    return Ok(data);
+  // If the response is a primitive value we don't need to try and format
+  // Jupyter response.
+  if evaluate_result.object_id.is_some() {
+    if let Some(data) = get_jupyter_display(session, evaluate_result).await? {
+      return Ok(data);
+    }
   }
 
   let response = session

@@ -917,6 +917,24 @@ impl CodeActionCollection {
       }
     }
   }
+
+  pub fn add_cache_all_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    diagnostics: Vec<lsp::Diagnostic>,
+  ) {
+    self.actions.push(CodeActionKind::Deno(lsp::CodeAction {
+      title: "Cache all dependencies of this module.".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(diagnostics),
+      command: Some(lsp::Command {
+        title: "".to_string(),
+        command: "deno.cache".to_string(),
+        arguments: Some(vec![json!([]), json!(&specifier)]),
+      }),
+      ..Default::default()
+    }));
+  }
 }
 
 /// Prepend the whitespace characters found at the start of line_content to content.

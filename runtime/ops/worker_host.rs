@@ -154,10 +154,8 @@ fn op_create_worker(
   };
   let parent_permissions = parent_permissions.clone();
   let worker_id = state.take::<WorkerId>();
-  let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
-  state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
-  let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
-  state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
+  let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
+  let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
