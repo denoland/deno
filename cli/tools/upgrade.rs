@@ -491,7 +491,7 @@ pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
   temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, std::io::Error> {
+) -> Result<PathBuf, AnyError> {
   const EXE_NAME: &str = "deno";
   let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
@@ -503,7 +503,7 @@ pub fn unpack_into_dir(
     .extension()
     .and_then(|ext| ext.to_str())
     .unwrap();
-  let unpack_status = match archive_ext {
+  let output = match archive_ext {
     "zip" if cfg!(windows) => {
       fs::write(&archive_path, &archive_data)?;
       Command::new("powershell.exe")
@@ -526,7 +526,7 @@ pub fn unpack_into_dir(
         .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
         .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
-        .spawn()
+        .output()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
@@ -537,14 +537,13 @@ pub fn unpack_into_dir(
             err
           }
         })?
-        .wait()?
     }
     "zip" => {
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
         .current_dir(temp_dir_path)
         .arg(&archive_path)
-        .spawn()
+        .output()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
@@ -555,11 +554,14 @@ pub fn unpack_into_dir(
             err
           }
         })?
-        .wait()?
     }
-    ext => panic!("Unsupported archive type: '{ext}'"),
+    ext => bail!("Unsupported archive type: '{ext}'"),
   };
-  assert!(unpack_status.success());
+  if !output.status.success() {
+    eprintln!("{}", String::from_utf8_lossy(&output.stdout));
+    eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+    bail!("Failed to unpack archive.");
+  }
   assert!(exe_path.exists());
   fs::remove_file(&archive_path)?;
   Ok(exe_path)
