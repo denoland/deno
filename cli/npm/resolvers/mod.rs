@@ -266,7 +266,7 @@ impl NpmResolver for CliNpmResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    self.resolve_package_folder_from_specifier(&specifier)
+    self.resolve_package_folder_from_specifier(specifier)
   }
 
   fn resolve_package_folder_from_deno_module(
