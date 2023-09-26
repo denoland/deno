@@ -45,11 +45,14 @@ use super::code_lens;
 use super::completions;
 use super::config::Config;
 use super::config::ConfigSnapshot;
+use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
+use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
+use super::diagnostics::DiagnosticsState;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
@@ -108,6 +111,7 @@ use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
+use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -179,6 +183,7 @@ pub struct Inner {
   /// Configuration information.
   pub config: Config,
   deps_http_cache: Arc<dyn HttpCache>,
+  diagnostics_state: Arc<diagnostics::DiagnosticsState>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -376,13 +381,6 @@ impl LanguageServer {
     }
   }
 
-  pub async fn inlay_hint(
-    &self,
-    params: InlayHintParams,
-  ) -> LspResult<Option<Vec<InlayHint>>> {
-    self.0.read().await.inlay_hint(params).await
-  }
-
   pub async fn virtual_text_document(
     &self,
     params: Option<Value>,
@@ -556,10 +554,12 @@ impl Inner {
     let ts_server =
       Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
+    let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
       performance.clone(),
       ts_server.clone(),
+      diagnostics_state.clone(),
     );
     let assets = Assets::new(ts_server.clone());
     let registry_url = CliNpmRegistryApi::default_url();
@@ -586,6 +586,7 @@ impl Inner {
       client,
       config,
       deps_http_cache,
+      diagnostics_state,
       diagnostics_server,
       documents,
       http_client,
@@ -1051,13 +1052,8 @@ impl Inner {
             lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
           }
         }
-        if let Ok(url) = Url::from_file_path(&import_map_str) {
+        if let Ok(url) = Url::parse(&import_map_str) {
           Some(url)
-        } else if import_map_str.starts_with("data:") {
-          let import_map_url = Url::parse(&import_map_str).map_err(|_| {
-            anyhow!("Bad data url for import map: {}", import_map_str)
-          })?;
-          Some(import_map_url)
         } else if let Some(root_uri) = self.config.root_uri() {
           let root_path = specifier_to_file_path(root_uri)?;
           let import_map_path = root_path.join(&import_map_str);
@@ -1446,6 +1442,7 @@ impl Inner {
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark("did_close", Some(&params));
+    self.diagnostics_state.clear(&params.text_document.uri);
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
@@ -1912,6 +1909,7 @@ impl Inner {
       let file_diagnostics = self
         .diagnostics_server
         .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
+      let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
           Some("deno-ts") => {
@@ -1929,13 +1927,11 @@ impl Inner {
                   ..line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
                 (&self.fmt_options.options).into(),
-                tsc::UserPreferences {
-                  quote_preference: Some((&self.fmt_options.options).into()),
-                  ..tsc::UserPreferences::from_workspace_settings_for_specifier(
-                    self.config.workspace_settings(),
-                    &specifier,
-                  )
-                },
+                tsc::UserPreferences::from_config_for_specifier(
+                  &self.config,
+                  &self.fmt_options.options,
+                  &specifier,
+                ),
               )
               .await;
             for action in actions {
@@ -1955,12 +1951,21 @@ impl Inner {
               }
             }
           }
-          Some("deno") => code_actions
-            .add_deno_fix_action(&specifier, diagnostic)
-            .map_err(|err| {
-              error!("{}", err);
-              LspError::internal_error()
-            })?,
+          Some("deno") => {
+            if diagnostic.code
+              == Some(NumberOrString::String("no-cache".to_string()))
+              || diagnostic.code
+                == Some(NumberOrString::String("no-cache-npm".to_string()))
+            {
+              includes_no_cache = true;
+            }
+            code_actions
+              .add_deno_fix_action(&specifier, diagnostic)
+              .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?
+          }
           Some("deno-lint") => code_actions
             .add_deno_lint_ignore_action(
               &specifier,
@@ -1973,6 +1978,24 @@ impl Inner {
               LspError::internal_error()
             })?,
           _ => (),
+        }
+      }
+      if includes_no_cache {
+        let no_cache_diagnostics =
+          self.diagnostics_state.no_cache_diagnostics(&specifier);
+        let uncached_deps = no_cache_diagnostics
+          .iter()
+          .filter_map(|d| {
+            let data = serde_json::from_value::<DiagnosticDataSpecifier>(
+              d.data.clone().into(),
+            )
+            .ok()?;
+            Some(data.specifier)
+          })
+          .collect::<HashSet<_>>();
+        if uncached_deps.len() > 1 {
+          code_actions
+            .add_cache_all_action(&specifier, no_cache_diagnostics.to_owned());
         }
       }
       code_actions.set_preferred_fixes();
@@ -1993,13 +2016,11 @@ impl Inner {
         specifier.clone(),
         line_index.offset_tsc(params.range.start)?
           ..line_index.offset_tsc(params.range.end)?,
-        Some(tsc::UserPreferences {
-          quote_preference: Some((&self.fmt_options.options).into()),
-          ..tsc::UserPreferences::from_workspace_settings_for_specifier(
-            self.config.workspace_settings(),
-            &specifier,
-          )
-        }),
+        Some(tsc::UserPreferences::from_config_for_specifier(
+          &self.config,
+          &self.fmt_options.options,
+          &specifier,
+        )),
         only,
       )
       .await?;
@@ -2055,13 +2076,11 @@ impl Inner {
           self.snapshot(),
           &code_action_data,
           (&self.fmt_options.options).into(),
-          tsc::UserPreferences {
-            quote_preference: Some((&self.fmt_options.options).into()),
-            ..tsc::UserPreferences::from_workspace_settings_for_specifier(
-              self.config.workspace_settings(),
-              &code_action_data.specifier,
-            )
-          },
+          tsc::UserPreferences::from_config_for_specifier(
+            &self.config,
+            &self.fmt_options.options,
+            &code_action_data.specifier,
+          ),
         )
         .await?;
       if combined_code_actions.commands.is_some() {
@@ -2107,13 +2126,11 @@ impl Inner {
             ..line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name,
           action_data.action_name,
-          Some(tsc::UserPreferences {
-            quote_preference: Some((&self.fmt_options.options).into()),
-            ..tsc::UserPreferences::from_workspace_settings_for_specifier(
-              self.config.workspace_settings(),
-              &action_data.specifier,
-            )
-          }),
+          Some(tsc::UserPreferences::from_config_for_specifier(
+            &self.config,
+            &self.fmt_options.options,
+            &action_data.specifier,
+          )),
         )
         .await?;
       code_action.edit = refactor_edit_info.to_workspace_edit(self).await?;
@@ -2382,8 +2399,13 @@ impl Inner {
       &params.text_document_position.text_document.uri,
       LspUrlKind::File,
     );
+    let language_settings = self
+      .config
+      .workspace_settings()
+      .language_settings_for_specifier(&specifier);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
+      || !language_settings.map(|s| s.suggest.enabled).unwrap_or(true)
     {
       return Ok(None);
     }
@@ -2394,20 +2416,24 @@ impl Inner {
     // completions, we will use internal logic and if there are completions
     // for imports, we will return those and not send a message into tsc, where
     // other completions come from.
-    let response = if let Some(response) = completions::get_import_completions(
-      &specifier,
-      &params.text_document_position.position,
-      &self.config.snapshot(),
-      &self.client,
-      &self.module_registries,
-      &self.npm.search_api,
-      &self.documents,
-      self.maybe_import_map.clone(),
-    )
-    .await
+    let mut response = None;
+    if language_settings
+      .map(|s| s.suggest.include_completions_for_import_statements)
+      .unwrap_or(true)
     {
-      Some(response)
-    } else {
+      response = completions::get_import_completions(
+        &specifier,
+        &params.text_document_position.position,
+        &self.config.snapshot(),
+        &self.client,
+        &self.module_registries,
+        &self.npm.search_api,
+        &self.documents,
+        self.maybe_import_map.clone(),
+      )
+      .await;
+    }
+    if response.is_none() {
       let line_index = asset_or_doc.line_index();
       let (trigger_character, trigger_kind) =
         if let Some(context) = &params.context {
@@ -2420,7 +2446,6 @@ impl Inner {
         };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
-      let use_snippets = self.config.client_capabilities.snippet_support;
       let maybe_completion_info = self
         .ts_server
         .get_completions(
@@ -2428,38 +2453,11 @@ impl Inner {
           specifier.clone(),
           position,
           tsc::GetCompletionsAtPositionOptions {
-            user_preferences: tsc::UserPreferences {
-              quote_preference: Some((&self.fmt_options.options).into()),
-              allow_incomplete_completions: Some(true),
-              allow_text_changes_in_new_files: Some(
-                specifier.scheme() == "file",
-              ),
-              import_module_specifier_ending: Some(
-                tsc::ImportModuleSpecifierEnding::Index,
-              ),
-              include_automatic_optional_chain_completions: Some(true),
-              include_completions_for_import_statements: Some(true),
-              include_completions_for_module_exports: self
-                .config
-                .workspace_settings()
-                .language_settings_for_specifier(&specifier)
-                .map(|s| s.suggest.auto_imports),
-              include_completions_with_object_literal_method_snippets: Some(
-                use_snippets,
-              ),
-              include_completions_with_class_member_snippets: Some(
-                use_snippets,
-              ),
-              include_completions_with_insert_text: Some(true),
-              include_completions_with_snippet_text: Some(use_snippets),
-              jsx_attribute_completion_style: Some(
-                tsc::JsxAttributeCompletionStyle::Auto,
-              ),
-              provide_prefix_and_suffix_text_for_rename: Some(true),
-              provide_refactor_not_applicable_reason: Some(true),
-              use_label_details_in_completion_entries: Some(true),
-              ..Default::default()
-            },
+            user_preferences: tsc::UserPreferences::from_config_for_specifier(
+              &self.config,
+              &self.fmt_options.options,
+              &specifier,
+            ),
             trigger_character,
             trigger_kind,
           },
@@ -2468,22 +2466,21 @@ impl Inner {
         .await;
 
       if let Some(completions) = maybe_completion_info {
-        let results = completions.as_completion_response(
-          line_index,
-          &self
-            .config
-            .workspace_settings()
-            .language_settings_for_specifier(&specifier)
-            .cloned()
-            .unwrap_or_default()
-            .suggest,
-          &specifier,
-          position,
-          self,
+        response = Some(
+          completions.as_completion_response(
+            line_index,
+            &self
+              .config
+              .workspace_settings()
+              .language_settings_for_specifier(&specifier)
+              .cloned()
+              .unwrap_or_default()
+              .suggest,
+            &specifier,
+            position,
+            self,
+          ),
         );
-        Some(results)
-      } else {
-        None
       }
     };
     self.performance.measure(mark);
@@ -2505,17 +2502,22 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
-        let mut args = GetCompletionDetailsArgs {
-          format_code_settings: Some((&self.fmt_options.options).into()),
-          ..data.into()
-        };
-        args
-          .preferences
-          .get_or_insert(Default::default())
-          .quote_preference = Some((&self.fmt_options.options).into());
         let result = self
           .ts_server
-          .get_completion_details(self.snapshot(), args)
+          .get_completion_details(
+            self.snapshot(),
+            GetCompletionDetailsArgs {
+              format_code_settings: Some((&self.fmt_options.options).into()),
+              preferences: Some(
+                tsc::UserPreferences::from_config_for_specifier(
+                  &self.config,
+                  &self.fmt_options.options,
+                  specifier,
+                ),
+              ),
+              ..data.into()
+            },
+          )
           .await;
         match result {
           Ok(maybe_completion_info) => {
@@ -2998,15 +3000,27 @@ impl Inner {
   ) -> LspResult<Option<WorkspaceEdit>> {
     let mut changes = vec![];
     for rename in params.files {
+      let old_specifier = self.url_map.normalize_url(
+        &resolve_url(&rename.old_uri).unwrap(),
+        LspUrlKind::File,
+      );
+      let options = self
+        .config
+        .workspace_settings()
+        .language_settings_for_specifier(&old_specifier)
+        .map(|s| s.update_imports_on_file_move.clone())
+        .unwrap_or_default();
+      // Note that `Always` and `Prompt` are treated the same in the server, the
+      // client will worry about that after receiving the edits.
+      if options.enabled == UpdateImportsOnFileMoveEnabled::Never {
+        continue;
+      }
       changes.extend(
         self
           .ts_server
           .get_edits_for_file_rename(
             self.snapshot(),
-            self.url_map.normalize_url(
-              &resolve_url(&rename.old_uri).unwrap(),
-              LspUrlKind::File,
-            ),
+            old_specifier,
             self.url_map.normalize_url(
               &resolve_url(&rename.new_uri).unwrap(),
               LspUrlKind::File,
@@ -3135,7 +3149,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
         // are interested in.
         let options = DidChangeWatchedFilesRegistrationOptions {
           watchers: vec![FileSystemWatcher {
-            glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
+            glob_pattern: GlobPattern::String(
+              "**/*.{json,jsonc,lock}".to_string(),
+            ),
             kind: None,
           }],
         };
@@ -3267,9 +3283,34 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.0.write().await.did_change(params).await
   }
 
-  async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-    // We don't need to do anything on save at the moment, but if this isn't
-    // implemented, lspower complains about it not being implemented.
+  async fn did_save(&self, params: DidSaveTextDocumentParams) {
+    let uri = &params.text_document.uri;
+    {
+      let inner = self.0.read().await;
+      let specifier = inner.url_map.normalize_url(uri, LspUrlKind::File);
+      if !inner.config.workspace_settings().cache_on_save
+        || !inner.config.specifier_enabled(&specifier)
+        || !inner.diagnostics_state.has_no_cache_diagnostics(&specifier)
+      {
+        return;
+      }
+      match specifier_to_file_path(&specifier) {
+        Ok(path) if is_importable_ext(&path) => {}
+        _ => return,
+      }
+    }
+    if let Err(err) = self
+      .cache_request(Some(
+        serde_json::to_value(lsp_custom::CacheParams {
+          referrer: TextDocumentIdentifier { uri: uri.clone() },
+          uris: vec![TextDocumentIdentifier { uri: uri.clone() }],
+        })
+        .unwrap(),
+      ))
+      .await
+    {
+      lsp_warn!("Failed to cache \"{}\" on save: {}", uri.to_string(), err);
+    }
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -3369,6 +3410,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     self.0.read().await.hover(params).await
+  }
+
+  async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    self.0.read().await.inlay_hint(params).await
   }
 
   async fn code_action(
@@ -3620,10 +3668,12 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let workspace_settings = self.config.workspace_settings();
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !workspace_settings.enabled_inlay_hints(&specifier)
+      || !self
+        .config
+        .workspace_settings()
+        .enabled_inlay_hints(&specifier)
     {
       return Ok(None);
     }
@@ -3644,13 +3694,11 @@ impl Inner {
         self.snapshot(),
         specifier.clone(),
         text_span,
-        tsc::UserPreferences {
-          quote_preference: Some((&self.fmt_options.options).into()),
-          ..tsc::UserPreferences::from_workspace_settings_for_specifier(
-            workspace_settings,
-            &specifier,
-          )
-        },
+        tsc::UserPreferences::from_config_for_specifier(
+          &self.config,
+          &self.fmt_options.options,
+          &specifier,
+        ),
       )
       .await?;
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {

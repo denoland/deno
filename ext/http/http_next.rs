@@ -10,11 +10,9 @@ use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
-use crate::slab::http_trace;
-use crate::slab::slab_drop;
+use crate::slab::new_slab_future;
 use crate::slab::slab_get;
 use crate::slab::slab_init;
-use crate::slab::slab_insert;
 use crate::slab::HttpRequestBodyAutocloser;
 use crate::slab::RefCount;
 use crate::slab::SlabId;
@@ -23,7 +21,6 @@ use crate::LocalExecutor;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
 use deno_core::unsync::spawn;
@@ -62,8 +59,6 @@ use hyper1::service::service_fn;
 use hyper1::service::HttpService;
 use hyper1::StatusCode;
 use once_cell::sync::Lazy;
-use pin_project::pin_project;
-use pin_project::pinned_drop;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -77,7 +72,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 type Request = hyper1::Request<Incoming>;
-type Response = hyper1::Response<ResponseBytes>;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   let enable = std::env::var("DENO_USE_WRITEV").ok();
@@ -578,10 +572,13 @@ fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
   );
 }
 
+/// Sets the appropriate response body. Use `force_instantiate_body` if you need
+/// to ensure that the response is cleaned up correctly (eg: for resources).
 fn set_response(
   slab_id: SlabId,
   length: Option<usize>,
   status: u16,
+  force_instantiate_body: bool,
   response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
 ) {
   let mut http = slab_get(slab_id);
@@ -603,7 +600,10 @@ fn set_response(
     if let Ok(code) = StatusCode::from_u16(status) {
       *response.status_mut() = code;
     }
+  } else if force_instantiate_body {
+    response_fn(Compression::None).abort();
   }
+
   http.complete();
 }
 
@@ -635,6 +635,7 @@ pub fn op_http_set_response_body_resource(
     slab_id,
     resource.size_hint().1.map(|s| s as usize),
     status,
+    true,
     move |compression| {
       ResponseBytesInner::from_resource(compression, resource, auto_close)
     },
@@ -650,7 +651,7 @@ pub fn op_http_set_response_body_text(
   status: u16,
 ) {
   if !text.is_empty() {
-    set_response(slab_id, Some(text.len()), status, |compression| {
+    set_response(slab_id, Some(text.len()), status, false, |compression| {
       ResponseBytesInner::from_vec(compression, text.into_bytes())
     });
   } else {
@@ -666,7 +667,7 @@ pub fn op_http_set_response_body_bytes(
   status: u16,
 ) {
   if !buffer.is_empty() {
-    set_response(slab_id, Some(buffer.len()), status, |compression| {
+    set_response(slab_id, Some(buffer.len()), status, false, |compression| {
       ResponseBytesInner::from_bufview(compression, BufView::from(buffer))
     });
   } else {
@@ -697,52 +698,6 @@ pub async fn op_http_track(
       Err(AnyError::msg("connection closed before message completed"))
     }
     Err(_e) => Ok(()),
-  }
-}
-
-#[pin_project(PinnedDrop)]
-pub struct SlabFuture<F: Future<Output = ()>>(SlabId, #[pin] F);
-
-pub fn new_slab_future(
-  request: Request,
-  request_info: HttpConnectionProperties,
-  refcount: RefCount,
-  tx: tokio::sync::mpsc::Sender<SlabId>,
-) -> SlabFuture<impl Future<Output = ()>> {
-  let index = slab_insert(request, request_info, refcount);
-  let rx = slab_get(index).promise();
-  SlabFuture(index, async move {
-    if tx.send(index).await.is_ok() {
-      http_trace!(index, "SlabFuture await");
-      // We only need to wait for completion if we aren't closed
-      rx.await;
-      http_trace!(index, "SlabFuture complete");
-    }
-  })
-}
-
-impl<F: Future<Output = ()>> SlabFuture<F> {}
-
-#[pinned_drop]
-impl<F: Future<Output = ()>> PinnedDrop for SlabFuture<F> {
-  fn drop(self: Pin<&mut Self>) {
-    slab_drop(self.0);
-  }
-}
-
-impl<F: Future<Output = ()>> Future for SlabFuture<F> {
-  type Output = Result<Response, hyper::Error>;
-
-  fn poll(
-    self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    let index = self.0;
-    self
-      .project()
-      .1
-      .poll(cx)
-      .map(|_| Ok(slab_get(index).take_response()))
   }
 }
 
@@ -1264,13 +1219,13 @@ pub fn op_can_write_vectored(
   state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
-// TODO(bartlomieju): op2 doesn't want to handle `usize` in the return type
-#[op]
+#[op2(async)]
+#[number]
 pub async fn op_raw_write_vectored(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  buf1: JsBuffer,
-  buf2: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[buffer] buf1: JsBuffer,
+  #[buffer] buf2: JsBuffer,
 ) -> Result<usize, AnyError> {
   let resource: Rc<UpgradeStream> =
     state.borrow().resource_table.get::<UpgradeStream>(rid)?;

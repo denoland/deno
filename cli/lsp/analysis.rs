@@ -21,6 +21,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules::LintRule;
+use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::package::PackageReq;
@@ -916,6 +917,24 @@ impl CodeActionCollection {
         }
       }
     }
+  }
+
+  pub fn add_cache_all_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    diagnostics: Vec<lsp::Diagnostic>,
+  ) {
+    self.actions.push(CodeActionKind::Deno(lsp::CodeAction {
+      title: "Cache all dependencies of this module.".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(diagnostics),
+      command: Some(lsp::Command {
+        title: "".to_string(),
+        command: "deno.cache".to_string(),
+        arguments: Some(vec![json!([]), json!(&specifier)]),
+      }),
+      ..Default::default()
+    }));
   }
 }
 
