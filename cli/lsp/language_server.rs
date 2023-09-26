@@ -381,13 +381,6 @@ impl LanguageServer {
     }
   }
 
-  pub async fn inlay_hint(
-    &self,
-    params: InlayHintParams,
-  ) -> LspResult<Option<Vec<InlayHint>>> {
-    self.0.read().await.inlay_hint(params).await
-  }
-
   pub async fn virtual_text_document(
     &self,
     params: Option<Value>,
@@ -3156,7 +3149,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
         // are interested in.
         let options = DidChangeWatchedFilesRegistrationOptions {
           watchers: vec![FileSystemWatcher {
-            glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
+            glob_pattern: GlobPattern::String(
+              "**/*.{json,jsonc,lock}".to_string(),
+            ),
             kind: None,
           }],
         };
@@ -3415,6 +3410,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     self.0.read().await.hover(params).await
+  }
+
+  async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    self.0.read().await.inlay_hint(params).await
   }
 
   async fn code_action(
