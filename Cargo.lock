@@ -1411,6 +1411,7 @@ dependencies = [
  "pin-project",
  "rand 0.8.5",
  "ring",
+ "scopeguard",
  "serde",
  "slab",
  "smallvec",

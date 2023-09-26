@@ -44,6 +44,7 @@ percent-encoding.workspace = true
 phf = { version = "0.10", features = ["macros"] }
 pin-project.workspace = true
 ring.workspace = true
+scopeguard.workspace = true
 serde.workspace = true
 slab.workspace = true
 smallvec.workspace = true

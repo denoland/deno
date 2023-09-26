@@ -10,11 +10,9 @@ use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
-use crate::slab::http_trace;
-use crate::slab::slab_drop;
+use crate::slab::new_slab_future;
 use crate::slab::slab_get;
 use crate::slab::slab_init;
-use crate::slab::slab_insert;
 use crate::slab::HttpRequestBodyAutocloser;
 use crate::slab::RefCount;
 use crate::slab::SlabId;
@@ -61,8 +59,6 @@ use hyper1::service::service_fn;
 use hyper1::service::HttpService;
 use hyper1::StatusCode;
 use once_cell::sync::Lazy;
-use pin_project::pin_project;
-use pin_project::pinned_drop;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -76,7 +72,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 type Request = hyper1::Request<Incoming>;
-type Response = hyper1::Response<ResponseBytes>;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   let enable = std::env::var("DENO_USE_WRITEV").ok();
@@ -703,52 +698,6 @@ pub async fn op_http_track(
       Err(AnyError::msg("connection closed before message completed"))
     }
     Err(_e) => Ok(()),
-  }
-}
-
-#[pin_project(PinnedDrop)]
-pub struct SlabFuture<F: Future<Output = ()>>(SlabId, #[pin] F);
-
-pub fn new_slab_future(
-  request: Request,
-  request_info: HttpConnectionProperties,
-  refcount: RefCount,
-  tx: tokio::sync::mpsc::Sender<SlabId>,
-) -> SlabFuture<impl Future<Output = ()>> {
-  let index = slab_insert(request, request_info, refcount);
-  let rx = slab_get(index).promise();
-  SlabFuture(index, async move {
-    if tx.send(index).await.is_ok() {
-      http_trace!(index, "SlabFuture await");
-      // We only need to wait for completion if we aren't closed
-      rx.await;
-      http_trace!(index, "SlabFuture complete");
-    }
-  })
-}
-
-impl<F: Future<Output = ()>> SlabFuture<F> {}
-
-#[pinned_drop]
-impl<F: Future<Output = ()>> PinnedDrop for SlabFuture<F> {
-  fn drop(self: Pin<&mut Self>) {
-    slab_drop(self.0);
-  }
-}
-
-impl<F: Future<Output = ()>> Future for SlabFuture<F> {
-  type Output = Result<Response, hyper::Error>;
-
-  fn poll(
-    self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    let index = self.0;
-    self
-      .project()
-      .1
-      .poll(cx)
-      .map(|_| Ok(slab_get(index).take_response()))
   }
 }
 
