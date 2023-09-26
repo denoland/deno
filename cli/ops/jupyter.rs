@@ -47,7 +47,8 @@ pub async fn op_jupyter_broadcast(
     )
   };
 
-  if let Some(last_request) = last_execution_request.borrow().clone() {
+  let maybe_last_request = last_execution_request.borrow().clone();
+  if let Some(last_request) = maybe_last_request {
     last_request
       .new_message(&message_type)
       .with_content(content)
