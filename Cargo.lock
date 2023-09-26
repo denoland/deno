@@ -994,7 +994,7 @@ dependencies = [
  "deno_lockfile",
  "deno_npm",
  "deno_runtime",
- "deno_semver 0.5.0",
+ "deno_semver 0.5.1",
  "deno_task_shell",
  "dissimilar",
  "dprint-plugin-json",
@@ -1204,9 +1204,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.217.0"
+version = "0.218.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8687cbbc86b83048cdb34d1af43d6e9cee6803e746c56c319fa4a8d49ac83f7"
+checksum = "525a5a8af1def85c6c3f0ead2300c18fce14868f94b66ee7f4fec466a4c7c938"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1358,7 +1358,7 @@ dependencies = [
  "async-trait",
  "data-url",
  "deno_ast",
- "deno_semver 0.5.0",
+ "deno_semver 0.5.1",
  "futures",
  "indexmap 2.0.0",
  "monch",
@@ -1527,7 +1527,7 @@ dependencies = [
  "deno_media_type",
  "deno_net",
  "deno_npm",
- "deno_semver 0.5.0",
+ "deno_semver 0.5.1",
  "digest 0.10.7",
  "dsa",
  "ecb",
@@ -1584,7 +1584,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "deno_lockfile",
- "deno_semver 0.5.0",
+ "deno_semver 0.5.1",
  "futures",
  "log",
  "monch",
@@ -1594,9 +1594,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.93.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "928171e00d6b464fa101c894d8afd41cefe18d016bb6e829dcc1ab6af0692489"
+checksum = "e77ea556bab98499a1a482fe02345c35251f8050e00aebd85a4e5eab34bc15a8"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -1682,9 +1682,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "594fd570fecc994ef602b96214f9d6c8ae11e60e29e37e89ab90af7f6b7f9d00"
+checksum = "d2d3f7f5a3b2ace62b8fdede8585f5fdbd4e7dba9cb33fcaf0db54887316feaa"
 dependencies = [
  "monch",
  "once_cell",
@@ -2251,7 +2251,7 @@ dependencies = [
  "deno_ast",
  "deno_graph",
  "deno_npm",
- "deno_semver 0.5.0",
+ "deno_semver 0.5.1",
  "futures",
  "hashlink",
  "serde",
@@ -2285,9 +2285,9 @@ dependencies = [
 
 [[package]]
 name = "fastrand"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
+checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
 
 [[package]]
 name = "fastwebsockets"
@@ -4821,9 +4821,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.126.0"
+version = "0.127.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ed3b48e2b806cca27514de69a9c870bf5fcb46c8b02ebe0a15a1fa8aba0c556"
+checksum = "cb569e75e34db7e307901dbed94a3cb5dfb2b601a90f9cb1f2ede5f779f274ca"
 dependencies = [
  "bytes",
  "derive_more",
@@ -4859,9 +4859,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.10.7"
+version = "0.10.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479fb9d862239e610720565ca91403019f2f00410f1864c5aa7479b950a76ed8"
+checksum = "793db75ad2bcafc3ffa7c68b215fee268f537982cd901d132f89c6343f3a3dc8"
 dependencies = [
  "cfg-if 1.0.0",
  "cpufeatures",
@@ -5726,9 +5726,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.28"
+version = "0.3.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17f6bb557fd245c28e6411aa56b6403c689ad95061f50e4be16c274e70a17e48"
+checksum = "426f806f4089c493dcac0d24c29c01e2c38baf8e30f1b716ee37e83d200b18fe"
 dependencies = [
  "deranged",
  "itoa",
@@ -5739,15 +5739,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7300fbefb4dadc1af235a9cef3737cea692a9d97e1b9cbcd4ebdae6f8868e6fb"
+checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
 
 [[package]]
 name = "time-macros"
-version = "0.2.14"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a942f44339478ef67935ab2bbaec2fb0322496cf3cbe84b261e06ac3814c572"
+checksum = "4ad70d68dba9e1f8aceda7aa6711965dfec1cac869f311a51bd08b3a2ccbce20"
 dependencies = [
  "time-core",
 ]
