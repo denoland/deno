@@ -463,14 +463,21 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: "repl.ts".to_string(),
-      text_info: deno_ast::SourceTextInfo::from_string(expression.to_string()),
-      media_type: deno_ast::MediaType::TypeScript,
-      capture_tokens: false,
-      maybe_syntax: None,
-      scope_analysis: false,
-    })?;
+    let parsed_module = match parse_source_as(
+      expression.to_string(),
+      deno_ast::MediaType::TypeScript,
+    ) {
+      Ok(parsed) => parsed,
+      Err(err) => {
+        if let Ok(parsed) =
+          parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx)
+        {
+          parsed
+        } else {
+          return Err(err);
+        }
+      }
+    };
 
     self
       .check_for_npm_or_node_imports(&parsed_module.program())
@@ -483,8 +490,7 @@ impl ReplSession {
         inline_source_map: false,
         inline_sources: false,
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
-        // JSX is not supported in the REPL
-        transform_jsx: false,
+        transform_jsx: true,
         jsx_automatic: false,
         jsx_development: false,
         jsx_factory: "React.createElement".into(),
@@ -494,6 +500,7 @@ impl ReplSession {
       })?
       .text;
 
+    // eprintln!("transpiled source {}", transpiled_src);
     let value = self
       .evaluate_expression(&format!("'use strict'; void 0;\n{transpiled_src}"))
       .await?;
@@ -624,4 +631,26 @@ impl Visit for ImportCollector {
       _ => {}
     }
   }
+}
+
+fn parse_source_as(
+  source: String,
+  media_type: deno_ast::MediaType,
+) -> Result<deno_ast::ParsedSource, AnyError> {
+  let specifier = if media_type == deno_ast::MediaType::Tsx {
+    "repl.tsx"
+  } else {
+    "repl.ts"
+  };
+
+  let parsed = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.to_string(),
+    text_info: deno_ast::SourceTextInfo::from_string(source),
+    media_type,
+    capture_tokens: false,
+    maybe_syntax: None,
+    scope_analysis: false,
+  })?;
+
+  Ok(parsed)
 }
