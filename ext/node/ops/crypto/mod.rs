@@ -942,17 +942,16 @@ fn scrypt(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
-#[op2]
+#[op]
 pub fn op_node_scrypt_sync(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
-  #[buffer] output_buffer: &mut [u8],
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  maxmem: u32,
+  output_buffer: &mut [u8],
 ) -> Result<(), AnyError> {
   scrypt(
     password,
@@ -966,16 +965,15 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[op2(async)]
-#[serde]
+#[op]
 pub async fn op_node_scrypt_async(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  maxmem: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
