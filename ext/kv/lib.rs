@@ -439,10 +439,7 @@ type V8CommitResult = (String, Vec<u32>);
 impl From<CommitResult> for V8CommitResult {
   fn from(value: CommitResult) -> Self {
     (
-      value
-        .versionstamp
-        .map(|x| hex::encode(x))
-        .unwrap_or_default(),
+      value.versionstamp.map(hex::encode).unwrap_or_default(),
       value.failed_checks,
     )
   }
