@@ -1824,8 +1824,7 @@ Deno.test({
   async fn() {
     const db: Deno.Kv = await Deno.openKv(":memory:");
     const listener = db.listenQueue((_msg) => {});
-    // deno-lint-ignore no-explicit-any
-    Deno.close((db as any).rid);
+    db.close();
     await listener;
   },
 });
