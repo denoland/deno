@@ -12,12 +12,11 @@ use crate::tools::repl;
 use crate::tools::repl::cdp;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use zeromq::SocketRecv;
 use zeromq::SocketSend;
@@ -98,7 +97,7 @@ impl JupyterServer {
     });
 
     let handle4 = deno_core::unsync::spawn(async move {
-      while let Some(stdio_msg) = stdio_rx.next().await {
+      while let Some(stdio_msg) = stdio_rx.recv().await {
         Self::handle_stdio_msg(
           iopub_socket.clone(),
           last_execution_request.clone(),
