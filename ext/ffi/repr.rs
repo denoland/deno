@@ -47,7 +47,7 @@ where
 #[op2(fast)]
 pub fn op_ffi_ptr_of<FP>(
   state: &mut OpState,
-  #[buffer] buf: &[u8],
+  #[buffer] buf: *const u8,
 ) -> Result<*mut c_void, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -56,7 +56,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial(None)?;
 
-  Ok(buf.as_ptr() as *mut c_void)
+  Ok(buf as *mut c_void)
 }
 
 #[op2(fast)]
