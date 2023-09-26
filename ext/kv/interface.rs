@@ -38,7 +38,7 @@ pub trait Database {
     &self,
     state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError>;
+  ) -> Result<CommitResult, AnyError>;
 
   async fn dequeue_next_message(
     &self,
@@ -326,8 +326,13 @@ impl MutationKind {
   }
 }
 
-/// The result of a successful commit of an atomic write operation.
+/// The result of a commit of an atomic write operation.
 pub struct CommitResult {
-  /// The new versionstamp of the data that was committed.
-  pub versionstamp: Versionstamp,
+  /// The new versionstamp of the data that was committed. This field is a
+  /// `Some` if the commit succeeded.
+  pub versionstamp: Option<Versionstamp>,
+
+  /// Indexes of failed checks in the atomic operation. Non-empty if the
+  /// commit has failed.
+  pub failed_checks: Vec<u32>,
 }

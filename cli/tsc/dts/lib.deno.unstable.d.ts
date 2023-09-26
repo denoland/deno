@@ -1559,6 +1559,7 @@ declare namespace Deno {
   /** @category KV */
   export interface KvCommitError {
     ok: false;
+    failedChecks: WeakSet<KvKey>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

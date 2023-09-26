@@ -138,14 +138,14 @@ class Kv {
       [key, "set", value, options?.expireIn],
     ];
 
-    const versionstamp = await core.opAsync(
+    const [versionstamp] = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       checks,
       mutations,
       [],
     );
-    if (versionstamp === null) throw new TypeError("Failed to set value");
+    if (versionstamp === "") throw new TypeError("Failed to set value");
     return { ok: true, versionstamp };
   }
 
@@ -155,14 +155,14 @@ class Kv {
       [key, "delete", null, undefined],
     ];
 
-    const result = await core.opAsync(
+    const [versionstamp] = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       checks,
       mutations,
       [],
     );
-    if (!result) throw new TypeError("Failed to set value");
+    if (versionstamp === "") throw new TypeError("Failed to set value");
   }
 
   list(
@@ -236,14 +236,14 @@ class Kv {
       ],
     ];
 
-    const versionstamp = await core.opAsync(
+    const [versionstamp] = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       [],
       [],
       enqueues,
     );
-    if (versionstamp === null) throw new TypeError("Failed to enqueue value");
+    if (versionstamp === "") throw new TypeError("Failed to enqueue value");
     return { ok: true, versionstamp };
   }
 
@@ -418,14 +418,20 @@ class AtomicOperation {
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
-    const versionstamp = await core.opAsync(
+    const [versionstamp, failedCheckIndexes] = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       this.#checks,
       this.#mutations,
       this.#enqueues,
     );
-    if (versionstamp === null) return { ok: false };
+    if (versionstamp === "") {
+      const failedChecks: WeakSet<Deno.KvKey> = new WeakSet();
+      for (const index of failedCheckIndexes) {
+        failedChecks.add(this.#checks[index][0]);
+      }
+      return { ok: false, failedChecks };
+    }
     return { ok: true, versionstamp };
   }
 

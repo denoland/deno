@@ -434,6 +434,20 @@ impl TryFrom<V8Enqueue> for Enqueue {
   }
 }
 
+type V8CommitResult = (String, Vec<u32>);
+
+impl From<CommitResult> for V8CommitResult {
+  fn from(value: CommitResult) -> Self {
+    (
+      value
+        .versionstamp
+        .map(|x| hex::encode(x))
+        .unwrap_or_default(),
+      value.failed_checks,
+    )
+  }
+}
+
 fn encode_v8_key(key: KvKey) -> Result<Vec<u8>, std::io::Error> {
   encode_key(&Key(key.into_iter().map(From::from).collect()))
 }
@@ -602,14 +616,14 @@ fn decode_selector_and_cursor(
 }
 
 #[op2(async)]
-#[string]
+#[serde]
 async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[serde] checks: Vec<V8KvCheck>,
   #[serde] mutations: Vec<V8KvMutation>,
   #[serde] enqueues: Vec<V8Enqueue>,
-) -> Result<Option<String>, AnyError>
+) -> Result<V8CommitResult, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
@@ -695,7 +709,7 @@ where
 
   let result = db.atomic_write(state.clone(), atomic_write).await?;
 
-  Ok(result.map(|res| hex::encode(res.versionstamp)))
+  Ok(V8CommitResult::from(result))
 }
 
 // (prefix, start, end)

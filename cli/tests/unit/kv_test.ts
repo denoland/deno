@@ -2071,3 +2071,30 @@ Deno.test({
     }
   },
 });
+
+dbTest("failed check reporting", async (db) => {
+  let res = await db.atomic().set(["b"], 2)
+    .commit();
+  assert(res.ok);
+  const versionstamp = res.versionstamp;
+
+  res = await db.atomic().set(["a"], 1).set(["c"], 3)
+    .commit();
+  assert(res.ok);
+
+  const aKey = ["a"];
+  const bKey = ["b"];
+  const cKey = ["c"];
+
+  res = await db.atomic().check({ key: aKey, versionstamp }).check({
+    key: bKey,
+    versionstamp,
+  }).check({ key: cKey, versionstamp }).set(["test"], 1).commit();
+  assert(!res.ok);
+  assert(res.failedChecks.has(aKey));
+  assert(!res.failedChecks.has(bKey));
+  assert(res.failedChecks.has(cKey));
+
+  const readRes = await db.get(["test"]);
+  assertEquals(readRes.value, null);
+});

@@ -127,7 +127,7 @@ pub trait DynamicDb {
     &self,
     state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError>;
+  ) -> Result<CommitResult, AnyError>;
 
   async fn dyn_dequeue_next_message(
     &self,
@@ -154,7 +154,7 @@ impl Database for Box<dyn DynamicDb> {
     &self,
     state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError> {
+  ) -> Result<CommitResult, AnyError> {
     (**self).dyn_atomic_write(state, write).await
   }
 
@@ -189,7 +189,7 @@ where
     &self,
     state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError> {
+  ) -> Result<CommitResult, AnyError> {
     Ok(self.atomic_write(state, write).await?)
   }
 

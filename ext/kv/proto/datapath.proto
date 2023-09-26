@@ -37,6 +37,7 @@ message AtomicWriteOutput {
   AtomicWriteStatus status = 1;
   bytes versionstamp = 2;
   string primary_if_write_disabled = 3;
+  repeated uint32 failed_checks = 4;
 }
 
 message KvCheck {

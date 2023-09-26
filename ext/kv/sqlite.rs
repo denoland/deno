@@ -777,19 +777,30 @@ impl Database for SqliteDb {
     &self,
     _state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError> {
+  ) -> Result<CommitResult, AnyError> {
     let write = Arc::new(write);
     let (has_enqueues, commit_result) =
       Self::run_tx(self.conn.clone(), move |tx| {
-        for check in &write.checks {
+        let mut failed_checks: Vec<u32> = vec![];
+        for (i, check) in write.checks.iter().enumerate() {
           let real_versionstamp = tx
             .prepare_cached(STATEMENT_KV_POINT_GET_VERSION_ONLY)?
             .query_row([check.key.as_slice()], |row| row.get(0))
             .optional()?
             .map(version_to_versionstamp);
           if real_versionstamp != check.versionstamp {
-            return Ok((false, None));
+            failed_checks.push(i as u32);
           }
+        }
+
+        if !failed_checks.is_empty() {
+          return Ok((
+            false,
+            CommitResult {
+              versionstamp: None,
+              failed_checks,
+            },
+          ));
         }
 
         let version: i64 = tx
@@ -886,9 +897,10 @@ impl Database for SqliteDb {
 
         Ok((
           has_enqueues,
-          Some(CommitResult {
-            versionstamp: new_versionstamp,
-          }),
+          CommitResult {
+            versionstamp: Some(new_versionstamp),
+            failed_checks: vec![],
+          },
         ))
       })
       .await?;

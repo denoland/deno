@@ -214,7 +214,7 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
     &self,
     state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError> {
+  ) -> Result<CommitResult, AnyError> {
     if !write.enqueues.is_empty() {
       return Err(type_error("Enqueue operations are not supported yet."));
     }
@@ -247,14 +247,18 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
     )
     .await?;
     match res.status() {
-      pb::AtomicWriteStatus::AwSuccess => Ok(Some(CommitResult {
-        versionstamp: if res.versionstamp.is_empty() {
+      pb::AtomicWriteStatus::AwSuccess => Ok(CommitResult {
+        versionstamp: Some(if res.versionstamp.is_empty() {
           Default::default()
         } else {
           res.versionstamp[..].try_into()?
-        },
-      })),
-      pb::AtomicWriteStatus::AwCheckFailure => Ok(None),
+        }),
+        failed_checks: vec![],
+      }),
+      pb::AtomicWriteStatus::AwCheckFailure => Ok(CommitResult {
+        versionstamp: None,
+        failed_checks: res.failed_checks,
+      }),
       pb::AtomicWriteStatus::AwUnsupportedWrite => {
         Err(type_error("Unsupported write"))
       }
