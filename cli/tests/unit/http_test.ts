@@ -346,9 +346,13 @@ Deno.test(
       listener.close();
     })();
 
+    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       headers: { "connection": "close" },
+      client,
     });
+    client.close();
     const respBody = await resp.text();
     assertEquals("Hello World", respBody);
     await promise;
