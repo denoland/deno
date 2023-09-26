@@ -4321,6 +4321,35 @@ fn test_lsp_code_actions_ordering() {
 }
 
 #[test]
+fn lsp_status_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let res = client.write_request(
+    "deno/virtualTextDocument",
+    json!({
+      "textDocument": {
+        "uri": "deno:/status.md"
+      }
+    }),
+  );
+  let res = res.as_str().unwrap().to_string();
+  assert!(res.starts_with("# Deno Language Server Status"));
+
+  let res = client.write_request(
+    "deno/virtualTextDocument",
+    json!({
+      "textDocument": {
+        "uri": "deno:/status.md?1"
+      }
+    }),
+  );
+  let res = res.as_str().unwrap().to_string();
+  assert!(res.starts_with("# Deno Language Server Status"));
+}
+
+#[test]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
