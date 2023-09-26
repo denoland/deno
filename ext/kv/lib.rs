@@ -329,7 +329,16 @@ where
   let db = {
     let state = state.borrow();
     let resource =
-      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
+      match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
+        Ok(resource) => resource,
+        Err(err) => {
+          if get_custom_error_class(&err) == Some("BadResource") {
+            return Ok(None);
+          } else {
+            return Err(err);
+          }
+        }
+      };
     resource.db.clone()
   };
 
