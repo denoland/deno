@@ -38,6 +38,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node;
+use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;

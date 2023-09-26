@@ -87,7 +87,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Resolves the npm package folder path from the specified path.
   fn resolve_package_folder_from_path(
     &self,
-    path: &Path,
+    specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError>;
 
   /// Resolves an npm package folder path from a Deno module.

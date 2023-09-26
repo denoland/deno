@@ -1133,7 +1133,7 @@ impl NodeResolver {
   ) -> Result<Option<PackageJson>, AnyError> {
     let Some(root_folder) = self
       .npm_resolver
-      .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?
+      .resolve_package_folder_from_path(referrer)?
     else {
       return Ok(None);
     };
@@ -1170,9 +1170,10 @@ impl NodeResolver {
     if self.fs.exists_sync(&package_json_path) {
       return Ok(Some(package_json_path));
     }
-    let Some(root_pkg_folder) = self
-      .npm_resolver
-      .resolve_package_folder_from_path(current_dir)?
+    let Some(root_pkg_folder) =
+      self.npm_resolver.resolve_package_folder_from_path(
+        &ModuleSpecifier::from_directory_path(current_dir).unwrap(),
+      )?
     else {
       return Ok(None);
     };
