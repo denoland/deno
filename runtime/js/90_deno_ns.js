@@ -2,11 +2,6 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  Error,
-  ObjectDefineProperty,
-} = primordials;
 
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
@@ -185,13 +180,5 @@ const denoNsUnstable = {
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,
 };
-
-ObjectDefineProperty(denoNsUnstable, "jupyter", {
-  get() {
-    throw new Error(
-      "Deno.jupyter is only available in `deno jupyter` subcommand.",
-    );
-  },
-});
 
 export { denoNs, denoNsUnstable };

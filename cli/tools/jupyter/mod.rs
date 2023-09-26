@@ -8,6 +8,7 @@ use crate::util::logger;
 use crate::CliFactory;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -80,6 +81,10 @@ pub async fn kernel(
     )
     .await?;
   worker.setup_repl().await?;
+  worker.execute_script_static(
+    located_script_name!(),
+    "Deno[Deno.internal].enableJupyter();",
+  )?;
   let worker = worker.into_main_worker();
   let repl_session =
     repl::ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
