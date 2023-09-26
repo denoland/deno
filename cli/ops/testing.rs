@@ -14,6 +14,7 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetrics;
 use deno_core::OpState;
+use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::PermissionsContainer;
@@ -318,6 +319,10 @@ fn op_test_op_sanitizer_finish(
   #[smi] op_id_host_recv_msg: usize,
   #[smi] op_id_host_recv_ctrl: usize,
 ) -> Result<u8, AnyError> {
+  // Drop `fetch` connection pool at the end of a test
+  state.try_take::<reqwest::Client>();
+
+  // Generate a report of pending ops
   let report = {
     let after_metrics = match try_collect_metrics(
       state,

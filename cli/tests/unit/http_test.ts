@@ -198,14 +198,12 @@ Deno.test(
       await respondWith(new Response(stream.readable));
     })();
 
-    const client = Deno.createHttpClient({});
-    const resp = await fetch(`http://127.0.0.1:${listenPort}/`, { client });
+    const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
     const respBody = await resp.text();
     assertEquals("hello world", respBody);
     await promise;
     httpConn!.close();
     listener.close();
-    client.close();
   },
 );
 
@@ -237,17 +235,14 @@ Deno.test(
       listener.close();
     })();
 
-    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`, {
       body: stream.readable,
       method: "POST",
       headers: { "connection": "close" },
-      client,
     });
 
     await resp.arrayBuffer();
     await promise;
-    client.close();
   },
 );
 
@@ -352,15 +347,12 @@ Deno.test(
     })();
 
     const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
-    const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://${hostname}:${port}/`, {
-      client,
       headers: { "connection": "close" },
     });
     const respBody = await resp.text();
     assertEquals("Hello World", respBody);
     await promise;
-    client.close();
   },
 );
 
@@ -380,11 +372,9 @@ Deno.test(
       await respondWith(new Response("response"));
     })();
 
-    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`, {
       method: "POST",
       body: "request",
-      client,
     });
     const respBody = await resp.text();
     assertEquals("response", respBody);
@@ -392,7 +382,6 @@ Deno.test(
 
     httpConn!.close();
     listener.close();
-    client.close();
   },
 );
 
@@ -435,11 +424,9 @@ Deno.test(
       listener.close();
     })();
 
-    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
     await resp.body!.cancel();
     await promise;
-    client.close();
   },
 );
 

@@ -965,8 +965,7 @@ function createStreamTest(count: number, delay: number, action: string) {
 
     try {
       await listeningPromise;
-      const client = Deno.createHttpClient({});
-      const resp = await fetch(`http://127.0.0.1:${servePort}/`, { client });
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`);
       if (action == "Throw") {
         await assertRejects(async () => {
           await resp.text();
@@ -981,7 +980,6 @@ function createStreamTest(count: number, delay: number, action: string) {
 
         assertEquals(text, expected);
       }
-      client.close();
     } finally {
       ac.abort();
       await server.shutdown();
@@ -1098,14 +1096,12 @@ Deno.test(
     });
 
     await listeningPromise;
-    const client = Deno.createHttpClient({});
-    const resp = await fetch(`http://127.0.0.1:${servePort}/`, { client });
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`);
     const respBody = await resp.text();
 
     assertEquals("", respBody);
     ac.abort();
     await server.finished;
-    client.close();
   },
 );
 
@@ -1142,14 +1138,12 @@ Deno.test(
     });
 
     await listeningPromise;
-    const client = Deno.createHttpClient({});
-    const resp = await fetch(`http://127.0.0.1:${servePort}/`, { client });
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`);
     // Incorrectly implemented reader ReadableStream should reject.
     assertStringIncludes(await resp.text(), "Failed to execute 'enqueue'");
     await errorPromise;
     ac.abort();
     await server.finished;
-    client.close();
   },
 );
 
@@ -1606,11 +1600,9 @@ Deno.test(
     );
 
     const { readable, writable } = new TransformStream();
-    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
       method: "POST",
       body: readable,
-      client,
     });
 
     await promise;
@@ -1618,7 +1610,6 @@ Deno.test(
     await testDuplex(resp.body.getReader(), writable.getWriter());
     ac.abort();
     await server.finished;
-    client.close();
   },
 );
 
@@ -1653,11 +1644,9 @@ Deno.test(
     );
 
     const { readable, writable } = new TransformStream();
-    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
       method: "POST",
       body: readable,
-      client,
     });
 
     await promise;
@@ -1665,7 +1654,6 @@ Deno.test(
     await testDuplex(resp.body.getReader(), writable.getWriter());
     ac.abort();
     await server.finished;
-    client.close();
   },
 );
 
@@ -2624,12 +2612,9 @@ for (const testCase of compressionTestCases) {
         });
         try {
           await listeningPromise;
-          const client = Deno.createHttpClient({});
           const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
             headers: testCase.in as HeadersInit,
-            client,
           });
-          client.close();
           await promise;
           const body = await resp.arrayBuffer();
           if (testCase.expect == null) {
@@ -3265,16 +3250,14 @@ Deno.test(
     let count = 0;
     const server = Deno.serve({
       async onListen({ port }: { port: number }) {
-        const client = Deno.createHttpClient({});
-        const res1 = await fetch(`http://localhost:${port}/`, { client });
+        const res1 = await fetch(`http://localhost:${port}/`);
         assertEquals(await res1.text(), "hello world 1");
 
-        const res2 = await fetch(`http://localhost:${port}/`, { client });
+        const res2 = await fetch(`http://localhost:${port}/`);
         assertEquals(await res2.text(), "hello world 2");
 
         promise.resolve();
         ac.abort();
-        client.close();
       },
       signal: ac.signal,
     }, () => {
@@ -3327,16 +3310,13 @@ Deno.test(
 
     try {
       const port = await listeningPromise;
-      const client = Deno.createHttpClient({});
       const resp = await fetch(`http://localhost:${port}/`, {
         headers: { connection: "close" },
         method: "POST",
         body: '{"sus":true}',
-        client,
       });
       const text = await resp.text();
       assertEquals(text, "ok");
-      client.close();
     } finally {
       ac.abort();
       await server.finished;
