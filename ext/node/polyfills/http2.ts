@@ -304,8 +304,12 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
     session[kDenoClientRid],
   );
   console.table(Deno.resources());
-  core.tryClose(session[kDenoConnRid]);
-  core.tryClose(session[kDenoClientRid]);
+  if (session[kDenoConnRid]) {
+    core.tryClose(session[kDenoConnRid]);
+  }
+  if (session[kDenoClientRid]) {
+    core.tryClose(session[kDenoClientRid]);
+  }
 
   finishSessionClose(session, error);
 }
@@ -357,7 +361,7 @@ export class ClientHttp2Session extends Http2Session {
     this.#connectPromise = (async () => {
       debugHttp2(">>> before connect");
       const connRid_ = await connPromise;
-      console.log(">>>> awaited connRid", connRid_);
+      console.log(">>>> awaited connRid", connRid_, url);
       const [clientRid, connRid] = await op_http2_connect(connRid_, url);
       debugHttp2(">>> after connect", clientRid, connRid);
       this[kDenoClientRid] = clientRid;
@@ -1499,11 +1503,13 @@ export function connect(
 
   let conn, nodeConn, url;
 
+  console.log("authority", authority);
   // TODO(bartlomieju): handle defaults
   if (typeof options.createConnection === "function") {
     // console.error("Not implemented: http2.connect.options.createConnection");
     // notImplemented("http2.connect.options.createConnection");
-    nodeConn = options.createConnection(authority, options);
+    nodeConn = options.createConnection(host, options);
+    url = `http://${host}${port == 80 ? "" : (":" + port)}`;
   } else {
     // TODO(bartlomieju): using `localhost` as a `host` refuses to connect
     // when server is listening on `0.0.0.0`
@@ -1514,7 +1520,7 @@ export function connect(
       url = `http://${host}${port == 80 ? "" : (":" + port)}`;
     } else if (protocol == "https:") {
       conn = Deno.connectTls({ port, hostname: host, alpnProtocols: ["h2"] });
-      url = `http://${host}${port == 443 ? "" : (":" + port)}`;
+      url = `https://${host}${port == 443 ? "" : (":" + port)}`;
     } else {
       throw new TypeError("Unexpected URL protocol");
     }
@@ -1523,6 +1529,7 @@ export function connect(
   let connPromise;
 
   if (nodeConn) {
+    nodeConn.on("error", socketOnError);
     connPromise = new Promise((resolve) => {
       nodeConn.once("connect", () => {
         const rid = nodeConn[kHandle][kStreamBaseField].rid;
@@ -1537,6 +1544,9 @@ export function connect(
   }
 
   const session = new ClientHttp2Session(connPromise, url, options);
+  if (nodeConn) {
+    nodeConn[kSession] = session;
+  }
   session[kAuthority] = `${options.servername || host}:${port}`;
   session[kProtocol] = protocol;
 
@@ -1544,6 +1554,17 @@ export function connect(
     session.once("connect", callback);
   }
   return session;
+}
+
+function socketOnError(error) {
+  const session = this[kSession];
+  if (session !== undefined) {
+    if (error.code === "ECONNRESET" && session[kState].goawayCode !== null) {
+      return session.destroy();
+    }
+    debugHttp2(">>>> socket error", error);
+    session.destroy(error);
+  }
 }
 
 export const constants = {

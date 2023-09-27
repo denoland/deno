@@ -380,16 +380,20 @@ export class TCP extends ConnectionWrap {
         this[kStreamBaseField] = conn;
 
         try {
+          console.log("here");
           this.afterConnect(req, 0);
-        } catch {
+        } catch (e) {
+          console.log("here2", e);
           // swallow callback errors.
         }
       },
       () => {
         try {
+          console.log("here3");
           // TODO(cmorten): correct mapping of connection error to status code.
           this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
-        } catch {
+        } catch (e) {
+          console.log("here4", e);
           // swallow callback errors.
         }
       },
