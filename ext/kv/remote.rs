@@ -230,11 +230,7 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
           })
         })
         .collect::<anyhow::Result<_>>()?,
-      kv_mutations: write
-        .mutations
-        .into_iter()
-        .map(|x| encode_mutation(x.key, x.kind))
-        .collect(),
+      kv_mutations: write.mutations.into_iter().map(encode_mutation).collect(),
       enqueues: vec![],
     };
 
@@ -333,32 +329,41 @@ fn encode_value(value: crate::Value) -> pb::KvValue {
   }
 }
 
-fn encode_mutation(key: Vec<u8>, mutation: MutationKind) -> pb::KvMutation {
-  match mutation {
+fn encode_mutation(m: crate::KvMutation) -> pb::KvMutation {
+  let key = m.key;
+  let expire_at_ms =
+    m.expire_at.and_then(|x| i64::try_from(x).ok()).unwrap_or(0);
+
+  match m.kind {
     MutationKind::Set(x) => pb::KvMutation {
       key,
       value: Some(encode_value(x)),
       mutation_type: pb::KvMutationType::MSet as _,
+      expire_at_ms,
     },
     MutationKind::Delete => pb::KvMutation {
       key,
       value: Some(encode_value(crate::Value::Bytes(vec![]))),
       mutation_type: pb::KvMutationType::MClear as _,
+      expire_at_ms,
     },
     MutationKind::Max(x) => pb::KvMutation {
       key,
       value: Some(encode_value(x)),
       mutation_type: pb::KvMutationType::MMax as _,
+      expire_at_ms,
     },
     MutationKind::Min(x) => pb::KvMutation {
       key,
       value: Some(encode_value(x)),
       mutation_type: pb::KvMutationType::MMin as _,
+      expire_at_ms,
     },
     MutationKind::Sum(x) => pb::KvMutation {
       key,
       value: Some(encode_value(x)),
       mutation_type: pb::KvMutationType::MSum as _,
+      expire_at_ms,
     },
   }
 }
