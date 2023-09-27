@@ -11,12 +11,17 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 
 use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParsedSource;
+use deno_ast::SourcePos;
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
@@ -25,11 +30,39 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_graph::source::Resolver;
+use deno_graph::Position;
+use deno_graph::PositionRange;
+use deno_graph::SpecifierWithRange;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
+use regex::Match;
+use regex::Regex;
 
 use super::cdp;
+
+fn comment_source_to_position_range(
+  comment_start: SourcePos,
+  m: &Match,
+  text_info: &SourceTextInfo,
+  is_jsx_import_source: bool,
+) -> PositionRange {
+  // the comment text starts after the double slash or slash star, so add 2
+  let comment_start = comment_start + 2;
+  // -1 and +1 to include the quotes, but not for jsx import sources because
+  // they don't have quotes
+  let padding = if is_jsx_import_source { 0 } else { 1 };
+  PositionRange {
+    start: Position::from_source_pos(
+      comment_start + m.start() - padding,
+      text_info,
+    ),
+    end: Position::from_source_pos(
+      comment_start + m.end() + padding,
+      text_info,
+    ),
+  }
+}
 
 /// We store functions used in the repl on this object because
 /// the user might modify the `Deno` global or delete it outright.
@@ -131,6 +164,8 @@ pub struct ReplSession {
   pub language_server: ReplLanguageServer,
   pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
+  jsx_factory: String,
+  jsx_frag_factory: String,
 }
 
 impl ReplSession {
@@ -189,6 +224,8 @@ impl ReplSession {
       language_server,
       referrer,
       notifications: Rc::new(RefCell::new(notification_rx)),
+      jsx_factory: "React.createElement".to_string(),
+      jsx_frag_factory: "React.Fragment".to_string(),
     };
 
     // inject prelude
@@ -463,25 +500,51 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    let parsed_module = match parse_source_as(
-      expression.to_string(),
-      deno_ast::MediaType::TypeScript,
-    ) {
-      Ok(parsed) => parsed,
-      Err(err) => {
-        if let Ok(parsed) =
-          parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx)
-        {
-          parsed
-        } else {
-          return Err(err);
+    let parsed_module =
+      match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+          if let Ok(parsed) = parse_source_as(
+            expression.to_string(),
+            deno_ast::MediaType::TypeScript,
+          ) {
+            parsed
+          } else {
+            return Err(err);
+          }
         }
-      }
-    };
+      };
 
     self
       .check_for_npm_or_node_imports(&parsed_module.program())
       .await?;
+
+    let maybe_jsx_import_source = analyze_jsx_import_source(&parsed_module);
+    if let Some(jsx_import_source) = maybe_jsx_import_source {
+      if jsx_import_source.text.contains("preact") {
+        self
+          .evaluate_expression(&format!(
+            "const {{ h }} = await import('{}');",
+            jsx_import_source.text
+          ))
+          .await?;
+      } else {
+        self
+          .evaluate_expression(&format!(
+            "const React = await import('{}');",
+            jsx_import_source.text
+          ))
+          .await?;
+      }
+    }
+    let maybe_jsx = analyze_jsx(&parsed_module);
+    if let Some(jsx) = maybe_jsx {
+      self.jsx_factory = jsx.text;
+    }
+    let maybe_jsx_frag = analyze_jsx_frag(&parsed_module);
+    if let Some(jsx_frag) = maybe_jsx_frag {
+      self.jsx_frag_factory = jsx_frag.text;
+    }
 
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
@@ -493,8 +556,8 @@ impl ReplSession {
         transform_jsx: true,
         jsx_automatic: false,
         jsx_development: false,
-        jsx_factory: "React.createElement".into(),
-        jsx_fragment_factory: "React.Fragment".into(),
+        jsx_factory: self.jsx_factory.clone().into(),
+        jsx_fragment_factory: self.jsx_frag_factory.clone().into(),
         jsx_import_source: None,
         var_decl_imports: true,
       })?
@@ -647,10 +710,96 @@ fn parse_source_as(
     specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::from_string(source),
     media_type,
-    capture_tokens: false,
+    capture_tokens: true,
     maybe_syntax: None,
     scope_analysis: false,
   })?;
 
   Ok(parsed)
+}
+
+/// Matches the `@jsxImportSource` pragma.
+static JSX_IMPORT_SOURCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^[\s*]*@jsxImportSource\s+(\S+)"#).unwrap());
+/// Matches the `@jsx` pragma.
+static JSX_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^[\s*]*@jsx\s+(\S+)"#).unwrap());
+/// Matches the `@jsxFrag` pragma.
+static JSX_FRAG_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^[\s*]*@jsxFrag\s+(\S+)"#).unwrap());
+
+fn analyze_jsx_import_source(
+  parsed_source: &ParsedSource,
+) -> Option<SpecifierWithRange> {
+  match parsed_source.media_type() {
+    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx => {
+      parsed_source.get_leading_comments().iter().find_map(|c| {
+        if c.kind != CommentKind::Block {
+          return None; // invalid
+        }
+        let captures = JSX_IMPORT_SOURCE_RE.captures(&c.text)?;
+        let m = captures.get(1)?;
+        Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            true,
+          ),
+        })
+      })
+    }
+    _ => None,
+  }
+}
+
+fn analyze_jsx(parsed_source: &ParsedSource) -> Option<SpecifierWithRange> {
+  match parsed_source.media_type() {
+    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx => {
+      parsed_source.get_leading_comments().iter().find_map(|c| {
+        if c.kind != CommentKind::Block {
+          return None; // invalid
+        }
+        let captures = JSX_RE.captures(&c.text)?;
+        let m = captures.get(1)?;
+        Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            true,
+          ),
+        })
+      })
+    }
+    _ => None,
+  }
+}
+
+fn analyze_jsx_frag(
+  parsed_source: &ParsedSource,
+) -> Option<SpecifierWithRange> {
+  match parsed_source.media_type() {
+    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx => {
+      parsed_source.get_leading_comments().iter().find_map(|c| {
+        if c.kind != CommentKind::Block {
+          return None; // invalid
+        }
+        let captures = JSX_FRAG_RE.captures(&c.text)?;
+        let m = captures.get(1)?;
+        Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            true,
+          ),
+        })
+      })
+    }
+    _ => None,
+  }
 }
