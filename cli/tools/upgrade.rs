@@ -481,7 +481,7 @@ async fn download_package(
   match maybe_bytes {
     Some(bytes) => Ok(bytes),
     None => {
-      log::info!("Download could not be found, aborting");
+      log::error!("Download could not be found, aborting");
       std::process::exit(1)
     }
   }
@@ -503,45 +503,14 @@ pub fn unpack_into_dir(
     .extension()
     .and_then(|ext| ext.to_str())
     .unwrap();
-  let unpack_status = match archive_ext {
+  match archive_ext {
     "zip" if cfg!(windows) => {
       fs::write(&archive_path, &archive_data)?;
-      Command::new("powershell.exe")
-        .arg("-NoLogo")
-        .arg("-NoProfile")
-        .arg("-NonInteractive")
-        .arg("-Command")
-        .arg(
-          "& {
-            param($Path, $DestinationPath)
-            trap { $host.ui.WriteErrorLine($_.Exception); exit 1 }
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::ExtractToDirectory(
-              $Path,
-              $DestinationPath
-            );
-          }",
-        )
-        .arg("-Path")
-        .arg(format!("'{}'", &archive_path.to_str().unwrap()))
-        .arg("-DestinationPath")
-        .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`powershell.exe` was not found in your PATH",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
+      windows_unzip(&archive_path, &temp_dir_path)?;
     }
     "zip" => {
       fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
+      let unpack_status = Command::new("unzip")
         .current_dir(temp_dir_path)
         .arg(&archive_path)
         .spawn()
@@ -555,16 +524,82 @@ pub fn unpack_into_dir(
             err
           }
         })?
-        .wait()?
+        .wait()?;
+      if !unpack_status.success() {
+        bail!("Failed to unpack archive.");
+      }
     }
     ext => bail!("Unsupported archive type: '{ext}'"),
   };
-  if !unpack_status.success() {
-    bail!("Failed to unpack archive.");
-  }
   assert!(exe_path.exists());
   fs::remove_file(&archive_path)?;
   Ok(exe_path)
+}
+
+fn windows_unzip(
+  archive_file: &Path,
+  destination_dir: &Path,
+) -> Result<(), AnyError> {
+  // try in both powershell core and windows powershell
+  // https://github.com/denoland/deno/issues/20683
+  let items = ["pwsh.exe", "powershell.exe"];
+  for (i, powershell_exe) in items.into_iter().enumerate() {
+    match powershell_unzip(powershell_exe, archive_file, destination_dir) {
+      Ok(()) => return Ok(()),
+      Err(err) => {
+        log::error!("[{}]: {}", powershell_exe, err);
+        if i < items.len() - 1 {
+          log::error!("Retrying with {}...", items[i + 1]);
+        }
+      }
+    }
+  }
+  bail!(
+    "Failed both attempts to unzip with Powershell Core and Windows Powershell."
+  );
+}
+
+fn powershell_unzip(
+  powershell_exe: &str,
+  archive_file: &Path,
+  destination_dir: &Path,
+) -> Result<(), AnyError> {
+  let unpack_status = Command::new(powershell_exe)
+    .arg("-NoLogo")
+    .arg("-NoProfile")
+    .arg("-NonInteractive")
+    .arg("-Command")
+    .arg(
+      "& {
+  param($Path, $DestinationPath)
+  trap { $host.ui.WriteErrorLine($_.Exception); exit 1 }
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::ExtractToDirectory(
+    $Path,
+    $DestinationPath
+  );
+}",
+    )
+    .arg("-Path")
+    .arg(format!("'{}'", &archive_file.to_str().unwrap()))
+    .arg("-DestinationPath")
+    .arg(format!("'{}'", &destination_dir.to_str().unwrap()))
+    .spawn()
+    .map_err(|err| {
+      if err.kind() == std::io::ErrorKind::NotFound {
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("`{}` was not found in your PATH", powershell_exe),
+        )
+      } else {
+        err
+      }
+    })?
+    .wait()?;
+  if !unpack_status.success() {
+    bail!("Failed to unpack archive.");
+  }
+  Ok(())
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
