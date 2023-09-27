@@ -527,7 +527,7 @@ impl ReplSession {
       .check_for_npm_or_node_imports(&parsed_source.program())
       .await?;
 
-    self.analyze_and_handle_jsx(&parsed_source).await?;
+    let code_before = self.analyze_and_handle_jsx(&parsed_source).await?;
 
     let transpiled_src = parsed_source
       .transpile(&deno_ast::EmitOptions {
@@ -537,19 +537,19 @@ impl ReplSession {
         inline_sources: false,
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         transform_jsx: true,
-        // Necessary for `@jsxImportSource` to work
-        jsx_automatic: self.jsx.import_source.is_some(),
+        jsx_automatic: false,
         jsx_development: false,
         jsx_factory: self.jsx.factory.clone(),
         jsx_fragment_factory: self.jsx.frag_factory.clone(),
-        jsx_import_source: self.jsx.import_source.clone(),
+        jsx_import_source: None,
         var_decl_imports: true,
       })?
       .text;
 
-    // eprintln!("transpiled source {}", transpiled_src);
     let value = self
-      .evaluate_expression(&format!("'use strict'; void 0;\n{transpiled_src}"))
+      .evaluate_expression(&format!(
+        "'use strict'; void 0;{code_before}\n{transpiled_src}"
+      ))
       .await?;
 
     Ok(TsEvaluateResponse {
@@ -561,7 +561,7 @@ impl ReplSession {
   async fn analyze_and_handle_jsx(
     &mut self,
     parsed_source: &ParsedSource,
-  ) -> Result<(), AnyError> {
+  ) -> Result<String, AnyError> {
     let maybe_jsx_import_source = analyze_jsx_import_source(&parsed_source);
     let maybe_jsx = analyze_jsx(&parsed_source);
     let maybe_jsx_frag = analyze_jsx_frag(&parsed_source);
@@ -581,11 +581,11 @@ impl ReplSession {
       }
 
       if let Some(code) = build_auto_jsx_eval_code(&self.jsx) {
-        self.evaluate_expression(&code).await?;
+        return Ok(code);
       }
     }
 
-    Ok(())
+    Ok(String::new())
   }
 
   async fn check_for_npm_or_node_imports(
@@ -663,9 +663,9 @@ fn build_auto_jsx_eval_code(jsx: &ReplJsxState) -> Option<String> {
     let mut code = String::new();
 
     if let Some((obj, _)) = factory.split_once(".") {
-      code.push_str(&format!("const {} = ", obj));
+      code.push_str(&format!("var {} = ", obj));
     } else {
-      code.push_str(&format!("const {{ {} }} = ", factory));
+      code.push_str(&format!("var {{ {} }} = ", factory));
     }
     code.push_str(&format!("await import('{}');", import_source));
 
