@@ -5,6 +5,7 @@ use crate::FfiPermissions;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
@@ -82,11 +83,12 @@ where
   Ok(buf.as_ptr() as _)
 }
 
-#[op2(fast)]
+// TODO(mmastrac): this doesn't work in release mode w/op2.
+#[op]
 pub fn op_ffi_ptr_offset<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
-  #[number] offset: isize,
+  offset: isize,
 ) -> Result<*mut c_void, AnyError>
 where
   FP: FfiPermissions + 'static,
