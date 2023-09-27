@@ -49,7 +49,7 @@ test_util = { path = "./test_util" }
 deno_lockfile = "0.17.1"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 deno_npm = "0.15.1"
-deno_semver = "0.5.0"
+deno_semver = "0.5.1"
 
 # exts
 deno_broadcast_channel = { version = "0.114.0", path = "./ext/broadcast_channel" }

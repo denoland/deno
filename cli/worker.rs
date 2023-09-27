@@ -39,6 +39,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
 
@@ -386,6 +387,9 @@ impl CliMainWorkerFactory {
         .npm_resolver
         .add_package_reqs(&[package_ref.req().clone()])
         .await?;
+      let package_ref = shared
+        .npm_resolver
+        .resolve_pkg_nv_ref_from_pkg_req_ref(&package_ref)?;
       let node_resolution =
         self.resolve_binary_entrypoint(&package_ref, &permissions)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
@@ -511,7 +515,7 @@ impl CliMainWorkerFactory {
 
   fn resolve_binary_entrypoint(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<NodeResolution, AnyError> {
     match self.shared.node_resolver.resolve_binary_export(package_ref) {
@@ -534,7 +538,7 @@ impl CliMainWorkerFactory {
   /// resolve the binary entrypoint using regular node resolution
   fn resolve_binary_entrypoint_fallback(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // only fallback if the user specified a sub path
@@ -545,12 +549,11 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let Some(resolution) =
-      self.shared.node_resolver.resolve_npm_req_reference(
-        package_ref,
-        NodeResolutionMode::Execution,
-        permissions,
-      )?
+    let Some(resolution) = self.shared.node_resolver.resolve_npm_reference(
+      package_ref,
+      NodeResolutionMode::Execution,
+      permissions,
+    )?
     else {
       return Ok(None);
     };

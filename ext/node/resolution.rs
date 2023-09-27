@@ -16,9 +16,7 @@ use deno_core::ModuleSpecifier;
 use deno_fs::FileSystemRc;
 use deno_media_type::MediaType;
 use deno_semver::npm::NpmPackageNvReference;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
-use deno_semver::package::PackageNvReference;
 
 use crate::errors;
 use crate::AllowAllNodePermissions;
@@ -329,22 +327,6 @@ impl NodeResolver {
     Ok(resolved)
   }
 
-  pub fn resolve_npm_req_reference(
-    &self,
-    reference: &NpmPackageReqReference,
-    mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let pkg_id = self
-      .npm_resolver
-      .resolve_pkg_id_from_pkg_req(reference.req())?;
-    let reference = NpmPackageNvReference::new(PackageNvReference {
-      nv: pkg_id.nv,
-      sub_path: reference.sub_path().map(ToOwned::to_owned),
-    });
-    self.resolve_npm_reference(&reference, mode, permissions)
-  }
-
   pub fn resolve_npm_reference(
     &self,
     reference: &NpmPackageNvReference,
@@ -392,17 +374,24 @@ impl NodeResolver {
 
   pub fn resolve_binary_commands(
     &self,
-    pkg_nv: &PackageNv,
+    package_folder: &Path,
   ) -> Result<Vec<String>, AnyError> {
-    let package_folder = self
-      .npm_resolver
-      .resolve_package_folder_from_deno_module(pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
     let package_json =
       self.load_package_json(&AllowAllNodePermissions, package_json_path)?;
 
     Ok(match package_json.bin {
-      Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
+      Some(Value::String(_)) => vec![package_json
+        .name
+        .as_ref()
+        .map(|n| n.split_once('/').map(|(_, n)| n).unwrap_or(n).to_string())
+        .unwrap_or_else(|| {
+          package_folder
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()
+        })],
       Some(Value::Object(o)) => {
         o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
       }
@@ -412,16 +401,13 @@ impl NodeResolver {
 
   pub fn resolve_binary_export(
     &self,
-    pkg_ref: &NpmPackageReqReference,
+    pkg_ref: &NpmPackageNvReference,
   ) -> Result<NodeResolution, AnyError> {
-    let pkg_nv = self
-      .npm_resolver
-      .resolve_pkg_id_from_pkg_req(pkg_ref.req())?
-      .nv;
+    let pkg_nv = pkg_ref.nv();
     let bin_name = pkg_ref.sub_path();
     let package_folder = self
       .npm_resolver
-      .resolve_package_folder_from_deno_module(&pkg_nv)?;
+      .resolve_package_folder_from_deno_module(pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
     let package_json =
       self.load_package_json(&AllowAllNodePermissions, package_json_path)?;
@@ -432,7 +418,7 @@ impl NodeResolver {
         &pkg_nv.name,
       ),
     };
-    let bin_entry = resolve_bin_entry_value(&pkg_nv, bin_name, bin)?;
+    let bin_entry = resolve_bin_entry_value(pkg_nv, bin_name, bin)?;
     let url =
       ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
 

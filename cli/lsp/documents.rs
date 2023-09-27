@@ -2,6 +2,7 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
+use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -41,7 +42,6 @@ use deno_graph::Resolution;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -1089,7 +1089,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_node_resolver: Option<&Arc<NodeResolver>>,
+    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1098,11 +1098,12 @@ impl Documents {
     };
     let mut results = Vec::new();
     for specifier in specifiers {
-      if let Some(node_resolver) = maybe_node_resolver {
-        if node_resolver.in_npm_package(referrer) {
+      if let Some(npm) = maybe_npm {
+        if npm.node_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
-            node_resolver
+            npm
+              .node_resolver
               .resolve(
                 &specifier,
                 referrer,
@@ -1126,9 +1127,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm));
         } else {
           results.push(None);
         }
@@ -1136,12 +1137,11 @@ impl Documents {
         .resolve_imports_dependency(&specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+        results.push(self.resolve_dependency(specifier, maybe_npm));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(&specifier)
       {
-        results
-          .push(node_resolve_npm_req_ref(npm_req_ref, maybe_node_resolver));
+        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm));
       } else {
         results.push(None);
       }
@@ -1475,7 +1475,7 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_node_resolver: Option<&Arc<NodeResolver>>,
+    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
       if deno_node::is_builtin_node_module(module_name) {
@@ -1487,7 +1487,7 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1496,7 +1496,7 @@ impl Documents {
     if let Some(specifier) =
       maybe_types_dependency.and_then(|d| d.maybe_specifier())
     {
-      self.resolve_dependency(specifier, maybe_node_resolver)
+      self.resolve_dependency(specifier, maybe_npm)
     } else {
       let media_type = doc.media_type();
       Some((doc.specifier().clone(), media_type))
@@ -1519,18 +1519,25 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_node_resolver: Option<&Arc<NodeResolver>>,
+  maybe_npm: Option<&StateNpmSnapshot>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  maybe_node_resolver.map(|node_resolver| {
+  maybe_npm.map(|npm| {
     NodeResolution::into_specifier_and_media_type(
-      node_resolver
-        .resolve_npm_req_reference(
-          &npm_req_ref,
-          NodeResolutionMode::Types,
-          &PermissionsContainer::allow_all(),
-        )
+      npm
+        .npm_resolver
+        .resolve_pkg_nv_ref_from_pkg_req_ref(&npm_req_ref)
         .ok()
-        .flatten(),
+        .and_then(|npm_nv_ref| {
+          npm
+            .node_resolver
+            .resolve_npm_reference(
+              &npm_nv_ref,
+              NodeResolutionMode::Types,
+              &PermissionsContainer::allow_all(),
+            )
+            .ok()
+            .flatten()
+        }),
     )
   })
 }

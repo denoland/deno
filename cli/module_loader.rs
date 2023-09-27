@@ -12,6 +12,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
 use crate::node::CliNodeCodeTranslator;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
@@ -646,6 +647,7 @@ pub struct NpmModuleLoader {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
 }
 
 impl NpmModuleLoader {
@@ -654,12 +656,14 @@ impl NpmModuleLoader {
     node_code_translator: Arc<CliNodeCodeTranslator>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
       node_code_translator,
       fs,
       node_resolver,
+      npm_resolver,
     }
   }
 
@@ -704,16 +708,19 @@ impl NpmModuleLoader {
 
   pub fn resolve_req_reference(
     &self,
-    reference: &NpmPackageReqReference,
+    req_reference: &NpmPackageReqReference,
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
+    let nv_reference = self
+      .npm_resolver
+      .resolve_pkg_nv_ref_from_pkg_req_ref(req_reference)?;
     self
-      .handle_node_resolve_result(self.node_resolver.resolve_npm_req_reference(
-        reference,
+      .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
+        &nv_reference,
         NodeResolutionMode::Execution,
         permissions,
       ))
-      .with_context(|| format!("Could not resolve '{reference}'."))
+      .with_context(|| format!("Could not resolve '{nv_reference}'."))
   }
 
   pub fn maybe_prepare_load(

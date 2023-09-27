@@ -23,7 +23,10 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
+use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
@@ -96,6 +99,19 @@ impl CliNpmResolver {
       .and_then(|id| self.fs_resolver.package_folder(&id).ok())
       .map(|folder| folder.exists())
       .unwrap_or(false)
+  }
+
+  pub fn resolve_pkg_nv_ref_from_pkg_req_ref(
+    &self,
+    req_ref: &NpmPackageReqReference,
+  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
+    let pkg_nv = self
+      .resolve_pkg_id_from_pkg_req(req_ref.req())
+      .map(|id| id.nv)?;
+    Ok(NpmPackageNvReference::new(PackageNvReference {
+      nv: pkg_nv,
+      sub_path: req_ref.sub_path().map(|s| s.to_string()),
+    }))
   }
 
   pub fn resolve_pkg_id_from_pkg_req(
@@ -275,13 +291,6 @@ impl NpmResolver for CliNpmResolver {
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
-  }
-
-  fn resolve_pkg_id_from_pkg_req(
-    &self,
-    req: &PackageReq,
-  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
-    self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
