@@ -391,15 +391,18 @@ impl JupyterServer {
       let output =
         get_jupyter_display_or_eval_value(&mut self.repl_session, &result)
           .await?;
-      msg
-        .new_message("execute_result")
-        .with_content(json!({
-            "execution_count": self.execution_count,
-            "data": output,
-            "metadata": {},
-        }))
-        .send(&mut *self.iopub_socket.lock().await)
-        .await?;
+      // Don't bother sending `execute_result` reply if the MIME bundle is empty
+      if !output.is_empty() {
+        msg
+          .new_message("execute_result")
+          .with_content(json!({
+              "execution_count": self.execution_count,
+              "data": output,
+              "metadata": {},
+          }))
+          .send(&mut *self.iopub_socket.lock().await)
+          .await?;
+      }
       msg
         .new_reply()
         .with_content(json!({
