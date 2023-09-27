@@ -341,13 +341,13 @@ const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
 console.log(stringPtrview.getCString(11));
-console.log(dylib.symbols.is_null_ptr(ptr0));
-console.log(dylib.symbols.is_null_ptr(null));
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
+console.log("false", dylib.symbols.is_null_ptr(ptr0));
+console.log("true", dylib.symbols.is_null_ptr(null));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
 const emptyBuffer = new Uint8Array(0);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
+console.log("true", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
 const emptySlice = into.subarray(6);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
+console.log("true", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
 
 const { is_null_buf } = symbols;
 function isNullBuffer(buffer) { return is_null_buf(buffer); };
