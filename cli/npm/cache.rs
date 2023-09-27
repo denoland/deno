@@ -358,6 +358,8 @@ impl NpmCache {
     match maybe_bytes {
       Some(bytes) => {
         verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+
+        // TODO: print if a package has pre/install/post scripts
       }
       None => {
         bail!("Could not find npm package tarball at: {}", dist.tarball);

@@ -350,6 +350,9 @@ async fn sync_resolution_with_fs(
           .package_folder_for_name_and_version(&package.id.nv, &registry_url);
         // for now copy, but in the future consider hard linking
         copy_dir_recursive(&cache_folder, &package_path)?;
+
+        // TODO: print if a package has pre/install/post scripts
+
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
         // finally stop showing the progress bar
