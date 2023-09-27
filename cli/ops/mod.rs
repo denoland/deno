@@ -9,6 +9,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 
 pub mod bench;
+pub mod jupyter;
 pub mod testing;
 
 pub fn cli_exts(npm_resolver: Arc<CliNpmResolver>) -> Vec<Extension> {
