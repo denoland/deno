@@ -386,7 +386,7 @@ const externalOneBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(p
 assertEquals(isNullBuffer(externalOneBuffer), false, "isNullBuffer(externalOneBuffer) !== false");
 assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(externalOneBuffer) !== false");
 
-// UnsafePointer.of uses an exact-pointer fallback for zero-length slices to ensure that it always gets
+// UnsafePointer.of uses an exact-pointer fallback for zero-length buffers and slices to ensure that it always gets
 // the underlying pointer right.
 assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");

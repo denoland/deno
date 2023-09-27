@@ -75,7 +75,8 @@ where
   let Some(buf) = buf.buffer(scope) else {
     return Ok(0 as _);
   };
-  let Some(buf) = buf.get_backing_store().data() else {
+  let backing_store = buf.get_backing_store();
+  let Some(buf) = backing_store.data() else {
     return Ok(0 as _);
   };
   Ok(buf.as_ptr() as _)
