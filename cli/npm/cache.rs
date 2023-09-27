@@ -14,6 +14,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_runtime::deno_fs;
 use deno_semver::package::PackageNv;
@@ -310,11 +311,11 @@ impl NpmCache {
   pub async fn ensure_package(
     &self,
     package: &PackageNv,
-    dist: &NpmPackageVersionDistInfo,
+    info: &NpmPackageVersionInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
     self
-      .ensure_package_inner(package, dist, registry_url)
+      .ensure_package_inner(package, info, registry_url)
       .await
       .with_context(|| format!("Failed caching npm package '{package}'."))
   }
@@ -322,9 +323,10 @@ impl NpmCache {
   async fn ensure_package_inner(
     &self,
     package: &PackageNv,
-    dist: &NpmPackageVersionDistInfo,
+    info: &NpmPackageVersionInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
+    let dist = info.dist;
     let package_folder = self
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url);
@@ -357,7 +359,7 @@ impl NpmCache {
       .await?;
     match maybe_bytes {
       Some(bytes) => {
-        verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+        verify_and_extract_tarball(package, &bytes, &dist, &package_folder)
 
         // TODO: print if a package has pre/install/post scripts
       }

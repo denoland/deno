@@ -335,7 +335,7 @@ async fn sync_resolution_with_fs(
       let package = package.clone();
       let handle = spawn(async move {
         cache
-          .ensure_package(&package.id.nv, &package.dist, &registry_url)
+          .ensure_package(&package.id.nv, &package, &registry_url)
           .await?;
         let pb_guard = pb.update_with_prompt(
           ProgressMessagePrompt::Initialize,
