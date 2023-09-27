@@ -1819,6 +1819,16 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "queue graceful close",
+  async fn() {
+    const db: Deno.Kv = await Deno.openKv(":memory:");
+    const listener = db.listenQueue((_msg) => {});
+    db.close();
+    await listener;
+  },
+});
+
 dbTest("atomic operation is exposed", (db) => {
   assert(Deno.AtomicOperation);
   const ao = db.atomic();

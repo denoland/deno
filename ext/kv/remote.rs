@@ -277,7 +277,7 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
   async fn dequeue_next_message(
     &self,
     _state: Rc<RefCell<OpState>>,
-  ) -> Result<Self::QMH, AnyError> {
+  ) -> Result<Option<Self::QMH>, AnyError> {
     let msg = "Deno.Kv.listenQueue is not supported for remote KV databases";
     eprintln!("{}", yellow(msg));
     deno_core::futures::future::pending().await
