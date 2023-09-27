@@ -5,7 +5,6 @@ use crate::FfiPermissions;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
@@ -104,7 +103,7 @@ where
   // TODO(mmastrac): Create a RawPointer that can safely do pointer math.
 
   // SAFETY: Using `ptr.offset` is *actually unsafe* and has generated UB, but our FFI code relies on this working so we're going to
-  // try and ask the compiler to be less undefined here by using `ptr.wrapping_offset`.
+  // try and ask the compiler to be less undefined here by using `ptr.wrapping_offset`. 
   Ok(ptr.wrapping_offset(offset))
 }
 
