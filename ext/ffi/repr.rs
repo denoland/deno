@@ -84,11 +84,11 @@ where
 }
 
 // TODO(mmastrac): this doesn't work in release mode w/op2.
-#[op]
+#[op2(fast)]
 pub fn op_ffi_ptr_offset<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<*mut c_void, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -101,8 +101,11 @@ where
     return Err(type_error("Invalid pointer to offset, pointer is null"));
   }
 
-  // SAFETY: Pointer and offset are user provided.
-  Ok(unsafe { ptr.offset(offset) })
+  // TODO(mmastrac): Create a RawPointer that can safely do pointer math.
+
+  // SAFETY: Using `ptr.offset` is *actually unsafe* and has generated UB, but our FFI code relies on this working so we're going to
+  // try and ask the compiler to be less undefined here by using `ptr.wrapping_offset`.
+  Ok(ptr.wrapping_offset(offset))
 }
 
 unsafe extern "C" fn noop_deleter_callback(
