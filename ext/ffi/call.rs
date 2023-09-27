@@ -274,8 +274,8 @@ fn ffi_call(
 
 #[op2(async)]
 #[serde]
-pub fn op_ffi_call_ptr_nonblocking<'scope, FP>(
-  scope: &mut v8::HandleScope<'scope>,
+pub fn op_ffi_call_ptr_nonblocking<FP>(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,
@@ -320,8 +320,8 @@ where
 /// A non-blocking FFI call.
 #[op2(async)]
 #[serde]
-pub fn op_ffi_call_nonblocking<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+pub fn op_ffi_call_nonblocking(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] symbol: String,
@@ -370,8 +370,8 @@ pub fn op_ffi_call_nonblocking<'scope>(
 
 #[op2]
 #[serde]
-pub fn op_ffi_call_ptr<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+pub fn op_ffi_call_ptr<FP>(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,

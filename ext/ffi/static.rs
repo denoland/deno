@@ -28,7 +28,7 @@ pub fn op_ffi_get_static<'scope>(
     Err(err) => {
       if optional {
         let null: v8::Local<v8::Value> = v8::null(scope).into();
-        return Ok(null.into());
+        return Ok(null);
       } else {
         Err(err)
       }
@@ -44,48 +44,48 @@ pub fn op_ffi_get_static<'scope>(
       let result = unsafe { ptr::read_unaligned(data_ptr as *const bool) };
       let boolean: v8::Local<v8::Value> =
         v8::Boolean::new(scope, result).into();
-      boolean.into()
+      boolean
     }
     NativeType::U8 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u8) };
       let number: v8::Local<v8::Value> =
         v8::Integer::new_from_unsigned(scope, result as u32).into();
-      number.into()
+      number
     }
     NativeType::I8 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i8) };
       let number: v8::Local<v8::Value> =
         v8::Integer::new(scope, result as i32).into();
-      number.into()
+      number
     }
     NativeType::U16 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u16) };
       let number: v8::Local<v8::Value> =
         v8::Integer::new_from_unsigned(scope, result as u32).into();
-      number.into()
+      number
     }
     NativeType::I16 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i16) };
       let number: v8::Local<v8::Value> =
         v8::Integer::new(scope, result as i32).into();
-      number.into()
+      number
     }
     NativeType::U32 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u32) };
       let number: v8::Local<v8::Value> =
         v8::Integer::new_from_unsigned(scope, result).into();
-      number.into()
+      number
     }
     NativeType::I32 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i32) };
       let number: v8::Local<v8::Value> = v8::Integer::new(scope, result).into();
-      number.into()
+      number
     }
     NativeType::U64 => {
       // SAFETY: ptr is user provided
@@ -95,7 +95,7 @@ pub fn op_ffi_get_static<'scope>(
       } else {
         v8::Number::new(scope, result as f64).into()
       };
-      integer.into()
+      integer
     }
     NativeType::I64 => {
       // SAFETY: ptr is user provided
@@ -107,7 +107,7 @@ pub fn op_ffi_get_static<'scope>(
       } else {
         v8::Number::new(scope, result as f64).into()
       };
-      integer.into()
+      integer
     }
     NativeType::USize => {
       // SAFETY: ptr is user provided
@@ -118,7 +118,7 @@ pub fn op_ffi_get_static<'scope>(
       } else {
         v8::Number::new(scope, result as f64).into()
       };
-      integer.into()
+      integer
     }
     NativeType::ISize => {
       // SAFETY: ptr is user provided
@@ -129,25 +129,25 @@ pub fn op_ffi_get_static<'scope>(
         } else {
           v8::Number::new(scope, result as f64).into()
         };
-      integer.into()
+      integer
     }
     NativeType::F32 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f32) };
       let number: v8::Local<v8::Value> =
         v8::Number::new(scope, result as f64).into();
-      number.into()
+      number
     }
     NativeType::F64 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f64) };
       let number: v8::Local<v8::Value> = v8::Number::new(scope, result).into();
-      number.into()
+      number
     }
     NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
       let external: v8::Local<v8::Value> =
         v8::External::new(scope, data_ptr).into();
-      external.into()
+      external
     }
     NativeType::Struct(_) => {
       return Err(type_error("Invalid FFI static type 'struct'"));

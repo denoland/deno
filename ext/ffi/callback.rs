@@ -618,7 +618,7 @@ where
   array.set_index(scope, 1, ptr_local);
   let array_value: v8::Local<v8::Value> = array.into();
 
-  Ok(array_value.into())
+  Ok(array_value)
 }
 
 #[op2]
