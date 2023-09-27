@@ -143,7 +143,7 @@ impl CliNpmResolver {
   /// Resolve the root folder of the package the provided specifier is in.
   ///
   /// This will error when the provided specifier is not in an npm package.
-  pub fn resolve_package_folder_from_specifier(
+  pub fn resolve_pkg_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
@@ -161,8 +161,24 @@ impl CliNpmResolver {
     Ok(Some(path))
   }
 
+  pub fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+  ) -> Result<PathBuf, AnyError> {
+    let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
+    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
+  }
+
+  pub fn resolve_pkg_folder_from_deno_module(
+    &self,
+    nv: &PackageNv,
+  ) -> Result<PathBuf, AnyError> {
+    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
+    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
+  }
+
   /// Resolves the package nv from the provided specifier.
-  pub fn resolve_package_id_from_specifier(
+  pub fn resolve_pkg_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageId>, AnyError> {
@@ -282,15 +298,7 @@ impl NpmResolver for CliNpmResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    self.resolve_package_folder_from_specifier(specifier)
-  }
-
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
-    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
+    self.resolve_pkg_folder_from_specifier(specifier)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {

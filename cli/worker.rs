@@ -518,7 +518,15 @@ impl CliMainWorkerFactory {
     package_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<NodeResolution, AnyError> {
-    match self.shared.node_resolver.resolve_binary_export(package_ref) {
+    let package_folder = self
+      .shared
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(package_ref.nv())?;
+    match self
+      .shared
+      .node_resolver
+      .resolve_binary_export(&package_folder, package_ref.sub_path())
+    {
       Ok(node_resolution) => Ok(node_resolution),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
@@ -549,8 +557,13 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
+    let package_folder = self
+      .shared
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(package_ref.nv())?;
     let Some(resolution) = self.shared.node_resolver.resolve_npm_reference(
-      package_ref,
+      &package_folder,
+      package_ref.sub_path(),
       NodeResolutionMode::Execution,
       permissions,
     )?

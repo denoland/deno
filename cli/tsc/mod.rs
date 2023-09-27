@@ -658,8 +658,12 @@ fn resolve_graph_specifier_types(
     }
     Some(Module::Npm(module)) => {
       if let Some(npm) = &state.maybe_npm {
+        let package_folder = npm
+          .npm_resolver
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
         let maybe_resolution = npm.node_resolver.resolve_npm_reference(
-          &module.nv_reference,
+          &package_folder,
+          module.nv_reference.sub_path(),
           NodeResolutionMode::Types,
           &PermissionsContainer::allow_all(),
         )?;
@@ -712,11 +716,12 @@ fn resolve_non_graph_specifier_types(
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let npm_nv_ref = npm
+    let package_folder = npm
       .npm_resolver
-      .resolve_pkg_nv_ref_from_pkg_req_ref(&npm_req_ref)?;
+      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req())?;
     let maybe_resolution = node_resolver.resolve_npm_reference(
-      &npm_nv_ref,
+      &package_folder,
+      npm_req_ref.sub_path(),
       NodeResolutionMode::Types,
       &PermissionsContainer::allow_all(),
     )?;

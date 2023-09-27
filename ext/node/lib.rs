@@ -16,7 +16,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
-use deno_semver::package::PackageNv;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -86,12 +85,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError>;
-
-  /// Resolves an npm package folder path from a Deno module.
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 

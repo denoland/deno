@@ -697,9 +697,13 @@ impl NpmModuleLoader {
     nv_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
     self
       .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-        nv_ref,
+        &package_folder,
+        nv_ref.sub_path(),
         NodeResolutionMode::Execution,
         permissions,
       ))
@@ -708,19 +712,20 @@ impl NpmModuleLoader {
 
   pub fn resolve_req_reference(
     &self,
-    req_reference: &NpmPackageReqReference,
+    req_ref: &NpmPackageReqReference,
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let nv_reference = self
+    let package_folder = self
       .npm_resolver
-      .resolve_pkg_nv_ref_from_pkg_req_ref(req_reference)?;
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req())?;
     self
       .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-        &nv_reference,
+        &package_folder,
+        req_ref.sub_path(),
         NodeResolutionMode::Execution,
         permissions,
       ))
-      .with_context(|| format!("Could not resolve '{nv_reference}'."))
+      .with_context(|| format!("Could not resolve '{}'.", req_ref))
   }
 
   pub fn maybe_prepare_load(

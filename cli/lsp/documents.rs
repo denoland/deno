@@ -1525,13 +1525,14 @@ fn node_resolve_npm_req_ref(
     NodeResolution::into_specifier_and_media_type(
       npm
         .npm_resolver
-        .resolve_pkg_nv_ref_from_pkg_req_ref(&npm_req_ref)
+        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req())
         .ok()
-        .and_then(|npm_nv_ref| {
+        .and_then(|package_folder| {
           npm
             .node_resolver
             .resolve_npm_reference(
-              &npm_nv_ref,
+              &package_folder,
+              npm_req_ref.sub_path(),
               NodeResolutionMode::Types,
               &PermissionsContainer::allow_all(),
             )
