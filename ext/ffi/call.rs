@@ -327,8 +327,7 @@ pub fn op_ffi_call_nonblocking<'scope>(
   #[string] symbol: String,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError>
-{
+) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError> {
   let symbol = {
     let state = state.borrow();
     let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;

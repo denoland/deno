@@ -6,21 +6,21 @@ use crate::MAX_SAFE_INTEGER;
 use crate::MIN_SAFE_INTEGER;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::v8;
+use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ptr;
 
-#[op(v8)]
+#[op2]
 pub fn op_ffi_get_static<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
-  rid: ResourceId,
-  name: String,
-  static_type: NativeType,
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] name: String,
+  #[serde] static_type: NativeType,
   optional: bool,
-) -> Result<serde_v8::Value<'scope>, AnyError> {
+) -> Result<v8::Local<'scope, v8::Value>, AnyError> {
   let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
   let data_ptr = match resource.get_static(name) {
