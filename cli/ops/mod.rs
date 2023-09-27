@@ -29,6 +29,7 @@ deno_core::extension!(cli,
   esm = [
     dir "js",
     "40_testing.js",
+    "40_jupyter.js",
     "99_main.js"
   ],
   options = {
