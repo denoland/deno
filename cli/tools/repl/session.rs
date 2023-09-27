@@ -537,11 +537,12 @@ impl ReplSession {
         inline_sources: false,
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         transform_jsx: true,
-        jsx_automatic: false,
+        // Necessary for `@jsxImportSource` to work
+        jsx_automatic: self.jsx.import_source.is_some(),
         jsx_development: false,
         jsx_factory: self.jsx.factory.clone(),
         jsx_fragment_factory: self.jsx.frag_factory.clone(),
-        jsx_import_source: None,
+        jsx_import_source: self.jsx.import_source.clone(),
         var_decl_imports: true,
       })?
       .text;
