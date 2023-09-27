@@ -347,7 +347,7 @@ console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
 const emptyBuffer = new Uint8Array(0);
 console.log("true", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
 const emptySlice = into.subarray(6);
-console.log("true", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
 
 const { is_null_buf } = symbols;
 function isNullBuffer(buffer) { return is_null_buf(buffer); };
@@ -386,10 +386,9 @@ const externalOneBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(p
 assertEquals(isNullBuffer(externalOneBuffer), false, "isNullBuffer(externalOneBuffer) !== false");
 assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(externalOneBuffer) !== false");
 
-// Due to ops macro using `Local<ArrayBuffer>->Data()` to get the pointer for the slice that is then used to get
-// the pointer of an ArrayBuffer / TypedArray, the same effect can be seen where a zero byte length buffer returns
-// a null pointer as its pointer value.
-assertEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) !== null");
+// UnsafePointer.of uses an exact-pointer fallback for zero-length slices to ensure that it always gets
+// the underlying pointer right.
+assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();

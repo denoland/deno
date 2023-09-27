@@ -59,6 +59,28 @@ where
   Ok(buf as *mut c_void)
 }
 
+#[op2]
+pub fn op_ffi_ptr_of_exact<FP>(
+  scope: &mut v8::HandleScope,
+  state: &mut OpState,
+  buf: v8::Local<v8::ArrayBufferView>,
+) -> Result<*mut c_void, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#of");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check_partial(None)?;
+
+  let Some(buf) = buf.buffer(scope) else {
+    return Ok(0 as _);
+  };
+  let Some(buf) = buf.get_backing_store().data() else {
+    return Ok(0 as _);
+  };
+  Ok(buf.as_ptr() as _)
+}
+
 #[op2(fast)]
 pub fn op_ffi_ptr_offset<FP>(
   state: &mut OpState,

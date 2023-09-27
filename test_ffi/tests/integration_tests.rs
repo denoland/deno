@@ -59,7 +59,7 @@ fn basic() {
     true true\n\
     false false\n\
     true true\n\
-    true true\n\
+    false false\n\
     579\n\
     true\n\
     579\n\
