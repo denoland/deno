@@ -11,6 +11,7 @@ import { Buffer } from "node:buffer";
 import { Server, Socket, TCP } from "node:net";
 import { TypedArray } from "ext:deno_node/internal/util/types.ts";
 import {
+  kHandle,
   kMaybeDestroy,
   kUpdateTimer,
   setStreamTimeout,
@@ -83,7 +84,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = false;
+const debugHttp2Enabled = true;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -264,7 +265,7 @@ export class Http2Session extends EventEmitter {
   }
 
   setTimeout(msecs: number, callback?: () => void) {
-    setStreamTimeout(this, msecs, callback);
+    setStreamTimeout.call(this, msecs, callback);
   }
 }
 
@@ -302,6 +303,7 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
     session[kDenoConnRid],
     session[kDenoClientRid],
   );
+  console.table(Deno.resources());
   core.tryClose(session[kDenoConnRid]);
   core.tryClose(session[kDenoClientRid]);
 
@@ -354,9 +356,10 @@ export class ClientHttp2Session extends Http2Session {
     // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
       debugHttp2(">>> before connect");
-      const conn = await connPromise;
-      const [clientRid, connRid] = await op_http2_connect(conn.rid, url);
-      debugHttp2(">>> after connect");
+      const connRid_ = await connPromise;
+      console.log(">>>> awaited connRid", connRid_);
+      const [clientRid, connRid] = await op_http2_connect(connRid_, url);
+      debugHttp2(">>> after connect", clientRid, connRid);
       this[kDenoClientRid] = clientRid;
       this[kDenoConnRid] = connRid;
       // TODO(bartlomieju): save this promise, so the session can be unrefed
@@ -1190,7 +1193,9 @@ function finishCloseStream(stream, code) {
       );
       core.tryClose(stream[kDenoRid]);
       core.tryClose(stream[kDenoResponse].bodyRid);
-      stream.emit("close");
+      nextTick(() => {
+        stream.emit("close");
+      });
     }).catch(() => {
       debugHttp2(
         ">>> finishCloseStream close2 catch",
@@ -1199,7 +1204,11 @@ function finishCloseStream(stream, code) {
       );
       core.tryClose(stream[kDenoRid]);
       core.tryClose(stream[kDenoResponse].bodyRid);
-      stream.emit("close");
+      nextTick(() => {
+        nextTick(() => {
+          stream.emit("close");
+        });
+      });
     });
   }
 }
@@ -1488,24 +1497,46 @@ export function connect(
     host = authority.host;
   }
 
+  let conn, nodeConn, url;
+
   // TODO(bartlomieju): handle defaults
   if (typeof options.createConnection === "function") {
-    console.error("Not implemented: http2.connect.options.createConnection");
+    // console.error("Not implemented: http2.connect.options.createConnection");
     // notImplemented("http2.connect.options.createConnection");
-  }
-
-  let conn, url;
-  if (protocol == "http:") {
-    conn = Deno.connect({ port, hostname: host });
-    url = `http://${host}${port == 80 ? "" : (":" + port)}`;
-  } else if (protocol == "https:") {
-    conn = Deno.connectTls({ port, hostname: host, alpnProtocols: ["h2"] });
-    url = `http://${host}${port == 443 ? "" : (":" + port)}`;
+    nodeConn = options.createConnection(authority, options);
   } else {
-    throw new TypeError("Unexpected URL protocol");
+    // TODO(bartlomieju): using `localhost` as a `host` refuses to connect
+    // when server is listening on `0.0.0.0`
+    console.log(protocol, host, port);
+
+    if (protocol == "http:") {
+      conn = Deno.connect({ port, hostname: "127.0.0.1" });
+      url = `http://${host}${port == 80 ? "" : (":" + port)}`;
+    } else if (protocol == "https:") {
+      conn = Deno.connectTls({ port, hostname: host, alpnProtocols: ["h2"] });
+      url = `http://${host}${port == 443 ? "" : (":" + port)}`;
+    } else {
+      throw new TypeError("Unexpected URL protocol");
+    }
   }
 
-  const session = new ClientHttp2Session(conn, url, options);
+  let connPromise;
+
+  if (nodeConn) {
+    connPromise = new Promise((resolve) => {
+      nodeConn.once("connect", () => {
+        const rid = nodeConn[kHandle][kStreamBaseField].rid;
+        resolve(rid);
+      });
+    });
+  } else {
+    connPromise = (async () => {
+      const c = await conn;
+      return c.rid;
+    })();
+  }
+
+  const session = new ClientHttp2Session(connPromise, url, options);
   session[kAuthority] = `${options.servername || host}:${port}`;
   session[kProtocol] = protocol;
 
