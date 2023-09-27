@@ -3735,7 +3735,9 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let contents = if specifier.as_str() == "deno:/status.md" {
+    let contents = if specifier.scheme() == "deno"
+      && specifier.path() == "/status.md"
+    {
       let mut contents = String::new();
       let mut documents_specifiers = self
         .documents
