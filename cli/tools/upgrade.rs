@@ -510,7 +510,7 @@ pub fn unpack_into_dir(
         .arg("xf")
         .arg(&archive_path)
         .arg("-C")
-        .arg(&temp_dir_path)
+        .arg(temp_dir_path)
         .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
