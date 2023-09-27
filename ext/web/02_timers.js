@@ -329,7 +329,7 @@ function setTimeout(callback, timeout = 0, ...args) {
     callback = webidl.converters.DOMString(callback);
   }
   timeout = webidl.converters.long(timeout);
-
+  console.log(">>>> setTimeout");
   return initializeTimer(callback, timeout, args, false);
 }
 
@@ -371,6 +371,7 @@ function clearInterval(id = 0) {
 }
 
 function refTimer(id) {
+  console.log(">>>> refTimer");
   const timerInfo = MapPrototypeGet(activeTimers, id);
   if (timerInfo === undefined || timerInfo.isRef) {
     return;
@@ -380,6 +381,7 @@ function refTimer(id) {
 }
 
 function unrefTimer(id) {
+  console.log(">>>> unrefTimer");
   const timerInfo = MapPrototypeGet(activeTimers, id);
   if (timerInfo === undefined || !timerInfo.isRef) {
     return;

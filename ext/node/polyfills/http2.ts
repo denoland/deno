@@ -68,6 +68,7 @@ const kDenoResponse = Symbol("kDenoResponse");
 const kDenoRid = Symbol("kDenoRid");
 const kDenoClientRid = Symbol("kDenoClientRid");
 const kDenoConnRid = Symbol("kDenoConnRid");
+const kPollConnPromiseId = Symbol("kPollConnPromiseId");
 
 const STREAM_FLAGS_PENDING = 0x0;
 const STREAM_FLAGS_READY = 0x1;
@@ -351,6 +352,7 @@ function assertValidPseudoHeader(header: string) {
 
 export class ClientHttp2Session extends Http2Session {
   #connectPromise: Promise<void>;
+  #refed = true;
 
   constructor(
     connPromise: Promise<TcpConn> | Promise<TlsConn>,
@@ -361,6 +363,7 @@ export class ClientHttp2Session extends Http2Session {
     this[kPendingRequestCalls] = null;
     this[kDenoClientRid] = undefined;
     this[kDenoConnRid] = undefined;
+    this[kPollConnPromiseId] = undefined;
 
     // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
@@ -374,16 +377,36 @@ export class ClientHttp2Session extends Http2Session {
       // TODO(bartlomieju): save this promise, so the session can be unrefed
       (async () => {
         try {
-          await core.opAsync(
+          const promise = core.opAsync(
             "op_http2_poll_client_connection",
             this[kDenoConnRid],
           );
+          this[kPollConnPromiseId] =
+            promise[Symbol.for("Deno.core.internalPromiseId")];
+          if (!this.#refed) {
+            this.unref();
+          }
+          await promise;
         } catch (e) {
           this.emit("error", e);
         }
       })();
       this.emit("connect", this, {});
     })();
+  }
+
+  ref() {
+    this.#refed = true;
+    if (this[kPollConnPromiseId]) {
+      core.refOp(this[kPollConnPromiseId]);
+    }
+  }
+
+  unref() {
+    this.#refed = false;
+    if (this[kPollConnPromiseId]) {
+      core.unrefOp(this[kPollConnPromiseId]);
+    }
   }
 
   request(
