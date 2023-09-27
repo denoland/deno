@@ -103,7 +103,7 @@ where
   // TODO(mmastrac): Create a RawPointer that can safely do pointer math.
 
   // SAFETY: Using `ptr.offset` is *actually unsafe* and has generated UB, but our FFI code relies on this working so we're going to
-  // try and ask the compiler to be less undefined here by using `ptr.wrapping_offset`. 
+  // try and ask the compiler to be less undefined here by using `ptr.wrapping_offset`.
   Ok(ptr.wrapping_offset(offset))
 }
 
