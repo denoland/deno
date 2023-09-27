@@ -38,6 +38,7 @@ import {
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_INVALID_HTTP_TOKEN,
+  ERR_SOCKET_CLOSED,
 } from "ext:deno_node/internal/errors.ts";
 import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 import { TcpConn } from "ext:deno_net/01_net.js";
@@ -206,8 +207,12 @@ export class Http2Session extends EventEmitter {
     _opaqueData: Buffer | TypedArray | DataView,
   ) {
     warnNotImplemented("Http2Session.goaway");
-    core.tryClose(this[kDenoConnRid]);
-    core.tryClose(this[kDenoClientRid]);
+    if (this[kDenoConnRid]) {
+      core.tryClose(this[kDenoConnRid]);
+    }
+    if (this[kDenoClientRid]) {
+      core.tryClose(this[kDenoClientRid]);
+    }
   }
 
   destroy(error = constants.NGHTTP2_NO_ERROR, code?: number) {
@@ -1530,6 +1535,7 @@ export function connect(
 
   if (nodeConn) {
     nodeConn.on("error", socketOnError);
+    nodeConn.on("close", socketOnClose);
     connPromise = new Promise((resolve) => {
       nodeConn.once("connect", () => {
         const rid = nodeConn[kHandle][kStreamBaseField].rid;
@@ -1564,6 +1570,21 @@ function socketOnError(error) {
     }
     debugHttp2(">>>> socket error", error);
     session.destroy(error);
+  }
+}
+
+function socketOnClose() {
+  const session = this[kSession];
+  if (session !== undefined) {
+    debugHttp2(">>>> socket closed");
+    const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
+    const state = session[kState];
+    state.streams.forEach((stream) => stream.close(constants.NGHTTP2_CANCEL));
+    state.pendingStreams.forEach((stream) =>
+      stream.close(constants.NGHTTP2_CANCEL)
+    );
+    session.close();
+    session[kMaybeDestroy](err);
   }
 }
 
