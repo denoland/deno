@@ -128,13 +128,13 @@ export function getOwnNonIndexProperties(
 }
 
 export function previewEntries(
-  iter: Iterable<any>,
+  iter: Iterable<unknown>,
   isKeyValue?: boolean,
-): Array<any> {
+): Array<unknown | boolean> {
   if (isKeyValue) {
     const arr = [...iter];
     if (Array.isArray(arr[0]) && arr[0].length === 2) {
-      return [[].concat(...arr), true];
+      return [([] as unknown[]).concat(...arr), true];
     }
     return [arr, false];
   } else {
