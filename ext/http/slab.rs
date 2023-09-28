@@ -64,12 +64,11 @@ pub async fn new_slab_future(
     slab_drop(index);
   }
   let rx = slab_get(index).promise();
-  if tx.send(index).await.is_ok() {
-    http_trace!(index, "SlabFuture await");
-    // We only need to wait for completion if we aren't closed
-    rx.await;
-    http_trace!(index, "SlabFuture complete");
-  }
+  // Safe to unwrap as channel receiver is never closed.
+  tx.send(index).await.unwrap();
+  http_trace!(index, "SlabFuture await");
+  rx.await;
+  http_trace!(index, "SlabFuture complete");
   let response = slab_get(index).take_response();
   Ok(response)
 }
