@@ -21,6 +21,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules::LintRule;
+use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::package::PackageReq;
@@ -848,31 +849,23 @@ impl CodeActionCollection {
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
   pub fn get_response(self) -> lsp::CodeActionResponse {
-    let mut actions = self.actions;
-
     // Prefer TSC fixes first, then Deno fixes, then Deno lint fixes.
-    actions.sort_by(|a, b| match (a, b) {
-      (CodeActionKind::Deno(a), CodeActionKind::Deno(b)) => {
-        a.title.cmp(&b.title)
-      }
-      (CodeActionKind::DenoLint(a), CodeActionKind::DenoLint(b)) => {
-        a.title.cmp(&b.title)
-      }
-      (CodeActionKind::Tsc(a, _), CodeActionKind::Tsc(b, _)) => {
-        a.title.cmp(&b.title)
-      }
-      (CodeActionKind::Tsc(_, _), _) => Ordering::Less,
-      (CodeActionKind::Deno(_), CodeActionKind::Tsc(_, _)) => Ordering::Greater,
-      (CodeActionKind::Deno(_), CodeActionKind::DenoLint(_)) => Ordering::Less,
-      (CodeActionKind::DenoLint(_), _) => Ordering::Greater,
-    });
-
-    actions
+    let (tsc, rest): (Vec<_>, Vec<_>) = self
+      .actions
       .into_iter()
-      .map(|i| match i {
-        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
+      .partition(|a| matches!(a, CodeActionKind::Tsc(..)));
+    let (deno, deno_lint): (Vec<_>, Vec<_>) = rest
+      .into_iter()
+      .partition(|a| matches!(a, CodeActionKind::Deno(_)));
+
+    tsc
+      .into_iter()
+      .chain(deno)
+      .chain(deno_lint)
+      .map(|k| match k {
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
         CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
       })
       .collect()
   }
@@ -924,6 +917,24 @@ impl CodeActionCollection {
         }
       }
     }
+  }
+
+  pub fn add_cache_all_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    diagnostics: Vec<lsp::Diagnostic>,
+  ) {
+    self.actions.push(CodeActionKind::Deno(lsp::CodeAction {
+      title: "Cache all dependencies of this module.".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(diagnostics),
+      command: Some(lsp::Command {
+        title: "".to_string(),
+        command: "deno.cache".to_string(),
+        arguments: Some(vec![json!([]), json!(&specifier)]),
+      }),
+      ..Default::default()
+    }));
   }
 }
 

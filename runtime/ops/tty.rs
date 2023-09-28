@@ -4,7 +4,6 @@ use std::io::Error;
 use std::io::IsTerminal;
 
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceHandle;
@@ -188,10 +187,10 @@ fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 fn op_console_size(
   state: &mut OpState,
-  result: &mut [u32],
+  #[buffer] result: &mut [u32],
 ) -> Result<(), AnyError> {
   fn check_console_size(
     state: &mut OpState,

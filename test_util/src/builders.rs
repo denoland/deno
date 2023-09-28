@@ -15,7 +15,8 @@ use os_pipe::pipe;
 
 use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
-use crate::env_vars_for_npm_tests_no_sync_download;
+use crate::env_vars_for_jsr_tests;
+use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
@@ -48,6 +49,10 @@ impl TestContextBuilder {
 
   pub fn for_npm() -> Self {
     Self::new().use_http_server().add_npm_env_vars()
+  }
+
+  pub fn for_jsr() -> Self {
+    Self::new().use_http_server().add_jsr_env_vars()
   }
 
   pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
@@ -98,18 +103,17 @@ impl TestContextBuilder {
   }
 
   pub fn add_npm_env_vars(mut self) -> Self {
-    for (key, value) in env_vars_for_npm_tests_no_sync_download() {
+    for (key, value) in env_vars_for_npm_tests() {
       self = self.env(key, value);
     }
     self
   }
 
-  pub fn use_sync_npm_download(self) -> Self {
-    self.env(
-      // make downloads deterministic
-      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
-      "1",
-    )
+  pub fn add_jsr_env_vars(mut self) -> Self {
+    for (key, value) in env_vars_for_jsr_tests() {
+      self = self.env(key, value);
+    }
+    self
   }
 
   pub fn build(&self) -> TestContext {

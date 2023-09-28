@@ -458,6 +458,7 @@ pub async fn run(
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable,
+      maybe_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
   );
 

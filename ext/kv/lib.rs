@@ -16,6 +16,7 @@ use chrono::Utc;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
+use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -322,24 +323,35 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ToJsBuffer, ResourceId), AnyError>
+) -> Result<Option<(ToJsBuffer, ResourceId)>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
   let db = {
     let state = state.borrow();
     let resource =
-      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
+      match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
+        Ok(resource) => resource,
+        Err(err) => {
+          if get_custom_error_class(&err) == Some("BadResource") {
+            return Ok(None);
+          } else {
+            return Err(err);
+          }
+        }
+      };
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message(state.clone()).await?;
+  let Some(mut handle) = db.dequeue_next_message(state.clone()).await? else {
+    return Ok(None);
+  };
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
     state.resource_table.add(QueueMessageResource { handle })
   };
-  Ok((payload, handle_rid))
+  Ok(Some((payload, handle_rid)))
 }
 
 #[op2(async)]

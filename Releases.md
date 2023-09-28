@@ -6,6 +6,108 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.37.1 / 2023.09.27
+
+- feat(ext/web): use readableStreamDefaultReaderRead in
+  resourceForReadableStream (#20622)
+- feat(kv_queues): increase max queue delay to 30 days (#20626)
+- feat(lsp): cache all dependencies quick fix (#20665)
+- feat(lsp): support more vscode built-in settings (#20679)
+- feat(unstable): add `Deno.jupyter.broadcast` API (#20656)
+- fix(cli/test): clear connection pool after tests (#20680)
+- fix(ext/http): ensure that resources are closed when request is cancelled
+  (#20641)
+- fix(ext/node): Fix invalid length variable reference in blitBuffer (#20648)
+- fix(ext/node): simplified array.from + map (#20653)
+- fix(ext/web): Aggregate small packets for Resource implementation of
+  ReadableStream (#20570)
+- fix(jupyter): await Jupyter.display evaluation (#20646)
+- fix(kv): unflake kv unit tests (#20640)
+- fix(kv_queues): graceful shutdown (#20627)
+- fix(lsp): allow query strings for "deno:/status.md" (#20697)
+- fix(lsp): resolve remote import maps (#20651)
+- fix(lsp): show related information for tsc diagnostics (#20654)
+- fix(node): point process.version to Node 18.18.0 LTS (#20597)
+- fix(node): supported arguments to `randomFillSync` (#20637)
+- fix(node/package_json): Avoid panic when "exports" field is null (#20588)
+- fix(upgrade): error instead of panic on unzip failure (#20691)
+- perf(ext/fetch): use new instead of createBranded (#20624)
+- perf(test): use core.currentUserCallSite (#20669)
+- perf(test): use fast ops for deno test register (#20670)
+
+### 1.37.0 / 2023.09.19
+
+- feat: Add "deno jupyter" subcommand (#20337, #20552, #20530, #20537, #20546)
+- feat(test): add TAP test reporter (#14390, #20073)
+- feat(ext/node): http2.connect() API (#19671)
+- feat(ext/web): Add name to `Deno.customInspect` of File objects (#20415)
+- feat(lint): `--rules` print all rules (#20256)
+- feat(lockfile): add redirects to the lockfile (#20262)
+- feat(lsp): WorkspaceSettings::disablePaths (#20475)
+- feat(lsp): enable via config file detection (#20334, #20349)
+- feat(lsp): include source in auto import completion label (#20523)
+- feat(lsp): npm specifier completions (#20121)
+- feat(lsp): provide the deno.cache command server-side (#20111)
+- feat(lsp): update imports on file rename (#20245)
+- feat(test): Add Deno.test.ignore and Deno.test.only (#20365)
+- feat(unstable): package manager (#20517)
+- feat: TypeScript 5.2 (#20425)
+- feat: explicit resource management in TypeScript (#20506)
+- feat: lockfile v3 (#20424)
+- feat: support import attributes (#20342)
+- fix(cli): ensure that an exception in getOwnPropertyDescriptor('constructor')
+  doesn't break Deno.inspect (#20568)
+- fix(cli): for main-module that exists in package.json, use the version defined
+  in package.json directly (#20328)
+- fix(compile): support providing flags as args (#20422)
+- fix(evt/kv): Add serde feature to uuid (#20350)
+- fix(ext/crypto): remove EdDSA alg key checks and export (#20331)
+- fix(ext/http): create a graceful shutdown API (#20387)
+- fix(ext/http): ensure aborted bodies throw (#20503)
+- fix(ext/kv): add a warning for listenQueue if used with remote KV (#20341)
+- fix(ext/kv): same `expireIn` should generate same `expireAt` (#20396)
+- fix(ext/node): implement AES GCM cipher (#20368)
+- fix(ext/node): remove unnecessary and incorrect type priority_t (#20276)
+- fix(ext/node/ops/zlib/brotli): Allow decompressing more than 4096 bytes
+  (#20301)
+- fix(fmt/markdown): improve ignore comment handling (#20421)
+- fix(init): skip existing files instead of erroring (#20434)
+- fix(lsp): always enable semantic tokens responses (#20440)
+- fix(lsp): force correct media type detection from tsc (#20562)
+- fix(lsp): include JSON modules in local import completions (#20536)
+- fix(lsp): match enable_paths by whole path components (#20470)
+- fix(lsp): pass quote preference to tsc (#20547)
+- fix(lsp): prefer local auto-import specifiers (#20539)
+- fix(lsp): properly handle disabled configuration requests (#20358)
+- fix(lsp): recreate npm search cache when cache path changes (#20327)
+- fix(lsp): refresh npm completions on each character (#20565)
+- fix(lsp): respect configured exclusions for testing APIs (#20427)
+- fix(lsp): restore tsc's quick fix ordering (#20545)
+- fix(lsp): sort quickfix actions (#17221)
+- fix(node): Bump hardcoded version to latest (#20366)
+- fix(node/child_process): don't crash on undefined/null value of an env var
+  (#20378)
+- fix(node/http): correctly send `Content-length` header instead of
+  `Transfer-Encoding: chunked` (#20127)
+- fix(npm): properly handle legacy shasum of package (#20557)
+- fix(runtime/permissions): Resolve executable specifiers in allowlists and
+  queries (#14130)
+- fix(test): apply filter before checking for "only" (#20389)
+- fix(test): share fail fast tracker between threads (#20515)
+- fix: `Deno.Command` - improve error message when `cwd` is not a directory
+  (#20460)
+- fix: don't show filtered test suites as running (#20385)
+- fix: empty include in config file excludes all (#20404)
+- fix: exclude internal JS files from coverage (#20448)
+- fix: init v8 platform once on main thread (#20495)
+- fix: output traces for op sanitizer in more cases (#20494)
+- perf(ext/http): optimize `set_response` for small responses (#20527)
+- perf(ext/node): Optimise Buffer string operations (#20158)
+- perf(ext/streams): optimize async iterator (#20541)
+- perf(node/net): optimize socket reads for 'npm:ws' package (#20449)
+- perf: improve async op santizer speed and accuracy (#20501)
+- perf: make `deno test` 10x faster (#20550)
+
 ### 1.36.4 / 2023.09.01
 
 - feat(ext/kv): connect to remote database (#20178)

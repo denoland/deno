@@ -105,7 +105,7 @@
     "ext:deno_node/internal/constants.ts": "../ext/node/polyfills/internal/constants.ts",
     "ext:deno_node/internal/crypto/_keys.ts": "../ext/node/polyfills/internal/crypto/_keys.ts",
     "ext:deno_node/internal/crypto/_randomBytes.ts": "../ext/node/polyfills/internal/crypto/_randomBytes.ts",
-    "ext:deno_node/internal/crypto/_randomFill.ts": "../ext/node/polyfills/internal/crypto/_randomFill.ts",
+    "ext:deno_node/internal/crypto/_randomFill.mjs": "../ext/node/polyfills/internal/crypto/_randomFill.mjs",
     "ext:deno_node/internal/crypto/_randomInt.ts": "../ext/node/polyfills/internal/crypto/_randomInt.ts",
     "ext:deno_node/internal/crypto/certificate.ts": "../ext/node/polyfills/internal/crypto/certificate.ts",
     "ext:deno_node/internal/crypto/cipher.ts": "../ext/node/polyfills/internal/crypto/cipher.ts",

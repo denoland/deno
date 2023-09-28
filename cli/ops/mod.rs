@@ -9,6 +9,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 
 pub mod bench;
+pub mod jupyter;
 pub mod testing;
 
 pub fn cli_exts(npm_resolver: Arc<CliNpmResolver>) -> Vec<Extension> {
@@ -28,6 +29,7 @@ deno_core::extension!(cli,
   esm = [
     dir "js",
     "40_testing.js",
+    "40_jupyter.js",
     "99_main.js"
   ],
   options = {

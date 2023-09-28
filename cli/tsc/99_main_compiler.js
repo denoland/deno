@@ -1020,7 +1020,7 @@ delete Object.prototype.__proto__;
             request.specifier,
             request.range,
             {
-              quotePreference: "double",
+              ...(request.preferences ?? {}),
               allowTextChangesInNewFiles: true,
               provideRefactorNotApplicableReason: true,
             },
@@ -1043,9 +1043,7 @@ delete Object.prototype.__proto__;
             request.range,
             request.refactorName,
             request.actionName,
-            {
-              quotePreference: "double",
-            },
+            request.preferences,
           ),
         );
       }
@@ -1072,9 +1070,7 @@ delete Object.prototype.__proto__;
               ...request.formatCodeSettings,
               indentStyle: ts.IndentStyle.Block,
             },
-            {
-              quotePreference: "double",
-            },
+            request.preferences,
           ),
         );
       }
@@ -1091,9 +1087,7 @@ delete Object.prototype.__proto__;
               ...request.formatCodeSettings,
               indentStyle: ts.IndentStyle.Block,
             },
-            {
-              quotePreference: "double",
-            },
+            request.preferences,
           ),
         );
       }

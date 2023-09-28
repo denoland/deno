@@ -22,7 +22,6 @@ const {
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
@@ -151,26 +150,14 @@ const OP_DETAILS = {
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
 
-function collectReliableOpMetrics() {
-  let metrics = core.metrics();
-  if (metrics.opsDispatched > metrics.opsCompleted) {
-    // If there are still async ops pending, we drain the event loop to the
-    // point where all ops that can return `Poll::Ready` have done so, to ensure
-    // that any ops are ready because of user cleanup code are completed.
-    const hasPendingWorkerOps = metrics.ops.op_host_recv_message && (
-      metrics.ops.op_host_recv_message.opsDispatched >
-        metrics.ops.op_host_recv_message.opsCompleted ||
-      metrics.ops.op_host_recv_ctrl.opsDispatched >
-        metrics.ops.op_host_recv_ctrl.opsCompleted
-    );
-    return opSanitizerDelay(hasPendingWorkerOps).then(() => {
-      metrics = core.metrics();
-      const traces = new Map(core.opCallTraces);
-      return { metrics, traces };
-    });
-  }
-  const traces = new Map(core.opCallTraces);
-  return { metrics, traces };
+let opIdHostRecvMessage = -1;
+let opIdHostRecvCtrl = -1;
+let opNames = null;
+
+function populateOpNames() {
+  opNames = core.ops.op_op_names();
+  opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
+  opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
 }
 
 // Wrap test function in additional assertion that makes sure
@@ -181,50 +168,61 @@ function collectReliableOpMetrics() {
 function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
-    let metrics = collectReliableOpMetrics();
-    if (metrics.then) {
-      // We're delaying so await to get the result asynchronously.
-      metrics = await metrics;
+    if (opNames === null) populateOpNames();
+    const res = core.ops.op_test_op_sanitizer_collect(
+      desc.id,
+      false,
+      opIdHostRecvMessage,
+      opIdHostRecvCtrl,
+    );
+    if (res !== 0) {
+      await opSanitizerDelay(res === 2);
+      core.ops.op_test_op_sanitizer_collect(
+        desc.id,
+        true,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
     }
-    const { metrics: pre, traces: preTraces } = metrics;
-    let post;
+    const preTraces = new Map(core.opCallTraces);
     let postTraces;
+    let report = null;
 
     try {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      let metrics = collectReliableOpMetrics();
-      if (metrics.then) {
-        // We're delaying so await to get the result asynchronously.
-        metrics = await metrics;
+      let res = core.ops.op_test_op_sanitizer_finish(
+        desc.id,
+        false,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
+      if (res === 1 || res === 2) {
+        await opSanitizerDelay(res === 2);
+        res = core.ops.op_test_op_sanitizer_finish(
+          desc.id,
+          true,
+          opIdHostRecvMessage,
+          opIdHostRecvCtrl,
+        );
       }
-      ({ metrics: post, traces: postTraces } = metrics);
+      postTraces = new Map(core.opCallTraces);
+      if (res === 3) {
+        report = core.ops.op_test_op_sanitizer_report(desc.id);
+      }
     }
 
-    // We're checking diff because one might spawn HTTP server in the background
-    // that will be a pending async op before test starts.
-    const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
-    const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
-
-    if (dispatchedDiff === completedDiff) return null;
+    if (report === null) return null;
 
     const details = [];
-    for (const key in post.ops) {
-      if (!ObjectHasOwn(post.ops, key)) {
-        continue;
-      }
-      const preOp = pre.ops[key] ??
-        { opsDispatchedAsync: 0, opsCompletedAsync: 0 };
-      const postOp = post.ops[key];
-      const dispatchedDiff = postOp.opsDispatchedAsync -
-        preOp.opsDispatchedAsync;
-      const completedDiff = postOp.opsCompletedAsync -
-        preOp.opsCompletedAsync;
+    for (const opReport of report) {
+      const opName = opNames[opReport.id];
+      const diff = opReport.diff;
 
-      if (dispatchedDiff > completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = dispatchedDiff - completedDiff;
+      if (diff > 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
         } to ${name} ${
@@ -234,8 +232,8 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of postTraces) {
-          if (opName !== key) continue;
+        for (const [id, { opName: traceOpName, stack }] of postTraces) {
+          if (traceOpName !== opName) continue;
           if (MapPrototypeHas(preTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
@@ -247,9 +245,9 @@ function assertOps(fn) {
           message += ArrayPrototypeJoin(traces, "\n\n");
         }
         ArrayPrototypePush(details, message);
-      } else if (dispatchedDiff < completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = completedDiff - dispatchedDiff;
+      } else if (diff < 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = -diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
         } to ${name} ${
@@ -261,8 +259,8 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of preTraces) {
-          if (opName !== key) continue;
+        for (const [id, { opName: traceOpName, stack }] of preTraces) {
+          if (opName !== traceOpName) continue;
           if (MapPrototypeHas(postTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
@@ -274,6 +272,8 @@ function assertOps(fn) {
           message += ArrayPrototypeJoin(traces, "\n\n");
         }
         ArrayPrototypePush(details, message);
+      } else {
+        throw new Error("unreachable");
       }
     }
 
@@ -675,6 +675,9 @@ let currentBenchUserExplicitStart = null;
 /** @type {number | null} */
 let currentBenchUserExplicitEnd = null;
 
+const registerTestIdRetBuf = new Uint32Array(1);
+const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
+
 function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
@@ -769,27 +772,22 @@ function testInner(
 
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
-  const jsError = core.destructureError(new Error());
-  let location;
 
-  for (let i = 0; i < jsError.frames.length; i++) {
-    const filename = jsError.frames[i].fileName;
-    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
-      continue;
-    }
-    location = {
-      fileName: jsError.frames[i].fileName,
-      lineNumber: jsError.frames[i].lineNumber,
-      columnNumber: jsError.frames[i].columnNumber,
-    };
-    break;
-  }
-  testDesc.location = location;
+  testDesc.location = core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
-  const { id, origin } = ops.op_register_test(testDesc);
-  testDesc.id = id;
+  const origin = ops.op_register_test(
+    testDesc.fn,
+    testDesc.name,
+    testDesc.ignore,
+    testDesc.only,
+    testDesc.location.fileName,
+    testDesc.location.lineNumber,
+    testDesc.location.columnNumber,
+    registerTestIdRetBufU8,
+  );
+  testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = origin;
   MapPrototypeSet(testStates, testDesc.id, {
     context: createTestContext(testDesc),
@@ -1226,9 +1224,13 @@ function stepReportResult(desc, result, elapsed) {
   for (const childDesc of state.children) {
     stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
-  ops.op_dispatch_test_event({
-    stepResult: [desc.id, result, elapsed],
-  });
+  if (result === "ok") {
+    ops.op_test_event_step_result_ok(desc.id, elapsed);
+  } else if (result === "ignored") {
+    ops.op_test_event_step_result_ignored(desc.id, elapsed);
+  } else {
+    ops.op_test_event_step_result_failed(desc.id, result.failed, elapsed);
+  }
 }
 
 /** @param desc {TestDescription | TestStepDescription} */
@@ -1307,21 +1309,25 @@ function createTestContext(desc) {
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
-      const jsError = core.destructureError(new Error());
-      stepDesc.location = {
-        fileName: jsError.frames[1].fileName,
-        lineNumber: jsError.frames[1].lineNumber,
-        columnNumber: jsError.frames[1].columnNumber,
-      };
+      stepDesc.location = core.currentUserCallSite();
       stepDesc.level = level + 1;
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
       stepDesc.name = escapeName(stepDesc.name);
       stepDesc.rootName = escapeName(rootName);
       stepDesc.fn = wrapTest(stepDesc);
-      const { id, origin } = ops.op_register_test_step(stepDesc);
+      const id = ops.op_register_test_step(
+        stepDesc.name,
+        stepDesc.location.fileName,
+        stepDesc.location.lineNumber,
+        stepDesc.location.columnNumber,
+        stepDesc.level,
+        stepDesc.parent.id,
+        stepDesc.rootId,
+        stepDesc.rootName,
+      );
       stepDesc.id = id;
-      stepDesc.origin = origin;
+      stepDesc.origin = desc.origin;
       const state = {
         context: createTestContext(stepDesc),
         children: [],
@@ -1334,7 +1340,7 @@ function createTestContext(desc) {
         stepDesc,
       );
 
-      ops.op_dispatch_test_event({ stepWait: stepDesc.id });
+      ops.op_test_event_step_wait(stepDesc.id);
       const earlier = DateNow();
       const result = await stepDesc.fn(stepDesc);
       const elapsed = DateNow() - earlier;

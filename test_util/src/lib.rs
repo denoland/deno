@@ -114,21 +114,18 @@ pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 static GUARD: Lazy<Mutex<HttpServerCount>> =
   Lazy::new(|| Mutex::new(HttpServerCount::default()));
 
-pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
 
-pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
-  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
-  env_vars.push((
-    // make downloads deterministic
-    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
-    "1".to_string(),
-  ));
-  env_vars
+pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
+  vec![
+    ("DENO_REGISTRY_URL".to_string(), jsr_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
 }
 
 pub fn root_path() -> PathRef {
@@ -166,6 +163,10 @@ pub fn npm_registry_url() -> String {
 
 pub fn npm_registry_unset_url() -> String {
   "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
+}
+
+pub fn jsr_registry_url() -> String {
+  "http://localhost:4545/jsr/registry/".to_string()
 }
 
 pub fn std_path() -> PathRef {
@@ -2620,6 +2621,21 @@ pub fn wildcard_match_detailed(
                 ))
               ));
             }
+            let actual_next_text = &current_text[max_found_index..];
+            let max_next_text_len = 40;
+            let next_text_len =
+              std::cmp::min(max_next_text_len, actual_next_text.len());
+            output_lines.push(format!(
+              "==== NEXT ACTUAL TEXT ====\n{}{}",
+              colors::red(annotate_whitespace(
+                &actual_next_text[..next_text_len]
+              )),
+              if actual_next_text.len() > max_next_text_len {
+                "[TRUNCATED]"
+              } else {
+                ""
+              },
+            ));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
         }
@@ -2673,9 +2689,13 @@ pub fn wildcard_match_detailed(
               colors::green(annotate_whitespace(expected))
             ));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
+          } else {
+            output_lines.push(format!(
+              "<FOUND>{}</FOUND>",
+              colors::gray(annotate_whitespace(expected))
+            ));
           }
         }
-        output_lines.push("# Found matching unordered lines".to_string());
       }
     }
     was_last_wildcard = matches!(part, WildcardPatternPart::Wildcard);

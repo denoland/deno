@@ -10,6 +10,7 @@ use deno_core::parking_lot::RwLock;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
@@ -391,6 +392,21 @@ fn populate_lockfile_from_snapshot(
 fn npm_package_to_lockfile_info(
   pkg: &NpmResolutionPackage,
 ) -> NpmPackageLockfileInfo {
+  fn integrity_for_lockfile(
+    integrity: NpmPackageVersionDistInfoIntegrity,
+  ) -> String {
+    match integrity {
+      NpmPackageVersionDistInfoIntegrity::Integrity {
+        algorithm,
+        base64_hash,
+      } => format!("{}-{}", algorithm, base64_hash),
+      NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {
+        integrity.to_string()
+      }
+      NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => hex.to_string(),
+    }
+  }
+
   let dependencies = pkg
     .dependencies
     .iter()
@@ -403,7 +419,7 @@ fn npm_package_to_lockfile_info(
   NpmPackageLockfileInfo {
     display_id: pkg.id.nv.to_string(),
     serialized_id: pkg.id.as_serialized(),
-    integrity: pkg.dist.integrity().to_string(),
+    integrity: integrity_for_lockfile(pkg.dist.integrity()),
     dependencies,
   }
 }
