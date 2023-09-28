@@ -158,6 +158,12 @@ impl LspNpmConfigHash {
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
+#[derive(Debug)]
+pub struct StateNpmSnapshot {
+  pub node_resolver: Arc<NodeResolver>,
+  pub npm_resolver: Arc<CliNpmResolver>,
+}
+
 /// Snapshot of the state used by TSC.
 #[derive(Debug)]
 pub struct StateSnapshot {
@@ -166,8 +172,7 @@ pub struct StateSnapshot {
   pub config: Arc<ConfigSnapshot>,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
-  pub maybe_npm_resolver: Option<Arc<CliNpmResolver>>,
+  pub npm: Option<StateNpmSnapshot>,
 }
 
 #[derive(Debug)]
@@ -819,8 +824,10 @@ impl Inner {
       config: self.config.snapshot(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_node_resolver: Some(node_resolver),
-      maybe_npm_resolver: Some(npm_resolver),
+      npm: Some(StateNpmSnapshot {
+        node_resolver,
+        npm_resolver,
+      }),
     })
   }
 

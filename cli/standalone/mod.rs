@@ -404,6 +404,7 @@ pub async fn run(
         node_code_translator,
         fs.clone(),
         node_resolver.clone(),
+        npm_resolver.clone(),
       )),
     }),
   };
@@ -429,7 +430,7 @@ pub async fn run(
   };
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
-    npm_resolver.clone(),
+    npm_resolver,
     node_resolver,
     Default::default(),
     Box::new(module_loader_factory),
