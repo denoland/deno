@@ -10,6 +10,7 @@ use bytes::Bytes;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -108,11 +109,12 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  url: String,
+  #[smi] rid: ResourceId,
+  #[string] url: String,
 ) -> Result<(ResourceId, ResourceId), AnyError> {
   // No permission check necessary because we're using an existing connection
   let network_stream = {
@@ -135,10 +137,11 @@ pub async fn op_http2_connect(
   Ok((client_rid, conn_rid))
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 pub async fn op_http2_listen(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ResourceId, AnyError> {
   let stream =
     take_network_stream_resource(&mut state.borrow_mut().resource_table, rid)?;
@@ -220,12 +223,13 @@ pub async fn op_http2_accept(
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_http2_send_response(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  status: u16,
-  headers: Vec<(ByteString, ByteString)>,
+  #[smi] rid: ResourceId,
+  #[smi] status: u16,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
 ) -> Result<(ResourceId, u32), AnyError> {
   let resource = state
     .borrow()
@@ -251,10 +255,10 @@ pub async fn op_http2_send_response(
   Ok((rid, stream_id.into()))
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http2_poll_client_connection(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state.borrow().resource_table.get::<Http2ClientConn>(rid)?;
 
@@ -273,14 +277,15 @@ pub async fn op_http2_poll_client_connection(
   Ok(())
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_http2_client_request(
   state: Rc<RefCell<OpState>>,
-  client_rid: ResourceId,
+  #[smi] client_rid: ResourceId,
   // TODO(bartlomieju): maybe use a vector with fixed layout to save sending
   // 4 strings of keys?
-  mut pseudo_headers: HashMap<String, String>,
-  headers: Vec<(ByteString, ByteString)>,
+  #[serde] mut pseudo_headers: HashMap<String, String>,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
 ) -> Result<(ResourceId, u32), AnyError> {
   let resource = state
     .borrow()
@@ -331,11 +336,11 @@ pub async fn op_http2_client_request(
   Ok((stream_rid, stream_id.into()))
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http2_client_send_data(
   state: Rc<RefCell<OpState>>,
-  stream_rid: ResourceId,
-  data: JsBuffer,
+  #[smi] stream_rid: ResourceId,
+  #[buffer] data: JsBuffer,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow()
@@ -348,10 +353,10 @@ pub async fn op_http2_client_send_data(
   Ok(())
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http2_client_end_stream(
   state: Rc<RefCell<OpState>>,
-  stream_rid: ResourceId,
+  #[smi] stream_rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow()
@@ -364,11 +369,11 @@ pub async fn op_http2_client_end_stream(
   Ok(())
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http2_client_reset_stream(
   state: Rc<RefCell<OpState>>,
-  stream_rid: ResourceId,
-  code: u32,
+  #[smi] stream_rid: ResourceId,
+  #[smi] code: u32,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow()
@@ -379,11 +384,11 @@ pub async fn op_http2_client_reset_stream(
   Ok(())
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http2_client_send_trailers(
   state: Rc<RefCell<OpState>>,
-  stream_rid: ResourceId,
-  trailers: Vec<(ByteString, ByteString)>,
+  #[smi] stream_rid: ResourceId,
+  #[serde] trailers: Vec<(ByteString, ByteString)>,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow()
@@ -411,10 +416,11 @@ pub struct Http2ClientResponse {
   status_code: u16,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
-  stream_rid: ResourceId,
+  #[smi] stream_rid: ResourceId,
 ) -> Result<Http2ClientResponse, AnyError> {
   let resource = state
     .borrow()
@@ -479,10 +485,11 @@ fn poll_data_or_trailers(
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
-  body_rid: ResourceId,
+  #[smi] body_rid: ResourceId,
 ) -> Result<(Option<Vec<u8>>, bool), AnyError> {
   let resource = state
     .borrow()
@@ -518,10 +525,11 @@ pub async fn op_http2_client_get_response_body_chunk(
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_http2_client_get_response_trailers(
   state: Rc<RefCell<OpState>>,
-  body_rid: ResourceId,
+  #[smi] body_rid: ResourceId,
 ) -> Result<Option<Vec<(ByteString, ByteString)>>, AnyError> {
   let resource = state
     .borrow()

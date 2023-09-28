@@ -408,9 +408,7 @@ impl QueueMessageHandle for DequeuedMessage {
       Err(e) => {
         // Silently ignore the error if the database has been closed
         // This message will be delivered on the next run
-        if get_custom_error_class(&e) == Some("TypeError")
-          && e.to_string() == ERROR_USING_CLOSED_DATABASE
-        {
+        if is_conn_closed_error(&e) {
           return Ok(());
         }
         return Err(e);
@@ -453,25 +451,25 @@ impl SqliteQueue {
 
     spawn(async move {
       // Oneshot requeue of all inflight messages.
-      Self::requeue_inflight_messages(conn.clone()).await.unwrap();
+      if let Err(e) = Self::requeue_inflight_messages(conn.clone()).await {
+        // Exit the dequeue loop cleanly if the database has been closed.
+        if is_conn_closed_error(&e) {
+          return;
+        }
+        panic!("kv: Error in requeue_inflight_messages: {}", e);
+      }
 
       // Continuous dequeue loop.
-      match Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
-        .await
+      if let Err(e) =
+        Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
+          .await
       {
-        Ok(_) => Ok(()),
-        Err(e) => {
-          // Exit the dequeue loop cleanly if the database has been closed.
-          if get_custom_error_class(&e) == Some("TypeError")
-            && e.to_string() == ERROR_USING_CLOSED_DATABASE
-          {
-            Ok(())
-          } else {
-            Err(e)
-          }
+        // Exit the dequeue loop cleanly if the database has been closed.
+        if is_conn_closed_error(&e) {
+          return;
         }
+        panic!("kv: Error in dequeue_loop: {}", e);
       }
-      .unwrap();
     });
 
     Self {
@@ -483,25 +481,25 @@ impl SqliteQueue {
     }
   }
 
-  async fn dequeue(&self) -> Result<DequeuedMessage, AnyError> {
+  async fn dequeue(&self) -> Result<Option<DequeuedMessage>, AnyError> {
     // Wait for the next message to be available from dequeue_rx.
     let (payload, id) = {
       let mut queue_rx = self.dequeue_rx.borrow_mut().await;
       let Some(msg) = queue_rx.recv().await else {
-        return Err(type_error("Database closed"));
+        return Ok(None);
       };
       msg
     };
 
     let permit = self.concurrency_limiter.clone().acquire_owned().await?;
 
-    Ok(DequeuedMessage {
+    Ok(Some(DequeuedMessage {
       conn: self.conn.downgrade(),
       id,
       payload: Some(payload),
       waker_tx: self.waker_tx.clone(),
       _permit: permit,
-    })
+    }))
   }
 
   fn shutdown(&self) {
@@ -926,7 +924,7 @@ impl Database for SqliteDb {
   async fn dequeue_next_message(
     &self,
     state: Rc<RefCell<OpState>>,
-  ) -> Result<Self::QMH, AnyError> {
+  ) -> Result<Option<Self::QMH>, AnyError> {
     let queue = self
       .queue
       .get_or_init(|| async move {
@@ -1107,4 +1105,9 @@ fn canonicalize_path(path: &Path) -> Result<PathBuf, AnyError> {
       Err(err) => return Err(err.into()),
     }
   }
+}
+
+fn is_conn_closed_error(e: &AnyError) -> bool {
+  get_custom_error_class(e) == Some("TypeError")
+    && e.to_string() == ERROR_USING_CLOSED_DATABASE
 }

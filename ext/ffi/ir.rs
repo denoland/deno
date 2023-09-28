@@ -483,7 +483,7 @@ pub fn ffi_parse_function_arg(
 
 pub fn ffi_parse_args<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  args: serde_v8::Value<'scope>,
+  args: v8::Local<v8::Array>,
   parameter_types: &[NativeType],
 ) -> Result<Vec<NativeValue>, AnyError>
 where
@@ -493,8 +493,6 @@ where
     return Ok(vec![]);
   }
 
-  let args = v8::Local::<v8::Array>::try_from(args.v8_value)
-    .map_err(|_| type_error("Invalid FFI parameters, expected Array"))?;
   let mut ffi_args: Vec<NativeValue> =
     Vec::with_capacity(parameter_types.len());
 

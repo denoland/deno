@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -118,10 +117,11 @@ pub trait Cache: Clone + 'static {
     -> Result<bool, AnyError>;
 }
 
-#[op]
+#[op2(async)]
+#[number]
 pub async fn op_cache_storage_open<CA>(
   state: Rc<RefCell<OpState>>,
-  cache_name: String,
+  #[string] cache_name: String,
 ) -> Result<i64, AnyError>
 where
   CA: Cache,

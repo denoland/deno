@@ -87,7 +87,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Resolves the npm package folder path from the specified path.
   fn resolve_package_folder_from_path(
     &self,
-    path: &Path,
+    specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError>;
 
   /// Resolves an npm package folder path from a Deno module.
@@ -388,7 +388,7 @@ deno_core::extension!(deno_node,
     "internal/constants.ts",
     "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
-    "internal/crypto/_randomFill.ts",
+    "internal/crypto/_randomFill.mjs",
     "internal/crypto/_randomInt.ts",
     "internal/crypto/certificate.ts",
     "internal/crypto/cipher.ts",

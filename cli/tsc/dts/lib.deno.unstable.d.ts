@@ -1947,6 +1947,39 @@ declare namespace Deno {
      */
     shutdown(): Promise<void>;
   }
+
+  /**
+   * A namespace containing runtime APIs available in Jupyter notebooks.
+   *
+   * When accessed outside of Jupyter notebook context an error will be thrown.
+   *
+   * @category Jupyter */
+  export namespace jupyter {
+    /**
+     * Broadcast a message on IO pub channel.
+     *
+     * ```
+     * await Deno.jupyter.broadcast("display_data", {
+     *   data: { "text/html": "<b>Processing.</b>" },
+     *   metadata: {},
+     *   transient: { display_id: "progress" }
+     * });
+     *
+     * await new Promise((resolve) => setTimeout(resolve, 500));
+     *
+     * await Deno.jupyter.broadcast("update_display_data", {
+     *   data: { "text/html": "<b>Processing..</b>" },
+     *   metadata: {},
+     *   transient: { display_id: "progress" }
+     * });
+     * ```
+     *
+     * @category Jupyter */
+    export function broadcast(
+      msgType: string,
+      content: Record<string, unknown>,
+    ): Promise<void>;
+  }
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

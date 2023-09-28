@@ -40,6 +40,7 @@ const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
+const _brand = webidl.brand;
 
 /**
  * @typedef Header
@@ -286,12 +287,17 @@ class Headers {
 
   /** @param {HeadersInit} [init] */
   constructor(init = undefined) {
+    if (init === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Headers'";
     if (init !== undefined) {
       init = webidl.converters["HeadersInit"](init, prefix, "Argument 1");
     }
 
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_guard] = "none";
     if (init !== undefined) {
       fillHeaders(this, init);
@@ -486,7 +492,7 @@ webidl.converters["Headers"] = webidl.createInterfaceConverter(
  * @returns {Headers}
  */
 function headersFromHeaderList(list, guard) {
-  const headers = webidl.createBranded(Headers);
+  const headers = new Headers(_brand);
   headers[_headerList] = list;
   headers[_guard] = guard;
   return headers;

@@ -153,5 +153,8 @@ pub fn server_capabilities(
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
     position_encoding: None,
+    // TODO(nayeemrmn): Support pull-based diagnostics.
+    diagnostic_provider: None,
+    inline_value_provider: None,
   }
 }

@@ -13,9 +13,6 @@ pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
 pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
   "deno/internalLatestDiagnosticBatchIndex";
 
-// While lsp_types supports inlay hints currently, tower_lsp does not.
-pub const INLAY_HINT: &str = "textDocument/inlayHint";
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheParams {
