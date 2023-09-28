@@ -138,7 +138,10 @@ impl TypeChecker {
       debug,
       graph: graph.clone(),
       hash_data,
-      maybe_node_resolver: Some(self.node_resolver.clone()),
+      maybe_npm: Some(tsc::RequestNpmState {
+        node_resolver: self.node_resolver.clone(),
+        npm_resolver: self.npm_resolver.clone(),
+      }),
       maybe_tsbuildinfo,
       root_names,
       check_mode: type_check_mode,

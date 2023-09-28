@@ -199,9 +199,8 @@ impl<'a> TsResponseImportMapper<'a> {
     }
 
     if self.npm_resolver.in_npm_package(specifier) {
-      if let Ok(Some(pkg_id)) = self
-        .npm_resolver
-        .resolve_package_id_from_specifier(specifier)
+      if let Ok(Some(pkg_id)) =
+        self.npm_resolver.resolve_pkg_id_from_specifier(specifier)
       {
         let pkg_reqs =
           self.npm_resolution.resolve_pkg_reqs_from_pkg_id(&pkg_id);
@@ -254,7 +253,7 @@ impl<'a> TsResponseImportMapper<'a> {
     let specifier_path = specifier.to_file_path().ok()?;
     let root_folder = self
       .npm_resolver
-      .resolve_package_folder_from_specifier(specifier)
+      .resolve_pkg_folder_from_specifier(specifier)
       .ok()
       .flatten()?;
     let package_json_path = root_folder.join("package.json");

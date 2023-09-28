@@ -54,9 +54,9 @@ deno_emit = "=0.28.0"
 deno_graph = "=0.55.0"
 deno_lint = { version = "=0.51.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm.workspace = true
+deno_npm = "0.15.1"
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
-deno_semver.workspace = true
+deno_semver = "0.5.1"
 deno_task_shell = "=0.13.2"
 eszip = "=0.53.0"
 napi_sym.workspace = true

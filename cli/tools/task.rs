@@ -268,7 +268,9 @@ fn resolve_npm_commands(
   let mut result = HashMap::new();
   let snapshot = npm_resolver.snapshot();
   for id in snapshot.top_level_packages() {
-    let bin_commands = node_resolver.resolve_binary_commands(&id.nv)?;
+    let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(id)?;
+    let bin_commands =
+      node_resolver.resolve_binary_commands(&package_folder)?;
     for bin_command in bin_commands {
       result.insert(
         bin_command.to_string(),
