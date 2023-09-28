@@ -7734,6 +7734,49 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(client.queue_len(), 0);
 }
 
+#[test]
+fn lsp_jupyter_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "deno-file-fragment:/a/file.ts#abc.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "Deno.readTextFileSync(1234);",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": "deno-file-fragment:/a/file.ts#abc.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 22,
+              },
+              "end": {
+                "line": 0,
+                "character": 26,
+              },
+            },
+            "severity": 1,
+            "code": 2345,
+            "source": "deno-ts",
+            "message": "Argument of type 'number' is not assignable to parameter of type 'string | URL'.",
+          },
+        ],
+        "version": 1,
+      },
+    ])
+  );
+  client.shutdown();
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
