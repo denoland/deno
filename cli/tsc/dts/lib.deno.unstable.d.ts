@@ -1980,7 +1980,7 @@ declare namespace Deno {
       content: Record<string, unknown>,
       extra?: {
         metadata?: Record<string, unknown>;
-      }
+      },
     ): Promise<void>;
   }
 }
