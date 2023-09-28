@@ -311,6 +311,7 @@ fn build_resolver(
       maybe_import_map: original_import_map.map(Arc::new),
       maybe_vendor_dir: None,
       no_npm: false,
+      quiet: false,
     },
   )
 }

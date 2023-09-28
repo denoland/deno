@@ -4580,7 +4580,14 @@ itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
   envs: env_vars_for_npm_tests(),
-  exit_code: 1,
+  exit_code: 0,
+});
+
+itest!(node_prefix_missing_verbose {
+  args: "run run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.verbose.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
 });
 
 itest!(dynamic_import_syntax_error {

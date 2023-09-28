@@ -545,7 +545,7 @@ impl ModuleLoader for CliModuleLoader {
       }
     }
 
-    resolution
+    resolution.map_err(|err| err.into())
   }
 
   fn load(
