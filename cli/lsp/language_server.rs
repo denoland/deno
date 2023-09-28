@@ -105,6 +105,7 @@ use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
+use crate::npm::ManagedCliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
@@ -137,7 +138,7 @@ struct LspNpmServices {
   /// Npm resolution that is stored in memory.
   resolution: Arc<NpmResolution>,
   /// Resolver for npm packages.
-  resolver: Arc<CliNpmResolver>,
+  resolver: Arc<dyn CliNpmResolver>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -161,7 +162,7 @@ pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 #[derive(Debug)]
 pub struct StateNpmSnapshot {
   pub node_resolver: Arc<NodeResolver>,
-  pub npm_resolver: Arc<CliNpmResolver>,
+  pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 /// Snapshot of the state used by TSC.
@@ -506,7 +507,7 @@ fn create_npm_resolver_and_resolution(
   npm_cache: Arc<NpmCache>,
   node_modules_dir_path: Option<PathBuf>,
   maybe_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
-) -> (Arc<CliNpmResolver>, Arc<NpmResolution>) {
+) -> (Arc<dyn CliNpmResolver>, Arc<NpmResolution>) {
   let resolution = Arc::new(NpmResolution::from_serialized(
     api,
     maybe_snapshot,
@@ -525,7 +526,7 @@ fn create_npm_resolver_and_resolution(
     NpmSystemInfo::default(),
   );
   (
-    Arc::new(CliNpmResolver::new(
+    Arc::new(ManagedCliNpmResolver::new(
       fs,
       resolution.clone(),
       fs_resolver,
@@ -802,7 +803,7 @@ impl Inner {
       self.config.maybe_lockfile().cloned(),
     ));
     let node_fs = Arc::new(deno_fs::RealFs);
-    let npm_resolver = Arc::new(CliNpmResolver::new(
+    let npm_resolver = Arc::new(ManagedCliNpmResolver::new(
       node_fs.clone(),
       npm_resolution.clone(),
       create_npm_fs_resolver(
@@ -1440,8 +1441,13 @@ impl Inner {
     let package_reqs = self.documents.npm_package_reqs();
     let npm_resolver = self.npm.resolver.clone();
     // spawn to avoid the LSP's Send requirements
-    let handle =
-      spawn(async move { npm_resolver.set_package_reqs(&package_reqs).await });
+    let handle = spawn(async move {
+      if let Some(npm_resolver) = npm_resolver.as_managed() {
+        npm_resolver.set_package_reqs(&package_reqs).await
+      } else {
+        Ok(())
+      }
+    });
     if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
@@ -2156,7 +2162,7 @@ impl Inner {
       &self.documents,
       self.maybe_import_map.as_deref(),
       &self.npm.resolution,
-      &self.npm.resolver,
+      self.npm.resolver.as_ref(),
     )
   }
 

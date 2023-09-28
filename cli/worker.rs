@@ -98,7 +98,7 @@ pub struct CliMainWorkerOptions {
 struct SharedWorkerState {
   options: CliMainWorkerOptions,
   storage_key_resolver: StorageKeyResolver,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
@@ -305,7 +305,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
@@ -383,10 +383,11 @@ impl CliMainWorkerFactory {
       } else {
         package_ref
       };
-      shared
-        .npm_resolver
-        .add_package_reqs(&[package_ref.req().clone()])
-        .await?;
+      if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
+        npm_resolver
+          .add_package_reqs(&[package_ref.req().clone()])
+          .await?;
+      }
       let package_ref = shared
         .npm_resolver
         .resolve_pkg_nv_ref_from_pkg_req_ref(&package_ref)?;
@@ -486,7 +487,7 @@ impl CliMainWorkerFactory {
       should_wait_for_inspector_session: shared.options.inspect_wait,
       module_loader,
       fs: shared.fs.clone(),
-      npm_resolver: Some(shared.npm_resolver.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
@@ -652,7 +653,7 @@ fn create_web_worker_callback(
       source_map_getter: maybe_source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
-      npm_resolver: Some(shared.npm_resolver.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),
