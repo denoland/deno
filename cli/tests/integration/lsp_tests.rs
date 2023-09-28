@@ -7741,7 +7741,7 @@ fn lsp_jupyter_diagnostics() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "deno-file-fragment:/a/file.ts#abc.ts",
+      "uri": "deno-notebook-cell:/a/file.ts#abc.ts",
       "languageId": "typescript",
       "version": 1,
       "text": "Deno.readTextFileSync(1234);",
@@ -7751,7 +7751,7 @@ fn lsp_jupyter_diagnostics() {
     json!(diagnostics.all_messages()),
     json!([
       {
-        "uri": "deno-file-fragment:/a/file.ts#abc.ts",
+        "uri": "deno-notebook-cell:/a/file.ts#abc.ts",
         "diagnostics": [
           {
             "range": {

@@ -98,10 +98,7 @@ pub const DOCUMENT_SCHEMES: [&str; 6] = [
   "file",
   "http",
   "https",
-  // Custom scheme representing a fragment of content from an FS path. Used for
-  // jupyter notebook cells e.g. `deno-file-fragment:/path/to/file.ipynb#cell2`.
-  // Relative imports should be resolved as if it was a file URL.
-  "deno-file-fragment",
+  "deno-notebook-cell",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,8 +262,8 @@ impl AssetOrDocument {
   }
 }
 
-pub fn file_from_fragment_specifier(specifier: &Url) -> Option<Url> {
-  if specifier.scheme() == "deno-file-fragment" {
+pub fn notebook_specifier(specifier: &Url) -> Option<Url> {
+  if specifier.scheme() == "deno-notebook-cell" {
     if let Ok(specifier) = ModuleSpecifier::parse(&format!(
       "file://{}",
       &specifier.as_str()
@@ -298,28 +295,22 @@ impl DocumentDependencies {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
     };
-    if module.specifier.scheme() == "deno-file-fragment" {
+    if module.specifier.scheme() == "deno-notebook-cell" {
       for (_, dep) in &mut deps.deps {
         if let Resolution::Ok(resolved) = &mut dep.maybe_code {
-          if let Some(specifier) =
-            file_from_fragment_specifier(&resolved.specifier)
-          {
+          if let Some(specifier) = notebook_specifier(&resolved.specifier) {
             resolved.specifier = specifier;
           }
         }
         if let Resolution::Ok(resolved) = &mut dep.maybe_type {
-          if let Some(specifier) =
-            file_from_fragment_specifier(&resolved.specifier)
-          {
+          if let Some(specifier) = notebook_specifier(&resolved.specifier) {
             resolved.specifier = specifier;
           }
         }
       }
       if let Some(dep) = &mut deps.maybe_types_dependency {
         if let Resolution::Ok(resolved) = &mut dep.dependency {
-          if let Some(specifier) =
-            file_from_fragment_specifier(&resolved.specifier)
-          {
+          if let Some(specifier) = notebook_specifier(&resolved.specifier) {
             resolved.specifier = specifier;
           }
         }
