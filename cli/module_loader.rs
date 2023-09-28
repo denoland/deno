@@ -12,6 +12,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
 use crate::node::CliNodeCodeTranslator;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
@@ -646,6 +647,7 @@ pub struct NpmModuleLoader {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
 }
 
 impl NpmModuleLoader {
@@ -654,12 +656,14 @@ impl NpmModuleLoader {
     node_code_translator: Arc<CliNodeCodeTranslator>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
       node_code_translator,
       fs,
       node_resolver,
+      npm_resolver,
     }
   }
 
@@ -693,9 +697,13 @@ impl NpmModuleLoader {
     nv_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
     self
       .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-        nv_ref,
+        &package_folder,
+        nv_ref.sub_path(),
         NodeResolutionMode::Execution,
         permissions,
       ))
@@ -704,16 +712,20 @@ impl NpmModuleLoader {
 
   pub fn resolve_req_reference(
     &self,
-    reference: &NpmPackageReqReference,
+    req_ref: &NpmPackageReqReference,
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req())?;
     self
-      .handle_node_resolve_result(self.node_resolver.resolve_npm_req_reference(
-        reference,
+      .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
+        &package_folder,
+        req_ref.sub_path(),
         NodeResolutionMode::Execution,
         permissions,
       ))
-      .with_context(|| format!("Could not resolve '{reference}'."))
+      .with_context(|| format!("Could not resolve '{}'.", req_ref))
   }
 
   pub fn maybe_prepare_load(
