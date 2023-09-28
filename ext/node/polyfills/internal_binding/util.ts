@@ -126,3 +126,15 @@ export function getOwnNonIndexProperties(
   }
   return result;
 }
+
+export function previewEntries(iter: Iterable<any>, isKeyValue?: boolean): Array<any> {
+  if (isKeyValue) {
+    const arr = [...iter];
+    if (Array.isArray(arr[0]) && arr[0].length === 2) {
+      return [[].concat(...arr), true];
+    }
+    return [arr, false];
+  } else {
+    return [...iter];
+  }
+};
