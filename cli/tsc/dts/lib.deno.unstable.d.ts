@@ -1978,6 +1978,9 @@ declare namespace Deno {
     export function broadcast(
       msgType: string,
       content: Record<string, unknown>,
+      extra?: {
+        metadata?: Record<string, unknown>;
+      }
     ): Promise<void>;
   }
 }
