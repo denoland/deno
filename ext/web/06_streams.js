@@ -4807,6 +4807,9 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
 
       /** @type {Deferred<IteratorResult<any>>} */
       const promise = new Deferred();
+      // internal values (_iteratorNext & _iteratorFinished) are modified inside
+      // ReadableStreamAsyncIteratorReadRequest methods
+      // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
       const readRequest = new ReadableStreamAsyncIteratorReadRequest(
         reader,
         promise,
