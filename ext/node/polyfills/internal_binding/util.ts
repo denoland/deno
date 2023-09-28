@@ -127,7 +127,10 @@ export function getOwnNonIndexProperties(
   return result;
 }
 
-export function previewEntries(iter: Iterable<any>, isKeyValue?: boolean): Array<any> {
+export function previewEntries(
+  iter: Iterable<any>,
+  isKeyValue?: boolean,
+): Array<any> {
   if (isKeyValue) {
     const arr = [...iter];
     if (Array.isArray(arr[0]) && arr[0].length === 2) {
@@ -137,4 +140,4 @@ export function previewEntries(iter: Iterable<any>, isKeyValue?: boolean): Array
   } else {
     return [...iter];
   }
-};
+}
