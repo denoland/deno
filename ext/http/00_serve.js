@@ -38,7 +38,6 @@ import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
   ArrayPrototypePush,
-  Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   Symbol,
@@ -663,11 +662,6 @@ function serveHttpOn(context, callback) {
         await op_http_close(context.serverRid, true);
         context.closed = true;
       }
-    },
-    then() {
-      throw new Error(
-        "Deno.serve no longer returns a promise. await server.finished instead of server.",
-      );
     },
     ref() {
       ref = true;
