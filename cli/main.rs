@@ -76,7 +76,7 @@ impl SubcommandOutput for Result<(), std::io::Error> {
 fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {
-  // the boxed_local() is important in order to get windows to not blow the stack
+  // the boxed_local() is important in order to get windows to not blow the stack in debug
   deno_core::unsync::spawn(
     async move { f.map(|r| r.output()).await }.boxed_local(),
   )
