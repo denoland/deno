@@ -203,10 +203,13 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
+core.print(`worker_threads ${isMainThread} ${!parentPort}\n`);
+
 globalThis.__bootstrap.internals.__initWorkerThreads = () => {
   isMainThread =
     // deno-lint-ignore no-explicit-any
     (globalThis as any).name !== PRIVATE_WORKER_THREAD_NAME;
+  console.log("isMainThread", isMainThread, globalThis.name);
 
   defaultExport.isMainThread = isMainThread;
   // fake resourceLimits
@@ -219,13 +222,15 @@ globalThis.__bootstrap.internals.__initWorkerThreads = () => {
   defaultExport.resourceLimits = resourceLimits;
 
   if (!isMainThread) {
+    console.log("in not main thread", !self);
     // deno-lint-ignore no-explicit-any
     delete (globalThis as any).name;
+    console.log("here2");
     // deno-lint-ignore no-explicit-any
     const listeners = new WeakMap<(...args: any[]) => void, (ev: any) => any>();
 
     parentPort = self as ParentPort;
-
+    console.log("parentPort is not main thread", !parentPort);
     const initPromise = once(
       parentPort,
       "message",
