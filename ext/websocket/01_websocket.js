@@ -26,7 +26,6 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
-  DataView,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
