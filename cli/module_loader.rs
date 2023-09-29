@@ -647,7 +647,7 @@ pub struct NpmModuleLoader {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl NpmModuleLoader {
@@ -656,7 +656,7 @@ impl NpmModuleLoader {
     node_code_translator: Arc<CliNodeCodeTranslator>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
