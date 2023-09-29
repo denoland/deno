@@ -34,7 +34,7 @@ use deno_semver::VersionReq;
 use crate::args::Lockfile;
 use crate::util::sync::TaskQueue;
 
-use super::registry::CliNpmRegistryApi;
+use super::super::registry::CliNpmRegistryApi;
 
 /// Handles updating and storing npm resolution in memory where the underlying
 /// snapshot can be updated concurrently. Additionally handles updating the lockfile
@@ -183,6 +183,8 @@ impl NpmResolution {
       .cloned()
   }
 
+  // todo: NEXT
+
   /// Resolve a node package from a deno module.
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
@@ -194,6 +196,8 @@ impl NpmResolution {
       .resolve_pkg_from_pkg_req(req)
       .map(|pkg| pkg.id.clone())
   }
+
+  // todo: NEXT
 
   pub fn resolve_pkg_reqs_from_pkg_id(
     &self,
@@ -221,6 +225,8 @@ impl NpmResolution {
       .map(|pkg| pkg.id.clone())
   }
 
+  // todo: NEXT
+
   /// Resolves a package requirement for deno graph. This should only be
   /// called by deno_graph's NpmResolver or for resolving packages in
   /// a package.json
@@ -232,6 +238,8 @@ impl NpmResolution {
     let package_info = self.api.get_cached_package_info(&pkg_req.name).unwrap();
     self.resolve_pkg_req_as_pending_with_info(pkg_req, &package_info)
   }
+
+  // todo: NEXT
 
   /// Resolves a package requirement for deno graph. This should only be
   /// called by deno_graph's NpmResolver or for resolving packages in
@@ -256,6 +264,8 @@ impl NpmResolution {
     self.snapshot.read().package_reqs().clone()
   }
 
+  // todo: NEXT
+
   pub fn all_system_packages(
     &self,
     system_info: &NpmSystemInfo,
@@ -273,9 +283,13 @@ impl NpmResolution {
       .all_system_packages_partitioned(system_info)
   }
 
+  // todo: NEXT
+
   pub fn has_packages(&self) -> bool {
     !self.snapshot.read().is_empty()
   }
+
+  // todo: NEXT
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
@@ -286,6 +300,8 @@ impl NpmResolution {
   ) -> ValidSerializedNpmResolutionSnapshot {
     self.snapshot.read().as_valid_serialized()
   }
+
+  // todo: NEXT
 
   pub fn serialized_valid_snapshot_for_system(
     &self,

@@ -1,9 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-mod common;
-mod global;
-mod local;
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -37,10 +33,19 @@ use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 
 use self::local::LocalNpmPackageResolver;
-use super::resolution::NpmResolution;
+use super::CliNpmResolver;
+use super::InnerCliNpmResolverRef;
 use super::NpmCache;
 
 pub use self::common::NpmPackageFsResolver;
+pub use self::installer::PackageJsonDepsInstaller;
+pub use self::resolution::NpmResolution;
+
+mod common;
+mod global;
+mod installer;
+mod local;
+mod resolution;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -48,65 +53,6 @@ pub struct NpmProcessState {
   pub snapshot: SerializedNpmResolutionSnapshot,
   pub local_node_modules_path: Option<String>,
 }
-
-pub enum InnerCliNpmResolverRef<'a> {
-  Managed(&'a ManagedCliNpmResolver),
-  #[allow(dead_code)]
-  Byonm(&'a ByonmCliNpmResolver),
-}
-
-pub trait CliNpmResolver: NpmResolver {
-  fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
-
-  fn root_dir_url(&self) -> &Url;
-
-  fn as_inner(&self) -> InnerCliNpmResolverRef;
-
-  fn as_managed(&self) -> Option<&ManagedCliNpmResolver> {
-    match self.as_inner() {
-      InnerCliNpmResolverRef::Managed(inner) => Some(inner),
-      InnerCliNpmResolverRef::Byonm(_) => None,
-    }
-  }
-
-  fn node_modules_path(&self) -> Option<PathBuf>;
-
-  /// Checks if the provided package req's folder is cached.
-  fn is_pkg_req_folder_cached(&self, req: &PackageReq) -> bool;
-
-  fn resolve_pkg_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError>;
-
-  /// Resolve the root folder of the package the provided specifier is in.
-  ///
-  /// This will error when the provided specifier is not in an npm package.
-  fn resolve_pkg_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-  ) -> Result<PathBuf, AnyError>;
-
-  fn resolve_pkg_folder_from_deno_module(
-    &self,
-    nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError>;
-
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String;
-
-  // todo(#18967): should instead return a hash state of the resolver
-  // or perhaps this could be non-BYONM only and byonm always runs deno check
-  fn package_reqs(&self) -> HashMap<PackageReq, PackageNv>;
-}
-
-// todo(dsherret): implement this
-pub struct ByonmCliNpmResolver;
 
 /// An npm resolver where the resolution is managed by Deno rather than
 /// the user bringing their own node_modules (BYONM) on the file system.
