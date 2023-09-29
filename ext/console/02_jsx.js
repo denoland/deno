@@ -160,7 +160,7 @@ export function serialize(ctx, adapter, vnode, level, limit) {
   // syntax `<>`. They can only have a `key` prop in React, but Preact
   // doesn't have that restriction
   if (isFragment) {
-    TAGS = isKeyed ? COMPONENT : ELEMENT;
+    TAGS = COMPONENT;
     namePretty = isKeyed ? ctx.stylize("Fragment", COMPONENT) : "";
   } else {
     const name = adapter.getName(vnode);
