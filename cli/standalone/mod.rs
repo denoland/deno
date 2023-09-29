@@ -17,6 +17,7 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
+use crate::npm::ManagedCliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
@@ -365,14 +366,16 @@ pub async fn run(
     node_modules_path,
     NpmSystemInfo::default(),
   );
-  let npm_resolver = Arc::new(CliNpmResolver::new(
+  let npm_resolver = Arc::new(ManagedCliNpmResolver::new(
     fs.clone(),
     npm_resolution.clone(),
     npm_fs_resolver,
     None,
+  )) as Arc<dyn CliNpmResolver>;
+  let node_resolver = Arc::new(NodeResolver::new(
+    fs.clone(),
+    npm_resolver.clone().into_npm_resolver(),
   ));
-  let node_resolver =
-    Arc::new(NodeResolver::new(fs.clone(), npm_resolver.clone()));
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
@@ -382,7 +385,7 @@ pub async fn run(
     cjs_esm_code_analyzer,
     fs.clone(),
     node_resolver.clone(),
-    npm_resolver.clone(),
+    npm_resolver.clone().into_npm_resolver(),
   ));
   let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
     metadata
@@ -404,6 +407,7 @@ pub async fn run(
         node_code_translator,
         fs.clone(),
         node_resolver.clone(),
+        npm_resolver.clone(),
       )),
     }),
   };
@@ -429,7 +433,7 @@ pub async fn run(
   };
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
-    npm_resolver.clone(),
+    npm_resolver,
     node_resolver,
     Default::default(),
     Box::new(module_loader_factory),

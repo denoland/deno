@@ -1526,8 +1526,6 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_net",
- "deno_npm",
- "deno_semver 0.5.1",
  "digest 0.10.7",
  "dsa",
  "ecb",
