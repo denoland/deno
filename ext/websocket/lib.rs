@@ -410,12 +410,7 @@ pub fn ws_create_server_stream(
   Ok(rid)
 }
 
-#[op2(fast)]
-pub fn op_ws_send_binary(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-  #[buffer] data: &[u8],
-) {
+fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let data = data.to_vec();
   let len = data.len();
@@ -431,6 +426,24 @@ pub fn op_ws_send_binary(
       resource.buffered.set(resource.buffered.get() - len);
     }
   });
+}
+
+#[op2(fast)]
+pub fn op_ws_send_binary(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[buffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
+}
+
+#[op2(fast)]
+pub fn op_ws_send_binary_ab(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[arraybuffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
 }
 
 #[op2(fast)]
@@ -681,6 +694,7 @@ deno_core::extension!(deno_websocket,
     op_ws_get_buffer_as_string,
     op_ws_get_error,
     op_ws_send_binary,
+    op_ws_send_binary_ab,
     op_ws_send_text,
     op_ws_send_binary_async,
     op_ws_send_text_async,

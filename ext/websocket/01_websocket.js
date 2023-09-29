@@ -50,6 +50,7 @@ const {
   op_ws_create,
   op_ws_close,
   op_ws_send_binary,
+  op_ws_send_binary_ab,
   op_ws_send_text,
   op_ws_next_event,
   op_ws_get_buffer,
@@ -336,11 +337,7 @@ class WebSocket extends EventTarget {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
-        (ab) =>
-          op_ws_send_binary(
-            this[_rid],
-            new DataView(ab),
-          ),
+        (ab) => op_ws_send_binary_ab(this[_rid], ab),
       );
     } else {
       const string = String(data);
