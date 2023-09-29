@@ -32,10 +32,12 @@ use tower_lsp::lsp_types::WorkDoneProgressParams;
 use tower_lsp::LanguageServer;
 
 use super::client::Client;
+use super::config::ClassMemberSnippets;
 use super::config::CompletionSettings;
 use super::config::DenoCompletionSettings;
 use super::config::ImportCompletionSettings;
 use super::config::LanguageWorkspaceSettings;
+use super::config::ObjectLiteralMethodSnippets;
 use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
 
@@ -292,6 +294,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     config: None,
     certificate_stores: None,
     cache: None,
+    cache_on_save: false,
     import_map: None,
     code_lens: Default::default(),
     internal_debug: false,
@@ -308,22 +311,36 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     },
     testing: TestingSettings { args: vec![] },
     javascript: LanguageWorkspaceSettings {
-      inlay_hints: Default::default(),
       suggest: CompletionSettings {
-        complete_function_calls: false,
-        names: false,
-        paths: false,
         auto_imports: false,
+        class_member_snippets: ClassMemberSnippets { enabled: false },
+        complete_function_calls: false,
+        enabled: true,
+        include_automatic_optional_chain_completions: false,
+        include_completions_for_import_statements: true,
+        names: false,
+        object_literal_method_snippets: ObjectLiteralMethodSnippets {
+          enabled: false,
+        },
+        paths: false,
       },
+      ..Default::default()
     },
     typescript: LanguageWorkspaceSettings {
-      inlay_hints: Default::default(),
       suggest: CompletionSettings {
-        complete_function_calls: false,
-        names: false,
-        paths: false,
         auto_imports: false,
+        class_member_snippets: ClassMemberSnippets { enabled: false },
+        complete_function_calls: false,
+        enabled: true,
+        include_automatic_optional_chain_completions: false,
+        include_completions_for_import_statements: true,
+        names: false,
+        object_literal_method_snippets: ObjectLiteralMethodSnippets {
+          enabled: false,
+        },
+        paths: false,
       },
+      ..Default::default()
     },
   }
 }

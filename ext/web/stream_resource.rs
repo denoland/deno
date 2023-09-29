@@ -313,6 +313,10 @@ impl BoundedBufferChannel {
     self.inner().write_error(error)
   }
 
+  pub fn can_write(&self) -> bool {
+    self.inner().can_write()
+  }
+
   pub fn poll_read_ready(&self, cx: &mut Context) -> Poll<()> {
     self.inner().poll_read_ready(cx)
   }
@@ -360,6 +364,15 @@ impl ReadableStreamResource {
       .read(limit)
       .map(|buf| buf.unwrap_or_else(BufView::empty))
   }
+
+  fn close_channel(&self) {
+    // Trigger the promise in JS to cancel the stream if necessarily
+    self.data.completion.complete(true);
+    // Cancel any outstanding read requests
+    self.cancel_handle.cancel();
+    // Close the channel to wake up anyone waiting
+    self.channel.close();
+  }
 }
 
 impl Resource for ReadableStreamResource {
@@ -372,8 +385,13 @@ impl Resource for ReadableStreamResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-    self.channel.close();
+    self.close_channel();
+  }
+}
+
+impl Drop for ReadableStreamResource {
+  fn drop(&mut self) {
+    self.close_channel();
   }
 }
 
@@ -471,18 +489,35 @@ pub fn op_readable_stream_resource_write_buf(
   }
 }
 
-#[op2(async)]
+/// Write to the channel synchronously, returning 0 if the channel was closed, 1 if we wrote
+/// successfully, 2 if the channel was full and we need to block.
+#[op2]
+pub fn op_readable_stream_resource_write_sync(
+  sender: *const c_void,
+  #[buffer] buffer: JsBuffer,
+) -> u32 {
+  let sender = get_sender(sender);
+  if sender.can_write() {
+    if sender.closed() {
+      0
+    } else {
+      sender.write(buffer.into_parts()).unwrap();
+      1
+    }
+  } else {
+    2
+  }
+}
+
+#[op2(fast)]
 pub fn op_readable_stream_resource_write_error(
   sender: *const c_void,
   #[string] error: String,
-) -> impl Future<Output = bool> {
+) -> bool {
   let sender = get_sender(sender);
-  async move {
-    // We can always write an error, no polling required
-    // TODO(mmastrac): we can remove async from this method
-    sender.write_error(type_error(Cow::Owned(error)));
-    !sender.closed()
-  }
+  // We can always write an error, no polling required
+  sender.write_error(type_error(Cow::Owned(error)));
+  !sender.closed()
 }
 
 #[op2(fast)]

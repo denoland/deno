@@ -11,9 +11,8 @@ use crate::ForeignFunction;
 use deno_core::anyhow::anyhow;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_json::Value;
-use deno_core::serde_v8;
 use deno_core::serde_v8::ExternalPointer;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
@@ -273,14 +272,15 @@ fn ffi_call(
   }
 }
 
-#[op(v8)]
-pub fn op_ffi_call_ptr_nonblocking<'scope, FP>(
-  scope: &mut v8::HandleScope<'scope>,
+#[op2(async)]
+#[serde]
+pub fn op_ffi_call_ptr_nonblocking<FP>(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
-  def: ForeignFunction,
-  parameters: serde_v8::Value<'scope>,
-  out_buffer: Option<serde_v8::Value<'scope>>,
+  #[serde] def: ForeignFunction,
+  parameters: v8::Local<v8::Array>,
+  out_buffer: Option<v8::Local<v8::TypedArray>>,
 ) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -294,9 +294,6 @@ where
 
   let symbol = PtrSymbol::new(pointer, &def)?;
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
-
-  let out_buffer = out_buffer
-    .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
   let join_handle = spawn_blocking(move || {
@@ -321,16 +318,16 @@ where
 }
 
 /// A non-blocking FFI call.
-#[op(v8)]
-pub fn op_ffi_call_nonblocking<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+#[op2(async)]
+#[serde]
+pub fn op_ffi_call_nonblocking(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  symbol: String,
-  parameters: serde_v8::Value<'scope>,
-  out_buffer: Option<serde_v8::Value<'scope>>,
-) -> Result<impl Future<Output = Result<FfiValue, AnyError>> + 'static, AnyError>
-{
+  #[smi] rid: ResourceId,
+  #[string] symbol: String,
+  parameters: v8::Local<v8::Array>,
+  out_buffer: Option<v8::Local<v8::TypedArray>>,
+) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError> {
   let symbol = {
     let state = state.borrow();
     let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
@@ -342,8 +339,6 @@ pub fn op_ffi_call_nonblocking<'scope>(
   };
 
   let call_args = ffi_parse_args(scope, parameters, &symbol.parameter_types)?;
-  let out_buffer = out_buffer
-    .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
   let join_handle = spawn_blocking(move || {
@@ -373,14 +368,15 @@ pub fn op_ffi_call_nonblocking<'scope>(
   })
 }
 
-#[op(v8)]
-pub fn op_ffi_call_ptr<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+#[op2]
+#[serde]
+pub fn op_ffi_call_ptr<FP>(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
-  def: ForeignFunction,
-  parameters: serde_v8::Value<'scope>,
-  out_buffer: Option<serde_v8::Value<'scope>>,
+  #[serde] def: ForeignFunction,
+  parameters: v8::Local<v8::Array>,
+  out_buffer: Option<v8::Local<v8::TypedArray>>,
 ) -> Result<FfiValue, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -395,8 +391,6 @@ where
   let symbol = PtrSymbol::new(pointer, &def)?;
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
 
-  let out_buffer = out_buffer
-    .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
   let result = ffi_call(

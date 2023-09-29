@@ -319,9 +319,7 @@ impl NpmResolver for CliGraphResolver {
       ));
     }
 
-    let result = self
-      .npm_resolution
-      .resolve_package_req_as_pending(package_req);
+    let result = self.npm_resolution.resolve_pkg_req_as_pending(package_req);
     match result {
       Ok(nv) => NpmPackageReqResolution::Ok(nv),
       Err(err) => {

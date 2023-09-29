@@ -43,7 +43,7 @@ pub trait Database {
   async fn dequeue_next_message(
     &self,
     state: Rc<RefCell<OpState>>,
-  ) -> Result<Self::QMH, AnyError>;
+  ) -> Result<Option<Self::QMH>, AnyError>;
 
   fn close(&self);
 }

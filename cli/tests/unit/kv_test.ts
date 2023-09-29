@@ -1721,7 +1721,7 @@ Deno.test({
         if (count == 3) {
           promise.resolve();
         }
-        await sleep(60000);
+        await new Promise(() => {});
       });
 
       // Enqueue 3 messages.
@@ -1816,6 +1816,16 @@ Deno.test({
         // pass
       }
     }
+  },
+});
+
+Deno.test({
+  name: "queue graceful close",
+  async fn() {
+    const db: Deno.Kv = await Deno.openKv(":memory:");
+    const listener = db.listenQueue((_msg) => {});
+    db.close();
+    await listener;
   },
 });
 
