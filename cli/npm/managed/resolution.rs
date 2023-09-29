@@ -183,8 +183,6 @@ impl NpmResolution {
       .cloned()
   }
 
-  // todo: NEXT
-
   /// Resolve a node package from a deno module.
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
@@ -196,8 +194,6 @@ impl NpmResolution {
       .resolve_pkg_from_pkg_req(req)
       .map(|pkg| pkg.id.clone())
   }
-
-  // todo: NEXT
 
   pub fn resolve_pkg_reqs_from_pkg_id(
     &self,

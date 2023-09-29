@@ -133,6 +133,13 @@ impl ManagedCliNpmResolver {
     ))
   }
 
+  pub fn resolve_pkg_reqs_from_pkg_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Vec<PackageReq> {
+    self.resolution.resolve_pkg_reqs_from_pkg_id(id)
+  }
+
   /// Attempts to get the package size in bytes.
   pub fn package_size(
     &self,
@@ -228,7 +235,7 @@ impl ManagedCliNpmResolver {
     // this will internally cache the package information
     self
       .api
-      .package_info(&package_name)
+      .package_info(package_name)
       .await
       .map(|_| ())
       .map_err(|err| err.into())
@@ -302,7 +309,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     &self,
     pkg_req: &PackageReq,
   ) -> NpmPackageReqResolution {
-    let result = self.resolution.resolve_pkg_req_as_pending(&pkg_req);
+    let result = self.resolution.resolve_pkg_req_as_pending(pkg_req);
     match result {
       Ok(nv) => NpmPackageReqResolution::Ok(nv),
       Err(err) => {

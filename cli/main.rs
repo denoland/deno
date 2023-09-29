@@ -76,7 +76,10 @@ impl SubcommandOutput for Result<(), std::io::Error> {
 fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {
-  deno_core::unsync::spawn(f.map(|r| r.output()))
+  // the boxed_local() is important in order to get windows to not blow the stack
+  deno_core::unsync::spawn(
+    async move { f.map(|r| r.output()).await }.boxed_local(),
+  )
 }
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
@@ -197,7 +200,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
       tools::upgrade::upgrade(flags, upgrade_flags).await
     }),
-    DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
+    DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async move {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
   };

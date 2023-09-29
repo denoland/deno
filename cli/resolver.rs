@@ -256,7 +256,7 @@ impl NpmResolver for CliGraphResolver {
       }
       _ => {
         // return it succeeded and error at the import site below
-        return Box::pin(future::ready(Ok(())));
+        Box::pin(future::ready(Ok(())))
       }
     }
   }

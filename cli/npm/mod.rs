@@ -96,5 +96,5 @@ pub trait CliNpmResolver: NpmResolver {
   fn package_reqs(&self) -> HashMap<PackageReq, PackageNv>;
 }
 
-// todo(dsherret): implement this
+// todo(#18967): implement this
 pub struct ByonmCliNpmResolver;
