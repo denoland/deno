@@ -3,6 +3,7 @@
     "ext:deno_broadcast_channel/01_broadcast_channel.js": "../ext/broadcast_channel/01_broadcast_channel.js",
     "ext:deno_cache/01_cache.js": "../ext/cache/01_cache.js",
     "ext:deno_console/01_console.js": "../ext/console/01_console.js",
+    "ext:deno_console/02_jsx.js": "../ext/console/02_jsx.js",
     "ext:deno_crypto/00_crypto.js": "../ext/crypto/00_crypto.js",
     "ext:deno_fetch/20_headers.js": "../ext/fetch/20_headers.js",
     "ext:deno_fetch/21_formdata.js": "../ext/fetch/21_formdata.js",

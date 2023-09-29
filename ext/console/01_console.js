@@ -1,6 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
+import {
+  preactAdapter,
+  reactAdapter,
+  serialize,
+} from "ext:deno_console/02_jsx.js";
 
 const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
@@ -169,6 +174,10 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
+  jsxElement: "green",
+  jsxComponent: "magenta",
+  jsxAttribute: "yellow",
+  jsxOther: "reset",
 };
 
 const defaultFG = 39;
@@ -919,12 +928,26 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     if (noIterator) {
       keys = getKeys(value, ctx.showHidden);
       braces = ["{", "}"];
+
+      // Preact JSX
+      if (
+        constructor === undefined && value !== null && typeof value === "object"
+      ) {
+        return serialize(ctx, preactAdapter, value, ctx.indentationLvl, 10);
+      }
+
       if (constructor === "Object") {
         if (isArgumentsObject(value)) {
           braces[0] = "[Arguments] {";
         } else if (tag !== "") {
           braces[0] = `${getPrefix(constructor, tag, "Object")}{`;
         }
+
+        // React JSX
+        if ("$$typeof" in value && typeof value.$$typeof === "symbol") {
+          return serialize(ctx, reactAdapter, value, ctx.indentationLvl, 10);
+        }
+
         if (keys.length === 0 && protoProps === undefined) {
           return `${braces[0]}}`;
         }
