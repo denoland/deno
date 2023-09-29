@@ -35,6 +35,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError>;
+
   fn resolve_package_folder_from_package(
     &self,
     name: &str,

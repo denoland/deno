@@ -297,7 +297,7 @@ pub struct EmittedFile {
 #[derive(Debug)]
 pub struct RequestNpmState {
   pub node_resolver: Arc<NodeResolver>,
-  pub npm_resolver: Arc<CliNpmResolver>,
+  pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.

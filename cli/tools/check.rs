@@ -44,7 +44,7 @@ pub struct TypeChecker {
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
   node_resolver: Arc<NodeResolver>,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl TypeChecker {
@@ -52,7 +52,7 @@ impl TypeChecker {
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
     node_resolver: Arc<NodeResolver>,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       caches,
@@ -74,11 +74,10 @@ impl TypeChecker {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
-    if graph.has_node_specifier {
-      self
-        .npm_resolver
-        .inject_synthetic_types_node_package()
-        .await?;
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+      if graph.has_node_specifier {
+        npm_resolver.inject_synthetic_types_node_package().await?;
+      }
     }
 
     log::debug!("Type checking.");
