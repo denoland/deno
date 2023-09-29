@@ -980,6 +980,7 @@ dependencies = [
  "clap_complete",
  "clap_complete_fig",
  "console_static_text",
+ "dashmap 5.5.3",
  "data-encoding",
  "data-url",
  "deno_ast",
