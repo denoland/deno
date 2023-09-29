@@ -436,7 +436,6 @@ impl CliFactory {
             maybe_import_map: self.maybe_import_map().await?.clone(),
             maybe_vendor_dir: self.options.vendor_dir_path(),
             no_npm: self.options.no_npm(),
-            quiet: self.options.is_quiet(),
           },
         )))
       })

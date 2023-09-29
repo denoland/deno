@@ -1281,7 +1281,6 @@ impl Documents {
           .and_then(|c| c.vendor_dir_path())
           .as_ref(),
         no_npm: false,
-        quiet: false,
       },
     ));
     self.imports = Arc::new(

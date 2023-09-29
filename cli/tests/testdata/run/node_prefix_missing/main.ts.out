@@ -1,1 +1,2 @@
+[WILDCARD]Warning: Resolving "fs" as "node:fs". If you want to use a built-in Node module, add a "node:" prefix.
 [Function: writeFile]

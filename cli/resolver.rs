@@ -109,7 +109,6 @@ pub struct CliGraphResolver {
   npm_resolution: Arc<NpmResolution>,
   package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
-  quiet: bool,
 }
 
 impl Default for CliGraphResolver {
@@ -135,7 +134,6 @@ impl Default for CliGraphResolver {
       npm_resolution,
       package_json_deps_installer: Default::default(),
       found_package_json_dep_flag: Default::default(),
-      quiet: false,
     }
   }
 }
@@ -145,7 +143,6 @@ pub struct CliGraphResolverOptions<'a> {
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
   pub no_npm: bool,
-  pub quiet: bool,
 }
 
 impl CliGraphResolver {
@@ -176,7 +173,6 @@ impl CliGraphResolver {
       npm_resolution,
       package_json_deps_installer,
       found_package_json_dep_flag: Default::default(),
-      quiet: options.quiet,
     }
   }
 
@@ -296,9 +292,7 @@ impl NpmResolver for CliGraphResolver {
   }
 
   fn on_resolve_bare_builtin_node_module(&self, module_name: &str) {
-    if !self.quiet {
-      eprintln!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\". If you want to use a built-in Node module, add a \"node:\" prefix.")
-    }
+    log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\". If you want to use a built-in Node module, add a \"node:\" prefix.")
   }
 
   fn load_and_cache_npm_package_info(
