@@ -14,7 +14,6 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
-use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -24,28 +23,23 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
-use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
-use crate::util::progress_bar::ProgressBar;
 
-use self::local::LocalNpmPackageResolver;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
-use super::NpmCache;
 
-pub use self::common::NpmPackageFsResolver;
 pub use self::installer::PackageJsonDepsInstaller;
 pub use self::resolution::NpmResolution;
+pub use self::resolvers::create_npm_fs_resolver;
+pub use self::resolvers::NpmPackageFsResolver;
 
-mod common;
-mod global;
 mod installer;
-mod local;
 mod resolution;
+mod resolvers;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -329,34 +323,5 @@ impl CliNpmResolver for ManagedCliNpmResolver {
 
   fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
     self.resolution.package_reqs()
-  }
-}
-
-pub fn create_npm_fs_resolver(
-  fs: Arc<dyn FileSystem>,
-  cache: Arc<NpmCache>,
-  progress_bar: &ProgressBar,
-  registry_url: Url,
-  resolution: Arc<NpmResolution>,
-  maybe_node_modules_path: Option<PathBuf>,
-  system_info: NpmSystemInfo,
-) -> Arc<dyn NpmPackageFsResolver> {
-  match maybe_node_modules_path {
-    Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
-      fs,
-      cache,
-      progress_bar.clone(),
-      registry_url,
-      node_modules_folder,
-      resolution,
-      system_info,
-    )),
-    None => Arc::new(GlobalNpmPackageResolver::new(
-      fs,
-      cache,
-      registry_url,
-      resolution,
-      system_info,
-    )),
   }
 }

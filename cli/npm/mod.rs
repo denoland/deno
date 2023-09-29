@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-mod cache;
 mod managed;
+
+// todo(#18967): move the cache, registry, and tarball into the managed folder
+mod cache;
 mod registry;
 mod tarball;
 

@@ -46,10 +46,10 @@ use crate::npm::NpmCache;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
+use super::super::resolution::NpmResolution;
 use super::common::types_package_name;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
-use super::resolution::NpmResolution;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
