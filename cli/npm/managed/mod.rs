@@ -10,10 +10,14 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::NpmPackageReqResolution;
+use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -29,6 +33,7 @@ use serde::Serialize;
 use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 
+use super::CliNpmRegistryApi;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 
@@ -51,35 +56,43 @@ pub struct NpmProcessState {
 /// An npm resolver where the resolution is managed by Deno rather than
 /// the user bringing their own node_modules (BYONM) on the file system.
 pub struct ManagedCliNpmResolver {
+  api: Arc<CliNpmRegistryApi>,
   fs: Arc<dyn FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("ManagedNpmResolver")
+      .field("api", &"<omitted>")
       .field("fs", &"<omitted>")
       .field("fs_resolver", &"<omitted>")
       .field("resolution", &"<omitted>")
       .field("maybe_lockfile", &"<omitted>")
+      .field("package_json_deps_installer", &"<omitted>")
       .finish()
   }
 }
 
 impl ManagedCliNpmResolver {
   pub fn new(
+    api: Arc<CliNpmRegistryApi>,
     fs: Arc<dyn FileSystem>,
     resolution: Arc<NpmResolution>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   ) -> Self {
     Self {
+      api,
       fs,
       fs_resolver,
       resolution,
       maybe_lockfile,
+      package_json_deps_installer,
     }
   }
 
@@ -127,6 +140,13 @@ impl ManagedCliNpmResolver {
   ) -> Result<u64, AnyError> {
     let package_folder = self.fs_resolver.package_folder(package_id)?;
     Ok(crate::util::fs::dir_size(&package_folder)?)
+  }
+
+  pub fn all_system_packages(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> Vec<NpmResolutionPackage> {
+    self.resolution.all_system_packages(system_info)
   }
 
   /// Adds package requirements to the resolver and ensures everything is setup.
@@ -191,6 +211,28 @@ impl ManagedCliNpmResolver {
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
+
+  pub async fn ensure_top_level_package_json_install(
+    &self,
+  ) -> Result<(), AnyError> {
+    self
+      .package_json_deps_installer
+      .ensure_top_level_install()
+      .await
+  }
+
+  pub async fn cache_package_info(
+    &self,
+    package_name: &str,
+  ) -> Result<(), AnyError> {
+    // this will internally cache the package information
+    self
+      .api
+      .package_info(&package_name)
+      .await
+      .map(|_| ())
+      .map_err(|err| err.into())
+  }
 }
 
 impl NpmResolver for ManagedCliNpmResolver {
@@ -254,6 +296,24 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       .and_then(|id| self.fs_resolver.package_folder(&id).ok())
       .map(|folder| folder.exists())
       .unwrap_or(false)
+  }
+
+  fn resolve_npm_for_deno_graph(
+    &self,
+    pkg_req: &PackageReq,
+  ) -> NpmPackageReqResolution {
+    let result = self.resolution.resolve_pkg_req_as_pending(&pkg_req);
+    match result {
+      Ok(nv) => NpmPackageReqResolution::Ok(nv),
+      Err(err) => {
+        if self.api.mark_force_reload() {
+          log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
+          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
+        } else {
+          NpmPackageReqResolution::Err(err.into())
+        }
+      }
+    }
   }
 
   fn resolve_pkg_nv_ref_from_pkg_req_ref(

@@ -109,6 +109,7 @@ use crate::npm::ManagedCliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
@@ -509,7 +510,7 @@ fn create_npm_resolver_and_resolution(
   maybe_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
 ) -> (Arc<dyn CliNpmResolver>, Arc<NpmResolution>) {
   let resolution = Arc::new(NpmResolution::from_serialized(
-    api,
+    api.clone(),
     maybe_snapshot,
     // Don't provide the lockfile. We don't want these resolvers
     // updating it. Only the cache request should update the lockfile.
@@ -527,12 +528,14 @@ fn create_npm_resolver_and_resolution(
   );
   (
     Arc::new(ManagedCliNpmResolver::new(
+      api,
       fs,
       resolution.clone(),
       fs_resolver,
       // Don't provide the lockfile. We don't want these resolvers
       // updating it. Only the cache request should update the lockfile.
       None,
+      Arc::new(PackageJsonDepsInstaller::no_op()),
     )),
     resolution,
   )
@@ -804,6 +807,7 @@ impl Inner {
     ));
     let node_fs = Arc::new(deno_fs::RealFs);
     let npm_resolver = Arc::new(ManagedCliNpmResolver::new(
+      self.npm.api.clone(),
       node_fs.clone(),
       npm_resolution.clone(),
       create_npm_fs_resolver(
@@ -816,6 +820,7 @@ impl Inner {
         NpmSystemInfo::default(),
       ),
       self.config.maybe_lockfile().cloned(),
+      Arc::new(PackageJsonDepsInstaller::no_op()),
     ));
     let node_resolver =
       Arc::new(NodeResolver::new(node_fs, npm_resolver.clone()));
@@ -1366,8 +1371,7 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
-      npm_registry_api: self.npm.api.clone(),
-      npm_resolution: self.npm.resolution.clone(),
+      npm_resolver: Some(self.npm.resolver.clone()),
     });
 
     // refresh the npm specifiers because it might have discovered

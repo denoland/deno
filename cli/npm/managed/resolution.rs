@@ -239,8 +239,6 @@ impl NpmResolution {
     self.resolve_pkg_req_as_pending_with_info(pkg_req, &package_info)
   }
 
-  // todo: NEXT
-
   /// Resolves a package requirement for deno graph. This should only be
   /// called by deno_graph's NpmResolver or for resolving packages in
   /// a package.json
@@ -263,8 +261,6 @@ impl NpmResolution {
   pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
     self.snapshot.read().package_reqs().clone()
   }
-
-  // todo: NEXT
 
   pub fn all_system_packages(
     &self,

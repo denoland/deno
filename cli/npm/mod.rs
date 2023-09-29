@@ -14,6 +14,7 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_graph::NpmPackageReqResolution;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_runtime::deno_node::NpmResolver;
 
@@ -55,6 +56,14 @@ pub trait CliNpmResolver: NpmResolver {
 
   /// Checks if the provided package req's folder is cached.
   fn is_pkg_req_folder_cached(&self, req: &PackageReq) -> bool;
+
+  /// Resolves a package requirement for deno graph. This should only be
+  /// called by deno_graph's NpmResolver or for resolving packages in
+  /// a package.json
+  fn resolve_npm_for_deno_graph(
+    &self,
+    pkg_req: &PackageReq,
+  ) -> NpmPackageReqResolution;
 
   fn resolve_pkg_nv_ref_from_pkg_req_ref(
     &self,

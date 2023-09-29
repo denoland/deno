@@ -354,10 +354,12 @@ impl CliFactory {
           self.options.npm_system_info(),
         );
         Ok(Arc::new(ManagedCliNpmResolver::new(
+          self.npm_api()?.clone(),
           fs.clone(),
           npm_resolution.clone(),
           npm_fs_resolver,
           self.maybe_lockfile().as_ref().cloned(),
+          self.package_json_deps_installer().await?.clone(),
         )) as Arc<dyn CliNpmResolver>)
       })
       .await
@@ -428,17 +430,18 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliGraphResolver::new(
-          self.npm_api()?.clone(),
-          self.npm_resolution().await?.clone(),
+          if self.options.no_npm() {
+            None
+          } else {
+            Some(self.npm_resolver().await?.clone())
+          },
           self.package_json_deps_provider().clone(),
-          self.package_json_deps_installer().await?.clone(),
           CliGraphResolverOptions {
             maybe_jsx_import_source_config: self
               .options
               .to_maybe_jsx_import_source_config()?,
             maybe_import_map: self.maybe_import_map().await?.clone(),
             maybe_vendor_dir: self.options.vendor_dir_path(),
-            no_npm: self.options.no_npm(),
           },
         )))
       })
