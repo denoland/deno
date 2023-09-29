@@ -2072,13 +2072,7 @@ impl FileTextChanges {
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
-    let mut specifier = specifier_map.normalize(&self.file_name)?;
-    if self.is_new_file == Some(true) {
-      if let Some(s) = notebook_specifier(&specifier) {
-        specifier = s;
-      }
-    }
-    self.file_name = specifier.to_string();
+    self.file_name = specifier_map.normalize(&self.file_name)?.to_string();
     Ok(())
   }
 
@@ -3529,6 +3523,7 @@ pub struct TscSpecifierMap {
 impl TscSpecifierMap {
   /// Convert the specifier to one compatible with tsc. Cache the resulting
   /// mapping in case it needs to be reversed.
+  // TODO(nayeemrmn): Factor in out-of-band media type here.
   pub fn denormalize(&self, specifier: &ModuleSpecifier) -> String {
     let original = specifier;
     if let Some(specifier) = self.denormalized_specifiers.lock().get(original) {
@@ -3536,6 +3531,9 @@ impl TscSpecifierMap {
     }
     let mut specifier = original.to_string();
     let media_type = if original.scheme() == "deno-notebook-cell" {
+      if let Some(s) = notebook_specifier(original) {
+        specifier = s.to_string();
+      }
       MediaType::TypeScript
     } else {
       MediaType::from_specifier(original)
