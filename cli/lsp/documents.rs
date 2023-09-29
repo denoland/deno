@@ -262,7 +262,15 @@ impl AssetOrDocument {
   }
 }
 
-pub fn notebook_specifier(specifier: &Url) -> Option<Url> {
+/// Convert a `deno-notebook-cell:` specifier to a `file:` specifier.
+/// ```rust
+/// assert_eq!(
+///   cell_to_file_specifier(
+///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+///   ),
+///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
+/// );
+pub fn cell_to_file_specifier(specifier: &Url) -> Option<Url> {
   if specifier.scheme() == "deno-notebook-cell" {
     if let Ok(specifier) = ModuleSpecifier::parse(&format!(
       "file://{}",
@@ -298,19 +306,19 @@ impl DocumentDependencies {
     if module.specifier.scheme() == "deno-notebook-cell" {
       for (_, dep) in &mut deps.deps {
         if let Resolution::Ok(resolved) = &mut dep.maybe_code {
-          if let Some(specifier) = notebook_specifier(&resolved.specifier) {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
             resolved.specifier = specifier;
           }
         }
         if let Resolution::Ok(resolved) = &mut dep.maybe_type {
-          if let Some(specifier) = notebook_specifier(&resolved.specifier) {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
             resolved.specifier = specifier;
           }
         }
       }
       if let Some(dep) = &mut deps.maybe_types_dependency {
         if let Resolution::Ok(resolved) = &mut dep.dependency {
-          if let Some(specifier) = notebook_specifier(&resolved.specifier) {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
             resolved.specifier = specifier;
           }
         }

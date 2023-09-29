@@ -3,7 +3,7 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
-use super::documents::notebook_specifier;
+use super::documents::cell_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -32,6 +32,7 @@ use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
 
+use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
@@ -3515,8 +3516,8 @@ struct Response {
 
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
-  normalized_specifiers: Mutex<HashMap<String, ModuleSpecifier>>,
-  denormalized_specifiers: Mutex<HashMap<ModuleSpecifier, String>>,
+  normalized_specifiers: DashMap<String, ModuleSpecifier>,
+  denormalized_specifiers: DashMap<ModuleSpecifier, String>,
 }
 
 impl TscSpecifierMap {
@@ -3525,12 +3526,12 @@ impl TscSpecifierMap {
   // TODO(nayeemrmn): Factor in out-of-band media type here.
   pub fn denormalize(&self, specifier: &ModuleSpecifier) -> String {
     let original = specifier;
-    if let Some(specifier) = self.denormalized_specifiers.lock().get(original) {
+    if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
     let media_type = if original.scheme() == "deno-notebook-cell" {
-      if let Some(s) = notebook_specifier(original) {
+      if let Some(s) = cell_to_file_specifier(original) {
         specifier = s.to_string();
       }
       MediaType::TypeScript
@@ -3545,7 +3546,6 @@ impl TscSpecifierMap {
     if specifier != original.as_str() {
       self
         .normalized_specifiers
-        .lock()
         .insert(specifier.clone(), original.clone());
     }
     specifier
@@ -3558,7 +3558,7 @@ impl TscSpecifierMap {
     specifier: S,
   ) -> Result<ModuleSpecifier, AnyError> {
     let original = specifier.as_ref();
-    if let Some(specifier) = self.normalized_specifiers.lock().get(original) {
+    if let Some(specifier) = self.normalized_specifiers.get(original) {
       return Ok(specifier.clone());
     }
     let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
@@ -3569,7 +3569,6 @@ impl TscSpecifierMap {
     if specifier.as_str() != original {
       self
         .denormalized_specifiers
-        .lock()
         .insert(specifier.clone(), original.to_string());
     }
     Ok(specifier)

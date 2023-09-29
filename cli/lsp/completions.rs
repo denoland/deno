@@ -2,7 +2,7 @@
 
 use super::client::Client;
 use super::config::ConfigSnapshot;
-use super::documents::notebook_specifier;
+use super::documents::cell_to_file_specifier;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::lsp_custom;
@@ -365,7 +365,7 @@ fn get_local_completions(
   current: &str,
   range: &lsp::Range,
 ) -> Option<Vec<lsp::CompletionItem>> {
-  let base = match notebook_specifier(base) {
+  let base = match cell_to_file_specifier(base) {
     Some(s) => s,
     None => base.clone(),
   };
