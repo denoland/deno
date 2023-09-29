@@ -18,7 +18,6 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_runtime::deno_fs;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
-use once_cell::sync::Lazy;
 
 use crate::args::CacheSetting;
 use crate::http_util::HttpClient;
@@ -28,17 +27,6 @@ use crate::util::path::root_url_to_safe_local_dirname;
 use crate::util::progress_bar::ProgressBar;
 
 use super::tarball::verify_and_extract_tarball;
-
-static SHOULD_SYNC_DOWNLOAD: Lazy<bool> =
-  Lazy::new(|| std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD").is_ok());
-
-/// For some of the tests, we want downloading of packages
-/// to be deterministic so that the output is always the same
-pub fn should_sync_download() -> bool {
-  // this gets called a lot when doing npm resolution and was taking
-  // a significant amount of time, so cache it in a lazy
-  *SHOULD_SYNC_DOWNLOAD
-}
 
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 

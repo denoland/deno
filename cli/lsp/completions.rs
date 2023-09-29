@@ -10,7 +10,7 @@ use super::npm::NpmSearchApi;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
 
@@ -167,10 +167,11 @@ pub async fn get_import_completions(
       items: get_local_completions(specifier, &text, &range)?,
     }))
   } else if text.starts_with("npm:") {
+    let items =
+      get_npm_completions(specifier, &text, &range, npm_search_api).await?;
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: false,
-      items: get_npm_completions(specifier, &text, &range, npm_search_api)
-        .await?,
+      is_incomplete: !items.is_empty(),
+      items,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
@@ -420,7 +421,7 @@ fn get_local_completions(
               ..Default::default()
             }),
             Ok(file_type) if file_type.is_file() => {
-              if is_supported_ext(&de.path()) {
+              if is_importable_ext(&de.path()) {
                 Some(lsp::CompletionItem {
                   label,
                   kind: Some(lsp::CompletionItemKind::FILE),
@@ -743,6 +744,8 @@ mod tests {
     std::fs::write(file_e, b"").expect("could not create");
     let file_f = dir_a.join("f.mjs");
     std::fs::write(file_f, b"").expect("could not create");
+    let file_g = dir_a.join("g.json");
+    std::fs::write(file_g, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(
@@ -761,13 +764,12 @@ mod tests {
     );
     assert!(actual.is_some());
     let actual = actual.unwrap();
-    assert_eq!(actual.len(), 2);
+    assert_eq!(actual.len(), 3);
     for item in actual {
       match item.text_edit {
         Some(lsp::CompletionTextEdit::Edit(text_edit)) => {
-          assert!(
-            text_edit.new_text == "./f.mjs" || text_edit.new_text == "./b"
-          );
+          assert!(["./b", "./f.mjs", "./g.json"]
+            .contains(&text_edit.new_text.as_str()));
         }
         _ => unreachable!(),
       }

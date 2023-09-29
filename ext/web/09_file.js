@@ -535,6 +535,18 @@ class File extends Blob {
     webidl.assertBranded(this, FilePrototype);
     return this[_LastModified];
   }
+
+  [SymbolFor("Deno.customInspect")](inspect) {
+    return inspect(createFilteredInspectProxy({
+      object: this,
+      evaluate: ObjectPrototypeIsPrototypeOf(FilePrototype, this),
+      keys: [
+        "name",
+        "size",
+        "type",
+      ],
+    }));
+  }
 }
 
 webidl.configurePrototype(File);

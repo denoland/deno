@@ -5,7 +5,6 @@ use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -159,12 +158,13 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op]
-async fn op_net_send_unixpacket<NP>(
+#[op2(async)]
+#[number]
+pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  path: String,
-  zero_copy: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[string] path: String,
+  #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,

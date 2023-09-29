@@ -216,8 +216,8 @@ Deno.test(
     writer.write(new TextEncoder().encode("world"));
     writer.close();
 
+    const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
-      const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
       const evt = await httpConn.nextRequest();
@@ -349,13 +349,13 @@ Deno.test(
     const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://${hostname}:${port}/`, {
-      client,
       headers: { "connection": "close" },
+      client,
     });
+    client.close();
     const respBody = await resp.text();
     assertEquals("Hello World", respBody);
     await promise;
-    client.close();
   },
 );
 
@@ -788,7 +788,11 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
       socket.send(m.data);
       socket.close(1001);
     };
+    const close = new Promise<void>((resolve) => {
+      socket.onclose = () => resolve();
+    });
     await respondWith(response);
+    await close;
   })();
 
   const def = deferred();
@@ -1228,11 +1232,15 @@ Deno.test(
     async function client() {
       const socket = new WebSocket(`ws://${hostname}:${port}/`);
       socket.onopen = () => socket.send("bla bla");
+      const closed = new Promise<void>((resolve) => {
+        socket.onclose = () => resolve();
+      });
       const { data } = await new Promise<MessageEvent<string>>((res) =>
         socket.onmessage = res
       );
       assertStrictEquals(data, "bla bla");
       socket.close();
+      await closed;
     }
 
     await Promise.all([server(), client()]);

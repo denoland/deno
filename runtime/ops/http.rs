@@ -7,7 +7,7 @@ use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
@@ -32,10 +32,11 @@ deno_core::extension!(
   ops = [op_http_start, op_http_upgrade],
 );
 
-#[op]
+#[op2(fast)]
+#[smi]
 fn op_http_start(
   state: &mut OpState,
-  tcp_stream_rid: ResourceId,
+  #[smi] tcp_stream_rid: ResourceId,
 ) -> Result<ResourceId, AnyError> {
   if let Ok(resource_rc) = state
     .resource_table
@@ -96,11 +97,11 @@ pub struct HttpUpgradeResult {
   read_buf: ToJsBuffer,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_http_upgrade(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
+  #[smi] rid: ResourceId,
 ) -> Result<HttpUpgradeResult, AnyError> {
   let stream = state
     .borrow_mut()

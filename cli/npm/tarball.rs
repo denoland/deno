@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_semver::package::PackageNv;
 use flate2::read::GzDecoder;
 use tar::Archive;
@@ -31,12 +32,15 @@ pub fn verify_and_extract_tarball(
 fn verify_tarball_integrity(
   package: &PackageNv,
   data: &[u8],
-  npm_integrity: &str,
+  npm_integrity: &NpmPackageVersionDistInfoIntegrity,
 ) -> Result<(), AnyError> {
   use ring::digest::Context;
-  let (algo, expected_checksum) = match npm_integrity.split_once('-') {
-    Some((hash_kind, checksum)) => {
-      let algo = match hash_kind {
+  let (tarball_checksum, expected_checksum) = match npm_integrity {
+    NpmPackageVersionDistInfoIntegrity::Integrity {
+      algorithm,
+      base64_hash,
+    } => {
+      let algo = match *algorithm {
         "sha512" => &ring::digest::SHA512,
         "sha1" => &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
         hash_kind => bail!(
@@ -45,19 +49,28 @@ fn verify_tarball_integrity(
           hash_kind
         ),
       };
-      (algo, checksum.to_lowercase())
+      let mut hash_ctx = Context::new(algo);
+      hash_ctx.update(data);
+      let digest = hash_ctx.finish();
+      let tarball_checksum = base64::encode(digest.as_ref()).to_lowercase();
+      (tarball_checksum, base64_hash.to_lowercase())
     }
-    None => bail!(
-      "Not implemented integrity kind for {}: {}",
-      package,
-      npm_integrity
-    ),
+    NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => {
+      let mut hash_ctx = Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
+      hash_ctx.update(data);
+      let digest = hash_ctx.finish();
+      let tarball_checksum = hex::encode(digest.as_ref()).to_lowercase();
+      (tarball_checksum, hex.to_lowercase())
+    }
+    NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {
+      bail!(
+        "Not implemented integrity kind for {}: {}",
+        package,
+        integrity
+      )
+    }
   };
 
-  let mut hash_ctx = Context::new(algo);
-  hash_ctx.update(data);
-  let digest = hash_ctx.finish();
-  let tarball_checksum = base64::encode(digest.as_ref()).to_lowercase();
   if tarball_checksum != expected_checksum {
     bail!(
       "Tarball checksum did not match what was provided by npm registry for {}.\n\nExpected: {}\nActual: {}",
@@ -147,36 +160,81 @@ mod test {
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";
     assert_eq!(
-      verify_tarball_integrity(&package, &Vec::new(), "test")
-        .unwrap_err()
-        .to_string(),
+      verify_tarball_integrity(
+        &package,
+        &Vec::new(),
+        &NpmPackageVersionDistInfoIntegrity::UnknownIntegrity("test")
+      )
+      .unwrap_err()
+      .to_string(),
       "Not implemented integrity kind for package@1.0.0: test",
     );
     assert_eq!(
-      verify_tarball_integrity(&package, &Vec::new(), "notimplemented-test")
-        .unwrap_err()
-        .to_string(),
+      verify_tarball_integrity(
+        &package,
+        &Vec::new(),
+        &NpmPackageVersionDistInfoIntegrity::Integrity {
+          algorithm: "notimplemented",
+          base64_hash: "test"
+        }
+      )
+      .unwrap_err()
+      .to_string(),
       "Not implemented hash function for package@1.0.0: notimplemented",
     );
     assert_eq!(
-      verify_tarball_integrity(&package, &Vec::new(), "sha1-test")
-        .unwrap_err()
-        .to_string(),
+      verify_tarball_integrity(
+        &package,
+        &Vec::new(),
+        &NpmPackageVersionDistInfoIntegrity::Integrity {
+          algorithm: "sha1",
+          base64_hash: "test"
+        }
+      )
+      .unwrap_err()
+      .to_string(),
       concat!(
         "Tarball checksum did not match what was provided by npm ",
         "registry for package@1.0.0.\n\nExpected: test\nActual: 2jmj7l5rsw0yvb/vlwaykk/ybwk=",
       ),
     );
     assert_eq!(
-      verify_tarball_integrity(&package, &Vec::new(), "sha512-test")
-        .unwrap_err()
-        .to_string(),
+      verify_tarball_integrity(
+        &package,
+        &Vec::new(),
+        &NpmPackageVersionDistInfoIntegrity::Integrity {
+          algorithm: "sha512",
+          base64_hash: "test"
+        }
+      )
+      .unwrap_err()
+      .to_string(),
       format!("Tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {actual_checksum}"),
     );
     assert!(verify_tarball_integrity(
       &package,
       &Vec::new(),
-      &format!("sha512-{actual_checksum}")
+      &NpmPackageVersionDistInfoIntegrity::Integrity {
+        algorithm: "sha512",
+        base64_hash: actual_checksum,
+      },
+    )
+    .is_ok());
+    let actual_hex = "da39a3ee5e6b4b0d3255bfef95601890afd80709";
+    assert_eq!(
+      verify_tarball_integrity(
+        &package,
+        &Vec::new(),
+        &NpmPackageVersionDistInfoIntegrity::LegacySha1Hex("test"),
+      )
+      .unwrap_err()
+      .to_string(),
+      format!("Tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {actual_hex}"),
+    );
+    assert!(verify_tarball_integrity(
+      &package,
+      &Vec::new(),
+      &NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(actual_hex),
     )
     .is_ok());
   }

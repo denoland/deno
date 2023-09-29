@@ -12,6 +12,7 @@ use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::ModuleId;
@@ -38,8 +39,11 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReqReference;
 
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
 use crate::errors;
 use crate::npm::CliNpmResolver;
@@ -88,6 +92,7 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub maybe_package_json_deps: Option<PackageJsonDeps>,
 }
 
 struct SharedWorkerState {
@@ -279,6 +284,17 @@ impl CliMainWorker {
       Ok(None)
     }
   }
+
+  pub fn execute_script_static(
+    &mut self,
+    name: &'static str,
+    source_code: &'static str,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    self
+      .worker
+      .js_runtime
+      .execute_script_static(name, source_code)
+  }
 }
 
 pub struct CliMainWorkerFactory {
@@ -344,10 +360,36 @@ impl CliMainWorkerFactory {
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
+      let package_ref = if package_ref.req().version_req.version_text() == "*" {
+        // When using the wildcard version, select the same version used in the
+        // package.json deps in order to prevent adding new dependency version
+        shared
+          .options
+          .maybe_package_json_deps
+          .as_ref()
+          .and_then(|deps| {
+            deps
+              .values()
+              .filter_map(|v| v.as_ref().ok())
+              .find(|dep| dep.name == package_ref.req().name)
+              .map(|dep| {
+                NpmPackageReqReference::new(PackageReqReference {
+                  req: dep.clone(),
+                  sub_path: package_ref.sub_path().map(|s| s.to_string()),
+                })
+              })
+          })
+          .unwrap_or(package_ref)
+      } else {
+        package_ref
+      };
       shared
         .npm_resolver
         .add_package_reqs(&[package_ref.req().clone()])
         .await?;
+      let package_ref = shared
+        .npm_resolver
+        .resolve_pkg_nv_ref_from_pkg_req_ref(&package_ref)?;
       let node_resolution =
         self.resolve_binary_entrypoint(&package_ref, &permissions)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
@@ -473,10 +515,18 @@ impl CliMainWorkerFactory {
 
   fn resolve_binary_entrypoint(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<NodeResolution, AnyError> {
-    match self.shared.node_resolver.resolve_binary_export(package_ref) {
+    let package_folder = self
+      .shared
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(package_ref.nv())?;
+    match self
+      .shared
+      .node_resolver
+      .resolve_binary_export(&package_folder, package_ref.sub_path())
+    {
       Ok(node_resolution) => Ok(node_resolution),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
@@ -496,7 +546,7 @@ impl CliMainWorkerFactory {
   /// resolve the binary entrypoint using regular node resolution
   fn resolve_binary_entrypoint_fallback(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // only fallback if the user specified a sub path
@@ -507,12 +557,16 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let Some(resolution) =
-      self.shared.node_resolver.resolve_npm_req_reference(
-        package_ref,
-        NodeResolutionMode::Execution,
-        permissions,
-      )?
+    let package_folder = self
+      .shared
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(package_ref.nv())?;
+    let Some(resolution) = self.shared.node_resolver.resolve_npm_reference(
+      &package_folder,
+      package_ref.sub_path(),
+      NodeResolutionMode::Execution,
+      permissions,
+    )?
     else {
       return Ok(None);
     };

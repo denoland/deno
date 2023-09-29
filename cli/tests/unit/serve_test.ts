@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assertMatch,
+  assertRejects,
+} from "../../../test_util/std/testing/asserts.ts";
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
@@ -879,6 +882,43 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAbortedRequestBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (request) => {
+        await assertRejects(async () => {
+          await request.text();
+        });
+        promise.resolve();
+        // Not actually used
+        return new Response();
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const conn = await Deno.connect({ port: servePort });
+    // Send POST request with a body + content-length, but don't send it all
+    const encoder = new TextEncoder();
+    const body =
+      `POST / HTTP/1.1\r\nHost: 127.0.0.1:${servePort}\r\nContent-Length: 10\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    conn.close();
+    await promise;
+    ac.abort();
+    await server.finished;
+  },
+);
+
 function createStreamTest(count: number, delay: number, action: string) {
   function doAction(controller: ReadableStreamDefaultController, i: number) {
     if (i == count) {
@@ -927,12 +967,9 @@ function createStreamTest(count: number, delay: number, action: string) {
       await listeningPromise;
       const resp = await fetch(`http://127.0.0.1:${servePort}/`);
       if (action == "Throw") {
-        try {
+        await assertRejects(async () => {
           await resp.text();
-          fail();
-        } catch (_) {
-          // expected
-        }
+        });
       } else {
         const text = await resp.text();
 
@@ -945,7 +982,7 @@ function createStreamTest(count: number, delay: number, action: string) {
       }
     } finally {
       ac.abort();
-      await server.finished;
+      await server.shutdown();
     }
   });
 }
@@ -1150,6 +1187,7 @@ Deno.test(
 Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   const ac = new AbortController();
   const listeningPromise = deferred();
+  const done = deferred();
   const server = Deno.serve({
     handler: (request) => {
       const {
@@ -1164,6 +1202,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
         socket.send(m.data);
         socket.close(1001);
       };
+      socket.onclose = () => done.resolve();
       return response;
     },
     port: servePort,
@@ -1184,6 +1223,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   ws.onopen = () => ws.send("foo");
 
   await def;
+  await done;
   ac.abort();
   await server.finished;
 });
@@ -1271,6 +1311,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketUpgradeTwice() {
     const ac = new AbortController();
+    const done = deferred();
     const listeningPromise = deferred();
     const server = Deno.serve({
       handler: (request) => {
@@ -1293,6 +1334,7 @@ Deno.test(
           socket.send(m.data);
           socket.close(1001);
         };
+        socket.onclose = () => done.resolve();
         return response;
       },
       port: servePort,
@@ -1313,6 +1355,7 @@ Deno.test(
     ws.onopen = () => ws.send("foo");
 
     await def;
+    await done;
     ac.abort();
     await server.finished;
   },
@@ -1322,6 +1365,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCloseFast() {
     const ac = new AbortController();
+    const done = deferred();
     const listeningPromise = deferred();
     const server = Deno.serve({
       handler: (request) => {
@@ -1330,6 +1374,7 @@ Deno.test(
           socket,
         } = Deno.upgradeWebSocket(request);
         socket.onopen = () => socket.close();
+        socket.onclose = () => done.resolve();
         return response;
       },
       port: servePort,
@@ -1348,6 +1393,7 @@ Deno.test(
     ws.onclose = () => def.resolve();
 
     await def;
+    await done;
     ac.abort();
     await server.finished;
   },
@@ -1357,6 +1403,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCanAccessRequest() {
     const ac = new AbortController();
+    const done = deferred();
     const listeningPromise = deferred();
     const server = Deno.serve({
       handler: (request) => {
@@ -1372,6 +1419,7 @@ Deno.test(
           socket.send(request.url.toString());
           socket.close(1001);
         };
+        socket.onclose = () => done.resolve();
         return response;
       },
       port: servePort,
@@ -1393,6 +1441,7 @@ Deno.test(
     ws.onopen = () => ws.send("foo");
 
     await def;
+    await done;
     ac.abort();
     await server.finished;
   },
@@ -2635,12 +2684,14 @@ Deno.test(
 
 for (const url of ["text", "file", "stream"]) {
   // Ensure that we don't panic when the incoming TCP request was dropped
-  // https://github.com/denoland/deno/issues/20315
+  // https://github.com/denoland/deno/issues/20315 and that we correctly
+  // close/cancel the response
   Deno.test({
     permissions: { read: true, write: true, net: true },
     name: `httpServerTcpCancellation_${url}`,
     fn: async function () {
       const ac = new AbortController();
+      const streamCancelled = url == "stream" ? deferred() : undefined;
       const listeningPromise = deferred();
       const waitForAbort = deferred();
       const waitForRequest = deferred();
@@ -2649,27 +2700,28 @@ for (const url of ["text", "file", "stream"]) {
         signal: ac.signal,
         onListen: onListen(listeningPromise),
         handler: async (req: Request) => {
-          waitForRequest.resolve();
-          await waitForAbort;
-          // Allocate the request body
-          let _body = req.body;
+          let respBody = null;
           if (req.url.includes("/text")) {
-            return new Response("text");
+            respBody = "text";
           } else if (req.url.includes("/file")) {
-            return new Response((await makeTempFile(1024)).readable);
+            respBody = (await makeTempFile(1024)).readable;
           } else if (req.url.includes("/stream")) {
-            return new Response(
-              new ReadableStream({
-                start(controller) {
-                  _body = null;
-                  controller.enqueue(new Uint8Array([1]));
-                  controller.close();
-                },
-              }),
-            );
+            respBody = new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array([1]));
+              },
+              cancel(reason) {
+                streamCancelled!.resolve(reason);
+              },
+            });
           } else {
             fail();
           }
+          waitForRequest.resolve();
+          await waitForAbort;
+          // Allocate the request body
+          req.body;
+          return new Response(respBody);
         },
       });
 
@@ -2678,24 +2730,62 @@ for (const url of ["text", "file", "stream"]) {
       // Create a POST request and drop it once the server has received it
       const conn = await Deno.connect({ port: servePort });
       const writer = conn.writable.getWriter();
-      writer.write(new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`));
+      await writer.write(new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`));
       await waitForRequest;
-      writer.close();
+      await writer.close();
 
-      // Give it a few milliseconds for the serve machinery to work
-      await new Promise((r) => setTimeout(r, 10));
       waitForAbort.resolve();
 
-      // Give it a few milliseconds for the serve machinery to work
-      await new Promise((r) => setTimeout(r, 10));
+      // Wait for cancellation before we shut the server down
+      if (streamCancelled !== undefined) {
+        await streamCancelled;
+      }
 
-      // Since the handler has a chance of creating resources or running async ops, we need to use a
-      // graceful shutdown here to ensure they have fully drained.
+      // Since the handler has a chance of creating resources or running async
+      // ops, we need to use a graceful shutdown here to ensure they have fully
+      // drained.
       await server.shutdown();
+
       await server.finished;
     },
   });
 }
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCancelFetch() {
+    const request2 = deferred();
+    const request2Aborted = deferred();
+    const { finished, abort } = await makeServer(async (req) => {
+      if (req.url.endsWith("/1")) {
+        const fetchRecursive = await fetch(`http://localhost:${servePort}/2`);
+        return new Response(fetchRecursive.body);
+      } else if (req.url.endsWith("/2")) {
+        request2.resolve();
+        return new Response(
+          new ReadableStream({
+            start(_controller) {/* just hang */},
+            cancel(reason) {
+              request2Aborted.resolve(reason);
+            },
+          }),
+        );
+      }
+      fail();
+    });
+    const fetchAbort = new AbortController();
+    const fetchPromise = await fetch(`http://localhost:${servePort}/1`, {
+      signal: fetchAbort.signal,
+    });
+    await fetchPromise;
+    await request2;
+    fetchAbort.abort();
+    assertEquals("resource closed", await request2Aborted);
+
+    abort();
+    await finished;
+  },
+);
 
 Deno.test(
   { permissions: { read: true, net: true } },

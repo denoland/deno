@@ -134,6 +134,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(flags, install_flags).await
     }),
+    DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
+      tools::jupyter::kernel(flags, jupyter_flags).await
+    }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
     }),
@@ -264,6 +267,10 @@ pub fn main() {
 
   let args: Vec<String> = env::args().collect();
 
+  // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
+  // initalize the V8 platform on a parent thread of all threads that will spawn
+  // V8 isolates.
+
   let future = async move {
     let current_exe_path = current_exe()?;
     let standalone_res =
@@ -296,6 +303,7 @@ pub fn main() {
       _ => vec![],
     };
     init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
+    deno_core::JsRuntime::init_platform(None);
 
     util::logger::init(flags.log_level);
 

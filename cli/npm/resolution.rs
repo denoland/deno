@@ -7,10 +7,10 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::TaskQueue;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
@@ -32,6 +32,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
+use crate::util::sync::TaskQueue;
 
 use super::registry::CliNpmRegistryApi;
 
@@ -223,19 +224,19 @@ impl NpmResolution {
   /// Resolves a package requirement for deno graph. This should only be
   /// called by deno_graph's NpmResolver or for resolving packages in
   /// a package.json
-  pub fn resolve_package_req_as_pending(
+  pub fn resolve_pkg_req_as_pending(
     &self,
     pkg_req: &PackageReq,
   ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
     // we should always have this because it should have been cached before here
     let package_info = self.api.get_cached_package_info(&pkg_req.name).unwrap();
-    self.resolve_package_req_as_pending_with_info(pkg_req, &package_info)
+    self.resolve_pkg_req_as_pending_with_info(pkg_req, &package_info)
   }
 
   /// Resolves a package requirement for deno graph. This should only be
   /// called by deno_graph's NpmResolver or for resolving packages in
   /// a package.json
-  pub fn resolve_package_req_as_pending_with_info(
+  pub fn resolve_pkg_req_as_pending_with_info(
     &self,
     pkg_req: &PackageReq,
     package_info: &NpmPackageInfo,
@@ -391,6 +392,21 @@ fn populate_lockfile_from_snapshot(
 fn npm_package_to_lockfile_info(
   pkg: &NpmResolutionPackage,
 ) -> NpmPackageLockfileInfo {
+  fn integrity_for_lockfile(
+    integrity: NpmPackageVersionDistInfoIntegrity,
+  ) -> String {
+    match integrity {
+      NpmPackageVersionDistInfoIntegrity::Integrity {
+        algorithm,
+        base64_hash,
+      } => format!("{}-{}", algorithm, base64_hash),
+      NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {
+        integrity.to_string()
+      }
+      NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => hex.to_string(),
+    }
+  }
+
   let dependencies = pkg
     .dependencies
     .iter()
@@ -403,7 +419,7 @@ fn npm_package_to_lockfile_info(
   NpmPackageLockfileInfo {
     display_id: pkg.id.nv.to_string(),
     serialized_id: pkg.id.as_serialized(),
-    integrity: pkg.dist.integrity().to_string(),
+    integrity: integrity_for_lockfile(pkg.dist.integrity()),
     dependencies,
   }
 }

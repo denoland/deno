@@ -38,39 +38,37 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.29.1", features = ["transpiling"] }
+deno_ast = { version = "0.29.3", features = ["transpiling"] }
 
-deno_core = { version = "0.209.0" }
+deno_core = { version = "0.218.0" }
 
-deno_runtime = { version = "0.126.0", path = "./runtime" }
-napi_sym = { version = "0.48.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.112.0", path = "./bench_util" }
+deno_runtime = { version = "0.128.0", path = "./runtime" }
+napi_sym = { version = "0.50.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.114.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.17.1"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
-deno_npm = "0.14.0"
-deno_semver = "0.4.0"
 
 # exts
-deno_broadcast_channel = { version = "0.112.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.50.0", path = "./ext/cache" }
-deno_console = { version = "0.118.0", path = "./ext/console" }
-deno_crypto = { version = "0.132.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.142.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.105.0", path = "./ext/ffi" }
-deno_fs = { version = "0.28.0", path = "./ext/fs" }
-deno_http = { version = "0.113.0", path = "./ext/http" }
-deno_io = { version = "0.28.0", path = "./ext/io" }
-deno_net = { version = "0.110.0", path = "./ext/net" }
-deno_node = { version = "0.55.0", path = "./ext/node" }
-deno_kv = { version = "0.26.0", path = "./ext/kv" }
-deno_tls = { version = "0.105.0", path = "./ext/tls" }
-deno_url = { version = "0.118.0", path = "./ext/url" }
-deno_web = { version = "0.149.0", path = "./ext/web" }
-deno_webidl = { version = "0.118.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.123.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.113.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.48.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.114.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.52.0", path = "./ext/cache" }
+deno_console = { version = "0.120.0", path = "./ext/console" }
+deno_crypto = { version = "0.134.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.144.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.107.0", path = "./ext/ffi" }
+deno_fs = { version = "0.30.0", path = "./ext/fs" }
+deno_http = { version = "0.115.0", path = "./ext/http" }
+deno_io = { version = "0.30.0", path = "./ext/io" }
+deno_net = { version = "0.112.0", path = "./ext/net" }
+deno_node = { version = "0.57.0", path = "./ext/node" }
+deno_kv = { version = "0.28.0", path = "./ext/kv" }
+deno_tls = { version = "0.107.0", path = "./ext/tls" }
+deno_url = { version = "0.120.0", path = "./ext/url" }
+deno_web = { version = "0.151.0", path = "./ext/web" }
+deno_webidl = { version = "0.120.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.125.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.115.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.50.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -82,9 +80,10 @@ brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
-chrono = { version = "=0.4.26", default-features = false, features = ["std", "serde", "clock"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"
+data-encoding = "2.3.3"
 dlopen = "0.1.8"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
@@ -96,6 +95,7 @@ futures = "0.3.21"
 glob = "0.3.1"
 hex = "0.4"
 http = "0.2.9"
+h2 = "0.3.17"
 httparse = "1.8.0"
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 # TODO(mmastrac): indexmap 2.0 will require multiple synchronized changes
@@ -103,8 +103,9 @@ indexmap1 = { package = "indexmap", version = "1", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.20"
-lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
+monch = "=0.4.3"
 notify = "=5.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
@@ -126,6 +127,7 @@ rustls-pemfile = "1.0.0"
 rustls-webpki = "0.101.4"
 rustls-native-certs = "0.6.2"
 webpki-roots = "0.25.2"
+scopeguard = "1.2.0"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"
@@ -143,7 +145,7 @@ tokio = { version = "1.28.1", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = "0.24.0"
 tokio-util = "0.7.4"
-tower-lsp = { version = "=0.17.0", features = ["proposed"] }
+tower-lsp = { version = "=0.20.0", features = ["proposed"] }
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 zstd = "=0.12.4"

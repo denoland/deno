@@ -18,7 +18,6 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::TaskQueue;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
@@ -31,7 +30,6 @@ use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
-use super::cache::should_sync_download;
 use super::cache::NpmCache;
 
 static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
@@ -106,24 +104,13 @@ impl CliNpmRegistryApi {
   }
 }
 
-static SYNC_DOWNLOAD_TASK_QUEUE: Lazy<TaskQueue> =
-  Lazy::new(TaskQueue::default);
-
 #[async_trait]
 impl NpmRegistryApi for CliNpmRegistryApi {
   async fn package_info(
     &self,
     name: &str,
   ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
-    let result = if should_sync_download() {
-      let inner = self.inner().clone();
-      SYNC_DOWNLOAD_TASK_QUEUE
-        .queue(async move { inner.maybe_package_info(name).await })
-        .await
-    } else {
-      self.inner().maybe_package_info(name).await
-    };
-    match result {
+    match self.inner().maybe_package_info(name).await {
       Ok(Some(info)) => Ok(info),
       Ok(None) => Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
         package_name: name.to_string(),

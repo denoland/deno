@@ -288,7 +288,9 @@ where
   };
 
   if let Some(cancel_rid) = cancel_handle {
-    state.borrow_mut().resource_table.close(cancel_rid).ok();
+    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+      res.close();
+    }
   }
 
   let mut state = state.borrow_mut();

@@ -331,6 +331,7 @@ deno_core::extension!(
   esm = [
     dir "js",
     "40_testing.js",
+    "40_jupyter.js",
     "99_main.js"
   ],
   customizer = |ext: &mut deno_core::Extension| {
@@ -437,7 +438,9 @@ fn main() {
   // Host snapshots won't work when cross compiling.
   let target = env::var("TARGET").unwrap();
   let host = env::var("HOST").unwrap();
-  if target != host {
+  let skip_cross_check =
+    env::var("DENO_SKIP_CROSS_BUILD_CHECK").map_or(false, |v| v == "1");
+  if !skip_cross_check && target != host {
     panic!("Cross compiling with snapshot is not supported.");
   }
 

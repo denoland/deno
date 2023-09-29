@@ -37,6 +37,31 @@ import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
 import { writeAll, writeAllSync } from "../test_util/std/streams/write_all.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
+class TestFilter {
+  filter?: string[];
+  constructor(filter?: string[]) {
+    this.filter = filter;
+  }
+
+  matches(path: string): boolean {
+    if (this.filter === undefined || this.filter.length == 0) {
+      return true;
+    }
+    for (const filter of this.filter) {
+      if (filter.startsWith("/")) {
+        if (path.startsWith(filter)) {
+          return true;
+        }
+      } else {
+        if (path.substring(1).startsWith(filter)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+}
+
 const command = Deno.args[0];
 
 switch (command) {
@@ -161,11 +186,12 @@ async function run() {
   const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
   const expectation = getExpectation();
+  const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(
-    rest.length == 0 ? undefined : rest,
+    filter,
     expectation,
   );
-  assertAllExpectationsHaveTests(expectation, tests, rest);
+  assertAllExpectationsHaveTests(expectation, tests, filter);
   const cores = navigator.hardwareConcurrency;
   console.log(`Going to run ${tests.length} test files on ${cores} cores.`);
 
@@ -295,20 +321,14 @@ async function generateWptReport(
 function assertAllExpectationsHaveTests(
   expectation: Expectation,
   testsToRun: TestToRun[],
-  filter?: string[],
+  filter: TestFilter,
 ): void {
   const tests = new Set(testsToRun.map((t) => t.path));
   const missingTests: string[] = [];
-
   function walk(parentExpectation: Expectation, parent: string) {
     for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
-      if (
-        filter &&
-        !filter.find((filter) => path.substring(1).startsWith(filter))
-      ) {
-        continue;
-      }
+      if (!filter.matches(path)) continue;
       if (typeof expectation == "boolean" || Array.isArray(expectation)) {
         if (!tests.has(path)) {
           missingTests.push(path);
@@ -336,7 +356,8 @@ function assertAllExpectationsHaveTests(
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
   const startTime = new Date().getTime();
-  const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest, true);
+  const filter = new TestFilter(rest);
+  const tests = discoverTestsToRun(filter, true);
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
@@ -668,7 +689,7 @@ function createReportTestCase(expectation: boolean | string[]) {
 }
 
 function discoverTestsToRun(
-  filter?: string[],
+  filter: TestFilter,
   expectation: Expectation | string[] | boolean = getExpectation(),
 ): TestToRun[] {
   const manifestFolder = getManifest().items.testharness;
@@ -736,12 +757,8 @@ function discoverTestsToRun(
             );
           }
 
-          if (
-            filter &&
-            !filter.find((filter) => finalPath.substring(1).startsWith(filter))
-          ) {
-            continue;
-          }
+          if (!filter.matches(finalPath)) continue;
+
           testsToRun.push({
             path: finalPath,
             url,

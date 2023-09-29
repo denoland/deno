@@ -13,6 +13,8 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::sync::TaskQueue;
+use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -20,8 +22,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
-use deno_core::TaskQueue;
-use deno_core::TaskQueuePermit;
 use deno_graph::source::Loader;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -32,6 +32,8 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -331,9 +333,7 @@ impl ModuleGraphBuilder {
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm")
-                && !matches!(to.scheme(), "file" | "npm")
-              {
+              if !matches!(from.scheme(), "file" | "npm" | "jsr") {
                 graph.redirects.insert(from, to);
               }
             }
@@ -342,26 +342,25 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // todo(dsherret): uncomment when adding deno: specifier support
-    // add the deno specifiers to the graph if it's the first time executing
-    // if graph.deno_specifiers.is_empty() {
-    //   if let Some(lockfile) = &self.lockfile {
-    //     let lockfile = lockfile.lock();
-    //     for (key, value) in &lockfile.content.packages.specifiers {
-    //       if let Some(key) = key
-    //         .strip_prefix("deno:")
-    //         .and_then(|key| PackageReq::from_str(key))
-    //       {
-    //         if let Ok(value) = value
-    //           .strip_prefix("deno:")
-    //           .and_then(|value| PackageNv::from_str(value))
-    //         {
-    //           graph.deno_specifiers.add(key, value);
-    //         }
-    //       }
-    //     }
-    //   }
-    // }
+    // add the jsr specifiers to the graph if it's the first time executing
+    if graph.packages.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let lockfile = lockfile.lock();
+        for (key, value) in &lockfile.content.packages.specifiers {
+          if let Some(key) = key
+            .strip_prefix("jsr:")
+            .and_then(|key| PackageReq::from_str(key).ok())
+          {
+            if let Some(value) = value
+              .strip_prefix("jsr:")
+              .and_then(|value| PackageNv::from_str(value).ok())
+            {
+              graph.packages.add(key, value);
+            }
+          }
+        }
+      }
+    }
 
     graph.build(roots, loader, options).await;
 
@@ -378,20 +377,19 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // todo(dsherret): uncomment when adding support for deno specifiers
-    // add the deno specifiers in the graph to the lockfile
-    // if !graph.deno_specifiers.is_empty() {
-    //   if let Some(lockfile) = &self.lockfile {
-    //     let mappings = graph.deno_specifiers.mappings();
-    //     let mut lockfile = lockfile.lock();
-    //     for (from, to) in mappings {
-    //       lockfile.insert_package_specifier(
-    //         format!("deno:{}", from),
-    //         format!("deno:{}", to),
-    //       );
-    //     }
-    //   }
-    // }
+    // add the jsr specifiers in the graph to the lockfile
+    if !graph.packages.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let mappings = graph.packages.mappings();
+        let mut lockfile = lockfile.lock();
+        for (from, to) in mappings {
+          lockfile.insert_package_specifier(
+            format!("jsr:{}", from),
+            format!("jsr:{}", to),
+          );
+        }
+      }
+    }
 
     // ensure that the top level package.json is installed if a
     // specifier was matched in the package.json

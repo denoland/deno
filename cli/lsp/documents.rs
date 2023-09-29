@@ -2,6 +2,7 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
+use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -41,7 +42,6 @@ use deno_graph::Resolution;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -803,7 +803,8 @@ impl FileSystemDocuments {
 }
 
 pub struct UpdateDocumentConfigOptions<'a> {
-  pub enabled_urls: Vec<Url>,
+  pub enabled_paths: Vec<PathBuf>,
+  pub disabled_paths: Vec<PathBuf>,
   pub document_preload_limit: usize,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
@@ -1088,7 +1089,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_node_resolver: Option<&Arc<NodeResolver>>,
+    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1097,11 +1098,12 @@ impl Documents {
     };
     let mut results = Vec::new();
     for specifier in specifiers {
-      if let Some(node_resolver) = maybe_node_resolver {
-        if node_resolver.in_npm_package(referrer) {
+      if let Some(npm) = maybe_npm {
+        if npm.node_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
-            node_resolver
+            npm
+              .node_resolver
               .resolve(
                 &specifier,
                 referrer,
@@ -1125,9 +1127,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm));
         } else {
           results.push(None);
         }
@@ -1135,12 +1137,11 @@ impl Documents {
         .resolve_imports_dependency(&specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+        results.push(self.resolve_dependency(specifier, maybe_npm));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(&specifier)
       {
-        results
-          .push(node_resolve_npm_req_ref(npm_req_ref, maybe_node_resolver));
+        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm));
       } else {
         results.push(None);
       }
@@ -1182,7 +1183,7 @@ impl Documents {
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     fn calculate_resolver_config_hash(
-      enabled_urls: &[Url],
+      enabled_paths: &[PathBuf],
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
@@ -1193,9 +1194,9 @@ impl Documents {
       hasher.write_hashable(document_preload_limit);
       hasher.write_hashable(&{
         // ensure these are sorted so the hashing is deterministic
-        let mut enabled_urls = enabled_urls.to_vec();
-        enabled_urls.sort_unstable();
-        enabled_urls
+        let mut enabled_paths = enabled_paths.to_vec();
+        enabled_paths.sort_unstable();
+        enabled_paths
       });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
@@ -1232,7 +1233,7 @@ impl Documents {
       .maybe_config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &options.enabled_urls,
+      &options.enabled_paths,
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
@@ -1277,20 +1278,8 @@ impl Documents {
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
       self.refresh_dependencies(
-        options
-          .enabled_urls
-          .iter()
-          .filter_map(|url| specifier_to_file_path(url).ok())
-          .collect(),
-        options
-          .maybe_config_file
-          .and_then(|cf| {
-            cf.to_files_config()
-              .ok()
-              .flatten()
-              .map(|files| files.exclude)
-          })
-          .unwrap_or_default(),
+        options.enabled_paths,
+        options.disabled_paths,
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
@@ -1486,7 +1475,7 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_node_resolver: Option<&Arc<NodeResolver>>,
+    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
       if deno_node::is_builtin_node_module(module_name) {
@@ -1498,7 +1487,7 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1507,7 +1496,7 @@ impl Documents {
     if let Some(specifier) =
       maybe_types_dependency.and_then(|d| d.maybe_specifier())
     {
-      self.resolve_dependency(specifier, maybe_node_resolver)
+      self.resolve_dependency(specifier, maybe_npm)
     } else {
       let media_type = doc.media_type();
       Some((doc.specifier().clone(), media_type))
@@ -1530,18 +1519,26 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_node_resolver: Option<&Arc<NodeResolver>>,
+  maybe_npm: Option<&StateNpmSnapshot>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  maybe_node_resolver.map(|node_resolver| {
+  maybe_npm.map(|npm| {
     NodeResolution::into_specifier_and_media_type(
-      node_resolver
-        .resolve_npm_req_reference(
-          &npm_req_ref,
-          NodeResolutionMode::Types,
-          &PermissionsContainer::allow_all(),
-        )
+      npm
+        .npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req())
         .ok()
-        .flatten(),
+        .and_then(|package_folder| {
+          npm
+            .node_resolver
+            .resolve_npm_reference(
+              &package_folder,
+              npm_req_ref.sub_path(),
+              NodeResolutionMode::Types,
+              &PermissionsContainer::allow_all(),
+            )
+            .ok()
+            .flatten()
+        }),
     )
   })
 }
@@ -1713,14 +1710,18 @@ impl PreloadDocumentFinder {
     // initialize the finder with the initial paths
     let mut dirs = Vec::with_capacity(options.enabled_paths.len());
     for path in options.enabled_paths {
-      if path.is_dir() {
-        if is_allowed_root_dir(&path) {
-          dirs.push(path);
+      if !finder.disabled_paths.contains(&path)
+        && !finder.disabled_globs.matches_path(&path)
+      {
+        if path.is_dir() {
+          if is_allowed_root_dir(&path) {
+            dirs.push(path);
+          }
+        } else {
+          finder
+            .pending_entries
+            .push_back(PendingEntry::SpecifiedRootFile(path));
         }
-      } else {
-        finder
-          .pending_entries
-          .push_back(PendingEntry::SpecifiedRootFile(path));
       }
     }
     for dir in sort_and_remove_non_leaf_dirs(dirs) {
@@ -2031,7 +2032,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_urls: vec![],
+        enabled_paths: vec![],
+        disabled_paths: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2072,7 +2074,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_urls: vec![],
+        enabled_paths: vec![],
+        disabled_paths: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,

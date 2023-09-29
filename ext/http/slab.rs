@@ -10,6 +10,7 @@ use http::HeaderMap;
 use hyper1::body::Incoming;
 use hyper1::upgrade::OnUpgrade;
 
+use scopeguard::defer;
 use slab::Slab;
 use std::cell::RefCell;
 use std::cell::RefMut;
@@ -46,8 +47,31 @@ impl HttpRequestBodyAutocloser {
 
 impl Drop for HttpRequestBodyAutocloser {
   fn drop(&mut self) {
-    _ = self.1.borrow_mut().resource_table.close(self.0);
+    if let Ok(res) = self.1.borrow_mut().resource_table.take_any(self.0) {
+      res.close();
+    }
   }
+}
+
+pub async fn new_slab_future(
+  request: Request,
+  request_info: HttpConnectionProperties,
+  refcount: RefCount,
+  tx: tokio::sync::mpsc::Sender<SlabId>,
+) -> Result<Response, hyper::Error> {
+  let index = slab_insert(request, request_info, refcount);
+  defer! {
+    slab_drop(index);
+  }
+  let rx = slab_get(index).promise();
+  if tx.send(index).await.is_ok() {
+    http_trace!(index, "SlabFuture await");
+    // We only need to wait for completion if we aren't closed
+    rx.await;
+    http_trace!(index, "SlabFuture complete");
+  }
+  let response = slab_get(index).take_response();
+  Ok(response)
 }
 
 pub struct HttpSlabRecord {

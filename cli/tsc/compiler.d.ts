@@ -116,6 +116,7 @@ declare global {
     method: "getApplicableRefactors";
     specifier: string;
     range: ts.TextRange;
+    preferences?: ts.UserPreferences;
     kind: string;
   }
 
@@ -126,12 +127,13 @@ declare global {
     range: ts.TextRange;
     refactorName: string;
     actionName: string;
+    preferences?: ts.UserPreferences;
   }
 
   interface GetEditsForFileRename extends BaseLanguageServerRequest {
     method: "getEditsForFileRename";
-    old_specifier: string;
-    new_specifier: string;
+    oldSpecifier: string;
+    newSpecifier: string;
     formatCodeSettings: ts.FormatCodeSettings;
     preferences?: ts.UserPreferences;
   }
@@ -143,6 +145,7 @@ declare global {
     endPosition: number;
     errorCodes: string[];
     formatCodeSettings: ts.FormatCodeSettings;
+    preferences: ts.UserPreferences;
   }
 
   interface GetCombinedCodeFix extends BaseLanguageServerRequest {
@@ -151,6 +154,7 @@ declare global {
     // deno-lint-ignore ban-types
     fixId: {};
     formatCodeSettings: ts.FormatCodeSettings;
+    preferences: ts.UserPreferences;
   }
 
   interface GetCompletionDetails extends BaseLanguageServerRequest {
