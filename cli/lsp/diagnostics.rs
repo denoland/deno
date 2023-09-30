@@ -16,8 +16,6 @@ use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 
 use crate::args::LintOptions;
-use crate::graph_util;
-use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::tools::lint::get_configured_rules;
 
@@ -986,25 +984,15 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
-      Self::ResolutionError(err) => {
-        if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
-          "import-node-prefix-missing"
-        } else {
-          match err {
-            ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
-            ResolutionError::InvalidLocalImport { .. } => {
-              "invalid-local-import"
-            }
-            ResolutionError::InvalidSpecifier { error, .. } => match error {
-              SpecifierError::ImportPrefixMissing(_, _) => {
-                "import-prefix-missing"
-              }
-              SpecifierError::InvalidUrl(_) => "invalid-url",
-            },
-            ResolutionError::ResolverError { .. } => "resolver-error",
-          }
-        }
-      }
+      Self::ResolutionError(err) => match err {
+        ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+        ResolutionError::InvalidLocalImport { .. } => "invalid-local-import",
+        ResolutionError::InvalidSpecifier { error, .. } => match error {
+          SpecifierError::ImportPrefixMissing(_, _) => "import-prefix-missing",
+          SpecifierError::InvalidUrl(_) => "invalid-url",
+        },
+        ResolutionError::ResolverError { .. } => "resolver-error",
+      },
       Self::InvalidNodeSpecifier(_) => "resolver-error",
       Self::BareNodeSpecifier(_) => "import-node-prefix-missing",
     }
@@ -1171,12 +1159,7 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: {specifier}\n  Please check the file path."), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
-      Self::ResolutionError(err) => (
-        lsp::DiagnosticSeverity::ERROR,
-        enhanced_resolution_error_message(err),
-        graph_util::get_resolution_error_bare_node_specifier(err)
-          .map(|specifier| json!({ "specifier": specifier }))
-      ),
+      Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, format!("{err}"), None),
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
       Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
     };
@@ -1256,7 +1239,8 @@ fn diagnose_resolution(
           diagnostics
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if module_name == dependency_key {
-          diagnostics.push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
+          diagnostics
+            .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
