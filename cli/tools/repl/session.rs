@@ -562,27 +562,26 @@ impl ReplSession {
     &mut self,
     parsed_source: &ParsedSource,
   ) -> Result<String, AnyError> {
-    let maybe_jsx_import_source = analyze_jsx_import_source(&parsed_source);
-    let maybe_jsx = analyze_jsx(&parsed_source);
-    let maybe_jsx_frag = analyze_jsx_frag(&parsed_source);
+    let Some(analyzed_pragmas) = analyze_jsx_pragmas(parsed_source) else {
+      return Ok(String::new());
+    };
 
-    if maybe_jsx_import_source.is_some()
-      || maybe_jsx.is_some()
-      || maybe_jsx_frag.is_some()
-    {
-      if let Some(jsx) = maybe_jsx {
-        self.jsx.factory = jsx.text;
-      }
-      if let Some(jsx_frag) = maybe_jsx_frag {
-        self.jsx.frag_factory = jsx_frag.text;
-      }
-      if let Some(jsx_import_source) = maybe_jsx_import_source {
-        self.jsx.import_source = Some(jsx_import_source.text);
-      }
+    if analyzed_pragmas.has_any() {
+      return Ok(String::new());
+    }
 
-      if let Some(code) = build_auto_jsx_eval_code(&self.jsx) {
-        return Ok(code);
-      }
+    if let Some(jsx) = analyzed_pragmas.jsx {
+      self.jsx.factory = jsx.text;
+    }
+    if let Some(jsx_frag) = analyzed_pragmas.jsx_fragment {
+      self.jsx.frag_factory = jsx_frag.text;
+    }
+    if let Some(jsx_import_source) = analyzed_pragmas.jsx_import_source {
+      self.jsx.import_source = Some(jsx_import_source.text);
+    }
+
+    if let Some(code) = build_auto_jsx_eval_code(&self.jsx) {
+      return Ok(code);
     }
 
     Ok(String::new())
@@ -662,7 +661,7 @@ fn build_auto_jsx_eval_code(jsx: &ReplJsxState) -> Option<String> {
   fn import_code(factory: &str, import_source: &str) -> String {
     let mut code = String::new();
 
-    if let Some((obj, _)) = factory.split_once(".") {
+    if let Some((obj, _)) = factory.split_once('.') {
       code.push_str(&format!("var {} = ", obj));
     } else {
       code.push_str(&format!("var {{ {} }} = ", factory));
@@ -758,86 +757,95 @@ fn parse_source_as(
 
 /// Matches the `@jsxImportSource` pragma.
 static JSX_IMPORT_SOURCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^[\s*]*@jsxImportSource\s+(\S+)"#).unwrap());
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxImportSource\s+(\S+)").unwrap());
 /// Matches the `@jsx` pragma.
 static JSX_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^[\s*]*@jsx\s+(\S+)"#).unwrap());
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsx\s+(\S+)").unwrap());
 /// Matches the `@jsxFrag` pragma.
 static JSX_FRAG_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^[\s*]*@jsxFrag\s+(\S+)"#).unwrap());
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxFrag\s+(\S+)").unwrap());
 
-fn analyze_jsx_import_source(
-  parsed_source: &ParsedSource,
-) -> Option<SpecifierWithRange> {
-  match parsed_source.media_type() {
-    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx => {
-      parsed_source.get_leading_comments().iter().find_map(|c| {
-        if c.kind != CommentKind::Block {
-          return None; // invalid
-        }
-        let captures = JSX_IMPORT_SOURCE_RE.captures(&c.text)?;
-        let m = captures.get(1)?;
-        Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info(),
-            true,
-          ),
-        })
-      })
-    }
-    _ => None,
+#[derive(Default, Debug)]
+struct AnalyzedJsxPragmas {
+  /// Information about `@jsxImportSource` pragma.
+  jsx_import_source: Option<SpecifierWithRange>,
+
+  /// Matches the `@jsx` pragma.
+  jsx: Option<SpecifierWithRange>,
+
+  /// Matches the `@jsxFrag` pragma.
+  jsx_fragment: Option<SpecifierWithRange>,
+}
+
+impl AnalyzedJsxPragmas {
+  fn has_any(&self) -> bool {
+    self.jsx_import_source.is_some()
+      || self.jsx.is_some()
+      || self.jsx_fragment.is_some()
   }
 }
 
-fn analyze_jsx(parsed_source: &ParsedSource) -> Option<SpecifierWithRange> {
-  match parsed_source.media_type() {
-    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx => {
-      parsed_source.get_leading_comments().iter().find_map(|c| {
-        if c.kind != CommentKind::Block {
-          return None; // invalid
-        }
-        let captures = JSX_RE.captures(&c.text)?;
-        let m = captures.get(1)?;
-        Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info(),
-            true,
-          ),
-        })
-      })
-    }
-    _ => None,
-  }
-}
-
-fn analyze_jsx_frag(
+/// Analyze provided source and return information about carious pragmas
+/// used to configure the JSX tranforms.
+fn analyze_jsx_pragmas(
   parsed_source: &ParsedSource,
-) -> Option<SpecifierWithRange> {
-  match parsed_source.media_type() {
-    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx => {
-      parsed_source.get_leading_comments().iter().find_map(|c| {
-        if c.kind != CommentKind::Block {
-          return None; // invalid
-        }
-        let captures = JSX_FRAG_RE.captures(&c.text)?;
-        let m = captures.get(1)?;
-        Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info(),
-            true,
-          ),
-        })
+) -> Option<AnalyzedJsxPragmas> {
+  if !matches!(
+    parsed_source.media_type(),
+    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx
+  ) {
+    return None;
+  }
+
+  let mut analyzed_pragmas = AnalyzedJsxPragmas::default();
+
+  for c in parsed_source.get_leading_comments().iter() {
+    if c.kind != CommentKind::Block {
+      continue; // invalid
+    }
+
+    {
+      let captures = JSX_IMPORT_SOURCE_RE.captures(&c.text)?;
+      let m = captures.get(1)?;
+      analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info(),
+          true,
+        ),
       })
     }
-    _ => None,
+
+    {
+      let captures = JSX_RE.captures(&c.text)?;
+      let m = captures.get(1)?;
+      analyzed_pragmas.jsx = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info(),
+          true,
+        ),
+      })
+    }
+
+    {
+      let captures = JSX_FRAG_RE.captures(&c.text)?;
+      let m = captures.get(1)?;
+      analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info(),
+          true,
+        ),
+      });
+    }
   }
+
+  Some(analyzed_pragmas)
 }
