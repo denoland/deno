@@ -125,6 +125,9 @@ const platform = os.platform();
 is.string(platform);
 assert.ok(platform.length > 0);
 
+const availableParallelism = os.availableParallelism();
+assert.ok(availableParallelism === navigator.hardwareConcurrency);
+
 const arch = os.arch();
 is.string(arch);
 assert.ok(arch.length > 0);
