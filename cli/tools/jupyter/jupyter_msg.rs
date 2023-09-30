@@ -206,6 +206,14 @@ impl JupyterMessage {
     self
   }
 
+  pub(crate) fn with_metadata(
+    mut self,
+    metadata: serde_json::Value,
+  ) -> JupyterMessage {
+    self.metadata = metadata;
+    self
+  }
+
   pub(crate) async fn send<S: zeromq::SocketSend>(
     &self,
     connection: &mut Connection<S>,

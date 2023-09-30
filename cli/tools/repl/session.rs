@@ -162,7 +162,7 @@ struct ReplJsxState {
 }
 
 pub struct ReplSession {
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   resolver: Arc<CliGraphResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
@@ -176,7 +176,7 @@ pub struct ReplSession {
 impl ReplSession {
   pub async fn initialize(
     cli_options: &CliOptions,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     resolver: Arc<CliGraphResolver>,
     mut worker: MainWorker,
   ) -> Result<Self, AnyError> {
@@ -591,6 +591,10 @@ impl ReplSession {
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
+    let Some(npm_resolver) = self.npm_resolver.as_managed() else {
+      return Ok(()); // don't auto-install for byonm
+    };
+
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
@@ -614,14 +618,11 @@ impl ReplSession {
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      self.npm_resolver.add_package_reqs(&npm_imports).await?;
+      npm_resolver.add_package_reqs(&npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
-        self
-          .npm_resolver
-          .inject_synthetic_types_node_package()
-          .await?;
+        npm_resolver.inject_synthetic_types_node_package().await?;
       }
     }
     Ok(())

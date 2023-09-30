@@ -42,6 +42,8 @@ pub async fn start() -> Result<(), AnyError> {
   let builder = LspService::build(|client| {
     language_server::LanguageServer::new(client::Client::from_tower(client))
   })
+  // TODO(nayeemrmn): The extension has replaced this with the `deno.cache`
+  // command as of vscode_deno 3.21.0 / 2023.09.05. Remove this eventually.
   .custom_method(lsp_custom::CACHE_REQUEST, LanguageServer::cache_request)
   .custom_method(
     lsp_custom::PERFORMANCE_REQUEST,
@@ -60,8 +62,7 @@ pub async fn start() -> Result<(), AnyError> {
   .custom_method(
     lsp_custom::VIRTUAL_TEXT_DOCUMENT,
     LanguageServer::virtual_text_document,
-  )
-  .custom_method(lsp_custom::INLAY_HINT, LanguageServer::inlay_hint);
+  );
 
   let builder = if should_send_diagnostic_batch_index_notifications() {
     builder.custom_method(

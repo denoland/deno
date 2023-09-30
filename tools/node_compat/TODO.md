@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2934
+Total: 2926
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -1218,14 +1218,6 @@ Total: 2934
 - [parallel/test-http-upgrade-reconsume-stream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-upgrade-reconsume-stream.js)
 - [parallel/test-http-upgrade-server.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-upgrade-server.js)
 - [parallel/test-http-upgrade-server2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-upgrade-server2.js)
-- [parallel/test-http-url.parse-auth-with-header-in-request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-auth-with-header-in-request.js)
-- [parallel/test-http-url.parse-auth.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-auth.js)
-- [parallel/test-http-url.parse-basic.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-basic.js)
-- [parallel/test-http-url.parse-https.request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-https.request.js)
-- [parallel/test-http-url.parse-only-support-http-https-protocol.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-only-support-http-https-protocol.js)
-- [parallel/test-http-url.parse-path.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-path.js)
-- [parallel/test-http-url.parse-post.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-post.js)
-- [parallel/test-http-url.parse-search.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-search.js)
 - [parallel/test-http-wget.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-wget.js)
 - [parallel/test-http-writable-true-after-close.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-writable-true-after-close.js)
 - [parallel/test-http-write-callbacks.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-write-callbacks.js)

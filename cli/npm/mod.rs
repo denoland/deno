@@ -14,5 +14,7 @@ pub use registry::CliNpmRegistryApi;
 pub use resolution::NpmResolution;
 pub use resolvers::create_npm_fs_resolver;
 pub use resolvers::CliNpmResolver;
+pub use resolvers::InnerCliNpmResolverRef;
+pub use resolvers::ManagedCliNpmResolver;
 pub use resolvers::NpmPackageFsResolver;
 pub use resolvers::NpmProcessState;

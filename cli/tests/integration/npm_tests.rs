@@ -2155,8 +2155,11 @@ fn top_level_install_package_json_explicit_opt_in() {
     }
   }));
   client.write_request(
-    "deno/cache",
-    json!({ "referrer": { "uri": file_uri }, "uris": [] }),
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file_uri],
+    }),
   );
 
   assert!(node_modules_dir.join("@denotest").exists());
