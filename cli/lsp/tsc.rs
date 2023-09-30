@@ -1442,7 +1442,7 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -1549,7 +1549,7 @@ pub struct NavigateToItem {
 }
 
 impl NavigateToItem {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -1810,7 +1810,7 @@ pub struct ImplementationLocation {
 }
 
 impl ImplementationLocation {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -1857,7 +1857,7 @@ pub struct RenameLocation {
 }
 
 impl RenameLocation {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -1955,7 +1955,7 @@ pub struct DefinitionInfo {
 }
 
 impl DefinitionInfo {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -1972,7 +1972,7 @@ pub struct DefinitionInfoAndBoundSpan {
 }
 
 impl DefinitionInfoAndBoundSpan {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2068,7 +2068,7 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2355,7 +2355,7 @@ pub struct RefactorEditInfo {
 }
 
 impl RefactorEditInfo {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2383,7 +2383,7 @@ pub struct CodeAction {
 }
 
 impl CodeAction {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2416,7 +2416,7 @@ pub struct CodeFixAction {
 }
 
 impl CodeFixAction {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2435,7 +2435,7 @@ pub struct CombinedCodeActions {
 }
 
 impl CombinedCodeActions {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2454,7 +2454,7 @@ pub struct ReferencedSymbol {
 }
 
 impl ReferencedSymbol {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2474,7 +2474,7 @@ pub struct ReferencedSymbolDefinitionInfo {
 }
 
 impl ReferencedSymbolDefinitionInfo {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2493,7 +2493,7 @@ pub struct ReferencedSymbolEntry {
 }
 
 impl ReferencedSymbolEntry {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2512,7 +2512,7 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2554,7 +2554,7 @@ pub struct CallHierarchyItem {
 }
 
 impl CallHierarchyItem {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2661,7 +2661,7 @@ pub struct CallHierarchyIncomingCall {
 }
 
 impl CallHierarchyIncomingCall {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2701,7 +2701,7 @@ pub struct CallHierarchyOutgoingCall {
 }
 
 impl CallHierarchyOutgoingCall {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
@@ -2861,7 +2861,7 @@ pub struct CompletionEntryDetails {
 }
 
 impl CompletionEntryDetails {
-  pub fn normalize(
+  fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
