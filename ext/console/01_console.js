@@ -931,7 +931,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
       // Preact JSX
       if (
-        constructor === undefined && value !== null && typeof value === "object"
+        value.constructor === undefined && value !== null &&
+        typeof value === "object" && "__k" in value
       ) {
         return serialize(ctx, preactAdapter, value, ctx.indentationLvl, 10);
       }
