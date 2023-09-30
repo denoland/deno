@@ -103,6 +103,9 @@ export function arch(): string {
 }
 
 // deno-lint-ignore no-explicit-any
+(availableParallelism as any)[Symbol.toPrimitive] = (): number =>
+  availableParallelism();
+// deno-lint-ignore no-explicit-any
 (arch as any)[Symbol.toPrimitive] = (): string => process.arch;
 // deno-lint-ignore no-explicit-any
 (endianness as any)[Symbol.toPrimitive] = (): string => endianness();
@@ -354,10 +357,16 @@ export function userInfo(
   };
 }
 
+/* Returns an estimate of the default amount of parallelism a program should use. */
+export function availableParallelism(): number {
+  return navigator.hardwareConcurrency;
+}
+
 export const EOL = isWindows ? "\r\n" : "\n";
 export const devNull = isWindows ? "\\\\.\\nul" : "/dev/null";
 
 export default {
+  availableParallelism,
   arch,
   cpus,
   endianness,
