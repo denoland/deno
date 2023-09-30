@@ -12,7 +12,6 @@ use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
-use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
@@ -22,9 +21,7 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
-use crate::npm::CliNpmRegistryApi;
-use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
+use crate::npm::CliNpmResolver;
 use crate::util::sync::AtomicFlag;
 
 /// Result of checking if a specifier is mapped via
@@ -104,53 +101,20 @@ pub struct CliGraphResolver {
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
-  no_npm: bool,
-  npm_registry_api: Arc<CliNpmRegistryApi>,
-  npm_resolution: Arc<NpmResolution>,
-  package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
+  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
-}
-
-impl Default for CliGraphResolver {
-  fn default() -> Self {
-    // This is not ideal, but necessary for the LSP. In the future, we should
-    // refactor the LSP and force this to be initialized.
-    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
-    let npm_resolution = Arc::new(NpmResolution::from_serialized(
-      npm_registry_api.clone(),
-      None,
-      None,
-    ));
-    Self {
-      mapped_specifier_resolver: MappedSpecifierResolver {
-        maybe_import_map: Default::default(),
-        package_json_deps_provider: Default::default(),
-      },
-      maybe_default_jsx_import_source: None,
-      maybe_jsx_import_source_module: None,
-      maybe_vendor_specifier: None,
-      no_npm: false,
-      npm_registry_api,
-      npm_resolution,
-      package_json_deps_installer: Default::default(),
-      found_package_json_dep_flag: Default::default(),
-    }
-  }
 }
 
 pub struct CliGraphResolverOptions<'a> {
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
-  pub no_npm: bool,
 }
 
 impl CliGraphResolver {
   pub fn new(
-    npm_registry_api: Arc<CliNpmRegistryApi>,
-    npm_resolution: Arc<NpmResolution>,
+    npm_resolver: Option<Arc<dyn CliNpmResolver>>,
     package_json_deps_provider: Arc<PackageJsonDepsProvider>,
-    package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
     options: CliGraphResolverOptions,
   ) -> Self {
     Self {
@@ -168,10 +132,7 @@ impl CliGraphResolver {
       maybe_vendor_specifier: options
         .maybe_vendor_dir
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
-      no_npm: options.no_npm,
-      npm_registry_api,
-      npm_resolution,
-      package_json_deps_installer,
+      npm_resolver,
       found_package_json_dep_flag: Default::default(),
     }
   }
@@ -184,22 +145,8 @@ impl CliGraphResolver {
     self
   }
 
-  pub async fn force_top_level_package_json_install(
-    &self,
-  ) -> Result<(), AnyError> {
-    self
-      .package_json_deps_installer
-      .ensure_top_level_install()
-      .await
-  }
-
-  pub async fn top_level_package_json_install_if_necessary(
-    &self,
-  ) -> Result<(), AnyError> {
-    if self.found_package_json_dep_flag.is_raised() {
-      self.force_top_level_package_json_install().await?;
-    }
-    Ok(())
+  pub fn found_package_json_dep(&self) -> bool {
+    self.found_package_json_dep_flag.is_raised()
   }
 }
 
@@ -308,43 +255,33 @@ impl NpmResolver for CliGraphResolver {
     &self,
     package_name: &str,
   ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
-    if self.no_npm {
-      // return it succeeded and error at the import site below
-      return Box::pin(future::ready(Ok(())));
+    match &self.npm_resolver {
+      Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
+        let package_name = package_name.to_string();
+        let npm_resolver = npm_resolver.clone();
+        async move {
+          if let Some(managed) = npm_resolver.as_managed() {
+            managed.cache_package_info(&package_name).await?;
+          }
+          Ok(())
+        }
+        .boxed()
+      }
+      _ => {
+        // return it succeeded and error at the import site below
+        Box::pin(future::ready(Ok(())))
+      }
     }
-    // this will internally cache the package information
-    let package_name = package_name.to_string();
-    let api = self.npm_registry_api.clone();
-    async move {
-      api
-        .package_info(&package_name)
-        .await
-        .map(|_| ())
-        .map_err(|err| err.into())
-    }
-    .boxed()
   }
 
   fn resolve_npm(&self, package_req: &PackageReq) -> NpmPackageReqResolution {
-    if self.no_npm {
-      return NpmPackageReqResolution::Err(anyhow!(
-        "npm specifiers were requested; but --no-npm is specified"
-      ));
-    }
-
-    let result = self
-      .npm_resolution
-      .resolve_package_req_as_pending(package_req);
-    match result {
-      Ok(nv) => NpmPackageReqResolution::Ok(nv),
-      Err(err) => {
-        if self.npm_registry_api.mark_force_reload() {
-          log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
-          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
-        } else {
-          NpmPackageReqResolution::Err(err.into())
-        }
+    match &self.npm_resolver {
+      Some(npm_resolver) => {
+        npm_resolver.resolve_npm_for_deno_graph(package_req)
       }
+      None => NpmPackageReqResolution::Err(anyhow!(
+        "npm specifiers were requested; but --no-npm is specified"
+      )),
     }
   }
 }

@@ -164,7 +164,7 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
   resolver: Arc<CliGraphResolver>,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -179,7 +179,7 @@ impl ModuleGraphBuilder {
   pub fn new(
     options: Arc<CliOptions>,
     resolver: Arc<CliGraphResolver>,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -238,11 +238,10 @@ impl ModuleGraphBuilder {
       )
       .await?;
 
-    if graph.has_node_specifier && self.options.type_check_mode().is_true() {
-      self
-        .npm_resolver
-        .inject_synthetic_types_node_package()
-        .await?;
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+      if graph.has_node_specifier && self.options.type_check_mode().is_true() {
+        npm_resolver.inject_synthetic_types_node_package().await?;
+      }
     }
 
     Ok(graph)
@@ -316,7 +315,9 @@ impl ModuleGraphBuilder {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if self.options.node_modules_dir_enablement() == Some(true) {
-      self.resolver.force_top_level_package_json_install().await?;
+      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+        npm_resolver.ensure_top_level_package_json_install().await?;
+      }
     }
 
     // add the lockfile redirects to the graph if it's the first time executing
@@ -384,16 +385,17 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // ensure that the top level package.json is installed if a
-    // specifier was matched in the package.json
-    self
-      .resolver
-      .top_level_package_json_install_if_necessary()
-      .await?;
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+      // ensure that the top level package.json is installed if a
+      // specifier was matched in the package.json
+      if self.resolver.found_package_json_dep() {
+        npm_resolver.ensure_top_level_package_json_install().await?;
+      }
 
-    // resolve the dependencies of any pending dependencies
-    // that were inserted by building the graph
-    self.npm_resolver.resolve_pending().await?;
+      // resolve the dependencies of any pending dependencies
+      // that were inserted by building the graph
+      npm_resolver.resolve_pending().await?;
+    }
 
     Ok(())
   }
