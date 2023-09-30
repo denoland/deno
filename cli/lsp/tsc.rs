@@ -149,7 +149,7 @@ pub struct TsServer {
 
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
-    let specifier_map = Arc::new(TscSpecifierMap::default());
+    let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
@@ -1457,7 +1457,7 @@ impl DocumentSpan {
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    let target_specifier = normalize_specifier(&self.file_name).ok()?;
+    let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
@@ -1502,7 +1502,7 @@ impl DocumentSpan {
     &self,
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
-    let specifier = normalize_specifier(&self.file_name).ok()?;
+    let specifier = resolve_url(&self.file_name).ok()?;
     let asset_or_doc =
       language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
@@ -1563,7 +1563,7 @@ impl NavigateToItem {
     &self,
     language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
-    let specifier = normalize_specifier(&self.file_name).ok()?;
+    let specifier = resolve_url(&self.file_name).ok()?;
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
@@ -1823,7 +1823,7 @@ impl ImplementationLocation {
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> lsp::Location {
-    let specifier = normalize_specifier(&self.document_span.file_name)
+    let specifier = resolve_url(&self.document_span.file_name)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
     let uri = language_server
       .url_map
@@ -1881,7 +1881,7 @@ impl RenameLocations {
       lsp::TextDocumentEdit,
     > = HashMap::new();
     for location in self.locations.iter() {
-      let specifier = normalize_specifier(&location.document_span.file_name)?;
+      let specifier = resolve_url(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
@@ -2080,7 +2080,7 @@ impl FileTextChanges {
     &self,
     language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
-    let specifier = normalize_specifier(&self.file_name)?;
+    let specifier = resolve_url(&self.file_name)?;
     let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
     let edits = self
       .text_changes
@@ -2101,7 +2101,7 @@ impl FileTextChanges {
     language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
-    let specifier = normalize_specifier(&self.file_name)?;
+    let specifier = resolve_url(&self.file_name)?;
     let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
       Some(asset_or_doc)
@@ -2527,7 +2527,7 @@ impl ReferenceEntry {
     line_index: Arc<LineIndex>,
     url_map: &LspUrlMap,
   ) -> lsp::Location {
-    let specifier = normalize_specifier(&self.document_span.file_name)
+    let specifier = resolve_url(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = url_map
       .normalize_specifier(&specifier)
@@ -2567,7 +2567,7 @@ impl CallHierarchyItem {
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
-    let target_specifier = normalize_specifier(&self.file).ok()?;
+    let target_specifier = resolve_url(&self.file).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
 
@@ -2584,8 +2584,8 @@ impl CallHierarchyItem {
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
-    let target_specifier = normalize_specifier(&self.file)
-      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+    let target_specifier =
+      resolve_url(&self.file).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
@@ -2674,7 +2674,7 @@ impl CallHierarchyIncomingCall {
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
-    let target_specifier = normalize_specifier(&self.from.file).ok()?;
+    let target_specifier = resolve_url(&self.from.file).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
 
@@ -2715,7 +2715,7 @@ impl CallHierarchyOutgoingCall {
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let target_specifier = normalize_specifier(&self.to.file).ok()?;
+    let target_specifier = resolve_url(&self.to.file).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
 
@@ -2753,8 +2753,7 @@ fn parse_code_actions(
       let asset_or_doc =
         language_server.get_asset_or_document(&data.specifier)?;
       for change in &ts_action.changes {
-        let change_specifier = normalize_specifier(&change.file_name)?;
-        if data.specifier == change_specifier {
+        if data.specifier.as_str() == change.file_name {
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
@@ -2779,9 +2778,7 @@ fn parse_code_actions(
             .changes
             .clone()
             .into_iter()
-            .filter(|ch| {
-              normalize_specifier(&ch.file_name).unwrap() == data.specifier
-            })
+            .filter(|ch| ch.file_name == data.specifier.as_str())
             .collect();
           json!({
             "commands": ca.commands,
@@ -3211,9 +3208,7 @@ impl CompletionEntry {
         if let Ok(import_data) =
           serde_json::from_value::<CompletionEntryDataImport>(data.clone())
         {
-          if let Ok(import_specifier) =
-            normalize_specifier(import_data.file_name)
-          {
+          if let Ok(import_specifier) = resolve_url(&import_data.file_name) {
             if let Some(new_module_specifier) = language_server
               .get_ts_response_import_mapper()
               .check_specifier(&import_specifier, specifier)
@@ -3521,6 +3516,10 @@ pub struct TscSpecifierMap {
 }
 
 impl TscSpecifierMap {
+  pub fn new() -> Self {
+    Self::default()
+  }
+
   /// Convert the specifier to one compatible with tsc. Cache the resulting
   /// mapping in case it needs to be reversed.
   // TODO(nayeemrmn): Factor in out-of-band media type here.
@@ -3630,13 +3629,6 @@ impl State {
         .map(|d| d.script_version())
     }
   }
-}
-
-fn normalize_specifier<S: AsRef<str>>(
-  specifier: S,
-) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url(specifier.as_ref().replace(".d.ts.d.ts", ".d.ts").as_str())
-    .map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize, Serialize)]
