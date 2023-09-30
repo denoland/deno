@@ -35,6 +35,8 @@ import {
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob } from "ext:deno_web/09_file.js";
 
+const { core } = globalThis.__bootstrap;
+
 export { atob, Blob, btoa };
 
 const utf8Encoder = new TextEncoder();
@@ -2126,7 +2128,7 @@ export function readInt40BE(buf, offset = 0) {
 }
 
 export function byteLengthUtf8(str) {
-  return utf8Encoder.encode(str).length;
+  return core.byteLength(str);
 }
 
 function base64ByteLength(str, bytes) {
