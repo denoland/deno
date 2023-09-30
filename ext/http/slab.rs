@@ -348,26 +348,100 @@ impl SlabEntry {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::hyper_util_tokioio::TokioIo;
+  use crate::response_body::Compression;
+  use crate::response_body::ResponseBytesInner;
+  use bytes::Buf;
   use deno_net::raw::NetworkStreamType;
-  use http::Request;
+  use hyper1::body::Body;
+  use hyper1::service::service_fn;
+  use hyper1::service::HttpService;
+  use std::error::Error as StdError;
 
-  #[test]
-  fn test_slab() {
-    let req = Request::builder().body(()).unwrap();
-    let (parts, _) = req.into_parts();
-    let id = slab_insert_raw(
-      parts,
-      None,
-      HttpConnectionProperties {
-        peer_address: "".into(),
-        peer_port: None,
-        local_port: None,
-        stream_type: NetworkStreamType::Tcp,
+  /// Execute client request on service and concurrently map the response.
+  async fn serve_request<B, S, T, F>(
+    req: http::Request<B>,
+    service: S,
+    map_response: impl FnOnce(hyper1::Response<Incoming>) -> F,
+  ) -> hyper1::Result<T>
+  where
+    B: Body + Send + 'static, // Send bound due to DuplexStream
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    S: HttpService<Incoming>,
+    S::Error: Into<Box<dyn StdError + Send + Sync>>,
+    S::ResBody: 'static,
+    <S::ResBody as Body>::Error: Into<Box<dyn StdError + Send + Sync>>,
+    F: std::future::Future<Output = hyper1::Result<T>>,
+  {
+    use hyper1::client::conn::http1::handshake;
+    use hyper1::server::conn::http1::Builder;
+    let (stream_client, stream_server) = tokio::io::duplex(16 * 1024);
+    let conn_server =
+      Builder::new().serve_connection(TokioIo::new(stream_server), service);
+    let (mut sender, conn_client) =
+      handshake(TokioIo::new(stream_client)).await?;
+
+    let (res, _, _) = tokio::try_join!(
+      async move {
+        let res = sender.send_request(req).await?;
+        map_response(res).await
       },
-      RefCount::default(),
-    );
-    let entry = slab_get(id);
-    entry.complete();
-    slab_drop(id);
+      conn_server,
+      conn_client,
+    )?;
+    Ok(res)
+  }
+
+  #[tokio::test]
+  async fn test_slab() -> Result<(), AnyError> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    let refcount = RefCount::default();
+    let refcount_check = refcount.clone();
+    let request_info = HttpConnectionProperties {
+      peer_address: "".into(),
+      peer_port: None,
+      local_port: None,
+      stream_type: NetworkStreamType::Tcp,
+    };
+    let svc = service_fn(move |req: hyper1::Request<Incoming>| {
+      new_slab_future(req, request_info.clone(), refcount.clone(), tx.clone())
+    });
+
+    let client_req = http::Request::builder().uri("/").body("".to_string())?;
+
+    // Response produced by concurrent tasks
+    tokio::try_join!(
+      async move {
+        // JavaScript handler produces response
+        let id = rx.recv().await.unwrap();
+        println!("slab_id {}", id);
+        let mut http = slab_get(id);
+        let resource = http.take_resource();
+        http.response().body_mut().initialize(
+          ResponseBytesInner::from_vec(
+            Compression::None,
+            b"hello world".to_vec(),
+          ),
+          resource,
+        );
+        http.complete();
+        Ok(())
+      },
+      // Server connection executes service
+      async move {
+        serve_request(client_req, svc, |res| async {
+          // Client reads the response
+          use http_body_util::BodyExt;
+          assert_eq!(res.status(), 200);
+          let body = res.collect().await?.to_bytes();
+          assert_eq!(body.chunk(), b"hello world");
+          Ok(())
+        })
+        .await
+      },
+    )?;
+    assert_eq!(Rc::strong_count(&refcount_check.0), 1);
+    Ok(())
   }
 }
