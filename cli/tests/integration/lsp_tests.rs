@@ -6918,64 +6918,27 @@ fn lsp_completions_node_specifier() {
     .diagnostics
     .into_iter()
     .filter(|d| {
-      d.code
-        == Some(lsp::NumberOrString::String(
-          "import-node-prefix-missing".to_string(),
-        ))
+      d.code == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
     })
     .collect::<Vec<_>>();
 
-  // get the quick fixes
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "range": {
-        "start": { "line": 0, "character": 16 },
-        "end": { "line": 0, "character": 18 },
-      },
-      "context": {
-        "diagnostics": json!(diagnostics),
-        "only": ["quickfix"]
-      }
-    }),
-  );
   assert_eq!(
-    res,
-    json!([{
-      "title": "Update specifier to node:fs",
-      "kind": "quickfix",
-      "diagnostics": [
-        {
-          "range": {
-            "start": { "line": 0, "character": 15 },
-            "end": { "line": 0, "character": 19 }
-          },
-          "severity": 1,
-          "code": "import-node-prefix-missing",
-          "source": "deno",
-          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
-          "data": {
-            "specifier": "fs"
-          },
-        }
-      ],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [
-            {
-              "range": {
-                "start": { "line": 0, "character": 15 },
-                "end": { "line": 0, "character": 19 }
-              },
-              "newText": "\"node:fs\""
-            }
-          ]
-        }
+    json!(diagnostics),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 15 },
+          "end": { "line": 0, "character": 19 }
+        },
+        "severity": 1,
+        "code": "no-cache-npm",
+        "source": "deno",
+        "message": "Uncached or missing npm package: @types/node",
+        "data": {
+          "specifier": "npm:@types/node",
+        },
       }
-    }])
+    ])
   );
 
   // update to have node:fs import
