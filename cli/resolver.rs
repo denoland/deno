@@ -291,8 +291,17 @@ impl NpmResolver for CliGraphResolver {
     }
   }
 
-  fn on_resolve_bare_builtin_node_module(&self, module_name: &str) {
-    log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\". If you want to use a built-in Node module, add a \"node:\" prefix.")
+  fn on_resolve_bare_builtin_node_module(
+    &self,
+    module_name: &str,
+    range: &deno_graph::Range,
+  ) {
+    let deno_graph::Range {
+      start, specifier, ..
+    } = range;
+    let line = start.line + 1;
+    let column = start.character + 1;
+    log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
   }
 
   fn load_and_cache_npm_package_info(
