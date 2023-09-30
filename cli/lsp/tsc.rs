@@ -211,7 +211,8 @@ impl TsServer {
   ) -> Result<Option<Vec<ReferencedSymbol>>, LspError> {
     let req = TscRequest {
       method: "findReferences",
-      args: json!([self.specifier_map.denormalize(&specifier), position,]),
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self
       .request::<Option<Vec<ReferencedSymbol>>>(snapshot, req)
@@ -235,6 +236,7 @@ impl TsServer {
   ) -> Result<NavigationTree, AnyError> {
     let req = TscRequest {
       method: "getNavigationTree",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6235
       args: json!([self.specifier_map.denormalize(&specifier)]),
     };
     self.request(snapshot, req).await
@@ -274,7 +276,8 @@ impl TsServer {
   ) -> Result<Option<QuickInfo>, LspError> {
     let req = TscRequest {
       method: "getQuickInfoAtPosition",
-      args: json!([self.specifier_map.denormalize(&specifier), position,]),
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6214
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get quick info: {}", err);
@@ -296,6 +299,7 @@ impl TsServer {
     format_object.insert("indentStyle".to_string(), json!(1));
     let req = TscRequest {
       method: "getCodeFixesAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6257
       args: json!([
         self.specifier_map.denormalize(&specifier),
         range.start,
@@ -337,6 +341,7 @@ impl TsServer {
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
     let req = TscRequest {
       method: "getApplicableRefactors",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6274
       args: json!([
         self.specifier_map.denormalize(&specifier),
         { "pos": range.start, "end": range.end },
@@ -363,6 +368,7 @@ impl TsServer {
     format_object.insert("indentStyle".to_string(), json!(1));
     let req = TscRequest {
       method: "getCombinedCodeFix",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6258
       args: json!([
         {
           "type": "file",
@@ -408,6 +414,7 @@ impl TsServer {
       .insert("insertSpaceAfterCommaDelimiter".to_string(), json!(true));
     let req = TscRequest {
       method: "getEditsForRefactor",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6275
       args: json!([
         self.specifier_map.denormalize(&specifier),
         format_code_settings,
@@ -440,6 +447,7 @@ impl TsServer {
   ) -> Result<Vec<FileTextChanges>, LspError> {
     let req = TscRequest {
       method: "getEditsForFileRename",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6281
       args: json!([
         self.specifier_map.denormalize(&old_specifier),
         self.specifier_map.denormalize(&new_specifier),
@@ -471,6 +479,7 @@ impl TsServer {
   ) -> Result<Option<Vec<DocumentHighlights>>, LspError> {
     let req = TscRequest {
       method: "getDocumentHighlights",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6231
       args: json!([
         self.specifier_map.denormalize(&specifier),
         position,
@@ -494,6 +503,7 @@ impl TsServer {
   ) -> Result<Option<DefinitionInfoAndBoundSpan>, LspError> {
     let req = TscRequest {
       method: "getDefinitionAndBoundSpan",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6226
       args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self
@@ -519,6 +529,7 @@ impl TsServer {
   ) -> Result<Option<Vec<DefinitionInfo>>, LspError> {
     let req = TscRequest {
       method: "getTypeDefinitionAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6227
       args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self
@@ -546,6 +557,7 @@ impl TsServer {
   ) -> Option<CompletionInfo> {
     let req = TscRequest {
       method: "getCompletionsAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6193
       args: json!([
         self.specifier_map.denormalize(&specifier),
         position,
@@ -569,6 +581,7 @@ impl TsServer {
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
     let req = TscRequest {
       method: "getCompletionEntryDetails",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6205
       args: json!([
         self.specifier_map.denormalize(&args.specifier),
         args.position,
@@ -598,7 +611,8 @@ impl TsServer {
   ) -> Result<Option<Vec<ImplementationLocation>>, LspError> {
     let req = TscRequest {
       method: "getImplementationAtPosition",
-      args: json!([self.specifier_map.denormalize(&specifier), position,]),
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6228
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self
       .request::<Option<Vec<ImplementationLocation>>>(snapshot, req)
@@ -622,6 +636,7 @@ impl TsServer {
   ) -> Result<Vec<OutliningSpan>, LspError> {
     let req = TscRequest {
       method: "getOutliningSpans",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6240
       args: json!([self.specifier_map.denormalize(&specifier)]),
     };
     self.request(snapshot, req).await.map_err(|err| {
@@ -638,7 +653,8 @@ impl TsServer {
   ) -> Result<Vec<CallHierarchyIncomingCall>, LspError> {
     let req = TscRequest {
       method: "provideCallHierarchyIncomingCalls",
-      args: json!([self.specifier_map.denormalize(&specifier), position,]),
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6237
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self
       .request::<Vec<CallHierarchyIncomingCall>>(snapshot, req)
@@ -663,7 +679,8 @@ impl TsServer {
   ) -> Result<Vec<CallHierarchyOutgoingCall>, LspError> {
     let req = TscRequest {
       method: "provideCallHierarchyOutgoingCalls",
-      args: json!([self.specifier_map.denormalize(&specifier), position,]),
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6238
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self
       .request::<Vec<CallHierarchyOutgoingCall>>(snapshot, req)
@@ -688,6 +705,7 @@ impl TsServer {
   ) -> Result<Option<OneOrMany<CallHierarchyItem>>, LspError> {
     let req = TscRequest {
       method: "prepareCallHierarchy",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6236
       args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self
@@ -721,6 +739,7 @@ impl TsServer {
   ) -> Result<Option<Vec<RenameLocation>>, LspError> {
     let req = TscRequest {
       method: "findRenameLocations",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6221
       args: json!([
         self.specifier_map.denormalize(&specifier),
         position,
@@ -752,7 +771,8 @@ impl TsServer {
   ) -> Result<SelectionRange, LspError> {
     let req = TscRequest {
       method: "getSmartSelectionRange",
-      args: json!([self.specifier_map.denormalize(&specifier), position,]),
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6224
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -768,6 +788,7 @@ impl TsServer {
   ) -> Result<Classifications, LspError> {
     let req = TscRequest {
       method: "getEncodedSemanticClassifications",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6183
       args: json!([
         self.specifier_map.denormalize(&specifier),
         TextSpan {
@@ -792,6 +813,7 @@ impl TsServer {
   ) -> Result<Option<SignatureHelpItems>, LspError> {
     let req = TscRequest {
       method: "getSignatureHelpItems",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6217
       args: json!([
         self.specifier_map.denormalize(&specifier),
         position,
@@ -811,6 +833,7 @@ impl TsServer {
   ) -> Result<Vec<NavigateToItem>, LspError> {
     let req = TscRequest {
       method: "getNavigateToItems",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6233
       args: json!([
         args.search,
         args.max_result_count,
@@ -844,6 +867,7 @@ impl TsServer {
   ) -> Result<Option<Vec<InlayHint>>, LspError> {
     let req = TscRequest {
       method: "provideInlayHints",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6239
       args: json!([
         self.specifier_map.denormalize(&specifier),
         text_span,
