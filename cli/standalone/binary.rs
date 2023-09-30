@@ -558,9 +558,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           let registry_url = self.npm_api.base_url();
           let root_path = self.npm_cache.registry_folder(registry_url);
           let mut builder = VfsBuilder::new(root_path)?;
-          for package in self
-            .npm_resolution
-            .all_system_packages(&self.npm_system_info)
+          for package in npm_resolver.all_system_packages(&self.npm_system_info)
           {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;

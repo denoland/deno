@@ -21,6 +21,7 @@ use crate::npm::ManagedCliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::MappedSpecifierResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -366,11 +367,23 @@ pub async fn run(
     node_modules_path,
     NpmSystemInfo::default(),
   );
+  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
+    metadata
+      .package_json_deps
+      .map(|serialized| serialized.into_deps()),
+  ));
+  let package_json_installer = Arc::new(PackageJsonDepsInstaller::new(
+    package_json_deps_provider.clone(),
+    npm_api.clone(),
+    npm_resolution.clone(),
+  ));
   let npm_resolver = Arc::new(ManagedCliNpmResolver::new(
+    npm_api.clone(),
     fs.clone(),
     npm_resolution.clone(),
     npm_fs_resolver,
     None,
+    package_json_installer,
   )) as Arc<dyn CliNpmResolver>;
   let node_resolver = Arc::new(NodeResolver::new(
     fs.clone(),
@@ -386,11 +399,6 @@ pub async fn run(
     fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone().into_npm_resolver(),
-  ));
-  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
-    metadata
-      .package_json_deps
-      .map(|serialized| serialized.into_deps()),
   ));
   let maybe_import_map = metadata.maybe_import_map.map(|(base, source)| {
     Arc::new(parse_from_json(&base, &source).unwrap().import_map)
