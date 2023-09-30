@@ -4583,6 +4583,13 @@ itest!(node_prefix_missing {
   exit_code: 0,
 });
 
+itest!(node_prefix_missing_with_import_map {
+  args: "run --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+});
+
 itest!(dynamic_import_syntax_error {
   args: "run -A run/dynamic_import_syntax_error.js",
   output: "run/dynamic_import_syntax_error.js.out",

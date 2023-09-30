@@ -67,14 +67,12 @@ impl MappedSpecifierResolver {
     referrer: &ModuleSpecifier,
   ) -> Result<MappedResolution, AnyError> {
     // attempt to resolve with the import map first
-    let maybe_import_map_err = match self
+    if let Some(Ok(value)) = self
       .maybe_import_map
       .as_ref()
       .map(|import_map| import_map.resolve(specifier, referrer))
     {
-      Some(Ok(value)) => return Ok(MappedResolution::ImportMap(value)),
-      Some(Err(err)) => Some(err),
-      None => None,
+      return Ok(MappedResolution::ImportMap(value));
     };
 
     // then with package.json
@@ -84,12 +82,7 @@ impl MappedSpecifierResolver {
       }
     }
 
-    // otherwise, surface the import map error or try resolving when has no import map
-    if let Some(err) = maybe_import_map_err {
-      Err(err.into())
-    } else {
-      Ok(MappedResolution::None)
-    }
+    Ok(MappedResolution::None)
   }
 }
 
