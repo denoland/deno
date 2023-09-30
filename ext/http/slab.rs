@@ -149,17 +149,17 @@ pub fn slab_get(index: SlabId) -> SlabEntry {
 }
 
 #[allow(clippy::let_and_return)]
-fn slab_insert_raw(
-  request_parts: Parts,
-  request_body: Option<Incoming>,
+fn slab_insert(
+  request: Request,
   request_info: HttpConnectionProperties,
   refcount: RefCount,
 ) -> SlabId {
+  let (request_parts, request_body) = request.into_parts();
   let index = SLAB.with(|slab| {
     let mut slab = slab.borrow_mut();
     let body = ResponseBytes::default();
     let trailers = body.trailers();
-    let request_body = request_body.map(|r| r.into());
+    let request_body = Some(request_body.into());
     slab.insert(HttpSlabRecord {
       request_info,
       request_parts,
@@ -175,15 +175,6 @@ fn slab_insert_raw(
   }) as u32;
   http_trace!(index, "slab_insert");
   index
-}
-
-pub fn slab_insert(
-  request: Request,
-  request_info: HttpConnectionProperties,
-  refcount: RefCount,
-) -> SlabId {
-  let (request_parts, request_body) = request.into_parts();
-  slab_insert_raw(request_parts, Some(request_body), request_info, refcount)
 }
 
 pub fn slab_drop(index: SlabId) {
