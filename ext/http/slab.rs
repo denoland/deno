@@ -10,16 +10,31 @@ use http::HeaderMap;
 use hyper1::body::Incoming;
 use hyper1::upgrade::OnUpgrade;
 
-use scopeguard::defer;
-use slab::Slab;
+use scopeguard::guard;
+use scopeguard::ScopeGuard;
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 pub type Request = hyper1::Request<Incoming>;
 pub type Response = hyper1::Response<ResponseBytes>;
-pub type SlabId = u32;
+
+macro_rules! http_trace {
+  ($record:expr, $args:tt) => {
+    #[cfg(feature = "__http_tracing")]
+    {
+      println!(
+        "HTTP id={:p} strong={}: {}",
+        $record,
+        std::rc::Rc::strong_count(&$record),
+        format!($args),
+      );
+    }
+  };
+}
+
+pub(crate) use http_trace;
 
 #[repr(transparent)]
 #[derive(Clone, Default)]
@@ -53,27 +68,39 @@ impl Drop for HttpRequestBodyAutocloser {
   }
 }
 
-pub async fn new_slab_future(
+pub async fn handle_request(
   request: Request,
   request_info: HttpConnectionProperties,
   _refcount: RefCount, // Keep server alive for duration of this future.
-  tx: tokio::sync::mpsc::Sender<SlabId>,
+  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
 ) -> Result<Response, hyper::Error> {
-  let index = slab_insert(request, request_info);
-  defer! {
-    slab_drop(index);
-  }
-  let rx = slab_get(index).promise();
+  // If the underlying TCP connection is closed, this future will be dropped
+  // and execution could stop at any await point.
+  // The HttpRecord must live until JavaScript is done processing so is wrapped
+  // in an Rc. The guard ensures unneeded resources are freed at cancellation.
+  let guarded_record =
+    guard(HttpRecord::new(request, request_info), HttpRecord::cancel);
+
+  // Clone HttpRecord and send to JavaScript for processing.
   // Safe to unwrap as channel receiver is never closed.
-  tx.send(index).await.unwrap();
-  http_trace!(index, "SlabFuture await");
-  rx.await;
-  http_trace!(index, "SlabFuture complete");
-  let response = slab_get(index).take_response();
+  tx.send(guarded_record.clone()).await.unwrap();
+
+  // Wait for JavaScript handler to return request.
+  http_trace!(*guarded_record, "handle_request promise.await");
+  guarded_record.promise().await;
+
+  // Defuse the guard. Must not await after the point.
+  let record = ScopeGuard::into_inner(guarded_record);
+  http_trace!(record, "handle_request complete");
+  assert!(
+    Rc::strong_count(&record) == 1,
+    "HTTP state error: Expected to be last strong reference (handle_request)"
+  );
+  let response = record.take_response();
   Ok(response)
 }
 
-pub struct HttpSlabRecord {
+struct HttpRecordInner {
   request_info: HttpConnectionProperties,
   request_parts: Parts,
   request_body: Option<RequestBodyState>,
@@ -82,81 +109,17 @@ pub struct HttpSlabRecord {
   promise: CompletionHandle,
   trailers: Rc<RefCell<Option<HeaderMap>>>,
   been_dropped: bool,
-  #[cfg(feature = "__zombie_http_tracking")]
-  alive: bool,
 }
 
-thread_local! {
-  pub(crate) static SLAB: RefCell<Slab<HttpSlabRecord>> = const { RefCell::new(Slab::new()) };
-}
+pub struct HttpRecord(RefCell<HttpRecordInner>);
 
-macro_rules! http_trace {
-  ($index:expr, $args:tt) => {
-    #[cfg(feature = "__http_tracing")]
-    {
-      let total = $crate::slab::SLAB.with(|x| x.try_borrow().map(|x| x.len()));
-      if let Ok(total) = total {
-        println!("HTTP id={} total={}: {}", $index, total, format!($args));
-      } else {
-        println!("HTTP id={} total=?: {}", $index, format!($args));
-      }
-    }
-  };
-}
-
-pub(crate) use http_trace;
-
-/// Hold a lock on the slab table and a reference to one entry in the table.
-pub struct SlabEntry(
-  NonNull<HttpSlabRecord>,
-  SlabId,
-  RefMut<'static, Slab<HttpSlabRecord>>,
-);
-
-const SLAB_CAPACITY: usize = 1024;
-
-pub fn slab_init() {
-  SLAB.with(|slab: &RefCell<Slab<HttpSlabRecord>>| {
-    // Note that there might already be an active HTTP server, so this may just
-    // end up adding room for an additional SLAB_CAPACITY items. All HTTP servers
-    // on a single thread share the same slab.
-    let mut slab = slab.borrow_mut();
-    slab.reserve(SLAB_CAPACITY);
-  })
-}
-
-pub fn slab_get(index: SlabId) -> SlabEntry {
-  http_trace!(index, "slab_get");
-  let mut lock: RefMut<'static, Slab<HttpSlabRecord>> = SLAB.with(|x| {
-    // SAFETY: We're extracting a lock here and placing it into an object that is thread-local, !Send as a &'static
-    unsafe { std::mem::transmute(x.borrow_mut()) }
-  });
-  let Some(entry) = lock.get_mut(index as usize) else {
-    panic!("HTTP state error: Attempted to access invalid request {} ({} in total available)",
-    index,
-    lock.len())
-  };
-  #[cfg(feature = "__zombie_http_tracking")]
-  {
-    assert!(entry.alive, "HTTP state error: Entry is not alive");
-  }
-  let entry = NonNull::new(entry as _).unwrap();
-
-  SlabEntry(entry, index, lock)
-}
-
-#[allow(clippy::let_and_return)]
-fn slab_insert(
-  request: Request,
-  request_info: HttpConnectionProperties,
-) -> SlabId {
-  let (request_parts, request_body) = request.into_parts();
-  let index = SLAB.with(|slab| {
-    let mut slab = slab.borrow_mut();
+impl HttpRecord {
+  fn new(request: Request, request_info: HttpConnectionProperties) -> Rc<Self> {
+    let (request_parts, request_body) = request.into_parts();
     let body = ResponseBytes::default();
     let trailers = body.trailers();
     let request_body = Some(request_body.into());
-    slab.insert(HttpSlabRecord {
+    let inner = HttpRecordInner {
       request_info,
       request_parts,
       request_body,
@@ -164,64 +127,23 @@ fn slab_insert(
       trailers,
       been_dropped: false,
       promise: CompletionHandle::default(),
-      #[cfg(feature = "__zombie_http_tracking")]
-      alive: true,
-    })
-  }) as u32;
-  http_trace!(index, "slab_insert");
-  index
-}
-
-pub fn slab_drop(index: SlabId) {
-  http_trace!(index, "slab_drop");
-  let mut entry = slab_get(index);
-  let record = entry.self_mut();
-  assert!(
-    !record.been_dropped,
-    "HTTP state error: Entry has already been dropped"
-  );
-
-  // The logic here is somewhat complicated. A slab record cannot be expunged until it has been dropped by Rust AND
-  // the promise has been completed (indicating that JavaScript is done processing). However, if Rust has finished
-  // dealing with this entry, we DO want to clean up some of the associated items -- namely the request body, which
-  // might include actual resources, and the refcount, which is keeping the server alive.
-  record.been_dropped = true;
-  if record.promise.is_completed() {
-    drop(entry);
-    slab_expunge(index);
-  } else {
-    // Take the request body, as the future has been dropped and this will allow some resources to close
-    record.request_body.take();
-  }
-}
-
-fn slab_expunge(index: SlabId) {
-  SLAB.with(|slab| {
-    #[cfg(__zombie_http_tracking)]
-    {
-      slab.borrow_mut().get_mut(index as usize).unwrap().alive = false;
-    }
-    #[cfg(not(__zombie_http_tracking))]
-    {
-      slab.borrow_mut().remove(index as usize);
-    }
-  });
-  http_trace!(index, "slab_expunge");
-}
-
-impl SlabEntry {
-  fn self_ref(&self) -> &HttpSlabRecord {
-    // SAFETY: We have the lock and we're borrowing lifetime from self
-    unsafe { self.0.as_ref() }
+    };
+    #[allow(clippy::let_and_return)]
+    let record = Rc::new(Self(RefCell::new(inner)));
+    http_trace!(record, "HttpRecord::new");
+    record
   }
 
-  fn self_mut(&mut self) -> &mut HttpSlabRecord {
-    // SAFETY: We have the lock and we're borrowing lifetime from self
-    unsafe { self.0.as_mut() }
+  fn self_ref(&self) -> Ref<'_, HttpRecordInner> {
+    self.0.borrow()
   }
 
-  /// Perform the Hyper upgrade on this entry.
-  pub fn upgrade(&mut self) -> Result<OnUpgrade, AnyError> {
+  fn self_mut(&self) -> RefMut<'_, HttpRecordInner> {
+    self.0.borrow_mut()
+  }
+
+  /// Perform the Hyper upgrade on this record.
+  pub fn upgrade(&self) -> Result<OnUpgrade, AnyError> {
     // Manually perform the upgrade. We're peeking into hyper's underlying machinery here a bit
     self
       .self_mut()
@@ -231,8 +153,8 @@ impl SlabEntry {
       .ok_or_else(|| AnyError::msg("upgrade unavailable"))
   }
 
-  /// Take the Hyper body from this entry.
-  pub fn take_body(&mut self) -> Option<Incoming> {
+  /// Take the Hyper body from this record.
+  pub fn take_body(&self) -> Option<Incoming> {
     let body_holder = &mut self.self_mut().request_body;
     let body = body_holder.take();
     match body {
@@ -244,7 +166,7 @@ impl SlabEntry {
     }
   }
 
-  pub fn take_resource(&mut self) -> Option<HttpRequestBodyAutocloser> {
+  pub fn take_resource(&self) -> Option<HttpRequestBodyAutocloser> {
     let body_holder = &mut self.self_mut().request_body;
     let body = body_holder.take();
     match body {
@@ -259,56 +181,63 @@ impl SlabEntry {
   /// Replace the request body with a resource ID and the OpState we'll need to shut it down.
   /// We cannot keep just the resource itself, as JS code might be reading from the resource ID
   /// to generate the response data (requiring us to keep it in the resource table).
-  pub fn put_resource(&mut self, res: HttpRequestBodyAutocloser) {
+  pub fn put_resource(&self, res: HttpRequestBodyAutocloser) {
     self.self_mut().request_body = Some(RequestBodyState::Resource(res));
   }
 
-  /// Complete this entry, potentially expunging it if it is fully complete (ie: dropped as well).
-  pub fn complete(self) {
-    let promise = &self.self_ref().promise;
-    assert!(
-      !promise.is_completed(),
-      "HTTP state error: Entry has already been completed"
-    );
-    http_trace!(self.1, "SlabEntry::complete");
-    promise.complete(true);
-    // If we're all done, we need to drop ourself to release the lock before we expunge this record
-    if self.self_ref().been_dropped {
-      let index = self.1;
-      drop(self);
-      slab_expunge(index);
-    }
+  /// Cleanup resources not needed after the future is dropped.
+  fn cancel(self: Rc<Self>) {
+    http_trace!(self, "HttpRecord::cancel");
+    let mut inner = self.0.borrow_mut();
+    inner.been_dropped = true;
+    // The request body might include actual resources.
+    inner.request_body.take();
   }
 
-  /// Has the future for this entry been dropped? ie, has the underlying TCP connection
+  /// Complete this record, potentially expunging it if it is fully complete (ie: cancelled as well).
+  pub fn complete(self: Rc<Self>) {
+    http_trace!(self, "HttpRecord::complete");
+    let inner = self.self_mut();
+    assert!(
+      !inner.been_dropped || Rc::strong_count(&self) == 1,
+      "HTTP state error: Expected to be last strong reference (been_dropped)"
+    );
+    assert!(
+      !inner.promise.is_completed(),
+      "HTTP state error: Entry has already been completed"
+    );
+    inner.promise.complete(true);
+  }
+
+  /// Has the future for this record been dropped? ie, has the underlying TCP connection
   /// been closed?
   pub fn cancelled(&self) -> bool {
     self.self_ref().been_dropped
   }
 
   /// Get a mutable reference to the response.
-  pub fn response(&mut self) -> &mut Response {
-    self.self_mut().response.as_mut().unwrap()
+  pub fn response(&self) -> RefMut<'_, Response> {
+    RefMut::map(self.self_mut(), |inner| inner.response.as_mut().unwrap())
   }
 
   /// Get a mutable reference to the trailers.
-  pub fn trailers(&mut self) -> &RefCell<Option<HeaderMap>> {
-    &self.self_mut().trailers
+  pub fn trailers(&self) -> Ref<'_, Rc<RefCell<Option<HeaderMap>>>> {
+    Ref::map(self.self_ref(), |inner| &inner.trailers)
   }
 
   /// Take the response.
-  pub fn take_response(&mut self) -> Response {
+  fn take_response(&self) -> Response {
     self.self_mut().response.take().unwrap()
   }
 
   /// Get a reference to the connection properties.
-  pub fn request_info(&self) -> &HttpConnectionProperties {
-    &self.self_ref().request_info
+  pub fn request_info(&self) -> Ref<'_, HttpConnectionProperties> {
+    Ref::map(self.self_ref(), |inner| &inner.request_info)
   }
 
   /// Get a reference to the request parts.
-  pub fn request_parts(&self) -> &Parts {
-    &self.self_ref().request_parts
+  pub fn request_parts(&self) -> Ref<'_, Parts> {
+    Ref::map(self.self_ref(), |inner| &inner.request_parts)
   }
 
   /// Get a reference to the completion handle.
@@ -377,7 +306,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_slab() -> Result<(), AnyError> {
+  async fn test_handle_request() -> Result<(), AnyError> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let refcount = RefCount::default();
     let refcount_check = refcount.clone();
@@ -388,7 +317,7 @@ mod tests {
       stream_type: NetworkStreamType::Tcp,
     };
     let svc = service_fn(move |req: hyper1::Request<Incoming>| {
-      new_slab_future(req, request_info.clone(), refcount.clone(), tx.clone())
+      handle_request(req, request_info.clone(), refcount.clone(), tx.clone())
     });
 
     let client_req = http::Request::builder().uri("/").body("".to_string())?;
@@ -397,18 +326,16 @@ mod tests {
     tokio::try_join!(
       async move {
         // JavaScript handler produces response
-        let id = rx.recv().await.unwrap();
-        println!("slab_id {}", id);
-        let mut http = slab_get(id);
-        let resource = http.take_resource();
-        http.response().body_mut().initialize(
+        let record = rx.recv().await.unwrap();
+        let resource = record.take_resource();
+        record.response().body_mut().initialize(
           ResponseBytesInner::from_vec(
             Compression::None,
             b"hello world".to_vec(),
           ),
           resource,
         );
-        http.complete();
+        record.complete();
         Ok(())
       },
       // Server connection executes service

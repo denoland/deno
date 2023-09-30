@@ -137,7 +137,7 @@ class InnerRequest {
   }
 
   close() {
-    this.#slabId = undefined;
+    this.#slabId = null;
   }
 
   get [_upgraded]() {
@@ -148,7 +148,7 @@ class InnerRequest {
     if (this.#upgraded) {
       throw new Deno.errors.Http("already upgraded");
     }
-    if (this.#slabId === undefined) {
+    if (this.#slabId === null) {
       throw new Deno.errors.Http("already closed");
     }
 
@@ -195,15 +195,16 @@ class InnerRequest {
       this.#upgraded = () => {
         goAhead.resolve();
       };
+      const wsPromise = op_http_upgrade_websocket_next(
+        slabId,
+        response.headerList,
+      );
 
       // Start the upgrade in the background.
       (async () => {
         try {
           // Returns the upgraded websocket connection
-          const wsRid = await op_http_upgrade_websocket_next(
-            slabId,
-            response.headerList,
-          );
+          const wsRid = await wsPromise;
 
           // We have to wait for the go-ahead signal
           await goAhead;
@@ -237,7 +238,7 @@ class InnerRequest {
     }
 
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === undefined) {
+      if (this.#slabId === null) {
         throw new TypeError("request closed");
       }
       // TODO(mmastrac): This is quite slow as we're serializing a large number of values. We may want to consider
@@ -282,7 +283,7 @@ class InnerRequest {
       };
     }
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === undefined) {
+      if (this.#slabId === null) {
         throw new TypeError("request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
@@ -296,7 +297,7 @@ class InnerRequest {
 
   get method() {
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === undefined) {
+      if (this.#slabId === null) {
         throw new TypeError("request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
@@ -305,7 +306,7 @@ class InnerRequest {
   }
 
   get body() {
-    if (this.#slabId === undefined) {
+    if (this.#slabId === null) {
       throw new TypeError("request closed");
     }
     if (this.#body !== undefined) {
@@ -323,7 +324,7 @@ class InnerRequest {
   }
 
   get headerList() {
-    if (this.#slabId === undefined) {
+    if (this.#slabId === null) {
       throw new TypeError("request closed");
     }
     const headers = [];
@@ -484,8 +485,8 @@ function mapToCallback(context, callback, onError) {
     // Did everything shut down while we were waiting?
     if (context.closed) {
       // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
-      op_http_set_promise_complete(req, 503);
       innerRequest?.close();
+      op_http_set_promise_complete(req, 503);
       return;
     }
 
@@ -499,8 +500,8 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    fastSyncResponseOrStream(req, inner.body, status);
     innerRequest?.close();
+    fastSyncResponseOrStream(req, inner.body, status);
   };
 }
 
@@ -661,7 +662,7 @@ function serveHttpOn(context, callback) {
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
-        while ((req = op_http_try_wait(rid)) !== -1) {
+        while ((req = op_http_try_wait(rid)) !== null) {
           PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
@@ -679,7 +680,7 @@ function serveHttpOn(context, callback) {
         }
         throw new Deno.errors.Http(error);
       }
-      if (req === -1) {
+      if (req === null) {
         break;
       }
       PromisePrototypeCatch(callback(req), promiseErrorHandler);

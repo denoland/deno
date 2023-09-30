@@ -11,7 +11,6 @@ repository.workspace = true
 description = "HTTP server implementation for Deno"
 
 [features]
-"__zombie_http_tracking" = []
 "__http_tracing" = []
 
 [lib]
@@ -46,7 +45,6 @@ pin-project.workspace = true
 ring.workspace = true
 scopeguard.workspace = true
 serde.workspace = true
-slab.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
