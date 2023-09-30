@@ -17,9 +17,7 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
 use crate::lsp::logging::lsp_warn;
-use crate::npm::CliNpmRegistryApi;
-use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::util::glob;
@@ -860,8 +858,7 @@ pub struct UpdateDocumentConfigOptions<'a> {
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
-  pub npm_registry_api: Arc<CliNpmRegistryApi>,
-  pub npm_resolution: Arc<NpmResolution>,
+  pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
 /// Specify the documents to include on a `documents.documents(...)` call.
@@ -917,7 +914,15 @@ impl Documents {
       file_system_docs: Default::default(),
       resolver_config_hash: 0,
       imports: Default::default(),
-      resolver: Default::default(),
+      resolver: Arc::new(CliGraphResolver::new(
+        None,
+        Arc::new(PackageJsonDepsProvider::default()),
+        CliGraphResolverOptions {
+          maybe_jsx_import_source_config: None,
+          maybe_import_map: None,
+          maybe_vendor_dir: None,
+        },
+      )),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(cache)),
@@ -1293,12 +1298,9 @@ impl Documents {
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
-    let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
-      options.npm_registry_api,
-      options.npm_resolution,
+      options.npm_resolver,
       deps_provider,
-      deps_installer,
       CliGraphResolverOptions {
         maybe_jsx_import_source_config: maybe_jsx_config,
         maybe_import_map: options.maybe_import_map,
@@ -1306,7 +1308,6 @@ impl Documents {
           .maybe_config_file
           .and_then(|c| c.vendor_dir_path())
           .as_ref(),
-        no_npm: false,
       },
     ));
     self.imports = Arc::new(
@@ -1938,7 +1939,6 @@ fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
 mod tests {
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
-  use crate::npm::NpmResolution;
 
   use super::*;
   use import_map::ImportMap;
@@ -2046,13 +2046,6 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
-    let npm_resolution = Arc::new(NpmResolution::from_serialized(
-      npm_registry_api.clone(),
-      None,
-      None,
-    ));
-
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
@@ -2089,8 +2082,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
-        npm_registry_api: npm_registry_api.clone(),
-        npm_resolution: npm_resolution.clone(),
+        npm_resolver: None,
       });
 
       // open the document
@@ -2131,8 +2123,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
-        npm_registry_api,
-        npm_resolution,
+        npm_resolver: None,
       });
 
       // check the document's dependencies

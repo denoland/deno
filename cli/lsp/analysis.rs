@@ -7,7 +7,6 @@ use super::language_server;
 use super::tsc;
 
 use crate::npm::CliNpmResolver;
-use crate::npm::NpmResolution;
 use crate::tools::lint::create_linter;
 
 use deno_ast::SourceRange;
@@ -162,7 +161,6 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
-  npm_resolution: &'a NpmResolution,
   npm_resolver: &'a dyn CliNpmResolver,
 }
 
@@ -170,13 +168,11 @@ impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
-    npm_resolution: &'a NpmResolution,
     npm_resolver: &'a dyn CliNpmResolver,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
-      npm_resolution,
       npm_resolver,
     }
   }
@@ -203,8 +199,7 @@ impl<'a> TsResponseImportMapper<'a> {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
         {
-          let pkg_reqs =
-            self.npm_resolution.resolve_pkg_reqs_from_pkg_id(&pkg_id);
+          let pkg_reqs = npm_resolver.resolve_pkg_reqs_from_pkg_id(&pkg_id);
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
             let sub_path = self.resolve_package_path(specifier);
