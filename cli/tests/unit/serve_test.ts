@@ -3719,7 +3719,7 @@ async function curlRequestWithStdErr(args: string[]) {
 Deno.test("Deno.Server is not thenable", async () => {
   // deno-lint-ignore require-await
   async function serveTest() {
-    const server = Deno.serve({ port: servePort }, (_) => {});
+    const server = Deno.serve({ port: servePort }, (_) => new Response(""));
     assert(!("then" in server));
     return server;
   }
