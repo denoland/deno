@@ -32,6 +32,7 @@ use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
+use crate::npm::ManagedCliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmCacheDir;
 use crate::npm::NpmPackageFsResolver;
@@ -158,7 +159,7 @@ struct CliFactoryServices {
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_api: Deferred<Arc<CliNpmRegistryApi>>,
   npm_cache: Deferred<Arc<NpmCache>>,
-  npm_resolver: Deferred<Arc<CliNpmResolver>>,
+  npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
   npm_resolution: Deferred<Arc<NpmResolution>>,
   package_json_deps_provider: Deferred<Arc<PackageJsonDepsProvider>>,
   package_json_deps_installer: Deferred<Arc<PackageJsonDepsInstaller>>,
@@ -334,7 +335,9 @@ impl CliFactory {
       .await
   }
 
-  pub async fn npm_resolver(&self) -> Result<&Arc<CliNpmResolver>, AnyError> {
+  pub async fn npm_resolver(
+    &self,
+  ) -> Result<&Arc<dyn CliNpmResolver>, AnyError> {
     self
       .services
       .npm_resolver
@@ -350,12 +353,12 @@ impl CliFactory {
           self.options.node_modules_dir_path(),
           self.options.npm_system_info(),
         );
-        Ok(Arc::new(CliNpmResolver::new(
+        Ok(Arc::new(ManagedCliNpmResolver::new(
           fs.clone(),
           npm_resolution.clone(),
           npm_fs_resolver,
           self.maybe_lockfile().as_ref().cloned(),
-        )))
+        )) as Arc<dyn CliNpmResolver>)
       })
       .await
   }
@@ -491,7 +494,7 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(NodeResolver::new(
           self.fs().clone(),
-          self.npm_resolver().await?.clone(),
+          self.npm_resolver().await?.clone().into_npm_resolver(),
         )))
       })
       .await
@@ -514,7 +517,7 @@ impl CliFactory {
           cjs_esm_analyzer,
           self.fs().clone(),
           self.node_resolver().await?.clone(),
-          self.npm_resolver().await?.clone(),
+          self.npm_resolver().await?.clone().into_npm_resolver(),
         )))
       })
       .await
@@ -613,7 +616,7 @@ impl CliFactory {
       self.npm_api()?,
       self.npm_cache()?,
       self.npm_resolution().await?,
-      self.npm_resolver().await?,
+      self.npm_resolver().await?.as_ref(),
       self.options.npm_system_info(),
       self.package_json_deps_provider(),
     ))
@@ -623,10 +626,11 @@ impl CliFactory {
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
     let node_resolver = self.node_resolver().await?;
+    let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
-      self.npm_resolver().await?.clone(),
+      npm_resolver.clone(),
       node_resolver.clone(),
       self.blob_store().clone(),
       Box::new(CliModuleLoaderFactory::new(
@@ -641,6 +645,7 @@ impl CliFactory {
           self.node_code_translator().await?.clone(),
           fs.clone(),
           node_resolver.clone(),
+          npm_resolver.clone(),
         ),
       )),
       self.root_cert_store_provider().clone(),

@@ -8,7 +8,6 @@ use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 
@@ -46,7 +45,6 @@ use sha2::Sha512;
 use signature::RandomizedSigner;
 use signature::Signer;
 use signature::Verifier;
-use std::convert::TryFrom;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
@@ -422,10 +420,11 @@ pub struct DeriveKeyArg {
   info: Option<JsBuffer>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_crypto_derive_bits(
-  args: DeriveKeyArg,
-  zero_copy: Option<JsBuffer>,
+  #[serde] args: DeriveKeyArg,
+  #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {

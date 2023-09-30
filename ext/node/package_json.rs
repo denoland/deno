@@ -106,7 +106,13 @@ impl PackageJson {
   ) -> Result<PackageJson, AnyError> {
     let package_json: Value = serde_json::from_str(&source)
       .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
+    Self::load_from_value(path, package_json)
+  }
 
+  pub fn load_from_value(
+    path: PathBuf,
+    package_json: serde_json::Value,
+  ) -> Result<PackageJson, AnyError> {
     let imports_val = package_json.get("imports");
     let main_val = package_json.get("main");
     let module_val = package_json.get("module");
@@ -114,14 +120,14 @@ impl PackageJson {
     let version_val = package_json.get("version");
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
-    let exports = package_json.get("exports").map(|exports| {
-      if is_conditional_exports_main_sugar(exports) {
+    let exports = package_json.get("exports").and_then(|exports| {
+      Some(if is_conditional_exports_main_sugar(exports) {
         let mut map = Map::new();
         map.insert(".".to_string(), exports.to_owned());
         map
       } else {
-        exports.as_object().unwrap().to_owned()
-      }
+        exports.as_object()?.to_owned()
+      })
     });
 
     let imports = imports_val
@@ -239,4 +245,20 @@ fn is_conditional_exports_main_sugar(exports: &Value) -> bool {
   }
 
   is_conditional_sugar
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn null_exports_should_not_crash() {
+    let package_json = PackageJson::load_from_string(
+      PathBuf::from("/package.json"),
+      r#"{ "exports": null }"#.to_string(),
+    )
+    .unwrap();
+
+    assert!(package_json.exports.is_none());
+  }
 }

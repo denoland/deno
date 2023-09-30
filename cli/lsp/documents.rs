@@ -2,6 +2,7 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
+use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -15,7 +16,6 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
-use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
@@ -41,7 +41,6 @@ use deno_graph::Resolution;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -92,6 +91,15 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .into_iter()
     .collect()
 });
+
+pub const DOCUMENT_SCHEMES: [&str; 6] = [
+  "data",
+  "blob",
+  "file",
+  "http",
+  "https",
+  "deno-notebook-cell",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
@@ -254,6 +262,27 @@ impl AssetOrDocument {
   }
 }
 
+/// Convert a `deno-notebook-cell:` specifier to a `file:` specifier.
+/// ```rust
+/// assert_eq!(
+///   cell_to_file_specifier(
+///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+///   ),
+///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
+/// );
+pub fn cell_to_file_specifier(specifier: &Url) -> Option<Url> {
+  if specifier.scheme() == "deno-notebook-cell" {
+    if let Ok(specifier) = ModuleSpecifier::parse(&format!(
+      "file://{}",
+      &specifier.as_str()
+        [url::quirks::internal_components(specifier).host_end as usize..],
+    )) {
+      return Some(specifier);
+    }
+  }
+  None
+}
+
 #[derive(Debug, Default)]
 struct DocumentDependencies {
   deps: IndexMap<String, deno_graph::Dependency>,
@@ -270,10 +299,32 @@ impl DocumentDependencies {
   }
 
   pub fn from_module(module: &deno_graph::EsmModule) -> Self {
-    Self {
+    let mut deps = Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
+    };
+    if module.specifier.scheme() == "deno-notebook-cell" {
+      for (_, dep) in &mut deps.deps {
+        if let Resolution::Ok(resolved) = &mut dep.maybe_code {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+            resolved.specifier = specifier;
+          }
+        }
+        if let Resolution::Ok(resolved) = &mut dep.maybe_type {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+            resolved.specifier = specifier;
+          }
+        }
+      }
+      if let Some(dep) = &mut deps.maybe_types_dependency {
+        if let Resolution::Ok(resolved) = &mut dep.dependency {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+            resolved.specifier = specifier;
+          }
+        }
+      }
     }
+    deps
   }
 }
 
@@ -677,13 +728,11 @@ impl SpecifierResolver {
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
     let scheme = specifier.scheme();
-    if !SUPPORTED_SCHEMES.contains(&scheme) {
+    if !DOCUMENT_SCHEMES.contains(&scheme) {
       return None;
     }
 
-    if scheme == "data" || scheme == "blob" || scheme == "file" {
-      Some(specifier.clone())
-    } else {
+    if scheme == "http" || scheme == "https" {
       let mut redirects = self.redirects.lock();
       if let Some(specifier) = redirects.get(specifier) {
         Some(specifier.clone())
@@ -692,6 +741,8 @@ impl SpecifierResolver {
         redirects.insert(specifier.clone(), redirect.clone());
         Some(redirect)
       }
+    } else {
+      Some(specifier.clone())
     }
   }
 
@@ -1089,7 +1140,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_node_resolver: Option<&Arc<NodeResolver>>,
+    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1098,11 +1149,12 @@ impl Documents {
     };
     let mut results = Vec::new();
     for specifier in specifiers {
-      if let Some(node_resolver) = maybe_node_resolver {
-        if node_resolver.in_npm_package(referrer) {
+      if let Some(npm) = maybe_npm {
+        if npm.node_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
-            node_resolver
+            npm
+              .node_resolver
               .resolve(
                 &specifier,
                 referrer,
@@ -1126,9 +1178,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm));
         } else {
           results.push(None);
         }
@@ -1136,12 +1188,11 @@ impl Documents {
         .resolve_imports_dependency(&specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_node_resolver));
+        results.push(self.resolve_dependency(specifier, maybe_npm));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(&specifier)
       {
-        results
-          .push(node_resolve_npm_req_ref(npm_req_ref, maybe_node_resolver));
+        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm));
       } else {
         results.push(None);
       }
@@ -1475,7 +1526,7 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_node_resolver: Option<&Arc<NodeResolver>>,
+    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
       if deno_node::is_builtin_node_module(module_name) {
@@ -1487,7 +1538,7 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1496,7 +1547,7 @@ impl Documents {
     if let Some(specifier) =
       maybe_types_dependency.and_then(|d| d.maybe_specifier())
     {
-      self.resolve_dependency(specifier, maybe_node_resolver)
+      self.resolve_dependency(specifier, maybe_npm)
     } else {
       let media_type = doc.media_type();
       Some((doc.specifier().clone(), media_type))
@@ -1519,18 +1570,26 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_node_resolver: Option<&Arc<NodeResolver>>,
+  maybe_npm: Option<&StateNpmSnapshot>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  maybe_node_resolver.map(|node_resolver| {
+  maybe_npm.map(|npm| {
     NodeResolution::into_specifier_and_media_type(
-      node_resolver
-        .resolve_npm_req_reference(
-          &npm_req_ref,
-          NodeResolutionMode::Types,
-          &PermissionsContainer::allow_all(),
-        )
+      npm
+        .npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req())
         .ok()
-        .flatten(),
+        .and_then(|package_folder| {
+          npm
+            .node_resolver
+            .resolve_npm_reference(
+              &package_folder,
+              npm_req_ref.sub_path(),
+              NodeResolutionMode::Types,
+              &PermissionsContainer::allow_all(),
+            )
+            .ok()
+            .flatten()
+        }),
     )
   })
 }

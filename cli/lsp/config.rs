@@ -5,8 +5,9 @@ use crate::args::ConfigFile;
 use crate::lsp::logging::lsp_warn;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
-use deno_core::error::AnyError;
+use deno_ast::MediaType;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -86,29 +87,74 @@ impl Default for CodeLensSpecifierSettings {
   }
 }
 
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DenoCompletionSettings {
+  #[serde(default)]
+  pub imports: ImportCompletionSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClassMemberSnippets {
+  #[serde(default = "is_true")]
+  pub enabled: bool,
+}
+
+impl Default for ClassMemberSnippets {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectLiteralMethodSnippets {
+  #[serde(default = "is_true")]
+  pub enabled: bool,
+}
+
+impl Default for ObjectLiteralMethodSnippets {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
   pub complete_function_calls: bool,
   #[serde(default = "is_true")]
+  pub include_automatic_optional_chain_completions: bool,
+  #[serde(default = "is_true")]
+  pub include_completions_for_import_statements: bool,
+  #[serde(default = "is_true")]
   pub names: bool,
   #[serde(default = "is_true")]
   pub paths: bool,
   #[serde(default = "is_true")]
   pub auto_imports: bool,
+  #[serde(default = "is_true")]
+  pub enabled: bool,
   #[serde(default)]
-  pub imports: ImportCompletionSettings,
+  pub class_member_snippets: ClassMemberSnippets,
+  #[serde(default)]
+  pub object_literal_method_snippets: ObjectLiteralMethodSnippets,
 }
 
 impl Default for CompletionSettings {
   fn default() -> Self {
     Self {
       complete_function_calls: false,
+      include_automatic_optional_chain_completions: true,
+      include_completions_for_import_statements: true,
       names: true,
       paths: true,
       auto_imports: true,
-      imports: ImportCompletionSettings::default(),
+      enabled: true,
+      class_member_snippets: Default::default(),
+      object_literal_method_snippets: Default::default(),
     }
   }
 }
@@ -281,6 +327,93 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   Ok(o.filter(|s| !s.is_empty()))
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImportModuleSpecifier {
+  NonRelative,
+  ProjectRelative,
+  Relative,
+  Shortest,
+}
+
+impl Default for ImportModuleSpecifier {
+  fn default() -> Self {
+    Self::Shortest
+  }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum JsxAttributeCompletionStyle {
+  Auto,
+  Braces,
+  None,
+}
+
+impl Default for JsxAttributeCompletionStyle {
+  fn default() -> Self {
+    Self::Auto
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguagePreferences {
+  #[serde(default)]
+  pub import_module_specifier: ImportModuleSpecifier,
+  #[serde(default)]
+  pub jsx_attribute_completion_style: JsxAttributeCompletionStyle,
+  #[serde(default)]
+  pub auto_import_file_exclude_patterns: Vec<String>,
+  #[serde(default = "is_true")]
+  pub use_aliases_for_renames: bool,
+}
+
+impl Default for LanguagePreferences {
+  fn default() -> Self {
+    LanguagePreferences {
+      import_module_specifier: Default::default(),
+      jsx_attribute_completion_style: Default::default(),
+      auto_import_file_exclude_patterns: vec![],
+      use_aliases_for_renames: true,
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateImportsOnFileMoveOptions {
+  #[serde(default)]
+  pub enabled: UpdateImportsOnFileMoveEnabled,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdateImportsOnFileMoveEnabled {
+  Always,
+  Prompt,
+  Never,
+}
+
+impl Default for UpdateImportsOnFileMoveEnabled {
+  fn default() -> Self {
+    Self::Prompt
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageWorkspaceSettings {
+  #[serde(default)]
+  pub inlay_hints: InlayHintsSettings,
+  #[serde(default)]
+  pub preferences: LanguagePreferences,
+  #[serde(default)]
+  pub suggest: CompletionSettings,
+  #[serde(default)]
+  pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
+}
+
 /// Deno language server specific settings that are applied to a workspace.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -301,6 +434,11 @@ pub struct WorkspaceSettings {
   #[serde(default, deserialize_with = "empty_string_none")]
   pub cache: Option<String>,
 
+  /// Cache local modules and their dependencies on `textDocument/didSave`
+  /// notifications corresponding to them.
+  #[serde(default)]
+  pub cache_on_save: bool,
+
   /// Override the default stores used to validate certificates. This overrides
   /// the environment variable `DENO_TLS_CA_STORE` if present.
   pub certificate_stores: Option<Vec<String>>,
@@ -319,9 +457,6 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub code_lens: CodeLensSettings,
 
-  #[serde(default)]
-  pub inlay_hints: InlayHintsSettings,
-
   /// A flag that indicates if internal debug logging should be made available.
   #[serde(default)]
   pub internal_debug: bool,
@@ -334,10 +469,8 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_document_preload_limit")]
   pub document_preload_limit: usize,
 
-  /// A flag that indicates if Dene should validate code against the unstable
-  /// APIs for the workspace.
   #[serde(default)]
-  pub suggest: CompletionSettings,
+  pub suggest: DenoCompletionSettings,
 
   /// Testing settings for the workspace.
   #[serde(default)]
@@ -355,6 +488,12 @@ pub struct WorkspaceSettings {
 
   #[serde(default)]
   pub unstable: bool,
+
+  #[serde(default)]
+  pub javascript: LanguageWorkspaceSettings,
+
+  #[serde(default)]
+  pub typescript: LanguageWorkspaceSettings,
 }
 
 impl Default for WorkspaceSettings {
@@ -364,11 +503,11 @@ impl Default for WorkspaceSettings {
       disable_paths: vec![],
       enable_paths: None,
       cache: None,
+      cache_on_save: false,
       certificate_stores: None,
       config: None,
       import_map: None,
       code_lens: Default::default(),
-      inlay_hints: Default::default(),
       internal_debug: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
@@ -377,28 +516,224 @@ impl Default for WorkspaceSettings {
       tls_certificate: None,
       unsafely_ignore_certificate_errors: None,
       unstable: false,
+      javascript: Default::default(),
+      typescript: Default::default(),
     }
   }
 }
 
 impl WorkspaceSettings {
+  pub fn from_raw_settings(
+    deno: Value,
+    javascript: Value,
+    typescript: Value,
+  ) -> Self {
+    fn parse_or_default<T: Default + DeserializeOwned>(
+      value: Value,
+      description: &str,
+    ) -> T {
+      if value.is_null() {
+        return T::default();
+      }
+      match serde_json::from_value(value) {
+        Ok(v) => v,
+        Err(err) => {
+          lsp_warn!("Couldn't parse {description}: {err}");
+          T::default()
+        }
+      }
+    }
+    let deno_inlay_hints =
+      deno.as_object().and_then(|o| o.get("inlayHints").cloned());
+    let deno_suggest = deno.as_object().and_then(|o| o.get("suggest").cloned());
+    let mut settings: Self = parse_or_default(deno, "settings under \"deno\"");
+    settings.javascript =
+      parse_or_default(javascript, "settings under \"javascript\"");
+    settings.typescript =
+      parse_or_default(typescript, "settings under \"typescript\"");
+    if let Some(inlay_hints) = deno_inlay_hints {
+      let inlay_hints: InlayHintsSettings =
+        parse_or_default(inlay_hints, "settings under \"deno.inlayHints\"");
+      if inlay_hints.parameter_names.enabled != Default::default() {
+        lsp_warn!("\"deno.inlayHints.parameterNames.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.enabled\" and \"typescript.inlayHints.parameterNames.enabled\".");
+        settings.javascript.inlay_hints.parameter_names.enabled =
+          inlay_hints.parameter_names.enabled.clone();
+        settings.typescript.inlay_hints.parameter_names.enabled =
+          inlay_hints.parameter_names.enabled;
+      }
+      if !inlay_hints
+        .parameter_names
+        .suppress_when_argument_matches_name
+      {
+        lsp_warn!("\"deno.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" and \"typescript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\".");
+        settings
+          .javascript
+          .inlay_hints
+          .parameter_names
+          .suppress_when_argument_matches_name = inlay_hints
+          .parameter_names
+          .suppress_when_argument_matches_name;
+        settings
+          .typescript
+          .inlay_hints
+          .parameter_names
+          .suppress_when_argument_matches_name = inlay_hints
+          .parameter_names
+          .suppress_when_argument_matches_name;
+      }
+      if inlay_hints.parameter_types.enabled {
+        lsp_warn!("\"deno.inlayHints.parameterTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterTypes.enabled\" and \"typescript.inlayHints.parameterTypes.enabled\".");
+        settings.javascript.inlay_hints.parameter_types.enabled =
+          inlay_hints.parameter_types.enabled;
+        settings.typescript.inlay_hints.parameter_types.enabled =
+          inlay_hints.parameter_types.enabled;
+      }
+      if inlay_hints.variable_types.enabled {
+        lsp_warn!("\"deno.inlayHints.variableTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.enabled\" and \"typescript.inlayHints.variableTypes.enabled\".");
+        settings.javascript.inlay_hints.variable_types.enabled =
+          inlay_hints.variable_types.enabled;
+        settings.typescript.inlay_hints.variable_types.enabled =
+          inlay_hints.variable_types.enabled;
+      }
+      if !inlay_hints.variable_types.suppress_when_type_matches_name {
+        lsp_warn!("\"deno.inlayHints.variableTypes.suppressWhenTypeMatchesName\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.suppressWhenTypeMatchesName\" and \"typescript.inlayHints.variableTypes.suppressWhenTypeMatchesName\".");
+        settings
+          .javascript
+          .inlay_hints
+          .variable_types
+          .suppress_when_type_matches_name =
+          inlay_hints.variable_types.suppress_when_type_matches_name;
+        settings
+          .typescript
+          .inlay_hints
+          .variable_types
+          .suppress_when_type_matches_name =
+          inlay_hints.variable_types.suppress_when_type_matches_name;
+      }
+      if inlay_hints.property_declaration_types.enabled {
+        lsp_warn!("\"deno.inlayHints.propertyDeclarationTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.propertyDeclarationTypes.enabled\" and \"typescript.inlayHints.propertyDeclarationTypes.enabled\".");
+        settings
+          .javascript
+          .inlay_hints
+          .property_declaration_types
+          .enabled = inlay_hints.property_declaration_types.enabled;
+        settings
+          .typescript
+          .inlay_hints
+          .property_declaration_types
+          .enabled = inlay_hints.property_declaration_types.enabled;
+      }
+      if inlay_hints.function_like_return_types.enabled {
+        lsp_warn!("\"deno.inlayHints.functionLikeReturnTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.functionLikeReturnTypes.enabled\" and \"typescript.inlayHints.functionLikeReturnTypes.enabled\".");
+        settings
+          .javascript
+          .inlay_hints
+          .function_like_return_types
+          .enabled = inlay_hints.function_like_return_types.enabled;
+        settings
+          .typescript
+          .inlay_hints
+          .function_like_return_types
+          .enabled = inlay_hints.function_like_return_types.enabled;
+      }
+      if inlay_hints.enum_member_values.enabled {
+        lsp_warn!("\"deno.inlayHints.enumMemberValues.enabled\" is deprecated. Instead use \"javascript.inlayHints.enumMemberValues.enabled\" and \"typescript.inlayHints.enumMemberValues.enabled\".");
+        settings.javascript.inlay_hints.enum_member_values.enabled =
+          inlay_hints.enum_member_values.enabled;
+        settings.typescript.inlay_hints.enum_member_values.enabled =
+          inlay_hints.enum_member_values.enabled;
+      }
+    }
+    if let Some(suggest) = deno_suggest {
+      let suggest: CompletionSettings =
+        parse_or_default(suggest, "settings under \"deno.suggest\"");
+      if suggest.complete_function_calls {
+        lsp_warn!("\"deno.suggest.completeFunctionCalls\" is deprecated. Instead use \"javascript.suggest.completeFunctionCalls\" and \"typescript.suggest.completeFunctionCalls\".");
+        settings.javascript.suggest.complete_function_calls =
+          suggest.complete_function_calls;
+        settings.typescript.suggest.complete_function_calls =
+          suggest.complete_function_calls;
+      }
+      if !suggest.names {
+        lsp_warn!("\"deno.suggest.names\" is deprecated. Instead use \"javascript.suggest.names\" and \"typescript.suggest.names\".");
+        settings.javascript.suggest.names = suggest.names;
+        settings.typescript.suggest.names = suggest.names;
+      }
+      if !suggest.paths {
+        lsp_warn!("\"deno.suggest.paths\" is deprecated. Instead use \"javascript.suggest.paths\" and \"typescript.suggest.paths\".");
+        settings.javascript.suggest.paths = suggest.paths;
+        settings.typescript.suggest.paths = suggest.paths;
+      }
+      if !suggest.auto_imports {
+        lsp_warn!("\"deno.suggest.autoImports\" is deprecated. Instead use \"javascript.suggest.autoImports\" and \"typescript.suggest.autoImports\".");
+        settings.javascript.suggest.auto_imports = suggest.auto_imports;
+        settings.typescript.suggest.auto_imports = suggest.auto_imports;
+      }
+    }
+    settings
+  }
+
+  pub fn from_initialization_options(options: Value) -> Self {
+    let deno = options;
+    let javascript = deno
+      .as_object()
+      .and_then(|o| o.get("javascript").cloned())
+      .unwrap_or_default();
+    let typescript = deno
+      .as_object()
+      .and_then(|o| o.get("typescript").cloned())
+      .unwrap_or_default();
+    Self::from_raw_settings(deno, javascript, typescript)
+  }
+
   /// Determine if any code lenses are enabled at all.  This allows short
   /// circuiting when there are no code lenses enabled.
   pub fn enabled_code_lens(&self) -> bool {
     self.code_lens.implementations || self.code_lens.references
   }
 
+  // TODO(nayeemrmn): Factor in out-of-band media type here.
+  pub fn language_settings_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&LanguageWorkspaceSettings> {
+    if specifier.scheme() == "deno-notebook-cell" {
+      return Some(&self.typescript);
+    }
+    match MediaType::from_specifier(specifier) {
+      MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs => Some(&self.javascript),
+      MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Tsx => Some(&self.typescript),
+      MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown => None,
+    }
+  }
+
   /// Determine if any inlay hints are enabled. This allows short circuiting
   /// when there are no inlay hints enabled.
-  pub fn enabled_inlay_hints(&self) -> bool {
+  pub fn enabled_inlay_hints(&self, specifier: &ModuleSpecifier) -> bool {
+    let Some(settings) = self.language_settings_for_specifier(specifier) else {
+      return false;
+    };
     !matches!(
-      self.inlay_hints.parameter_names.enabled,
+      settings.inlay_hints.parameter_names.enabled,
       InlayHintsParamNamesEnabled::None
-    ) || self.inlay_hints.parameter_types.enabled
-      || self.inlay_hints.variable_types.enabled
-      || self.inlay_hints.property_declaration_types.enabled
-      || self.inlay_hints.function_like_return_types.enabled
-      || self.inlay_hints.enum_member_values.enabled
+    ) || settings.inlay_hints.parameter_types.enabled
+      || settings.inlay_hints.variable_types.enabled
+      || settings.inlay_hints.property_declaration_types.enabled
+      || settings.inlay_hints.function_like_return_types.enabled
+      || settings.inlay_hints.enum_member_values.enabled
   }
 }
 
@@ -593,16 +928,12 @@ impl Config {
 
   /// Set the workspace settings directly, which occurs during initialization
   /// and when the client does not support workspace configuration requests
-  pub fn set_workspace_settings(
-    &mut self,
-    value: Value,
-  ) -> Result<(), AnyError> {
-    self.settings.workspace = serde_json::from_value(value)?;
+  pub fn set_workspace_settings(&mut self, settings: WorkspaceSettings) {
+    self.settings.workspace = settings;
     // See https://github.com/denoland/vscode_deno/issues/908.
     if self.settings.workspace.enable_paths == Some(vec![]) {
       self.settings.workspace.enable_paths = None;
     }
-    Ok(())
   }
 
   pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
@@ -912,6 +1243,7 @@ fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
 mod tests {
   use super::*;
   use deno_core::resolve_url;
+  use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
 
@@ -921,11 +1253,12 @@ mod tests {
     let mut config = Config::new_with_root(root_uri);
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
-    config
-      .set_workspace_settings(json!({
+    config.set_workspace_settings(
+      serde_json::from_value(json!({
         "enable": true
       }))
-      .expect("could not update");
+      .unwrap(),
+    );
     assert!(config.specifier_enabled(&specifier));
   }
 
@@ -935,11 +1268,12 @@ mod tests {
     let mut config = Config::new_with_root(root_uri);
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
-    config
-      .set_workspace_settings(json!({
+    config.set_workspace_settings(
+      serde_json::from_value(json!({
         "enable": true
       }))
-      .expect("could not update");
+      .unwrap(),
+    );
     let config_snapshot = config.snapshot();
     assert!(config_snapshot.specifier_enabled(&specifier));
   }
@@ -954,7 +1288,7 @@ mod tests {
     assert!(!config.specifier_enabled(&specifier_b));
     let workspace_settings =
       serde_json::from_str(r#"{ "enablePaths": ["worker"] }"#).unwrap();
-    config.set_workspace_settings(workspace_settings).unwrap();
+    config.set_workspace_settings(workspace_settings);
     assert!(config.specifier_enabled(&specifier_a));
     assert!(!config.specifier_enabled(&specifier_b));
     let config_snapshot = config.snapshot();
@@ -979,9 +1313,7 @@ mod tests {
   #[test]
   fn test_set_workspace_settings_defaults() {
     let mut config = Config::new();
-    config
-      .set_workspace_settings(json!({}))
-      .expect("could not update");
+    config.set_workspace_settings(serde_json::from_value(json!({})).unwrap());
     assert_eq!(
       config.workspace_settings().clone(),
       WorkspaceSettings {
@@ -989,6 +1321,7 @@ mod tests {
         disable_paths: vec![],
         enable_paths: None,
         cache: None,
+        cache_on_save: false,
         certificate_stores: None,
         config: None,
         import_map: None,
@@ -998,34 +1331,10 @@ mod tests {
           references_all_functions: false,
           test: true,
         },
-        inlay_hints: InlayHintsSettings {
-          parameter_names: InlayHintsParamNamesOptions {
-            enabled: InlayHintsParamNamesEnabled::None,
-            suppress_when_argument_matches_name: true
-          },
-          parameter_types: InlayHintsParamTypesOptions { enabled: false },
-          variable_types: InlayHintsVarTypesOptions {
-            enabled: false,
-            suppress_when_type_matches_name: true
-          },
-          property_declaration_types: InlayHintsPropDeclTypesOptions {
-            enabled: false
-          },
-          function_like_return_types: InlayHintsFuncLikeReturnTypesOptions {
-            enabled: false
-          },
-          enum_member_values: InlayHintsEnumMemberValuesOptions {
-            enabled: false
-          },
-        },
         internal_debug: false,
         lint: true,
         document_preload_limit: 1_000,
-        suggest: CompletionSettings {
-          complete_function_calls: false,
-          names: true,
-          paths: true,
-          auto_imports: true,
+        suggest: DenoCompletionSettings {
           imports: ImportCompletionSettings {
             auto_discover: true,
             hosts: HashMap::new(),
@@ -1037,6 +1346,94 @@ mod tests {
         tls_certificate: None,
         unsafely_ignore_certificate_errors: None,
         unstable: false,
+        javascript: LanguageWorkspaceSettings {
+          inlay_hints: InlayHintsSettings {
+            parameter_names: InlayHintsParamNamesOptions {
+              enabled: InlayHintsParamNamesEnabled::None,
+              suppress_when_argument_matches_name: true
+            },
+            parameter_types: InlayHintsParamTypesOptions { enabled: false },
+            variable_types: InlayHintsVarTypesOptions {
+              enabled: false,
+              suppress_when_type_matches_name: true
+            },
+            property_declaration_types: InlayHintsPropDeclTypesOptions {
+              enabled: false
+            },
+            function_like_return_types: InlayHintsFuncLikeReturnTypesOptions {
+              enabled: false
+            },
+            enum_member_values: InlayHintsEnumMemberValuesOptions {
+              enabled: false
+            },
+          },
+          preferences: LanguagePreferences {
+            import_module_specifier: ImportModuleSpecifier::Shortest,
+            jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
+            auto_import_file_exclude_patterns: vec![],
+            use_aliases_for_renames: true,
+          },
+          suggest: CompletionSettings {
+            complete_function_calls: false,
+            include_automatic_optional_chain_completions: true,
+            include_completions_for_import_statements: true,
+            names: true,
+            paths: true,
+            auto_imports: true,
+            enabled: true,
+            class_member_snippets: ClassMemberSnippets { enabled: true },
+            object_literal_method_snippets: ObjectLiteralMethodSnippets {
+              enabled: true,
+            },
+          },
+          update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
+            enabled: UpdateImportsOnFileMoveEnabled::Prompt
+          }
+        },
+        typescript: LanguageWorkspaceSettings {
+          inlay_hints: InlayHintsSettings {
+            parameter_names: InlayHintsParamNamesOptions {
+              enabled: InlayHintsParamNamesEnabled::None,
+              suppress_when_argument_matches_name: true
+            },
+            parameter_types: InlayHintsParamTypesOptions { enabled: false },
+            variable_types: InlayHintsVarTypesOptions {
+              enabled: false,
+              suppress_when_type_matches_name: true
+            },
+            property_declaration_types: InlayHintsPropDeclTypesOptions {
+              enabled: false
+            },
+            function_like_return_types: InlayHintsFuncLikeReturnTypesOptions {
+              enabled: false
+            },
+            enum_member_values: InlayHintsEnumMemberValuesOptions {
+              enabled: false
+            },
+          },
+          preferences: LanguagePreferences {
+            import_module_specifier: ImportModuleSpecifier::Shortest,
+            jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
+            auto_import_file_exclude_patterns: vec![],
+            use_aliases_for_renames: true,
+          },
+          suggest: CompletionSettings {
+            complete_function_calls: false,
+            include_automatic_optional_chain_completions: true,
+            include_completions_for_import_statements: true,
+            names: true,
+            paths: true,
+            auto_imports: true,
+            enabled: true,
+            class_member_snippets: ClassMemberSnippets { enabled: true },
+            object_literal_method_snippets: ObjectLiteralMethodSnippets {
+              enabled: true,
+            },
+          },
+          update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
+            enabled: UpdateImportsOnFileMoveEnabled::Prompt
+          }
+        },
       }
     );
   }
@@ -1044,9 +1441,9 @@ mod tests {
   #[test]
   fn test_empty_cache() {
     let mut config = Config::new();
-    config
-      .set_workspace_settings(json!({ "cache": "" }))
-      .expect("could not update");
+    config.set_workspace_settings(
+      serde_json::from_value(json!({ "cache": "" })).unwrap(),
+    );
     assert_eq!(
       config.workspace_settings().clone(),
       WorkspaceSettings::default()
@@ -1056,9 +1453,9 @@ mod tests {
   #[test]
   fn test_empty_import_map() {
     let mut config = Config::new();
-    config
-      .set_workspace_settings(json!({ "import_map": "" }))
-      .expect("could not update");
+    config.set_workspace_settings(
+      serde_json::from_value(json!({ "import_map": "" })).unwrap(),
+    );
     assert_eq!(
       config.workspace_settings().clone(),
       WorkspaceSettings::default()
@@ -1068,9 +1465,9 @@ mod tests {
   #[test]
   fn test_empty_tls_certificate() {
     let mut config = Config::new();
-    config
-      .set_workspace_settings(json!({ "tls_certificate": "" }))
-      .expect("could not update");
+    config.set_workspace_settings(
+      serde_json::from_value(json!({ "tls_certificate": "" })).unwrap(),
+    );
     assert_eq!(
       config.workspace_settings().clone(),
       WorkspaceSettings::default()
@@ -1080,9 +1477,9 @@ mod tests {
   #[test]
   fn test_empty_config() {
     let mut config = Config::new();
-    config
-      .set_workspace_settings(json!({ "config": "" }))
-      .expect("could not update");
+    config.set_workspace_settings(
+      serde_json::from_value(json!({ "config": "" })).unwrap(),
+    );
     assert_eq!(
       config.workspace_settings().clone(),
       WorkspaceSettings::default()

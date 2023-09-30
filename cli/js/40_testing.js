@@ -675,6 +675,9 @@ let currentBenchUserExplicitStart = null;
 /** @type {number | null} */
 let currentBenchUserExplicitEnd = null;
 
+const registerTestIdRetBuf = new Uint32Array(1);
+const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
+
 function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
@@ -769,27 +772,22 @@ function testInner(
 
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
-  const jsError = core.destructureError(new Error());
-  let location;
 
-  for (let i = 0; i < jsError.frames.length; i++) {
-    const filename = jsError.frames[i].fileName;
-    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
-      continue;
-    }
-    location = {
-      fileName: jsError.frames[i].fileName,
-      lineNumber: jsError.frames[i].lineNumber,
-      columnNumber: jsError.frames[i].columnNumber,
-    };
-    break;
-  }
-  testDesc.location = location;
+  testDesc.location = core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
-  const { id, origin } = ops.op_register_test(testDesc);
-  testDesc.id = id;
+  const origin = ops.op_register_test(
+    testDesc.fn,
+    testDesc.name,
+    testDesc.ignore,
+    testDesc.only,
+    testDesc.location.fileName,
+    testDesc.location.lineNumber,
+    testDesc.location.columnNumber,
+    registerTestIdRetBufU8,
+  );
+  testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = origin;
   MapPrototypeSet(testStates, testDesc.id, {
     context: createTestContext(testDesc),
@@ -1226,9 +1224,13 @@ function stepReportResult(desc, result, elapsed) {
   for (const childDesc of state.children) {
     stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
-  ops.op_dispatch_test_event({
-    stepResult: [desc.id, result, elapsed],
-  });
+  if (result === "ok") {
+    ops.op_test_event_step_result_ok(desc.id, elapsed);
+  } else if (result === "ignored") {
+    ops.op_test_event_step_result_ignored(desc.id, elapsed);
+  } else {
+    ops.op_test_event_step_result_failed(desc.id, result.failed, elapsed);
+  }
 }
 
 /** @param desc {TestDescription | TestStepDescription} */
@@ -1307,21 +1309,25 @@ function createTestContext(desc) {
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
-      const jsError = core.destructureError(new Error());
-      stepDesc.location = {
-        fileName: jsError.frames[1].fileName,
-        lineNumber: jsError.frames[1].lineNumber,
-        columnNumber: jsError.frames[1].columnNumber,
-      };
+      stepDesc.location = core.currentUserCallSite();
       stepDesc.level = level + 1;
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
       stepDesc.name = escapeName(stepDesc.name);
       stepDesc.rootName = escapeName(rootName);
       stepDesc.fn = wrapTest(stepDesc);
-      const { id, origin } = ops.op_register_test_step(stepDesc);
+      const id = ops.op_register_test_step(
+        stepDesc.name,
+        stepDesc.location.fileName,
+        stepDesc.location.lineNumber,
+        stepDesc.location.columnNumber,
+        stepDesc.level,
+        stepDesc.parent.id,
+        stepDesc.rootId,
+        stepDesc.rootName,
+      );
       stepDesc.id = id;
-      stepDesc.origin = origin;
+      stepDesc.origin = desc.origin;
       const state = {
         context: createTestContext(stepDesc),
         children: [],
@@ -1334,7 +1340,7 @@ function createTestContext(desc) {
         stepDesc,
       );
 
-      ops.op_dispatch_test_event({ stepWait: stepDesc.id });
+      ops.op_test_event_step_wait(stepDesc.id);
       const earlier = DateNow();
       const result = await stepDesc.fn(stepDesc);
       const elapsed = DateNow() - earlier;
