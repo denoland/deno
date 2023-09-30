@@ -13,7 +13,7 @@ use deno_semver::package::PackageReq;
 use crate::args::PackageJsonDepsProvider;
 use crate::util::sync::AtomicFlag;
 
-use super::CliNpmRegistryApi;
+use super::super::CliNpmRegistryApi;
 use super::NpmResolution;
 
 #[derive(Debug)]

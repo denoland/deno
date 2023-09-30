@@ -322,7 +322,9 @@ impl ModuleGraphBuilder {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if self.options.node_modules_dir_enablement() == Some(true) {
-      self.resolver.force_top_level_package_json_install().await?;
+      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+        npm_resolver.ensure_top_level_package_json_install().await?;
+      }
     }
 
     // add the lockfile redirects to the graph if it's the first time executing
@@ -393,10 +395,9 @@ impl ModuleGraphBuilder {
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
       // ensure that the top level package.json is installed if a
       // specifier was matched in the package.json
-      self
-        .resolver
-        .top_level_package_json_install_if_necessary()
-        .await?;
+      if self.resolver.found_package_json_dep() {
+        npm_resolver.ensure_top_level_package_json_install().await?;
+      }
 
       // resolve the dependencies of any pending dependencies
       // that were inserted by building the graph
