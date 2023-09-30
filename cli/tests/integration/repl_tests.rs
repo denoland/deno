@@ -497,11 +497,10 @@ fn syntax_error() {
 }
 
 #[test]
-fn syntax_error_jsx() {
-  // JSX is not supported in the REPL
+fn jsx_errors_without_pragma() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const element = <div />;");
-    console.expect("Expression expected");
+    console.expect("React is not defined");
   });
 }
 
