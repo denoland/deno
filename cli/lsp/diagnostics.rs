@@ -1238,8 +1238,19 @@ fn diagnose_resolution(
           diagnostics
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if module_name == dependency_key {
-          diagnostics
-            .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
+          let mut is_mapped = false;
+          if let Some(import_map) = &snapshot.maybe_import_map {
+            if let Resolution::Ok(resolved) = &resolution {
+              if import_map.resolve(module_name, &resolved.specifier).is_ok() {
+                is_mapped = true;
+              }
+            }
+          }
+          // show diagnostics for bare node specifiers that aren't mapped by import map
+          if !is_mapped {
+            diagnostics
+              .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
+          }
         } else if let Some(npm) = &snapshot.npm {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
