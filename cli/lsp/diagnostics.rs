@@ -971,6 +971,8 @@ pub enum DenoDiagnostic {
   ResolutionError(deno_graph::ResolutionError),
   /// Invalid `node:` specifier.
   InvalidNodeSpecifier(ModuleSpecifier),
+  /// Bare specifier is used for `node:` specifier
+  BareNodeSpecifier(String),
 }
 
 impl DenoDiagnostic {
@@ -1004,6 +1006,7 @@ impl DenoDiagnostic {
         }
       }
       Self::InvalidNodeSpecifier(_) => "resolver-error",
+      Self::BareNodeSpecifier(_) => "import-node-prefix-missing",
     }
   }
 
@@ -1175,6 +1178,7 @@ impl DenoDiagnostic {
           .map(|specifier| json!({ "specifier": specifier }))
       ),
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
+      Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
     };
     lsp::Diagnostic {
       range: *range,
@@ -1190,6 +1194,7 @@ impl DenoDiagnostic {
 
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
+  dependency_key: &str,
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
@@ -1250,6 +1255,8 @@ fn diagnose_resolution(
         if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
+        } else if module_name == dependency_key {
+          diagnostics.push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
@@ -1322,6 +1329,7 @@ fn diagnose_dependency(
   diagnostics.extend(
     diagnose_resolution(
       snapshot,
+      dependency_key,
       if dependency.maybe_code.is_none() {
         &dependency.maybe_type
       } else {
@@ -1355,6 +1363,7 @@ fn diagnose_dependency(
     diagnostics.extend(
       diagnose_resolution(
         snapshot,
+        dependency_key,
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
