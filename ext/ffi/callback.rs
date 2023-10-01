@@ -11,8 +11,7 @@ use crate::MIN_SAFE_INTEGER;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::task::AtomicWaker;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::v8;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -506,10 +505,10 @@ unsafe fn do_ffi_callback(
   };
 }
 
-#[op]
+#[op2(async)]
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
   let state = state.borrow();
   let callback_resource =
@@ -534,22 +533,19 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op(v8)]
+#[op2]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
-  args: RegisterCallbackArgs,
-  cb: serde_v8::Value<'scope>,
-) -> Result<serde_v8::Value<'scope>, AnyError>
+  #[serde] args: RegisterCallbackArgs,
+  cb: v8::Local<v8::Function>,
+) -> Result<v8::Local<'scope, v8::Value>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
   check_unstable(state, "Deno.UnsafeCallback");
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial(None)?;
-
-  let v8_value = cb.v8_value;
-  let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();
@@ -622,14 +618,14 @@ where
   array.set_index(scope, 1, ptr_local);
   let array_value: v8::Local<v8::Value> = array.into();
 
-  Ok(array_value.into())
+  Ok(array_value)
 }
 
-#[op(v8)]
+#[op2]
 pub fn op_ffi_unsafe_callback_close(
   state: &mut OpState,
   scope: &mut v8::HandleScope,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   // SAFETY: This drops the closure and the callback info associated with it.
   // Any retained function pointers to the closure become dangling pointers.

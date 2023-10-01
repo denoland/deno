@@ -545,11 +545,18 @@ function bootstrapMainRuntime(runtimeOptions) {
     // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
     // above any properties that are defined elsewhere using `Object.defineProperty`
     // are lost.
+    let jupyterNs = undefined;
     ObjectDefineProperty(finalDenoNs, "jupyter", {
       get() {
+        if (jupyterNs) {
+          return jupyterNs;
+        }
         throw new Error(
           "Deno.jupyter is only available in `deno jupyter` subcommand.",
         );
+      },
+      set(val) {
+        jupyterNs = val;
       },
     });
   }

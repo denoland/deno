@@ -39,6 +39,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
 
@@ -97,7 +98,7 @@ pub struct CliMainWorkerOptions {
 struct SharedWorkerState {
   options: CliMainWorkerOptions,
   storage_key_resolver: StorageKeyResolver,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
@@ -304,7 +305,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
@@ -382,10 +383,14 @@ impl CliMainWorkerFactory {
       } else {
         package_ref
       };
-      shared
+      if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
+        npm_resolver
+          .add_package_reqs(&[package_ref.req().clone()])
+          .await?;
+      }
+      let package_ref = shared
         .npm_resolver
-        .add_package_reqs(&[package_ref.req().clone()])
-        .await?;
+        .resolve_pkg_nv_ref_from_pkg_req_ref(&package_ref)?;
       let node_resolution =
         self.resolve_binary_entrypoint(&package_ref, &permissions)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
@@ -482,7 +487,7 @@ impl CliMainWorkerFactory {
       should_wait_for_inspector_session: shared.options.inspect_wait,
       module_loader,
       fs: shared.fs.clone(),
-      npm_resolver: Some(shared.npm_resolver.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
@@ -511,10 +516,18 @@ impl CliMainWorkerFactory {
 
   fn resolve_binary_entrypoint(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<NodeResolution, AnyError> {
-    match self.shared.node_resolver.resolve_binary_export(package_ref) {
+    let package_folder = self
+      .shared
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(package_ref.nv())?;
+    match self
+      .shared
+      .node_resolver
+      .resolve_binary_export(&package_folder, package_ref.sub_path())
+    {
       Ok(node_resolution) => Ok(node_resolution),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
@@ -534,7 +547,7 @@ impl CliMainWorkerFactory {
   /// resolve the binary entrypoint using regular node resolution
   fn resolve_binary_entrypoint_fallback(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // only fallback if the user specified a sub path
@@ -545,12 +558,16 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let Some(resolution) =
-      self.shared.node_resolver.resolve_npm_req_reference(
-        package_ref,
-        NodeResolutionMode::Execution,
-        permissions,
-      )?
+    let package_folder = self
+      .shared
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module(package_ref.nv())?;
+    let Some(resolution) = self.shared.node_resolver.resolve_npm_reference(
+      &package_folder,
+      package_ref.sub_path(),
+      NodeResolutionMode::Execution,
+      permissions,
+    )?
     else {
       return Ok(None);
     };
@@ -636,7 +653,7 @@ fn create_web_worker_callback(
       source_map_getter: maybe_source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
-      npm_resolver: Some(shared.npm_resolver.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),

@@ -3,12 +3,14 @@
 const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 
-import { denoNsUnstable } from "ext:runtime/90_deno_ns.js";
-
 function enableJupyter() {
-  denoNsUnstable.jupyter = {
-    async broadcast(msgType, content) {
-      await core.opAsync("op_jupyter_broadcast", msgType, content);
+  const {
+    op_jupyter_broadcast,
+  } = core.ensureFastOps();
+
+  globalThis.Deno.jupyter = {
+    async broadcast(msgType, content, { metadata = {} } = {}) {
+      await op_jupyter_broadcast(msgType, content, metadata);
     },
   };
 }
