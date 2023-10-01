@@ -528,7 +528,7 @@ impl ReplSession {
       .await?;
 
     let code_before = self.analyze_and_handle_jsx(&parsed_source).await?;
-
+    eprintln!("code before {:#?}", code_before);
     let transpiled_src = parsed_source
       .transpile(&deno_ast::EmitOptions {
         emit_metadata: false,
@@ -566,7 +566,13 @@ impl ReplSession {
       return Ok(String::new());
     };
 
-    if analyzed_pragmas.has_any() {
+    eprintln!(
+      "analyzed_pragmas {} {:#?}",
+      analyzed_pragmas.has_any(),
+      analyzed_pragmas
+    );
+
+    if !analyzed_pragmas.has_any() {
       return Ok(String::new());
     }
 
@@ -676,6 +682,7 @@ fn build_auto_jsx_eval_code(jsx: &ReplJsxState) -> Option<String> {
     let mut code = String::new();
     code.push_str(&import_code(&jsx.factory, jsx_import_source));
     code.push_str(&import_code(&jsx.frag_factory, jsx_import_source));
+    eprintln!("code {:#?}", code);
     Some(code)
   } else {
     None
@@ -805,46 +812,52 @@ fn analyze_jsx_pragmas(
       continue; // invalid
     }
 
-    {
-      let captures = JSX_IMPORT_SOURCE_RE.captures(&c.text)?;
-      let m = captures.get(1)?;
-      analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
-        text: m.as_str().to_string(),
-        range: comment_source_to_position_range(
-          c.start(),
-          &m,
-          parsed_source.text_info(),
-          true,
-        ),
-      })
+    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
+      eprintln!("captures {:#?}", captures);
+      if let Some(m) = captures.get(1) {
+        eprintln!("capt");
+        analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            true,
+          ),
+        });
+      }
     }
 
-    {
-      let captures = JSX_RE.captures(&c.text)?;
-      let m = captures.get(1)?;
-      analyzed_pragmas.jsx = Some(SpecifierWithRange {
-        text: m.as_str().to_string(),
-        range: comment_source_to_position_range(
-          c.start(),
-          &m,
-          parsed_source.text_info(),
-          true,
-        ),
-      })
+    if let Some(captures) = JSX_RE.captures(&c.text) {
+      eprintln!("captures2 {:#?}", captures);
+      if let Some(m) = captures.get(1) {
+        eprintln!("capt2");
+        analyzed_pragmas.jsx = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            false,
+          ),
+        });
+      }
     }
 
-    {
-      let captures = JSX_FRAG_RE.captures(&c.text)?;
-      let m = captures.get(1)?;
-      analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
-        text: m.as_str().to_string(),
-        range: comment_source_to_position_range(
-          c.start(),
-          &m,
-          parsed_source.text_info(),
-          true,
-        ),
-      });
+    if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
+      eprintln!("captures3 {:#?}", captures);
+      if let Some(m) = captures.get(1) {
+        eprintln!("capt3");
+        analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            false,
+          ),
+        });
+      }
     }
   }
 
