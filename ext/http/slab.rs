@@ -56,10 +56,10 @@ impl Drop for HttpRequestBodyAutocloser {
 pub async fn new_slab_future(
   request: Request,
   request_info: HttpConnectionProperties,
-  refcount: RefCount,
+  _refcount: RefCount, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<SlabId>,
 ) -> Result<Response, hyper::Error> {
-  let index = slab_insert(request, request_info, refcount);
+  let index = slab_insert(request, request_info);
   defer! {
     slab_drop(index);
   }
@@ -82,9 +82,6 @@ pub struct HttpSlabRecord {
   promise: CompletionHandle,
   trailers: Rc<RefCell<Option<HeaderMap>>>,
   been_dropped: bool,
-  /// Use a `Rc` to keep track of outstanding requests. We don't use this, but
-  /// when it drops, it decrements the refcount of the server itself.
-  refcount: Option<RefCount>,
   #[cfg(feature = "__zombie_http_tracking")]
   alive: bool,
 }
@@ -152,7 +149,6 @@ pub fn slab_get(index: SlabId) -> SlabEntry {
 fn slab_insert(
   request: Request,
   request_info: HttpConnectionProperties,
-  refcount: RefCount,
 ) -> SlabId {
   let (request_parts, request_body) = request.into_parts();
   let index = SLAB.with(|slab| {
@@ -168,7 +164,6 @@ fn slab_insert(
       trailers,
       been_dropped: false,
       promise: CompletionHandle::default(),
-      refcount: Some(refcount),
       #[cfg(feature = "__zombie_http_tracking")]
       alive: true,
     })
@@ -197,9 +192,6 @@ pub fn slab_drop(index: SlabId) {
   } else {
     // Take the request body, as the future has been dropped and this will allow some resources to close
     record.request_body.take();
-    // Take the refcount keeping the server alive. The future is no longer alive, which means this request
-    // is toast.
-    record.refcount.take();
   }
 }
 
