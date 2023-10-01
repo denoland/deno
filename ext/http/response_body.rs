@@ -80,6 +80,7 @@ impl CompletionHandle {
     }
   }
 
+  #[allow(dead_code)]
   pub fn is_completed(&self) -> bool {
     self.inner.borrow().complete
   }

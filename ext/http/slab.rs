@@ -15,6 +15,7 @@ use scopeguard::ScopeGuard;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::future::Future;
 use std::rc::Rc;
 
 pub type Request = hyper1::Request<Incoming>;
@@ -86,8 +87,8 @@ pub async fn handle_request(
   tx.send(guarded_record.clone()).await.unwrap();
 
   // Wait for JavaScript handler to return request.
-  http_trace!(*guarded_record, "handle_request promise.await");
-  guarded_record.promise().await;
+  http_trace!(*guarded_record, "handle_request response_ready.await");
+  guarded_record.response_ready().await;
 
   // Defuse the guard. Must not await after the point.
   let record = ScopeGuard::into_inner(guarded_record);
@@ -106,7 +107,8 @@ struct HttpRecordInner {
   request_body: Option<RequestBodyState>,
   /// The response may get taken before we tear this down
   response: Option<Response>,
-  promise: CompletionHandle,
+  response_ready: bool,
+  response_waker: Option<std::task::Waker>,
   trailers: Rc<RefCell<Option<HeaderMap>>>,
   been_dropped: bool,
 }
@@ -124,9 +126,10 @@ impl HttpRecord {
       request_parts,
       request_body,
       response: Some(Response::new(body)),
+      response_ready: false,
+      response_waker: None,
       trailers,
       been_dropped: false,
-      promise: CompletionHandle::default(),
     };
     #[allow(clippy::let_and_return)]
     let record = Rc::new(Self(RefCell::new(inner)));
@@ -197,16 +200,20 @@ impl HttpRecord {
   /// Complete this record, potentially expunging it if it is fully complete (ie: cancelled as well).
   pub fn complete(self: Rc<Self>) {
     http_trace!(self, "HttpRecord::complete");
-    let inner = self.self_mut();
+    let mut inner = self.self_mut();
     assert!(
       !inner.been_dropped || Rc::strong_count(&self) == 1,
       "HTTP state error: Expected to be last strong reference (been_dropped)"
     );
     assert!(
-      !inner.promise.is_completed(),
+      !inner.response_ready,
       "HTTP state error: Entry has already been completed"
     );
-    inner.promise.complete(true);
+    inner.response_ready = true;
+    if let Some(waker) = inner.response_waker.take() {
+      drop(inner);
+      waker.wake();
+    }
   }
 
   /// Has the future for this record been dropped? ie, has the underlying TCP connection
@@ -241,8 +248,26 @@ impl HttpRecord {
   }
 
   /// Get a reference to the completion handle.
-  pub fn promise(&self) -> CompletionHandle {
-    self.self_ref().promise.clone()
+  fn response_ready(&self) -> impl Future<Output = ()> + '_ {
+    struct HttpRecordComplete<'a>(&'a HttpRecord);
+
+    impl<'a> Future for HttpRecordComplete<'a> {
+      type Output = ();
+
+      fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+      ) -> std::task::Poll<Self::Output> {
+        let mut mut_self = self.0 .0.borrow_mut();
+        if mut_self.response_ready {
+          return std::task::Poll::Ready(());
+        }
+        mut_self.response_waker = Some(cx.waker().clone());
+        std::task::Poll::Pending
+      }
+    }
+
+    HttpRecordComplete(self)
   }
 
   /// Get a reference to the response body completion handle.
