@@ -3724,5 +3724,5 @@ Deno.test("Deno.Server is not thenable", async () => {
     return server;
   }
   const server = await serveTest();
-  server.close();
+  await server.shutdown();
 });
