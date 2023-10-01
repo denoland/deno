@@ -546,10 +546,9 @@ impl ReplSession {
       })?
       .text;
 
+    eprintln!("transpiled {:#?}", transpiled_src);
     let value = self
-      .evaluate_expression(&format!(
-        "'use strict'; void 0;{code_before}\n{transpiled_src}"
-      ))
+      .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
 
     Ok(TsEvaluateResponse {
@@ -565,12 +564,6 @@ impl ReplSession {
     let Some(analyzed_pragmas) = analyze_jsx_pragmas(parsed_source) else {
       return Ok(String::new());
     };
-
-    eprintln!(
-      "analyzed_pragmas {} {:#?}",
-      analyzed_pragmas.has_any(),
-      analyzed_pragmas
-    );
 
     if !analyzed_pragmas.has_any() {
       return Ok(String::new());
@@ -682,7 +675,6 @@ fn build_auto_jsx_eval_code(jsx: &ReplJsxState) -> Option<String> {
     let mut code = String::new();
     code.push_str(&import_code(&jsx.factory, jsx_import_source));
     code.push_str(&import_code(&jsx.frag_factory, jsx_import_source));
-    eprintln!("code {:#?}", code);
     Some(code)
   } else {
     None
@@ -813,9 +805,7 @@ fn analyze_jsx_pragmas(
     }
 
     if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
-      eprintln!("captures {:#?}", captures);
       if let Some(m) = captures.get(1) {
-        eprintln!("capt");
         analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
           text: m.as_str().to_string(),
           range: comment_source_to_position_range(
@@ -829,9 +819,7 @@ fn analyze_jsx_pragmas(
     }
 
     if let Some(captures) = JSX_RE.captures(&c.text) {
-      eprintln!("captures2 {:#?}", captures);
       if let Some(m) = captures.get(1) {
-        eprintln!("capt2");
         analyzed_pragmas.jsx = Some(SpecifierWithRange {
           text: m.as_str().to_string(),
           range: comment_source_to_position_range(
@@ -845,9 +833,7 @@ fn analyze_jsx_pragmas(
     }
 
     if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
-      eprintln!("captures3 {:#?}", captures);
       if let Some(m) = captures.get(1) {
-        eprintln!("capt3");
         analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
           text: m.as_str().to_string(),
           range: comment_source_to_position_range(
