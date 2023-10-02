@@ -11,14 +11,15 @@ use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 
-use crate::npm::NpmCache;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::NpmPackageFsResolver;
+
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 
-use super::NpmResolution;
+use super::cache::NpmCache;
+use super::resolution::NpmResolution;
 
 pub fn create_npm_fs_resolver(
   fs: Arc<dyn FileSystem>,
