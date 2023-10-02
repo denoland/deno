@@ -118,11 +118,11 @@ function upgradeHttpRaw(req, conn) {
 
 function addTrailers(resp, headerList) {
   const inner = toInnerResponse(resp);
-  op_http_set_response_trailers(inner.slabId, headerList);
+  op_http_set_response_trailers(inner.external, headerList);
 }
 
 class InnerRequest {
-  #slabId;
+  #external;
   #context;
   #methodAndUri;
   #streamRid;
@@ -130,14 +130,14 @@ class InnerRequest {
   #upgraded;
   #urlValue;
 
-  constructor(slabId, context) {
-    this.#slabId = slabId;
+  constructor(external, context) {
+    this.#external = external;
     this.#context = context;
     this.#upgraded = false;
   }
 
   close() {
-    this.#slabId = null;
+    this.#external = null;
   }
 
   get [_upgraded]() {
@@ -148,7 +148,7 @@ class InnerRequest {
     if (this.#upgraded) {
       throw new Deno.errors.Http("already upgraded");
     }
-    if (this.#slabId === null) {
+    if (this.#external === null) {
       throw new Deno.errors.Http("already closed");
     }
 
@@ -160,7 +160,7 @@ class InnerRequest {
 
     // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
-      const slabId = this.#slabId;
+      const external = this.#external;
       const underlyingConn = originalArgs[0];
 
       this.url();
@@ -169,7 +169,7 @@ class InnerRequest {
 
       this.#upgraded = () => {};
 
-      const upgradeRid = op_http_upgrade_raw(slabId);
+      const upgradeRid = op_http_upgrade_raw(external);
 
       const conn = new TcpConn(
         upgradeRid,
@@ -185,7 +185,7 @@ class InnerRequest {
       const response = originalArgs[0];
       const ws = originalArgs[1];
 
-      const slabId = this.#slabId;
+      const external = this.#external;
 
       this.url();
       this.headerList;
@@ -196,7 +196,7 @@ class InnerRequest {
         goAhead.resolve();
       };
       const wsPromise = op_http_upgrade_websocket_next(
-        slabId,
+        external,
         response.headerList,
       );
 
@@ -238,12 +238,12 @@ class InnerRequest {
     }
 
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === null) {
+      if (this.#external === null) {
         throw new TypeError("request closed");
       }
       // TODO(mmastrac): This is quite slow as we're serializing a large number of values. We may want to consider
       // splitting this up into multiple ops.
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
 
     const path = this.#methodAndUri[2];
@@ -283,10 +283,10 @@ class InnerRequest {
       };
     }
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === null) {
+      if (this.#external === null) {
         throw new TypeError("request closed");
       }
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
     return {
       transport: "tcp",
@@ -297,16 +297,16 @@ class InnerRequest {
 
   get method() {
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === null) {
+      if (this.#external === null) {
         throw new TypeError("request closed");
       }
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
     return this.#methodAndUri[0];
   }
 
   get body() {
-    if (this.#slabId === null) {
+    if (this.#external === null) {
       throw new TypeError("request closed");
     }
     if (this.#body !== undefined) {
@@ -318,25 +318,25 @@ class InnerRequest {
       this.#body = null;
       return null;
     }
-    this.#streamRid = op_http_read_request_body(this.#slabId);
+    this.#streamRid = op_http_read_request_body(this.#external);
     this.#body = new InnerBody(readableStreamForRid(this.#streamRid, false));
     return this.#body;
   }
 
   get headerList() {
-    if (this.#slabId === null) {
+    if (this.#external === null) {
       throw new TypeError("request closed");
     }
     const headers = [];
-    const reqHeaders = op_http_get_request_headers(this.#slabId);
+    const reqHeaders = op_http_get_request_headers(this.#external);
     for (let i = 0; i < reqHeaders.length; i += 2) {
       ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
     }
     return headers;
   }
 
-  get slabId() {
-    return this.#slabId;
+  get external() {
+    return this.#external;
   }
 }
 
