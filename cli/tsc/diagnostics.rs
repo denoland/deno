@@ -113,10 +113,13 @@ pub struct Diagnostic {
   pub start: Option<Position>,
   pub end: Option<Position>,
   pub message_text: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub message_chain: Option<DiagnosticMessageChain>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub source: Option<String>,
   pub source_line: Option<String>,
   pub file_name: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub related_information: Option<Vec<Diagnostic>>,
 }
 
