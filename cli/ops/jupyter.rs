@@ -37,6 +37,7 @@ pub async fn op_jupyter_broadcast(
   #[string] message_type: String,
   #[serde] content: serde_json::Value,
   #[serde] metadata: serde_json::Value,
+  #[serde] buffers: Vec<Vec<u8>>,
 ) -> Result<(), AnyError> {
   let (iopub_socket, last_execution_request) = {
     let s = state.borrow();
@@ -49,14 +50,13 @@ pub async fn op_jupyter_broadcast(
   };
 
   // TODO: Support multiple buffers - Option<Vec<Bytes>>
-  let buffers = None;
   let maybe_last_request = last_execution_request.borrow().clone();
   if let Some(last_request) = maybe_last_request {
     last_request
       .new_message(&message_type)
       .with_content(content)
       .with_metadata(metadata)
-      .with_buffers(buffers)
+      .with_buffers(buffers.into_iter().map(|b| b.into()).collect())
       .send(&mut *iopub_socket.lock().await)
       .await?;
   }

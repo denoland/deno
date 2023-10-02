@@ -122,7 +122,7 @@ pub(crate) struct JupyterMessage {
   parent_header: serde_json::Value,
   metadata: serde_json::Value,
   content: serde_json::Value,
-  buffers: Option<Vec<Bytes>>,
+  buffers: Vec<Bytes>,
 }
 
 const DELIMITER: &[u8] = b"<IDS|MSG>";
@@ -148,9 +148,9 @@ impl JupyterMessage {
       metadata: serde_json::from_slice(&raw_message.jparts[2])?,
       content: serde_json::from_slice(&raw_message.jparts[3])?,
       buffers: if raw_message.jparts.len() > 4 {
-        Some(raw_message.jparts[4..].to_vec())
+        raw_message.jparts[4..].to_vec()
       } else {
-        None
+        vec![]
       },
     })
   }
@@ -185,7 +185,7 @@ impl JupyterMessage {
       parent_header: self.header.clone(),
       metadata: json!({}),
       content: json!({}),
-      buffers: None,
+      buffers: vec![],
     }
   }
 
@@ -221,10 +221,7 @@ impl JupyterMessage {
     self
   }
 
-  pub(crate) fn with_buffers(
-    mut self,
-    buffers: Option<Vec<Bytes>>,
-  ) -> JupyterMessage {
+  pub(crate) fn with_buffers(mut self, buffers: Vec<Bytes>) -> JupyterMessage {
     self.buffers = buffers;
     self
   }
@@ -257,9 +254,7 @@ impl JupyterMessage {
         .to_vec()
         .into(),
     ];
-    if let Some(buffers) = &self.buffers {
-      jparts.extend_from_slice(buffers);
-    }
+    jparts.extend_from_slice(&self.buffers);
     let raw_message = RawMessage {
       zmq_identities: self.zmq_identities.clone(),
       jparts,
