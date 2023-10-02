@@ -20,8 +20,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::npm::NpmCache;
-
+use super::super::cache::NpmCache;
 use super::super::resolution::NpmResolution;
 use super::common::cache_packages;
 use super::common::types_package_name;
