@@ -75,12 +75,6 @@ impl CliNpmRegistryApi {
     })))
   }
 
-  /// Creates an npm registry API that will be uninitialized. This is
-  /// useful for tests or for initializing the LSP.
-  pub fn new_uninitialized() -> Self {
-    Self(None)
-  }
-
   /// Clears the internal memory cache.
   pub fn clear_memory_cache(&self) {
     self.inner().clear_memory_cache();
