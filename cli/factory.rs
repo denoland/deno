@@ -297,7 +297,7 @@ impl CliFactory {
         create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
           snapshot: match self.options.resolve_npm_resolution_snapshot()? {
             Some(snapshot) => {
-              CliNpmResolverManagedSnapshotOption::Provided(Some(snapshot))
+              CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
             }
             None => match self.maybe_lockfile() {
               Some(lockfile) => {
@@ -305,7 +305,7 @@ impl CliFactory {
                   lockfile.clone(),
                 )
               }
-              None => CliNpmResolverManagedSnapshotOption::Provided(None),
+              None => CliNpmResolverManagedSnapshotOption::Specified(None),
             },
           },
           maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),

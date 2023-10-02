@@ -55,7 +55,7 @@ mod tarball;
 
 pub enum CliNpmResolverManagedSnapshotOption {
   ResolveFromLockfile(Arc<Mutex<Lockfile>>),
-  Provided(Option<ValidSerializedNpmResolutionSnapshot>),
+  Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
 pub enum CliNpmResolverManagedPackageJsonInstallerOption {
@@ -219,7 +219,7 @@ async fn resolve_snapshot(
         Ok(None)
       }
     }
-    CliNpmResolverManagedSnapshotOption::Provided(snapshot) => Ok(snapshot),
+    CliNpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
   }
 }
 

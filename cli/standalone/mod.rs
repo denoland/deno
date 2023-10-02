@@ -345,7 +345,7 @@ pub async fn run(
   ));
   let npm_resolver = create_cli_npm_resolver(
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-      snapshot: CliNpmResolverManagedSnapshotOption::Provided(snapshot),
+      snapshot: CliNpmResolverManagedSnapshotOption::Specified(snapshot),
       maybe_lockfile: None,
       fs: fs.clone(),
       http_client: http_client.clone(),
