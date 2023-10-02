@@ -432,7 +432,7 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
 pub fn op_ws_send_binary(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-  #[buffer] data: &[u8],
+  #[anybuffer] data: &[u8],
 ) {
   send_binary(state, rid, data)
 }

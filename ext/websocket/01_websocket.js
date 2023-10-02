@@ -331,7 +331,7 @@ class WebSocket extends EventTarget {
       op_ws_send_binary(this[_rid], data);
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
       // deno-lint-ignore prefer-primordials
-      op_ws_send_binary(this[_rid], new Uint8Array(data));
+      op_ws_send_binary_ab(this[_rid], new Uint8Array(data));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
