@@ -527,8 +527,8 @@ impl ReplSession {
       .check_for_npm_or_node_imports(&parsed_source.program())
       .await?;
 
-    let code_before = self.analyze_and_handle_jsx(&parsed_source).await?;
-    eprintln!("code before {:#?}", code_before);
+    self.analyze_and_handle_jsx(&parsed_source);
+
     let transpiled_src = parsed_source
       .transpile(&deno_ast::EmitOptions {
         emit_metadata: false,
@@ -546,7 +546,6 @@ impl ReplSession {
       })?
       .text;
 
-    eprintln!("transpiled {:#?}", transpiled_src);
     let value = self
       .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
@@ -557,16 +556,13 @@ impl ReplSession {
     })
   }
 
-  async fn analyze_and_handle_jsx(
-    &mut self,
-    parsed_source: &ParsedSource,
-  ) -> Result<String, AnyError> {
+  fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {
     let Some(analyzed_pragmas) = analyze_jsx_pragmas(parsed_source) else {
-      return Ok(String::new());
+      return;
     };
 
     if !analyzed_pragmas.has_any() {
-      return Ok(String::new());
+      return;
     }
 
     if let Some(jsx) = analyzed_pragmas.jsx {
@@ -578,12 +574,6 @@ impl ReplSession {
     if let Some(jsx_import_source) = analyzed_pragmas.jsx_import_source {
       self.jsx.import_source = Some(jsx_import_source.text);
     }
-
-    if let Some(code) = build_auto_jsx_eval_code(&self.jsx) {
-      return Ok(code);
-    }
-
-    Ok(String::new())
   }
 
   async fn check_for_npm_or_node_imports(
@@ -654,30 +644,6 @@ impl ReplSession {
       )
       .await
       .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
-  }
-}
-
-fn build_auto_jsx_eval_code(jsx: &ReplJsxState) -> Option<String> {
-  fn import_code(factory: &str, import_source: &str) -> String {
-    let mut code = String::new();
-
-    if let Some((obj, _)) = factory.split_once('.') {
-      code.push_str(&format!("var {} = ", obj));
-    } else {
-      code.push_str(&format!("var {{ {} }} = ", factory));
-    }
-    code.push_str(&format!("await import('{}');", import_source));
-
-    code
-  }
-
-  if let Some(jsx_import_source) = &jsx.import_source {
-    let mut code = String::new();
-    code.push_str(&import_code(&jsx.factory, jsx_import_source));
-    code.push_str(&import_code(&jsx.frag_factory, jsx_import_source));
-    Some(code)
-  } else {
-    None
   }
 }
 
