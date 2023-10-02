@@ -11,7 +11,7 @@ Deno.test("regression #20441", async () => {
   const ee = new EventEmitter();
 
   ee.on("foo", function () {
-    const p = new Promise((resolve, reject) => {
+    const p = new Promise((_resolve, reject) => {
       setTimeout(() => {
         reject();
       }, 100);
