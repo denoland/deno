@@ -34,11 +34,12 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { listen, TcpConn } from "ext:deno_net/01_net.js";
+import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
   ArrayPrototypePush,
   Error,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   Symbol,
@@ -519,7 +520,7 @@ function serve(arg1, arg2) {
   }
 
   const wantsHttps = options.cert || options.key;
-  const wantsUnix = "path" in options;
+  const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
     console.error(error);
@@ -530,6 +531,7 @@ function serve(arg1, arg2) {
     const listener = listen({
       transport: "unix",
       path: options.path,
+      [listenOptionApiName]: "Deno.serve",
     });
     const path = listener.addr.path;
     return serveHttpOnListener(listener, signal, handler, onError, () => {

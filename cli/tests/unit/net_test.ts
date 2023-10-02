@@ -11,7 +11,6 @@ import {
   execCode2,
   tmpUnixSocketPath,
 } from "./test_util.ts";
-import { join } from "../../../test_util/std/path/mod.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
 const listenPort = 4503;

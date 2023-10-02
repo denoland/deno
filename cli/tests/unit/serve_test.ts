@@ -3730,7 +3730,9 @@ Deno.test(
       {
         signal: ac.signal,
         path: filePath,
-        onListen(info) { d.resolve(info); },
+        onListen(info) {
+          d.resolve(info);
+        },
       },
       () => new Response("hello world!"),
     );

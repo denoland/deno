@@ -2027,8 +2027,8 @@ declare namespace Deno {
    *
    * ```ts
    * Deno.serve({
-   *   onListen({ port, hostname }) {
-   *     console.log(`Server started at http://${hostname}:${port}`);
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
    *     // ... more info specific to your server ..
    *   },
    * }, (_req) => new Response("Hello, world"));
@@ -2042,19 +2042,18 @@ declare namespace Deno {
   ): Server;
   /** Serves HTTP requests with the given option bag.
    *
-   * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port `8000` on hostname `"127.0.0.1"`.
+   * You can specify an object with the path option, which is the
+   * unix domain socket to listen on.
    *
    * ```ts
    * const ac = new AbortController();
    *
    * const server = Deno.serve({
-   *   port: 3000,
-   *   hostname: "0.0.0.0",
+   *   path: "path/to/socket",
    *   handler: (_req) => new Response("Hello, world"),
    *   signal: ac.signal,
-   *   onListen({ port, hostname }) {
-   *     console.log(`Server started at http://${hostname}:${port}`);
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
    *   },
    * });
    * server.finished.then(() => console.log("Server closed"));
