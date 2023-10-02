@@ -162,6 +162,9 @@ verify on GitHub that everything looks correct.
 
 - [ ] Publish the release on Github
 
+- [ ] Update https://github.com/denoland/dotcom/blob/main/versions.json, open a
+      PR and merge.
+
 - [ ] Run
       https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
       and merge the PR.

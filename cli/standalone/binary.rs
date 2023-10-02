@@ -38,6 +38,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
+use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
 use crate::util::progress_bar::ProgressBar;
@@ -344,7 +345,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   npm_api: &'a CliNpmRegistryApi,
   npm_cache: &'a NpmCache,
   npm_resolution: &'a NpmResolution,
-  npm_resolver: &'a CliNpmResolver,
+  npm_resolver: &'a dyn CliNpmResolver,
   npm_system_info: NpmSystemInfo,
   package_json_deps_provider: &'a PackageJsonDepsProvider,
 }
@@ -358,7 +359,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_api: &'a CliNpmRegistryApi,
     npm_cache: &'a NpmCache,
     npm_resolution: &'a NpmResolution,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a dyn CliNpmResolver,
     npm_system_info: NpmSystemInfo,
     package_json_deps_provider: &'a PackageJsonDepsProvider,
   ) -> Self {
@@ -545,28 +546,33 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
-    if let Some(node_modules_path) = self.npm_resolver.node_modules_path() {
-      let mut builder = VfsBuilder::new(node_modules_path.clone())?;
-      builder.add_dir_recursive(&node_modules_path)?;
-      Ok(builder)
-    } else {
-      // DO NOT include the user's registry url as it may contain credentials,
-      // but also don't make this dependent on the registry url
-      let registry_url = self.npm_api.base_url();
-      let root_path = self.npm_cache.registry_folder(registry_url);
-      let mut builder = VfsBuilder::new(root_path)?;
-      for package in self
-        .npm_resolution
-        .all_system_packages(&self.npm_system_info)
-      {
-        let folder = self
-          .npm_resolver
-          .resolve_pkg_folder_from_pkg_id(&package.id)?;
-        builder.add_dir_recursive(&folder)?;
+    match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+        if let Some(node_modules_path) = npm_resolver.node_modules_path() {
+          let mut builder = VfsBuilder::new(node_modules_path.clone())?;
+          builder.add_dir_recursive(&node_modules_path)?;
+          Ok(builder)
+        } else {
+          // DO NOT include the user's registry url as it may contain credentials,
+          // but also don't make this dependent on the registry url
+          let registry_url = self.npm_api.base_url();
+          let root_path = self.npm_cache.registry_folder(registry_url);
+          let mut builder = VfsBuilder::new(root_path)?;
+          for package in npm_resolver.all_system_packages(&self.npm_system_info)
+          {
+            let folder =
+              npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
+            builder.add_dir_recursive(&folder)?;
+          }
+          // overwrite the root directory's name to obscure the user's registry url
+          builder.set_root_dir_name("node_modules".to_string());
+          Ok(builder)
+        }
       }
-      // overwrite the root directory's name to obscure the user's registry url
-      builder.set_root_dir_name("node_modules".to_string());
-      Ok(builder)
+      InnerCliNpmResolverRef::Byonm(_) => {
+        // todo(#18967): should use the node_modules directory
+        todo!()
+      }
     }
   }
 }

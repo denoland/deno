@@ -173,13 +173,6 @@ pub struct TestDescription {
   pub location: TestLocation,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TestOutput {
-  String(String),
-  Bytes(Vec<u8>),
-}
-
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]

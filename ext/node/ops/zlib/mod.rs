@@ -318,6 +318,7 @@ pub fn op_zlib_write_async(
   })
 }
 
+// TODO(bartlomieju): op2 can't seem to handle clippy ignore here
 #[op]
 pub fn op_zlib_write(
   state: &mut OpState,
@@ -344,6 +345,7 @@ pub fn op_zlib_write(
   Ok(zlib.err)
 }
 
+// TODO(bartlomieju): op2 can't seem to handle clippy ignore here
 #[op]
 pub fn op_zlib_init(
   state: &mut OpState,
