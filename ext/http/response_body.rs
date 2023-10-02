@@ -23,7 +23,7 @@ use hyper1::body::Frame;
 use hyper1::body::SizeHint;
 use pin_project::pin_project;
 
-use crate::slab::HttpRequestBodyAutocloser;
+use crate::service::HttpRequestBodyAutocloser;
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from
 /// this type into Hyper's body [`Frame`].
