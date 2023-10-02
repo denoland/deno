@@ -315,11 +315,12 @@ impl CliFactory {
           cache_setting: self.options.cache_setting(),
           text_only_progress_bar: self.text_only_progress_bar().clone(),
           maybe_node_modules_path: self.options.node_modules_dir_path(),
-          npm_system_info: self.options.npm_system_info(),
           package_json_installer:
             CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
               self.package_json_deps_provider().clone(),
             ),
+          npm_system_info: self.options.npm_system_info(),
+          npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
         }))
         .await
       })

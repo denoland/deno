@@ -74,6 +74,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
   pub package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
+  pub npm_registry_url: Url,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -96,8 +97,9 @@ pub async fn create_managed_npm_resolver_for_lsp(
     options.fs,
     options.text_only_progress_bar,
     options.maybe_node_modules_path,
-    options.npm_system_info,
     options.package_json_installer,
+    options.npm_registry_url,
+    options.npm_system_info,
   )
 }
 
@@ -115,8 +117,9 @@ pub async fn create_managed_npm_resolver(
     options.fs,
     options.text_only_progress_bar,
     options.maybe_node_modules_path,
-    options.npm_system_info,
     options.package_json_installer,
+    options.npm_registry_url,
+    options.npm_system_info,
   ))
 }
 
@@ -129,8 +132,9 @@ fn create_inner(
   fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
-  npm_system_info: NpmSystemInfo,
   package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
+  npm_registry_url: Url,
+  npm_system_info: NpmSystemInfo,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -141,7 +145,7 @@ fn create_inner(
     fs.clone(),
     npm_cache.clone(),
     &text_only_progress_bar,
-    crate::args::npm_registry_default_url().to_owned(),
+    npm_registry_url,
     resolution.clone(),
     node_modules_dir_path,
     npm_system_info.clone(),
@@ -186,7 +190,7 @@ fn create_api(
   npm_cache: Arc<NpmCache>,
 ) -> Arc<CliNpmRegistryApi> {
   Arc::new(CliNpmRegistryApi::new(
-    crate::args::npm_registry_default_url().to_owned(),
+    options.npm_registry_url.clone(),
     npm_cache.clone(),
     options.http_client.clone(),
     options.text_only_progress_bar.clone(),

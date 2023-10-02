@@ -1109,10 +1109,11 @@ async fn create_npm_resolver(
       cache_setting: CacheSetting::Only,
       text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
       maybe_node_modules_path: maybe_node_modules_dir_path,
-      npm_system_info: NpmSystemInfo::default(),
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
+      npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+      npm_system_info: NpmSystemInfo::default(),
     },
   ))
   .await

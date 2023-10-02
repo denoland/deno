@@ -353,11 +353,12 @@ pub async fn run(
       cache_setting: CacheSetting::Only,
       text_only_progress_bar: progress_bar,
       maybe_node_modules_path,
-      npm_system_info: Default::default(),
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
           package_json_deps_provider.clone(),
         ),
+      npm_registry_url,
+      npm_system_info: Default::default(),
     }),
   )
   .await?;
