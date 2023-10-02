@@ -13,7 +13,7 @@ use deno_semver::package::PackageReq;
 use crate::args::PackageJsonDepsProvider;
 use crate::util::sync::AtomicFlag;
 
-use super::CliNpmRegistryApi;
+use super::super::CliNpmRegistryApi;
 use super::NpmResolution;
 
 #[derive(Debug)]
@@ -105,7 +105,7 @@ impl PackageJsonDepsInstaller {
       let (req, info) = result?;
       let result = inner
         .npm_resolution
-        .resolve_package_req_as_pending_with_info(req, &info);
+        .resolve_pkg_req_as_pending_with_info(req, &info);
       if let Err(err) = result {
         if inner.npm_registry_api.mark_force_reload() {
           log::debug!("Failed to resolve package. Retrying. Error: {err:#}");
