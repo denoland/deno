@@ -3,6 +3,7 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
+use super::documents::cell_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -31,6 +32,7 @@ use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
 
+use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
@@ -49,7 +51,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
-use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::tokio_util::create_basic_runtime;
 use lazy_regex::lazy_regex;
 use log::error;
@@ -92,7 +93,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
 
 type Request = (
-  RequestMethod,
+  TscRequest,
   Arc<StateSnapshot>,
   oneshot::Sender<Result<Value, AnyError>>,
   CancellationToken,
@@ -127,14 +128,32 @@ pub enum SemicolonPreference {
   Remove,
 }
 
+fn normalize_diagnostic(
+  diagnostic: &mut crate::tsc::Diagnostic,
+  specifier_map: &TscSpecifierMap,
+) -> Result<(), AnyError> {
+  if let Some(file_name) = &mut diagnostic.file_name {
+    *file_name = specifier_map.normalize(&file_name)?.to_string();
+  }
+  for ri in diagnostic.related_information.iter_mut().flatten() {
+    normalize_diagnostic(ri, specifier_map)?;
+  }
+  Ok(())
+}
+
 #[derive(Clone, Debug)]
-pub struct TsServer(mpsc::UnboundedSender<Request>);
+pub struct TsServer {
+  sender: mpsc::UnboundedSender<Request>,
+  specifier_map: Arc<TscSpecifierMap>,
+}
 
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
+    let specifier_map = Arc::new(TscSpecifierMap::new());
+    let specifier_map_ = specifier_map.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance, cache);
+      let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -153,7 +172,10 @@ impl TsServer {
       })
     });
 
-    Self(tx)
+    Self {
+      sender: tx,
+      specifier_map,
+    }
   }
 
   pub async fn get_diagnostics(
@@ -162,8 +184,23 @@ impl TsServer {
     specifiers: Vec<ModuleSpecifier>,
     token: CancellationToken,
   ) -> Result<HashMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
-    let req = RequestMethod::GetDiagnostics(specifiers);
-    self.request_with_cancellation(snapshot, req, token).await
+    let req = TscRequest {
+      method: "$getDiagnostics",
+      args: json!([specifiers
+        .into_iter()
+        .map(|s| self.specifier_map.denormalize(&s))
+        .collect::<Vec<String>>(),]),
+    };
+    let diagnostics_map_ = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
+    let mut diagnostics_map = HashMap::new();
+    for (mut specifier, mut diagnostics) in diagnostics_map_ {
+      specifier = self.specifier_map.normalize(&specifier)?.to_string();
+      for diagnostic in &mut diagnostics {
+        normalize_diagnostic(diagnostic, &self.specifier_map)?;
+      }
+      diagnostics_map.insert(specifier, diagnostics);
+    }
+    Ok(diagnostics_map)
   }
 
   pub async fn find_references(
@@ -172,14 +209,24 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Option<Vec<ReferencedSymbol>>, LspError> {
-    let req = RequestMethod::FindReferences {
-      specifier,
-      position,
+    let req = TscRequest {
+      method: "findReferences",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Unable to get references from TypeScript: {}", err);
-      LspError::internal_error()
-    })
+    self
+      .request::<Option<Vec<ReferencedSymbol>>>(snapshot, req)
+      .await
+      .and_then(|mut symbols| {
+        for symbol in symbols.iter_mut().flatten() {
+          symbol.normalize(&self.specifier_map)?;
+        }
+        Ok(symbols)
+      })
+      .map_err(|err| {
+        log::error!("Unable to get references from TypeScript: {}", err);
+        LspError::internal_error()
+      })
   }
 
   pub async fn get_navigation_tree(
@@ -187,9 +234,12 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
   ) -> Result<NavigationTree, AnyError> {
-    self
-      .request(snapshot, RequestMethod::GetNavigationTree(specifier))
-      .await
+    let req = TscRequest {
+      method: "getNavigationTree",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6235
+      args: json!([self.specifier_map.denormalize(&specifier)]),
+    };
+    self.request(snapshot, req).await
   }
 
   pub async fn configure(
@@ -197,22 +247,25 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     tsconfig: TsConfig,
   ) -> Result<bool, AnyError> {
-    self
-      .request(snapshot, RequestMethod::Configure(tsconfig))
-      .await
+    let req = TscRequest {
+      method: "$configure",
+      args: json!([tsconfig]),
+    };
+    self.request(snapshot, req).await
   }
 
   pub async fn get_supported_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
   ) -> Result<Vec<String>, LspError> {
-    self
-      .request(snapshot, RequestMethod::GetSupportedCodeFixes)
-      .await
-      .map_err(|err| {
-        log::error!("Unable to get fixable diagnostics: {}", err);
-        LspError::internal_error()
-      })
+    let req = TscRequest {
+      method: "$getSupportedCodeFixes",
+      args: json!([]),
+    };
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get fixable diagnostics: {}", err);
+      LspError::internal_error()
+    })
   }
 
   pub async fn get_quick_info(
@@ -221,7 +274,11 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Option<QuickInfo>, LspError> {
-    let req = RequestMethod::GetQuickInfo((specifier, position));
+    let req = TscRequest {
+      method: "getQuickInfoAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6214
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get quick info: {}", err);
       LspError::internal_error()
@@ -237,15 +294,31 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Vec<CodeFixAction> {
-    let req = RequestMethod::GetCodeFixes((
-      specifier,
-      range.start,
-      range.end,
-      codes,
-      format_code_settings,
-      preferences,
-    ));
-    match self.request(snapshot, req).await {
+    let mut format_code_settings = json!(format_code_settings);
+    let format_object = format_code_settings.as_object_mut().unwrap();
+    format_object.insert("indentStyle".to_string(), json!(1));
+    let req = TscRequest {
+      method: "getCodeFixesAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6257
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        range.start,
+        range.end,
+        codes,
+        format_code_settings,
+        preferences,
+      ]),
+    };
+    let result = self
+      .request::<Vec<CodeFixAction>>(snapshot, req)
+      .await
+      .and_then(|mut actions| {
+        for action in &mut actions {
+          action.normalize(&self.specifier_map)?;
+        }
+        Ok(actions)
+      });
+    match result {
       Ok(items) => items,
       Err(err) => {
         // sometimes tsc reports errors when retrieving code actions
@@ -266,15 +339,17 @@ impl TsServer {
     preferences: Option<UserPreferences>,
     only: String,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
-    let req = RequestMethod::GetApplicableRefactors((
-      specifier.clone(),
-      TextSpan {
-        start: range.start,
-        length: range.end - range.start,
-      },
-      preferences,
-      only,
-    ));
+    let req = TscRequest {
+      method: "getApplicableRefactors",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6274
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        { "pos": range.start, "end": range.end },
+        preferences.unwrap_or_default(),
+        json!(null),
+        only,
+      ]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
       LspError::invalid_request()
@@ -288,16 +363,33 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Result<CombinedCodeActions, LspError> {
-    let req = RequestMethod::GetCombinedCodeFix((
-      code_action_data.specifier.clone(),
-      json!(code_action_data.fix_id.clone()),
-      format_code_settings,
-      preferences,
-    ));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Unable to get combined fix from TypeScript: {}", err);
-      LspError::internal_error()
-    })
+    let mut format_code_settings = json!(format_code_settings);
+    let format_object = format_code_settings.as_object_mut().unwrap();
+    format_object.insert("indentStyle".to_string(), json!(1));
+    let req = TscRequest {
+      method: "getCombinedCodeFix",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6258
+      args: json!([
+        {
+          "type": "file",
+          "fileName": self.specifier_map.denormalize(&code_action_data.specifier),
+        },
+        &code_action_data.fix_id,
+        format_code_settings,
+        preferences,
+      ]),
+    };
+    self
+      .request::<CombinedCodeActions>(snapshot, req)
+      .await
+      .and_then(|mut actions| {
+        actions.normalize(&self.specifier_map)?;
+        Ok(actions)
+      })
+      .map_err(|err| {
+        log::error!("Unable to get combined fix from TypeScript: {}", err);
+        LspError::internal_error()
+      })
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -311,21 +403,38 @@ impl TsServer {
     action_name: String,
     preferences: Option<UserPreferences>,
   ) -> Result<RefactorEditInfo, LspError> {
-    let req = RequestMethod::GetEditsForRefactor((
-      specifier,
-      format_code_settings,
-      TextSpan {
-        start: range.start,
-        length: range.end - range.start,
-      },
-      refactor_name,
-      action_name,
-      preferences,
-    ));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    let mut format_code_settings = json!(format_code_settings);
+    let format_object = format_code_settings.as_object_mut().unwrap();
+    format_object.insert("indentStyle".to_string(), json!(2));
+    format_object.insert(
+      "insertSpaceBeforeAndAfterBinaryOperators".to_string(),
+      json!(true),
+    );
+    format_object
+      .insert("insertSpaceAfterCommaDelimiter".to_string(), json!(true));
+    let req = TscRequest {
+      method: "getEditsForRefactor",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6275
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        format_code_settings,
+        { "pos": range.start, "end": range.end },
+        refactor_name,
+        action_name,
+        preferences,
+      ]),
+    };
+    self
+      .request::<RefactorEditInfo>(snapshot, req)
+      .await
+      .and_then(|mut info| {
+        info.normalize(&self.specifier_map)?;
+        Ok(info)
+      })
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn get_edits_for_file_rename(
@@ -336,16 +445,29 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     user_preferences: UserPreferences,
   ) -> Result<Vec<FileTextChanges>, LspError> {
-    let req = RequestMethod::GetEditsForFileRename((
-      old_specifier,
-      new_specifier,
-      format_code_settings,
-      user_preferences,
-    ));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    let req = TscRequest {
+      method: "getEditsForFileRename",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6281
+      args: json!([
+        self.specifier_map.denormalize(&old_specifier),
+        self.specifier_map.denormalize(&new_specifier),
+        format_code_settings,
+        user_preferences,
+      ]),
+    };
+    self
+      .request::<Vec<FileTextChanges>>(snapshot, req)
+      .await
+      .and_then(|mut changes| {
+        for changes in &mut changes {
+          changes.normalize(&self.specifier_map)?;
+        }
+        Ok(changes)
+      })
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn get_document_highlights(
@@ -355,11 +477,18 @@ impl TsServer {
     position: u32,
     files_to_search: Vec<ModuleSpecifier>,
   ) -> Result<Option<Vec<DocumentHighlights>>, LspError> {
-    let req = RequestMethod::GetDocumentHighlights((
-      specifier,
-      position,
-      files_to_search,
-    ));
+    let req = TscRequest {
+      method: "getDocumentHighlights",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6231
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        position,
+        files_to_search
+          .into_iter()
+          .map(|s| self.specifier_map.denormalize(&s))
+          .collect::<Vec<_>>(),
+      ]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get document highlights from TypeScript: {}", err);
       LspError::internal_error()
@@ -372,11 +501,24 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Option<DefinitionInfoAndBoundSpan>, LspError> {
-    let req = RequestMethod::GetDefinition((specifier, position));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Unable to get definition from TypeScript: {}", err);
-      LspError::internal_error()
-    })
+    let req = TscRequest {
+      method: "getDefinitionAndBoundSpan",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6226
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
+    };
+    self
+      .request::<Option<DefinitionInfoAndBoundSpan>>(snapshot, req)
+      .await
+      .and_then(|mut info| {
+        if let Some(info) = &mut info {
+          info.normalize(&self.specifier_map)?;
+        }
+        Ok(info)
+      })
+      .map_err(|err| {
+        log::error!("Unable to get definition from TypeScript: {}", err);
+        LspError::internal_error()
+      })
   }
 
   pub async fn get_type_definition(
@@ -385,14 +527,24 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Option<Vec<DefinitionInfo>>, LspError> {
-    let req = RequestMethod::GetTypeDefinition {
-      specifier,
-      position,
+    let req = TscRequest {
+      method: "getTypeDefinitionAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6227
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
     };
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Unable to get type definition from TypeScript: {}", err);
-      LspError::internal_error()
-    })
+    self
+      .request::<Option<Vec<DefinitionInfo>>>(snapshot, req)
+      .await
+      .and_then(|mut infos| {
+        for info in infos.iter_mut().flatten() {
+          info.normalize(&self.specifier_map)?;
+        }
+        Ok(infos)
+      })
+      .map_err(|err| {
+        log::error!("Unable to get type definition from TypeScript: {}", err);
+        LspError::internal_error()
+      })
   }
 
   pub async fn get_completions(
@@ -403,12 +555,16 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
   ) -> Option<CompletionInfo> {
-    let req = RequestMethod::GetCompletions((
-      specifier,
-      position,
-      options,
-      format_code_settings,
-    ));
+    let req = TscRequest {
+      method: "getCompletionsAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6193
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        position,
+        options,
+        format_code_settings,
+      ]),
+    };
     match self.request(snapshot, req).await {
       Ok(maybe_info) => maybe_info,
       Err(err) => {
@@ -423,8 +579,28 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     args: GetCompletionDetailsArgs,
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
-    let req = RequestMethod::GetCompletionDetails(args);
-    self.request(snapshot, req).await
+    let req = TscRequest {
+      method: "getCompletionEntryDetails",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6205
+      args: json!([
+        self.specifier_map.denormalize(&args.specifier),
+        args.position,
+        args.name,
+        args.format_code_settings.unwrap_or_default(),
+        args.source,
+        args.preferences,
+        args.data,
+      ]),
+    };
+    self
+      .request::<Option<CompletionEntryDetails>>(snapshot, req)
+      .await
+      .and_then(|mut details| {
+        if let Some(details) = &mut details {
+          details.normalize(&self.specifier_map)?;
+        }
+        Ok(details)
+      })
   }
 
   pub async fn get_implementations(
@@ -433,11 +609,24 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Option<Vec<ImplementationLocation>>, LspError> {
-    let req = RequestMethod::GetImplementation((specifier, position));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    let req = TscRequest {
+      method: "getImplementationAtPosition",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6228
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
+    };
+    self
+      .request::<Option<Vec<ImplementationLocation>>>(snapshot, req)
+      .await
+      .and_then(|mut locations| {
+        for location in locations.iter_mut().flatten() {
+          location.normalize(&self.specifier_map)?;
+        }
+        Ok(locations)
+      })
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn get_outlining_spans(
@@ -445,7 +634,11 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
   ) -> Result<Vec<OutliningSpan>, LspError> {
-    let req = RequestMethod::GetOutliningSpans(specifier);
+    let req = TscRequest {
+      method: "getOutliningSpans",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6240
+      args: json!([self.specifier_map.denormalize(&specifier)]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
       LspError::invalid_request()
@@ -458,12 +651,24 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Vec<CallHierarchyIncomingCall>, LspError> {
-    let req =
-      RequestMethod::ProvideCallHierarchyIncomingCalls((specifier, position));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    let req = TscRequest {
+      method: "provideCallHierarchyIncomingCalls",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6237
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
+    };
+    self
+      .request::<Vec<CallHierarchyIncomingCall>>(snapshot, req)
+      .await
+      .and_then(|mut calls| {
+        for call in &mut calls {
+          call.normalize(&self.specifier_map)?;
+        }
+        Ok(calls)
+      })
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn provide_call_hierarchy_outgoing_calls(
@@ -472,12 +677,24 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Vec<CallHierarchyOutgoingCall>, LspError> {
-    let req =
-      RequestMethod::ProvideCallHierarchyOutgoingCalls((specifier, position));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    let req = TscRequest {
+      method: "provideCallHierarchyOutgoingCalls",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6238
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
+    };
+    self
+      .request::<Vec<CallHierarchyOutgoingCall>>(snapshot, req)
+      .await
+      .and_then(|mut calls| {
+        for call in &mut calls {
+          call.normalize(&self.specifier_map)?;
+        }
+        Ok(calls)
+      })
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn prepare_call_hierarchy(
@@ -486,11 +703,32 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Option<OneOrMany<CallHierarchyItem>>, LspError> {
-    let req = RequestMethod::PrepareCallHierarchy((specifier, position));
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    let req = TscRequest {
+      method: "prepareCallHierarchy",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6236
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
+    };
+    self
+      .request::<Option<OneOrMany<CallHierarchyItem>>>(snapshot, req)
+      .await
+      .and_then(|mut items| {
+        match &mut items {
+          Some(OneOrMany::One(item)) => {
+            item.normalize(&self.specifier_map)?;
+          }
+          Some(OneOrMany::Many(items)) => {
+            for item in items {
+              item.normalize(&self.specifier_map)?;
+            }
+          }
+          None => {}
+        }
+        Ok(items)
+      })
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn find_rename_locations(
@@ -499,17 +737,30 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<Option<Vec<RenameLocation>>, LspError> {
-    let req = RequestMethod::FindRenameLocations {
-      specifier,
-      position,
-      find_in_strings: false,
-      find_in_comments: false,
-      provide_prefix_and_suffix_text_for_rename: false,
+    let req = TscRequest {
+      method: "findRenameLocations",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6221
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        position,
+        false,
+        false,
+        false,
+      ]),
     };
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    self
+      .request::<Option<Vec<RenameLocation>>>(snapshot, req)
+      .await
+      .and_then(|mut locations| {
+        for location in locations.iter_mut().flatten() {
+          location.normalize(&self.specifier_map)?;
+        }
+        Ok(locations)
+      })
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn get_smart_selection_range(
@@ -518,8 +769,11 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
   ) -> Result<SelectionRange, LspError> {
-    let req = RequestMethod::GetSmartSelectionRange((specifier, position));
-
+    let req = TscRequest {
+      method: "getSmartSelectionRange",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6224
+      args: json!([self.specifier_map.denormalize(&specifier), position]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
       LspError::invalid_request()
@@ -532,13 +786,18 @@ impl TsServer {
     specifier: ModuleSpecifier,
     range: Range<u32>,
   ) -> Result<Classifications, LspError> {
-    let req = RequestMethod::GetEncodedSemanticClassifications((
-      specifier,
-      TextSpan {
-        start: range.start,
-        length: range.end - range.start,
-      },
-    ));
+    let req = TscRequest {
+      method: "getEncodedSemanticClassifications",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6183
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        TextSpan {
+          start: range.start,
+          length: range.end - range.start,
+        },
+        "2020",
+      ]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
       LspError::invalid_request()
@@ -552,8 +811,15 @@ impl TsServer {
     position: u32,
     options: SignatureHelpItemsOptions,
   ) -> Result<Option<SignatureHelpItems>, LspError> {
-    let req =
-      RequestMethod::GetSignatureHelpItems((specifier, position, options));
+    let req = TscRequest {
+      method: "getSignatureHelpItems",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6217
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        position,
+        options,
+      ]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver: {}", err);
       LspError::invalid_request()
@@ -565,11 +831,31 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     args: GetNavigateToItemsArgs,
   ) -> Result<Vec<NavigateToItem>, LspError> {
-    let req = RequestMethod::GetNavigateToItems(args);
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Failed request to tsserver: {}", err);
-      LspError::invalid_request()
-    })
+    let req = TscRequest {
+      method: "getNavigateToItems",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6233
+      args: json!([
+        args.search,
+        args.max_result_count,
+        args.file.map(|f| match resolve_url(&f) {
+          Ok(s) => self.specifier_map.denormalize(&s),
+          Err(_) => f,
+        }),
+      ]),
+    };
+    self
+      .request::<Vec<NavigateToItem>>(snapshot, req)
+      .await
+      .and_then(|mut items| {
+        for items in &mut items {
+          items.normalize(&self.specifier_map)?;
+        }
+        Ok(items)
+      })
+      .map_err(|err| {
+        log::error!("Failed request to tsserver: {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn provide_inlay_hints(
@@ -579,11 +865,15 @@ impl TsServer {
     text_span: TextSpan,
     user_preferences: UserPreferences,
   ) -> Result<Option<Vec<InlayHint>>, LspError> {
-    let req = RequestMethod::ProvideInlayHints((
-      specifier,
-      text_span,
-      user_preferences,
-    ));
+    let req = TscRequest {
+      method: "provideInlayHints",
+      // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6239
+      args: json!([
+        self.specifier_map.denormalize(&specifier),
+        text_span,
+        user_preferences,
+      ]),
+    };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get inlay hints: {}", err);
       LspError::internal_error()
@@ -591,16 +881,17 @@ impl TsServer {
   }
 
   pub async fn restart(&self, snapshot: Arc<StateSnapshot>) {
-    let _: bool = self
-      .request(snapshot, RequestMethod::Restart)
-      .await
-      .unwrap();
+    let req = TscRequest {
+      method: "$restart",
+      args: json!([]),
+    };
+    self.request::<bool>(snapshot, req).await.unwrap();
   }
 
   async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
-    req: RequestMethod,
+    req: TscRequest,
   ) -> Result<R, AnyError>
   where
     R: de::DeserializeOwned,
@@ -613,14 +904,14 @@ impl TsServer {
   async fn request_with_cancellation<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
-    req: RequestMethod,
+    req: TscRequest,
     token: CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: de::DeserializeOwned,
   {
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
-    if self.0.send((req, snapshot, tx, token)).is_err() {
+    if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
@@ -770,10 +1061,11 @@ async fn get_isolate_assets(
   ts_server: &TsServer,
   state_snapshot: Arc<StateSnapshot>,
 ) -> Vec<AssetDocument> {
-  let res: Value = ts_server
-    .request(state_snapshot, RequestMethod::GetAssets)
-    .await
-    .unwrap();
+  let req = TscRequest {
+    method: "$getAssets",
+    args: json!([]),
+  };
+  let res: Value = ts_server.request(state_snapshot, req).await.unwrap();
   let response_assets = match res {
     Value::Array(value) => value,
     _ => unreachable!(),
@@ -1117,6 +1409,7 @@ pub struct SymbolDisplayPart {
   // This is only on `JSDocLinkDisplayPart` which extends `SymbolDisplayPart`
   // but is only used as an upcast of a `SymbolDisplayPart` and not explicitly
   // returned by any API, so it is safe to add it as an optional value.
+  #[serde(skip_serializing_if = "Option::is_none")]
   target: Option<DocumentSpan>,
 }
 
@@ -1282,12 +1575,22 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.file_name = specifier_map.normalize(&self.file_name)?.to_string();
+    Ok(())
+  }
+}
+
+impl DocumentSpan {
   pub fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    let target_specifier = normalize_specifier(&self.file_name).ok()?;
+    let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
@@ -1332,7 +1635,7 @@ impl DocumentSpan {
     &self,
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
-    let specifier = normalize_specifier(&self.file_name).ok()?;
+    let specifier = resolve_url(&self.file_name).ok()?;
     let asset_or_doc =
       language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
@@ -1379,11 +1682,21 @@ pub struct NavigateToItem {
 }
 
 impl NavigateToItem {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.file_name = specifier_map.normalize(&self.file_name)?.to_string();
+    Ok(())
+  }
+}
+
+impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
     language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
-    let specifier = normalize_specifier(&self.file_name).ok()?;
+    let specifier = resolve_url(&self.file_name).ok()?;
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
@@ -1630,12 +1943,20 @@ pub struct ImplementationLocation {
 }
 
 impl ImplementationLocation {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.document_span.normalize(specifier_map)?;
+    Ok(())
+  }
+
   pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> lsp::Location {
-    let specifier = normalize_specifier(&self.document_span.file_name)
+    let specifier = resolve_url(&self.document_span.file_name)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
     let uri = language_server
       .url_map
@@ -1668,6 +1989,16 @@ pub struct RenameLocation {
   // suffix_text: Option<String>,
 }
 
+impl RenameLocation {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.document_span.normalize(specifier_map)?;
+    Ok(())
+  }
+}
+
 pub struct RenameLocations {
   pub locations: Vec<RenameLocation>,
 }
@@ -1683,7 +2014,7 @@ impl RenameLocations {
       lsp::TextDocumentEdit,
     > = HashMap::new();
     for location in self.locations.iter() {
-      let specifier = normalize_specifier(&location.document_span.file_name)?;
+      let specifier = resolve_url(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
@@ -1745,7 +2076,7 @@ pub struct HighlightSpan {
   kind: HighlightSpanKind,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfo {
   // kind: ScriptElementKind,
@@ -1756,6 +2087,16 @@ pub struct DefinitionInfo {
   pub document_span: DocumentSpan,
 }
 
+impl DefinitionInfo {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.document_span.normalize(specifier_map)?;
+    Ok(())
+  }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfoAndBoundSpan {
@@ -1764,6 +2105,16 @@ pub struct DefinitionInfoAndBoundSpan {
 }
 
 impl DefinitionInfoAndBoundSpan {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    for definition in self.definitions.iter_mut().flatten() {
+      definition.normalize(specifier_map)?;
+    }
+    Ok(())
+  }
+
   pub async fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
@@ -1850,11 +2201,19 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.file_name = specifier_map.normalize(&self.file_name)?.to_string();
+    Ok(())
+  }
+
   pub fn to_text_document_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
-    let specifier = normalize_specifier(&self.file_name)?;
+    let specifier = resolve_url(&self.file_name)?;
     let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
     let edits = self
       .text_changes
@@ -1875,7 +2234,7 @@ impl FileTextChanges {
     language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
-    let specifier = normalize_specifier(&self.file_name)?;
+    let specifier = resolve_url(&self.file_name)?;
     let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
       Some(asset_or_doc)
@@ -2120,7 +2479,7 @@ pub fn file_text_changes_to_workspace_edit(
   }))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorEditInfo {
   edits: Vec<FileTextChanges>,
@@ -2129,6 +2488,16 @@ pub struct RefactorEditInfo {
 }
 
 impl RefactorEditInfo {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    for changes in &mut self.edits {
+      changes.normalize(specifier_map)?;
+    }
+    Ok(())
+  }
+
   pub async fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
@@ -2144,6 +2513,18 @@ pub struct CodeAction {
   changes: Vec<FileTextChanges>,
   #[serde(skip_serializing_if = "Option::is_none")]
   commands: Option<Vec<Value>>,
+}
+
+impl CodeAction {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    for changes in &mut self.changes {
+      changes.normalize(specifier_map)?;
+    }
+    Ok(())
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -2167,6 +2548,18 @@ pub struct CodeFixAction {
   pub fix_all_description: Option<String>,
 }
 
+impl CodeFixAction {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    for changes in &mut self.changes {
+      changes.normalize(specifier_map)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CombinedCodeActions {
@@ -2174,21 +2567,56 @@ pub struct CombinedCodeActions {
   pub commands: Option<Vec<Value>>,
 }
 
-#[derive(Debug, Deserialize)]
+impl CombinedCodeActions {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    for changes in &mut self.changes {
+      changes.normalize(specifier_map)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferencedSymbol {
   pub definition: ReferencedSymbolDefinitionInfo,
   pub references: Vec<ReferencedSymbolEntry>,
 }
 
-#[derive(Debug, Deserialize)]
+impl ReferencedSymbol {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.definition.normalize(specifier_map)?;
+    for reference in &mut self.references {
+      reference.normalize(specifier_map)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferencedSymbolDefinitionInfo {
   #[serde(flatten)]
   pub definition_info: DefinitionInfo,
 }
 
-#[derive(Debug, Deserialize)]
+impl ReferencedSymbolDefinitionInfo {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.definition_info.normalize(specifier_map)?;
+    Ok(())
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferencedSymbolEntry {
   #[serde(default)]
@@ -2197,7 +2625,17 @@ pub struct ReferencedSymbolEntry {
   pub entry: ReferenceEntry,
 }
 
-#[derive(Debug, Deserialize)]
+impl ReferencedSymbolEntry {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.entry.normalize(specifier_map)?;
+    Ok(())
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
   // is_write_access: bool,
@@ -2207,12 +2645,22 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.document_span.normalize(specifier_map)?;
+    Ok(())
+  }
+}
+
+impl ReferenceEntry {
   pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
     url_map: &LspUrlMap,
   ) -> lsp::Location {
-    let specifier = normalize_specifier(&self.document_span.file_name)
+    let specifier = resolve_url(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = url_map
       .normalize_specifier(&specifier)
@@ -2239,12 +2687,20 @@ pub struct CallHierarchyItem {
 }
 
 impl CallHierarchyItem {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.file = specifier_map.normalize(&self.file)?.to_string();
+    Ok(())
+  }
+
   pub fn try_resolve_call_hierarchy_item(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
-    let target_specifier = normalize_specifier(&self.file).ok()?;
+    let target_specifier = resolve_url(&self.file).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
 
@@ -2261,8 +2717,8 @@ impl CallHierarchyItem {
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
-    let target_specifier = normalize_specifier(&self.file)
-      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+    let target_specifier =
+      resolve_url(&self.file).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
@@ -2338,12 +2794,20 @@ pub struct CallHierarchyIncomingCall {
 }
 
 impl CallHierarchyIncomingCall {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.from.normalize(specifier_map)?;
+    Ok(())
+  }
+
   pub fn try_resolve_call_hierarchy_incoming_call(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
-    let target_specifier = normalize_specifier(&self.from.file).ok()?;
+    let target_specifier = resolve_url(&self.from.file).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
 
@@ -2370,13 +2834,21 @@ pub struct CallHierarchyOutgoingCall {
 }
 
 impl CallHierarchyOutgoingCall {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    self.to.normalize(specifier_map)?;
+    Ok(())
+  }
+
   pub fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let target_specifier = normalize_specifier(&self.to.file).ok()?;
+    let target_specifier = resolve_url(&self.to.file).ok()?;
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
 
@@ -2414,8 +2886,7 @@ fn parse_code_actions(
       let asset_or_doc =
         language_server.get_asset_or_document(&data.specifier)?;
       for change in &ts_action.changes {
-        let change_specifier = normalize_specifier(&change.file_name)?;
-        if data.specifier == change_specifier {
+        if data.specifier.as_str() == change.file_name {
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
@@ -2440,9 +2911,7 @@ fn parse_code_actions(
             .changes
             .clone()
             .into_iter()
-            .filter(|ch| {
-              normalize_specifier(&ch.file_name).unwrap() == data.specifier
-            })
+            .filter(|ch| ch.file_name == data.specifier.as_str())
             .collect();
           json!({
             "commands": ca.commands,
@@ -2516,15 +2985,28 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
 pub struct CompletionEntryDetails {
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   tags: Option<Vec<JsDocTagInfo>>,
   name: String,
   kind: ScriptElementKind,
   kind_modifiers: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
   code_actions: Option<Vec<CodeAction>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   source_display: Option<Vec<SymbolDisplayPart>>,
 }
 
 impl CompletionEntryDetails {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+  ) -> Result<(), AnyError> {
+    for action in self.code_actions.iter_mut().flatten() {
+      action.normalize(specifier_map)?;
+    }
+    Ok(())
+  }
+
   pub fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
@@ -2862,9 +3344,7 @@ impl CompletionEntry {
         if let Ok(import_data) =
           serde_json::from_value::<CompletionEntryDataImport>(data.clone())
         {
-          if let Ok(import_specifier) =
-            normalize_specifier(import_data.file_name)
-          {
+          if let Ok(import_specifier) = resolve_url(&import_data.file_name) {
             if let Some(new_module_specifier) = language_server
               .get_ts_response_import_mapper()
               .check_specifier(&import_specifier, specifier)
@@ -3165,41 +3645,34 @@ struct Response {
   data: Value,
 }
 
-struct State {
-  last_id: usize,
-  performance: Arc<Performance>,
-  response: Option<Response>,
-  state_snapshot: Arc<StateSnapshot>,
-  normalized_specifiers: HashMap<String, ModuleSpecifier>,
-  denormalized_specifiers: HashMap<ModuleSpecifier, String>,
-  token: CancellationToken,
+#[derive(Debug, Default)]
+pub struct TscSpecifierMap {
+  normalized_specifiers: DashMap<String, ModuleSpecifier>,
+  denormalized_specifiers: DashMap<ModuleSpecifier, String>,
 }
 
-impl State {
-  fn new(
-    state_snapshot: Arc<StateSnapshot>,
-    performance: Arc<Performance>,
-  ) -> Self {
-    Self {
-      last_id: 1,
-      performance,
-      response: None,
-      state_snapshot,
-      normalized_specifiers: HashMap::default(),
-      denormalized_specifiers: HashMap::default(),
-      token: Default::default(),
-    }
+impl TscSpecifierMap {
+  pub fn new() -> Self {
+    Self::default()
   }
 
   /// Convert the specifier to one compatible with tsc. Cache the resulting
   /// mapping in case it needs to be reversed.
-  fn denormalize_specifier(&mut self, specifier: &ModuleSpecifier) -> String {
+  // TODO(nayeemrmn): Factor in out-of-band media type here.
+  pub fn denormalize(&self, specifier: &ModuleSpecifier) -> String {
     let original = specifier;
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    let media_type = MediaType::from_specifier(original);
+    let media_type = if original.scheme() == "deno-notebook-cell" {
+      if let Some(s) = cell_to_file_specifier(original) {
+        specifier = s.to_string();
+      }
+      MediaType::TypeScript
+    } else {
+      MediaType::from_specifier(original)
+    };
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
@@ -3215,8 +3688,8 @@ impl State {
 
   /// Convert the specifier from one compatible with tsc. Cache the resulting
   /// mapping in case it needs to be reversed.
-  fn normalize_specifier<S: AsRef<str>>(
-    &mut self,
+  pub fn normalize<S: AsRef<str>>(
+    &self,
     specifier: S,
   ) -> Result<ModuleSpecifier, AnyError> {
     let original = specifier.as_ref();
@@ -3234,6 +3707,32 @@ impl State {
         .insert(specifier.clone(), original.to_string());
     }
     Ok(specifier)
+  }
+}
+
+struct State {
+  last_id: usize,
+  performance: Arc<Performance>,
+  response: Option<Response>,
+  state_snapshot: Arc<StateSnapshot>,
+  specifier_map: Arc<TscSpecifierMap>,
+  token: CancellationToken,
+}
+
+impl State {
+  fn new(
+    state_snapshot: Arc<StateSnapshot>,
+    specifier_map: Arc<TscSpecifierMap>,
+    performance: Arc<Performance>,
+  ) -> Self {
+    Self {
+      last_id: 1,
+      performance,
+      response: None,
+      state_snapshot,
+      specifier_map,
+      token: Default::default(),
+    }
   }
 
   fn get_asset_or_document(
@@ -3268,13 +3767,6 @@ impl State {
   }
 }
 
-fn normalize_specifier<S: AsRef<str>>(
-  specifier: S,
-) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url(specifier.as_ref().replace(".d.ts.d.ts", ".d.ts").as_str())
-    .map_err(|err| err.into())
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SpecifierArgs {
@@ -3293,9 +3785,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
-      .maybe_npm_resolver
+      .npm
       .as_ref()
-      .map(|r| r.in_npm_package(&specifier))
+      .map(|n| n.npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
   }
@@ -3317,7 +3809,7 @@ fn op_load(
 ) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
-  let specifier = state.normalize_specifier(args.specifier)?;
+  let specifier = state.specifier_map.normalize(args.specifier)?;
   let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
   Ok(asset_or_document.map(|doc| LoadResponse {
@@ -3335,13 +3827,13 @@ fn op_resolve(
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
-  let referrer = state.normalize_specifier(&args.base)?;
+  let referrer = state.specifier_map.normalize(&args.base)?;
   let result = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
-        state.state_snapshot.maybe_node_resolver.as_ref(),
+        state.state_snapshot.npm.as_ref(),
       );
       Ok(
         resolved
@@ -3349,7 +3841,7 @@ fn op_resolve(
           .map(|o| {
             o.map(|(s, mt)| {
               (
-                state.denormalize_specifier(&s),
+                state.specifier_map.denormalize(&s),
                 mt.as_ts_extension().to_string(),
               )
             })
@@ -3420,6 +3912,12 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   result
+    .into_iter()
+    .map(|s| match ModuleSpecifier::parse(&s) {
+      Ok(s) => state.specifier_map.denormalize(&s),
+      Err(_) => s,
+    })
+    .collect()
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -3437,7 +3935,7 @@ fn op_script_version(
   let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
-  let specifier = state.normalize_specifier(args.specifier)?;
+  let specifier = state.specifier_map.normalize(args.specifier)?;
   Ok(state.script_version(&specifier))
 }
 
@@ -3447,9 +3945,10 @@ fn op_script_version(
 fn js_runtime(
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
+  specifier_map: Arc<TscSpecifierMap>,
 ) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance, cache)],
+    extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
@@ -3468,6 +3967,7 @@ deno_core::extension!(deno_tsc,
   options = {
     performance: Arc<Performance>,
     cache: Arc<dyn HttpCache>,
+    specifier_map: Arc<TscSpecifierMap>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -3477,9 +3977,9 @@ deno_core::extension!(deno_tsc,
         config: Default::default(),
         documents: Documents::new(options.cache.clone()),
         maybe_import_map: None,
-        maybe_node_resolver: None,
-        maybe_npm_resolver: None,
+        npm: None,
       }),
+      options.specifier_map,
       options.performance,
     ));
   },
@@ -3842,396 +4342,20 @@ pub struct GetNavigateToItemsArgs {
   pub file: Option<String>,
 }
 
-/// Methods that are supported by the Language Service in the compiler isolate.
-#[derive(Debug)]
-enum RequestMethod {
-  /// Configure the compilation settings for the server.
-  Configure(TsConfig),
-  /// Get rename locations at a given position.
-  FindRenameLocations {
-    specifier: ModuleSpecifier,
-    position: u32,
-    find_in_strings: bool,
-    find_in_comments: bool,
-    provide_prefix_and_suffix_text_for_rename: bool,
-  },
-  GetAssets,
-  /// Retrieve the possible refactor info for a range of a file.
-  GetApplicableRefactors(
-    (ModuleSpecifier, TextSpan, Option<UserPreferences>, String),
-  ),
-  /// Retrieve the refactor edit info for a range.
-  GetEditsForRefactor(
-    (
-      ModuleSpecifier,
-      FormatCodeSettings,
-      TextSpan,
-      String,
-      String,
-      Option<UserPreferences>,
-    ),
-  ),
-  /// Retrieve the refactor edit info for a range.
-  GetEditsForFileRename(
-    (
-      ModuleSpecifier,
-      ModuleSpecifier,
-      FormatCodeSettings,
-      UserPreferences,
-    ),
-  ),
-  /// Retrieve code fixes for a range of a file with the provided error codes.
-  GetCodeFixes(
-    (
-      ModuleSpecifier,
-      u32,
-      u32,
-      Vec<String>,
-      FormatCodeSettings,
-      UserPreferences,
-    ),
-  ),
-  /// Get completion information at a given position (IntelliSense).
-  GetCompletions(
-    (
-      ModuleSpecifier,
-      u32,
-      GetCompletionsAtPositionOptions,
-      FormatCodeSettings,
-    ),
-  ),
-  /// Get details about a specific completion entry.
-  GetCompletionDetails(GetCompletionDetailsArgs),
-  /// Retrieve the combined code fixes for a fix id for a module.
-  GetCombinedCodeFix(
-    (ModuleSpecifier, Value, FormatCodeSettings, UserPreferences),
-  ),
-  /// Get declaration information for a specific position.
-  GetDefinition((ModuleSpecifier, u32)),
-  /// Return diagnostics for given file.
-  GetDiagnostics(Vec<ModuleSpecifier>),
-  /// Return document highlights at position.
-  GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
-  /// Get semantic highlights information for a particular file.
-  GetEncodedSemanticClassifications((ModuleSpecifier, TextSpan)),
-  /// Get implementation information for a specific position.
-  GetImplementation((ModuleSpecifier, u32)),
-  /// Get "navigate to" items, which are converted to workspace symbols
-  GetNavigateToItems(GetNavigateToItemsArgs),
-  /// Get a "navigation tree" for a specifier.
-  GetNavigationTree(ModuleSpecifier),
-  /// Get outlining spans for a specifier.
-  GetOutliningSpans(ModuleSpecifier),
-  /// Return quick info at position (hover information).
-  GetQuickInfo((ModuleSpecifier, u32)),
-  /// Finds the document references for a specific position.
-  FindReferences {
-    specifier: ModuleSpecifier,
-    position: u32,
-  },
-  /// Get signature help items for a specific position.
-  GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
-  /// Get a selection range for a specific position.
-  GetSmartSelectionRange((ModuleSpecifier, u32)),
-  /// Get the diagnostic codes that support some form of code fix.
-  GetSupportedCodeFixes,
-  /// Get the type definition information for a specific position.
-  GetTypeDefinition {
-    specifier: ModuleSpecifier,
-    position: u32,
-  },
-  /// Resolve a call hierarchy item for a specific position.
-  PrepareCallHierarchy((ModuleSpecifier, u32)),
-  /// Resolve incoming call hierarchy items for a specific position.
-  ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
-  /// Resolve outgoing call hierarchy items for a specific position.
-  ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
-  /// Resolve inlay hints for a specific text span
-  ProvideInlayHints((ModuleSpecifier, TextSpan, UserPreferences)),
-
-  // Special request, used only internally by the LSP
-  Restart,
-}
-
-impl RequestMethod {
-  fn to_value(&self, state: &mut State, id: usize) -> Value {
-    match self {
-      RequestMethod::Configure(config) => json!({
-        "id": id,
-        "method": "configure",
-        "compilerOptions": config,
-      }),
-      RequestMethod::FindRenameLocations {
-        specifier,
-        position,
-        find_in_strings,
-        find_in_comments,
-        provide_prefix_and_suffix_text_for_rename,
-      } => {
-        json!({
-          "id": id,
-          "method": "findRenameLocations",
-          "specifier": state.denormalize_specifier(specifier),
-          "position": position,
-          "findInStrings": find_in_strings,
-          "findInComments": find_in_comments,
-          "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
-        })
-      }
-      RequestMethod::GetAssets => json!({
-        "id": id,
-        "method": "getAssets",
-      }),
-      RequestMethod::GetApplicableRefactors((
-        specifier,
-        span,
-        preferences,
-        kind,
-      )) => json!({
-        "id": id,
-        "method": "getApplicableRefactors",
-        "specifier": state.denormalize_specifier(specifier),
-        "range": { "pos": span.start, "end": span.start + span.length },
-        "preferences": preferences,
-        "kind": kind,
-      }),
-      RequestMethod::GetEditsForRefactor((
-        specifier,
-        format_code_settings,
-        span,
-        refactor_name,
-        action_name,
-        preferences,
-      )) => json!({
-        "id": id,
-        "method": "getEditsForRefactor",
-        "specifier": state.denormalize_specifier(specifier),
-        "formatCodeSettings": format_code_settings,
-        "range": { "pos": span.start, "end": span.start + span.length},
-        "refactorName": refactor_name,
-        "actionName": action_name,
-        "preferences": preferences,
-      }),
-      RequestMethod::GetEditsForFileRename((
-        old_specifier,
-        new_specifier,
-        format_code_settings,
-        preferences,
-      )) => json!({
-        "id": id,
-        "method": "getEditsForFileRename",
-        "oldSpecifier": state.denormalize_specifier(old_specifier),
-        "newSpecifier": state.denormalize_specifier(new_specifier),
-        "formatCodeSettings": format_code_settings,
-        "preferences": preferences,
-      }),
-      RequestMethod::GetCodeFixes((
-        specifier,
-        start_pos,
-        end_pos,
-        error_codes,
-        format_code_settings,
-        preferences,
-      )) => json!({
-        "id": id,
-        "method": "getCodeFixes",
-        "specifier": state.denormalize_specifier(specifier),
-        "startPosition": start_pos,
-        "endPosition": end_pos,
-        "errorCodes": error_codes,
-        "formatCodeSettings": format_code_settings,
-        "preferences": preferences,
-      }),
-      RequestMethod::GetCombinedCodeFix((
-        specifier,
-        fix_id,
-        format_code_settings,
-        preferences,
-      )) => json!({
-        "id": id,
-        "method": "getCombinedCodeFix",
-        "specifier": state.denormalize_specifier(specifier),
-        "fixId": fix_id,
-        "formatCodeSettings": format_code_settings,
-        "preferences": preferences,
-      }),
-      RequestMethod::GetCompletionDetails(args) => json!({
-        "id": id,
-        "method": "getCompletionDetails",
-        "args": args
-      }),
-      RequestMethod::GetCompletions((
-        specifier,
-        position,
-        preferences,
-        format_code_settings,
-      )) => {
-        json!({
-          "id": id,
-          "method": "getCompletions",
-          "specifier": state.denormalize_specifier(specifier),
-          "position": position,
-          "preferences": preferences,
-          "formatCodeSettings": format_code_settings,
-        })
-      }
-      RequestMethod::GetDefinition((specifier, position)) => json!({
-        "id": id,
-        "method": "getDefinition",
-        "specifier": state.denormalize_specifier(specifier),
-        "position": position,
-      }),
-      RequestMethod::GetDiagnostics(specifiers) => json!({
-        "id": id,
-        "method": "getDiagnostics",
-        "specifiers": specifiers.iter().map(|s| state.denormalize_specifier(s)).collect::<Vec<String>>(),
-      }),
-      RequestMethod::GetDocumentHighlights((
-        specifier,
-        position,
-        files_to_search,
-      )) => json!({
-        "id": id,
-        "method": "getDocumentHighlights",
-        "specifier": state.denormalize_specifier(specifier),
-        "position": position,
-        "filesToSearch": files_to_search,
-      }),
-      RequestMethod::GetEncodedSemanticClassifications((specifier, span)) => {
-        json!({
-          "id": id,
-          "method": "getEncodedSemanticClassifications",
-          "specifier": state.denormalize_specifier(specifier),
-          "span": span,
-        })
-      }
-      RequestMethod::GetImplementation((specifier, position)) => json!({
-        "id": id,
-        "method": "getImplementation",
-        "specifier": state.denormalize_specifier(specifier),
-        "position": position,
-      }),
-      RequestMethod::GetNavigateToItems(GetNavigateToItemsArgs {
-        search,
-        max_result_count,
-        file,
-      }) => json!({
-        "id": id,
-        "method": "getNavigateToItems",
-        "search": search,
-        "maxResultCount": max_result_count,
-        "file": file,
-      }),
-      RequestMethod::GetNavigationTree(specifier) => json!({
-        "id": id,
-        "method": "getNavigationTree",
-        "specifier": state.denormalize_specifier(specifier),
-      }),
-      RequestMethod::GetOutliningSpans(specifier) => json!({
-        "id": id,
-        "method": "getOutliningSpans",
-        "specifier": state.denormalize_specifier(specifier),
-      }),
-      RequestMethod::GetQuickInfo((specifier, position)) => json!({
-        "id": id,
-        "method": "getQuickInfo",
-        "specifier": state.denormalize_specifier(specifier),
-        "position": position,
-      }),
-      RequestMethod::FindReferences {
-        specifier,
-        position,
-      } => json!({
-        "id": id,
-        "method": "findReferences",
-        "specifier": state.denormalize_specifier(specifier),
-        "position": position,
-      }),
-      RequestMethod::GetSignatureHelpItems((specifier, position, options)) => {
-        json!({
-          "id": id,
-          "method": "getSignatureHelpItems",
-          "specifier": state.denormalize_specifier(specifier),
-          "position": position,
-          "options": options,
-        })
-      }
-      RequestMethod::GetSmartSelectionRange((specifier, position)) => {
-        json!({
-          "id": id,
-          "method": "getSmartSelectionRange",
-          "specifier": state.denormalize_specifier(specifier),
-          "position": position
-        })
-      }
-      RequestMethod::GetSupportedCodeFixes => json!({
-        "id": id,
-        "method": "getSupportedCodeFixes",
-      }),
-      RequestMethod::GetTypeDefinition {
-        specifier,
-        position,
-      } => json!({
-        "id": id,
-        "method": "getTypeDefinition",
-        "specifier": state.denormalize_specifier(specifier),
-        "position": position
-      }),
-      RequestMethod::PrepareCallHierarchy((specifier, position)) => {
-        json!({
-          "id": id,
-          "method": "prepareCallHierarchy",
-          "specifier": state.denormalize_specifier(specifier),
-          "position": position
-        })
-      }
-      RequestMethod::ProvideCallHierarchyIncomingCalls((
-        specifier,
-        position,
-      )) => {
-        json!({
-          "id": id,
-          "method": "provideCallHierarchyIncomingCalls",
-          "specifier": state.denormalize_specifier(specifier),
-          "position": position
-        })
-      }
-      RequestMethod::ProvideCallHierarchyOutgoingCalls((
-        specifier,
-        position,
-      )) => {
-        json!({
-          "id": id,
-          "method": "provideCallHierarchyOutgoingCalls",
-          "specifier": state.denormalize_specifier(specifier),
-          "position": position
-        })
-      }
-      RequestMethod::ProvideInlayHints((specifier, span, preferences)) => {
-        json!({
-          "id": id,
-          "method": "provideInlayHints",
-          "specifier": state.denormalize_specifier(specifier),
-          "span": span,
-          "preferences": preferences,
-        })
-      }
-      RequestMethod::Restart => json!({
-        "id": id,
-        "method": "restart",
-      }),
-    }
-  }
+#[derive(Clone, Debug)]
+struct TscRequest {
+  method: &'static str,
+  args: Value,
 }
 
 /// Send a request into a runtime and return the JSON value of the response.
 fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
-  method: RequestMethod,
+  request: TscRequest,
   token: CancellationToken,
 ) -> Result<Value, AnyError> {
-  let (performance, request_params) = {
+  let (performance, id) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
@@ -4239,10 +4363,18 @@ fn request(
     state.token = token;
     state.last_id += 1;
     let id = state.last_id;
-    (state.performance.clone(), method.to_value(state, id))
+    (state.performance.clone(), id)
   };
-  let mark = performance.mark("request", Some(request_params.clone()));
-  let request_src = format!("globalThis.serverRequest({request_params});");
+  let mark =
+    performance.mark("request", Some((request.method, request.args.clone())));
+  assert!(
+    request.args.is_array(),
+    "Internal error: expected args to be array"
+  );
+  let request_src = format!(
+    "globalThis.serverRequest({id}, \"{}\", {});",
+    request.method, &request.args
+  );
   runtime.execute_script(located_script_name!(), request_src.into())?;
 
   let op_state = runtime.op_state();
@@ -4273,10 +4405,8 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
-  use crate::tsc::AssetText;
   use pretty_assertions::assert_eq;
   use std::path::Path;
-  use std::path::PathBuf;
   use test_util::TempDir;
 
   fn mock_state_snapshot(
@@ -4304,35 +4434,27 @@ mod tests {
       cache_metadata: CacheMetadata::new(cache),
       config: Default::default(),
       maybe_import_map: None,
-      maybe_node_resolver: None,
-      maybe_npm_resolver: None,
+      npm: None,
     }
   }
 
-  fn setup(
+  async fn setup(
     temp_dir: &TempDir,
-    debug: bool,
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
+  ) -> (TsServer, Arc<StateSnapshot>, Arc<GlobalHttpCache>) {
     let location = temp_dir.path().join("deps").to_path_buf();
     let cache =
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv));
-    let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = js_runtime(Default::default(), cache);
-    start(&mut runtime, debug).unwrap();
+    let snapshot = Arc::new(mock_state_snapshot(sources, &location));
+    let performance = Arc::new(Performance::default());
+    let ts_server = TsServer::new(performance, cache.clone());
     let ts_config = TsConfig::new(config);
-    assert_eq!(
-      request(
-        &mut runtime,
-        state_snapshot.clone(),
-        RequestMethod::Configure(ts_config),
-        Default::default(),
-      )
-      .expect("failed request"),
-      json!(true)
-    );
-    (runtime, state_snapshot, location)
+    assert!(ts_server
+      .configure(snapshot.clone(), ts_config,)
+      .await
+      .unwrap());
+    (ts_server, snapshot, cache)
   }
 
   #[test]
@@ -4350,57 +4472,48 @@ mod tests {
     assert_eq!(actual, r"test [`a link`](http://deno.land/x/mod.ts) test");
   }
 
-  #[test]
-  fn test_project_configure() {
+  #[tokio::test]
+  async fn test_project_configure() {
     let temp_dir = TempDir::new();
     setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
         "noEmit": true,
       }),
       &[],
-    );
+    )
+    .await;
   }
 
-  #[test]
-  fn test_project_reconfigure() {
+  #[tokio::test]
+  async fn test_project_reconfigure() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
         "noEmit": true,
       }),
       &[],
-    );
+    )
+    .await;
     let ts_config = TsConfig::new(json!({
       "target": "esnext",
       "module": "esnext",
       "noEmit": true,
       "lib": ["deno.ns", "deno.worker"]
     }));
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::Configure(ts_config),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
-    assert_eq!(response, json!(true));
+    assert!(ts_server.configure(snapshot, ts_config).await.unwrap());
   }
 
-  #[test]
-  fn test_get_diagnostics() {
+  #[tokio::test]
+  async fn test_get_diagnostics() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4412,18 +4525,15 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .await
+      .unwrap();
     assert_eq!(
-      response,
+      json!(diagnostics),
       json!({
         "file:///a.ts": [
           {
@@ -4446,12 +4556,11 @@ mod tests {
     );
   }
 
-  #[test]
-  fn test_get_diagnostics_lib() {
+  #[tokio::test]
+  async fn test_get_diagnostics_lib() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4465,25 +4574,21 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
-    assert_eq!(response, json!({ "file:///a.ts": [] }));
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .await
+      .unwrap();
+    assert_eq!(json!(diagnostics), json!({ "file:///a.ts": [] }));
   }
 
-  #[test]
-  fn test_module_resolution() {
+  #[tokio::test]
+  async fn test_module_resolution() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4502,25 +4607,21 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
-    assert_eq!(response, json!({ "file:///a.ts": [] }));
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .await
+      .unwrap();
+    assert_eq!(json!(diagnostics), json!({ "file:///a.ts": [] }));
   }
 
-  #[test]
-  fn test_bad_module_specifiers() {
+  #[tokio::test]
+  async fn test_bad_module_specifiers() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4535,18 +4636,15 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .await
+      .unwrap();
     assert_eq!(
-      response,
+      json!(diagnostics),
       json!({
         "file:///a.ts": [{
           "start": {
@@ -4562,18 +4660,16 @@ mod tests {
           "sourceLine": "        import { A } from \".\";",
           "category": 2,
           "code": 6133,
-          "reportsUnnecessary": true,
         }]
       })
     );
   }
 
-  #[test]
-  fn test_remote_modules() {
+  #[tokio::test]
+  async fn test_remote_modules() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4592,25 +4688,21 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
-    assert_eq!(response, json!({ "file:///a.ts": [] }));
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .await
+      .unwrap();
+    assert_eq!(json!(diagnostics), json!({ "file:///a.ts": [] }));
   }
 
-  #[test]
-  fn test_partial_modules() {
+  #[tokio::test]
+  async fn test_partial_modules() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4632,18 +4724,15 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .await
+      .unwrap();
     assert_eq!(
-      response,
+      json!(diagnostics),
       json!({
         "file:///a.ts": [{
           "start": {
@@ -4659,7 +4748,6 @@ mod tests {
           "sourceLine": "        import {",
           "category": 2,
           "code": 6192,
-          "reportsUnnecessary": true
         }, {
           "start": {
             "line": 8,
@@ -4679,12 +4767,11 @@ mod tests {
     );
   }
 
-  #[test]
-  fn test_no_debug_failure() {
+  #[tokio::test]
+  async fn test_no_debug_failure() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4697,18 +4784,15 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .await
+      .unwrap();
     assert_eq!(
-      response,
+      json!(diagnostics),
       json!({
         "file:///a.ts": [
           {
@@ -4731,23 +4815,16 @@ mod tests {
     );
   }
 
-  #[test]
-  fn test_request_assets() {
+  #[tokio::test]
+  async fn test_request_assets() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) =
-      setup(&temp_dir, false, json!({}), &[]);
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetAssets,
-      Default::default(),
-    )
-    .unwrap();
-    let assets: Vec<AssetText> = serde_json::from_value(result).unwrap();
+    let (ts_server, snapshot, _) = setup(&temp_dir, json!({}), &[]).await;
+    let assets = get_isolate_assets(&ts_server, snapshot).await;
     let mut asset_names = assets
       .iter()
       .map(|a| {
-        a.specifier
+        a.specifier()
+          .to_string()
           .replace("asset:///lib.", "")
           .replace(".d.ts", "")
       })
@@ -4756,29 +4833,25 @@ mod tests {
       include_str!(concat!(env!("OUT_DIR"), "/lib_file_names.json")),
     )
     .unwrap();
-
     asset_names.sort();
-    expected_asset_names.sort();
 
-    // You might have found this assertion starts failing after upgrading TypeScript.
-    // Ensure build.rs is updated so these match.
+    expected_asset_names.sort();
     assert_eq!(asset_names, expected_asset_names);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
     for asset in assets {
-      total_size += asset.text.len();
+      total_size += asset.text().len();
     }
     assert!(total_size > 0);
     assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB
   }
 
-  #[test]
-  fn test_modify_sources() {
+  #[tokio::test]
+  async fn test_modify_sources() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, location) = setup(
+    let (ts_server, snapshot, cache) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4796,8 +4869,8 @@ mod tests {
         1,
         LanguageId::TypeScript,
       )],
-    );
-    let cache = Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv));
+    )
+    .await;
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache
@@ -4808,16 +4881,12 @@ mod tests {
       )
       .unwrap();
     let specifier = resolve_url("file:///a.ts").unwrap();
-    let result = request(
-      &mut runtime,
-      state_snapshot.clone(),
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
+      .await
+      .unwrap();
     assert_eq!(
-      response,
+      json!(diagnostics),
       json!({
         "file:///a.ts": [
           {
@@ -4846,16 +4915,12 @@ mod tests {
       )
       .unwrap();
     let specifier = resolve_url("file:///a.ts").unwrap();
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetDiagnostics(vec![specifier]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
+      .await
+      .unwrap();
     assert_eq!(
-      response,
+      json!(diagnostics),
       json!({
         "file:///a.ts": []
       })
@@ -4891,8 +4956,8 @@ mod tests {
     assert_eq!(actual, Some("abc".to_string()));
   }
 
-  #[test]
-  fn test_completions() {
+  #[tokio::test]
+  async fn test_completions() {
     let fixture = r#"
       import { B } from "https://deno.land/x/b/mod.ts";
 
@@ -4908,9 +4973,8 @@ mod tests {
       })
       .unwrap();
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -4918,19 +4982,12 @@ mod tests {
         "noEmit": true,
       }),
       &[("file:///a.ts", fixture, 1, LanguageId::TypeScript)],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot.clone(),
-      RequestMethod::GetDiagnostics(vec![specifier.clone()]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let result = request(
-      &mut runtime,
-      state_snapshot.clone(),
-      RequestMethod::GetCompletions((
+    let info = ts_server
+      .get_completions(
+        snapshot.clone(),
         specifier.clone(),
         position,
         GetCompletionsAtPositionOptions {
@@ -4942,31 +4999,28 @@ mod tests {
           trigger_kind: None,
         },
         Default::default(),
-      )),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response: CompletionInfo =
-      serde_json::from_value(result.unwrap()).unwrap();
-    assert_eq!(response.entries.len(), 22);
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetCompletionDetails(GetCompletionDetailsArgs {
-        specifier,
-        position,
-        name: "log".to_string(),
-        source: None,
-        preferences: None,
-        format_code_settings: None,
-        data: None,
-      }),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let response = result.unwrap();
+      )
+      .await
+      .unwrap();
+    assert_eq!(info.entries.len(), 22);
+    let details = ts_server
+      .get_completion_details(
+        snapshot.clone(),
+        GetCompletionDetailsArgs {
+          specifier,
+          position,
+          name: "log".to_string(),
+          format_code_settings: None,
+          source: None,
+          preferences: None,
+          data: None,
+        },
+      )
+      .await
+      .unwrap()
+      .unwrap();
     assert_eq!(
-      response,
+      json!(details),
       json!({
         "name": "log",
         "kindModifiers": "declare",
@@ -5054,8 +5108,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn test_completions_fmt() {
+  #[tokio::test]
+  async fn test_completions_fmt() {
     let fixture_a = r#"
       console.log(someLongVaria)
     "#;
@@ -5070,9 +5124,8 @@ mod tests {
       })
       .unwrap();
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5083,24 +5136,17 @@ mod tests {
         ("file:///a.ts", fixture_a, 1, LanguageId::TypeScript),
         ("file:///b.ts", fixture_b, 1, LanguageId::TypeScript),
       ],
-    );
+    )
+    .await;
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot.clone(),
-      RequestMethod::GetDiagnostics(vec![specifier.clone()]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
     let fmt_options_config = FmtOptionsConfig {
       semi_colons: Some(false),
       single_quote: Some(true),
       ..Default::default()
     };
-    let result = request(
-      &mut runtime,
-      state_snapshot.clone(),
-      RequestMethod::GetCompletions((
+    let info = ts_server
+      .get_completions(
+        snapshot.clone(),
         specifier.clone(),
         position,
         GetCompletionsAtPositionOptions {
@@ -5112,37 +5158,36 @@ mod tests {
           },
           ..Default::default()
         },
-        (&fmt_options_config).into(),
-      )),
-      Default::default(),
-    )
-    .unwrap();
-    let info: CompletionInfo = serde_json::from_value(result).unwrap();
+        FormatCodeSettings::from(&fmt_options_config),
+      )
+      .await
+      .unwrap();
     let entry = info
       .entries
       .iter()
       .find(|e| &e.name == "someLongVariable")
       .unwrap();
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetCompletionDetails(GetCompletionDetailsArgs {
-        specifier,
-        position,
-        name: entry.name.clone(),
-        source: entry.source.clone(),
-        preferences: Some(UserPreferences {
-          quote_preference: Some((&fmt_options_config).into()),
-          ..Default::default()
-        }),
-        format_code_settings: Some((&fmt_options_config).into()),
-        data: entry.data.clone(),
-      }),
-      Default::default(),
-    )
-    .unwrap();
-    let details: CompletionEntryDetails =
-      serde_json::from_value(result).unwrap();
+    let details = ts_server
+      .get_completion_details(
+        snapshot.clone(),
+        GetCompletionDetailsArgs {
+          specifier,
+          position,
+          name: entry.name.clone(),
+          format_code_settings: Some(FormatCodeSettings::from(
+            &fmt_options_config,
+          )),
+          source: entry.source.clone(),
+          preferences: Some(UserPreferences {
+            quote_preference: Some((&fmt_options_config).into()),
+            ..Default::default()
+          }),
+          data: entry.data.clone(),
+        },
+      )
+      .await
+      .unwrap()
+      .unwrap();
     let actions = details.code_actions.unwrap();
     let action = actions
       .iter()
@@ -5156,12 +5201,11 @@ mod tests {
     );
   }
 
-  #[test]
-  fn test_get_edits_for_file_rename() {
+  #[tokio::test]
+  async fn test_get_edits_for_file_rename() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
+    let (ts_server, snapshot, _) = setup(
       &temp_dir,
-      false,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5177,29 +5221,18 @@ mod tests {
         ),
         ("file:///b.ts", r#""#, 1, LanguageId::TypeScript),
       ],
-    );
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot.clone(),
-      RequestMethod::GetDiagnostics(vec![specifier.clone()]),
-      Default::default(),
-    );
-    assert!(result.is_ok());
-    let changes = request(
-      &mut runtime,
-      state_snapshot.clone(),
-      RequestMethod::GetEditsForFileRename((
+    )
+    .await;
+    let changes = ts_server
+      .get_edits_for_file_rename(
+        snapshot,
         resolve_url("file:///b.ts").unwrap(),
         resolve_url("file:///c.ts").unwrap(),
-        Default::default(),
-        Default::default(),
-      )),
-      Default::default(),
-    )
-    .unwrap();
-    let changes: Vec<FileTextChanges> =
-      serde_json::from_value(changes).unwrap();
+        FormatCodeSettings::default(),
+        UserPreferences::default(),
+      )
+      .await
+      .unwrap();
     assert_eq!(
       changes,
       vec![FileTextChanges {
