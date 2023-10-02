@@ -151,7 +151,7 @@ impl JupyterMessage {
         Some(raw_message.jparts[4..].to_vec())
       } else {
         None
-      }
+      },
     })
   }
 
@@ -223,7 +223,7 @@ impl JupyterMessage {
 
   pub(crate) fn with_buffers(
     mut self,
-    buffers: Option<Vec<Bytes>>
+    buffers: Option<Vec<Bytes>>,
   ) -> JupyterMessage {
     self.buffers = buffers;
     self
