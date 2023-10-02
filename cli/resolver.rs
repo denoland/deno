@@ -22,6 +22,7 @@ use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
 use crate::npm::CliNpmResolver;
+use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
 
 /// Result of checking if a specifier is mapped via
@@ -118,10 +119,10 @@ impl CliGraphResolver {
     options: CliGraphResolverOptions,
   ) -> Self {
     Self {
-      mapped_specifier_resolver: MappedSpecifierResolver {
-        maybe_import_map: options.maybe_import_map,
+      mapped_specifier_resolver: MappedSpecifierResolver::new(
+        options.maybe_import_map,
         package_json_deps_provider,
-      },
+      ),
       maybe_default_jsx_import_source: options
         .maybe_jsx_import_source_config
         .as_ref()
@@ -263,9 +264,14 @@ impl NpmResolver for CliGraphResolver {
 
   fn resolve_npm(&self, package_req: &PackageReq) -> NpmPackageReqResolution {
     match &self.npm_resolver {
-      Some(npm_resolver) => {
-        npm_resolver.resolve_npm_for_deno_graph(package_req)
-      }
+      Some(npm_resolver) => match npm_resolver.as_inner() {
+        InnerCliNpmResolverRef::Managed(npm_resolver) => {
+          npm_resolver.resolve_npm_for_deno_graph(package_req)
+        }
+        // if we are using byonm, then this should never be called because
+        // we don't use deno_graph's npm resolution in this case
+        InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
+      },
       None => NpmPackageReqResolution::Err(anyhow!(
         "npm specifiers were requested; but --no-npm is specified"
       )),

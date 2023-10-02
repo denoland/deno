@@ -76,25 +76,42 @@ use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
 
-static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
-  let env_var_name = "NPM_CONFIG_REGISTRY";
-  if let Ok(registry_url) = std::env::var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
-      }
+fn has_unstable_env_feature(feature: &str) -> bool {
+  debug_assert_eq!(feature.to_lowercase(), feature);
+  static DENO_UNSTABLE: Lazy<Vec<String>> = Lazy::new(|| {
+    if let Ok(unstable) = env::var("DENO_UNSTABLE") {
+      unstable.split(',').map(|v| v.to_lowercase()).collect()
+    } else {
+      Vec::new()
     }
-  }
+  });
 
-  Url::parse("https://registry.npmjs.org").unwrap()
-});
+  DENO_UNSTABLE.iter().any(|f| f == feature)
+}
 
 pub fn npm_registry_default_url() -> &'static Url {
+  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "NPM_CONFIG_REGISTRY";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
+      }
+    }
+
+    Url::parse("https://registry.npmjs.org").unwrap()
+  });
+
   &NPM_REGISTRY_DEFAULT_URL
 }
 
@@ -1214,6 +1231,10 @@ impl CliOptions {
 
   pub fn unstable(&self) -> bool {
     self.flags.unstable
+  }
+
+  pub fn unstable_byonm(&self) -> bool {
+    has_unstable_env_feature("byonm")
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

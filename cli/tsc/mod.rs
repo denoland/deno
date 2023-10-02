@@ -718,7 +718,7 @@ fn resolve_non_graph_specifier_types(
     // injected and not part of the graph
     let package_folder = npm
       .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req())?;
+      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
     let maybe_resolution = node_resolver.resolve_npm_reference(
       &package_folder,
       npm_req_ref.sub_path(),

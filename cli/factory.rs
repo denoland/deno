@@ -31,6 +31,7 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -294,35 +295,41 @@ impl CliFactory {
       .services
       .npm_resolver
       .get_or_try_init_async(async {
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-          snapshot: match self.options.resolve_npm_resolution_snapshot()? {
-            Some(snapshot) => {
-              CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
-            }
-            None => match self.maybe_lockfile() {
-              Some(lockfile) => {
-                CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
-                  lockfile.clone(),
-                )
+        create_cli_npm_resolver(if self.options.unstable_byonm() {
+          CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
+            // todo: actually resolve this properly
+            root_node_modules_dir: self.options.initial_cwd().join("node_modules"),
+          })
+        } else {
+          CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+            snapshot: match self.options.resolve_npm_resolution_snapshot()? {
+              Some(snapshot) => {
+                CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
               }
-              None => CliNpmResolverManagedSnapshotOption::Specified(None),
+              None => match self.maybe_lockfile() {
+                Some(lockfile) => {
+                  CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
+                    lockfile.clone(),
+                  )
+                }
+                None => CliNpmResolverManagedSnapshotOption::Specified(None),
+              },
             },
-          },
-          maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
-          fs: self.fs().clone(),
-          http_client: self.http_client().clone(),
-          npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
-          cache_setting: self.options.cache_setting(),
-          text_only_progress_bar: self.text_only_progress_bar().clone(),
-          maybe_node_modules_path: self.options.node_modules_dir_path(),
-          package_json_installer:
-            CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
-              self.package_json_deps_provider().clone(),
-            ),
-          npm_system_info: self.options.npm_system_info(),
-          npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
-        }))
-        .await
+            maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
+            fs: self.fs().clone(),
+            http_client: self.http_client().clone(),
+            npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
+            cache_setting: self.options.cache_setting(),
+            text_only_progress_bar: self.text_only_progress_bar().clone(),
+            maybe_node_modules_path: self.options.node_modules_dir_path(),
+            package_json_installer:
+              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+                self.package_json_deps_provider().clone(),
+              ),
+            npm_system_info: self.options.npm_system_info(),
+            npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+          })
+        }).await
       })
       .await
   }

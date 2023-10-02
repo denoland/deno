@@ -538,10 +538,11 @@ impl ModuleLoader for CliModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self
-            .shared
-            .npm_module_loader
-            .resolve_req_reference(&reference, permissions);
+          return self.shared.npm_module_loader.resolve_req_reference(
+            &reference,
+            permissions,
+            &referrer,
+          );
         }
       }
     }
@@ -714,10 +715,11 @@ impl NpmModuleLoader {
     &self,
     req_ref: &NpmPackageReqReference,
     permissions: &PermissionsContainer,
+    referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
     let package_folder = self
       .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(req_ref.req())?;
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
     self
       .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
         &package_folder,

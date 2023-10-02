@@ -1,15 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+mod byonm;
 mod cache_dir;
 mod managed;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::url::Url;
 use deno_graph::NpmPackageReqResolution;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_runtime::deno_node::NpmResolver;
@@ -18,17 +17,18 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
+pub use self::byonm::CliNpmResolverByonmCreateOptions;
 pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
+use self::byonm::ByonmCliNpmResolver;
+
 pub enum CliNpmResolverCreateOptions {
   Managed(CliNpmResolverManagedCreateOptions),
-  // todo(dsherret): implement this
-  #[allow(dead_code)]
-  Byonm,
+  Byonm(CliNpmResolverByonmCreateOptions),
 }
 
 pub async fn create_cli_npm_resolver_for_lsp(
@@ -39,7 +39,7 @@ pub async fn create_cli_npm_resolver_for_lsp(
     Managed(options) => {
       managed::create_managed_npm_resolver_for_lsp(options).await
     }
-    Byonm => todo!(),
+    Byonm(options) => byonm::create_byonm_npm_resolver(options),
   }
 }
 
@@ -49,7 +49,7 @@ pub async fn create_cli_npm_resolver(
   use CliNpmResolverCreateOptions::*;
   match options {
     Managed(options) => managed::create_managed_npm_resolver(options).await,
-    Byonm => todo!(),
+    Byonm(options) => Ok(byonm::create_byonm_npm_resolver(options)),
   }
 }
 
@@ -64,8 +64,6 @@ pub trait CliNpmResolver: NpmResolver {
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
-  fn root_dir_url(&self) -> &Url;
-
   fn as_inner(&self) -> InnerCliNpmResolverRef;
 
   fn as_managed(&self) -> Option<&ManagedCliNpmResolver> {
@@ -75,23 +73,7 @@ pub trait CliNpmResolver: NpmResolver {
     }
   }
 
-  fn node_modules_path(&self) -> Option<PathBuf>;
-
-  /// Checks if the provided package req's folder is cached.
-  fn is_pkg_req_folder_cached(&self, req: &PackageReq) -> bool;
-
-  /// Resolves a package requirement for deno graph. This should only be
-  /// called by deno_graph's NpmResolver or for resolving packages in
-  /// a package.json
-  fn resolve_npm_for_deno_graph(
-    &self,
-    pkg_req: &PackageReq,
-  ) -> NpmPackageReqResolution;
-
-  fn resolve_pkg_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError>;
+  fn root_node_modules_path(&self) -> Option<PathBuf>;
 
   /// Resolve the root folder of the package the provided specifier is in.
   ///
@@ -104,6 +86,7 @@ pub trait CliNpmResolver: NpmResolver {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
+    referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_pkg_folder_from_deno_module(
@@ -114,10 +97,7 @@ pub trait CliNpmResolver: NpmResolver {
   /// Gets the state of npm for the process.
   fn get_npm_process_state(&self) -> String;
 
-  // todo(#18967): should instead return a hash state of the resolver
-  // or perhaps this could be non-BYONM only and byonm always runs deno check
-  fn package_reqs(&self) -> HashMap<PackageReq, PackageNv>;
+  /// Returns a hash returning the state of the npm resolver
+  /// or `None` if the state currently can't be determined.
+  fn check_state_hash(&self) -> Option<u64>;
 }
-
-// todo(#18967): implement this
-pub struct ByonmCliNpmResolver;

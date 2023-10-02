@@ -523,7 +523,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       entrypoint: entrypoint.clone(),
       maybe_import_map,
-      node_modules_dir: self.npm_resolver.node_modules_path().is_some(),
+      node_modules_dir: self.npm_resolver.root_node_modules_path().is_some(),
       package_json_deps: self
         .package_json_deps_provider
         .deps()
@@ -543,7 +543,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
     match self.npm_resolver.as_inner() {
       InnerCliNpmResolverRef::Managed(npm_resolver) => {
-        if let Some(node_modules_path) = npm_resolver.node_modules_path() {
+        if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           let mut builder = VfsBuilder::new(node_modules_path.clone())?;
           builder.add_dir_recursive(&node_modules_path)?;
           Ok(builder)

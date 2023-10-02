@@ -124,10 +124,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .map(|r| r.as_str())
       .unwrap_or(specifier);
     if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
-      return self
-        .shared
-        .npm_module_loader
-        .resolve_req_reference(&reference, permissions);
+      return self.shared.npm_module_loader.resolve_req_reference(
+        &reference,
+        permissions,
+        &referrer,
+      );
     }
 
     match maybe_mapped {
