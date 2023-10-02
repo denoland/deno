@@ -48,12 +48,15 @@ pub async fn op_jupyter_broadcast(
     )
   };
 
+  // TODO: Support multiple buffers - Option<Vec<Bytes>>
+  let buffers = None;
   let maybe_last_request = last_execution_request.borrow().clone();
   if let Some(last_request) = maybe_last_request {
     last_request
       .new_message(&message_type)
       .with_content(content)
       .with_metadata(metadata)
+      .with_buffers(buffers)
       .send(&mut *iopub_socket.lock().await)
       .await?;
   }
