@@ -9,6 +9,7 @@ import {
   delay,
   execCode,
   execCode2,
+  tmpUnixSocketPath,
 } from "./test_util.ts";
 import { join } from "../../../test_util/std/path/mod.ts";
 
@@ -48,11 +49,6 @@ Deno.test(
     socket.close();
   },
 );
-
-function tmpUnixSocketPath(): string {
-  const folder = Deno.makeTempDirSync();
-  return join(folder, "socket");
-}
 
 Deno.test(
   {

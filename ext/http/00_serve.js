@@ -519,11 +519,28 @@ function serve(arg1, arg2) {
   }
 
   const wantsHttps = options.cert || options.key;
+  const wantsUnix = "path" in options;
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
     console.error(error);
     return internalServerError();
   };
+
+  if (wantsUnix) {
+    const listener = listen({
+      transport: "unix",
+      path: options.path,
+    });
+    const path = listener.addr.path;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen({ path });
+      } else {
+        console.log(`Listening on ${path}`);
+      }
+    });
+  }
+
   const listenOpts = {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
