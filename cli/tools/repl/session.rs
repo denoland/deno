@@ -721,6 +721,7 @@ fn parse_source_as(
   Ok(parsed)
 }
 
+// TODO: before landing this should be upstreamed to `deno_graph`
 /// Matches the `@jsxImportSource` pragma.
 static JSX_IMPORT_SOURCE_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxImportSource\s+(\S+)").unwrap());
