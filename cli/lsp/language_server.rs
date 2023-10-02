@@ -104,8 +104,9 @@ use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverCreateOptionsPackageJsonInstaller;
-use crate::npm::CliNpmResolverCreateOptionsSnapshot;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
@@ -1085,33 +1086,35 @@ async fn create_npm_resolver(
   maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
   maybe_node_modules_dir_path: Option<PathBuf>,
 ) -> Arc<dyn CliNpmResolver> {
-  create_cli_npm_resolver_for_lsp(CliNpmResolverCreateOptions {
-    http_client: http_client.clone(),
-    snapshot: match maybe_lockfile {
-      Some(lockfile) => {
-        CliNpmResolverCreateOptionsSnapshot::ResolveFromLockfile(
-          lockfile.clone(),
-        )
-      }
-      None => CliNpmResolverCreateOptionsSnapshot::Provided(None),
+  create_cli_npm_resolver_for_lsp(CliNpmResolverCreateOptions::Managed(
+    CliNpmResolverManagedCreateOptions {
+      http_client: http_client.clone(),
+      snapshot: match maybe_lockfile {
+        Some(lockfile) => {
+          CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
+            lockfile.clone(),
+          )
+        }
+        None => CliNpmResolverManagedSnapshotOption::Provided(None),
+      },
+      // Don't provide the lockfile. We don't want these resolvers
+      // updating it. Only the cache request should update the lockfile.
+      maybe_lockfile: None,
+      fs: Arc::new(deno_fs::RealFs),
+      npm_global_cache_dir: deno_dir.npm_folder_path(),
+      // Use an "only" cache setting in order to make the
+      // user do an explicit "cache" command and prevent
+      // the cache from being filled with lots of packages while
+      // the user is typing.
+      cache_setting: CacheSetting::Only,
+      text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
+      maybe_node_modules_path: maybe_node_modules_dir_path,
+      npm_system_info: NpmSystemInfo::default(),
+      // do not install while resolving in the lsp—leave that to the cache command
+      package_json_installer:
+        CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
     },
-    // Don't provide the lockfile. We don't want these resolvers
-    // updating it. Only the cache request should update the lockfile.
-    maybe_lockfile: None,
-    fs: Arc::new(deno_fs::RealFs),
-    npm_global_cache_dir: deno_dir.npm_folder_path(),
-    // Use an "only" cache setting in order to make the
-    // user do an explicit "cache" command and prevent
-    // the cache from being filled with lots of packages while
-    // the user is typing.
-    cache_setting: CacheSetting::Only,
-    text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
-    maybe_node_modules_path: maybe_node_modules_dir_path,
-    npm_system_info: NpmSystemInfo::default(),
-    // do not install while resolving in the lsp—leave that to the cache command
-    package_json_installer:
-      CliNpmResolverCreateOptionsPackageJsonInstaller::NoInstall,
-  })
+  ))
   .await
 }
 

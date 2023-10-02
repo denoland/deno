@@ -16,8 +16,9 @@ use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverCreateOptionsPackageJsonInstaller;
-use crate::npm::CliNpmResolverCreateOptionsSnapshot;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmCacheDir;
 use crate::resolver::MappedSpecifierResolver;
 use crate::util::progress_bar::ProgressBar;
@@ -342,21 +343,23 @@ pub async fn run(
       .package_json_deps
       .map(|serialized| serialized.into_deps()),
   ));
-  let npm_resolver = create_cli_npm_resolver(CliNpmResolverCreateOptions {
-    snapshot: CliNpmResolverCreateOptionsSnapshot::Provided(snapshot),
-    maybe_lockfile: None,
-    fs: fs.clone(),
-    http_client: http_client.clone(),
-    npm_global_cache_dir,
-    cache_setting: CacheSetting::Only,
-    text_only_progress_bar: progress_bar,
-    maybe_node_modules_path,
-    npm_system_info: Default::default(),
-    package_json_installer:
-      CliNpmResolverCreateOptionsPackageJsonInstaller::ConditionalInstall(
-        package_json_deps_provider.clone(),
-      ),
-  })
+  let npm_resolver = create_cli_npm_resolver(
+    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+      snapshot: CliNpmResolverManagedSnapshotOption::Provided(snapshot),
+      maybe_lockfile: None,
+      fs: fs.clone(),
+      http_client: http_client.clone(),
+      npm_global_cache_dir,
+      cache_setting: CacheSetting::Only,
+      text_only_progress_bar: progress_bar,
+      maybe_node_modules_path,
+      npm_system_info: Default::default(),
+      package_json_installer:
+        CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+          package_json_deps_provider.clone(),
+        ),
+    }),
+  )
   .await?;
   let node_resolver = Arc::new(NodeResolver::new(
     fs.clone(),

@@ -34,7 +34,7 @@ use deno_semver::VersionReq;
 use crate::args::Lockfile;
 use crate::util::sync::TaskQueue;
 
-use super::super::registry::CliNpmRegistryApi;
+use super::CliNpmRegistryApi;
 
 /// Handles updating and storing npm resolution in memory where the underlying
 /// snapshot can be updated concurrently. Additionally handles updating the lockfile

@@ -32,8 +32,9 @@ use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::CliNpmResolverCreateOptionsPackageJsonInstaller;
-use crate::npm::CliNpmResolverCreateOptionsSnapshot;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
@@ -293,18 +294,18 @@ impl CliFactory {
       .services
       .npm_resolver
       .get_or_try_init_async(async {
-        create_cli_npm_resolver(CliNpmResolverCreateOptions {
+        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
           snapshot: match self.options.resolve_npm_resolution_snapshot()? {
             Some(snapshot) => {
-              CliNpmResolverCreateOptionsSnapshot::Provided(Some(snapshot))
+              CliNpmResolverManagedSnapshotOption::Provided(Some(snapshot))
             }
             None => match self.maybe_lockfile() {
               Some(lockfile) => {
-                CliNpmResolverCreateOptionsSnapshot::ResolveFromLockfile(
+                CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
                   lockfile.clone(),
                 )
               }
-              None => CliNpmResolverCreateOptionsSnapshot::Provided(None),
+              None => CliNpmResolverManagedSnapshotOption::Provided(None),
             },
           },
           maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
@@ -316,10 +317,10 @@ impl CliFactory {
           maybe_node_modules_path: self.options.node_modules_dir_path(),
           npm_system_info: self.options.npm_system_info(),
           package_json_installer:
-            CliNpmResolverCreateOptionsPackageJsonInstaller::ConditionalInstall(
+            CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
               self.package_json_deps_provider().clone(),
             ),
-        })
+        }))
         .await
       })
       .await

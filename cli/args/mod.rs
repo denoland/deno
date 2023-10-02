@@ -54,6 +54,8 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -66,7 +68,6 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
-use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::glob::expand_globs;
 use crate::version;
@@ -94,7 +95,7 @@ static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
 });
 
 pub fn npm_registry_default_url() -> &'static Url {
-  &*NPM_REGISTRY_DEFAULT_URL
+  &NPM_REGISTRY_DEFAULT_URL
 }
 
 pub fn ts_config_to_emit_options(
@@ -563,6 +564,13 @@ pub fn get_root_cert_store(
   }
 
   Ok(root_cert_store)
+}
+
+/// State provided to the process via an environment variable.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NpmProcessState {
+  pub snapshot: deno_npm::resolution::SerializedNpmResolutionSnapshot,
+  pub local_node_modules_path: Option<String>,
 }
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
