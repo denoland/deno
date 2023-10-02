@@ -307,7 +307,7 @@ pub async fn run(
     .join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(root_path.clone());
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
-  let (fs, vfs_root, maybe_node_modules_path, snapshot) =
+  let (fs, vfs_root, maybe_node_modules_path, maybe_snapshot) =
     if let Some(snapshot) = eszip.take_npm_snapshot() {
       let vfs_root_dir_path = if metadata.node_modules_dir {
         root_path
@@ -345,7 +345,7 @@ pub async fn run(
   ));
   let npm_resolver = create_cli_npm_resolver(
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-      snapshot: CliNpmResolverManagedSnapshotOption::Specified(snapshot),
+      snapshot: CliNpmResolverManagedSnapshotOption::Specified(maybe_snapshot),
       maybe_lockfile: None,
       fs: fs.clone(),
       http_client: http_client.clone(),
