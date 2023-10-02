@@ -1966,7 +1966,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface ServeHandlerInfo {
+  export interface ServeUnixHandlerInfo {
     /** The remote address of the connection. */
     remoteAddr: Deno.UnixAddr;
   }
@@ -1981,7 +1981,7 @@ declare namespace Deno {
    */
   export type ServeUnixHandler = (
     request: Request,
-    info: ServeHandlerInfo,
+    info: ServeUnixHandlerInfo,
   ) => Response | Promise<Response>;
 
   /**
@@ -2031,6 +2031,7 @@ declare namespace Deno {
    *     console.log(`Server started at ${path}`);
    *     // ... more info specific to your server ..
    *   },
+   *   path: "path/to/socket",
    * }, (_req) => new Response("Hello, world"));
    * ```
    *
