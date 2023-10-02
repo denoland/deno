@@ -7,7 +7,6 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
-pub use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
@@ -67,7 +66,6 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
-use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::glob::expand_globs;
@@ -76,6 +74,28 @@ use crate::version;
 use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
+
+static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "NPM_CONFIG_REGISTRY";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  Url::parse("https://registry.npmjs.org").unwrap()
+});
+
+pub fn npm_registry_default_url() -> &'static Url {
+  &*NPM_REGISTRY_DEFAULT_URL
+}
 
 pub fn ts_config_to_emit_options(
   config: deno_config::TsConfig,
@@ -560,7 +580,7 @@ static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
@@ -843,32 +863,15 @@ impl CliOptions {
     }
   }
 
-  pub async fn resolve_npm_resolution_snapshot(
+  pub fn resolve_npm_resolution_snapshot(
     &self,
-    api: &CliNpmRegistryApi,
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
     if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone
-      return Ok(Some(state.snapshot.clone().into_valid()?));
+      Ok(Some(state.snapshot.clone().into_valid()?))
+    } else {
+      Ok(None)
     }
-
-    if let Some(lockfile) = self.maybe_lockfile() {
-      if !lockfile.lock().overwrite {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
-          .await
-          .with_context(|| {
-            format!(
-              "failed reading lockfile '{}'",
-              lockfile.lock().filename.display()
-            )
-          })?;
-        // clear the memory cache to reduce memory usage
-        api.clear_memory_cache();
-        return Ok(Some(snapshot));
-      }
-    }
-
-    Ok(None)
   }
 
   // If the main module should be treated as being in an npm package.
@@ -890,6 +893,19 @@ impl CliOptions {
 
   pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
     self.maybe_node_modules_folder.clone()
+  }
+
+  pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
+    Self {
+      flags: self.flags.clone(),
+      initial_cwd: self.initial_cwd.clone(),
+      maybe_node_modules_folder: Some(path),
+      maybe_vendor_folder: self.maybe_vendor_folder.clone(),
+      maybe_config_file: self.maybe_config_file.clone(),
+      maybe_package_json: self.maybe_package_json.clone(),
+      maybe_lockfile: self.maybe_lockfile.clone(),
+      overrides: self.overrides.clone(),
+    }
   }
 
   pub fn node_modules_dir_enablement(&self) -> Option<bool> {

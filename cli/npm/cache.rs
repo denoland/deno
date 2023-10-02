@@ -282,10 +282,6 @@ impl NpmCache {
     }
   }
 
-  pub fn as_readonly(&self) -> NpmCacheDir {
-    self.cache_dir.clone()
-  }
-
   pub fn cache_setting(&self) -> &CacheSetting {
     &self.cache_setting
   }

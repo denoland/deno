@@ -221,8 +221,6 @@ impl NpmResolution {
       .map(|pkg| pkg.id.clone())
   }
 
-  // todo: NEXT
-
   /// Resolves a package requirement for deno graph. This should only be
   /// called by deno_graph's NpmResolver or for resolving packages in
   /// a package.json
@@ -275,14 +273,6 @@ impl NpmResolution {
       .all_system_packages_partitioned(system_info)
   }
 
-  // todo: NEXT
-
-  pub fn has_packages(&self) -> bool {
-    !self.snapshot.read().is_empty()
-  }
-
-  // todo: NEXT
-
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
   }
@@ -292,8 +282,6 @@ impl NpmResolution {
   ) -> ValidSerializedNpmResolutionSnapshot {
     self.snapshot.read().as_valid_serialized()
   }
-
-  // todo: NEXT
 
   pub fn serialized_valid_snapshot_for_system(
     &self,

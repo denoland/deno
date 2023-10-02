@@ -36,11 +36,8 @@ use crate::args::PackageJsonDepsProvider;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
-use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
-use crate::npm::NpmCache;
-use crate::npm::NpmResolution;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -342,9 +339,6 @@ pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   client: &'a HttpClient,
   deno_dir: &'a DenoDir,
-  npm_api: &'a CliNpmRegistryApi,
-  npm_cache: &'a NpmCache,
-  npm_resolution: &'a NpmResolution,
   npm_resolver: &'a dyn CliNpmResolver,
   npm_system_info: NpmSystemInfo,
   package_json_deps_provider: &'a PackageJsonDepsProvider,
@@ -356,9 +350,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     file_fetcher: &'a FileFetcher,
     client: &'a HttpClient,
     deno_dir: &'a DenoDir,
-    npm_api: &'a CliNpmRegistryApi,
-    npm_cache: &'a NpmCache,
-    npm_resolution: &'a NpmResolution,
     npm_resolver: &'a dyn CliNpmResolver,
     npm_system_info: NpmSystemInfo,
     package_json_deps_provider: &'a PackageJsonDepsProvider,
@@ -367,11 +358,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       file_fetcher,
       client,
       deno_dir,
-      npm_api,
-      npm_cache,
       npm_resolver,
       npm_system_info,
-      npm_resolution,
       package_json_deps_provider,
     }
   }
@@ -502,15 +490,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .resolve_import_map(self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
-    let (npm_vfs, npm_files) = if self.npm_resolution.has_packages() {
-      let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-      let snapshot = self
-        .npm_resolution
-        .serialized_valid_snapshot_for_system(&self.npm_system_info);
-      eszip.add_npm_snapshot(snapshot);
-      (Some(root_dir), files)
-    } else {
-      (None, Vec::new())
+    let (npm_vfs, npm_files) = match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(managed) => {
+        let snapshot =
+          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+        if !snapshot.as_serialized().packages.is_empty() {
+          let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+          eszip.add_npm_snapshot(snapshot);
+          (Some(root_dir), files)
+        } else {
+          (None, Vec::new())
+        }
+      }
+      InnerCliNpmResolverRef::Byonm(_) => {
+        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+        (Some(root_dir), files)
+      }
     };
 
     let metadata = Metadata {
@@ -555,8 +550,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         } else {
           // DO NOT include the user's registry url as it may contain credentials,
           // but also don't make this dependent on the registry url
-          let registry_url = self.npm_api.base_url();
-          let root_path = self.npm_cache.registry_folder(registry_url);
+          let registry_url = npm_resolver.registry_base_url();
+          let root_path =
+            npm_resolver.registry_folder_in_global_cache(registry_url);
           let mut builder = VfsBuilder::new(root_path)?;
           for package in npm_resolver.all_system_packages(&self.npm_system_info)
           {
