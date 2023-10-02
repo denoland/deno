@@ -771,7 +771,6 @@ fn rdata_to_return_record(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::UnstableChecker;
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -1039,7 +1038,6 @@ mod tests {
       test_ext,
       state = |state| {
         state.put(TestPermission {});
-        state.put(UnstableChecker { unstable: true });
       }
     );
 
@@ -1049,6 +1047,7 @@ mod tests {
     });
 
     let conn_state = runtime.op_state();
+    conn_state.borrow().feature_checker.enable_legacy_unstable();
 
     let server_addr: Vec<&str> = clone_addr.split(':').collect();
     let ip_addr = IpAddr {

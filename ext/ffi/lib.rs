@@ -45,17 +45,8 @@ const _: () = {
 pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
 pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
 
-pub struct Unstable(pub bool);
-
 fn check_unstable(state: &OpState, api_name: &str) {
-  let unstable = state.borrow::<Unstable>();
-
-  if !unstable.0 {
-    eprintln!(
-      "Unstable API '{api_name}'. The --unstable flag must be provided."
-    );
-    std::process::exit(70);
-  }
+  state.feature_checker.check_legacy_unstable(api_name);
 }
 
 pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
@@ -108,13 +99,6 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
   ],
   esm = [ "00_ffi.js" ],
-  options = {
-    unstable: bool,
-  },
-  state = |state, options| {
-    // Stolen from deno_webgpu, is there a better option?
-    state.put(Unstable(options.unstable));
-  },
   event_loop_middleware = event_loop_middleware,
 );
 
