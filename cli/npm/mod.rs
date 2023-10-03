@@ -1,11 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+mod cache_dir;
 mod managed;
-
-// todo(#18967): move the cache, registry, and tarball into the managed folder
-mod cache;
-mod registry;
-mod tarball;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -17,20 +13,45 @@ use deno_core::url::Url;
 use deno_graph::NpmPackageReqResolution;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_runtime::deno_node::NpmResolver;
-
-pub use cache::NpmCache;
-pub use cache::NpmCacheDir;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-pub use managed::create_npm_fs_resolver;
-pub use managed::ManagedCliNpmResolver;
-pub use managed::NpmPackageFsResolver;
-pub use managed::NpmProcessState;
-pub use managed::NpmResolution;
-pub use managed::PackageJsonDepsInstaller;
-pub use registry::CliNpmRegistryApi;
+
+pub use self::cache_dir::NpmCacheDir;
+pub use self::managed::CliNpmResolverManagedCreateOptions;
+pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
+pub use self::managed::CliNpmResolverManagedSnapshotOption;
+pub use self::managed::ManagedCliNpmResolver;
+
+pub enum CliNpmResolverCreateOptions {
+  Managed(CliNpmResolverManagedCreateOptions),
+  // todo(dsherret): implement this
+  #[allow(dead_code)]
+  Byonm,
+}
+
+pub async fn create_cli_npm_resolver_for_lsp(
+  options: CliNpmResolverCreateOptions,
+) -> Arc<dyn CliNpmResolver> {
+  use CliNpmResolverCreateOptions::*;
+  match options {
+    Managed(options) => {
+      managed::create_managed_npm_resolver_for_lsp(options).await
+    }
+    Byonm => todo!(),
+  }
+}
+
+pub async fn create_cli_npm_resolver(
+  options: CliNpmResolverCreateOptions,
+) -> Result<Arc<dyn CliNpmResolver>, AnyError> {
+  use CliNpmResolverCreateOptions::*;
+  match options {
+    Managed(options) => managed::create_managed_npm_resolver(options).await,
+    Byonm => todo!(),
+  }
+}
 
 pub enum InnerCliNpmResolverRef<'a> {
   Managed(&'a ManagedCliNpmResolver),
@@ -40,6 +61,8 @@ pub enum InnerCliNpmResolverRef<'a> {
 
 pub trait CliNpmResolver: NpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
+
+  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
   fn root_dir_url(&self) -> &Url;
 

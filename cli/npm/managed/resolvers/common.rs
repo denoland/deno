@@ -20,7 +20,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::npm::NpmCache;
+use super::super::cache::NpmCache;
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait]

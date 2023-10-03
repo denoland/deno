@@ -161,14 +161,14 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
-  npm_resolver: &'a dyn CliNpmResolver,
+  npm_resolver: Option<&'a dyn CliNpmResolver>,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
-    npm_resolver: &'a dyn CliNpmResolver,
+    npm_resolver: Option<&'a dyn CliNpmResolver>,
   ) -> Self {
     Self {
       documents,
@@ -194,7 +194,9 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+    if let Some(npm_resolver) =
+      self.npm_resolver.as_ref().and_then(|r| r.as_managed())
+    {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
@@ -250,8 +252,8 @@ impl<'a> TsResponseImportMapper<'a> {
     let specifier_path = specifier.to_file_path().ok()?;
     let root_folder = self
       .npm_resolver
-      .resolve_pkg_folder_from_specifier(specifier)
-      .ok()
+      .as_ref()
+      .and_then(|r| r.resolve_pkg_folder_from_specifier(specifier).ok())
       .flatten()?;
     let package_json_path = root_folder.join("package.json");
     let package_json_text = std::fs::read_to_string(&package_json_path).ok()?;

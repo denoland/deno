@@ -86,11 +86,7 @@ pub async fn execute_script(
 
     // install the npm packages if we're using a managed resolver
     if let Some(npm_resolver) = npm_resolver.as_managed() {
-      let package_json_deps_installer =
-        factory.package_json_deps_installer().await?;
-      package_json_deps_installer
-        .ensure_top_level_install()
-        .await?;
+      npm_resolver.ensure_top_level_package_json_install().await?;
       npm_resolver.resolve_pending().await?;
     }
 
