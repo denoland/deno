@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,15 +22,13 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
-use deno_semver::npm::NpmPackageNvReference;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
-use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
 
 use crate::args::Lockfile;
 use crate::args::NpmProcessState;
 use crate::args::PackageJsonDepsProvider;
+use crate::cache::FastInsecureHasher;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 
@@ -345,6 +342,16 @@ impl ManagedCliNpmResolver {
     self.resolution.all_system_packages(system_info)
   }
 
+  /// Checks if the provided package req's folder is cached.
+  pub fn is_pkg_req_folder_cached(&self, req: &PackageReq) -> bool {
+    self
+      .resolve_pkg_id_from_pkg_req(req)
+      .ok()
+      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
+      .map(|folder| folder.exists())
+      .unwrap_or(false)
+  }
+
   /// Adds package requirements to the resolver and ensures everything is setup.
   pub async fn add_package_reqs(
     &self,
@@ -411,6 +418,35 @@ impl ManagedCliNpmResolver {
 
   pub async fn cache_packages(&self) -> Result<(), AnyError> {
     self.fs_resolver.cache_packages().await
+  }
+
+  /// Resolves a package requirement for deno graph. This should only be
+  /// called by deno_graph's NpmResolver or for resolving packages in
+  /// a package.json
+  pub fn resolve_npm_for_deno_graph(
+    &self,
+    pkg_req: &PackageReq,
+  ) -> NpmPackageReqResolution {
+    let result = self.resolution.resolve_pkg_req_as_pending(pkg_req);
+    match result {
+      Ok(nv) => NpmPackageReqResolution::Ok(nv),
+      Err(err) => {
+        if self.api.mark_force_reload() {
+          log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
+          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
+        } else {
+          NpmPackageReqResolution::Err(err.into())
+        }
+      }
+    }
+  }
+
+  pub fn resolve_pkg_folder_from_deno_module(
+    &self,
+    nv: &PackageNv,
+  ) -> Result<PathBuf, AnyError> {
+    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
+    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 
   fn resolve_pkg_id_from_pkg_req(
@@ -513,7 +549,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         &self.progress_bar,
         self.api.base_url().clone(),
         npm_resolution,
-        self.node_modules_path(),
+        self.root_node_modules_path(),
         self.npm_system_info.clone(),
       ),
       self.global_npm_cache.clone(),
@@ -524,57 +560,12 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     ))
   }
 
-  fn root_dir_url(&self) -> &Url {
-    self.fs_resolver.root_dir_url()
-  }
-
   fn as_inner(&self) -> InnerCliNpmResolverRef {
     InnerCliNpmResolverRef::Managed(self)
   }
 
-  fn node_modules_path(&self) -> Option<PathBuf> {
+  fn root_node_modules_path(&self) -> Option<PathBuf> {
     self.fs_resolver.node_modules_path()
-  }
-
-  /// Checks if the provided package req's folder is cached.
-  fn is_pkg_req_folder_cached(&self, req: &PackageReq) -> bool {
-    self
-      .resolve_pkg_id_from_pkg_req(req)
-      .ok()
-      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
-      .map(|folder| folder.exists())
-      .unwrap_or(false)
-  }
-
-  fn resolve_npm_for_deno_graph(
-    &self,
-    pkg_req: &PackageReq,
-  ) -> NpmPackageReqResolution {
-    let result = self.resolution.resolve_pkg_req_as_pending(pkg_req);
-    match result {
-      Ok(nv) => NpmPackageReqResolution::Ok(nv),
-      Err(err) => {
-        if self.api.mark_force_reload() {
-          log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
-          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
-        } else {
-          NpmPackageReqResolution::Err(err.into())
-        }
-      }
-    }
-  }
-
-  fn resolve_pkg_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    let pkg_nv = self
-      .resolve_pkg_id_from_pkg_req(req_ref.req())
-      .map(|id| id.nv)?;
-    Ok(NpmPackageNvReference::new(PackageNvReference {
-      nv: pkg_nv,
-      sub_path: req_ref.sub_path().map(|s| s.to_string()),
-    }))
   }
 
   /// Resolve the root folder of the package the provided specifier is in.
@@ -601,16 +592,9 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
+    _referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
-    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
-  }
-
-  fn resolve_pkg_folder_from_deno_module(
-    &self,
-    nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 
@@ -629,7 +613,20 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     .unwrap()
   }
 
-  fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
-    self.resolution.package_reqs()
+  fn check_state_hash(&self) -> Option<u64> {
+    // We could go further and check all the individual
+    // npm packages, but that's probably overkill.
+    let mut package_reqs = self
+      .resolution
+      .package_reqs()
+      .into_iter()
+      .collect::<Vec<_>>();
+    package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+    let mut hasher = FastInsecureHasher::new();
+    for (pkg_req, pkg_nv) in package_reqs {
+      hasher.write_hashable(&pkg_req);
+      hasher.write_hashable(&pkg_nv);
+    }
+    Some(hasher.finish())
   }
 }

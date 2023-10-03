@@ -12,6 +12,7 @@ use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
 use crate::module_loader::CjsResolutionStore;
+use crate::module_loader::CliNodeResolver;
 use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
@@ -67,6 +68,7 @@ use self::file_system::DenoCompileFileSystem;
 struct SharedModuleLoaderState {
   eszip: eszip::EszipV2,
   mapped_specifier_resolver: MappedSpecifierResolver,
+  node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
 }
 
@@ -104,11 +106,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
     } else {
       &self.root_permissions
     };
-    if let Some(result) = self
-      .shared
-      .npm_module_loader
-      .resolve_if_in_npm_package(specifier, &referrer, permissions)
-    {
+    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
+      specifier,
+      &referrer,
+      permissions,
+    ) {
       return result;
     }
 
@@ -124,10 +126,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .map(|r| r.as_str())
       .unwrap_or(specifier);
     if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
-      return self
-        .shared
-        .npm_module_loader
-        .resolve_req_reference(&reference, permissions);
+      return self.shared.node_resolver.resolve_req_reference(
+        &reference,
+        permissions,
+        &referrer,
+      );
     }
 
     match maybe_mapped {
@@ -380,6 +383,11 @@ pub async fn run(
   let maybe_import_map = metadata.maybe_import_map.map(|(base, source)| {
     Arc::new(parse_from_json(&base, &source).unwrap().import_map)
   });
+  let cli_node_resolver = Arc::new(CliNodeResolver::new(
+    cjs_resolutions.clone(),
+    node_resolver.clone(),
+    npm_resolver.clone(),
+  ));
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       eszip,
@@ -387,12 +395,12 @@ pub async fn run(
         maybe_import_map.clone(),
         package_json_deps_provider.clone(),
       ),
+      node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_resolutions,
         node_code_translator,
         fs.clone(),
-        node_resolver.clone(),
-        npm_resolver.clone(),
+        cli_node_resolver,
       )),
     }),
   };
@@ -447,7 +455,7 @@ pub async fn run(
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable,
-      maybe_package_json_deps: package_json_deps_provider.deps().cloned(),
+      maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
   );
 

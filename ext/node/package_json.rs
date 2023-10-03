@@ -97,7 +97,13 @@ impl PackageJson {
       return Ok(PackageJson::empty(path));
     }
 
-    Self::load_from_string(path, source)
+    let package_json = Self::load_from_string(path, source)?;
+    CACHE.with(|cache| {
+      cache
+        .borrow_mut()
+        .insert(package_json.path.clone(), package_json.clone());
+    });
+    Ok(package_json)
   }
 
   pub fn load_from_string(
@@ -199,11 +205,6 @@ impl PackageJson {
       scripts,
     };
 
-    CACHE.with(|cache| {
-      cache
-        .borrow_mut()
-        .insert(package_json.path.clone(), package_json.clone());
-    });
     Ok(package_json)
   }
 
