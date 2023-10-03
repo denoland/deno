@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -14,7 +15,7 @@ use deno_graph::NpmPackageReqResolution;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
-use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
@@ -27,30 +28,213 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::args::Lockfile;
+use crate::args::NpmProcessState;
+use crate::args::PackageJsonDepsProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+use crate::util::progress_bar::ProgressBar;
 
-use super::CliNpmRegistryApi;
+use self::cache::NpmCache;
+use self::installer::PackageJsonDepsInstaller;
+use self::registry::CliNpmRegistryApi;
+use self::resolution::NpmResolution;
+use self::resolvers::create_npm_fs_resolver;
+use self::resolvers::NpmPackageFsResolver;
+
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
+use super::NpmCacheDir;
 
-pub use self::installer::PackageJsonDepsInstaller;
-pub use self::resolution::NpmResolution;
-pub use self::resolvers::create_npm_fs_resolver;
-pub use self::resolvers::NpmPackageFsResolver;
-
+mod cache;
 mod installer;
+mod registry;
 mod resolution;
 mod resolvers;
+mod tarball;
 
-/// State provided to the process via an environment variable.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NpmProcessState {
-  pub snapshot: SerializedNpmResolutionSnapshot,
-  pub local_node_modules_path: Option<String>,
+pub enum CliNpmResolverManagedSnapshotOption {
+  ResolveFromLockfile(Arc<Mutex<Lockfile>>),
+  Specified(Option<ValidSerializedNpmResolutionSnapshot>),
+}
+
+pub enum CliNpmResolverManagedPackageJsonInstallerOption {
+  ConditionalInstall(Arc<PackageJsonDepsProvider>),
+  NoInstall,
+}
+
+pub struct CliNpmResolverManagedCreateOptions {
+  pub snapshot: CliNpmResolverManagedSnapshotOption,
+  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
+  pub http_client: Arc<crate::http_util::HttpClient>,
+  pub npm_global_cache_dir: PathBuf,
+  pub cache_setting: crate::args::CacheSetting,
+  pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
+  pub maybe_node_modules_path: Option<PathBuf>,
+  pub npm_system_info: NpmSystemInfo,
+  pub package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
+  pub npm_registry_url: Url,
+}
+
+pub async fn create_managed_npm_resolver_for_lsp(
+  options: CliNpmResolverManagedCreateOptions,
+) -> Arc<dyn CliNpmResolver> {
+  let npm_cache = create_cache(&options);
+  let npm_api = create_api(&options, npm_cache.clone());
+  let snapshot = match resolve_snapshot(&npm_api, options.snapshot).await {
+    Ok(snapshot) => snapshot,
+    Err(err) => {
+      log::warn!("failed to resolve snapshot: {}", err);
+      None
+    }
+  };
+  create_inner(
+    npm_cache,
+    npm_api,
+    snapshot,
+    options.maybe_lockfile,
+    options.fs,
+    options.text_only_progress_bar,
+    options.maybe_node_modules_path,
+    options.package_json_installer,
+    options.npm_registry_url,
+    options.npm_system_info,
+  )
+}
+
+pub async fn create_managed_npm_resolver(
+  options: CliNpmResolverManagedCreateOptions,
+) -> Result<Arc<dyn CliNpmResolver>, AnyError> {
+  let npm_cache = create_cache(&options);
+  let npm_api = create_api(&options, npm_cache.clone());
+  let snapshot = resolve_snapshot(&npm_api, options.snapshot).await?;
+  Ok(create_inner(
+    npm_cache,
+    npm_api,
+    snapshot,
+    options.maybe_lockfile,
+    options.fs,
+    options.text_only_progress_bar,
+    options.maybe_node_modules_path,
+    options.package_json_installer,
+    options.npm_registry_url,
+    options.npm_system_info,
+  ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_inner(
+  npm_cache: Arc<NpmCache>,
+  npm_api: Arc<CliNpmRegistryApi>,
+  snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
+  text_only_progress_bar: crate::util::progress_bar::ProgressBar,
+  node_modules_dir_path: Option<PathBuf>,
+  package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
+  npm_registry_url: Url,
+  npm_system_info: NpmSystemInfo,
+) -> Arc<dyn CliNpmResolver> {
+  let resolution = Arc::new(NpmResolution::from_serialized(
+    npm_api.clone(),
+    snapshot,
+    maybe_lockfile.clone(),
+  ));
+  let npm_fs_resolver = create_npm_fs_resolver(
+    fs.clone(),
+    npm_cache.clone(),
+    &text_only_progress_bar,
+    npm_registry_url,
+    resolution.clone(),
+    node_modules_dir_path,
+    npm_system_info.clone(),
+  );
+  let package_json_deps_installer = match package_json_installer {
+    CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+      provider,
+    ) => Arc::new(PackageJsonDepsInstaller::new(
+      provider,
+      npm_api.clone(),
+      resolution.clone(),
+    )),
+    CliNpmResolverManagedPackageJsonInstallerOption::NoInstall => {
+      Arc::new(PackageJsonDepsInstaller::no_op())
+    }
+  };
+  Arc::new(ManagedCliNpmResolver::new(
+    npm_api,
+    fs,
+    resolution,
+    npm_fs_resolver,
+    npm_cache,
+    maybe_lockfile,
+    package_json_deps_installer,
+    text_only_progress_bar,
+    npm_system_info,
+  ))
+}
+
+fn create_cache(options: &CliNpmResolverManagedCreateOptions) -> Arc<NpmCache> {
+  Arc::new(NpmCache::new(
+    NpmCacheDir::new(options.npm_global_cache_dir.clone()),
+    options.cache_setting.clone(),
+    options.fs.clone(),
+    options.http_client.clone(),
+    options.text_only_progress_bar.clone(),
+  ))
+}
+
+fn create_api(
+  options: &CliNpmResolverManagedCreateOptions,
+  npm_cache: Arc<NpmCache>,
+) -> Arc<CliNpmRegistryApi> {
+  Arc::new(CliNpmRegistryApi::new(
+    options.npm_registry_url.clone(),
+    npm_cache.clone(),
+    options.http_client.clone(),
+    options.text_only_progress_bar.clone(),
+  ))
+}
+
+async fn resolve_snapshot(
+  api: &CliNpmRegistryApi,
+  snapshot: CliNpmResolverManagedSnapshotOption,
+) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
+  match snapshot {
+    CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
+      if !lockfile.lock().overwrite {
+        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
+          .await
+          .with_context(|| {
+            format!(
+              "failed reading lockfile '{}'",
+              lockfile.lock().filename.display()
+            )
+          })?;
+        // clear the memory cache to reduce memory usage
+        api.clear_memory_cache();
+        Ok(Some(snapshot))
+      } else {
+        Ok(None)
+      }
+    }
+    CliNpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
+  }
+}
+
+async fn snapshot_from_lockfile(
+  lockfile: Arc<Mutex<Lockfile>>,
+  api: &dyn NpmRegistryApi,
+) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
+  let incomplete_snapshot = {
+    let lock = lockfile.lock();
+    deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?
+  };
+  let snapshot =
+    deno_npm::resolution::snapshot_from_lockfile(incomplete_snapshot, api)
+      .await?;
+  Ok(snapshot)
 }
 
 /// An npm resolver where the resolution is managed by Deno rather than
@@ -59,40 +243,45 @@ pub struct ManagedCliNpmResolver {
   api: Arc<CliNpmRegistryApi>,
   fs: Arc<dyn FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
+  global_npm_cache: Arc<NpmCache>,
   resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  npm_system_info: NpmSystemInfo,
+  progress_bar: ProgressBar,
   package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("ManagedNpmResolver")
-      .field("api", &"<omitted>")
-      .field("fs", &"<omitted>")
-      .field("fs_resolver", &"<omitted>")
-      .field("resolution", &"<omitted>")
-      .field("maybe_lockfile", &"<omitted>")
-      .field("package_json_deps_installer", &"<omitted>")
+      .field("<omitted>", &"<omitted>")
       .finish()
   }
 }
 
 impl ManagedCliNpmResolver {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     api: Arc<CliNpmRegistryApi>,
     fs: Arc<dyn FileSystem>,
     resolution: Arc<NpmResolution>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
+    global_npm_cache: Arc<NpmCache>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
+    progress_bar: ProgressBar,
+    npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       api,
       fs,
       fs_resolver,
+      global_npm_cache,
       resolution,
       maybe_lockfile,
       package_json_deps_installer,
+      progress_bar,
+      npm_system_info,
     }
   }
 
@@ -191,6 +380,15 @@ impl ManagedCliNpmResolver {
     self.resolution.snapshot()
   }
 
+  pub fn serialized_valid_snapshot_for_system(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> ValidSerializedNpmResolutionSnapshot {
+    self
+      .resolution
+      .serialized_valid_snapshot_for_system(system_info)
+  }
+
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     self.resolution.lock(lockfile)
   }
@@ -208,8 +406,11 @@ impl ManagedCliNpmResolver {
 
   pub async fn resolve_pending(&self) -> Result<(), AnyError> {
     self.resolution.resolve_pending().await?;
-    self.fs_resolver.cache_packages().await?;
-    Ok(())
+    self.cache_packages().await
+  }
+
+  pub async fn cache_packages(&self) -> Result<(), AnyError> {
+    self.fs_resolver.cache_packages().await
   }
 
   fn resolve_pkg_id_from_pkg_req(
@@ -239,6 +440,17 @@ impl ManagedCliNpmResolver {
       .await
       .map(|_| ())
       .map_err(|err| err.into())
+  }
+
+  pub fn registry_base_url(&self) -> &ModuleSpecifier {
+    self.api.base_url()
+  }
+
+  pub fn registry_folder_in_global_cache(
+    &self,
+    registry_url: &ModuleSpecifier,
+  ) -> PathBuf {
+    self.global_npm_cache.registry_folder(registry_url)
   }
 }
 
@@ -281,6 +493,35 @@ impl NpmResolver for ManagedCliNpmResolver {
 impl CliNpmResolver for ManagedCliNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
     self
+  }
+
+  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
+    // create a new snapshotted npm resolution and resolver
+    let npm_resolution = Arc::new(NpmResolution::new(
+      self.api.clone(),
+      self.resolution.snapshot(),
+      self.maybe_lockfile.clone(),
+    ));
+
+    Arc::new(ManagedCliNpmResolver::new(
+      self.api.clone(),
+      self.fs.clone(),
+      npm_resolution.clone(),
+      create_npm_fs_resolver(
+        self.fs.clone(),
+        self.global_npm_cache.clone(),
+        &self.progress_bar,
+        self.api.base_url().clone(),
+        npm_resolution,
+        self.node_modules_path(),
+        self.npm_system_info.clone(),
+      ),
+      self.global_npm_cache.clone(),
+      self.maybe_lockfile.clone(),
+      self.package_json_deps_installer.clone(),
+      self.progress_bar.clone(),
+      self.npm_system_info.clone(),
+    ))
   }
 
   fn root_dir_url(&self) -> &Url {
