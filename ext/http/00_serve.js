@@ -273,6 +273,13 @@ class InnerRequest {
   }
 
   get remoteAddr() {
+    const transport = this.#context.listener?.addr.transport;
+    if (transport === "unix" || transport === "unixpacket") {
+      return {
+        transport,
+        path: this.#context.listener.addr.path,
+      };
+    }
     if (this.#methodAndUri === undefined) {
       if (this.#slabId === undefined) {
         throw new TypeError("request closed");
@@ -338,8 +345,9 @@ class CallbackContext {
   serverRid;
   closed;
   closing;
+  listener;
 
-  constructor(signal, args) {
+  constructor(signal, args, listener) {
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -353,6 +361,7 @@ class CallbackContext {
     this.scheme = args[1];
     this.fallbackHost = args[2];
     this.closed = false;
+    this.listener = listener;
   }
 
   close() {
@@ -600,7 +609,11 @@ function serve(arg1, arg2) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
-  const context = new CallbackContext(signal, op_http_serve(listener.rid));
+  const context = new CallbackContext(
+    signal,
+    op_http_serve(listener.rid),
+    listener,
+  );
   const callback = mapToCallback(context, handler, onError);
 
   onListen(context.scheme);
@@ -612,7 +625,11 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary connection.
  */
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
-  const context = new CallbackContext(signal, op_http_serve_on(connection.rid));
+  const context = new CallbackContext(
+    signal,
+    op_http_serve_on(connection.rid),
+    null,
+  );
   const callback = mapToCallback(context, handler, onError);
 
   onListen(context.scheme);

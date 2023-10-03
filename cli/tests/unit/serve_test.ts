@@ -3733,8 +3733,12 @@ Deno.test(
         onListen(info) {
           d.resolve(info);
         },
+        onError: createOnErrorCb(ac),
       },
-      () => new Response("hello world!"),
+      (_req, { remoteAddr }) => {
+        assertEquals(remoteAddr, { path: filePath, transport: "unix" });
+        return new Response("hello world!");
+      },
     );
 
     assertEquals(await d, { path: filePath });
