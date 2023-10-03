@@ -20,6 +20,7 @@ import {
   bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
+  utf8ToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
 import {
   isAnyArrayBuffer,
@@ -246,7 +247,7 @@ function checked(length) {
   if (length >= kMaxLength) {
     throw new RangeError(
       "Attempt to allocate Buffer larger than maximum size: 0x" +
-        kMaxLength.toString(16) + " bytes",
+      kMaxLength.toString(16) + " bytes",
     );
   }
   return length | 0;
@@ -954,73 +955,73 @@ Buffer.prototype.readUint16BE = Buffer.prototype.readUInt16BE = readUInt16BE;
 
 Buffer.prototype.readUint16LE =
   Buffer.prototype.readUInt16LE =
-    function readUInt16LE(offset = 0) {
-      validateNumber(offset, "offset");
-      const first = this[offset];
-      const last = this[offset + 1];
-      if (first === undefined || last === undefined) {
-        boundsError(offset, this.length - 2);
-      }
+  function readUInt16LE(offset = 0) {
+    validateNumber(offset, "offset");
+    const first = this[offset];
+    const last = this[offset + 1];
+    if (first === undefined || last === undefined) {
+      boundsError(offset, this.length - 2);
+    }
 
-      return first + last * 2 ** 8;
-    };
+    return first + last * 2 ** 8;
+  };
 
 Buffer.prototype.readUint32LE =
   Buffer.prototype.readUInt32LE =
-    function readUInt32LE(offset = 0) {
-      validateNumber(offset, "offset");
-      const first = this[offset];
-      const last = this[offset + 3];
-      if (first === undefined || last === undefined) {
-        boundsError(offset, this.length - 4);
-      }
+  function readUInt32LE(offset = 0) {
+    validateNumber(offset, "offset");
+    const first = this[offset];
+    const last = this[offset + 3];
+    if (first === undefined || last === undefined) {
+      boundsError(offset, this.length - 4);
+    }
 
-      return first +
-        this[++offset] * 2 ** 8 +
-        this[++offset] * 2 ** 16 +
-        last * 2 ** 24;
-    };
+    return first +
+      this[++offset] * 2 ** 8 +
+      this[++offset] * 2 ** 16 +
+      last * 2 ** 24;
+  };
 
 Buffer.prototype.readUint32BE = Buffer.prototype.readUInt32BE = readUInt32BE;
 
 Buffer.prototype.readBigUint64LE =
   Buffer.prototype.readBigUInt64LE =
-    defineBigIntMethod(
-      function readBigUInt64LE(offset) {
-        offset = offset >>> 0;
-        validateNumber(offset, "offset");
-        const first = this[offset];
-        const last = this[offset + 7];
-        if (first === void 0 || last === void 0) {
-          boundsError(offset, this.length - 8);
-        }
-        const lo = first + this[++offset] * 2 ** 8 +
-          this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 24;
-        const hi = this[++offset] + this[++offset] * 2 ** 8 +
-          this[++offset] * 2 ** 16 + last * 2 ** 24;
-        return BigInt(lo) + (BigInt(hi) << BigInt(32));
-      },
-    );
+  defineBigIntMethod(
+    function readBigUInt64LE(offset) {
+      offset = offset >>> 0;
+      validateNumber(offset, "offset");
+      const first = this[offset];
+      const last = this[offset + 7];
+      if (first === void 0 || last === void 0) {
+        boundsError(offset, this.length - 8);
+      }
+      const lo = first + this[++offset] * 2 ** 8 +
+        this[++offset] * 2 ** 16 +
+        this[++offset] * 2 ** 24;
+      const hi = this[++offset] + this[++offset] * 2 ** 8 +
+        this[++offset] * 2 ** 16 + last * 2 ** 24;
+      return BigInt(lo) + (BigInt(hi) << BigInt(32));
+    },
+  );
 
 Buffer.prototype.readBigUint64BE =
   Buffer.prototype.readBigUInt64BE =
-    defineBigIntMethod(
-      function readBigUInt64BE(offset) {
-        offset = offset >>> 0;
-        validateNumber(offset, "offset");
-        const first = this[offset];
-        const last = this[offset + 7];
-        if (first === void 0 || last === void 0) {
-          boundsError(offset, this.length - 8);
-        }
-        const hi = first * 2 ** 24 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 8 + this[++offset];
-        const lo = this[++offset] * 2 ** 24 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 8 + last;
-        return (BigInt(hi) << BigInt(32)) + BigInt(lo);
-      },
-    );
+  defineBigIntMethod(
+    function readBigUInt64BE(offset) {
+      offset = offset >>> 0;
+      validateNumber(offset, "offset");
+      const first = this[offset];
+      const last = this[offset + 7];
+      if (first === void 0 || last === void 0) {
+        boundsError(offset, this.length - 8);
+      }
+      const hi = first * 2 ** 24 + this[++offset] * 2 ** 16 +
+        this[++offset] * 2 ** 8 + this[++offset];
+      const lo = this[++offset] * 2 ** 24 + this[++offset] * 2 ** 16 +
+        this[++offset] * 2 ** 8 + last;
+      return (BigInt(hi) << BigInt(32)) + BigInt(lo);
+    },
+  );
 
 Buffer.prototype.readIntLE = function readIntLE(
   offset,
@@ -1153,7 +1154,7 @@ Buffer.prototype.readBigInt64LE = defineBigIntMethod(
     return (BigInt(val) << BigInt(32)) +
       BigInt(
         first + this[++offset] * 2 ** 8 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 24,
+        this[++offset] * 2 ** 24,
       );
   },
 );
@@ -1172,7 +1173,7 @@ Buffer.prototype.readBigInt64BE = defineBigIntMethod(
     return (BigInt(val) << BigInt(32)) +
       BigInt(
         this[++offset] * 2 ** 24 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 8 + last,
+        this[++offset] * 2 ** 8 + last,
       );
   },
 );
@@ -1203,53 +1204,53 @@ Buffer.prototype.readDoubleBE = function readDoubleBE(offset) {
 
 Buffer.prototype.writeUintLE =
   Buffer.prototype.writeUIntLE =
-    function writeUIntLE(value, offset, byteLength) {
-      if (byteLength === 6) {
-        return writeU_Int48LE(this, value, offset, 0, 0xffffffffffff);
-      }
-      if (byteLength === 5) {
-        return writeU_Int40LE(this, value, offset, 0, 0xffffffffff);
-      }
-      if (byteLength === 3) {
-        return writeU_Int24LE(this, value, offset, 0, 0xffffff);
-      }
-      if (byteLength === 4) {
-        return writeU_Int32LE(this, value, offset, 0, 0xffffffff);
-      }
-      if (byteLength === 2) {
-        return writeU_Int16LE(this, value, offset, 0, 0xffff);
-      }
-      if (byteLength === 1) {
-        return writeU_Int8(this, value, offset, 0, 0xff);
-      }
+  function writeUIntLE(value, offset, byteLength) {
+    if (byteLength === 6) {
+      return writeU_Int48LE(this, value, offset, 0, 0xffffffffffff);
+    }
+    if (byteLength === 5) {
+      return writeU_Int40LE(this, value, offset, 0, 0xffffffffff);
+    }
+    if (byteLength === 3) {
+      return writeU_Int24LE(this, value, offset, 0, 0xffffff);
+    }
+    if (byteLength === 4) {
+      return writeU_Int32LE(this, value, offset, 0, 0xffffffff);
+    }
+    if (byteLength === 2) {
+      return writeU_Int16LE(this, value, offset, 0, 0xffff);
+    }
+    if (byteLength === 1) {
+      return writeU_Int8(this, value, offset, 0, 0xff);
+    }
 
-      boundsError(byteLength, 6, "byteLength");
-    };
+    boundsError(byteLength, 6, "byteLength");
+  };
 
 Buffer.prototype.writeUintBE =
   Buffer.prototype.writeUIntBE =
-    function writeUIntBE(value, offset, byteLength) {
-      if (byteLength === 6) {
-        return writeU_Int48BE(this, value, offset, 0, 0xffffffffffff);
-      }
-      if (byteLength === 5) {
-        return writeU_Int40BE(this, value, offset, 0, 0xffffffffff);
-      }
-      if (byteLength === 3) {
-        return writeU_Int24BE(this, value, offset, 0, 0xffffff);
-      }
-      if (byteLength === 4) {
-        return writeU_Int32BE(this, value, offset, 0, 0xffffffff);
-      }
-      if (byteLength === 2) {
-        return writeU_Int16BE(this, value, offset, 0, 0xffff);
-      }
-      if (byteLength === 1) {
-        return writeU_Int8(this, value, offset, 0, 0xff);
-      }
+  function writeUIntBE(value, offset, byteLength) {
+    if (byteLength === 6) {
+      return writeU_Int48BE(this, value, offset, 0, 0xffffffffffff);
+    }
+    if (byteLength === 5) {
+      return writeU_Int40BE(this, value, offset, 0, 0xffffffffff);
+    }
+    if (byteLength === 3) {
+      return writeU_Int24BE(this, value, offset, 0, 0xffffff);
+    }
+    if (byteLength === 4) {
+      return writeU_Int32BE(this, value, offset, 0, 0xffffffff);
+    }
+    if (byteLength === 2) {
+      return writeU_Int16BE(this, value, offset, 0, 0xffff);
+    }
+    if (byteLength === 1) {
+      return writeU_Int8(this, value, offset, 0, 0xff);
+    }
 
-      boundsError(byteLength, 6, "byteLength");
-    };
+    boundsError(byteLength, 6, "byteLength");
+  };
 
 Buffer.prototype.writeUint8 = Buffer.prototype.writeUInt8 = function writeUInt8(
   value,
@@ -1260,27 +1261,27 @@ Buffer.prototype.writeUint8 = Buffer.prototype.writeUInt8 = function writeUInt8(
 
 Buffer.prototype.writeUint16LE =
   Buffer.prototype.writeUInt16LE =
-    function writeUInt16LE(value, offset = 0) {
-      return writeU_Int16LE(this, value, offset, 0, 0xffff);
-    };
+  function writeUInt16LE(value, offset = 0) {
+    return writeU_Int16LE(this, value, offset, 0, 0xffff);
+  };
 
 Buffer.prototype.writeUint16BE =
   Buffer.prototype.writeUInt16BE =
-    function writeUInt16BE(value, offset = 0) {
-      return writeU_Int16BE(this, value, offset, 0, 0xffff);
-    };
+  function writeUInt16BE(value, offset = 0) {
+    return writeU_Int16BE(this, value, offset, 0, 0xffff);
+  };
 
 Buffer.prototype.writeUint32LE =
   Buffer.prototype.writeUInt32LE =
-    function writeUInt32LE(value, offset = 0) {
-      return _writeUInt32LE(this, value, offset, 0, 0xffffffff);
-    };
+  function writeUInt32LE(value, offset = 0) {
+    return _writeUInt32LE(this, value, offset, 0, 0xffffffff);
+  };
 
 Buffer.prototype.writeUint32BE =
   Buffer.prototype.writeUInt32BE =
-    function writeUInt32BE(value, offset = 0) {
-      return _writeUInt32BE(this, value, offset, 0, 0xffffffff);
-    };
+  function writeUInt32BE(value, offset = 0) {
+    return _writeUInt32BE(this, value, offset, 0, 0xffffffff);
+  };
 
 function wrtBigUInt64LE(buf, value, offset, min, max) {
   checkIntBI(value, min, max, buf, offset, 7);
@@ -1326,31 +1327,31 @@ function wrtBigUInt64BE(buf, value, offset, min, max) {
 
 Buffer.prototype.writeBigUint64LE =
   Buffer.prototype.writeBigUInt64LE =
-    defineBigIntMethod(
-      function writeBigUInt64LE(value, offset = 0) {
-        return wrtBigUInt64LE(
-          this,
-          value,
-          offset,
-          BigInt(0),
-          BigInt("0xffffffffffffffff"),
-        );
-      },
-    );
+  defineBigIntMethod(
+    function writeBigUInt64LE(value, offset = 0) {
+      return wrtBigUInt64LE(
+        this,
+        value,
+        offset,
+        BigInt(0),
+        BigInt("0xffffffffffffffff"),
+      );
+    },
+  );
 
 Buffer.prototype.writeBigUint64BE =
   Buffer.prototype.writeBigUInt64BE =
-    defineBigIntMethod(
-      function writeBigUInt64BE(value, offset = 0) {
-        return wrtBigUInt64BE(
-          this,
-          value,
-          offset,
-          BigInt(0),
-          BigInt("0xffffffffffffffff"),
-        );
-      },
-    );
+  defineBigIntMethod(
+    function writeBigUInt64BE(value, offset = 0) {
+      return wrtBigUInt64BE(
+        this,
+        value,
+        offset,
+        BigInt(0),
+        BigInt("0xffffffffffffffff"),
+      );
+    },
+  );
 
 Buffer.prototype.writeIntLE = function writeIntLE(
   value,
@@ -1675,9 +1676,8 @@ function checkIntBI(value, min, max, buf, offset, byteLength2) {
       if (min === 0 || min === BigInt(0)) {
         range = `>= 0${n} and < 2${n} ** ${(byteLength2 + 1) * 8}${n}`;
       } else {
-        range = `>= -(2${n} ** ${(byteLength2 + 1) * 8 - 1}${n}) and < 2 ** ${
-          (byteLength2 + 1) * 8 - 1
-        }${n}`;
+        range = `>= -(2${n} ** ${(byteLength2 + 1) * 8 - 1}${n}) and < 2 ** ${(byteLength2 + 1) * 8 - 1
+          }${n}`;
       }
     } else {
       range = `>= ${min}${n} and <= ${max}${n}`;
@@ -1720,7 +1720,7 @@ function blitBuffer(src, dst, offset, byteLength = Infinity) {
 function isInstance(obj, type) {
   return obj instanceof type ||
     obj != null && obj.constructor != null &&
-      obj.constructor.name != null && obj.constructor.name === type.name;
+    obj.constructor.name != null && obj.constructor.name === type.name;
 }
 
 const hexSliceLookupTable = function () {
