@@ -25,6 +25,7 @@ use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::CliModuleLoaderFactory;
+use crate::module_loader::CliNodeResolver;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
@@ -159,6 +160,7 @@ struct CliFactoryServices {
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
+  cli_node_resolver: Deferred<Arc<CliNodeResolver>>,
 }
 
 pub struct CliFactory {
@@ -294,35 +296,37 @@ impl CliFactory {
       .services
       .npm_resolver
       .get_or_try_init_async(async {
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-          snapshot: match self.options.resolve_npm_resolution_snapshot()? {
-            Some(snapshot) => {
-              CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
-            }
-            None => match self.maybe_lockfile() {
-              Some(lockfile) => {
-                CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
-                  lockfile.clone(),
-                )
+        let fs = self.fs();
+        create_cli_npm_resolver(
+          CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+            snapshot: match self.options.resolve_npm_resolution_snapshot()? {
+              Some(snapshot) => {
+                CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
               }
-              None => CliNpmResolverManagedSnapshotOption::Specified(None),
+              None => match self.maybe_lockfile() {
+                Some(lockfile) => {
+                  CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
+                    lockfile.clone(),
+                  )
+                }
+                None => CliNpmResolverManagedSnapshotOption::Specified(None),
+              },
             },
-          },
-          maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
-          fs: self.fs().clone(),
-          http_client: self.http_client().clone(),
-          npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
-          cache_setting: self.options.cache_setting(),
-          text_only_progress_bar: self.text_only_progress_bar().clone(),
-          maybe_node_modules_path: self.options.node_modules_dir_path(),
-          package_json_installer:
-            CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
-              self.package_json_deps_provider().clone(),
-            ),
-          npm_system_info: self.options.npm_system_info(),
-          npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
-        }))
-        .await
+            maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
+            fs: fs.clone(),
+            http_client: self.http_client().clone(),
+            npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
+            cache_setting: self.options.cache_setting(),
+            text_only_progress_bar: self.text_only_progress_bar().clone(),
+            maybe_node_modules_path: self.options.node_modules_dir_path(),
+            package_json_installer:
+              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+                self.package_json_deps_provider().clone(),
+              ),
+            npm_system_info: self.options.npm_system_info(),
+            npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+          })
+        ).await
       })
       .await
   }
@@ -538,6 +542,22 @@ impl CliFactory {
     self.services.cjs_resolutions.get_or_init(Default::default)
   }
 
+  pub async fn cli_node_resolver(
+    &self,
+  ) -> Result<&Arc<CliNodeResolver>, AnyError> {
+    self
+      .services
+      .cli_node_resolver
+      .get_or_try_init_async(async {
+        Ok(Arc::new(CliNodeResolver::new(
+          self.cjs_resolutions().clone(),
+          self.node_resolver().await?.clone(),
+          self.npm_resolver().await?.clone(),
+        )))
+      })
+      .await
+  }
+
   pub async fn create_compile_binary_writer(
     &self,
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
@@ -557,6 +577,7 @@ impl CliFactory {
     let node_resolver = self.node_resolver().await?;
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
+    let cli_node_resolver = self.cli_node_resolver().await?;
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       npm_resolver.clone(),
@@ -569,12 +590,12 @@ impl CliFactory {
         self.module_load_preparer().await?.clone(),
         self.parsed_source_cache()?.clone(),
         self.resolver().await?.clone(),
+        cli_node_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
           self.node_code_translator().await?.clone(),
           fs.clone(),
-          node_resolver.clone(),
-          npm_resolver.clone(),
+          cli_node_resolver.clone(),
         ),
       )),
       self.root_cert_store_provider().clone(),
@@ -618,7 +639,7 @@ impl CliFactory {
         .unsafely_ignore_certificate_errors()
         .clone(),
       unstable: self.options.unstable(),
-      maybe_package_json_deps: self.options.maybe_package_json_deps(),
+      maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
     })
   }
 }
