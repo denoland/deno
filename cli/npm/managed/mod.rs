@@ -445,6 +445,14 @@ impl ManagedCliNpmResolver {
     }
   }
 
+  pub fn resolve_pkg_folder_from_deno_module(
+    &self,
+    nv: &PackageNv,
+  ) -> Result<PathBuf, AnyError> {
+    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
+    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
+  }
+
   fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &PackageReq,
@@ -591,14 +599,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     _referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
-    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
-  }
-
-  fn resolve_pkg_folder_from_deno_module(
-    &self,
-    nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 

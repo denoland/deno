@@ -97,13 +97,6 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     todo!()
   }
 
-  fn resolve_pkg_folder_from_deno_module(
-    &self,
-    nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    todo!()
-  }
-
   fn get_npm_process_state(&self) -> String {
     todo!()
   }

@@ -73,6 +73,13 @@ pub trait CliNpmResolver: NpmResolver {
     }
   }
 
+  fn as_byonm(&self) -> Option<&ByonmCliNpmResolver> {
+    match self.as_inner() {
+      InnerCliNpmResolverRef::Managed(_) => None,
+      InnerCliNpmResolverRef::Byonm(inner) => Some(inner),
+    }
+  }
+
   fn root_node_modules_path(&self) -> Option<PathBuf>;
 
   /// Resolve the root folder of the package the provided specifier is in.
@@ -87,11 +94,6 @@ pub trait CliNpmResolver: NpmResolver {
     &self,
     req: &PackageReq,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError>;
-
-  fn resolve_pkg_folder_from_deno_module(
-    &self,
-    nv: &PackageNv,
   ) -> Result<PathBuf, AnyError>;
 
   /// Gets the state of npm for the process.

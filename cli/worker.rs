@@ -93,7 +93,7 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
-  pub maybe_package_json_deps: Option<PackageJsonDeps>,
+  pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
 }
 
 struct SharedWorkerState {
@@ -366,7 +366,7 @@ impl CliMainWorkerFactory {
         // package.json deps in order to prevent adding new dependency version
         shared
           .options
-          .maybe_package_json_deps
+          .maybe_root_package_json_deps
           .as_ref()
           .and_then(|deps| {
             deps

@@ -27,6 +27,7 @@ use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::NpmModuleLoader;
+use crate::module_loader::NpmModuleResolver;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
@@ -160,6 +161,7 @@ struct CliFactoryServices {
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
+  npm_module_resolver: Deferred<Arc<NpmModuleResolver>>,
 }
 
 pub struct CliFactory {
@@ -545,6 +547,22 @@ impl CliFactory {
     self.services.cjs_resolutions.get_or_init(Default::default)
   }
 
+  pub async fn npm_module_resolver(
+    &self,
+  ) -> Result<&Arc<NpmModuleResolver>, AnyError> {
+    self
+      .services
+      .npm_module_resolver
+      .get_or_try_init_async(async {
+        Ok(Arc::new(NpmModuleResolver::new(
+          self.cjs_resolutions().clone(),
+          self.node_resolver().await?.clone(),
+          self.npm_resolver().await?.clone(),
+        )))
+      })
+      .await
+  }
+
   pub async fn create_compile_binary_writer(
     &self,
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
@@ -564,6 +582,7 @@ impl CliFactory {
     let node_resolver = self.node_resolver().await?;
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
+    let npm_module_resolver = self.npm_module_resolver().await?;
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       npm_resolver.clone(),
@@ -580,9 +599,9 @@ impl CliFactory {
           self.cjs_resolutions().clone(),
           self.node_code_translator().await?.clone(),
           fs.clone(),
-          node_resolver.clone(),
-          npm_resolver.clone(),
+          npm_module_resolver.clone(),
         ),
+        npm_module_resolver.clone(),
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
@@ -625,7 +644,7 @@ impl CliFactory {
         .unsafely_ignore_certificate_errors()
         .clone(),
       unstable: self.options.unstable(),
-      maybe_package_json_deps: self.options.maybe_package_json_deps(),
+      maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
     })
   }
 }

@@ -13,6 +13,7 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
 use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::NpmModuleLoader;
+use crate::module_loader::NpmModuleResolver;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolverCreateOptions;
@@ -389,11 +390,14 @@ pub async fn run(
         package_json_deps_provider.clone(),
       ),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
-        cjs_resolutions,
+        cjs_resolutions.clone(),
         node_code_translator,
         fs.clone(),
-        node_resolver.clone(),
-        npm_resolver.clone(),
+        Arc::new(NpmModuleResolver::new(
+          cjs_resolutions,
+          node_resolver.clone(),
+          npm_resolver.clone(),
+        )),
       )),
     }),
   };
@@ -448,7 +452,7 @@ pub async fn run(
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable,
-      maybe_package_json_deps: package_json_deps_provider.deps().cloned(),
+      maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
   );
 

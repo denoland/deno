@@ -54,6 +54,7 @@ use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -310,6 +311,7 @@ struct SharedCliModuleLoaderState {
   prepared_module_loader: PreparedModuleLoader,
   resolver: Arc<CliGraphResolver>,
   npm_module_loader: NpmModuleLoader,
+  npm_module_resolver: Arc<NpmModuleResolver>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -325,6 +327,7 @@ impl CliModuleLoaderFactory {
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliGraphResolver>,
     npm_module_loader: NpmModuleLoader,
+    npm_module_resolver: Arc<NpmModuleResolver>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -344,6 +347,7 @@ impl CliModuleLoaderFactory {
         module_load_preparer,
         resolver,
         npm_module_loader,
+        npm_module_resolver,
       }),
     }
   }
@@ -473,7 +477,7 @@ impl ModuleLoader for CliModuleLoader {
     if let Ok(referrer) = referrer_result.as_ref() {
       if let Some(result) = self
         .shared
-        .npm_module_loader
+        .npm_module_resolver
         .resolve_if_in_npm_package(specifier, referrer, permissions)
       {
         return result;
@@ -492,10 +496,28 @@ impl ModuleLoader for CliModuleLoader {
           let specifier = &resolved.specifier;
 
           return match graph.get(specifier) {
-            Some(Module::Npm(module)) => self
-              .shared
-              .npm_module_loader
-              .resolve_nv_ref(&module.nv_reference, permissions),
+            Some(Module::Npm(module)) => {
+              let package_folder = self
+                .shared
+                .npm_module_resolver
+                .npm_resolver
+                .as_managed()
+                .unwrap() // byonm won't create a Module::Npm
+                .resolve_pkg_folder_from_deno_module(
+                  module.nv_reference.nv(),
+                )?;
+              self
+                .shared
+                .npm_module_resolver
+                .resolve_package_sub_path(
+                  &package_folder,
+                  module.nv_reference.sub_path(),
+                  permissions,
+                )
+                .with_context(|| {
+                  format!("Could not resolve '{}'.", module.nv_reference)
+                })
+            }
             Some(Module::Node(module)) => Ok(module.specifier.clone()),
             Some(Module::Esm(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
@@ -538,7 +560,7 @@ impl ModuleLoader for CliModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self.shared.npm_module_loader.resolve_req_reference(
+          return self.shared.npm_module_resolver.resolve_req_reference(
             &reference,
             permissions,
             &referrer,
@@ -643,29 +665,27 @@ impl SourceMapGetter for CliSourceMapGetter {
   }
 }
 
-pub struct NpmModuleLoader {
+pub struct NpmModuleResolver {
   cjs_resolutions: Arc<CjsResolutionStore>,
-  node_code_translator: Arc<CliNodeCodeTranslator>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
-impl NpmModuleLoader {
+impl NpmModuleResolver {
   pub fn new(
     cjs_resolutions: Arc<CjsResolutionStore>,
-    node_code_translator: Arc<CliNodeCodeTranslator>,
-    fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
-      node_code_translator,
-      fs,
       node_resolver,
       npm_resolver,
     }
+  }
+
+  pub fn in_npm_package(&self, referrer: &ModuleSpecifier) -> bool {
+    self.npm_resolver.in_npm_package(referrer)
   }
 
   pub fn resolve_if_in_npm_package(
@@ -674,7 +694,7 @@ impl NpmModuleLoader {
     referrer: &ModuleSpecifier,
     permissions: &PermissionsContainer,
   ) -> Option<Result<ModuleSpecifier, AnyError>> {
-    if self.node_resolver.in_npm_package(referrer) {
+    if self.in_npm_package(referrer) {
       // we're in an npm package, so use node resolution
       Some(
         self
@@ -693,24 +713,6 @@ impl NpmModuleLoader {
     }
   }
 
-  pub fn resolve_nv_ref(
-    &self,
-    nv_ref: &NpmPackageNvReference,
-    permissions: &PermissionsContainer,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    let package_folder = self
-      .npm_resolver
-      .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
-    self
-      .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-        &package_folder,
-        nv_ref.sub_path(),
-        NodeResolutionMode::Execution,
-        permissions,
-      ))
-      .with_context(|| format!("Could not resolve '{}'.", nv_ref))
-  }
-
   pub fn resolve_req_reference(
     &self,
     req_ref: &NpmPackageReqReference,
@@ -721,20 +723,71 @@ impl NpmModuleLoader {
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
     self
-      .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
+      .resolve_package_sub_path(
         &package_folder,
         req_ref.sub_path(),
-        NodeResolutionMode::Execution,
         permissions,
-      ))
+      )
       .with_context(|| format!("Could not resolve '{}'.", req_ref))
+  }
+
+  fn resolve_package_sub_path(
+    &self,
+    package_folder: &Path,
+    sub_path: Option<&str>,
+    permissions: &PermissionsContainer,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    self.handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
+      &package_folder,
+      sub_path,
+      NodeResolutionMode::Execution,
+      permissions,
+    ))
+  }
+
+  fn handle_node_resolve_result(
+    &self,
+    result: Result<Option<NodeResolution>, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    let response = match result? {
+      Some(response) => response,
+      None => return Err(generic_error("not found")),
+    };
+    if let NodeResolution::CommonJs(specifier) = &response {
+      // remember that this was a common js resolution
+      self.cjs_resolutions.insert(specifier.clone());
+    }
+    Ok(response.into_url())
+  }
+}
+
+pub struct NpmModuleLoader {
+  cjs_resolutions: Arc<CjsResolutionStore>,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
+  fs: Arc<dyn deno_fs::FileSystem>,
+  npm_module_resolver: Arc<NpmModuleResolver>,
+}
+
+impl NpmModuleLoader {
+  pub fn new(
+    cjs_resolutions: Arc<CjsResolutionStore>,
+    node_code_translator: Arc<CliNodeCodeTranslator>,
+    fs: Arc<dyn deno_fs::FileSystem>,
+    npm_module_resolver: Arc<NpmModuleResolver>,
+  ) -> Self {
+    Self {
+      cjs_resolutions,
+      node_code_translator,
+      fs,
+      npm_module_resolver,
+    }
   }
 
   pub fn maybe_prepare_load(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Result<(), AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
+    if self.npm_module_resolver.in_npm_package(specifier) {
       // nothing to prepare
       Some(Ok(()))
     } else {
@@ -748,7 +801,7 @@ impl NpmModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     permissions: &PermissionsContainer,
   ) -> Option<Result<ModuleCodeSource, AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
+    if self.npm_module_resolver.in_npm_package(specifier) {
       Some(self.load_sync(specifier, maybe_referrer, permissions))
     } else {
       None
@@ -813,21 +866,6 @@ impl NpmModuleLoader {
       found_url: specifier.clone(),
       media_type: MediaType::from_specifier(specifier),
     })
-  }
-
-  fn handle_node_resolve_result(
-    &self,
-    result: Result<Option<NodeResolution>, AnyError>,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    let response = match result? {
-      Some(response) => response,
-      None => return Err(generic_error("not found")),
-    };
-    if let NodeResolution::CommonJs(specifier) = &response {
-      // remember that this was a common js resolution
-      self.cjs_resolutions.insert(specifier.clone());
-    }
-    Ok(response.into_url())
   }
 }
 

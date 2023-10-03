@@ -13,6 +13,9 @@ use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_runtime::deno_node::is_builtin_node_module;
+use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::path::PathBuf;
@@ -21,6 +24,7 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
+use crate::module_loader::NpmModuleResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
@@ -102,6 +106,7 @@ pub struct CliGraphResolver {
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
+  node_resolver: Option<Arc<NodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
 }
@@ -114,14 +119,24 @@ pub struct CliGraphResolverOptions<'a> {
 
 impl CliGraphResolver {
   pub fn new(
+    node_resolver: Option<Arc<NodeResolver>>,
     npm_resolver: Option<Arc<dyn CliNpmResolver>>,
     package_json_deps_provider: Arc<PackageJsonDepsProvider>,
     options: CliGraphResolverOptions,
   ) -> Self {
+    let is_byonm = npm_resolver
+      .as_ref()
+      .map(|n| n.as_byonm().is_some())
+      .unwrap_or(false);
     Self {
       mapped_specifier_resolver: MappedSpecifierResolver::new(
         options.maybe_import_map,
-        package_json_deps_provider,
+        if is_byonm {
+          // don't resolve from the root package.json deps for byonm
+          Arc::new(PackageJsonDepsProvider::new(None))
+        } else {
+          package_json_deps_provider
+        },
       ),
       maybe_default_jsx_import_source: options
         .maybe_jsx_import_source_config
@@ -133,6 +148,7 @@ impl CliGraphResolver {
       maybe_vendor_specifier: options
         .maybe_vendor_dir
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
+      node_resolver,
       npm_resolver,
       found_package_json_dep_flag: Default::default(),
     }
@@ -168,19 +184,19 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    use MappedResolution::*;
+    eprintln!("RESOLVING: {}", specifier);
     let result = match self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
     {
-      ImportMap(specifier) => Ok(specifier),
-      PackageJson(specifier) => {
+      MappedResolution::ImportMap(specifier) => Ok(specifier),
+      MappedResolution::PackageJson(specifier) => {
         // found a specifier in the package.json, so mark that
         // we need to do an "npm install" later
         self.found_package_json_dep_flag.raise();
         Ok(specifier)
       }
-      None => deno_graph::resolve_import(specifier, referrer)
+      MappedResolution::None => deno_graph::resolve_import(specifier, referrer)
         .map_err(|err| err.into()),
     };
 
@@ -192,6 +208,22 @@ impl Resolver for CliGraphResolver {
       if let Ok(specifier) = &result {
         if specifier.as_str().starts_with(vendor_specifier.as_str()) {
           bail!("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.");
+        }
+      }
+    }
+
+    if result.is_err() {
+      if let Some(_) = self.npm_resolver.as_ref().and_then(|r| r.as_byonm()) {
+        if let Some(node_resolver) = &self.node_resolver {
+          let node_result = node_resolver.resolve(
+            specifier,
+            referrer,
+            NodeResolutionMode::Execution,
+            &PermissionsContainer::allow_all(),
+          );
+          if let Ok(Some(resolution)) = node_result {
+            return Ok(resolution.into_url());
+          }
         }
       }
     }

@@ -657,9 +657,11 @@ fn resolve_graph_specifier_types(
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
     Some(Module::Npm(module)) => {
-      if let Some(npm) = &state.maybe_npm {
+      if let Some(npm) = &state.maybe_npm.as_ref() {
         let package_folder = npm
           .npm_resolver
+          .as_managed()
+          .unwrap() // should never be byonm because it won't create Module::Npm
           .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
         let maybe_resolution = npm.node_resolver.resolve_npm_reference(
           &package_folder,
