@@ -65,6 +65,7 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
+use std::ptr::null;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -1053,19 +1054,19 @@ pub fn op_http_try_wait(
 ) -> *const c_void {
   // The resource needs to exist.
   let Ok(join_handle) = state.resource_table.get::<HttpJoinHandle>(rid) else {
-    return 0 as _;
+    return null();
   };
 
   // If join handle is somehow locked, just abort.
   let Some(mut handle) =
     RcRef::map(&join_handle, |this| &this.rx).try_borrow_mut()
   else {
-    return 0 as _;
+    return null();
   };
 
   // See if there are any requests waiting on this channel. If not, return.
   let Ok(record) = handle.try_recv() else {
-    return 0 as _;
+    return null();
   };
 
   Rc::into_raw(record) as _
@@ -1109,14 +1110,14 @@ pub async fn op_http_wait(
     if let Some(err) = err.source() {
       if let Some(err) = err.downcast_ref::<io::Error>() {
         if err.kind() == io::ErrorKind::NotConnected {
-          return Ok(0 as _);
+          return Ok(null());
         }
       }
     }
     return Err(err);
   }
 
-  Ok(0 as _)
+  Ok(null())
 }
 
 /// Cancels the HTTP handle.
