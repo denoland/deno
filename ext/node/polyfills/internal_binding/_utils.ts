@@ -92,15 +92,16 @@ export function utf8ToBytes(str: string, units?: number) {
   units = units || Infinity;
   // The byte array length is determined by a conservative 'length quadrupled' calculation.
   // This overallocates massively but will never fail.
-  const length = Math.min(str.length * 4, units * 4);
-  const byteArray = new Uint8Array(length);
+  const strLength = str.length;
+  const byteArrayLength = Math.min(strLength * 4, units * 4);
+  const byteArray = new Uint8Array(byteArrayLength);
   let codePoint: number;
   let leadSurrogate: null | number = null;
   /**
    * Next index to assign into.
    */
   let byteIndex = 0;
-  for (let i = 0; i < length; ++i) {
+  for (let i = 0; i < strLength; ++i) {
     codePoint = str.charCodeAt(i);
     if (codePoint > 55295 && codePoint < 57344) {
       if (!leadSurrogate) {
@@ -111,7 +112,7 @@ export function utf8ToBytes(str: string, units?: number) {
             byteArray[byteIndex++] = 189;
           }
           continue;
-        } else if (i + 1 === length) {
+        } else if (i + 1 === strLength) {
           if ((units -= 3) > -1) {
             byteArray[byteIndex++] = 239;
             byteArray[byteIndex++] = 191;
@@ -167,7 +168,10 @@ export function utf8ToBytes(str: string, units?: number) {
       byteArray[byteIndex++] = codePoint >> 6 & 63 | 128;
       byteArray[byteIndex++] = codePoint & 63 | 128;
     } else {
-      throw new Error("Invalid code point");
+      console.trace();
+      throw new Error(
+        "Invalid code point: " + str[i] + " " + i + ": '" + str + "'",
+      );
     }
   }
   // If the next byte index (to assign into) is equal to length, ie.
@@ -175,7 +179,9 @@ export function utf8ToBytes(str: string, units?: number) {
   // Otherwise: Returning a buffer subarray is okay: This API's return value
   // is never exposed to users and is only ever used for its length
   // and the data within the subarray.
-  return byteIndex === length ? byteArray : byteArray.subarray(0, byteIndex);
+  return byteIndex === byteArrayLength
+    ? byteArray
+    : byteArray.subarray(0, byteIndex);
 }
 
 export function bytesToAscii(bytes: Uint8Array) {
