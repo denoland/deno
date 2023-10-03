@@ -1760,6 +1760,15 @@ fn reload_info_not_found_cache_but_exists_remote() {
       serde_json::from_str(&deno_dir.read_to_string(&registry_json_path))
         .unwrap();
     remove_version(&mut registry_json, version);
+    // for the purpose of this test, just remove the dist-tag as it might contain this version
+    registry_json
+      .as_object_mut()
+      .unwrap()
+      .get_mut("dist-tags")
+      .unwrap()
+      .as_object_mut()
+      .unwrap()
+      .remove("latest");
     deno_dir.write(
       &registry_json_path,
       serde_json::to_string(&registry_json).unwrap(),
