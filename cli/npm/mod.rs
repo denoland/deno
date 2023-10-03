@@ -10,12 +10,7 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_graph::NpmPackageReqResolution;
-use deno_npm::resolution::PackageReqNotFoundError;
 use deno_runtime::deno_node::NpmResolver;
-use deno_semver::npm::NpmPackageNvReference;
-use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
 pub use self::byonm::CliNpmResolverByonmCreateOptions;

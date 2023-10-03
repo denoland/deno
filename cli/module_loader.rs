@@ -50,7 +50,6 @@ use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -319,6 +318,7 @@ pub struct CliModuleLoaderFactory {
 }
 
 impl CliModuleLoaderFactory {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: &CliOptions,
     emitter: Arc<Emitter>,
@@ -738,7 +738,7 @@ impl CliNodeResolver {
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
     self.handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-      &package_folder,
+      package_folder,
       sub_path,
       NodeResolutionMode::Execution,
       permissions,

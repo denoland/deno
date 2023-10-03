@@ -40,7 +40,6 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
 
@@ -536,7 +535,7 @@ impl CliMainWorkerFactory {
     match self
       .shared
       .node_resolver
-      .resolve_binary_export(&package_folder, sub_path)
+      .resolve_binary_export(package_folder, sub_path)
     {
       Ok(node_resolution) => Ok(node_resolution),
       Err(original_err) => {

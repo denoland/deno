@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -11,8 +10,6 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
