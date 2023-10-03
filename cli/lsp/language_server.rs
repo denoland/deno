@@ -129,6 +129,8 @@ struct LspNpmServices {
   config_hash: LspNpmConfigHash,
   /// Npm's search api.
   search_api: CliNpmSearchApi,
+  /// Node resolver.
+  node_resolver: Option<Arc<NodeResolver>>,
   /// Resolver for npm packages.
   resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -519,6 +521,7 @@ impl Inner {
       npm: LspNpmServices {
         config_hash: LspNpmConfigHash(0), // this will be updated in initialize
         search_api: npm_search_api,
+        node_resolver: None,
         resolver: None,
       },
       performance,
@@ -839,15 +842,18 @@ impl Inner {
       return; // no need to do anything
     }
 
-    self.npm.resolver = Some(
-      create_npm_resolver(
-        &deno_dir,
-        &self.http_client,
-        self.config.maybe_lockfile(),
-        self.config.maybe_node_modules_dir_path().cloned(),
-      )
-      .await,
-    );
+    let npm_resolver = create_npm_resolver(
+      &deno_dir,
+      &self.http_client,
+      self.config.maybe_lockfile(),
+      self.config.maybe_node_modules_dir_path().cloned(),
+    )
+    .await;
+    self.npm.node_resolver = Some(Arc::new(NodeResolver::new(
+      Arc::new(deno_fs::RealFs),
+      npm_resolver.clone().into_npm_resolver(),
+    )));
+    self.npm.resolver = Some(npm_resolver);
 
     // update the hash
     self.npm.config_hash = config_hash;
@@ -1273,6 +1279,7 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
+      node_resolver: self.npm.node_resolver.clone(),
       npm_resolver: self.npm.resolver.clone(),
     });
 

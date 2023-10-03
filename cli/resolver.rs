@@ -24,7 +24,6 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
-use crate::module_loader::NpmModuleResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
@@ -184,7 +183,6 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    eprintln!("RESOLVING: {}", specifier);
     let result = match self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?

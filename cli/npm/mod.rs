@@ -2,6 +2,7 @@
 
 mod byonm;
 mod cache_dir;
+mod common;
 mod managed;
 
 use std::path::PathBuf;
@@ -83,8 +84,6 @@ pub trait CliNpmResolver: NpmResolver {
   fn root_node_modules_path(&self) -> Option<PathBuf>;
 
   /// Resolve the root folder of the package the provided specifier is in.
-  ///
-  /// This will error when the provided specifier is not in an npm package.
   fn resolve_pkg_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,

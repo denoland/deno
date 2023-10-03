@@ -310,8 +310,8 @@ struct SharedCliModuleLoaderState {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   prepared_module_loader: PreparedModuleLoader,
   resolver: Arc<CliGraphResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
-  npm_module_resolver: Arc<NpmModuleResolver>,
 }
 
 pub struct CliModuleLoaderFactory {
@@ -326,8 +326,8 @@ impl CliModuleLoaderFactory {
     module_load_preparer: Arc<ModuleLoadPreparer>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliGraphResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
-    npm_module_resolver: Arc<NpmModuleResolver>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -346,8 +346,8 @@ impl CliModuleLoaderFactory {
         graph_container,
         module_load_preparer,
         resolver,
+        node_resolver,
         npm_module_loader,
-        npm_module_resolver,
       }),
     }
   }
@@ -475,11 +475,11 @@ impl ModuleLoader for CliModuleLoader {
     let referrer_result = deno_core::resolve_url_or_path(referrer, &cwd);
 
     if let Ok(referrer) = referrer_result.as_ref() {
-      if let Some(result) = self
-        .shared
-        .npm_module_resolver
-        .resolve_if_in_npm_package(specifier, referrer, permissions)
-      {
+      if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
+        specifier,
+        referrer,
+        permissions,
+      ) {
         return result;
       }
 
@@ -499,7 +499,7 @@ impl ModuleLoader for CliModuleLoader {
             Some(Module::Npm(module)) => {
               let package_folder = self
                 .shared
-                .npm_module_resolver
+                .node_resolver
                 .npm_resolver
                 .as_managed()
                 .unwrap() // byonm won't create a Module::Npm
@@ -508,7 +508,7 @@ impl ModuleLoader for CliModuleLoader {
                 )?;
               self
                 .shared
-                .npm_module_resolver
+                .node_resolver
                 .resolve_package_sub_path(
                   &package_folder,
                   module.nv_reference.sub_path(),
@@ -560,7 +560,7 @@ impl ModuleLoader for CliModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return self.shared.npm_module_resolver.resolve_req_reference(
+          return self.shared.node_resolver.resolve_req_reference(
             &reference,
             permissions,
             &referrer,
@@ -665,13 +665,13 @@ impl SourceMapGetter for CliSourceMapGetter {
   }
 }
 
-pub struct NpmModuleResolver {
+pub struct CliNodeResolver {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
-impl NpmModuleResolver {
+impl CliNodeResolver {
   pub fn new(
     cjs_resolutions: Arc<CjsResolutionStore>,
     node_resolver: Arc<NodeResolver>,
@@ -765,7 +765,7 @@ pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  npm_module_resolver: Arc<NpmModuleResolver>,
+  node_resolver: Arc<CliNodeResolver>,
 }
 
 impl NpmModuleLoader {
@@ -773,13 +773,13 @@ impl NpmModuleLoader {
     cjs_resolutions: Arc<CjsResolutionStore>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    npm_module_resolver: Arc<NpmModuleResolver>,
+    node_resolver: Arc<CliNodeResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
       node_code_translator,
       fs,
-      npm_module_resolver,
+      node_resolver,
     }
   }
 
@@ -787,7 +787,7 @@ impl NpmModuleLoader {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Result<(), AnyError>> {
-    if self.npm_module_resolver.in_npm_package(specifier) {
+    if self.node_resolver.in_npm_package(specifier) {
       // nothing to prepare
       Some(Ok(()))
     } else {
@@ -801,7 +801,7 @@ impl NpmModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     permissions: &PermissionsContainer,
   ) -> Option<Result<ModuleCodeSource, AnyError>> {
-    if self.npm_module_resolver.in_npm_package(specifier) {
+    if self.node_resolver.in_npm_package(specifier) {
       Some(self.load_sync(specifier, maybe_referrer, permissions))
     } else {
       None

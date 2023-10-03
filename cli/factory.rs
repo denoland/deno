@@ -25,9 +25,9 @@ use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::CliModuleLoaderFactory;
+use crate::module_loader::CliNodeResolver;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::NpmModuleLoader;
-use crate::module_loader::NpmModuleResolver;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
@@ -161,7 +161,7 @@ struct CliFactoryServices {
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
-  npm_module_resolver: Deferred<Arc<NpmModuleResolver>>,
+  cli_node_resolver: Deferred<Arc<CliNodeResolver>>,
 }
 
 pub struct CliFactory {
@@ -297,8 +297,10 @@ impl CliFactory {
       .services
       .npm_resolver
       .get_or_try_init_async(async {
+        let fs = self.fs();
         create_cli_npm_resolver(if self.options.unstable_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
+            fs: fs.clone(),
             // todo: actually resolve this properly
             root_node_modules_dir: self.options.initial_cwd().join("node_modules"),
           })
@@ -318,7 +320,7 @@ impl CliFactory {
               },
             },
             maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
-            fs: self.fs().clone(),
+            fs: fs.clone(),
             http_client: self.http_client().clone(),
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: self.options.cache_setting(),
@@ -368,6 +370,7 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliGraphResolver::new(
+          Some(self.node_resolver().await?.clone()),
           if self.options.no_npm() {
             None
           } else {
@@ -547,14 +550,14 @@ impl CliFactory {
     self.services.cjs_resolutions.get_or_init(Default::default)
   }
 
-  pub async fn npm_module_resolver(
+  pub async fn cli_node_resolver(
     &self,
-  ) -> Result<&Arc<NpmModuleResolver>, AnyError> {
+  ) -> Result<&Arc<CliNodeResolver>, AnyError> {
     self
       .services
-      .npm_module_resolver
+      .cli_node_resolver
       .get_or_try_init_async(async {
-        Ok(Arc::new(NpmModuleResolver::new(
+        Ok(Arc::new(CliNodeResolver::new(
           self.cjs_resolutions().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
@@ -582,7 +585,7 @@ impl CliFactory {
     let node_resolver = self.node_resolver().await?;
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
-    let npm_module_resolver = self.npm_module_resolver().await?;
+    let cli_node_resolver = self.cli_node_resolver().await?;
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       npm_resolver.clone(),
@@ -595,13 +598,13 @@ impl CliFactory {
         self.module_load_preparer().await?.clone(),
         self.parsed_source_cache()?.clone(),
         self.resolver().await?.clone(),
+        cli_node_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
           self.node_code_translator().await?.clone(),
           fs.clone(),
-          npm_module_resolver.clone(),
+          cli_node_resolver.clone(),
         ),
-        npm_module_resolver.clone(),
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),

@@ -39,6 +39,7 @@ use deno_graph::Resolution;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -858,6 +859,7 @@ pub struct UpdateDocumentConfigOptions<'a> {
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
+  pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
@@ -915,6 +917,7 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: Arc::new(CliGraphResolver::new(
+        None,
         None,
         Arc::new(PackageJsonDepsProvider::default()),
         CliGraphResolverOptions {
@@ -1303,6 +1306,7 @@ impl Documents {
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
     self.resolver = Arc::new(CliGraphResolver::new(
+      options.node_resolver,
       options.npm_resolver,
       deps_provider,
       CliGraphResolverOptions {
@@ -2088,6 +2092,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        node_resolver: None,
         npm_resolver: None,
       });
 
@@ -2129,6 +2134,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        node_resolver: None,
         npm_resolver: None,
       });
 

@@ -295,6 +295,7 @@ fn build_resolver(
 ) -> CliGraphResolver {
   CliGraphResolver::new(
     None,
+    None,
     Default::default(),
     CliGraphResolverOptions {
       maybe_jsx_import_source_config,
