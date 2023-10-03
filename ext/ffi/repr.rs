@@ -74,7 +74,7 @@ where
   let Some(buf) = buf.get_backing_store() else {
     return Ok(0 as _);
   };
-  let Some(buf) = backing_store.data() else {
+  let Some(buf) = buf.data() else {
     return Ok(0 as _);
   };
   Ok(buf.as_ptr() as _)
