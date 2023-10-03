@@ -45,9 +45,9 @@ use crate::npm::cache_dir::mixed_case_package_name_encode;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
+use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
 use super::super::resolution::NpmResolution;
-use super::common::types_package_name;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
 
