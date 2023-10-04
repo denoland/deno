@@ -355,9 +355,40 @@ impl ReplSession {
       evaluate_response
     };
 
+    let mut test_reporter = PrettyTestReporter::new(false, true, false, true);
+    {
+      use crate::tools::jupyter::server::StdioMsg;
+      use tokio::sync::mpsc::UnboundedSender;
+      if let Some(sender) = self
+        .worker
+        .js_runtime
+        .op_state()
+        .borrow_mut()
+        .try_borrow::<UnboundedSender<StdioMsg>>()
+      {
+        struct JupyterWriter {
+          sender: UnboundedSender<StdioMsg>,
+        }
+        impl std::io::Write for JupyterWriter {
+          fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self
+              .sender
+              .send(StdioMsg::Stdout(String::from_utf8_lossy(buf).into_owned()))
+              .ok();
+            Ok(buf.len())
+          }
+          fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+          }
+        }
+        test_reporter = test_reporter.with_writer(Box::new(JupyterWriter {
+          sender: sender.clone(),
+        }));
+      }
+    }
     let report_tests_handle = spawn(report_tests(
       self.test_event_receiver.take().unwrap(),
-      Box::new(PrettyTestReporter::new(false, true, false, true)),
+      Box::new(test_reporter),
     ));
     run_tests_for_worker(
       &mut self.worker,
