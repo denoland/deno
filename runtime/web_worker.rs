@@ -427,6 +427,7 @@ impl WebWorker {
       ),
       deno_webstorage::deno_webstorage::init_ops_and_esm(None).disable(),
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(unstable),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         options.broadcast_channel.clone(),
         unstable,
