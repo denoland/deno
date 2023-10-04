@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.37.1 / 2023.09.27
+
+- feat(ext/web): use readableStreamDefaultReaderRead in
+  resourceForReadableStream (#20622)
+- feat(kv_queues): increase max queue delay to 30 days (#20626)
+- feat(lsp): cache all dependencies quick fix (#20665)
+- feat(lsp): support more vscode built-in settings (#20679)
+- feat(unstable): add `Deno.jupyter.broadcast` API (#20656)
+- fix(cli/test): clear connection pool after tests (#20680)
+- fix(ext/http): ensure that resources are closed when request is cancelled
+  (#20641)
+- fix(ext/node): Fix invalid length variable reference in blitBuffer (#20648)
+- fix(ext/node): simplified array.from + map (#20653)
+- fix(ext/web): Aggregate small packets for Resource implementation of
+  ReadableStream (#20570)
+- fix(jupyter): await Jupyter.display evaluation (#20646)
+- fix(kv): unflake kv unit tests (#20640)
+- fix(kv_queues): graceful shutdown (#20627)
+- fix(lsp): allow query strings for "deno:/status.md" (#20697)
+- fix(lsp): resolve remote import maps (#20651)
+- fix(lsp): show related information for tsc diagnostics (#20654)
+- fix(node): point process.version to Node 18.18.0 LTS (#20597)
+- fix(node): supported arguments to `randomFillSync` (#20637)
+- fix(node/package_json): Avoid panic when "exports" field is null (#20588)
+- fix(upgrade): error instead of panic on unzip failure (#20691)
+- perf(ext/fetch): use new instead of createBranded (#20624)
+- perf(test): use core.currentUserCallSite (#20669)
+- perf(test): use fast ops for deno test register (#20670)
+
 ### 1.37.0 / 2023.09.19
 
 - feat: Add "deno jupyter" subcommand (#20337, #20552, #20530, #20537, #20546)

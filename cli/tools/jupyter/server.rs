@@ -12,12 +12,11 @@ use crate::tools::repl;
 use crate::tools::repl::cdp;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use zeromq::SocketRecv;
 use zeromq::SocketSend;
@@ -44,7 +43,7 @@ impl JupyterServer {
   pub async fn start(
     spec: ConnectionSpec,
     mut stdio_rx: mpsc::UnboundedReceiver<StdioMsg>,
-    repl_session: repl::ReplSession,
+    mut repl_session: repl::ReplSession,
   ) -> Result<(), AnyError> {
     let mut heartbeat =
       bind_socket::<zeromq::RepSocket>(&spec, spec.hb_port).await?;
@@ -58,6 +57,14 @@ impl JupyterServer {
       bind_socket::<zeromq::PubSocket>(&spec, spec.iopub_port).await?;
     let iopub_socket = Arc::new(Mutex::new(iopub_socket));
     let last_execution_request = Rc::new(RefCell::new(None));
+
+    // Store `iopub_socket` in the op state so it's accessible to the runtime API.
+    {
+      let op_state_rc = repl_session.worker.js_runtime.op_state();
+      let mut op_state = op_state_rc.borrow_mut();
+      op_state.put(iopub_socket.clone());
+      op_state.put(last_execution_request.clone());
+    }
 
     let cancel_handle = CancelHandle::new_rc();
     let cancel_handle2 = CancelHandle::new_rc();
@@ -90,7 +97,7 @@ impl JupyterServer {
     });
 
     let handle4 = deno_core::unsync::spawn(async move {
-      while let Some(stdio_msg) = stdio_rx.next().await {
+      while let Some(stdio_msg) = stdio_rx.recv().await {
         Self::handle_stdio_msg(
           iopub_socket.clone(),
           last_execution_request.clone(),
@@ -384,15 +391,18 @@ impl JupyterServer {
       let output =
         get_jupyter_display_or_eval_value(&mut self.repl_session, &result)
           .await?;
-      msg
-        .new_message("execute_result")
-        .with_content(json!({
-            "execution_count": self.execution_count,
-            "data": output,
-            "metadata": {},
-        }))
-        .send(&mut *self.iopub_socket.lock().await)
-        .await?;
+      // Don't bother sending `execute_result` reply if the MIME bundle is empty
+      if !output.is_empty() {
+        msg
+          .new_message("execute_result")
+          .with_content(json!({
+              "execution_count": self.execution_count,
+              "data": output,
+              "metadata": {},
+          }))
+          .send(&mut *self.iopub_socket.lock().await)
+          .await?;
+      }
       msg
         .new_reply()
         .with_content(json!({

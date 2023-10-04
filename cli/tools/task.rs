@@ -5,7 +5,7 @@ use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
-use crate::npm::CliNpmResolver;
+use crate::npm::ManagedCliNpmResolver;
 use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -19,6 +19,7 @@ use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use indexmap::IndexMap;
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::task::LocalSet;
@@ -67,8 +68,6 @@ pub async fn execute_script(
     Ok(exit_code)
   } else if package_json_scripts.contains_key(task_name) {
     let package_json_deps_provider = factory.package_json_deps_provider();
-    let package_json_deps_installer =
-      factory.package_json_deps_installer().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let node_resolver = factory.node_resolver().await?;
 
@@ -85,10 +84,11 @@ pub async fn execute_script(
       }
     }
 
-    package_json_deps_installer
-      .ensure_top_level_install()
-      .await?;
-    npm_resolver.resolve_pending().await?;
+    // install the npm packages if we're using a managed resolver
+    if let Some(npm_resolver) = npm_resolver.as_managed() {
+      npm_resolver.ensure_top_level_package_json_install().await?;
+      npm_resolver.resolve_pending().await?;
+    }
 
     log::info!(
       "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in an upcoming release.",
@@ -120,8 +120,16 @@ pub async fn execute_script(
         output_task(&task_name, &script);
         let seq_list = deno_task_shell::parser::parse(&script)
           .with_context(|| format!("Error parsing script '{task_name}'."))?;
-        let npx_commands = resolve_npm_commands(npm_resolver, node_resolver)?;
-        let env_vars = collect_env_vars();
+        let npx_commands = match npm_resolver.as_managed() {
+          Some(npm_resolver) => {
+            resolve_npm_commands(npm_resolver, node_resolver)?
+          }
+          None => Default::default(),
+        };
+        let env_vars = match npm_resolver.node_modules_path() {
+          Some(dir_path) => collect_env_vars_with_node_modules_dir(&dir_path),
+          None => collect_env_vars(),
+        };
         let local = LocalSet::new();
         let future =
           deno_task_shell::execute(seq_list, env_vars, &cwd, npx_commands);
@@ -160,6 +168,36 @@ fn output_task(task_name: &str, script: &str) {
     colors::cyan(&task_name),
     script,
   );
+}
+
+fn collect_env_vars_with_node_modules_dir(
+  node_modules_dir_path: &Path,
+) -> HashMap<String, String> {
+  let mut env_vars = collect_env_vars();
+  prepend_to_path(
+    &mut env_vars,
+    node_modules_dir_path
+      .join(".bin")
+      .to_string_lossy()
+      .to_string(),
+  );
+  env_vars
+}
+
+fn prepend_to_path(env_vars: &mut HashMap<String, String>, value: String) {
+  match env_vars.get_mut("PATH") {
+    Some(path) => {
+      if path.is_empty() {
+        *path = value;
+      } else {
+        *path =
+          format!("{}{}{}", value, if cfg!(windows) { ";" } else { ":" }, path);
+      }
+    }
+    None => {
+      env_vars.insert("PATH".to_string(), value);
+    }
+  }
 }
 
 fn collect_env_vars() -> HashMap<String, String> {
@@ -262,13 +300,15 @@ impl ShellCommand for NpmPackageBinCommand {
 }
 
 fn resolve_npm_commands(
-  npm_resolver: &CliNpmResolver,
+  npm_resolver: &ManagedCliNpmResolver,
   node_resolver: &NodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   let snapshot = npm_resolver.snapshot();
   for id in snapshot.top_level_packages() {
-    let bin_commands = node_resolver.resolve_binary_commands(&id.nv)?;
+    let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(id)?;
+    let bin_commands =
+      node_resolver.resolve_binary_commands(&package_folder)?;
     for bin_command in bin_commands {
       result.insert(
         bin_command.to_string(),
@@ -283,4 +323,37 @@ fn resolve_npm_commands(
     result.insert("npx".to_string(), Rc::new(NpxCommand));
   }
   Ok(result)
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_prepend_to_path() {
+    let mut env_vars = HashMap::new();
+
+    prepend_to_path(&mut env_vars, "/example".to_string());
+    assert_eq!(
+      env_vars,
+      HashMap::from([("PATH".to_string(), "/example".to_string())])
+    );
+
+    prepend_to_path(&mut env_vars, "/example2".to_string());
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    assert_eq!(
+      env_vars,
+      HashMap::from([(
+        "PATH".to_string(),
+        format!("/example2{}/example", separator)
+      )])
+    );
+
+    env_vars.get_mut("PATH").unwrap().clear();
+    prepend_to_path(&mut env_vars, "/example".to_string());
+    assert_eq!(
+      env_vars,
+      HashMap::from([("PATH".to_string(), "/example".to_string())])
+    );
+  }
 }

@@ -1752,8 +1752,7 @@ Deno.test(
     // if transfer-encoding is sent, content-length is ignored
     // even if it has an invalid value (content-length > totalLength)
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
-    const response = await fetch(`http://${addr}/`, { client });
+    const response = await fetch(`http://${addr}/`);
 
     const res = await response.arrayBuffer();
     const buf = new TextEncoder().encode(data);
@@ -1761,7 +1760,6 @@ Deno.test(
     assertEquals(new Uint8Array(res), buf);
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1783,17 +1781,15 @@ Deno.test(
 
     // It should fail if multiple content-length headers with different values are sent
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
     await assertRejects(
       async () => {
-        await fetch(`http://${addr}/`, { client });
+        await fetch(`http://${addr}/`);
       },
       TypeError,
       "invalid content-length parsed",
     );
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1811,8 +1807,7 @@ Deno.test(
     );
 
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
-    const response = await fetch(`http://${addr}/`, { client });
+    const response = await fetch(`http://${addr}/`);
 
     // If content-length < totalLength, a maximum of content-length bytes
     // should be returned.
@@ -1822,7 +1817,6 @@ Deno.test(
     assertEquals(new Uint8Array(res), buf.subarray(contentLength));
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1840,8 +1834,7 @@ Deno.test(
     );
 
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
-    const response = await fetch(`http://${addr}/`, { client });
+    const response = await fetch(`http://${addr}/`);
     // If content-length > totalLength, a maximum of content-length bytes
     // should be returned.
     await assertRejects(
@@ -1853,7 +1846,6 @@ Deno.test(
     );
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1943,12 +1935,10 @@ Deno.test(
       },
     });
 
-    const client = Deno.createHttpClient({});
     const err = await assertRejects(() =>
       fetch(`http://localhost:${listenPort}/`, {
         body: stream,
         method: "POST",
-        client,
       })
     );
 
@@ -1958,7 +1948,6 @@ Deno.test(
     assertEquals(err.cause.message, "foo");
 
     await server;
-    client.close();
   },
 );
 

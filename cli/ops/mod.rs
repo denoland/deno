@@ -9,9 +9,10 @@ use deno_core::Extension;
 use deno_core::OpState;
 
 pub mod bench;
+pub mod jupyter;
 pub mod testing;
 
-pub fn cli_exts(npm_resolver: Arc<CliNpmResolver>) -> Vec<Extension> {
+pub fn cli_exts(npm_resolver: Arc<dyn CliNpmResolver>) -> Vec<Extension> {
   vec![
     #[cfg(not(feature = "__runtime_js_sources"))]
     cli::init_ops(npm_resolver),
@@ -28,10 +29,11 @@ deno_core::extension!(cli,
   esm = [
     dir "js",
     "40_testing.js",
+    "40_jupyter.js",
     "99_main.js"
   ],
   options = {
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
   },
   state = |state, options| {
     state.put(options.npm_resolver);
@@ -49,6 +51,6 @@ deno_core::extension!(cli,
 #[op2]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
-  let npm_resolver = state.borrow_mut::<Arc<CliNpmResolver>>();
+  let npm_resolver = state.borrow_mut::<Arc<dyn CliNpmResolver>>();
   Ok(npm_resolver.get_npm_process_state())
 }

@@ -1760,6 +1760,15 @@ fn reload_info_not_found_cache_but_exists_remote() {
       serde_json::from_str(&deno_dir.read_to_string(&registry_json_path))
         .unwrap();
     remove_version(&mut registry_json, version);
+    // for the purpose of this test, just remove the dist-tag as it might contain this version
+    registry_json
+      .as_object_mut()
+      .unwrap()
+      .get_mut("dist-tags")
+      .unwrap()
+      .as_object_mut()
+      .unwrap()
+      .remove("latest");
     deno_dir.write(
       &registry_json_path,
       serde_json::to_string(&registry_json).unwrap(),
@@ -2155,8 +2164,11 @@ fn top_level_install_package_json_explicit_opt_in() {
     }
   }));
   client.write_request(
-    "deno/cache",
-    json!({ "referrer": { "uri": file_uri }, "uris": [] }),
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file_uri],
+    }),
   );
 
   assert!(node_modules_dir.join("@denotest").exists());
