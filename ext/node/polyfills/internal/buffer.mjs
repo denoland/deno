@@ -745,12 +745,9 @@ Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
-  return blitBuffer(
-    utf8ToBytes(string, this.length - offset),
-    this,
-    offset,
-    length,
-  );
+  const maxLength = Math.min(length || Infinity, this.length - (offset || 0));
+  const buf = offset || length < this.length ? this.subarray(offset, maxLength) : this;
+  return utf8Encoder.encodeInto(string, buf).written;
 };
 
 Buffer.prototype.write = function write(string, offset, length, encoding) {
@@ -1691,7 +1688,7 @@ function checkIntBI(value, min, max, buf, offset, byteLength2) {
 /**
  * @param {Uint8Array} src Source buffer to read from
  * @param {Buffer} dst Destination buffer to write to
- * @param {number} offset Byte offset to write at in the destination buffer
+ * @param {number} [offset] Byte offset to write at in the destination buffer
  * @param {number} [byteLength] Optional number of bytes to, at most, write into destination buffer.
  * @returns {number} Number of bytes written to destination buffer
  */
@@ -1705,7 +1702,7 @@ function blitBuffer(src, dst, offset, byteLength = Infinity) {
     // The length of the source sets an upper bound being the source of data.
     srcLength,
     // The length of the destination minus any offset into it sets an upper bound.
-    dst.length - offset,
+    dst.length - (offset || 0),
   );
   if (bytesToWrite < srcLength) {
     // Resize the source buffer to the number of bytes we're about to write.
