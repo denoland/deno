@@ -168,10 +168,7 @@ export function utf8ToBytes(str: string, units?: number) {
       byteArray[byteIndex++] = codePoint >> 6 & 63 | 128;
       byteArray[byteIndex++] = codePoint & 63 | 128;
     } else {
-      console.trace();
-      throw new Error(
-        "Invalid code point: " + str[i] + " " + i + ": '" + str + "'",
-      );
+      throw new Error("Invalid code point");
     }
   }
   // If the next byte index (to assign into) is equal to length, ie.
