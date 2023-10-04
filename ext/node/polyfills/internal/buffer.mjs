@@ -744,9 +744,10 @@ Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
-  const maxLength = Math.min(length || Infinity, this.length - (offset || 0));
-  const buf = offset || length < this.length
-    ? this.subarray(offset, maxLength)
+  offset = offset || 0;
+  const maxLength = Math.min(length || Infinity, this.length - offset);
+  const buf = offset || maxLength < this.length
+    ? this.subarray(offset, maxLength + offset)
     : this;
   return utf8Encoder.encodeInto(string, buf).written;
 };
