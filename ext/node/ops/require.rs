@@ -423,7 +423,7 @@ where
     node_resolver
       .package_exports_resolve(
         &pkg.path,
-        expansion,
+        &expansion,
         exports,
         &referrer,
         NodeModuleKind::Cjs,
@@ -507,7 +507,7 @@ where
     node_resolver
       .package_exports_resolve(
         &pkg.path,
-        format!(".{expansion}"),
+        &format!(".{expansion}"),
         exports,
         &referrer,
         NodeModuleKind::Cjs,
