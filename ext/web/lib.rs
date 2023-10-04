@@ -312,7 +312,7 @@ fn op_encoding_new_decoder(
 #[serde]
 fn op_encoding_decode(
   state: &mut OpState,
-  #[buffer] data: &[u8],
+  #[anybuffer] data: &[u8],
   #[smi] rid: ResourceId,
   stream: bool,
 ) -> Result<U16String, AnyError> {

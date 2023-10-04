@@ -71,7 +71,7 @@ pub fn op_compression_new(
 pub fn op_compression_write(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-  #[buffer] input: &[u8],
+  #[anybuffer] input: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   let resource = state.resource_table.get::<CompressionResource>(rid)?;
   let mut inner = resource.0.borrow_mut();
