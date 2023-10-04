@@ -59,10 +59,7 @@ declare class GPUSupportedFeatures {
   ): void;
   has(value: GPUFeatureName): boolean;
   size: number;
-  [
-    Symbol
-      .iterator
-    ](): IterableIterator<GPUFeatureName>;
+  [Symbol.iterator](): IterableIterator<GPUFeatureName>;
   entries(): IterableIterator<[GPUFeatureName, GPUFeatureName]>;
   keys(): IterableIterator<GPUFeatureName>;
   values(): IterableIterator<GPUFeatureName>;
@@ -188,7 +185,7 @@ declare class GPUBuffer implements GPUObjectBase {
   label: string;
 
   readonly size: number;
-  readonly usage: GPUBufferUsageFlags;
+  readonly usage: GPUFlagsConstant;
   readonly mapState: GPUBufferMapState;
 
   mapAsync(
@@ -214,6 +211,9 @@ declare interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
 
 /** @category WebGPU */
 declare type GPUBufferUsageFlags = number;
+
+/** @category WebGPU */
+declare type GPUFlagsConstant = number;
 
 /** @category WebGPU */
 declare class GPUBufferUsage {
@@ -252,7 +252,7 @@ declare class GPUTexture implements GPUObjectBase {
   readonly sampleCount: number;
   readonly dimension: GPUTextureDimension;
   readonly format: GPUTextureFormat;
-  readonly usage: GPUTextureUsageFlags;
+  readonly usage: GPUFlagsConstant;
 }
 
 /** @category WebGPU */
@@ -581,8 +581,6 @@ declare interface GPUCompilationInfo {
 /** @category WebGPU */
 declare class GPUShaderModule implements GPUObjectBase {
   label: string;
-
-  compilationInfo(): Promise<GPUCompilationInfo>;
 }
 
 /** @category WebGPU */
@@ -736,8 +734,8 @@ declare type GPUBlendOperation =
 declare interface GPUDepthStencilState {
   format: GPUTextureFormat;
 
-  depthWriteEnabled?: boolean;
-  depthCompare?: GPUCompareFunction;
+  depthWriteEnabled: boolean;
+  depthCompare: GPUCompareFunction;
 
   stencilFront?: GPUStencilFaceState;
   stencilBack?: GPUStencilFaceState;
@@ -964,19 +962,20 @@ declare class GPUComputePassEncoder
     indirectOffset: number,
   ): undefined;
 
-  beginPipelineStatisticsQuery(
-    querySet: GPUQuerySet,
-    queryIndex: number,
-  ): undefined;
-  endPipelineStatisticsQuery(): undefined;
-
-  writeTimestamp(querySet: GPUQuerySet, queryIndex: number): undefined;
-
   end(): undefined;
 }
 
 /** @category WebGPU */
-declare interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {}
+declare interface GPUComputePassTimestampWrites {
+  querySet: GPUQuerySet;
+  beginningOfPassWriteIndex?: number;
+  endOfPassWriteIndex?: number;
+}
+
+/** @category WebGPU */
+declare interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {
+  timestampWrites?: GPUComputePassTimestampWrites;
+}
 
 /** @category WebGPU */
 interface GPURenderEncoderBase {
@@ -1089,22 +1088,23 @@ declare class GPURenderPassEncoder
   beginOcclusionQuery(queryIndex: number): undefined;
   endOcclusionQuery(): undefined;
 
-  beginPipelineStatisticsQuery(
-    querySet: GPUQuerySet,
-    queryIndex: number,
-  ): undefined;
-  endPipelineStatisticsQuery(): undefined;
-
-  writeTimestamp(querySet: GPUQuerySet, queryIndex: number): undefined;
-
   executeBundles(bundles: GPURenderBundle[]): undefined;
   end(): undefined;
+}
+
+/** @category WebGPU */
+declare interface GPURenderPassTimestampWrites {
+  querySet: GPUQuerySet;
+  beginningOfPassWriteIndex?: number;
+  endOfPassWriteIndex?: number;
 }
 
 /** @category WebGPU */
 declare interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
   colorAttachments: (GPURenderPassColorAttachment | null)[];
   depthStencilAttachment?: GPURenderPassDepthStencilAttachment;
+  occlusionQuerySet?: GPUQuerySet;
+  timestampWrites?: GPURenderPassTimestampWrites;
 }
 
 /** @category WebGPU */
@@ -1251,26 +1251,17 @@ declare class GPUQuerySet implements GPUObjectBase {
 declare interface GPUQuerySetDescriptor extends GPUObjectDescriptorBase {
   type: GPUQueryType;
   count: number;
-  pipelineStatistics?: GPUPipelineStatisticName[];
 }
 
 /** @category WebGPU */
-declare type GPUQueryType = "occlusion" | "pipeline-statistics" | "timestamp";
-
-/** @category WebGPU */
-declare type GPUPipelineStatisticName =
-  | "vertex-shader-invocations"
-  | "clipper-invocations"
-  | "clipper-primitives-out"
-  | "fragment-shader-invocations"
-  | "compute-shader-invocations";
+declare type GPUQueryType = "occlusion" | "timestamp";
 
 /** @category WebGPU */
 declare type GPUDeviceLostReason = "destroyed";
 
 /** @category WebGPU */
 declare interface GPUDeviceLostInfo {
-  readonly reason: GPUDeviceLostReason | undefined;
+  readonly reason: GPUDeviceLostReason;
   readonly message: string;
 }
 

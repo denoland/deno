@@ -3,7 +3,7 @@
 
 import { join, ROOT_PATH } from "./util.js";
 
-const COMMIT = "659f6977051345e4e06ab4832c6f7d268f25a1ad";
+const COMMIT = "d0a7f46e3a738247243fe6c2eb1a311d6ddd7f76";
 const REPO = "gfx-rs/wgpu";
 const V_WGPU = "0.17";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
@@ -77,29 +77,8 @@ async function patchCargo() {
     (data) =>
       data
         .replace(/^wgpu-core = .*/m, `wgpu-core = "${V_WGPU}"`)
-        .replace(/^wgpu-types = .*/m, `wgpu-types = "${V_WGPU}"`),
-  );
-}
-
-async function patchSrcLib() {
-  await patchFile(
-    join(TARGET_DIR, "src", "lib.rs"),
-    (data) =>
-      data.replace(
-        `prefix "ext:deno_webgpu",`,
-        `prefix "ext:deno_webgpu",`,
-      ),
-  );
-}
-
-async function patchSurface() {
-  await patchFile(
-    join(TARGET_DIR, "src", "surface.rs"),
-    (data) =>
-      data.replace(
-        `prefix "ext:deno_webgpu",`,
-        `prefix "ext:deno_webgpu",`,
-      ),
+        .replace(/^wgpu-types = .*/m, `wgpu-types = "${V_WGPU}"`)
+        .replace(/^wgpu-hal = .*/m, `wgpu-hal = "${V_WGPU}"`),
   );
 }
 
@@ -107,8 +86,6 @@ async function main() {
   await clearTargetDir();
   await checkoutUpstream();
   await patchCargo();
-  await patchSrcLib();
-  await patchSurface();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 

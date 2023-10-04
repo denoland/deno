@@ -16,14 +16,16 @@ path = "lib.rs"
 [features]
 surface = ["wgpu-core/raw-window-handle", "dep:raw-window-handle"]
 
-[dependencies]
+# We make all dependencies conditional on not being wasm,
+# so the whole workspace can built as wasm.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 deno_core.workspace = true
-raw-window-handle = { workspace = true, optional = true }
-serde.workspace = true
-tokio.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["full"] }
 wgpu-types = { workspace = true, features = ["trace", "replay", "serde"] }
+raw-window-handle = { workspace = true, optional = true }
 
-[dependencies.wgpu-core]
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.wgpu-core]
 workspace = true
 features = ["trace", "replay", "serde", "strict_asserts", "wgsl", "gles"]
 
@@ -37,7 +39,11 @@ features = ["metal"]
 workspace = true
 features = ["dx11", "dx12"]
 
+[target.'cfg(windows)'.dependencies.wgpu-hal]
+workspace = true
+features = ["windows_rs"]
+
 # We want the wgpu-core Vulkan backend on Unix (but not Emscripten) and Windows.
-[target.'cfg(any(windows, all(unix, not(target_arch = "emscripten"))))'.dependencies.wgpu-core]
+[target.'cfg(any(windows, all(unix, not(target_os = "emscripten"))))'.dependencies.wgpu-core]
 workspace = true
 features = ["vulkan"]

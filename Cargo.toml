@@ -164,6 +164,7 @@ hkdf = "0.12.3"
 raw-window-handle = "0.5.0"
 wgpu-core = "0.17"
 wgpu-types = "0.17"
+wgpu-hal = "0.17"
 
 # macros
 proc-macro2 = "1"
