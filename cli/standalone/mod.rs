@@ -12,14 +12,15 @@ use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
 use crate::module_loader::CjsResolutionStore;
+use crate::module_loader::CliNodeResolver;
 use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
-use crate::npm::create_npm_fs_resolver;
-use crate::npm::CliNpmRegistryApi;
-use crate::npm::CliNpmResolver;
-use crate::npm::NpmCache;
+use crate::npm::create_cli_npm_resolver;
+use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmCacheDir;
-use crate::npm::NpmResolution;
 use crate::resolver::MappedSpecifierResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -38,7 +39,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
-use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -68,6 +68,7 @@ use self::file_system::DenoCompileFileSystem;
 struct SharedModuleLoaderState {
   eszip: eszip::EszipV2,
   mapped_specifier_resolver: MappedSpecifierResolver,
+  node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
 }
 
@@ -105,11 +106,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
     } else {
       &self.root_permissions
     };
-    if let Some(result) = self
-      .shared
-      .npm_module_loader
-      .resolve_if_in_npm_package(specifier, &referrer, permissions)
-    {
+    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
+      specifier,
+      &referrer,
+      permissions,
+    ) {
       return result;
     }
 
@@ -125,10 +126,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .map(|r| r.as_str())
       .unwrap_or(specifier);
     if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
-      return self
-        .shared
-        .npm_module_loader
-        .resolve_req_reference(&reference, permissions);
+      return self.shared.node_resolver.resolve_req_reference(
+        &reference,
+        permissions,
+        &referrer,
+      );
     }
 
     match maybe_mapped {
@@ -307,72 +309,66 @@ pub async fn run(
     .join(format!("deno-compile-{}", current_exe_name))
     .join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(root_path.clone());
-  let (fs, vfs_root, node_modules_path, snapshot) = if let Some(snapshot) =
-    eszip.take_npm_snapshot()
-  {
-    let vfs_root_dir_path = if metadata.node_modules_dir {
-      root_path
+  let npm_global_cache_dir = npm_cache_dir.get_cache_location();
+  let (fs, vfs_root, maybe_node_modules_path, maybe_snapshot) =
+    if let Some(snapshot) = eszip.take_npm_snapshot() {
+      let vfs_root_dir_path = if metadata.node_modules_dir {
+        root_path
+      } else {
+        npm_cache_dir.registry_folder(&npm_registry_url)
+      };
+      let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+        .context("Failed to load npm vfs.")?;
+      let node_modules_path = if metadata.node_modules_dir {
+        Some(vfs.root().to_path_buf())
+      } else {
+        None
+      };
+      (
+        Arc::new(DenoCompileFileSystem::new(vfs))
+          as Arc<dyn deno_fs::FileSystem>,
+        Some(vfs_root_dir_path),
+        node_modules_path,
+        Some(snapshot),
+      )
     } else {
-      npm_cache_dir.registry_folder(&npm_registry_url)
+      (
+        Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
+        None,
+        None,
+        None,
+      )
     };
-    let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-      .context("Failed to load npm vfs.")?;
-    let node_modules_path = if metadata.node_modules_dir {
-      Some(vfs.root().to_path_buf())
-    } else {
-      None
-    };
-    (
-      Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
-      Some(vfs_root_dir_path),
-      node_modules_path,
-      Some(snapshot),
-    )
-  } else {
-    (
-      Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
-      None,
-      None,
-      None,
-    )
-  };
 
-  let npm_cache = Arc::new(NpmCache::new(
-    npm_cache_dir,
-    CacheSetting::Only,
+  let has_node_modules_dir = maybe_node_modules_path.is_some();
+  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
+    metadata
+      .package_json_deps
+      .map(|serialized| serialized.into_deps()),
+  ));
+  let npm_resolver = create_cli_npm_resolver(
+    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+      snapshot: CliNpmResolverManagedSnapshotOption::Specified(maybe_snapshot),
+      maybe_lockfile: None,
+      fs: fs.clone(),
+      http_client: http_client.clone(),
+      npm_global_cache_dir,
+      cache_setting: CacheSetting::Only,
+      text_only_progress_bar: progress_bar,
+      maybe_node_modules_path,
+      package_json_installer:
+        CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+          package_json_deps_provider.clone(),
+        ),
+      npm_registry_url,
+      npm_system_info: Default::default(),
+    }),
+  )
+  .await?;
+  let node_resolver = Arc::new(NodeResolver::new(
     fs.clone(),
-    http_client.clone(),
-    progress_bar.clone(),
+    npm_resolver.clone().into_npm_resolver(),
   ));
-  let npm_api = Arc::new(CliNpmRegistryApi::new(
-    npm_registry_url.clone(),
-    npm_cache.clone(),
-    http_client.clone(),
-    progress_bar.clone(),
-  ));
-  let npm_resolution = Arc::new(NpmResolution::from_serialized(
-    npm_api.clone(),
-    snapshot,
-    None,
-  ));
-  let has_node_modules_dir = node_modules_path.is_some();
-  let npm_fs_resolver = create_npm_fs_resolver(
-    fs.clone(),
-    npm_cache,
-    &progress_bar,
-    npm_registry_url,
-    npm_resolution.clone(),
-    node_modules_path,
-    NpmSystemInfo::default(),
-  );
-  let npm_resolver = Arc::new(CliNpmResolver::new(
-    fs.clone(),
-    npm_resolution.clone(),
-    npm_fs_resolver,
-    None,
-  ));
-  let node_resolver =
-    Arc::new(NodeResolver::new(fs.clone(), npm_resolver.clone()));
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
@@ -382,16 +378,16 @@ pub async fn run(
     cjs_esm_code_analyzer,
     fs.clone(),
     node_resolver.clone(),
-    npm_resolver.clone(),
-  ));
-  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
-    metadata
-      .package_json_deps
-      .map(|serialized| serialized.into_deps()),
+    npm_resolver.clone().into_npm_resolver(),
   ));
   let maybe_import_map = metadata.maybe_import_map.map(|(base, source)| {
     Arc::new(parse_from_json(&base, &source).unwrap().import_map)
   });
+  let cli_node_resolver = Arc::new(CliNodeResolver::new(
+    cjs_resolutions.clone(),
+    node_resolver.clone(),
+    npm_resolver.clone(),
+  ));
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       eszip,
@@ -399,12 +395,12 @@ pub async fn run(
         maybe_import_map.clone(),
         package_json_deps_provider.clone(),
       ),
+      node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_resolutions,
         node_code_translator,
         fs.clone(),
-        node_resolver.clone(),
-        npm_resolver.clone(),
+        cli_node_resolver,
       )),
     }),
   };
@@ -459,7 +455,7 @@ pub async fn run(
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable,
-      maybe_package_json_deps: package_json_deps_provider.deps().cloned(),
+      maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
   );
 

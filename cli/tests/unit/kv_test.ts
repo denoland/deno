@@ -1820,6 +1820,40 @@ Deno.test({
 });
 
 Deno.test({
+  name: "different kv instances for enqueue and queueListen",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "queue_db" });
+    try {
+      const db0 = await Deno.openKv(filename);
+      const db1 = await Deno.openKv(filename);
+      const promise = deferred();
+      let dequeuedMessage: unknown = null;
+      const listener = db0.listenQueue((msg) => {
+        dequeuedMessage = msg;
+        promise.resolve();
+      });
+      try {
+        const res = await db1.enqueue("test");
+        assert(res.ok);
+        assertNotEquals(res.versionstamp, null);
+        await promise;
+        assertEquals(dequeuedMessage, "test");
+      } finally {
+        db0.close();
+        await listener;
+        db1.close();
+      }
+    } finally {
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
   name: "queue graceful close",
   async fn() {
     const db: Deno.Kv = await Deno.openKv(":memory:");

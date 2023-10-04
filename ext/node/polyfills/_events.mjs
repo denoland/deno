@@ -42,6 +42,7 @@ import {
   validateFunction,
 } from "ext:deno_node/internal/validators.mjs";
 import { spliceOne } from "ext:deno_node/_utils.ts";
+import { nextTick } from "ext:deno_node/_process/process.ts";
 
 const kCapture = Symbol("kCapture");
 const kErrorMonitor = Symbol("events.errorMonitor");
@@ -206,7 +207,7 @@ function addCatch(that, promise, type, args) {
       then.call(promise, undefined, function (err) {
         // The callback is called with nextTick to avoid a follow-up
         // rejection from this promise.
-        process.nextTick(emitUnhandledRejectionOrErr, that, err, type, args);
+        nextTick(emitUnhandledRejectionOrErr, that, err, type, args);
       });
     }
   } catch (err) {

@@ -38,7 +38,6 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node;
-use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -1237,10 +1236,14 @@ fn diagnose_resolution(
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
-        if let Some(npm) = &snapshot.npm {
+        if let Some(npm_resolver) = snapshot
+          .npm
+          .as_ref()
+          .and_then(|n| n.npm_resolver.as_managed())
+        {
           // show diagnostics for npm package references that aren't cached
           let req = pkg_ref.into_inner().req;
-          if !npm.npm_resolver.is_pkg_req_folder_cached(&req) {
+          if !npm_resolver.is_pkg_req_folder_cached(&req) {
             diagnostics
               .push(DenoDiagnostic::NoCacheNpm(req, specifier.clone()));
           }
@@ -1250,10 +1253,14 @@ fn diagnose_resolution(
         if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
-        } else if let Some(npm) = &snapshot.npm {
+        } else if let Some(npm_resolver) = snapshot
+          .npm
+          .as_ref()
+          .and_then(|n| n.npm_resolver.as_managed())
+        {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
-          if !npm.npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
+          if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
             diagnostics.push(DenoDiagnostic::NoCacheNpm(
               types_node_req,
               ModuleSpecifier::parse("npm:@types/node").unwrap(),

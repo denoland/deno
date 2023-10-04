@@ -19,6 +19,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
+  Symbol,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeSubarray,
@@ -416,6 +417,8 @@ class Datagram {
   }
 }
 
+const listenOptionApiName = Symbol("listenOptionApiName");
+
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
@@ -427,7 +430,10 @@ function listen(args) {
       return new Listener(rid, addr);
     }
     case "unix": {
-      const { 0: rid, 1: path } = ops.op_net_listen_unix(args.path);
+      const { 0: rid, 1: path } = ops.op_net_listen_unix(
+        args.path,
+        args[listenOptionApiName] ?? "Deno.listen",
+      );
       const addr = {
         transport: "unix",
         path,
@@ -505,6 +511,7 @@ export {
   Datagram,
   listen,
   Listener,
+  listenOptionApiName,
   resolveDns,
   shutdown,
   TcpConn,
