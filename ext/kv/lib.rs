@@ -89,7 +89,9 @@ where
 {
   let handler = {
     let state = state.borrow();
-    state.feature_checker.check_legacy_unstable("Deno.openKv");
+    state
+      .feature_checker
+      .check_legacy_unstable_or_exit("Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;

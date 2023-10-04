@@ -46,12 +46,9 @@ pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
 pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
 
 fn check_unstable(state: &OpState, api_name: &str) {
-  state.feature_checker.check_legacy_unstable(api_name);
-}
-
-pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
-  let state = state.borrow();
-  check_unstable(&state, api_name)
+  state
+    .feature_checker
+    .check_legacy_unstable_or_exit(api_name);
 }
 
 pub trait FfiPermissions {

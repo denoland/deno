@@ -67,14 +67,10 @@ pub trait FsPermissions {
 }
 
 /// Helper for checking unstable features. Used for sync ops.
-pub(crate) fn check_unstable(state: &OpState, api_name: &str) {
-  state.feature_checker.check_legacy_unstable(api_name);
-}
-
-/// Helper for checking unstable features. Used for async ops.
-pub(crate) fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
-  let state = state.borrow();
-  state.feature_checker.check_legacy_unstable(api_name);
+fn check_unstable(state: &OpState, api_name: &str) {
+  state
+    .feature_checker
+    .check_legacy_unstable_or_exit(api_name);
 }
 
 deno_core::extension!(deno_fs,

@@ -50,7 +50,7 @@ where
 {
   state
     .feature_checker
-    .check_legacy_unstable("BroadcastChannel");
+    .check_legacy_unstable_or_exit("BroadcastChannel");
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
   Ok(state.resource_table.add(resource))

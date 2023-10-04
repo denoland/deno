@@ -114,7 +114,7 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable2(&state, "Deno.connect");
+  super::check_unstable(&state.borrow(), "Deno.connect");
   {
     let mut state_ = state.borrow_mut();
     state_
