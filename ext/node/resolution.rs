@@ -706,9 +706,9 @@ impl NodeResolver {
     if subpath.is_empty() {
       return Ok(resolved_path);
     }
-    if invalid_segment_re.is_match(&subpath) {
+    if invalid_segment_re.is_match(subpath) {
       let request = if pattern {
-        match_.replace('*', &subpath)
+        match_.replace('*', subpath)
       } else {
         format!("{match_}{subpath}")
       };
@@ -727,7 +727,7 @@ impl NodeResolver {
         });
       return Ok(PathBuf::from(replaced.to_string()));
     }
-    Ok(resolved_path.join(&subpath).clean())
+    Ok(resolved_path.join(subpath).clean())
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -889,7 +889,7 @@ impl NodeResolver {
       )?;
       if resolved.is_none() {
         return Err(throw_exports_not_found(
-          &package_subpath,
+          package_subpath,
           package_json_path,
           referrer,
           mode,
@@ -951,7 +951,7 @@ impl NodeResolver {
         return Ok(resolved);
       } else {
         return Err(throw_exports_not_found(
-          &package_subpath,
+          package_subpath,
           package_json_path,
           referrer,
           mode,
@@ -960,7 +960,7 @@ impl NodeResolver {
     }
 
     Err(throw_exports_not_found(
-      &package_subpath,
+      package_subpath,
       package_json_path,
       referrer,
       mode,
@@ -1036,6 +1036,7 @@ impl NodeResolver {
     )
   }
 
+  #[allow(clippy::too_many_arguments)]
   fn resolve_package_subpath(
     &self,
     package_json: &PackageJson,
@@ -1062,7 +1063,7 @@ impl NodeResolver {
         Err(exports_err) => {
           if mode.is_types() && package_subpath == "." {
             if let Ok(Some(path)) =
-              self.legacy_main_resolve(&package_json, referrer_kind, mode)
+              self.legacy_main_resolve(package_json, referrer_kind, mode)
             {
               return Ok(Some(path));
             } else {
@@ -1074,10 +1075,10 @@ impl NodeResolver {
       }
     }
     if package_subpath == "." {
-      return self.legacy_main_resolve(&package_json, referrer_kind, mode);
+      return self.legacy_main_resolve(package_json, referrer_kind, mode);
     }
 
-    let file_path = package_json.path.parent().unwrap().join(&package_subpath);
+    let file_path = package_json.path.parent().unwrap().join(package_subpath);
     if mode.is_types() {
       let maybe_declaration_path =
         self.path_to_declaration_path(file_path, referrer_kind);
