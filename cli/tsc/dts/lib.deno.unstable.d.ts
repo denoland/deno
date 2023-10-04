@@ -2101,6 +2101,7 @@ declare namespace Deno {
       content: Record<string, unknown>,
       extra?: {
         metadata?: Record<string, unknown>;
+        buffers?: Uint8Array[];
       },
     ): Promise<void>;
   }
