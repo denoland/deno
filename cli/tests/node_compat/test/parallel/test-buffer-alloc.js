@@ -9,7 +9,7 @@
 const common = require('../common');
 
 const assert = require('assert');
-const vm = require('vm');
+// const vm = require('vm');
 
 const SlowBuffer = require('buffer').SlowBuffer;
 
@@ -1154,10 +1154,11 @@ assert.throws(() => {
 // Regression test to verify that an empty ArrayBuffer does not throw.
 Buffer.from(new ArrayBuffer());
 
+// TODO(kt3k): Enable this test when vm.runInNewContext is available
 // Test that ArrayBuffer from a different context is detected correctly.
-const arrayBuf = vm.runInNewContext('new ArrayBuffer()');
-Buffer.from(arrayBuf);
-Buffer.from({ buffer: arrayBuf });
+// const arrayBuf = vm.runInNewContext('new ArrayBuffer()');
+// Buffer.from(arrayBuf);
+// Buffer.from({ buffer: arrayBuf });
 
 assert.throws(() => Buffer.alloc({ valueOf: () => 1 }),
               /"size" argument must be of type number/);

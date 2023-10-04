@@ -125,6 +125,8 @@ assert.strictEqual(Buffer.byteLength('Il était tué', 'utf8'), 14);
     assert.strictEqual(Buffer.byteLength('Il était tué', encoding), 24);
   });
 
+// TODO(Soremwar)
+// Enable once vm module is available
 // Test that ArrayBuffer from a different context is detected correctly
 // const arrayBuf = vm.runInNewContext('new ArrayBuffer()');
 // assert.strictEqual(Buffer.byteLength(arrayBuf), 0);

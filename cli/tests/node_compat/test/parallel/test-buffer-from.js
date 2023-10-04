@@ -36,10 +36,12 @@ class MyBadPrimitive {
 deepStrictEqual(Buffer.from(new String(checkString)), check);
 deepStrictEqual(Buffer.from(new MyString()), check);
 deepStrictEqual(Buffer.from(new MyPrimitive()), check);
-deepStrictEqual(
-  Buffer.from(runInNewContext('new String(checkString)', { checkString })),
-  check
-);
+// TODO(Soremwar)
+// Enable once again when vm works correctly
+// deepStrictEqual(
+//   Buffer.from(runInNewContext('new String(checkString)', { checkString })),
+//   check
+// );
 
 [
   {},
