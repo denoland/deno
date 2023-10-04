@@ -872,6 +872,49 @@ fn repl_with_quiet_flag() {
 }
 
 #[test]
+fn repl_unit_tests() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "\
+        console.log('Hello from outside of test!'); \
+        Deno.test('test1', async (t) => { \
+          console.log('Hello from inside of test!'); \
+          await t.step('step1', () => {}); \
+        }); \
+        Deno.test('test2', () => { \
+          throw new Error('some message'); \
+        }); \
+        console.log('Hello again from outside of test!'); \
+      ",
+    );
+
+    console.expect("Hello from outside of test!");
+    console.expect("Hello again from outside of test!");
+    console.expect("test1 ...");
+    console.expect("------- output -------");
+    console.expect("Hello from inside of test!");
+    console.expect("----- output end -----");
+    console.expect("  step1 ... ok (");
+    console.expect("test1 ... ok (");
+    console.expect("test2 ... FAILED (");
+    console.expect(" ERRORS ");
+    console.expect("test2 => <anonymous>:7:6");
+    console.expect("error: Error: some message");
+    console.expect("   at <anonymous>:8:9");
+    console.expect(" FAILURES ");
+    console.expect("test2 => <anonymous>:7:6");
+    console.expect("FAILED | 1 passed (1 step) | 1 failed (");
+    console.expect("undefined");
+
+    console.write_line("Deno.test('test2', () => {});");
+
+    console.expect("test2 ... ok (");
+    console.expect("ok | 1 passed | 0 failed (");
+    console.expect("undefined");
+  });
+}
+
+#[test]
 fn npm_packages() {
   let mut env_vars = util::env_vars_for_npm_tests();
   env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));

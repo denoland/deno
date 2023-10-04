@@ -9,6 +9,7 @@ pub struct PrettyTestReporter {
   echo_output: bool,
   in_new_line: bool,
   filter: bool,
+  repl: bool,
   scope_test_id: Option<usize>,
   cwd: Url,
   did_have_user_output: bool,
@@ -23,12 +24,14 @@ impl PrettyTestReporter {
     parallel: bool,
     echo_output: bool,
     filter: bool,
+    repl: bool,
   ) -> PrettyTestReporter {
     PrettyTestReporter {
       parallel,
       echo_output,
       in_new_line: true,
       filter,
+      repl,
       scope_test_id: None,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
@@ -139,6 +142,10 @@ impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     self.summary.total += plan.total;
     self.summary.filtered_out += plan.filtered_out;
+    if self.repl {
+      println!();
+      return;
+    }
     if self.parallel || (self.filter && plan.total == 0) {
       return;
     }
@@ -331,6 +338,9 @@ impl TestReporter for PrettyTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
+    if self.repl && self.summary.total == 0 {
+      return;
+    }
     common::report_summary(&self.cwd, &self.summary, elapsed);
     self.in_new_line = true;
   }

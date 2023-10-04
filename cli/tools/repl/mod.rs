@@ -9,9 +9,12 @@ use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::unsync::spawn_blocking;
+use deno_runtime::deno_io::Stdio;
+use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
+use tokio::sync::mpsc::unbounded_channel;
 
 pub(crate) mod cdp;
 mod channel;
@@ -27,6 +30,9 @@ use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
 pub use session::REPL_INTERNALS_NAME;
+
+use super::test::TestEvent;
+use super::test::TestEventSender;
 
 #[allow(clippy::await_holding_refcell_ref)]
 async fn read_line_and_poll(
@@ -114,15 +120,37 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .deno_dir()
     .ok()
     .and_then(|dir| dir.repl_history_file_path());
-
+  let (test_event_sender, test_event_receiver) =
+    unbounded_channel::<TestEvent>();
+  let test_event_sender = TestEventSender::new(test_event_sender);
+  let stdout = StdioPipe::File(test_event_sender.stdout());
+  let stderr = StdioPipe::File(test_event_sender.stderr());
   let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
+    .create_custom_worker(
+      main_module.clone(),
+      permissions,
+      vec![crate::ops::testing::deno_test::init_ops(
+        test_event_sender.clone(),
+      )],
+      Stdio {
+        stdin: StdioPipe::Inherit,
+        stdout,
+        stderr,
+      },
+    )
     .await?;
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
-  let mut repl_session =
-    ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
-      .await?;
+  let mut repl_session = ReplSession::initialize(
+    cli_options,
+    npm_resolver,
+    resolver,
+    worker,
+    main_module,
+    test_event_sender,
+    test_event_receiver,
+  )
+  .await?;
   let mut rustyline_channel = rustyline_channel();
 
   let helper = EditorHelper {
