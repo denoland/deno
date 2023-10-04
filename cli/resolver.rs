@@ -12,10 +12,14 @@ use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::path::PathBuf;
@@ -24,6 +28,7 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
+use crate::module_loader::CjsResolutionStore;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
@@ -101,40 +106,45 @@ impl MappedSpecifierResolver {
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
+  fs: Arc<dyn FileSystem>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
+  cjs_resolutions: Option<Arc<CjsResolutionStore>>,
   node_resolver: Option<Arc<NodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
 }
 
 pub struct CliGraphResolverOptions<'a> {
+  pub fs: Arc<dyn FileSystem>,
+  pub cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+  pub node_resolver: Option<Arc<NodeResolver>>,
+  pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
 impl CliGraphResolver {
-  pub fn new(
-    node_resolver: Option<Arc<NodeResolver>>,
-    npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
-    options: CliGraphResolverOptions,
-  ) -> Self {
-    let is_byonm = npm_resolver
+  pub fn new(options: CliGraphResolverOptions) -> Self {
+    let is_byonm = options
+      .npm_resolver
       .as_ref()
       .map(|n| n.as_byonm().is_some())
       .unwrap_or(false);
     Self {
+      fs: options.fs,
+      cjs_resolutions: options.cjs_resolutions,
       mapped_specifier_resolver: MappedSpecifierResolver::new(
         options.maybe_import_map,
         if is_byonm {
           // don't resolve from the root package.json deps for byonm
           Arc::new(PackageJsonDepsProvider::new(None))
         } else {
-          package_json_deps_provider
+          options.package_json_deps_provider
         },
       ),
       maybe_default_jsx_import_source: options
@@ -147,8 +157,8 @@ impl CliGraphResolver {
       maybe_vendor_specifier: options
         .maybe_vendor_dir
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
-      node_resolver,
-      npm_resolver,
+      node_resolver: options.node_resolver,
+      npm_resolver: options.npm_resolver,
       found_package_json_dep_flag: Default::default(),
     }
   }
@@ -210,17 +220,72 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    if result.is_err() {
-      if let Some(_) = self.npm_resolver.as_ref().and_then(|r| r.as_byonm()) {
-        if let Some(node_resolver) = &self.node_resolver {
-          let node_result = node_resolver.resolve(
-            specifier,
-            referrer,
-            NodeResolutionMode::Execution,
-            &PermissionsContainer::allow_all(),
-          );
-          if let Ok(Some(resolution)) = node_result {
-            return Ok(resolution.into_url());
+    if let Some(resolver) =
+      self.npm_resolver.as_ref().and_then(|r| r.as_byonm())
+    {
+      match &result {
+        Ok(specifier) => {
+          if let Ok(npm_req_ref) =
+            NpmPackageReqReference::from_specifier(specifier)
+          {
+            let package_folder = resolver
+              .resolve_pkg_folder_from_deno_module_req(
+                npm_req_ref.req(),
+                referrer,
+              )?;
+            let node_resoler = self.node_resolver.as_ref().unwrap();
+            let package_json = PackageJson::load_skip_read_permission(
+              self.fs.as_ref(),
+              package_folder.join("package.json"),
+            )?;
+            if !package_json.exists {
+              bail!(
+                "Could not find '{}'. Maybe run `npm install`?",
+                package_json.path.display()
+              );
+            }
+            let maybe_resolution = node_resoler
+              .resolve_package_subpath_from_deno_module(
+                &package_json,
+                npm_req_ref.sub_path(),
+                referrer,
+                NodeResolutionMode::Execution, // todo: types for types
+                &PermissionsContainer::allow_all(),
+              )?;
+            match maybe_resolution {
+              Some(resolution) => {
+                if let Some(cjs_resolutions) = &self.cjs_resolutions {
+                  if let NodeResolution::CommonJs(specifier) = &resolution {
+                    // remember that this was a common js resolution
+                    cjs_resolutions.insert(specifier.clone());
+                  }
+                }
+
+                return Ok(resolution.into_url());
+              }
+              None => {
+                bail!(
+                  "Failed resolving package subpath for '{}' in '{}'.",
+                  npm_req_ref,
+                  package_folder.display()
+                );
+              }
+            }
+          }
+        }
+        Err(_) => {
+          if referrer.scheme() == "file" {
+            if let Some(node_resolver) = &self.node_resolver {
+              let node_result = node_resolver.resolve(
+                specifier,
+                referrer,
+                NodeResolutionMode::Execution, // todo: types for types
+                &PermissionsContainer::allow_all(),
+              );
+              if let Ok(Some(resolution)) = node_result {
+                return Ok(resolution.into_url());
+              }
+            }
           }
         }
       }

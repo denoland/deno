@@ -327,18 +327,41 @@ impl NodeResolver {
 
   pub fn resolve_npm_reference(
     &self,
-    package_folder: &Path,
+    package_dir: &Path,
     sub_path: Option<&str>,
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
+    let package_json_path = package_dir.join("package.json");
+    let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
+    let package_json =
+      self.load_package_json(permissions, package_json_path.clone())?;
+    self.resolve_package_subpath_from_deno_module(
+      &package_json,
+      sub_path,
+      &referrer,
+      mode,
+      permissions,
+    )
+  }
+
+  pub fn resolve_package_subpath_from_deno_module(
+    &self,
+    package_json: &PackageJson,
+    package_subpath: Option<&str>,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+    permissions: &dyn NodePermissions,
+  ) -> Result<Option<NodeResolution>, AnyError> {
     let node_module_kind = NodeModuleKind::Esm;
+    let package_subpath = package_subpath
+      .map(|s| format!("./{s}"))
+      .unwrap_or_else(|| ".".to_string());
     let maybe_resolved_path = self
-      .package_config_resolve(
-        &sub_path
-          .map(|s| format!("./{s}"))
-          .unwrap_or_else(|| ".".to_string()),
-        package_folder,
+      .resolve_package_subpath(
+        package_json,
+        package_subpath.clone(),
+        referrer,
         node_module_kind,
         DEFAULT_CONDITIONS,
         mode,
@@ -346,8 +369,9 @@ impl NodeResolver {
       )
       .with_context(|| {
         format!(
-          "Failed resolving package config for '{}'",
-          package_folder.join("package.json").display()
+          "Failed resolving package subpath '{}' for '{}'",
+          package_subpath,
+          package_json.path.display()
         )
       })?;
     let resolved_path = match maybe_resolved_path {
@@ -438,53 +462,6 @@ impl NodeResolver {
     } else {
       Ok(NodeResolution::CommonJs(url))
     }
-  }
-
-  fn package_config_resolve(
-    &self,
-    package_subpath: &str,
-    package_dir: &Path,
-    referrer_kind: NodeModuleKind,
-    conditions: &[&str],
-    mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let package_json_path = package_dir.join("package.json");
-    let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
-    let package_config =
-      self.load_package_json(permissions, package_json_path.clone())?;
-    if let Some(exports) = &package_config.exports {
-      let result = self.package_exports_resolve(
-        &package_json_path,
-        package_subpath.to_string(),
-        exports,
-        &referrer,
-        referrer_kind,
-        conditions,
-        mode,
-        permissions,
-      );
-      match result {
-        Ok(found) => return Ok(Some(found)),
-        Err(exports_err) => {
-          if mode.is_types() && package_subpath == "." {
-            if let Ok(Some(path)) =
-              self.legacy_main_resolve(&package_config, referrer_kind, mode)
-            {
-              return Ok(Some(path));
-            } else {
-              return Ok(None);
-            }
-          }
-          return Err(exports_err);
-        }
-      }
-    }
-    if package_subpath == "." {
-      return self.legacy_main_resolve(&package_config, referrer_kind, mode);
-    }
-
-    Ok(Some(package_dir.join(package_subpath)))
   }
 
   /// Checks if the resolved file has a corresponding declaration file.
@@ -929,7 +906,7 @@ impl NodeResolver {
       )?;
       if resolved.is_none() {
         return Err(throw_exports_not_found(
-          package_subpath,
+          &package_subpath,
           package_json_path,
           referrer,
           mode,
@@ -991,7 +968,7 @@ impl NodeResolver {
         return Ok(resolved);
       } else {
         return Err(throw_exports_not_found(
-          package_subpath,
+          &package_subpath,
           package_json_path,
           referrer,
           mode,
@@ -1000,7 +977,7 @@ impl NodeResolver {
     }
 
     Err(throw_exports_not_found(
-      package_subpath,
+      &package_subpath,
       package_json_path,
       referrer,
       mode,
@@ -1065,26 +1042,59 @@ impl NodeResolver {
     // Package match.
     let package_json =
       self.load_package_json(permissions, package_json_path)?;
+    self.resolve_package_subpath(
+      &package_json,
+      package_subpath,
+      referrer,
+      referrer_kind,
+      conditions,
+      mode,
+      permissions,
+    )
+  }
+
+  fn resolve_package_subpath(
+    &self,
+    package_json: &PackageJson,
+    package_subpath: String,
+    referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
+    conditions: &[&str],
+    mode: NodeResolutionMode,
+    permissions: &dyn NodePermissions,
+  ) -> Result<Option<PathBuf>, AnyError> {
     if let Some(exports) = &package_json.exports {
-      return self
-        .package_exports_resolve(
-          &package_json.path,
-          package_subpath,
-          exports,
-          referrer,
-          referrer_kind,
-          conditions,
-          mode,
-          permissions,
-        )
-        .map(Some);
+      let result = self.package_exports_resolve(
+        &package_json.path,
+        package_subpath.clone(),
+        exports,
+        referrer,
+        referrer_kind,
+        conditions,
+        mode,
+        permissions,
+      );
+      match result {
+        Ok(found) => return Ok(Some(found)),
+        Err(exports_err) => {
+          if mode.is_types() && package_subpath == "." {
+            if let Ok(Some(path)) =
+              self.legacy_main_resolve(&package_json, referrer_kind, mode)
+            {
+              return Ok(Some(path));
+            } else {
+              return Ok(None);
+            }
+          }
+          return Err(exports_err);
+        }
+      }
     }
     if package_subpath == "." {
       return self.legacy_main_resolve(&package_json, referrer_kind, mode);
     }
 
     let file_path = package_json.path.parent().unwrap().join(&package_subpath);
-
     if mode.is_types() {
       let maybe_declaration_path =
         self.path_to_declaration_path(file_path, referrer_kind);
@@ -1450,7 +1460,7 @@ fn throw_invalid_package_target(
   referrer: &ModuleSpecifier,
 ) -> AnyError {
   errors::err_invalid_package_target(
-    package_json_path.parent().unwrap().display().to_string(),
+    &package_json_path.parent().unwrap().display().to_string(),
     subpath,
     target,
     internal,
@@ -1478,7 +1488,7 @@ fn throw_invalid_subpath(
 }
 
 fn throw_exports_not_found(
-  subpath: String,
+  subpath: &str,
   package_json_path: &Path,
   referrer: &ModuleSpecifier,
   mode: NodeResolutionMode,

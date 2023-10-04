@@ -53,7 +53,7 @@ pub fn err_module_not_found(path: &str, base: &str, typ: &str) -> AnyError {
 }
 
 pub fn err_invalid_package_target(
-  pkg_path: String,
+  pkg_path: &str,
   key: String,
   target: String,
   is_import: bool,
@@ -95,7 +95,7 @@ pub fn err_invalid_package_target(
 
 pub fn err_package_path_not_exported(
   mut pkg_path: String,
-  subpath: String,
+  subpath: &str,
   maybe_referrer: Option<String>,
   mode: NodeResolutionMode,
 ) -> AnyError {
@@ -178,7 +178,7 @@ mod test {
     assert_eq!(
       err_package_path_not_exported(
         "test_path".to_string(),
-        "./jsx-runtime".to_string(),
+        "./jsx-runtime",
         None,
         NodeResolutionMode::Types,
       )
@@ -188,7 +188,7 @@ mod test {
     assert_eq!(
       err_package_path_not_exported(
         "test_path".to_string(),
-        ".".to_string(),
+        ".",
         None,
         NodeResolutionMode::Types,
       )

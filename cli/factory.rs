@@ -369,22 +369,22 @@ impl CliFactory {
       .services
       .resolver
       .get_or_try_init_async(async {
-        Ok(Arc::new(CliGraphResolver::new(
-          Some(self.node_resolver().await?.clone()),
-          if self.options.no_npm() {
+        Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+          fs: self.fs().clone(),
+          cjs_resolutions: Some(self.cjs_resolutions().clone()),
+          node_resolver: Some(self.node_resolver().await?.clone()),
+          npm_resolver: if self.options.no_npm() {
             None
           } else {
             Some(self.npm_resolver().await?.clone())
           },
-          self.package_json_deps_provider().clone(),
-          CliGraphResolverOptions {
-            maybe_jsx_import_source_config: self
-              .options
-              .to_maybe_jsx_import_source_config()?,
-            maybe_import_map: self.maybe_import_map().await?.clone(),
-            maybe_vendor_dir: self.options.vendor_dir_path(),
-          },
-        )))
+          package_json_deps_provider: self.package_json_deps_provider().clone(),
+          maybe_jsx_import_source_config: self
+            .options
+            .to_maybe_jsx_import_source_config()?,
+          maybe_import_map: self.maybe_import_map().await?.clone(),
+          maybe_vendor_dir: self.options.vendor_dir_path(),
+        })))
       })
       .await
   }

@@ -731,7 +731,7 @@ impl CliNodeResolver {
       .with_context(|| format!("Could not resolve '{}'.", req_ref))
   }
 
-  fn resolve_package_sub_path(
+  pub fn resolve_package_sub_path(
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
@@ -870,7 +870,7 @@ impl NpmModuleLoader {
 }
 
 /// Keeps track of what module specifiers were resolved as CJS.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
 
 impl CjsResolutionStore {
