@@ -9,8 +9,8 @@ function enableJupyter() {
   } = core.ensureFastOps();
 
   globalThis.Deno.jupyter = {
-    async broadcast(msgType, content, { metadata = {} } = {}) {
-      await op_jupyter_broadcast(msgType, content, metadata);
+    async broadcast(msgType, content, { metadata = {}, buffers = [] } = {}) {
+      await op_jupyter_broadcast(msgType, content, metadata, buffers);
     },
   };
 }
