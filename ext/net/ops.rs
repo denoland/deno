@@ -1047,7 +1047,10 @@ mod tests {
     });
 
     let conn_state = runtime.op_state();
-    conn_state.borrow().feature_checker.enable_legacy_unstable();
+    conn_state
+      .borrow_mut()
+      .feature_checker
+      .enable_legacy_unstable();
 
     let server_addr: Vec<&str> = clone_addr.split(':').collect();
     let ip_addr = IpAddr {

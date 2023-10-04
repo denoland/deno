@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::callback::PtrSymbol;
+use crate::check_unstable;
 use crate::dlfcn::DynamicLibraryResource;
 use crate::ir::*;
 use crate::symbol::NativeType;

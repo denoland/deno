@@ -18,9 +18,7 @@ use crate::ops::*;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use std::cell::RefCell;
 use std::path::Path;
-use std::rc::Rc;
 
 pub trait FsPermissions {
   fn check_read(&mut self, path: &Path, api_name: &str)
