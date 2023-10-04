@@ -230,6 +230,7 @@ globalThis.__bootstrap.internals.__initWorkerThreads = () => {
     const listeners = new WeakMap<(...args: any[]) => void, (ev: any) => any>();
 
     parentPort = self as ParentPort;
+    defaultExport.parentPort = parentPort;
     console.log("parentPort is not main thread", !parentPort);
     const initPromise = once(
       parentPort,
