@@ -20,7 +20,6 @@ import {
   bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
-  utf8ToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
 import {
   isAnyArrayBuffer,
