@@ -194,15 +194,17 @@ where
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
   #[string] path: String,
+  #[string] api_name: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(state, "Deno.listen");
+  super::check_unstable(state, &api_name);
   let permissions = state.borrow_mut::<NP>();
-  permissions.check_read(address_path, "Deno.listen()")?;
-  permissions.check_write(address_path, "Deno.listen()")?;
+  let api_call_expr = format!("{}()", api_name);
+  permissions.check_read(address_path, &api_call_expr)?;
+  permissions.check_write(address_path, &api_call_expr)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
