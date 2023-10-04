@@ -196,7 +196,7 @@ fn op_encoding_normalize_label(
 #[op2]
 fn op_encoding_decode_utf8<'a>(
   scope: &mut v8::HandleScope<'a>,
-  #[buffer] zero_copy: &[u8],
+  #[anybuffer] zero_copy: &[u8],
   ignore_bom: bool,
 ) -> Result<v8::Local<'a, v8::String>, AnyError> {
   let buf = &zero_copy;
@@ -229,7 +229,7 @@ fn op_encoding_decode_utf8<'a>(
 #[op2]
 #[serde]
 fn op_encoding_decode_single(
-  #[buffer] data: &[u8],
+  #[anybuffer] data: &[u8],
   #[string] label: String,
   fatal: bool,
   ignore_bom: bool,
