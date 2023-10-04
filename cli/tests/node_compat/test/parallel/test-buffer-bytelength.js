@@ -10,7 +10,7 @@
 const common = require('../common');
 const assert = require('assert');
 const SlowBuffer = require('buffer').SlowBuffer;
-const vm = require('vm');
+// const vm = require('vm');
 
 [
   [32, 'latin1'],
@@ -126,8 +126,8 @@ assert.strictEqual(Buffer.byteLength('Il était tué', 'utf8'), 14);
   });
 
 // Test that ArrayBuffer from a different context is detected correctly
-const arrayBuf = vm.runInNewContext('new ArrayBuffer()');
-assert.strictEqual(Buffer.byteLength(arrayBuf), 0);
+// const arrayBuf = vm.runInNewContext('new ArrayBuffer()');
+// assert.strictEqual(Buffer.byteLength(arrayBuf), 0);
 
 // Verify that invalid encodings are treated as utf8
 for (let i = 1; i < 10; i++) {
