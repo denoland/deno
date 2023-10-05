@@ -372,6 +372,9 @@ impl TestReporter for PrettyTestReporter {
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     common::report_summary(&mut self.writer, &self.cwd, &self.summary, elapsed);
+    if !self.repl {
+      writeln!(&mut self.writer).unwrap();
+    }
     self.in_new_line = true;
   }
 
