@@ -890,10 +890,9 @@ fn repl_unit_tests() {
 
     console.expect("Hello from outside of test!");
     console.expect("Hello again from outside of test!");
-    console.expect("test1 ...");
-    console.expect("------- output -------");
+    // FIXME(nayeemrmn): REPL unit tests don't support output capturing.
     console.expect("Hello from inside of test!");
-    console.expect("----- output end -----");
+    console.expect("test1 ...");
     console.expect("  step1 ... ok (");
     console.expect("test1 ... ok (");
     console.expect("test2 ... FAILED (");
