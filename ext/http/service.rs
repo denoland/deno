@@ -22,14 +22,14 @@ pub type Request = hyper1::Request<Incoming>;
 pub type Response = hyper1::Response<ResponseBytes>;
 
 macro_rules! http_trace {
-  ($record:expr, $args:tt) => {
+  ($record:expr $(, $args:expr)*) => {
     #[cfg(feature = "__http_tracing")]
     {
       println!(
         "HTTP id={:p} strong={}: {}",
         $record,
         std::rc::Rc::strong_count(&$record),
-        format!($args),
+        format!($($args),*),
       );
     }
   };
