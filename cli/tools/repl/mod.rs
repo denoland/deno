@@ -9,8 +9,6 @@ use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::deno_io::Stdio;
-use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
@@ -123,8 +121,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let (test_event_sender, test_event_receiver) =
     unbounded_channel::<TestEvent>();
   let test_event_sender = TestEventSender::new(test_event_sender);
-  let stdout = StdioPipe::File(test_event_sender.stdout());
-  let stderr = StdioPipe::File(test_event_sender.stderr());
   let mut worker = worker_factory
     .create_custom_worker(
       main_module.clone(),
@@ -132,11 +128,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
       vec![crate::ops::testing::deno_test::init_ops(
         test_event_sender.clone(),
       )],
-      Stdio {
-        stdin: StdioPipe::Inherit,
-        stdout,
-        stderr,
-      },
+      Default::default(),
     )
     .await?;
   worker.setup_repl().await?;
