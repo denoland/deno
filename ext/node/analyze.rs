@@ -216,7 +216,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       if let Some(exports) = &package_json.exports {
         return self.node_resolver.package_exports_resolve(
           &package_json_path,
-          package_subpath,
+          &package_subpath,
           exports,
           referrer,
           NodeModuleKind::Esm,

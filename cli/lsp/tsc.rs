@@ -3810,6 +3810,13 @@ fn op_load(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.specifier_map.normalize(args.specifier)?;
+  if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+    return Ok(Some(LoadResponse {
+      data: Arc::from("declare const __: any;\nexport = __;\n"),
+      script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
+      version: Some("1".to_string()),
+    }));
+  }
   let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
   Ok(asset_or_document.map(|doc| LoadResponse {
