@@ -40,8 +40,6 @@ pub trait BroadcastChannel: Clone {
 
 pub type Message = (String, Vec<u8>);
 
-struct Unstable(bool); // --unstable
-
 #[op2(fast)]
 #[smi]
 pub fn op_broadcast_subscribe<BC>(
@@ -50,15 +48,9 @@ pub fn op_broadcast_subscribe<BC>(
 where
   BC: BroadcastChannel + 'static,
 {
-  let unstable = state.borrow::<Unstable>().0;
-
-  if !unstable {
-    eprintln!(
-      "Unstable API 'BroadcastChannel'. The --unstable flag must be provided.",
-    );
-    std::process::exit(70);
-  }
-
+  state
+    .feature_checker
+    .check_legacy_unstable_or_exit("BroadcastChannel");
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
   Ok(state.resource_table.add(resource))
@@ -118,11 +110,9 @@ deno_core::extension!(deno_broadcast_channel,
   esm = [ "01_broadcast_channel.js" ],
   options = {
     bc: BC,
-    unstable: bool,
   },
   state = |state, options| {
     state.put(options.bc);
-    state.put(Unstable(options.unstable));
   },
 );
 
