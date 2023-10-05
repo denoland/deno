@@ -134,7 +134,9 @@ impl NpmResolver for ByonmCliNpmResolver {
     permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
-    // todo: this
+    if !path.components().any(|c| c.as_os_str() == "node_modules") {
+      permissions.check_read(path)?;
+    }
     Ok(())
   }
 }
@@ -145,7 +147,10 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   }
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
-    todo!()
+    Arc::new(Self {
+      fs: self.fs.clone(),
+      root_node_modules_dir: self.root_node_modules_dir.clone(),
+    })
   }
 
   fn as_inner(&self) -> InnerCliNpmResolverRef {
@@ -153,14 +158,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<std::path::PathBuf> {
-    todo!()
-  }
-
-  fn resolve_pkg_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    todo!()
+    Some(self.root_node_modules_dir.clone())
   }
 
   fn resolve_pkg_folder_from_deno_module_req(

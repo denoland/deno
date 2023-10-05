@@ -279,6 +279,12 @@ impl Resolver for CliGraphResolver {
                 &PermissionsContainer::allow_all(),
               );
               if let Ok(Some(resolution)) = node_result {
+                if let Some(cjs_resolutions) = &self.cjs_resolutions {
+                  if let NodeResolution::CommonJs(specifier) = &resolution {
+                    // remember that this was a common js resolution
+                    cjs_resolutions.insert(specifier.clone());
+                  }
+                }
                 return Ok(resolution.into_url());
               }
             }

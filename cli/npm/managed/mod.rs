@@ -508,7 +508,18 @@ impl NpmResolver for ManagedCliNpmResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    self.resolve_pkg_folder_from_specifier(specifier)
+    let Some(path) = self
+      .fs_resolver
+      .resolve_package_folder_from_specifier(specifier)?
+    else {
+      return Ok(None);
+    };
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      specifier,
+      path.display()
+    );
+    Ok(Some(path))
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -566,27 +577,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
 
   fn root_node_modules_path(&self) -> Option<PathBuf> {
     self.fs_resolver.node_modules_path()
-  }
-
-  /// Resolve the root folder of the package the provided specifier is in.
-  ///
-  /// This will error when the provided specifier is not in an npm package.
-  fn resolve_pkg_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(path) = self
-      .fs_resolver
-      .resolve_package_folder_from_specifier(specifier)?
-    else {
-      return Ok(None);
-    };
-    log::debug!(
-      "Resolved package folder of {} to {}",
-      specifier,
-      path.display()
-    );
-    Ok(Some(path))
   }
 
   fn resolve_pkg_folder_from_deno_module_req(
