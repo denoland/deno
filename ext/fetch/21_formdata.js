@@ -461,6 +461,7 @@ class MultipartParser {
           isNewLine && this.body[i + 1] === CR &&
           this.body[i + 2] === LF
         ) {
+          // end of the headers section
           state = 2;
           fileStart = i + 3; // After \r\n
         }
