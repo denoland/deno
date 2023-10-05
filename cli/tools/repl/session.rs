@@ -13,6 +13,7 @@ use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
+use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
 
@@ -367,23 +368,25 @@ impl ReplSession {
       evaluate_response
     };
 
-    let report_tests_handle = spawn(report_tests(
-      self.test_event_receiver.take().unwrap(),
-      (self.test_reporter_factory)(),
-    ));
-    run_tests_for_worker(
-      &mut self.worker,
-      &self.main_module,
-      &Default::default(),
-      &Default::default(),
-    )
-    .await
-    .unwrap();
-    self
-      .test_event_sender
-      .send(TestEvent::ForceEndReport)
+    if worker_has_tests(&mut self.worker) {
+      let report_tests_handle = spawn(report_tests(
+        self.test_event_receiver.take().unwrap(),
+        (self.test_reporter_factory)(),
+      ));
+      run_tests_for_worker(
+        &mut self.worker,
+        &self.main_module,
+        &Default::default(),
+        &Default::default(),
+      )
+      .await
       .unwrap();
-    self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
+      self
+        .test_event_sender
+        .send(TestEvent::ForceEndReport)
+        .unwrap();
+      self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
+    }
 
     result
   }
