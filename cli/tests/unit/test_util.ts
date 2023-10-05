@@ -2,7 +2,7 @@
 
 import * as colors from "../../../test_util/std/fmt/colors.ts";
 export { colors };
-import { resolve } from "../../../test_util/std/path/mod.ts";
+import { join, resolve } from "../../../test_util/std/path/mod.ts";
 export {
   assert,
   assertEquals,
@@ -80,4 +80,9 @@ export function execCode2(code: string) {
       return [status.code, output] as const;
     },
   };
+}
+
+export function tmpUnixSocketPath(): string {
+  const folder = Deno.makeTempDirSync();
+  return join(folder, "socket");
 }

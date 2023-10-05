@@ -44,22 +44,6 @@ const MAX_MUTATIONS: usize = 1000;
 const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
 const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
 
-struct UnstableChecker {
-  pub unstable: bool,
-}
-
-impl UnstableChecker {
-  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.unstable {
-      eprintln!(
-        "Unstable API '{api_name}'. The --unstable flag must be provided."
-      );
-      std::process::exit(70);
-    }
-  }
-}
-
 deno_core::extension!(deno_kv,
   deps = [ deno_console ],
   parameters = [ DBH: DatabaseHandler ],
@@ -74,11 +58,9 @@ deno_core::extension!(deno_kv,
   esm = [ "01_db.ts" ],
   options = {
     handler: DBH,
-    unstable: bool,
   },
   state = |state, options| {
     state.put(Rc::new(options.handler));
-    state.put(UnstableChecker { unstable: options.unstable })
   }
 );
 
@@ -108,8 +90,8 @@ where
   let handler = {
     let state = state.borrow();
     state
-      .borrow::<UnstableChecker>()
-      .check_unstable("Deno.openKv");
+      .feature_checker
+      .check_legacy_unstable_or_exit("Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;
