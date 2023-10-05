@@ -328,7 +328,7 @@ impl NodeResolver {
   pub fn resolve_npm_reference(
     &self,
     package_dir: &Path,
-    sub_path: Option<&str>,
+    package_subpath: Option<&str>,
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
@@ -336,32 +336,15 @@ impl NodeResolver {
     let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
     let package_json =
       self.load_package_json(permissions, package_json_path.clone())?;
-    self.resolve_package_subpath_from_deno_module(
-      &package_json,
-      sub_path,
-      &referrer,
-      mode,
-      permissions,
-    )
-  }
-
-  pub fn resolve_package_subpath_from_deno_module(
-    &self,
-    package_json: &PackageJson,
-    package_subpath: Option<&str>,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
-  ) -> Result<Option<NodeResolution>, AnyError> {
     let node_module_kind = NodeModuleKind::Esm;
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
     let maybe_resolved_path = self
       .resolve_package_subpath(
-        package_json,
-        package_subpath.clone(),
-        referrer,
+        &package_json,
+        &package_subpath,
+        &referrer,
         node_module_kind,
         DEFAULT_CONDITIONS,
         mode,
@@ -452,7 +435,7 @@ impl NodeResolver {
     } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".ts") || url_str.ends_with(".mts") {
-      if self.npm_resolver.in_npm_package(&url) {
+      if self.in_npm_package(&url) {
         Err(generic_error(format!(
           "TypeScript files are not supported in npm packages: {url}"
         )))
@@ -569,8 +552,8 @@ impl NodeResolver {
             let maybe_resolved = self.resolve_package_target(
               package_json_path.as_ref().unwrap(),
               imports.get(name).unwrap().to_owned(),
-              "".to_string(),
-              name.to_string(),
+              "",
+              name,
               referrer,
               referrer_kind,
               false,
@@ -612,8 +595,8 @@ impl NodeResolver {
               let maybe_resolved = self.resolve_package_target(
                 package_json_path.as_ref().unwrap(),
                 target,
-                best_match_subpath.unwrap(),
-                best_match.to_string(),
+                &best_match_subpath.unwrap(),
+                best_match,
                 referrer,
                 referrer_kind,
                 true,
@@ -642,8 +625,8 @@ impl NodeResolver {
   fn resolve_package_target_string(
     &self,
     target: String,
-    subpath: String,
-    match_: String,
+    subpath: &str,
+    match_: &str,
     package_json_path: &Path,
     referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
@@ -723,9 +706,9 @@ impl NodeResolver {
     if subpath.is_empty() {
       return Ok(resolved_path);
     }
-    if invalid_segment_re.is_match(&subpath) {
+    if invalid_segment_re.is_match(subpath) {
       let request = if pattern {
-        match_.replace('*', &subpath)
+        match_.replace('*', subpath)
       } else {
         format!("{match_}{subpath}")
       };
@@ -744,7 +727,7 @@ impl NodeResolver {
         });
       return Ok(PathBuf::from(replaced.to_string()));
     }
-    Ok(resolved_path.join(&subpath).clean())
+    Ok(resolved_path.join(subpath).clean())
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -752,8 +735,8 @@ impl NodeResolver {
     &self,
     package_json_path: &Path,
     target: Value,
-    subpath: String,
-    package_subpath: String,
+    subpath: &str,
+    package_subpath: &str,
     referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
     pattern: bool,
@@ -878,7 +861,7 @@ impl NodeResolver {
   pub fn package_exports_resolve(
     &self,
     package_json_path: &Path,
-    package_subpath: String,
+    package_subpath: &str,
     package_exports: &Map<String, Value>,
     referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
@@ -886,16 +869,16 @@ impl NodeResolver {
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
   ) -> Result<PathBuf, AnyError> {
-    if package_exports.contains_key(&package_subpath)
+    if package_exports.contains_key(package_subpath)
       && package_subpath.find('*').is_none()
       && !package_subpath.ends_with('/')
     {
-      let target = package_exports.get(&package_subpath).unwrap().to_owned();
+      let target = package_exports.get(package_subpath).unwrap().to_owned();
       let resolved = self.resolve_package_target(
         package_json_path,
         target,
-        "".to_string(),
-        package_subpath.to_string(),
+        "",
+        package_subpath,
         referrer,
         referrer_kind,
         false,
@@ -906,7 +889,7 @@ impl NodeResolver {
       )?;
       if resolved.is_none() {
         return Err(throw_exports_not_found(
-          &package_subpath,
+          package_subpath,
           package_json_path,
           referrer,
           mode,
@@ -954,8 +937,8 @@ impl NodeResolver {
       let maybe_resolved = self.resolve_package_target(
         package_json_path,
         target,
-        best_match_subpath.unwrap(),
-        best_match.to_string(),
+        &best_match_subpath.unwrap(),
+        best_match,
         referrer,
         referrer_kind,
         true,
@@ -968,7 +951,7 @@ impl NodeResolver {
         return Ok(resolved);
       } else {
         return Err(throw_exports_not_found(
-          &package_subpath,
+          package_subpath,
           package_json_path,
           referrer,
           mode,
@@ -977,7 +960,7 @@ impl NodeResolver {
     }
 
     Err(throw_exports_not_found(
-      &package_subpath,
+      package_subpath,
       package_json_path,
       referrer,
       mode,
@@ -1009,7 +992,7 @@ impl NodeResolver {
         return self
           .package_exports_resolve(
             &package_config.path,
-            package_subpath,
+            &package_subpath,
             exports,
             referrer,
             referrer_kind,
@@ -1044,7 +1027,7 @@ impl NodeResolver {
       self.load_package_json(permissions, package_json_path)?;
     self.resolve_package_subpath(
       &package_json,
-      package_subpath,
+      &package_subpath,
       referrer,
       referrer_kind,
       conditions,
@@ -1053,10 +1036,11 @@ impl NodeResolver {
     )
   }
 
+  #[allow(clippy::too_many_arguments)]
   fn resolve_package_subpath(
     &self,
     package_json: &PackageJson,
-    package_subpath: String,
+    package_subpath: &str,
     referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
@@ -1066,7 +1050,7 @@ impl NodeResolver {
     if let Some(exports) = &package_json.exports {
       let result = self.package_exports_resolve(
         &package_json.path,
-        package_subpath.clone(),
+        package_subpath,
         exports,
         referrer,
         referrer_kind,
@@ -1079,7 +1063,7 @@ impl NodeResolver {
         Err(exports_err) => {
           if mode.is_types() && package_subpath == "." {
             if let Ok(Some(path)) =
-              self.legacy_main_resolve(&package_json, referrer_kind, mode)
+              self.legacy_main_resolve(package_json, referrer_kind, mode)
             {
               return Ok(Some(path));
             } else {
@@ -1091,10 +1075,10 @@ impl NodeResolver {
       }
     }
     if package_subpath == "." {
-      return self.legacy_main_resolve(&package_json, referrer_kind, mode);
+      return self.legacy_main_resolve(package_json, referrer_kind, mode);
     }
 
-    let file_path = package_json.path.parent().unwrap().join(&package_subpath);
+    let file_path = package_json.path.parent().unwrap().join(package_subpath);
     if mode.is_types() {
       let maybe_declaration_path =
         self.path_to_declaration_path(file_path, referrer_kind);
@@ -1453,7 +1437,7 @@ fn throw_import_not_defined(
 }
 
 fn throw_invalid_package_target(
-  subpath: String,
+  subpath: &str,
   target: String,
   package_json_path: &Path,
   internal: bool,
