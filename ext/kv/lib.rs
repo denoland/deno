@@ -33,6 +33,8 @@ use serde::Serialize;
 
 pub use crate::interface::*;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "kv";
+
 const MAX_WRITE_KEY_SIZE_BYTES: usize = 2048;
 // range selectors can contain 0x00 or 0xff suffixes
 const MAX_READ_KEY_SIZE_BYTES: usize = MAX_WRITE_KEY_SIZE_BYTES + 1;
@@ -89,9 +91,11 @@ where
 {
   let handler = {
     let state = state.borrow();
+    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+    // once we phase out `check_legacy_unstable_or_exit`
     state
       .feature_checker
-      .check_legacy_unstable_or_exit("Deno.openKv");
+      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;

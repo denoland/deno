@@ -16,6 +16,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "net";
+
 pub trait NetPermissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
@@ -29,9 +31,11 @@ pub trait NetPermissions {
 
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_legacy_unstable_or_exit`
   state
     .feature_checker
-    .check_legacy_unstable_or_exit(api_name);
+    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
 }
 
 pub fn get_declaration() -> PathBuf {

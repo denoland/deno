@@ -1436,8 +1436,10 @@ impl deno_web::TimersPermission for PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_unstable(&self, state: &OpState, api_name: &'static str) {
-    crate::ops::check_unstable(state, api_name);
+  fn check_unstable(&self, _state: &OpState, _api_name: &'static str) {
+    // let name = unreachable!();
+    // crate::ops::check_unstable(state, name, api_name);
+    unreachable!();
   }
 }
 
