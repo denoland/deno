@@ -47,7 +47,6 @@ use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -1267,8 +1266,8 @@ impl Documents {
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
         // this in order to catch if the type of package_json_deps ever changes
-        // from a sorted/deterministic BTreeMap to something else.
-        let package_json_deps: &BTreeMap<_, _> = *package_json_deps;
+        // from a sorted/deterministic IndexMap to something else.
+        let package_json_deps: &IndexMap<_, _> = *package_json_deps;
         for (key, value) in package_json_deps {
           hasher.write_hashable(key);
           match value {
