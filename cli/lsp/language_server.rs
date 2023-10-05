@@ -1373,17 +1373,16 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-
-    if let Err(err) = self.documents.close(&specifier) {
-      error!("{}", err);
-    }
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier);
+      specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
       self.send_diagnostics_update();
       self.send_testing_update();
+    }
+    if let Err(err) = self.documents.close(&specifier) {
+      error!("{}", err);
     }
     self.performance.measure(mark);
   }
@@ -3206,8 +3205,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     let uri = &params.text_document.uri;
     {
-      let inner = self.0.read().await;
+      let mut inner = self.0.write().await;
       let specifier = inner.url_map.normalize_url(uri, LspUrlKind::File);
+      inner.documents.save(&specifier);
       if !inner.config.workspace_settings().cache_on_save
         || !inner.config.specifier_enabled(&specifier)
         || !inner.diagnostics_state.has_no_cache_diagnostics(&specifier)
