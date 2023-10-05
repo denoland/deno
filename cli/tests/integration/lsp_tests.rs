@@ -6942,7 +6942,6 @@ fn lsp_completions_node_specifier() {
       }
     }),
   );
-
   assert_eq!(
     res,
     json!([{
@@ -6954,10 +6953,10 @@ fn lsp_completions_node_specifier() {
             "start": { "line": 0, "character": 15 },
             "end": { "line": 0, "character": 19 }
           },
-          "severity": 2,
+          "severity": 1,
           "code": "import-node-prefix-missing",
           "source": "deno",
-          "message": "\"fs\" is resolved to \"node:fs\". If you want to use a built-in Node module, add a \"node:\" prefix.",
+          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
             "specifier": "fs"
           },
