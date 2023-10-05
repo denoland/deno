@@ -96,7 +96,7 @@ impl NpmCache {
     info: &NpmPackageVersionInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    let dist = info.dist;
+    let dist = &info.dist;
     let package_folder = self
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url);
