@@ -946,6 +946,7 @@ fn scrypt(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2]
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,

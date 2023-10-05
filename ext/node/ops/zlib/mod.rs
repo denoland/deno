@@ -284,6 +284,7 @@ pub fn op_zlib_close(
   Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(async)]
 #[serde]
 pub fn op_zlib_write_async(
@@ -315,6 +316,7 @@ pub fn op_zlib_write_async(
   })
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 #[smi]
 pub fn op_zlib_write(
