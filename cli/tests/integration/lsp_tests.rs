@@ -9994,7 +9994,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   }));
 
   let diagnostics = diagnostics
-    .messages_with_file_and_source(&main_script.to_string(), "deno")
+    .messages_with_file_and_source(main_script.as_ref(), "deno")
     .diagnostics
     .into_iter()
     .filter(|d| {
