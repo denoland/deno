@@ -160,7 +160,6 @@ impl TestReporter for PrettyTestReporter {
     self.summary.total += plan.total;
     self.summary.filtered_out += plan.filtered_out;
     if self.repl {
-      writeln!(&mut self.writer).unwrap();
       return;
     }
     if self.parallel || (self.filter && plan.total == 0) {
