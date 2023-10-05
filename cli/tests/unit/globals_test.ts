@@ -128,3 +128,16 @@ Deno.test(function webApiGlobalThis() {
   assert(globalThis.CountQueuingStrategy !== null);
   assert(globalThis.ByteLengthQueuingStrategy !== null);
 });
+
+Deno.test(function windowNameIsDefined() {
+  assert(typeof globalThis.name === "string");
+  assert(name === "");
+  assert(window.name === name);
+  name = "foobar";
+  // @ts-ignore somehow TS doesn't understand that name === window.name
+  assert(window.name === "foobar");
+  assert(name === "foobar");
+  name = "";
+  assert(window.name === "");
+  assert(name === "");
+});
