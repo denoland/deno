@@ -27,7 +27,6 @@ use rand::Rng;
 use serde::Serialize;
 
 use crate::check_unstable;
-use crate::check_unstable2;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
@@ -1422,7 +1421,7 @@ pub async fn op_fs_flock_async(
   #[smi] rid: ResourceId,
   exclusive: bool,
 ) -> Result<(), AnyError> {
-  check_unstable2(&state, "Deno.flock");
+  check_unstable(&state.borrow(), "Deno.flock");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.lock_async(exclusive).await?;
   Ok(())
@@ -1444,7 +1443,7 @@ pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  check_unstable2(&state, "Deno.funlock");
+  check_unstable(&state.borrow(), "Deno.funlock");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.unlock_async().await?;
   Ok(())
