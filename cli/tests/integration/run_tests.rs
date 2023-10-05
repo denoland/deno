@@ -4577,7 +4577,7 @@ itest!(node_builtin_modules_js {
 });
 
 itest!(node_prefix_missing {
-  args: "run run/node_prefix_missing/main.ts",
+  args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
