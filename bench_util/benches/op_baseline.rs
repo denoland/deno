@@ -6,7 +6,7 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 
-use deno_core::op;
+use deno_core::op2;
 use deno_core::Extension;
 
 deno_core::extension!(
@@ -22,18 +22,20 @@ fn setup() -> Vec<Extension> {
   vec![bench_setup::init_ops()]
 }
 
-#[op]
+#[op2(fast)]
 fn op_nop() {}
 
 // TODO(bartlomieju): reenable, currently this op generates a fast function,
 // which is wrong, because i64 is not a compatible type for fast call.
-// #[op]
+// #[op2]
+// #[number]
 // fn op_pi_json() -> i64 {
 //   314159
 // }
 
 // this is a function since async closures aren't stable
-#[op]
+#[op2(async)]
+#[number]
 async fn op_pi_async() -> i64 {
   314159
 }
