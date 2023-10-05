@@ -344,7 +344,7 @@ impl NodeResolver {
       .resolve_package_subpath(
         &package_json,
         &package_subpath,
-        &referrer,
+        referrer,
         node_module_kind,
         DEFAULT_CONDITIONS,
         mode,

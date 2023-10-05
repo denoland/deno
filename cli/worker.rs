@@ -571,6 +571,7 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
+    // use a fake referrer since a real one doesn't exist
     let referrer =
       ModuleSpecifier::from_directory_path(package_folder).unwrap();
     let Some(resolution) = self
