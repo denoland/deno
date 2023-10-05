@@ -378,7 +378,15 @@ impl CliFactory {
             bare_node_builtins_enabled: self
               .options
               .unstable_features()
-              .contains(&"bare-node-builtins"),
+              .contains(&"bare-node-builtins")
+              || self
+                .options
+                .maybe_config_file()
+                .as_ref()
+                .map(|c| {
+                  c.json.unstable.contains(&"bare-node-builtins".to_string())
+                })
+                .unwrap_or(false),
           },
         )))
       })
