@@ -27,6 +27,7 @@ use deno_semver::package::PackageReq;
 
 use crate::args::Lockfile;
 use crate::args::NpmProcessState;
+use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -591,10 +592,12 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   /// Gets the state of npm for the process.
   fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
-      snapshot: self
-        .resolution
-        .serialized_valid_snapshot()
-        .into_serialized(),
+      kind: NpmProcessStateKind::Snapshot(
+        self
+          .resolution
+          .serialized_valid_snapshot()
+          .into_serialized(),
+      ),
       local_node_modules_path: self
         .fs_resolver
         .node_modules_path()

@@ -586,8 +586,14 @@ pub fn get_root_cert_store(
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NpmProcessState {
-  pub snapshot: deno_npm::resolution::SerializedNpmResolutionSnapshot,
+  pub kind: NpmProcessStateKind,
   pub local_node_modules_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NpmProcessStateKind {
+  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
+  Byonm,
 }
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
@@ -891,9 +897,11 @@ impl CliOptions {
   pub fn resolve_npm_resolution_snapshot(
     &self,
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
-    if let Some(state) = &*NPM_PROCESS_STATE {
+    if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
+      NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+    {
       // TODO(bartlomieju): remove this clone
-      Ok(Some(state.snapshot.clone().into_valid()?))
+      Ok(Some(snapshot.clone().into_valid()?))
     } else {
       Ok(None)
     }
@@ -1235,6 +1243,10 @@ impl CliOptions {
 
   pub fn unstable_byonm(&self) -> bool {
     has_unstable_env_feature("byonm")
+      || NPM_PROCESS_STATE
+        .as_ref()
+        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
+        .unwrap_or(false)
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

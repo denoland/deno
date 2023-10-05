@@ -6,6 +6,7 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -14,6 +15,8 @@ use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageReq;
 
 use crate::args::package_json::get_local_package_json_version_reqs;
+use crate::args::NpmProcessState;
+use crate::args::NpmProcessStateKind;
 use crate::util::path::specifier_to_file_path;
 
 use super::common::types_package_name;
@@ -228,7 +231,13 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   }
 
   fn get_npm_process_state(&self) -> String {
-    todo!()
+    serde_json::to_string(&NpmProcessState {
+      kind: NpmProcessStateKind::Byonm,
+      local_node_modules_path: Some(
+        self.root_node_modules_dir.to_string_lossy().to_string(),
+      ),
+    })
+    .unwrap()
   }
 
   fn check_state_hash(&self) -> Option<u64> {
