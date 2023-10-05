@@ -11,6 +11,7 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
@@ -138,6 +139,7 @@ pub struct ReplSession {
   pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
   main_module: ModuleSpecifier,
+  test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
   test_event_sender: TestEventSender,
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
@@ -202,6 +204,9 @@ impl ReplSession {
       language_server,
       referrer,
       notifications: Rc::new(RefCell::new(notification_rx)),
+      test_reporter_factory: Box::new(|| {
+        Box::new(PrettyTestReporter::new(false, true, false, true))
+      }),
       main_module,
       test_event_sender,
       test_event_receiver: Some(test_event_receiver),
@@ -211,6 +216,13 @@ impl ReplSession {
     repl_session.evaluate_expression(&get_prelude()).await?;
 
     Ok(repl_session)
+  }
+
+  pub fn set_test_reporter_factory(
+    &mut self,
+    f: Box<dyn Fn() -> Box<dyn TestReporter>>,
+  ) {
+    self.test_reporter_factory = f;
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
@@ -355,40 +367,9 @@ impl ReplSession {
       evaluate_response
     };
 
-    let mut test_reporter = PrettyTestReporter::new(false, true, false, true);
-    {
-      use crate::tools::jupyter::server::StdioMsg;
-      use tokio::sync::mpsc::UnboundedSender;
-      if let Some(sender) = self
-        .worker
-        .js_runtime
-        .op_state()
-        .borrow_mut()
-        .try_borrow::<UnboundedSender<StdioMsg>>()
-      {
-        struct JupyterWriter {
-          sender: UnboundedSender<StdioMsg>,
-        }
-        impl std::io::Write for JupyterWriter {
-          fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self
-              .sender
-              .send(StdioMsg::Stdout(String::from_utf8_lossy(buf).into_owned()))
-              .ok();
-            Ok(buf.len())
-          }
-          fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-          }
-        }
-        test_reporter = test_reporter.with_writer(Box::new(JupyterWriter {
-          sender: sender.clone(),
-        }));
-      }
-    }
     let report_tests_handle = spawn(report_tests(
       self.test_event_receiver.take().unwrap(),
-      Box::new(test_reporter),
+      (self.test_reporter_factory)(),
     ));
     run_tests_for_worker(
       &mut self.worker,
