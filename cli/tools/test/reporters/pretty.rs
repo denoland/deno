@@ -52,7 +52,7 @@ impl PrettyTestReporter {
       writeln!(&mut self.writer).unwrap();
     }
     if self.parallel {
-      writeln!(
+      write!(
         &mut self.writer,
         "{}",
         colors::gray(format!(
