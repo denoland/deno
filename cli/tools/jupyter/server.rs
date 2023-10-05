@@ -554,14 +554,13 @@ async fn get_jupyter_display(
       "Runtime.callFunctionOn",
       Some(json!({
         "functionDeclaration": r#"function (object) {
-      const display = object[Symbol.for("Jupyter.display")];
-
-      if (typeof display !== "function") {
+      if (typeof object[Symbol.for("Jupyter.display")] !== "function") {
         return null;
       }
       
       try {
-        return JSON.stringify(display());
+        const representation = object[Symbol.for("Jupyter.display")]();
+        return JSON.stringify(representation);
       } catch {
         return null;
       }
