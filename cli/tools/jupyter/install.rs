@@ -61,8 +61,8 @@ pub fn install() -> Result<(), AnyError> {
 
   let f = std::fs::File::create(kernel_json_path)?;
   serde_json::to_writer_pretty(f, &json_data)?;
-  install_icon(temp_dir.path(), "icon-32x32.png", DENO_ICON_32)?;
-  install_icon(temp_dir.path(), "icon-64x64.png", DENO_ICON_64)?;
+  install_icon(temp_dir.path(), "logo-32x32.png", DENO_ICON_32)?;
+  install_icon(temp_dir.path(), "logo-64x64.png", DENO_ICON_64)?;
 
   let child_result = std::process::Command::new("jupyter")
     .args([
