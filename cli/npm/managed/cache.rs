@@ -13,9 +13,9 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_npm::registry::NpmPackageVersionDistInfo;
-use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::NpmResolutionPackage;
+use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_semver::package::PackageNv;
 
@@ -80,27 +80,28 @@ impl NpmCache {
 
   pub async fn ensure_package(
     &self,
-    package: &PackageNv,
-    info: &NpmPackageVersionInfo,
+    package: &NpmResolutionPackage,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
     self
-      .ensure_package_inner(package, info, registry_url)
+      .ensure_package_inner(package, registry_url)
       .await
-      .with_context(|| format!("Failed caching npm package '{package}'."))
+      .with_context(|| {
+        format!("Failed caching npm package '{}'.", package.id.nv)
+      })
   }
 
   async fn ensure_package_inner(
     &self,
-    package: &PackageNv,
-    info: &NpmPackageVersionInfo,
+    package: &NpmResolutionPackage,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    let dist = &info.dist;
+    let nv = &package.id.nv;
+    let dist = &package.dist;
     let package_folder = self
       .cache_dir
-      .package_folder_for_name_and_version(package, registry_url);
-    if self.should_use_global_cache_for_package(package)
+      .package_folder_for_name_and_version(nv, registry_url);
+    if self.should_use_global_cache_for_package(nv)
       && self.fs.exists_sync(&package_folder)
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
@@ -112,7 +113,7 @@ impl NpmCache {
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          &package.name
+          &nv.name
         )
       )
       );
@@ -129,9 +130,19 @@ impl NpmCache {
       .await?;
     match maybe_bytes {
       Some(bytes) => {
-        verify_and_extract_tarball(package, &bytes, &dist, &package_folder)
+        let r = verify_and_extract_tarball(nv, &bytes, &dist, &package_folder);
 
-        // TODO: print if a package has pre/install/post scripts
+        if package.has_install_scripts() {
+          eprintln!(
+            "{}",
+            colors::yellow(format!(
+              "⚠️  Package \"{}\" contains installation scripts. These are currently not supported by Deno.",
+              nv.name
+            ))
+          );
+        }
+
+        r
       }
       None => {
         bail!("Could not find npm package tarball at: {}", dist.tarball);

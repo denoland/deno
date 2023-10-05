@@ -334,3 +334,4 @@ opt-level = 3
 
 [patch.crates-io]
 deno_npm = { path = "../deno_npm" }
+eszip = { path = "../eszip" }

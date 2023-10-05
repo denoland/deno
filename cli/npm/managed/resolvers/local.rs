@@ -32,6 +32,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::colors;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
@@ -334,9 +335,7 @@ async fn sync_resolution_with_fs(
       let registry_url = registry_url.clone();
       let package = package.clone();
       let handle = spawn(async move {
-        cache
-          .ensure_package(&package.id.nv, &package, &registry_url)
-          .await?;
+        cache.ensure_package(&package, &registry_url).await?;
         let pb_guard = pb.update_with_prompt(
           ProgressMessagePrompt::Initialize,
           &package.id.nv.to_string(),
@@ -351,7 +350,15 @@ async fn sync_resolution_with_fs(
         // for now copy, but in the future consider hard linking
         copy_dir_recursive(&cache_folder, &package_path)?;
 
-        // TODO: print if a package has pre/install/post scripts
+        if package.has_install_scripts() {
+          eprintln!(
+            "{}",
+            colors::yellow(format!(
+              "⚠️  Package \"{}\" contains installation scripts. These are currently not supported by Deno.",
+              package.id.nv.name
+            ))
+          );
+        }
 
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
