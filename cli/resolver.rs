@@ -17,7 +17,6 @@ use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -234,19 +233,16 @@ impl Resolver for CliGraphResolver {
                 referrer,
               )?;
             let node_resoler = self.node_resolver.as_ref().unwrap();
-            let package_json = PackageJson::load_skip_read_permission(
-              self.fs.as_ref(),
-              package_folder.join("package.json"),
-            )?;
-            if !package_json.exists {
+            let package_json_path = package_folder.join("package.json");
+            if !self.fs.exists_sync(&package_json_path) {
               bail!(
                 "Could not find '{}'. Maybe run `npm install`?",
-                package_json.path.display()
+                package_json_path.display()
               );
             }
             let maybe_resolution = node_resoler
               .resolve_package_subpath_from_deno_module(
-                &package_json,
+                &package_folder,
                 npm_req_ref.sub_path(),
                 referrer,
                 NodeResolutionMode::Execution, // todo: types for types

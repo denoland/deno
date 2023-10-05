@@ -571,12 +571,18 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let Some(resolution) = self.shared.node_resolver.resolve_npm_reference(
-      package_folder,
-      sub_path,
-      NodeResolutionMode::Execution,
-      permissions,
-    )?
+    let referrer =
+      ModuleSpecifier::from_directory_path(package_folder).unwrap();
+    let Some(resolution) = self
+      .shared
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        package_folder,
+        sub_path,
+        &referrer,
+        NodeResolutionMode::Execution,
+        permissions,
+      )?
     else {
       return Ok(None);
     };
