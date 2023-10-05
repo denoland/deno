@@ -43,6 +43,10 @@ impl PrettyTestReporter {
     }
   }
 
+  pub fn with_writer(self, writer: Box<dyn std::io::Write>) -> Self {
+    Self { writer, ..self }
+  }
+
   fn force_report_wait(&mut self, description: &TestDescription) {
     if !self.in_new_line {
       writeln!(&mut self.writer).unwrap();
@@ -368,6 +372,9 @@ impl TestReporter for PrettyTestReporter {
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     common::report_summary(&mut self.writer, &self.cwd, &self.summary, elapsed);
+    if !self.repl {
+      writeln!(&mut self.writer).unwrap();
+    }
     self.in_new_line = true;
   }
 
