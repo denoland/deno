@@ -149,8 +149,7 @@ pub mod cpu {
   }
 
   pub fn linux() -> String {
-    let info =
-      std::fs::read_to_string("/proc/cpuinfo").unwrap_or(String::new());
+    let info = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
 
     for line in info.lines() {
       let mut iter = line.split(':');
