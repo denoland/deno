@@ -1351,9 +1351,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.56.2"
+version = "0.56.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bbb81df6693ed1e679be24b19226ee6f8fa3b6dd953874e70a445d98e5871c6"
+checksum = "f02ddb53a0d3201895566ef3c1c5861c62d06df3b0fac6a7dcf826dd081eec27"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -1216,6 +1216,10 @@ impl CliOptions {
     self.flags.unstable
   }
 
+  pub fn unstable_features(&self) -> Vec<&'static str> {
+    self.flags.unstable_features.clone()
+  }
+
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
   }

@@ -23,15 +23,19 @@ use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
+use deno_graph::SpecifierError;
+use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -92,7 +96,11 @@ pub fn graph_valid(
           roots.contains(error.specifier())
         }
       };
-      let mut message = format!("{error}");
+      let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
+        enhanced_resolution_error_message(err)
+      } else {
+        format!("{error}")
+      };
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
@@ -449,6 +457,52 @@ pub fn error_for_any_npm_specifier(
   Ok(())
 }
 
+/// Adds more explanatory information to a resolution error.
+pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
+  let mut message = format!("{error}");
+
+  if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
+    message.push_str(&format!(
+        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
+      ));
+  }
+
+  message
+}
+
+pub fn get_resolution_error_bare_node_specifier(
+  error: &ResolutionError,
+) -> Option<&str> {
+  get_resolution_error_bare_specifier(error)
+    .filter(|specifier| deno_node::is_builtin_node_module(specifier))
+}
+
+fn get_resolution_error_bare_specifier(
+  error: &ResolutionError,
+) -> Option<&str> {
+  if let ResolutionError::InvalidSpecifier {
+    error: SpecifierError::ImportPrefixMissing(specifier, _),
+    ..
+  } = error
+  {
+    Some(specifier.as_str())
+  } else if let ResolutionError::ResolverError { error, .. } = error {
+    if let ResolveError::Other(error) = (*error).as_ref() {
+      if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
+        error.downcast_ref::<ImportMapError>()
+      {
+        Some(specifier.as_str())
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  } else {
+    None
+  }
+}
+
 #[derive(Debug)]
 struct GraphData {
   graph: Arc<ModuleGraph>,
@@ -617,6 +671,59 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
 
     if modules_done == modules_total {
       self.sender.send(file_paths.drain(..).collect()).unwrap();
+    }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::sync::Arc;
+
+  use deno_ast::ModuleSpecifier;
+  use deno_graph::source::ResolveError;
+  use deno_graph::Position;
+  use deno_graph::Range;
+  use deno_graph::ResolutionError;
+  use deno_graph::SpecifierError;
+
+  use crate::graph_util::get_resolution_error_bare_node_specifier;
+
+  #[test]
+  fn import_map_node_resolution_error() {
+    let cases = vec![("fs", Some("fs")), ("other", None)];
+    for (input, output) in cases {
+      let import_map = import_map::ImportMap::new(
+        ModuleSpecifier::parse("file:///deno.json").unwrap(),
+      );
+      let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
+      let err = import_map.resolve(input, &specifier).err().unwrap();
+      let err = ResolutionError::ResolverError {
+        error: Arc::new(ResolveError::Other(err.into())),
+        specifier: input.to_string(),
+        range: Range {
+          specifier,
+          start: Position::zeroed(),
+          end: Position::zeroed(),
+        },
+      };
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output);
+    }
+  }
+
+  #[test]
+  fn bare_specifier_node_resolution_error() {
+    let cases = vec![("process", Some("process")), ("other", None)];
+    for (input, output) in cases {
+      let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
+      let err = ResolutionError::InvalidSpecifier {
+        range: Range {
+          specifier,
+          start: Position::zeroed(),
+          end: Position::zeroed(),
+        },
+        error: SpecifierError::ImportPrefixMissing(input.to_string(), None),
+      };
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
   }
 }

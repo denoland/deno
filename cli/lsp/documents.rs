@@ -933,6 +933,8 @@ impl Documents {
           maybe_jsx_import_source_config: None,
           maybe_import_map: None,
           maybe_vendor_dir: None,
+          // TODO(kt3k): Read the feature flag from deno.json and pass it here.
+          bare_node_builtins_enabled: false,
         },
       )),
       npm_specifier_reqs: Default::default(),
@@ -1336,6 +1338,8 @@ impl Documents {
           .maybe_config_file
           .and_then(|c| c.vendor_dir_path())
           .as_ref(),
+        // TODO(kt3k): Read the feature flag from deno.json and pass it here.
+        bare_node_builtins_enabled: false,
       },
     ));
     self.imports = Arc::new(

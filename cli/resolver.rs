@@ -104,12 +104,14 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
+  bare_node_builtins_enabled: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
+  pub bare_node_builtins_enabled: bool,
 }
 
 impl CliGraphResolver {
@@ -135,6 +137,7 @@ impl CliGraphResolver {
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
       npm_resolver,
       found_package_json_dep_flag: Default::default(),
+      bare_node_builtins_enabled: options.bare_node_builtins_enabled,
     }
   }
 
@@ -288,6 +291,10 @@ impl NpmResolver for CliGraphResolver {
         "npm specifiers were requested; but --no-npm is specified"
       )),
     }
+  }
+
+  fn enables_bare_builtin_node_module(&self) -> bool {
+    self.bare_node_builtins_enabled
   }
 }
 
