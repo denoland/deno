@@ -227,7 +227,13 @@ impl TestReporter for TapTestReporter {
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     println!("Bail out! SIGINT received.");
-    common::report_sigint(&self.cwd, tests_pending, tests, test_steps);
+    common::report_sigint(
+      &mut std::io::stdout(),
+      &self.cwd,
+      tests_pending,
+      tests,
+      test_steps,
+    );
   }
 
   fn flush_report(
