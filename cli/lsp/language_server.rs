@@ -4,6 +4,7 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -12,7 +13,6 @@ use deno_core::unsync::spawn;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
@@ -82,7 +82,6 @@ use super::urls::LspClientUrl;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
-use crate::args::snapshot_from_lockfile;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -102,12 +101,12 @@ use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
-use crate::npm::create_npm_fs_resolver;
-use crate::npm::CliNpmRegistryApi;
+use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliNpmResolver;
-use crate::npm::NpmCache;
-use crate::npm::NpmCacheDir;
-use crate::npm::NpmResolution;
+use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::CliNpmResolverManagedCreateOptions;
+use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
+use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
@@ -128,16 +127,10 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 struct LspNpmServices {
   /// When this hash changes, the services need updating
   config_hash: LspNpmConfigHash,
-  /// Npm's registry api.
-  api: Arc<CliNpmRegistryApi>,
   /// Npm's search api.
   search_api: CliNpmSearchApi,
-  /// Npm cache
-  cache: Arc<NpmCache>,
-  /// Npm resolution that is stored in memory.
-  resolution: Arc<NpmResolution>,
   /// Resolver for npm packages.
-  resolver: Arc<CliNpmResolver>,
+  resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -158,6 +151,12 @@ impl LspNpmConfigHash {
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
+#[derive(Debug)]
+pub struct StateNpmSnapshot {
+  pub node_resolver: Arc<NodeResolver>,
+  pub npm_resolver: Arc<dyn CliNpmResolver>,
+}
+
 /// Snapshot of the state used by TSC.
 #[derive(Debug)]
 pub struct StateSnapshot {
@@ -166,8 +165,7 @@ pub struct StateSnapshot {
   pub config: Arc<ConfigSnapshot>,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
-  pub maybe_npm_resolver: Option<Arc<CliNpmResolver>>,
+  pub npm: Option<StateNpmSnapshot>,
 }
 
 #[derive(Debug)]
@@ -468,70 +466,6 @@ impl LanguageServer {
   }
 }
 
-fn create_npm_api_and_cache(
-  dir: &DenoDir,
-  http_client: Arc<HttpClient>,
-  registry_url: &ModuleSpecifier,
-  progress_bar: &ProgressBar,
-) -> (Arc<CliNpmRegistryApi>, Arc<NpmCache>) {
-  let npm_cache = Arc::new(NpmCache::new(
-    NpmCacheDir::new(dir.npm_folder_path()),
-    // Use an "only" cache setting in order to make the
-    // user do an explicit "cache" command and prevent
-    // the cache from being filled with lots of packages while
-    // the user is typing.
-    CacheSetting::Only,
-    Arc::new(deno_fs::RealFs),
-    http_client.clone(),
-    progress_bar.clone(),
-  ));
-  let api = Arc::new(CliNpmRegistryApi::new(
-    registry_url.clone(),
-    npm_cache.clone(),
-    http_client,
-    progress_bar.clone(),
-  ));
-  (api, npm_cache)
-}
-
-fn create_npm_resolver_and_resolution(
-  registry_url: &ModuleSpecifier,
-  progress_bar: ProgressBar,
-  api: Arc<CliNpmRegistryApi>,
-  npm_cache: Arc<NpmCache>,
-  node_modules_dir_path: Option<PathBuf>,
-  maybe_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
-) -> (Arc<CliNpmResolver>, Arc<NpmResolution>) {
-  let resolution = Arc::new(NpmResolution::from_serialized(
-    api,
-    maybe_snapshot,
-    // Don't provide the lockfile. We don't want these resolvers
-    // updating it. Only the cache request should update the lockfile.
-    None,
-  ));
-  let fs = Arc::new(deno_fs::RealFs);
-  let fs_resolver = create_npm_fs_resolver(
-    fs.clone(),
-    npm_cache,
-    &progress_bar,
-    registry_url.clone(),
-    resolution.clone(),
-    node_modules_dir_path,
-    NpmSystemInfo::default(),
-  );
-  (
-    Arc::new(CliNpmResolver::new(
-      fs,
-      resolution.clone(),
-      fs_resolver,
-      // Don't provide the lockfile. We don't want these resolvers
-      // updating it. Only the cache request should update the lockfile.
-      None,
-    )),
-    resolution,
-  )
-}
-
 impl Inner {
   fn new(client: Client) -> Self {
     let dir = DenoDir::new(None).expect("could not access DENO_DIR");
@@ -562,23 +496,6 @@ impl Inner {
       diagnostics_state.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let registry_url = CliNpmRegistryApi::default_url();
-    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-
-    let (npm_api, npm_cache) = create_npm_api_and_cache(
-      &dir,
-      http_client.clone(),
-      registry_url,
-      &progress_bar,
-    );
-    let (npm_resolver, npm_resolution) = create_npm_resolver_and_resolution(
-      registry_url,
-      progress_bar,
-      npm_api.clone(),
-      npm_cache.clone(),
-      None,
-      None,
-    );
 
     Self {
       assets,
@@ -601,11 +518,8 @@ impl Inner {
       module_registries_location,
       npm: LspNpmServices {
         config_hash: LspNpmConfigHash(0), // this will be updated in initialize
-        api: npm_api,
         search_api: npm_search_api,
-        cache: npm_cache,
-        resolution: npm_resolution,
-        resolver: npm_resolver,
+        resolver: None,
       },
       performance,
       ts_fixable_diagnostics: Default::default(),
@@ -790,37 +704,27 @@ impl Inner {
   }
 
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
-    // create a new snapshotted npm resolution and resolver
-    let npm_resolution = Arc::new(NpmResolution::new(
-      self.npm.api.clone(),
-      self.npm.resolution.snapshot(),
-      self.config.maybe_lockfile().cloned(),
-    ));
-    let node_fs = Arc::new(deno_fs::RealFs);
-    let npm_resolver = Arc::new(CliNpmResolver::new(
-      node_fs.clone(),
-      npm_resolution.clone(),
-      create_npm_fs_resolver(
-        node_fs.clone(),
-        self.npm.cache.clone(),
-        &ProgressBar::new(ProgressBarStyle::TextOnly),
-        self.npm.api.base_url().clone(),
-        npm_resolution,
-        self.config.maybe_node_modules_dir_path().cloned(),
-        NpmSystemInfo::default(),
-      ),
-      self.config.maybe_lockfile().cloned(),
-    ));
-    let node_resolver =
-      Arc::new(NodeResolver::new(node_fs, npm_resolver.clone()));
+    let maybe_state_npm_snapshot = self
+      .npm
+      .resolver
+      .as_ref()
+      .map(|resolver| resolver.clone_snapshotted())
+      .map(|resolver| {
+        let fs = Arc::new(deno_fs::RealFs);
+        let node_resolver =
+          Arc::new(NodeResolver::new(fs, resolver.clone().into_npm_resolver()));
+        StateNpmSnapshot {
+          node_resolver,
+          npm_resolver: resolver,
+        }
+      });
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       config: self.config.snapshot(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_node_resolver: Some(node_resolver),
-      maybe_npm_resolver: Some(npm_resolver),
+      npm: maybe_state_npm_snapshot,
     })
   }
 
@@ -922,25 +826,6 @@ impl Inner {
     Ok(())
   }
 
-  async fn get_npm_snapshot(
-    &self,
-  ) -> Option<ValidSerializedNpmResolutionSnapshot> {
-    let lockfile = self.config.maybe_lockfile()?;
-    let snapshot =
-      match snapshot_from_lockfile(lockfile.clone(), &*self.npm.api).await {
-        Ok(snapshot) => snapshot,
-        Err(err) => {
-          lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
-          return None;
-        }
-      };
-
-    // clear the memory cache to reduce memory usage
-    self.npm.api.clear_memory_cache();
-
-    Some(snapshot)
-  }
-
   async fn recreate_npm_services_if_necessary(&mut self) {
     let deno_dir = match DenoDir::new(self.maybe_global_cache_path.clone()) {
       Ok(deno_dir) => deno_dir,
@@ -954,24 +839,15 @@ impl Inner {
       return; // no need to do anything
     }
 
-    let registry_url = CliNpmRegistryApi::default_url();
-    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-    (self.npm.api, self.npm.cache) = create_npm_api_and_cache(
-      &deno_dir,
-      self.http_client.clone(),
-      registry_url,
-      &progress_bar,
-    );
-    let maybe_snapshot = self.get_npm_snapshot().await;
-    (self.npm.resolver, self.npm.resolution) =
-      create_npm_resolver_and_resolution(
-        registry_url,
-        progress_bar,
-        self.npm.api.clone(),
-        self.npm.cache.clone(),
+    self.npm.resolver = Some(
+      create_npm_resolver(
+        &deno_dir,
+        &self.http_client,
+        self.config.maybe_lockfile(),
         self.config.maybe_node_modules_dir_path().cloned(),
-        maybe_snapshot,
-      );
+      )
+      .await,
+    );
 
     // update the hash
     self.npm.config_hash = config_hash;
@@ -1204,6 +1080,45 @@ impl Inner {
   }
 }
 
+async fn create_npm_resolver(
+  deno_dir: &DenoDir,
+  http_client: &Arc<HttpClient>,
+  maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
+  maybe_node_modules_dir_path: Option<PathBuf>,
+) -> Arc<dyn CliNpmResolver> {
+  create_cli_npm_resolver_for_lsp(CliNpmResolverCreateOptions::Managed(
+    CliNpmResolverManagedCreateOptions {
+      http_client: http_client.clone(),
+      snapshot: match maybe_lockfile {
+        Some(lockfile) => {
+          CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
+            lockfile.clone(),
+          )
+        }
+        None => CliNpmResolverManagedSnapshotOption::Specified(None),
+      },
+      // Don't provide the lockfile. We don't want these resolvers
+      // updating it. Only the cache request should update the lockfile.
+      maybe_lockfile: None,
+      fs: Arc::new(deno_fs::RealFs),
+      npm_global_cache_dir: deno_dir.npm_folder_path(),
+      // Use an "only" cache setting in order to make the
+      // user do an explicit "cache" command and prevent
+      // the cache from being filled with lots of packages while
+      // the user is typing.
+      cache_setting: CacheSetting::Only,
+      text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
+      maybe_node_modules_path: maybe_node_modules_dir_path,
+      // do not install while resolving in the lsp—leave that to the cache command
+      package_json_installer:
+        CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
+      npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
+      npm_system_info: NpmSystemInfo::default(),
+    },
+  ))
+  .await
+}
+
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
 impl Inner {
   async fn initialize(
@@ -1358,8 +1273,7 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
-      npm_registry_api: self.npm.api.clone(),
-      npm_resolution: self.npm.resolution.clone(),
+      npm_resolver: self.npm.resolver.clone(),
     });
 
     // refresh the npm specifiers because it might have discovered
@@ -1433,8 +1347,15 @@ impl Inner {
     let package_reqs = self.documents.npm_package_reqs();
     let npm_resolver = self.npm.resolver.clone();
     // spawn to avoid the LSP's Send requirements
-    let handle =
-      spawn(async move { npm_resolver.set_package_reqs(&package_reqs).await });
+    let handle = spawn(async move {
+      if let Some(npm_resolver) =
+        npm_resolver.as_ref().and_then(|r| r.as_managed())
+      {
+        npm_resolver.set_package_reqs(&package_reqs).await
+      } else {
+        Ok(())
+      }
+    });
     if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
@@ -2148,8 +2069,7 @@ impl Inner {
     TsResponseImportMapper::new(
       &self.documents,
       self.maybe_import_map.as_deref(),
-      &self.npm.resolution,
-      &self.npm.resolver,
+      self.npm.resolver.as_deref(),
     )
   }
 

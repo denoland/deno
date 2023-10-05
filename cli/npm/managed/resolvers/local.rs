@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
-use crate::npm::cache::mixed_case_package_name_decode;
+use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::util::fs::atomic_write_file;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::symlink_dir;
@@ -41,13 +41,13 @@ use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::npm::cache::mixed_case_package_name_encode;
-use crate::npm::resolution::NpmResolution;
-use crate::npm::NpmCache;
+use crate::npm::cache_dir::mixed_case_package_name_encode;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
-use super::common::types_package_name;
+use super::super::super::common::types_package_name;
+use super::super::cache::NpmCache;
+use super::super::resolution::NpmResolution;
 use super::common::NpmPackageFsResolver;
 use super::common::RegistryReadPermissionChecker;
 

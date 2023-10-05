@@ -36,8 +36,8 @@ pub struct PackageJson {
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
-  pub dependencies: Option<HashMap<String, String>>,
-  pub dev_dependencies: Option<HashMap<String, String>>,
+  pub dependencies: Option<IndexMap<String, String>>,
+  pub dev_dependencies: Option<IndexMap<String, String>>,
   pub scripts: Option<IndexMap<String, String>>,
 }
 
@@ -97,7 +97,13 @@ impl PackageJson {
       return Ok(PackageJson::empty(path));
     }
 
-    Self::load_from_string(path, source)
+    let package_json = Self::load_from_string(path, source)?;
+    CACHE.with(|cache| {
+      cache
+        .borrow_mut()
+        .insert(package_json.path.clone(), package_json.clone());
+    });
+    Ok(package_json)
   }
 
   pub fn load_from_string(
@@ -106,7 +112,13 @@ impl PackageJson {
   ) -> Result<PackageJson, AnyError> {
     let package_json: Value = serde_json::from_str(&source)
       .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
+    Self::load_from_value(path, package_json)
+  }
 
+  pub fn load_from_value(
+    path: PathBuf,
+    package_json: serde_json::Value,
+  ) -> Result<PackageJson, AnyError> {
     let imports_val = package_json.get("imports");
     let main_val = package_json.get("main");
     let module_val = package_json.get("module");
@@ -134,7 +146,7 @@ impl PackageJson {
 
     let dependencies = package_json.get("dependencies").and_then(|d| {
       if d.is_object() {
-        let deps: HashMap<String, String> =
+        let deps: IndexMap<String, String> =
           serde_json::from_value(d.to_owned()).unwrap();
         Some(deps)
       } else {
@@ -143,7 +155,7 @@ impl PackageJson {
     });
     let dev_dependencies = package_json.get("devDependencies").and_then(|d| {
       if d.is_object() {
-        let deps: HashMap<String, String> =
+        let deps: IndexMap<String, String> =
           serde_json::from_value(d.to_owned()).unwrap();
         Some(deps)
       } else {
@@ -193,11 +205,6 @@ impl PackageJson {
       scripts,
     };
 
-    CACHE.with(|cache| {
-      cache
-        .borrow_mut()
-        .insert(package_json.path.clone(), package_json.clone());
-    });
     Ok(package_json)
   }
 

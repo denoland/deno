@@ -31,6 +31,7 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::npm::CliNpmResolver;
+use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
@@ -71,11 +72,11 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
 
     if info_flags.json {
       let mut json_graph = json!(graph);
-      add_npm_packages_to_json(&mut json_graph, npm_resolver);
+      add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref());
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
-      GraphDisplayContext::write(&graph, npm_resolver, &mut output)?;
+      GraphDisplayContext::write(&graph, npm_resolver.as_ref(), &mut output)?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
@@ -97,7 +98,7 @@ fn print_cache_info(
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
   let modules_cache = factory.global_http_cache()?.get_global_cache_location();
-  let npm_cache = factory.npm_cache()?.as_readonly().get_cache_location();
+  let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
@@ -165,8 +166,12 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_resolver: &CliNpmResolver,
+  npm_resolver: &dyn CliNpmResolver,
 ) {
+  let Some(npm_resolver) = npm_resolver.as_managed() else {
+    return; // does not include byonm to deno info's output
+  };
+
   // ideally deno_graph could handle this, but for now we just modify the json here
   let snapshot = npm_resolver.snapshot();
   let json = json.as_object_mut().unwrap();
@@ -339,7 +344,7 @@ struct NpmInfo {
 impl NpmInfo {
   pub fn build<'a>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a ManagedCliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
@@ -365,7 +370,7 @@ impl NpmInfo {
   fn fill_package_info<'a>(
     &mut self,
     package: &NpmResolutionPackage,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a ManagedCliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
     self.packages.insert(package.id.clone(), package.clone());
@@ -399,11 +404,16 @@ struct GraphDisplayContext<'a> {
 impl<'a> GraphDisplayContext<'a> {
   pub fn write<TWrite: Write>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a dyn CliNpmResolver,
     writer: &mut TWrite,
   ) -> fmt::Result {
-    let npm_snapshot = npm_resolver.snapshot();
-    let npm_info = NpmInfo::build(graph, npm_resolver, &npm_snapshot);
+    let npm_info = match npm_resolver.as_managed() {
+      Some(npm_resolver) => {
+        let npm_snapshot = npm_resolver.snapshot();
+        NpmInfo::build(graph, npm_resolver, &npm_snapshot)
+      }
+      None => NpmInfo::default(),
+    };
     Self {
       graph,
       npm_info,
