@@ -244,7 +244,6 @@ async fn bench_specifiers(
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
-    let specifier = specifier;
     let sender = sender.clone();
     let options = option_for_handles.clone();
     spawn_blocking(move || {
