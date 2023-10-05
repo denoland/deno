@@ -956,7 +956,7 @@ pub fn op_node_scrypt_sync(
   #[smi] block_size: u32,
   #[smi] parallelization: u32,
   #[smi] maxmem: u32,
-  #[buffer] output_buffer: &mut [u8],
+  #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), AnyError> {
   scrypt(
     password,
