@@ -2,9 +2,7 @@
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
@@ -41,36 +39,42 @@ mod digest;
 mod primes;
 pub mod x509;
 
-#[op]
-pub fn op_node_check_prime(num: serde_v8::BigInt, checks: usize) -> bool {
-  primes::is_probably_prime(&num, checks)
+#[op2(fast)]
+pub fn op_node_check_prime(
+  #[bigint] num: i64,
+  #[number] checks: usize,
+) -> bool {
+  primes::is_probably_prime(&BigInt::from(num), checks)
 }
 
-// TODO(bartlomieju): blocked on `op2` crashing on `ArrayBufferView`
-#[op]
+#[op2(fast)]
 pub fn op_node_check_prime_bytes(
-  bytes: &[u8],
-  checks: usize,
+  #[anybuffer] bytes: &[u8],
+  #[number] checks: usize,
 ) -> Result<bool, AnyError> {
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   Ok(primes::is_probably_prime(&candidate, checks))
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_node_check_prime_async(
-  num: serde_v8::BigInt,
-  checks: usize,
+  #[bigint] num: i64,
+  #[number] checks: usize,
 ) -> Result<bool, AnyError> {
   // TODO(@littledivy): use rayon for CPU-bound tasks
-  Ok(spawn_blocking(move || primes::is_probably_prime(&num, checks)).await?)
+  Ok(
+    spawn_blocking(move || {
+      primes::is_probably_prime(&BigInt::from(num), checks)
+    })
+    .await?,
+  )
 }
 
-// TODO(bartlomieju): blocked on `op2` supporting returning a future
-#[op]
+#[op2(async)]
 pub fn op_node_check_prime_bytes_async(
-  bytes: &[u8],
-  checks: usize,
-) -> Result<impl Future<Output = Result<bool, AnyError>> + 'static, AnyError> {
+  #[anybuffer] bytes: &[u8],
+  #[number] checks: usize,
+) -> Result<impl Future<Output = Result<bool, AnyError>>, AnyError> {
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   // TODO(@littledivy): use rayon for CPU-bound tasks
   Ok(async move {
@@ -942,16 +946,17 @@ fn scrypt(
   }
 }
 
-#[op]
+#[allow(clippy::too_many_arguments)]
+#[op2]
 pub fn op_node_scrypt_sync(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  maxmem: u32,
-  output_buffer: &mut [u8],
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] keylen: u32,
+  #[smi] cost: u32,
+  #[smi] block_size: u32,
+  #[smi] parallelization: u32,
+  #[smi] maxmem: u32,
+  #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), AnyError> {
   scrypt(
     password,
@@ -965,15 +970,16 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_node_scrypt_async(
-  password: StringOrBuffer,
-  salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  maxmem: u32,
+  #[serde] password: StringOrBuffer,
+  #[serde] salt: StringOrBuffer,
+  #[smi] keylen: u32,
+  #[smi] cost: u32,
+  #[smi] block_size: u32,
+  #[smi] parallelization: u32,
+  #[smi] maxmem: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
