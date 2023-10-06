@@ -171,16 +171,16 @@ impl LspUrlMap {
             extension
           )
         } else {
-          let mut path =
-            specifier[..Position::BeforePath].replacen("://", "/", 1);
-          let parts: Vec<String> = specifier[Position::BeforePath..]
-            .split('/')
-            .map(|p| {
-              percent_encoding::utf8_percent_encode(p, COMPONENT).to_string()
-            })
-            .collect();
-          path.push_str(&parts.join("/"));
-          format!("deno:/{path}")
+          let mut str = String::with_capacity(specifier.as_str().len() + 6);
+          str.push_str("deno:/");
+          str.push_str(specifier.scheme());
+          for p in specifier[Position::BeforeHost..].split('/') {
+            str.push('/');
+            str.push_str(
+              &percent_encoding::utf8_percent_encode(p, COMPONENT).to_string(),
+            );
+          }
+          str
         };
         let url = LspClientUrl(Url::parse(&specifier_str)?);
         inner.put(specifier.clone(), url.clone());
@@ -285,6 +285,22 @@ mod tests {
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
     let expected_url = Url::parse("deno:/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37/data_url.ts").unwrap();
+    assert_eq!(actual_url.as_url(), &expected_url);
+
+    let actual_specifier =
+      map.normalize_url(actual_url.as_url(), LspUrlKind::File);
+    assert_eq!(actual_specifier, fixture);
+  }
+
+  #[test]
+  fn test_lsp_url_map_host_with_port() {
+    let map = LspUrlMap::default();
+    let fixture = resolve_url("http://localhost:8000/mod.ts").unwrap();
+    let actual_url = map
+      .normalize_specifier(&fixture)
+      .expect("could not handle specifier");
+    let expected_url =
+      Url::parse("deno:/http/localhost%3A8000/mod.ts").unwrap();
     assert_eq!(actual_url.as_url(), &expected_url);
 
     let actual_specifier =
