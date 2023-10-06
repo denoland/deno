@@ -8,7 +8,8 @@ const core = globalThis.Deno.core;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { Server, Socket, TCP } from "node:net";
+import { connect as netConnect, Server, Socket, TCP } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 import { TypedArray } from "ext:deno_node/internal/util/types.ts";
 import {
   kHandle,
@@ -37,6 +38,7 @@ import {
   ERR_HTTP2_STREAM_ERROR,
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
+  ERR_HTTP2_UNSUPPORTED_PROTOCOL,
   ERR_INVALID_HTTP_TOKEN,
   ERR_SOCKET_CLOSED,
 } from "ext:deno_node/internal/errors.ts";
@@ -355,7 +357,8 @@ export class ClientHttp2Session extends Http2Session {
   #refed = true;
 
   constructor(
-    connPromise: Promise<TcpConn> | Promise<TlsConn>,
+    // deno-lint-ignore no-explicit-any
+    socket: any,
     url: string,
     options: Record<string, unknown>,
   ) {
@@ -365,16 +368,27 @@ export class ClientHttp2Session extends Http2Session {
     this[kDenoConnRid] = undefined;
     this[kPollConnPromiseId] = undefined;
 
+    socket.on("error", socketOnError);
+    socket.on("close", socketOnClose);
+    const connPromise = new Promise((resolve) => {
+      const eventName = url.startsWith("https") ? "secureConnect" : "connect";
+      console.log("eventName", eventName, url);
+      socket.once(eventName, () => {
+        const rid = socket[kHandle][kStreamBaseField].rid;
+        resolve(rid);
+      });
+    });
+    socket[kSession] = this;
+
     // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
       debugHttp2(">>> before connect");
       const connRid_ = await connPromise;
-      console.log(">>>> awaited connRid", connRid_, url);
+      // console.log(">>>> awaited connRid", connRid_, url);
       const [clientRid, connRid] = await op_http2_connect(connRid_, url);
       debugHttp2(">>> after connect", clientRid, connRid);
       this[kDenoClientRid] = clientRid;
       this[kDenoConnRid] = connRid;
-      // TODO(bartlomieju): save this promise, so the session can be unrefed
       (async () => {
         try {
           const promise = core.opAsync(
@@ -1527,53 +1541,29 @@ export function connect(
     host = authority.host;
   }
 
-  let conn, nodeConn, url;
+  let url, socket;
 
-  console.log("authority", authority);
-  // TODO(bartlomieju): handle defaults
   if (typeof options.createConnection === "function") {
-    // console.error("Not implemented: http2.connect.options.createConnection");
-    // notImplemented("http2.connect.options.createConnection");
-    nodeConn = options.createConnection(host, options);
     url = `http://${host}${port == 80 ? "" : (":" + port)}`;
+    socket = options.createConnection(host, options);
   } else {
-    // TODO(bartlomieju): using `localhost` as a `host` refuses to connect
-    // when server is listening on `0.0.0.0`
-    console.log(protocol, host, port);
-
-    if (protocol == "http:") {
-      conn = Deno.connect({ port, hostname: "127.0.0.1" });
-      url = `http://${host}${port == 80 ? "" : (":" + port)}`;
-    } else if (protocol == "https:") {
-      conn = Deno.connectTls({ port, hostname: host, alpnProtocols: ["h2"] });
-      url = `https://${host}${port == 443 ? "" : (":" + port)}`;
-    } else {
-      throw new TypeError("Unexpected URL protocol");
+    switch (protocol) {
+      case "http:":
+        url = `http://${host}${port == 80 ? "" : (":" + port)}`;
+        socket = netConnect({ port, host, ...options });
+        break;
+      case "https:":
+        // TODO(bartlomieju): handle `initializeTLSOptions` here
+        url = `https://${host}${port == 443 ? "" : (":" + port)}`;
+        socket = tlsConnect(port, host, {});
+        break;
+      default:
+        throw new ERR_HTTP2_UNSUPPORTED_PROTOCOL(protocol);
     }
   }
 
-  let connPromise;
+  const session = new ClientHttp2Session(socket, url, options);
 
-  if (nodeConn) {
-    nodeConn.on("error", socketOnError);
-    nodeConn.on("close", socketOnClose);
-    connPromise = new Promise((resolve) => {
-      nodeConn.once("connect", () => {
-        const rid = nodeConn[kHandle][kStreamBaseField].rid;
-        resolve(rid);
-      });
-    });
-  } else {
-    connPromise = (async () => {
-      const c = await conn;
-      return c.rid;
-    })();
-  }
-
-  const session = new ClientHttp2Session(connPromise, url, options);
-  if (nodeConn) {
-    nodeConn[kSession] = session;
-  }
   session[kAuthority] = `${options.servername || host}:${port}`;
   session[kProtocol] = protocol;
 
