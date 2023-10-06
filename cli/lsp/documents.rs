@@ -1587,9 +1587,10 @@ fn node_resolve_npm_req_ref(
         .and_then(|package_folder| {
           npm
             .node_resolver
-            .resolve_npm_reference(
+            .resolve_package_subpath_from_deno_module(
               &package_folder,
               npm_req_ref.sub_path(),
+              referrer,
               NodeResolutionMode::Types,
               &PermissionsContainer::allow_all(),
             )
