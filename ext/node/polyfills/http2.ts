@@ -43,8 +43,6 @@ import {
   ERR_SOCKET_CLOSED,
 } from "ext:deno_node/internal/errors.ts";
 import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
-import { TcpConn } from "ext:deno_net/01_net.js";
-import { TlsConn } from "ext:deno_net/02_tls.js";
 
 const {
   op_http2_connect,
