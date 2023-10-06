@@ -586,7 +586,7 @@ fn op_resolve(
 
     let maybe_result = match resolved_dep {
       Some(ResolutionResolved { specifier, .. }) => {
-        resolve_graph_specifier_types(specifier, state)?
+        resolve_graph_specifier_types(specifier, &referrer, state)?
       }
       _ => resolve_non_graph_specifier_types(&specifier, &referrer, state)?,
     };
@@ -629,6 +629,7 @@ fn op_resolve(
 
 fn resolve_graph_specifier_types(
   specifier: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
@@ -663,12 +664,14 @@ fn resolve_graph_specifier_types(
           .as_managed()
           .unwrap() // should never be byonm because it won't create Module::Npm
           .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        let maybe_resolution = npm.node_resolver.resolve_npm_reference(
-          &package_folder,
-          module.nv_reference.sub_path(),
-          NodeResolutionMode::Types,
-          &PermissionsContainer::allow_all(),
-        )?;
+        let maybe_resolution =
+          npm.node_resolver.resolve_package_subpath_from_deno_module(
+            &package_folder,
+            module.nv_reference.sub_path(),
+            referrer,
+            NodeResolutionMode::Types,
+            &PermissionsContainer::allow_all(),
+          )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
         )))
@@ -721,12 +724,14 @@ fn resolve_non_graph_specifier_types(
     let package_folder = npm
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
-    let maybe_resolution = node_resolver.resolve_npm_reference(
-      &package_folder,
-      npm_req_ref.sub_path(),
-      NodeResolutionMode::Types,
-      &PermissionsContainer::allow_all(),
-    )?;
+    let maybe_resolution = node_resolver
+      .resolve_package_subpath_from_deno_module(
+        &package_folder,
+        npm_req_ref.sub_path(),
+        referrer,
+        NodeResolutionMode::Types,
+        &PermissionsContainer::allow_all(),
+      )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,
     )))
