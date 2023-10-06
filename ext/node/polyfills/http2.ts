@@ -86,7 +86,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = true;
+const debugHttp2Enabled = false;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -1237,9 +1237,7 @@ function finishCloseStream(stream, code) {
       core.tryClose(stream[kDenoRid]);
       core.tryClose(stream[kDenoResponse].bodyRid);
       nextTick(() => {
-        nextTick(() => {
-          stream.emit("close");
-        });
+        stream.emit("close");
       });
     });
   }
