@@ -1194,15 +1194,14 @@ pub async fn op_http_close(
 
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
+    // Async spin on the refcount while we wait for everything to drain
+    while Rc::strong_count(&join_handle.refcount.0) > 1 {
+      tokio::time::sleep(Duration::from_millis(10)).await;
+    }
   } else {
     // In a forceful shutdown, we close everything
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
-  }
-
-  // Async spin on the refcount while we wait for everything to drain
-  while Rc::strong_count(&join_handle.refcount.0) > 1 {
-    tokio::time::sleep(Duration::from_millis(10)).await;
   }
 
   let mut join_handle = RcRef::map(&join_handle, |this| &this.join_handle)
