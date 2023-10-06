@@ -47,6 +47,7 @@ pub(crate) use http_trace;
 
 struct HttpServerStateInner {
   pool: Vec<(Rc<HttpRecord>, HeaderMap)>,
+  drain_waker: Option<std::task::Waker>,
 }
 
 pub struct HttpServerState(RefCell<HttpServerStateInner>);
@@ -55,7 +56,31 @@ impl HttpServerState {
   pub fn new() -> Rc<Self> {
     Rc::new(Self(RefCell::new(HttpServerStateInner {
       pool: Vec::new(),
+      drain_waker: None,
     })))
+  }
+
+  pub fn drain<'a>(self: &'a Rc<Self>) -> impl Future<Output = ()> + 'a {
+    struct HttpServerStateDrain<'a>(&'a Rc<HttpServerState>);
+
+    impl<'a> Future for HttpServerStateDrain<'a> {
+      type Output = ();
+
+      fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+      ) -> std::task::Poll<Self::Output> {
+        let server_state = self.0;
+        http_trace!(server_state, "HttpServerState::drain poll");
+        if Rc::strong_count(server_state) <= 1 {
+          return std::task::Poll::Ready(());
+        }
+        server_state.0.borrow_mut().drain_waker = Some(cx.waker().clone());
+        std::task::Poll::Pending
+      }
+    }
+
+    HttpServerStateDrain(self)
   }
 }
 
@@ -203,8 +228,14 @@ impl HttpRecord {
     let inflight = Rc::strong_count(&server_state);
     http_trace!(self, "HttpRecord::recycle inflight={}", inflight);
 
-    // TODO(mmastrac): we never recover the pooled memory here, and we could likely be shuttling
-    // the to-drop objects off to another thread.
+    // Server is shutting down so wake the drain future.
+    if let Some(waker) = server_state_mut.drain_waker.take() {
+      drop(server_state_mut);
+      drop(server_state);
+      http_trace!(self, "HttpRecord::recycle wake");
+      waker.wake();
+      return;
+    }
 
     // Keep a buffer of allocations on hand to be reused by incoming requests.
     // Estimated target size is 16 + 1/8 the number of inflight requests.

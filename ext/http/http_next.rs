@@ -68,7 +68,6 @@ use std::io;
 use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
-use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -1194,10 +1193,7 @@ pub async fn op_http_close(
 
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
-    // Async spin on the server_state while we wait for everything to drain
-    while Rc::strong_count(&join_handle.server_state) > 1 {
-      tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    join_handle.server_state.drain().await;
   } else {
     // In a forceful shutdown, we close everything
     join_handle.listen_cancel_handle().cancel();
