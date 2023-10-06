@@ -25,7 +25,7 @@ fn setup() -> Vec<Extension> {
 #[op2(fast)]
 fn op_nop() {}
 
-#[op2]
+#[op2(fast)]
 #[number]
 fn op_pi_json() -> i64 {
   314159
