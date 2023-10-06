@@ -12,6 +12,7 @@ use tempfile::TempDir;
 
 const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");
 const DENO_ICON_64: &[u8] = include_bytes!("./resources/deno-logo-64x64.png");
+const DENO_ICON_SVG: &[u8] = include_bytes!("./resources/deno-logo-svg.svg");
 
 pub fn status() -> Result<(), AnyError> {
   let output = std::process::Command::new("jupyter")
@@ -61,8 +62,9 @@ pub fn install() -> Result<(), AnyError> {
 
   let f = std::fs::File::create(kernel_json_path)?;
   serde_json::to_writer_pretty(f, &json_data)?;
-  install_icon(temp_dir.path(), "icon-32x32.png", DENO_ICON_32)?;
-  install_icon(temp_dir.path(), "icon-64x64.png", DENO_ICON_64)?;
+  install_icon(temp_dir.path(), "logo-32x32.png", DENO_ICON_32)?;
+  install_icon(temp_dir.path(), "logo-64x64.png", DENO_ICON_64)?;
+  install_icon(temp_dir.path(), "logo-svg.svg", DENO_ICON_SVG)?;
 
   let child_result = std::process::Command::new("jupyter")
     .args([
