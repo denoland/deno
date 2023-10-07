@@ -11,9 +11,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 
-use deno_core::op;
+use deno_core::op2;
 
-use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -29,11 +28,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init() -> Extension {
-  Extension::builder("deno_fs_events")
-    .ops(vec![op_fs_events_open::decl(), op_fs_events_poll::decl()])
-    .build()
-}
+deno_core::extension!(
+  deno_fs_events,
+  ops = [op_fs_events_open, op_fs_events_poll],
+);
 
 struct FsEventsResource {
   #[allow(unused)]
@@ -94,10 +92,11 @@ pub struct OpenArgs {
   paths: Vec<String>,
 }
 
-#[op]
+#[op2]
+#[smi]
 fn op_fs_events_open(
   state: &mut OpState,
-  args: OpenArgs,
+  #[serde] args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
@@ -132,10 +131,11 @@ fn op_fs_events_open(
   Ok(rid)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, AnyError> {
   let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;

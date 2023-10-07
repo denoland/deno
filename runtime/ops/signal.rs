@@ -1,11 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -30,15 +29,10 @@ use tokio::signal::windows::CtrlBreak;
 #[cfg(windows)]
 use tokio::signal::windows::CtrlC;
 
-pub fn init() -> Extension {
-  Extension::builder("deno_signal")
-    .ops(vec![
-      op_signal_bind::decl(),
-      op_signal_unbind::decl(),
-      op_signal_poll::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_signal,
+  ops = [op_signal_bind, op_signal_unbind, op_signal_poll],
+);
 
 #[cfg(unix)]
 /// The resource for signal stream.
@@ -116,6 +110,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGQUIT" => Ok(3),
     "SIGILL" => Ok(4),
     "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
     "SIGABRT" => Ok(6),
     "SIGEMT" => Ok(7),
     "SIGFPE" => Ok(8),
@@ -188,6 +183,85 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
   }
 }
 
+#[cfg(target_os = "openbsd")]
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGURG" => Ok(16),
+    "SIGSTOP" => Ok(17),
+    "SIGTSTP" => Ok(18),
+    "SIGCONT" => Ok(19),
+    "SIGCHLD" => Ok(20),
+    "SIGTTIN" => Ok(21),
+    "SIGTTOU" => Ok(22),
+    "SIGIO" => Ok(23),
+    "SIGXCPU" => Ok(24),
+    "SIGXFSZ" => Ok(25),
+    "SIGVTALRM" => Ok(26),
+    "SIGPROF" => Ok(27),
+    "SIGWINCH" => Ok(28),
+    "SIGINFO" => Ok(29),
+    "SIGUSR1" => Ok(30),
+    "SIGUSR2" => Ok(31),
+    "SIGTHR" => Ok(32),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
+}
+
+#[cfg(target_os = "openbsd")]
+pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+  match s {
+    1 => Ok("SIGHUP"),
+    2 => Ok("SIGINT"),
+    3 => Ok("SIGQUIT"),
+    4 => Ok("SIGILL"),
+    5 => Ok("SIGTRAP"),
+    6 => Ok("SIGABRT"),
+    7 => Ok("SIGEMT"),
+    8 => Ok("SIGFPE"),
+    9 => Ok("SIGKILL"),
+    10 => Ok("SIGBUS"),
+    11 => Ok("SIGSEGV"),
+    12 => Ok("SIGSYS"),
+    13 => Ok("SIGPIPE"),
+    14 => Ok("SIGALRM"),
+    15 => Ok("SIGTERM"),
+    16 => Ok("SIGURG"),
+    17 => Ok("SIGSTOP"),
+    18 => Ok("SIGTSTP"),
+    19 => Ok("SIGCONT"),
+    20 => Ok("SIGCHLD"),
+    21 => Ok("SIGTTIN"),
+    22 => Ok("SIGTTOU"),
+    23 => Ok("SIGIO"),
+    24 => Ok("SIGXCPU"),
+    25 => Ok("SIGXFSZ"),
+    26 => Ok("SIGVTALRM"),
+    27 => Ok("SIGPROF"),
+    28 => Ok("SIGWINCH"),
+    29 => Ok("SIGINFO"),
+    30 => Ok("SIGUSR1"),
+    31 => Ok("SIGUSR2"),
+    32 => Ok("SIGTHR"),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
@@ -196,6 +270,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGQUIT" => Ok(3),
     "SIGILL" => Ok(4),
     "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
     "SIGABRT" => Ok(6),
     "SIGBUS" => Ok(7),
     "SIGFPE" => Ok(8),
@@ -272,6 +347,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGQUIT" => Ok(3),
     "SIGILL" => Ok(4),
     "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
     "SIGABRT" => Ok(6),
     "SIGEMT" => Ok(7),
     "SIGFPE" => Ok(8),
@@ -460,10 +536,11 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
 }
 
 #[cfg(unix)]
-#[op]
+#[op2(fast)]
+#[smi]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  #[string] sig: &str,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
@@ -480,10 +557,11 @@ fn op_signal_bind(
 }
 
 #[cfg(windows)]
-#[op]
+#[op2(fast)]
+#[smi]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  #[string] sig: &str,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
@@ -504,10 +582,10 @@ fn op_signal_bind(
   Ok(rid)
 }
 
-#[op]
+#[op2(async)]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
   let resource = state
     .borrow_mut()
@@ -523,11 +601,11 @@ async fn op_signal_poll(
   }
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_signal_unbind(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  state.resource_table.close(rid)?;
+  state.resource_table.take_any(rid)?.close();
   Ok(())
 }

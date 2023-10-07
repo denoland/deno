@@ -121,6 +121,7 @@ mod inspector;
 mod install;
 #[path = "js_unit_tests.rs"]
 mod js_unit_tests;
+mod jsr_tests;
 #[path = "lint_tests.rs"]
 mod lint;
 #[path = "lsp_tests.rs"]
@@ -135,6 +136,8 @@ mod npm;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "shared_library_tests.rs"]
+mod shared_library_tests;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]

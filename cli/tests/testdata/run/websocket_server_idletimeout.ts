@@ -1,5 +1,5 @@
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
+import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 const errorDeferred = deferred();
 const closeDeferred = deferred();

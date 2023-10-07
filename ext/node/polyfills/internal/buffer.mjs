@@ -2,10 +2,16 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 
-import { TextDecoder, TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { codes } from "internal:deno_node/internal/error_codes.ts";
-import { encodings } from "internal:deno_node/internal_binding/string_decoder.ts";
-import { indexOfBuffer, indexOfNumber } from "internal:deno_node/internal_binding/buffer.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
+import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
+import {
+  indexOfBuffer,
+  indexOfNumber,
+} from "ext:deno_node/internal_binding/buffer.ts";
 import {
   asciiToBytes,
   base64ToBytes,
@@ -14,16 +20,24 @@ import {
   bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
-} from "internal:deno_node/internal_binding/_utils.ts";
-import { isAnyArrayBuffer, isArrayBufferView } from "internal:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "internal:deno_node/internal/util.mjs";
-import { validateBuffer } from "internal:deno_node/internal/validators.mjs";
-import { isUint8Array } from "internal:deno_node/internal/util/types.ts";
-import { forgivingBase64Encode, forgivingBase64UrlEncode } from "internal:deno_web/00_infra.js";
-import { atob, btoa } from "internal:deno_web/05_base64.js";
-import { Blob } from "internal:deno_web/09_file.js";
+} from "ext:deno_node/internal_binding/_utils.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import {
+  forgivingBase64Encode,
+  forgivingBase64UrlEncode,
+} from "ext:deno_web/00_infra.js";
+import { atob, btoa } from "ext:deno_web/05_base64.js";
+import { Blob } from "ext:deno_web/09_file.js";
 
-export { atob, btoa, Blob };
+const { core } = globalThis.__bootstrap;
+
+export { atob, Blob, btoa };
 
 const utf8Encoder = new TextEncoder();
 
@@ -681,7 +695,7 @@ Buffer.prototype.base64urlWrite = function base64urlWrite(
 
 Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
   return blitBuffer(
-    hexToBytes(string, this.length - offset),
+    hexToBytes(string),
     this,
     offset,
     length,
@@ -739,6 +753,9 @@ Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
 };
 
 Buffer.prototype.write = function write(string, offset, length, encoding) {
+  if (typeof string !== "string") {
+    throw new codes.ERR_INVALID_ARG_TYPE("argument", "string");
+  }
   // Buffer#write(string);
   if (offset === undefined) {
     return this.utf8Write(string, 0, this.length);
@@ -860,31 +877,7 @@ function _hexSlice(buf, start, end) {
 }
 
 Buffer.prototype.slice = function slice(start, end) {
-  const len = this.length;
-  start = ~~start;
-  end = end === void 0 ? len : ~~end;
-  if (start < 0) {
-    start += len;
-    if (start < 0) {
-      start = 0;
-    }
-  } else if (start > len) {
-    start = len;
-  }
-  if (end < 0) {
-    end += len;
-    if (end < 0) {
-      end = 0;
-    }
-  } else if (end > len) {
-    end = len;
-  }
-  if (end < start) {
-    end = start;
-  }
-  const newBuf = this.subarray(start, end);
-  Object.setPrototypeOf(newBuf, Buffer.prototype);
-  return newBuf;
+  return this.subarray(start, end);
 };
 
 Buffer.prototype.readUintLE = Buffer.prototype.readUIntLE = function readUIntLE(
@@ -1768,16 +1761,27 @@ function utf8ToBytes(string, units) {
   return bytes;
 }
 
-function blitBuffer(src, dst, offset, byteLength) {
-  let i;
-  const length = byteLength === undefined ? src.length : byteLength;
-  for (i = 0; i < length; ++i) {
-    if (i + offset >= dst.length || i >= src.length) {
-      break;
-    }
-    dst[i + offset] = src[i];
+function blitBuffer(src, dst, offset, byteLength = Infinity) {
+  const srcLength = src.length;
+  // Establish the number of bytes to be written
+  const bytesToWrite = Math.min(
+    // If byte length is defined in the call, then it sets an upper bound,
+    // otherwise it is Infinity and is never chosen.
+    byteLength,
+    // The length of the source sets an upper bound being the source of data.
+    srcLength,
+    // The length of the destination minus any offset into it sets an upper bound.
+    dst.length - offset,
+  );
+  if (bytesToWrite < srcLength) {
+    // Resize the source buffer to the number of bytes we're about to write.
+    // This both makes sure that we're actually only writing what we're told to
+    // write but also prevents `Uint8Array#set` from throwing an error if the
+    // source is longer than the target.
+    src = src.subarray(0, bytesToWrite);
   }
-  return i;
+  dst.set(src, offset);
+  return bytesToWrite;
 }
 
 function isInstance(obj, type) {
@@ -2124,7 +2128,7 @@ export function readInt40BE(buf, offset = 0) {
 }
 
 export function byteLengthUtf8(str) {
-  return utf8Encoder.encode(str).length;
+  return core.byteLength(str);
 }
 
 function base64ByteLength(str, bytes) {

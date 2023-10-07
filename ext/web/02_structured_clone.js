@@ -7,7 +7,7 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 const core = globalThis.Deno.core;
-import DOMException from "internal:deno_web/01_dom_exception.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
@@ -20,12 +20,12 @@ const {
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
   ObjectPrototypeIsPrototypeOf,
+  SafeWeakMap,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypeErrorPrototype,
-  WeakMap,
   WeakMapPrototypeSet,
   Int8Array,
   Int16Array,
@@ -40,7 +40,7 @@ const {
   Float64Array,
 } = primordials;
 
-const objectCloneMemo = new WeakMap();
+const objectCloneMemo = new SafeWeakMap();
 
 function cloneArrayBuffer(
   srcBuffer,

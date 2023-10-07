@@ -10,9 +10,8 @@ pub const TASK_REQUEST: &str = "deno/task";
 pub const RELOAD_IMPORT_REGISTRIES_REQUEST: &str =
   "deno/reloadImportRegistries";
 pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
-
-// While lsp_types supports inlay hints currently, tower_lsp does not.
-pub const INLAY_HINT: &str = "textDocument/inlayHint";
+pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
+  "deno/internalLatestDiagnosticBatchIndex";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,4 +42,20 @@ impl lsp::notification::Notification for RegistryStateNotification {
 #[serde(rename_all = "camelCase")]
 pub struct VirtualTextDocumentParams {
   pub text_document: lsp::TextDocumentIdentifier,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DiagnosticBatchNotificationParams {
+  pub batch_index: usize,
+  pub messages_len: usize,
+}
+
+/// This notification is only sent for testing purposes
+/// in order to know what the latest diagnostics are.
+pub enum DiagnosticBatchNotification {}
+
+impl lsp::notification::Notification for DiagnosticBatchNotification {
+  type Params = DiagnosticBatchNotificationParams;
+
+  const METHOD: &'static str = "deno/internalTestDiagnosticBatch";
 }

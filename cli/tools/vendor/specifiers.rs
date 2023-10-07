@@ -65,7 +65,7 @@ pub fn make_url_relative(
 }
 
 pub fn is_remote_specifier(specifier: &ModuleSpecifier) -> bool {
-  specifier.scheme().to_lowercase().starts_with("http")
+  matches!(specifier.scheme().to_lowercase().as_str(), "http" | "https")
 }
 
 pub fn is_remote_specifier_text(text: &str) -> bool {

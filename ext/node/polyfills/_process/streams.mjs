@@ -1,21 +1,25 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { Buffer } from "internal:deno_node/buffer.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "node:buffer";
 import {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "internal:deno_node/internal/readline/callbacks.mjs";
-import { Duplex, Readable, Writable } from "internal:deno_node/stream.ts";
-import { isWindows } from "internal:deno_node/_util/os.ts";
-import { fs as fsConstants } from "internal:deno_node/internal_binding/constants.ts";
-import * as io from "internal:deno_io/12_io.js";
+} from "ext:deno_node/internal/readline/callbacks.mjs";
+import { Duplex, Readable, Writable } from "node:stream";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
+import * as io from "ext:deno_io/12_io.js";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name) {
   const stream = new Writable({
+    emitClose: false,
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
@@ -216,7 +220,7 @@ export const initStdin = () => {
     enumerable: true,
     configurable: true,
     get() {
-      return Deno.isatty?.(Deno.stdin.rid);
+      return Deno.isatty?.(io.stdin.rid);
     },
   });
   stdin._isRawMode = false;
@@ -235,4 +239,3 @@ export const initStdin = () => {
 
   return stdin;
 };
-

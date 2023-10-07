@@ -1,0 +1,11 @@
+{
+  "test": {
+    "include": [
+      "glob/data/test1.?s",
+      "glob/nested/foo/*.ts",
+      "glob/nested/fizz/*.ts",
+      "glob/pages/[id].ts"
+    ],
+    "exclude": ["glob/nested/**/*bazz.ts"]
+  }
+}

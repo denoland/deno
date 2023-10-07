@@ -25,7 +25,10 @@
 // - https://github.com/nodejs/node/blob/master/src/util.cc
 // - https://github.com/nodejs/node/blob/master/src/util.h
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export function guessHandleType(_fd: number): string {
   notImplemented("util.guessHandleType");
@@ -82,7 +85,6 @@ export function isArrayIndex(value: unknown): value is number | string {
 }
 
 export function getOwnNonIndexProperties(
-  // deno-lint-ignore ban-types
   obj: object,
   filter: number,
 ): (string | symbol)[] {

@@ -11,7 +11,7 @@ Deno.test("capturing", async (t) => {
 
 Deno.test("top level missing await", (t) => {
   t.step("step", () => {
-    return new Promise((resolve) => setTimeout(resolve, 10));
+    return new Promise(() => {});
   });
 });
 

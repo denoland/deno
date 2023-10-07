@@ -43,6 +43,9 @@
 
 // Adapted from https://github.com/mathiasbynens/punycode.js
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // TODO(cmorten): migrate punycode logic to "icu" internal binding and/or "url"
 // internal module so there can be re-use within the "url" module etc.
 

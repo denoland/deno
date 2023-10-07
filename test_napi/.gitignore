@@ -2,3 +2,6 @@ package-lock.json
 
 # Test generated artifacts
 .swc
+*.dylib
+*.so
+*.dll

@@ -20,12 +20,13 @@ const {
   Symbol,
   SymbolFor,
 } = primordials;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _name = Symbol("name");
 const _message = Symbol("message");
 const _code = Symbol("code");
+const _error = Symbol("error");
 
 // Defined in WebIDL 4.3.
 // https://webidl.spec.whatwg.org/#idl-DOMException
@@ -94,14 +95,16 @@ class DOMException {
 
   // https://webidl.spec.whatwg.org/#dom-domexception-domexception
   constructor(message = "", name = "Error") {
-    message = webidl.converters.DOMString(message, {
-      prefix: "Failed to construct 'DOMException'",
-      context: "Argument 1",
-    });
-    name = webidl.converters.DOMString(name, {
-      prefix: "Failed to construct 'DOMException'",
-      context: "Argument 2",
-    });
+    message = webidl.converters.DOMString(
+      message,
+      "Failed to construct 'DOMException'",
+      "Argument 1",
+    );
+    name = webidl.converters.DOMString(
+      name,
+      "Failed to construct 'DOMException'",
+      "Argument 2",
+    );
     const code = nameToCodeMapping[name] ?? 0;
 
     this[_message] = message;
@@ -109,21 +112,8 @@ class DOMException {
     this[_code] = code;
     this[webidl.brand] = webidl.brand;
 
-    const error = new Error(message);
-    error.name = "DOMException";
-    ObjectDefineProperty(this, "stack", {
-      value: error.stack,
-      writable: true,
-      configurable: true,
-    });
-
-    // `DOMException` isn't a native error, so `Error.prepareStackTrace()` is
-    // not called when accessing `.stack`, meaning our structured stack trace
-    // hack doesn't apply. This patches it in.
-    ObjectDefineProperty(this, "__callSiteEvals", {
-      value: ArrayPrototypeSlice(error.__callSiteEvals, 1),
-      configurable: true,
-    });
+    this[_error] = new Error(message);
+    this[_error].name = "DOMException";
   }
 
   get message() {
@@ -157,6 +147,26 @@ class DOMException {
     }
   }
 }
+
+ObjectDefineProperty(DOMException.prototype, "stack", {
+  get() {
+    return this[_error].stack;
+  },
+  set(value) {
+    this[_error].stack = value;
+  },
+  configurable: true,
+});
+
+// `DOMException` isn't a native error, so `Error.prepareStackTrace()` is
+// not called when accessing `.stack`, meaning our structured stack trace
+// hack doesn't apply. This patches it in.
+ObjectDefineProperty(DOMException.prototype, "__callSiteEvals", {
+  get() {
+    return ArrayPrototypeSlice(this[_error].__callSiteEvals, 1);
+  },
+  configurable: true,
+});
 
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 

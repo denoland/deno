@@ -4,6 +4,7 @@
 // These tests are intended to only test integration.
 
 use test_util::env_vars_for_npm_tests;
+use test_util::TestContext;
 
 itest!(task_no_args {
   args: "task -q --config task/deno_json/deno.json",
@@ -53,9 +54,12 @@ itest!(task_non_existent {
 #[test]
 fn task_emoji() {
   // this bug only appears when using a pty/tty
-  let args = "task --config task/deno_json/deno.json echo_emoji";
-  use test_util::PtyData::*;
-  test_util::test_pty2(args, vec![Output("Task echo_emoji echo 🔥\r\n🔥")]);
+  TestContext::default()
+    .new_command()
+    .args_vec(["task", "--config", "task/deno_json/deno.json", "echo_emoji"])
+    .with_pty(|mut console| {
+      console.expect("Task echo_emoji echo 🔥\r\n🔥");
+    });
 }
 
 itest!(task_boolean_logic {
@@ -228,4 +232,58 @@ itest!(task_npx_on_own {
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
   http_server: true,
+});
+
+itest!(task_pre_post {
+  args: "task test",
+  cwd: Some("task/package_json_pre_post/"),
+  output: "task/package_json_pre_post/bin.out",
+  copy_temp_dir: Some("task/package_json_pre_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_pre {
+  args: "task test",
+  cwd: Some("task/package_json_pre/"),
+  output: "task/package_json_pre/bin.out",
+  copy_temp_dir: Some("task/package_json_pre/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_post {
+  args: "task test",
+  cwd: Some("task/package_json_post/"),
+  output: "task/package_json_post/bin.out",
+  copy_temp_dir: Some("task/package_json_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_post_only {
+  args: "task test",
+  cwd: Some("task/package_json_post_only/"),
+  output: "task/package_json_post_only/bin.out",
+  copy_temp_dir: Some("task/package_json_post_only/"),
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_pre_only {
+  args: "task test",
+  cwd: Some("task/package_json_pre_only/"),
+  output: "task/package_json_pre_only/bin.out",
+  copy_temp_dir: Some("task/package_json_pre_only/"),
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_deno_no_pre_post {
+  args: "task test",
+  cwd: Some("task/deno_json_pre_post/"),
+  output: "task/deno_json_pre_post/bin.out",
+  copy_temp_dir: Some("task/deno_json_pre_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });

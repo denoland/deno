@@ -7,3 +7,5 @@ export function setValue(newValue) {
 export function getValue() {
   return value;
 }
+
+export const url = import.meta.url;

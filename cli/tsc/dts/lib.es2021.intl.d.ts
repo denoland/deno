@@ -14,9 +14,7 @@ and limitations under the License.
 ***************************************************************************** */
 
 
-
 /// <reference no-default-lib="true"/>
-
 
 declare namespace Intl {
 
@@ -85,6 +83,12 @@ declare namespace Intl {
         style?: ListFormatStyle | undefined;
     }
 
+    interface ResolvedListFormatOptions {
+        locale: string;
+        style: ListFormatStyle;
+        type: ListFormatType;
+    }
+
     interface ListFormat {
         /**
          * Returns a string with a language-specific representation of the list.
@@ -111,6 +115,15 @@ declare namespace Intl {
          * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/formatToParts).
          */
         formatToParts(list: Iterable<string>): { type: "element" | "literal", value: string; }[];
+
+        /**
+         * Returns a new object with properties reflecting the locale and style
+         * formatting options computed during the construction of the current
+         * `Intl.ListFormat` object.
+         *
+         * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/resolvedOptions).
+         */
+        resolvedOptions(): ResolvedListFormatOptions;
     }
 
     const ListFormat: {

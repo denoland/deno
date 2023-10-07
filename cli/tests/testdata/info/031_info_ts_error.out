@@ -1,4 +1,3 @@
-[WILDCARD]
 local: [WILDCARD]031_info_ts_error.ts
 type: TypeScript
 dependencies: 0 unique

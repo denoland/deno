@@ -1,34 +1,50 @@
 Node esm importing node cjs
 ===========================
-{ default: [Function], named: [Function], MyClass: [Class: MyClass] }
-{ default: [Function], named: [Function] }
-Module {
-  MyClass: [Class: MyClass],
-  __esModule: true,
-  default: { default: [Function], named: [Function], MyClass: [Class: MyClass] },
-  named: [Function]
+{
+  default: [Function (anonymous)],
+  named: [Function (anonymous)],
+  MyClass: [class MyClass]
 }
-Module {
+{ default: [Function (anonymous)], named: [Function (anonymous)] }
+[Module: null prototype] {
+  MyClass: [class MyClass],
   __esModule: true,
-  default: { default: [Function], named: [Function] },
-  named: [Function]
+  default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  named: [Function (anonymous)]
+}
+[Module: null prototype] {
+  __esModule: true,
+  default: { default: [Function (anonymous)], named: [Function (anonymous)] },
+  named: [Function (anonymous)]
 }
 ===========================
 static method
 Deno esm importing node cjs
 ===========================
-{ default: [Function], named: [Function], MyClass: [Class: MyClass] }
-Module {
-  MyClass: [Class: MyClass],
+{
+  default: [Function (anonymous)],
+  named: [Function (anonymous)],
+  MyClass: [class MyClass]
+}
+[Module: null prototype] {
+  MyClass: [class MyClass],
   __esModule: true,
-  default: { default: [Function], named: [Function], MyClass: [Class: MyClass] },
-  named: [Function]
+  default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  named: [Function (anonymous)]
 }
 ===========================
 Deno esm importing node esm
 ===========================
 [Function: default]
-Module { default: [Function: default] }
+[Module: null prototype] { default: [Function: default] }
 ===========================
 1
 5

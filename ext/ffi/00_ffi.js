@@ -4,13 +4,20 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayBufferIsView,
+  ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
+  DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Number,
   NumberIsSafeInteger,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
   Int32Array,
@@ -24,16 +31,32 @@ const {
   MathCeil,
   SafeMap,
   SafeArrayIterator,
+  SafeWeakMap,
   SymbolFor,
-  WeakMap,
 } = primordials;
-import { pathFromURL } from "internal:deno_web/00_infra.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
+/**
+ * @param {BufferSource} source
+ * @returns {number}
+ */
+function getBufferSourceByteLength(source) {
+  if (ArrayBufferIsView(source)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(source) !== undefined) {
+      // TypedArray
+      return TypedArrayPrototypeGetByteLength(source);
+    } else {
+      // DataView
+      return DataViewPrototypeGetByteLength(source);
+    }
+  }
+  return ArrayBufferPrototypeGetByteLength(source);
+}
 const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 const U32_BUFFER = new Uint32Array(2);
-const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
-const I64_BUFFER = new BigInt64Array(U32_BUFFER.buffer);
+const U64_BUFFER = new BigUint64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
+const I64_BUFFER = new BigInt64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
 class UnsafePointerView {
   pointer;
 
@@ -164,7 +187,7 @@ class UnsafePointerView {
       this.pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 
@@ -173,14 +196,16 @@ class UnsafePointerView {
       pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 }
 
 const OUT_BUFFER = new Uint32Array(2);
-const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
-const POINTER_TO_BUFFER_WEAK_MAP = new WeakMap();
+const OUT_BUFFER_64 = new BigInt64Array(
+  TypedArrayPrototypeGetBuffer(OUT_BUFFER),
+);
+const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
   static create(value) {
     return ops.op_ffi_ptr_create(value);
@@ -197,7 +222,24 @@ class UnsafePointer {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       return value.pointer;
     }
-    const pointer = ops.op_ffi_ptr_of(value);
+    let pointer;
+    if (ArrayBufferIsView(value)) {
+      if (value.length === 0) {
+        pointer = ops.op_ffi_ptr_of_exact(value);
+      } else {
+        pointer = ops.op_ffi_ptr_of(value);
+      }
+    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
+      if (value.length === 0) {
+        pointer = ops.op_ffi_ptr_of_exact(new Uint8Array(value));
+      } else {
+        pointer = ops.op_ffi_ptr_of(new Uint8Array(value));
+      }
+    } else {
+      throw new TypeError(
+        "Expected ArrayBuffer, ArrayBufferView or UnsafeCallbackPrototype",
+      );
+    }
     if (pointer) {
       POINTER_TO_BUFFER_WEAK_MAP.set(pointer, value);
     }
@@ -313,8 +355,9 @@ function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
       size += fieldSize;
     }
     size = MathCeil(size / alignment) * alignment;
-    cache.set(type, size);
-    return [size, alignment];
+    const result = [size, alignment];
+    cache.set(type, result);
+    return result;
   }
 
   switch (type) {
@@ -401,7 +444,7 @@ class UnsafeCallback {
 
   close() {
     this.#refcount = 0;
-    core.close(this.#rid);
+    ops.op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
@@ -414,7 +457,13 @@ class DynamicLibrary {
   constructor(path, symbols) {
     ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
-      if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+      if (!ObjectHasOwn(symbols, symbol)) {
+        continue;
+      }
+
+      // Symbol was marked as optional, and not found.
+      // In that case, we set its value to null in Rust-side.
+      if (symbols[symbol] === null) {
         continue;
       }
 
@@ -431,6 +480,7 @@ class DynamicLibrary {
           this.#rid,
           name,
           type,
+          symbols[symbol].optional,
         );
         ObjectDefineProperty(
           this.symbols,
@@ -491,8 +541,8 @@ class DynamicLibrary {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const vi = new Int32Array(2);
-        const vui = new Uint32Array(vi.buffer);
-        const b = new BigInt64Array(vi.buffer);
+        const vui = new Uint32Array(TypedArrayPrototypeGetBuffer(vi));
+        const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
 
         const params = ArrayPrototypeJoin(
           ArrayPrototypeMap(parameters, (_, index) => `p${index}`),

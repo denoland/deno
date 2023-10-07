@@ -26,7 +26,7 @@ macro_rules! bench_or_profile {
       )+
 
       if $crate::is_profiling() {
-        // Run profling
+        // Run profiling
         $crate::run_profiles(&test_opts, benches);
       } else {
         // Run benches

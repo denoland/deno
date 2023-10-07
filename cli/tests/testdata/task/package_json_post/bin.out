@@ -1,0 +1,5 @@
+Warning Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in an upcoming release.
+Task test echo 'test'
+test
+Task posttest echo 'posttest'
+posttest

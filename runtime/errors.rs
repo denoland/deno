@@ -61,7 +61,16 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
     WouldBlock => "WouldBlock",
     // Non-exhaustive enum - might add new variants
     // in the future
-    _ => "Error",
+    kind => {
+      let kind_str = kind.to_string();
+      match kind_str.as_str() {
+        "FilesystemLoop" => "FilesystemLoop",
+        "IsADirectory" => "IsADirectory",
+        "NetworkUnreachable" => "NetworkUnreachable",
+        "NotADirectory" => "NotADirectory",
+        _ => "Error",
+      }
+    }
   }
 }
 
@@ -146,6 +155,10 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
     nix::Error::ENOTTY => "BadResource",
     nix::Error::EPERM => "PermissionDenied",
     nix::Error::ESRCH => "NotFound",
+    nix::Error::ELOOP => "FilesystemLoop",
+    nix::Error::ENOTDIR => "NotADirectory",
+    nix::Error::ENETUNREACH => "NetworkUnreachable",
+    nix::Error::EISDIR => "IsADirectory",
     nix::Error::UnknownErrno => "Error",
     &nix::Error::ENOTSUP => unreachable!(),
     _ => "Error",
@@ -154,7 +167,6 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
-    .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))

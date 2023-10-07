@@ -1,23 +1,42 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateObject,
-} from "internal:deno_node/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import type { TransformOptions } from "internal:deno_node/_stream.d.ts";
-import { Transform } from "internal:deno_node/_stream.mjs";
-import { KeyObject } from "internal:deno_node/internal/crypto/keys.ts";
-import type { BufferEncoding } from "internal:deno_node/_global.d.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "node:buffer";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { Transform } from "ext:deno_node/_stream.mjs";
+import {
+  getArrayBufferOrView,
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
-} from "internal:deno_node/internal/crypto/types.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
+import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+function isStringOrBuffer(val) {
+  return typeof val === "string" ||
+    isArrayBufferView(val) ||
+    isAnyArrayBuffer(val);
+}
+
+const { ops, encode } = globalThis.__bootstrap.core;
+
+const NO_TAG = new Uint8Array();
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -42,21 +61,13 @@ export interface CipherOCBOptions extends TransformOptions {
 }
 
 export interface Cipher extends ReturnType<typeof Transform> {
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
-  update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
   update(
     data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
+    inputEncoding?: Encoding,
+    outputEncoding?: Encoding,
   ): string;
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
+  final(outputEncoding?: BufferEncoding): string;
 
   setAutoPadding(autoPadding?: boolean): this;
 }
@@ -123,115 +134,257 @@ export interface DecipherOCB extends Decipher {
   ): this;
 }
 
-export class Cipheriv extends Transform implements Cipher {
-  constructor(
-    _cipher: string,
-    _key: CipherKey,
-    _iv: BinaryLike | null,
-    _options?: TransformOptions,
-  ) {
-    super();
+function toU8(input: string | Uint8Array): Uint8Array {
+  return typeof input === "string" ? encode(input) : input;
+}
 
-    notImplemented("crypto.Cipheriv");
+export class Cipheriv extends Transform implements Cipher {
+  /** CipherContext resource id */
+  #context: number;
+
+  /** plaintext data cache */
+  #cache: BlockModeCache;
+
+  #needsBlockCache: boolean;
+
+  #authTag?: Buffer;
+
+  constructor(
+    cipher: string,
+    key: CipherKey,
+    iv: BinaryLike | null,
+    options?: TransformOptions,
+  ) {
+    super({
+      transform(chunk, encoding, cb) {
+        this.push(this.update(chunk, encoding));
+        cb();
+      },
+      final(cb) {
+        this.push(this.final());
+        cb();
+      },
+      ...options,
+    });
+    this.#cache = new BlockModeCache(false);
+    this.#context = ops.op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    this.#needsBlockCache =
+      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
+    if (this.#context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
   }
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
-  final(_outputEncoding?: string): Buffer | string {
-    notImplemented("crypto.Cipheriv.prototype.final");
+  final(encoding: string = getDefaultEncoding()): Buffer | string {
+    const buf = new Buffer(16);
+    const maybeTag = ops.op_node_cipheriv_final(
+      this.#context,
+      this.#cache.cache,
+      buf,
+    );
+    if (maybeTag) {
+      this.#authTag = Buffer.from(maybeTag);
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
   getAuthTag(): Buffer {
-    notImplemented("crypto.Cipheriv.prototype.getAuthTag");
+    return this.#authTag!;
   }
 
   setAAD(
-    _buffer: ArrayBufferView,
+    buffer: ArrayBufferView,
     _options?: {
       plaintextLength: number;
     },
   ): this {
-    notImplemented("crypto.Cipheriv.prototype.setAAD");
+    ops.op_node_cipheriv_set_aad(this.#context, buffer);
+    return this;
   }
 
   setAutoPadding(_autoPadding?: boolean): this {
     notImplemented("crypto.Cipheriv.prototype.setAutoPadding");
+    return this;
   }
 
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
   update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    _data: string | BinaryLike | ArrayBufferView,
-    _inputEncoding?: Encoding,
-    _outputEncoding?: Encoding,
+    data: string | Buffer | ArrayBufferView,
+    inputEncoding?: Encoding,
+    outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
-    notImplemented("crypto.Cipheriv.prototype.update");
+    // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+    let buf = data;
+    if (typeof data === "string" && typeof inputEncoding === "string") {
+      buf = Buffer.from(data, inputEncoding);
+    }
+
+    let output;
+    if (!this.#needsBlockCache) {
+      output = Buffer.allocUnsafe(buf.length);
+      ops.op_node_cipheriv_encrypt(this.#context, buf, output);
+      return outputEncoding === "buffer"
+        ? output
+        : output.toString(outputEncoding);
+    }
+
+    this.#cache.add(buf);
+    const input = this.#cache.get();
+
+    if (input === null) {
+      output = Buffer.alloc(0);
+    } else {
+      output = Buffer.allocUnsafe(input.length);
+      ops.op_node_cipheriv_encrypt(this.#context, input, output);
+    }
+    return outputEncoding === "buffer"
+      ? output
+      : output.toString(outputEncoding);
+  }
+}
+
+/** Caches data and output the chunk of multiple of 16.
+ * Used by CBC, ECB modes of block ciphers */
+class BlockModeCache {
+  cache: Uint8Array;
+  // The last chunk can be padded when decrypting.
+  #lastChunkIsNonZero: boolean;
+
+  constructor(lastChunkIsNotZero = false) {
+    this.cache = new Uint8Array(0);
+    this.#lastChunkIsNonZero = lastChunkIsNotZero;
+  }
+
+  add(data: Uint8Array) {
+    const cache = this.cache;
+    this.cache = new Uint8Array(cache.length + data.length);
+    this.cache.set(cache);
+    this.cache.set(data, cache.length);
+  }
+
+  /** Gets the chunk of the length of largest multiple of 16.
+   * Used for preparing data for encryption/decryption */
+  get(): Uint8Array | null {
+    let len = this.cache.length;
+    if (this.#lastChunkIsNonZero) {
+      // Reduces the available chunk length by 1 to keep the last chunk
+      len -= 1;
+    }
+    if (len < 16) {
+      return null;
+    }
+
+    len = Math.floor(len / 16) * 16;
+    const out = this.cache.subarray(0, len);
+    this.cache = this.cache.subarray(len);
+    return out;
   }
 }
 
 export class Decipheriv extends Transform implements Cipher {
-  constructor(
-    _cipher: string,
-    _key: CipherKey,
-    _iv: BinaryLike | null,
-    _options?: TransformOptions,
-  ) {
-    super();
+  /** DecipherContext resource id */
+  #context: number;
 
-    notImplemented("crypto.Decipheriv");
+  /** ciphertext data cache */
+  #cache: BlockModeCache;
+
+  #needsBlockCache: boolean;
+
+  #authTag?: BinaryLike;
+
+  constructor(
+    cipher: string,
+    key: CipherKey,
+    iv: BinaryLike | null,
+    options?: TransformOptions,
+  ) {
+    super({
+      transform(chunk, encoding, cb) {
+        this.push(this.update(chunk, encoding));
+        cb();
+      },
+      final(cb) {
+        this.push(this.final());
+        cb();
+      },
+      ...options,
+    });
+    this.#cache = new BlockModeCache(true);
+    this.#context = ops.op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
+    this.#needsBlockCache =
+      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
+    if (this.#context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
   }
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
-  final(_outputEncoding?: string): Buffer | string {
-    notImplemented("crypto.Decipheriv.prototype.final");
+  final(encoding: string = getDefaultEncoding()): Buffer | string {
+    let buf = new Buffer(16);
+    ops.op_node_decipheriv_final(
+      this.#context,
+      this.#cache.cache,
+      buf,
+      this.#authTag || NO_TAG,
+    );
+
+    if (!this.#needsBlockCache) {
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+
+    buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
+    return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
   setAAD(
-    _buffer: ArrayBufferView,
+    buffer: ArrayBufferView,
     _options?: {
       plaintextLength: number;
     },
   ): this {
-    notImplemented("crypto.Decipheriv.prototype.setAAD");
+    ops.op_node_decipheriv_set_aad(this.#context, buffer);
+    return this;
   }
 
-  setAuthTag(_buffer: BinaryLike, _encoding?: string): this {
-    notImplemented("crypto.Decipheriv.prototype.setAuthTag");
+  setAuthTag(buffer: BinaryLike, _encoding?: string): this {
+    this.#authTag = buffer;
+    return this;
   }
 
   setAutoPadding(_autoPadding?: boolean): this {
     notImplemented("crypto.Decipheriv.prototype.setAutoPadding");
   }
 
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
   update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    _data: string | BinaryLike | ArrayBufferView,
-    _inputEncoding?: Encoding,
-    _outputEncoding?: Encoding,
+    data: string | Buffer | ArrayBufferView,
+    inputEncoding?: Encoding,
+    outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
-    notImplemented("crypto.Decipheriv.prototype.update");
+    // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+    let buf = data;
+    if (typeof data === "string" && typeof inputEncoding === "string") {
+      buf = Buffer.from(data, inputEncoding);
+    }
+
+    let output;
+    if (!this.#needsBlockCache) {
+      output = Buffer.allocUnsafe(buf.length);
+      ops.op_node_decipheriv_decrypt(this.#context, buf, output);
+      return outputEncoding === "buffer"
+        ? output
+        : output.toString(outputEncoding);
+    }
+
+    this.#cache.add(buf);
+    const input = this.#cache.get();
+    if (input === null) {
+      output = Buffer.alloc(0);
+    } else {
+      output = new Buffer(input.length);
+      ops.op_node_decipheriv_decrypt(this.#context, input, output);
+    }
+    return outputEncoding === "buffer"
+      ? output
+      : output.toString(outputEncoding);
   }
 }
 
@@ -274,24 +427,51 @@ export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
-  return ops.op_node_private_encrypt(privateKey, buffer, padding);
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return ops.op_node_private_encrypt(data, buffer, padding);
 }
 
 export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
-  return ops.op_node_private_decrypt(privateKey, buffer, padding);
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return ops.op_node_private_decrypt(data, buffer, padding);
 }
 
 export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
-  return ops.op_node_public_encrypt(publicKey, buffer, padding);
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return ops.op_node_public_encrypt(data, buffer, padding);
+}
+
+function prepareKey(key) {
+  // TODO(@littledivy): handle these cases
+  // - node KeyObject
+  // - web CryptoKey
+  if (isStringOrBuffer(key)) {
+    return { data: getArrayBufferOrView(key, "key") };
+  } else if (typeof key == "object") {
+    const { key: data, encoding } = key;
+    if (!isStringOrBuffer(data)) {
+      throw new TypeError("Invalid key type");
+    }
+
+    return { data: getArrayBufferOrView(data, "key", encoding) };
+  }
+
+  throw new TypeError("Invalid key type");
 }
 
 export function publicDecrypt() {

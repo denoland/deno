@@ -4,18 +4,20 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   EventTarget,
+  setIsTrusted,
   setTarget,
-} from "internal:deno_web/02_event.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
+} from "ext:deno_web/02_event.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIndexOf,
-  ArrayPrototypeSplice,
   ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  PromisePrototypeThen,
   Symbol,
   Uint8Array,
 } = primordials;
@@ -56,6 +58,7 @@ function dispatch(source, name, data) {
         data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
         origin: "http://127.0.0.1",
       });
+      setIsTrusted(event, true);
       setTarget(event, channel);
       channel.dispatchEvent(event);
     };
@@ -68,7 +71,7 @@ function dispatch(source, name, data) {
 // for that reason: it lets promises make forward progress but can
 // still starve other parts of the event loop.
 function defer(go) {
-  setTimeout(go, 1);
+  PromisePrototypeThen(core.ops.op_void_async_deferred(), () => go());
 }
 
 class BroadcastChannel extends EventTarget {
@@ -83,12 +86,9 @@ class BroadcastChannel extends EventTarget {
     super();
 
     const prefix = "Failed to construct 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    this[_name] = webidl.converters["DOMString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    this[_name] = webidl.converters["DOMString"](name, prefix, "Argument 1");
 
     this[webidl.brand] = webidl.brand;
 
@@ -106,7 +106,7 @@ class BroadcastChannel extends EventTarget {
     webidl.assertBranded(this, BroadcastChannelPrototype);
 
     const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     if (this[_closed]) {
       throw new DOMException("Already closed", "InvalidStateError");

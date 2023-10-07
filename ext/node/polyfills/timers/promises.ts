@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { promisify } from "internal:deno_node/util.ts";
-import timers from "internal:deno_node/timers.ts";
+import { promisify } from "node:util";
+import timers from "node:timers";
 
 export const setTimeout = promisify(timers.setTimeout),
   setImmediate = promisify(timers.setImmediate),

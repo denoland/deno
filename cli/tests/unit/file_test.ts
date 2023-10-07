@@ -99,3 +99,14 @@ Deno.test(function fileUsingNumberFileName() {
 Deno.test(function fileUsingEmptyStringFileName() {
   testSecondArgument("", "");
 });
+
+Deno.test(function inspectFile() {
+  assertEquals(
+    Deno.inspect(new File([], "file-name.txt")),
+    `File { name: "file-name.txt", size: 0, type: "" }`,
+  );
+  assertEquals(
+    Deno.inspect(new File([], "file-name.txt", { type: "text/plain" })),
+    `File { name: "file-name.txt", size: 0, type: "text/plain" }`,
+  );
+});

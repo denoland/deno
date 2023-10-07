@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// This test performs initilization similar to napi-rs.
+// This test performs initialization similar to napi-rs.
 // https://github.com/napi-rs/napi-rs/commit/a5a04a4e545f268769cc78e2bd6c45af4336aac3
 
 use napi_sys as sys;

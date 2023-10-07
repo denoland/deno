@@ -2,22 +2,22 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { URL } from "internal:deno_url/00_url.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
+import { URL } from "ext:deno_url/00_url.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
   ObjectDefineProperties,
+  SafeWeakMap,
   Symbol,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
 
-const locationConstructorKey = Symbol("locationConstuctorKey");
+const locationConstructorKey = Symbol("locationConstructorKey");
 
 // The differences between the definitions of `Location` and `WorkerLocation`
 // are because of the `LegacyUnforgeable` attribute only specified upon
@@ -206,7 +206,7 @@ ObjectDefineProperties(Location.prototype, {
   },
 });
 
-const workerLocationUrls = new WeakMap();
+const workerLocationUrls = new SafeWeakMap();
 
 class WorkerLocation {
   constructor(href = null, key = null) {

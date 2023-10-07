@@ -11,9 +11,11 @@
 
 use deno_ast::Diagnostic;
 use deno_core::error::AnyError;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use import_map::ImportMapError;
+use std::fmt::Write;
 
 fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
   "URIError"
@@ -25,18 +27,18 @@ fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
 
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   match err {
-    ModuleGraphError::LoadingErr(_, _, err) => {
-      get_error_class_name(err.as_ref())
-    }
-    ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
-    ModuleGraphError::ParseErr(_, diagnostic) => {
-      get_diagnostic_class(diagnostic)
-    }
+    ModuleGraphError::ModuleError(err) => match err {
+      ModuleError::LoadingErr(_, _, err) => get_error_class_name(err.as_ref()),
+      ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
+      ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
+      ModuleError::UnsupportedMediaType { .. }
+      | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
+      ModuleError::Missing(_, _)
+      | ModuleError::MissingDynamic(_, _)
+      | ModuleError::UnknownPackage { .. }
+      | ModuleError::UnknownPackageReq { .. } => "NotFound",
+    },
     ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
-    ModuleGraphError::UnsupportedMediaType { .. }
-    | ModuleGraphError::UnsupportedImportAssertionType { .. } => "TypeError",
-    ModuleGraphError::Missing(_, _)
-    | ModuleGraphError::MissingDynamic(_, _) => "NotFound",
   }
 }
 
@@ -69,7 +71,10 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
         log::warn!(
           "Error '{}' contains boxed error of unknown type:{}",
           e,
-          e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
+          e.chain().fold(String::new(), |mut output, e| {
+            let _ = write!(output, "\n  {e:?}");
+            output
+          })
         );
       }
       "Error"

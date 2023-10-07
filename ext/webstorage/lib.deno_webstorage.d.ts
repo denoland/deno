@@ -11,7 +11,7 @@
  *
  * @category Web Storage API
  */
-interface Storage {
+declare interface Storage {
   /**
    * Returns the number of key/value pairs currently present in the list associated with the object.
    */
@@ -43,6 +43,6 @@ interface Storage {
 
 /** @category Web Storage API */
 declare var Storage: {
-  prototype: Storage;
-  new (): Storage;
+  readonly prototype: Storage;
+  new (): never;
 };

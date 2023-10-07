@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export class REPLServer {
   constructor() {
@@ -52,11 +52,13 @@ export const builtinModules = [
   "worker_threads",
   "zlib",
 ];
+export const _builtinLibs = builtinModules;
 export function start() {
   notImplemented("repl.start");
 }
 export default {
   REPLServer,
   builtinModules,
+  _builtinLibs,
   start,
 };

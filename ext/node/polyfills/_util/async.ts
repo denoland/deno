@@ -2,6 +2,9 @@
 // This module is vendored from std/async/deferred.ts and std/async/delay.ts
 // (with some modifications)
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 export interface Deferred<T> extends Promise<T> {
   readonly state: "pending" | "fulfilled" | "rejected";
   resolve(value?: T | PromiseLike<T>): void;

@@ -2,21 +2,17 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
-import { setExitHandler } from "internal:runtime/30_os.js";
-import { Console } from "internal:deno_console/02_console.js";
-import { serializePermissions } from "internal:runtime/10_permissions.js";
-import { assert } from "internal:deno_web/00_infra.js";
+import { setExitHandler } from "ext:runtime/30_os.js";
+import { Console } from "ext:deno_console/01_console.js";
+import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
+import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  ArrayFrom,
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
-  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
-  ArrayPrototypeSort,
-  BigInt,
   DateNow,
   Error,
   FunctionPrototype,
@@ -26,37 +22,56 @@ const {
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
   Set,
+  StringPrototypeReplaceAll,
   SymbolToStringTag,
   TypeError,
 } = primordials;
 
 const opSanitizerDelayResolveQueue = [];
+let hasSetOpSanitizerDelayMacrotask = false;
 
 // Even if every resource is closed by the end of a test, there can be a delay
 // until the pending ops have all finished. This function returns a promise
 // that resolves when it's (probably) fine to run the op sanitizer.
 //
 // This is implemented by adding a macrotask callback that runs after the
-// timer macrotasks, so we can guarantee that a currently running interval
-// will have an associated op. An additional `setTimeout` of 0 is needed
-// before that, though, in order to give time for worker message ops to finish
-// (since timeouts of 0 don't queue tasks in the timer queue immediately).
-function opSanitizerDelay() {
-  return new Promise((resolve) => {
+// all ready async ops resolve, and the timer macrotask. Using just a macrotask
+// callback without delaying is sufficient, because when the macrotask callback
+// runs after async op dispatch, we know that all async ops that can currently
+// return `Poll::Ready` have done so, and have been dispatched to JS.
+//
+// Worker ops are an exception to this, because there is no way for the user to
+// await shutdown of the worker from the thread calling `worker.terminate()`.
+// Because of this, we give extra leeway for worker ops to complete, by waiting
+// for a whole millisecond if there are pending worker ops.
+function opSanitizerDelay(hasPendingWorkerOps) {
+  if (!hasSetOpSanitizerDelayMacrotask) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+    hasSetOpSanitizerDelayMacrotask = true;
+  }
+  const p = new Promise((resolve) => {
+    // Schedule an async op to complete immediately to ensure the macrotask is
+    // run. We rely on the fact that enqueueing the resolver callback during the
+    // timeout callback will mean that the resolver gets called in the same
+    // event loop tick as the timeout callback.
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 0);
+    }, hasPendingWorkerOps ? 1 : 0);
   });
+  return p;
 }
 
 function handleOpSanitizerDelayMacrotask() {
-  ArrayPrototypeShift(opSanitizerDelayResolveQueue)?.();
-  return opSanitizerDelayResolveQueue.length === 0;
+  const resolve = ArrayPrototypeShift(opSanitizerDelayResolveQueue);
+  if (resolve) {
+    resolve();
+    return opSanitizerDelayResolveQueue.length === 0;
+  }
+  return undefined; // we performed no work, so can skip microtasks checkpoint
 }
 
 // An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
@@ -83,8 +98,8 @@ const OP_DETAILS = {
   "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
   "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
   "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
-  "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
-  "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"],
+  "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
+  "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
   "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
   "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
   "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
@@ -124,15 +139,27 @@ const OP_DETAILS = {
   "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
   "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
   "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-  "op_webgpu_buffer_get_map_async": ["map a WebGPU buffer", "awaiting the result of a `GPUBuffer#mapAsync` call"],
-  "op_webgpu_request_adapter": ["request a WebGPU adapter", "awaiting the result of a `navigator.gpu.requestAdapter` call"],
-  "op_webgpu_request_device": ["request a WebGPU device", "awaiting the result of a `GPUAdapter#requestDevice` call"],
-  "op_worker_recv_message":  ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_ctrl": ["receive a message from a web worker", "terminating a `Worker`"],
   "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
   "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
   "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-  "op_ws_send": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_text": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_binary": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_binary_ab": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_ping": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
+
+let opIdHostRecvMessage = -1;
+let opIdHostRecvCtrl = -1;
+let opNames = null;
+
+function populateOpNames() {
+  opNames = core.ops.op_op_names();
+  opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
+  opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
+}
 
 // Wrap test function in additional assertion that makes sure
 // the test case does not leak async "ops" - ie. number of async
@@ -142,46 +169,61 @@ const OP_DETAILS = {
 function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
-    const pre = core.metrics();
+    if (opNames === null) populateOpNames();
+    const res = core.ops.op_test_op_sanitizer_collect(
+      desc.id,
+      false,
+      opIdHostRecvMessage,
+      opIdHostRecvCtrl,
+    );
+    if (res !== 0) {
+      await opSanitizerDelay(res === 2);
+      core.ops.op_test_op_sanitizer_collect(
+        desc.id,
+        true,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
+    }
     const preTraces = new Map(core.opCallTraces);
+    let postTraces;
+    let report = null;
+
     try {
-      await fn(desc);
+      const innerResult = await fn(desc);
+      if (innerResult) return innerResult;
     } finally {
-      // Defer until next event loop turn - that way timeouts and intervals
-      // cleared can actually be removed from resource table, otherwise
-      // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await opSanitizerDelay();
-      await opSanitizerDelay();
+      let res = core.ops.op_test_op_sanitizer_finish(
+        desc.id,
+        false,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
+      if (res === 1 || res === 2) {
+        await opSanitizerDelay(res === 2);
+        res = core.ops.op_test_op_sanitizer_finish(
+          desc.id,
+          true,
+          opIdHostRecvMessage,
+          opIdHostRecvCtrl,
+        );
+      }
+      postTraces = new Map(core.opCallTraces);
+      if (res === 3) {
+        report = core.ops.op_test_op_sanitizer_report(desc.id);
+      }
     }
 
-    if (shouldSkipSanitizers(desc)) return;
-
-    const post = core.metrics();
-    const postTraces = new Map(core.opCallTraces);
-
-    // We're checking diff because one might spawn HTTP server in the background
-    // that will be a pending async op before test starts.
-    const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
-    const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
-
-    if (dispatchedDiff === completedDiff) return;
+    if (report === null) return null;
 
     const details = [];
-    for (const key in post.ops) {
-      if (!ObjectPrototypeHasOwnProperty(post.ops, key)) {
-        continue;
-      }
-      const preOp = pre.ops[key] ??
-        { opsDispatchedAsync: 0, opsCompletedAsync: 0 };
-      const postOp = post.ops[key];
-      const dispatchedDiff = postOp.opsDispatchedAsync -
-        preOp.opsDispatchedAsync;
-      const completedDiff = postOp.opsCompletedAsync -
-        preOp.opsCompletedAsync;
+    for (const opReport of report) {
+      const opName = opNames[opReport.id];
+      const diff = opReport.diff;
 
-      if (dispatchedDiff > completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = dispatchedDiff - completedDiff;
+      if (diff > 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
         } to ${name} ${
@@ -191,8 +233,8 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of postTraces) {
-          if (opName !== key) continue;
+        for (const [id, { opName: traceOpName, stack }] of postTraces) {
+          if (traceOpName !== opName) continue;
           if (MapPrototypeHas(preTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
@@ -204,33 +246,39 @@ function assertOps(fn) {
           message += ArrayPrototypeJoin(traces, "\n\n");
         }
         ArrayPrototypePush(details, message);
-      } else if (dispatchedDiff < completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = completedDiff - dispatchedDiff;
-        ArrayPrototypePush(
-          details,
-          `${count} async operation${count === 1 ? "" : "s"} to ${name} ${
-            count === 1 ? "was" : "were"
-          } started before this test, but ${
-            count === 1 ? "was" : "were"
-          } completed during the test. Async operations should not complete in a test if they were not started in that test.
-            ${hint ? `This is often caused by not ${hint}.` : ""}`,
-        );
+      } else if (diff < 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = -diff;
+        let message = `${count} async operation${
+          count === 1 ? "" : "s"
+        } to ${name} ${
+          count === 1 ? "was" : "were"
+        } started before this test, but ${
+          count === 1 ? "was" : "were"
+        } completed during the test. Async operations should not complete in a test if they were not started in that test.`;
+        if (hint) {
+          message += ` This is often caused by not ${hint}.`;
+        }
+        const traces = [];
+        for (const [id, { opName: traceOpName, stack }] of preTraces) {
+          if (opName !== traceOpName) continue;
+          if (MapPrototypeHas(postTraces, id)) continue;
+          ArrayPrototypePush(traces, stack);
+        }
+        if (traces.length === 1) {
+          message += " The operation was started here:\n";
+          message += traces[0];
+        } else if (traces.length > 1) {
+          message += " The operations were started here:\n";
+          message += ArrayPrototypeJoin(traces, "\n\n");
+        }
+        ArrayPrototypePush(details, message);
+      } else {
+        throw new Error("unreachable");
       }
     }
 
-    let msg = `Test case is leaking async ops.
-
- - ${ArrayPrototypeJoin(details, "\n - ")}`;
-
-    if (!core.isOpCallTracingEnabled()) {
-      msg +=
-        `\n\nTo get more details where ops were leaked, run again with --trace-ops flag.`;
-    } else {
-      msg += "\n";
-    }
-
-    throw assert(false, msg);
+    return { failed: { leakedOps: [details, core.isOpCallTracingEnabled()] } };
   };
 }
 
@@ -242,7 +290,7 @@ function prettyResourceNames(name) {
       return ["A fetch request", "started", "finished"];
     case "fetchRequestBody":
       return ["A fetch request body", "created", "closed"];
-    case "fetchResponseBody":
+    case "fetchResponse":
       return ["A fetch response body", "created", "consumed"];
     case "httpClient":
       return ["An HTTP client", "created", "closed"];
@@ -309,7 +357,7 @@ function resourceCloseHint(name) {
       return "Await the promise returned from `fetch()` or abort the fetch with an abort signal.";
     case "fetchRequestBody":
       return "Terminate the request body `ReadableStream` by closing or erroring it.";
-    case "fetchResponseBody":
+    case "fetchResponse":
       return "Consume or close the response body `ReadableStream`, e.g `await resp.text()` or `await resp.body.cancel()`.";
     case "httpClient":
       return "Close the HTTP client by calling `httpClient.close()`.";
@@ -375,12 +423,8 @@ function assertResources(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function resourceSanitizer(desc) {
     const pre = core.resources();
-    await fn(desc);
-
-    if (shouldSkipSanitizers(desc)) {
-      return;
-    }
-
+    const innerResult = await fn(desc);
+    if (innerResult) return innerResult;
     const post = core.resources();
 
     const allResources = new Set([
@@ -407,14 +451,10 @@ function assertResources(fn) {
         ArrayPrototypePush(details, detail);
       }
     }
-
-    const message = `Test case is leaking ${details.length} resource${
-      details.length === 1 ? "" : "s"
-    }:
-
- - ${details.join("\n - ")}
-`;
-    assert(details.length === 0, message);
+    if (details.length == 0) {
+      return null;
+    }
+    return { failed: { leakedResources: details } };
   };
 }
 
@@ -432,91 +472,88 @@ function assertExit(fn, isTest) {
     });
 
     try {
-      await fn(...new SafeArrayIterator(params));
-    } catch (err) {
-      throw err;
+      const innerResult = await fn(...new SafeArrayIterator(params));
+      if (innerResult) return innerResult;
     } finally {
       setExitHandler(null);
     }
   };
 }
 
-function assertTestStepScopes(fn) {
-  /** @param desc {TestDescription | TestStepDescription} */
-  return async function testStepSanitizer(desc) {
-    preValidation();
-    // only report waiting after pre-validation
-    if (canStreamReporting(desc) && "parent" in desc) {
-      stepReportWait(desc);
-    }
-    await fn(MapPrototypeGet(testStates, desc.id).context);
-    testStepPostValidation(desc);
-
-    function preValidation() {
-      const runningStepDescs = getRunningStepDescs();
-      const runningStepDescsWithSanitizers = ArrayPrototypeFilter(
-        runningStepDescs,
-        (d) => usesSanitizer(d),
-      );
-
-      if (runningStepDescsWithSanitizers.length > 0) {
-        throw new Error(
-          "Cannot start test step while another test step with sanitizers is running.\n" +
-            runningStepDescsWithSanitizers
-              .map((d) => ` * ${getFullName(d)}`)
-              .join("\n"),
-        );
+function wrapOuter(fn, desc) {
+  return async function outerWrapped() {
+    try {
+      if (desc.ignore) {
+        return "ignored";
       }
-
-      if (usesSanitizer(desc) && runningStepDescs.length > 0) {
-        throw new Error(
-          "Cannot start test step with sanitizers while another test step is running.\n" +
-            runningStepDescs.map((d) => ` * ${getFullName(d)}`).join("\n"),
-        );
+      return await fn(desc) ?? "ok";
+    } catch (error) {
+      return { failed: { jsError: core.destructureError(error) } };
+    } finally {
+      const state = MapPrototypeGet(testStates, desc.id);
+      for (const childDesc of state.children) {
+        stepReportResult(childDesc, { failed: "incomplete" }, 0);
       }
-
-      function getRunningStepDescs() {
-        const results = [];
-        let childDesc = desc;
-        while (childDesc.parent != null) {
-          const state = MapPrototypeGet(testStates, childDesc.parent.id);
-          for (const siblingDesc of state.children) {
-            if (siblingDesc.id == childDesc.id) {
-              continue;
-            }
-            const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
-            if (!siblingState.finalized) {
-              ArrayPrototypePush(results, siblingDesc);
-            }
-          }
-          childDesc = childDesc.parent;
-        }
-        return results;
-      }
+      state.completed = true;
     }
   };
 }
 
-function testStepPostValidation(desc) {
-  // check for any running steps
-  for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-    if (MapPrototypeGet(testStates, childDesc.id).status == "pending") {
-      throw new Error(
-        "There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
-      );
+function wrapInner(fn) {
+  /** @param desc {TestDescription | TestStepDescription} */
+  return async function innerWrapped(desc) {
+    function getRunningStepDescs() {
+      const results = [];
+      let childDesc = desc;
+      while (childDesc.parent != null) {
+        const state = MapPrototypeGet(testStates, childDesc.parent.id);
+        for (const siblingDesc of state.children) {
+          if (siblingDesc.id == childDesc.id) {
+            continue;
+          }
+          const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
+          if (!siblingState.completed) {
+            ArrayPrototypePush(results, siblingDesc);
+          }
+        }
+        childDesc = childDesc.parent;
+      }
+      return results;
     }
-  }
+    const runningStepDescs = getRunningStepDescs();
+    const runningStepDescsWithSanitizers = ArrayPrototypeFilter(
+      runningStepDescs,
+      (d) => usesSanitizer(d),
+    );
 
-  // check if an ancestor already completed
-  let currentDesc = desc.parent;
-  while (currentDesc != null) {
-    if (MapPrototypeGet(testStates, currentDesc.id).finalized) {
-      throw new Error(
-        "Parent scope completed before test step finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
-      );
+    if (runningStepDescsWithSanitizers.length > 0) {
+      return {
+        failed: {
+          overlapsWithSanitizers: runningStepDescsWithSanitizers.map(
+            getFullName,
+          ),
+        },
+      };
     }
-    currentDesc = currentDesc.parent;
-  }
+
+    if (usesSanitizer(desc) && runningStepDescs.length > 0) {
+      return {
+        failed: { hasSanitizersAndOverlaps: runningStepDescs.map(getFullName) },
+      };
+    }
+    await fn(MapPrototypeGet(testStates, desc.id).context);
+    let failedSteps = 0;
+    for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
+      const state = MapPrototypeGet(testStates, childDesc.id);
+      if (!state.completed) {
+        return { failed: "incompleteSteps" };
+      }
+      if (state.failed) {
+        failedSteps++;
+      }
+    }
+    return failedSteps == 0 ? null : { failed: { failedSteps } };
+  };
 }
 
 function pledgePermissions(permissions) {
@@ -534,11 +571,41 @@ function withPermissions(fn, permissions) {
     const token = pledgePermissions(permissions);
 
     try {
-      await fn(...new SafeArrayIterator(params));
+      return await fn(...new SafeArrayIterator(params));
     } finally {
       restorePermissions(token);
     }
   };
+}
+
+const ESCAPE_ASCII_CHARS = [
+  ["\b", "\\b"],
+  ["\f", "\\f"],
+  ["\t", "\\t"],
+  ["\n", "\\n"],
+  ["\r", "\\r"],
+  ["\v", "\\v"],
+];
+
+/**
+ * @param {string} name
+ * @returns {string}
+ */
+function escapeName(name) {
+  // Check if we need to escape a character
+  for (let i = 0; i < name.length; i++) {
+    const ch = name.charCodeAt(i);
+    if (ch <= 13 && ch >= 8) {
+      // Slow path: We do need to escape it
+      for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
+        name = StringPrototypeReplaceAll(name, escape, replaceWith);
+      }
+      return name;
+    }
+  }
+
+  // We didn't need to escape anything, return original string
+  return name;
 }
 
 /**
@@ -548,7 +615,6 @@ function withPermissions(fn, permissions) {
  *   fn: TestFunction
  *   origin: string,
  *   location: TestLocation,
- *   filteredOut: boolean,
  *   ignore: boolean,
  *   only: boolean.
  *   sanitizeOps: boolean,
@@ -576,18 +642,14 @@ function withPermissions(fn, permissions) {
  * @typedef {{
  *   context: TestContext,
  *   children: TestStepDescription[],
- *   finalized: boolean,
+ *   completed: boolean,
  * }} TestState
  *
  * @typedef {{
  *   context: TestContext,
  *   children: TestStepDescription[],
- *   finalized: boolean,
- *   status: "pending" | "ok" | ""failed" | ignored",
- *   error: unknown,
- *   elapsed: number | null,
- *   reportedWait: boolean,
- *   reportedResult: boolean,
+ *   completed: boolean,
+ *   failed: boolean,
  * }} TestStepState
  *
  * @typedef {{
@@ -595,7 +657,6 @@ function withPermissions(fn, permissions) {
  *   name: string,
  *   fn: BenchFunction
  *   origin: string,
- *   filteredOut: boolean,
  *   ignore: boolean,
  *   only: boolean.
  *   sanitizeExit: boolean,
@@ -603,22 +664,28 @@ function withPermissions(fn, permissions) {
  * }} BenchDescription
  */
 
-/** @type {TestDescription[]} */
-const testDescs = [];
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
-/** @type {BenchDescription[]} */
-const benchDescs = [];
-let isTestSubcommand = false;
-let isBenchSubcommand = false;
+/** @type {number | null} */
+let currentBenchId = null;
+// These local variables are used to track time measurements at
+// `BenchContext::{start,end}` calls. They are global instead of using a state
+// map to minimise the overhead of assigning them.
+/** @type {number | null} */
+let currentBenchUserExplicitStart = null;
+/** @type {number | null} */
+let currentBenchUserExplicitEnd = null;
 
-// Main test function provided by Deno.
-function test(
+const registerTestIdRetBuf = new Uint32Array(1);
+const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
+
+function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
   maybeFn,
+  overrides = {},
 ) {
-  if (!isTestSubcommand) {
+  if (typeof ops.op_register_test != "function") {
     return;
   }
 
@@ -702,34 +769,56 @@ function test(
     testDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
   }
 
+  testDesc = { ...testDesc, ...overrides };
+
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
-  testDesc.fn = wrapTestFnWithSanitizers(testDesc.fn, testDesc);
-  if (testDesc.permissions) {
-    testDesc.fn = withPermissions(
-      testDesc.fn,
-      testDesc.permissions,
-    );
-  }
-  testDesc.origin = getTestOrigin();
-  const jsError = core.destructureError(new Error());
-  testDesc.location = {
-    fileName: jsError.frames[1].fileName,
-    lineNumber: jsError.frames[1].lineNumber,
-    columnNumber: jsError.frames[1].columnNumber,
-  };
 
-  const { id, filteredOut } = ops.op_register_test(testDesc);
-  testDesc.id = id;
-  testDesc.filteredOut = filteredOut;
+  testDesc.location = core.currentUserCallSite();
+  testDesc.fn = wrapTest(testDesc);
+  testDesc.name = escapeName(testDesc.name);
 
-  ArrayPrototypePush(testDescs, testDesc);
+  const origin = ops.op_register_test(
+    testDesc.fn,
+    testDesc.name,
+    testDesc.ignore,
+    testDesc.only,
+    testDesc.location.fileName,
+    testDesc.location.lineNumber,
+    testDesc.location.columnNumber,
+    registerTestIdRetBufU8,
+  );
+  testDesc.id = registerTestIdRetBuf[0];
+  testDesc.origin = origin;
   MapPrototypeSet(testStates, testDesc.id, {
     context: createTestContext(testDesc),
     children: [],
-    finalized: false,
+    completed: false,
   });
 }
+
+// Main test function provided by Deno.
+function test(
+  nameOrFnOrOptions,
+  optionsOrFn,
+  maybeFn,
+) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn);
+}
+
+test.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { ignore: true });
+};
+
+test.only = function (
+  nameOrFnOrOptions,
+  optionsOrFn,
+  maybeFn,
+) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
+
+let registeredWarmupBench = false;
 
 // Main bench function provided by Deno.
 function bench(
@@ -737,8 +826,27 @@ function bench(
   optionsOrFn,
   maybeFn,
 ) {
-  if (!isBenchSubcommand) {
+  if (typeof ops.op_register_bench != "function") {
     return;
+  }
+
+  if (!registeredWarmupBench) {
+    registeredWarmupBench = true;
+    const warmupBenchDesc = {
+      name: "<warmup>",
+      fn: function warmup() {},
+      async: false,
+      ignore: false,
+      baseline: false,
+      only: false,
+      sanitizeExit: true,
+      permissions: null,
+      warmup: true,
+    };
+    warmupBenchDesc.fn = wrapBenchmark(warmupBenchDesc);
+    const { id, origin } = ops.op_register_bench(warmupBenchDesc);
+    warmupBenchDesc.id = id;
+    warmupBenchDesc.origin = origin;
   }
 
   let benchDesc;
@@ -820,44 +928,15 @@ function bench(
     benchDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
   }
 
-  benchDesc.origin = getBenchOrigin();
   const AsyncFunction = (async () => {}).constructor;
   benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
+  benchDesc.fn = wrapBenchmark(benchDesc);
+  benchDesc.warmup = false;
+  benchDesc.name = escapeName(benchDesc.name);
 
-  const { id, filteredOut } = ops.op_register_bench(benchDesc);
+  const { id, origin } = ops.op_register_bench(benchDesc);
   benchDesc.id = id;
-  benchDesc.filteredOut = filteredOut;
-
-  ArrayPrototypePush(benchDescs, benchDesc);
-}
-
-async function runTest(desc) {
-  if (desc.ignore) {
-    return "ignored";
-  }
-
-  try {
-    await desc.fn(desc);
-    const failCount = failedChildStepsCount(desc);
-    return failCount === 0 ? "ok" : {
-      "failed": core.destructureError(
-        new Error(
-          `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
-        ),
-      ),
-    };
-  } catch (error) {
-    return {
-      "failed": core.destructureError(error),
-    };
-  } finally {
-    const state = MapPrototypeGet(testStates, desc.id);
-    state.finalized = true;
-    // ensure the children report their result
-    for (const childDesc of state.children) {
-      stepReportResult(childDesc);
-    }
-  }
+  benchDesc.origin = origin;
 }
 
 function compareMeasurements(a, b) {
@@ -867,7 +946,7 @@ function compareMeasurements(a, b) {
   return 0;
 }
 
-function benchStats(n, highPrecision, avg, min, max, all) {
+function benchStats(n, highPrecision, usedExplicitTimers, avg, min, max, all) {
   return {
     n,
     min,
@@ -877,14 +956,16 @@ function benchStats(n, highPrecision, avg, min, max, all) {
     p995: all[MathCeil(n * (99.5 / 100)) - 1],
     p999: all[MathCeil(n * (99.9 / 100)) - 1],
     avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
+    highPrecision,
+    usedExplicitTimers,
   };
 }
 
-async function benchMeasure(timeBudget, desc) {
-  const fn = desc.fn;
+async function benchMeasure(timeBudget, fn, async, context) {
   let n = 0;
   let avg = 0;
   let wavg = 0;
+  let usedExplicitTimers = false;
   const all = [];
   let min = Infinity;
   let max = -Infinity;
@@ -895,27 +976,49 @@ async function benchMeasure(timeBudget, desc) {
   let iterations = 20;
   let budget = 10 * 1e6;
 
-  if (!desc.async) {
+  if (!async) {
     while (budget > 0 || iterations-- > 0) {
       const t1 = benchNow();
-
-      fn();
-      const iterationTime = benchNow() - t1;
+      fn(context);
+      const t2 = benchNow();
+      const totalTime = t2 - t1;
+      let measuredTime = totalTime;
+      if (currentBenchUserExplicitStart !== null) {
+        measuredTime -= currentBenchUserExplicitStart - t1;
+        currentBenchUserExplicitStart = null;
+        usedExplicitTimers = true;
+      }
+      if (currentBenchUserExplicitEnd !== null) {
+        measuredTime -= t2 - currentBenchUserExplicitEnd;
+        currentBenchUserExplicitEnd = null;
+        usedExplicitTimers = true;
+      }
 
       c++;
-      wavg += iterationTime;
-      budget -= iterationTime;
+      wavg += measuredTime;
+      budget -= totalTime;
     }
   } else {
     while (budget > 0 || iterations-- > 0) {
       const t1 = benchNow();
-
-      await fn();
-      const iterationTime = benchNow() - t1;
+      await fn(context);
+      const t2 = benchNow();
+      const totalTime = t2 - t1;
+      let measuredTime = totalTime;
+      if (currentBenchUserExplicitStart !== null) {
+        measuredTime -= currentBenchUserExplicitStart - t1;
+        currentBenchUserExplicitStart = null;
+        usedExplicitTimers = true;
+      }
+      if (currentBenchUserExplicitEnd !== null) {
+        measuredTime -= t2 - currentBenchUserExplicitEnd;
+        currentBenchUserExplicitEnd = null;
+        usedExplicitTimers = true;
+      }
 
       c++;
-      wavg += iterationTime;
-      budget -= iterationTime;
+      wavg += measuredTime;
+      budget -= totalTime;
     }
   }
 
@@ -926,43 +1029,65 @@ async function benchMeasure(timeBudget, desc) {
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
-    if (!desc.async) {
+    if (!async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-
-        fn();
-        const iterationTime = benchNow() - t1;
+        fn(context);
+        const t2 = benchNow();
+        const totalTime = t2 - t1;
+        let measuredTime = totalTime;
+        if (currentBenchUserExplicitStart !== null) {
+          measuredTime -= currentBenchUserExplicitStart - t1;
+          currentBenchUserExplicitStart = null;
+        }
+        if (currentBenchUserExplicitEnd !== null) {
+          measuredTime -= t2 - currentBenchUserExplicitEnd;
+          currentBenchUserExplicitEnd = null;
+        }
 
         n++;
-        avg += iterationTime;
-        budget -= iterationTime;
-        ArrayPrototypePush(all, iterationTime);
-        if (iterationTime < min) min = iterationTime;
-        if (iterationTime > max) max = iterationTime;
+        avg += measuredTime;
+        budget -= totalTime;
+        ArrayPrototypePush(all, measuredTime);
+        if (measuredTime < min) min = measuredTime;
+        if (measuredTime > max) max = measuredTime;
       }
     } else {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-
-        await fn();
-        const iterationTime = benchNow() - t1;
+        await fn(context);
+        const t2 = benchNow();
+        const totalTime = t2 - t1;
+        let measuredTime = totalTime;
+        if (currentBenchUserExplicitStart !== null) {
+          measuredTime -= currentBenchUserExplicitStart - t1;
+          currentBenchUserExplicitStart = null;
+        }
+        if (currentBenchUserExplicitEnd !== null) {
+          measuredTime -= t2 - currentBenchUserExplicitEnd;
+          currentBenchUserExplicitEnd = null;
+        }
 
         n++;
-        avg += iterationTime;
-        budget -= iterationTime;
-        ArrayPrototypePush(all, iterationTime);
-        if (iterationTime < min) min = iterationTime;
-        if (iterationTime > max) max = iterationTime;
+        avg += measuredTime;
+        budget -= totalTime;
+        ArrayPrototypePush(all, measuredTime);
+        if (measuredTime < min) min = measuredTime;
+        if (measuredTime > max) max = measuredTime;
       }
     }
   } else {
+    context.start = function start() {};
+    context.end = function end() {};
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
-    if (!desc.async) {
+    if (!async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-        for (let c = 0; c < lowPrecisionThresholdInNs; c++) fn();
+        for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
+          fn(context);
+        }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
         n++;
@@ -975,7 +1100,11 @@ async function benchMeasure(timeBudget, desc) {
     } else {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-        for (let c = 0; c < lowPrecisionThresholdInNs; c++) await fn();
+        for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
+          await fn(context);
+          currentBenchUserExplicitStart = null;
+          currentBenchUserExplicitEnd = null;
+        }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
         n++;
@@ -989,174 +1118,100 @@ async function benchMeasure(timeBudget, desc) {
   }
 
   all.sort(compareMeasurements);
-  return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
+  return benchStats(
+    n,
+    wavg > lowPrecisionThresholdInNs,
+    usedExplicitTimers,
+    avg,
+    min,
+    max,
+    all,
+  );
 }
 
-async function runBench(desc) {
-  let token = null;
-
-  try {
-    if (desc.permissions) {
-      token = pledgePermissions(desc.permissions);
-    }
-
-    if (desc.sanitizeExit) {
-      setExitHandler((exitCode) => {
-        assert(
-          false,
-          `Bench attempted to exit with exit code: ${exitCode}`,
+/** @param desc {BenchDescription} */
+function createBenchContext(desc) {
+  return {
+    [SymbolToStringTag]: "BenchContext",
+    name: desc.name,
+    origin: desc.origin,
+    start() {
+      if (currentBenchId !== desc.id) {
+        throw new TypeError(
+          "The benchmark which this context belongs to is not being executed.",
         );
+      }
+      if (currentBenchUserExplicitStart != null) {
+        throw new TypeError("BenchContext::start() has already been invoked.");
+      }
+      currentBenchUserExplicitStart = benchNow();
+    },
+    end() {
+      const end = benchNow();
+      if (currentBenchId !== desc.id) {
+        throw new TypeError(
+          "The benchmark which this context belongs to is not being executed.",
+        );
+      }
+      if (currentBenchUserExplicitEnd != null) {
+        throw new TypeError("BenchContext::end() has already been invoked.");
+      }
+      currentBenchUserExplicitEnd = end;
+    },
+  };
+}
+
+/** Wrap a user benchmark function in one which returns a structured result. */
+function wrapBenchmark(desc) {
+  const fn = desc.fn;
+  return async function outerWrapped() {
+    let token = null;
+    const originalConsole = globalThis.console;
+    currentBenchId = desc.id;
+
+    try {
+      globalThis.console = new Console((s) => {
+        ops.op_dispatch_bench_event({ output: s });
       });
+
+      if (desc.permissions) {
+        token = pledgePermissions(desc.permissions);
+      }
+
+      if (desc.sanitizeExit) {
+        setExitHandler((exitCode) => {
+          assert(
+            false,
+            `Bench attempted to exit with exit code: ${exitCode}`,
+          );
+        });
+      }
+
+      const benchTimeInMs = 500;
+      const context = createBenchContext(desc);
+      const stats = await benchMeasure(benchTimeInMs, fn, desc.async, context);
+
+      return { ok: stats };
+    } catch (error) {
+      return { failed: core.destructureError(error) };
+    } finally {
+      globalThis.console = originalConsole;
+      currentBenchId = null;
+      currentBenchUserExplicitStart = null;
+      currentBenchUserExplicitEnd = null;
+      if (bench.sanitizeExit) setExitHandler(null);
+      if (token !== null) restorePermissions(token);
     }
-
-    const benchTimeInMs = 500;
-    const stats = await benchMeasure(benchTimeInMs, desc);
-
-    return { ok: stats };
-  } catch (error) {
-    return { failed: core.destructureError(error) };
-  } finally {
-    if (bench.sanitizeExit) setExitHandler(null);
-    if (token !== null) restorePermissions(token);
-  }
-}
-
-let origin = null;
-
-function getTestOrigin() {
-  if (origin == null) {
-    origin = ops.op_get_test_origin();
-  }
-  return origin;
-}
-
-function getBenchOrigin() {
-  if (origin == null) {
-    origin = ops.op_get_bench_origin();
-  }
-  return origin;
+  };
 }
 
 function benchNow() {
   return ops.op_bench_now();
 }
 
-function enableTest() {
-  isTestSubcommand = true;
-}
-
-function enableBench() {
-  isBenchSubcommand = true;
-}
-
-async function runTests({
-  shuffle = null,
-} = {}) {
-  core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
-
-  const origin = getTestOrigin();
-  const only = ArrayPrototypeFilter(testDescs, (test) => test.only);
-  const filtered = ArrayPrototypeFilter(
-    only.length > 0 ? only : testDescs,
-    (desc) => !desc.filteredOut,
-  );
-
-  ops.op_dispatch_test_event({
-    plan: {
-      origin,
-      total: filtered.length,
-      filteredOut: testDescs.length - filtered.length,
-      usedOnly: only.length > 0,
-    },
-  });
-
-  if (shuffle !== null) {
-    // http://en.wikipedia.org/wiki/Linear_congruential_generator
-    // Use BigInt for everything because the random seed is u64.
-    const nextInt = function (state) {
-      const m = 0x80000000n;
-      const a = 1103515245n;
-      const c = 12345n;
-
-      return function (max) {
-        return state = ((a * state + c) % m) % BigInt(max);
-      };
-    }(BigInt(shuffle));
-
-    for (let i = filtered.length - 1; i > 0; i--) {
-      const j = nextInt(i);
-      [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
-    }
-  }
-
-  for (const desc of filtered) {
-    if (ops.op_tests_should_stop()) {
-      break;
-    }
-    ops.op_dispatch_test_event({ wait: desc.id });
-    const earlier = DateNow();
-    const result = await runTest(desc);
-    const elapsed = DateNow() - earlier;
-    ops.op_dispatch_test_event({
-      result: [desc.id, result, elapsed],
-    });
-  }
-}
-
-async function runBenchmarks() {
-  core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
-
-  const origin = getBenchOrigin();
-  const originalConsole = globalThis.console;
-
-  globalThis.console = new Console((s) => {
-    ops.op_dispatch_bench_event({ output: s });
-  });
-
-  const only = ArrayPrototypeFilter(benchDescs, (bench) => bench.only);
-  const filtered = ArrayPrototypeFilter(
-    only.length > 0 ? only : benchDescs,
-    (desc) => !desc.filteredOut && !desc.ignore,
-  );
-
-  let groups = new Set();
-  // make sure ungrouped benchmarks are placed above grouped
-  groups.add(undefined);
-
-  for (const desc of filtered) {
-    desc.group ||= undefined;
-    groups.add(desc.group);
-  }
-
-  groups = ArrayFrom(groups);
-  ArrayPrototypeSort(
-    filtered,
-    (a, b) => groups.indexOf(a.group) - groups.indexOf(b.group),
-  );
-
-  ops.op_dispatch_bench_event({
-    plan: {
-      origin,
-      total: filtered.length,
-      usedOnly: only.length > 0,
-      names: ArrayPrototypeMap(filtered, (desc) => desc.name),
-    },
-  });
-
-  for (const desc of filtered) {
-    desc.baseline = !!desc.baseline;
-    ops.op_dispatch_bench_event({ wait: desc.id });
-    ops.op_dispatch_bench_event({
-      result: [desc.id, await runBench(desc)],
-    });
-  }
-
-  globalThis.console = originalConsole;
-}
-
 function getFullName(desc) {
   if ("parent" in desc) {
-    return `${desc.parent.name} > ${desc.name}`;
+    return `${getFullName(desc.parent)} ... ${desc.name}`;
   }
   return desc.name;
 }
@@ -1165,71 +1220,17 @@ function usesSanitizer(desc) {
   return desc.sanitizeResources || desc.sanitizeOps || desc.sanitizeExit;
 }
 
-function canStreamReporting(desc) {
-  let currentDesc = desc;
-  while (currentDesc != null) {
-    if (!usesSanitizer(currentDesc)) {
-      return false;
-    }
-    currentDesc = currentDesc.parent;
-  }
-  for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-    const state = MapPrototypeGet(testStates, childDesc.id);
-    if (!usesSanitizer(childDesc) && !state.finalized) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function stepReportWait(desc) {
+function stepReportResult(desc, result, elapsed) {
   const state = MapPrototypeGet(testStates, desc.id);
-  if (state.reportedWait) {
-    return;
-  }
-  ops.op_dispatch_test_event({ stepWait: desc.id });
-  state.reportedWait = true;
-}
-
-function stepReportResult(desc) {
-  const state = MapPrototypeGet(testStates, desc.id);
-  if (state.reportedResult) {
-    return;
-  }
-  stepReportWait(desc);
   for (const childDesc of state.children) {
-    stepReportResult(childDesc);
+    stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
-  let result;
-  if (state.status == "pending" || state.status == "failed") {
-    result = {
-      [state.status]: state.error && core.destructureError(state.error),
-    };
+  if (result === "ok") {
+    ops.op_test_event_step_result_ok(desc.id, elapsed);
+  } else if (result === "ignored") {
+    ops.op_test_event_step_result_ignored(desc.id, elapsed);
   } else {
-    result = state.status;
-  }
-  ops.op_dispatch_test_event({
-    stepResult: [desc.id, result, state.elapsed],
-  });
-  state.reportedResult = true;
-}
-
-function failedChildStepsCount(desc) {
-  return ArrayPrototypeFilter(
-    MapPrototypeGet(testStates, desc.id).children,
-    (d) => MapPrototypeGet(testStates, d.id).status === "failed",
-  ).length;
-}
-
-/** If a test validation error already occurred then don't bother checking
- * the sanitizers as that will create extra noise.
- */
-function shouldSkipSanitizers(desc) {
-  try {
-    testStepPostValidation(desc);
-    return false;
-  } catch {
-    return true;
+    ops.op_test_event_step_result_failed(desc.id, result.failed, elapsed);
   }
 }
 
@@ -1269,7 +1270,7 @@ function createTestContext(desc) {
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
      */
     async step(nameOrFnOrOptions, maybeFn) {
-      if (MapPrototypeGet(testStates, desc.id).finalized) {
+      if (MapPrototypeGet(testStates, desc.id).completed) {
         throw new Error(
           "Cannot run test step after parent scope has finished execution. " +
             "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
@@ -1309,28 +1310,30 @@ function createTestContext(desc) {
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
-      stepDesc.origin = getTestOrigin();
-      const jsError = core.destructureError(new Error());
-      stepDesc.location = {
-        fileName: jsError.frames[1].fileName,
-        lineNumber: jsError.frames[1].lineNumber,
-        columnNumber: jsError.frames[1].columnNumber,
-      };
+      stepDesc.location = core.currentUserCallSite();
       stepDesc.level = level + 1;
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
-      stepDesc.rootName = rootName;
-      const { id } = ops.op_register_test_step(stepDesc);
+      stepDesc.name = escapeName(stepDesc.name);
+      stepDesc.rootName = escapeName(rootName);
+      stepDesc.fn = wrapTest(stepDesc);
+      const id = ops.op_register_test_step(
+        stepDesc.name,
+        stepDesc.location.fileName,
+        stepDesc.location.lineNumber,
+        stepDesc.location.columnNumber,
+        stepDesc.level,
+        stepDesc.parent.id,
+        stepDesc.rootId,
+        stepDesc.rootName,
+      );
       stepDesc.id = id;
+      stepDesc.origin = desc.origin;
       const state = {
         context: createTestContext(stepDesc),
         children: [],
-        finalized: false,
-        status: "pending",
-        error: null,
-        elapsed: null,
-        reportedWait: false,
-        reportedResult: false,
+        failed: false,
+        completed: false,
       };
       MapPrototypeSet(testStates, stepDesc.id, state);
       ArrayPrototypePush(
@@ -1338,92 +1341,41 @@ function createTestContext(desc) {
         stepDesc,
       );
 
-      try {
-        if (stepDesc.ignore) {
-          state.status = "ignored";
-          state.finalized = true;
-          if (canStreamReporting(stepDesc)) {
-            stepReportResult(stepDesc);
-          }
-          return false;
-        }
-
-        const testFn = wrapTestFnWithSanitizers(stepDesc.fn, stepDesc);
-        const start = DateNow();
-
-        try {
-          await testFn(stepDesc);
-
-          if (failedChildStepsCount(stepDesc) > 0) {
-            state.status = "failed";
-          } else {
-            state.status = "ok";
-          }
-        } catch (error) {
-          state.error = error;
-          state.status = "failed";
-        }
-
-        state.elapsed = DateNow() - start;
-
-        if (MapPrototypeGet(testStates, stepDesc.parent.id).finalized) {
-          // always point this test out as one that was still running
-          // if the parent step finalized
-          state.status = "pending";
-        }
-
-        state.finalized = true;
-
-        if (state.reportedWait && canStreamReporting(stepDesc)) {
-          stepReportResult(stepDesc);
-        }
-
-        return state.status === "ok";
-      } finally {
-        if (canStreamReporting(stepDesc.parent)) {
-          const parentState = MapPrototypeGet(testStates, stepDesc.parent.id);
-          // flush any buffered steps
-          for (const childDesc of parentState.children) {
-            stepReportResult(childDesc);
-          }
-        }
-      }
+      ops.op_test_event_step_wait(stepDesc.id);
+      const earlier = DateNow();
+      const result = await stepDesc.fn(stepDesc);
+      const elapsed = DateNow() - earlier;
+      state.failed = !!result.failed;
+      stepReportResult(stepDesc, result, elapsed);
+      return result == "ok";
     },
   };
 }
 
 /**
+ * Wrap a user test function in one which returns a structured result.
  * @template T {Function}
  * @param testFn {T}
- * @param opts {{
- *   sanitizeOps: boolean,
- *   sanitizeResources: boolean,
- *   sanitizeExit: boolean,
- * }}
+ * @param desc {TestDescription | TestStepDescription}
  * @returns {T}
  */
-function wrapTestFnWithSanitizers(testFn, opts) {
-  testFn = assertTestStepScopes(testFn);
-
-  if (opts.sanitizeOps) {
+function wrapTest(desc) {
+  let testFn = wrapInner(desc.fn);
+  if (desc.sanitizeOps) {
     testFn = assertOps(testFn);
   }
-  if (opts.sanitizeResources) {
+  if (desc.sanitizeResources) {
     testFn = assertResources(testFn);
   }
-  if (opts.sanitizeExit) {
+  if (desc.sanitizeExit) {
     testFn = assertExit(testFn, true);
   }
-  return testFn;
+  if (!("parent" in desc) && desc.permissions) {
+    testFn = withPermissions(testFn, desc.permissions);
+  }
+  return wrapOuter(testFn, desc);
 }
 
-internals.testing = {
-  runTests,
-  runBenchmarks,
-  enableTest,
-  enableBench,
-};
-
-import { denoNs } from "internal:runtime/90_deno_ns.js";
+import { denoNs } from "ext:runtime/90_deno_ns.js";
 denoNs.bench = bench;
 denoNs.test = test;

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "./test_util.ts";
+import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
 
 Deno.test(function urlPatternFromString() {
   const pattern = new URLPattern("https://deno.land/foo/:bar");
@@ -13,6 +14,10 @@ Deno.test(function urlPatternFromString() {
   assert(match);
   assertEquals(match.pathname.input, "/foo/x");
   assertEquals(match.pathname.groups, { bar: "x" });
+
+  // group values should be nullable
+  const val = match.pathname.groups.val;
+  assertType<IsExact<typeof val, string | undefined>>(true);
 });
 
 Deno.test(function urlPatternFromStringWithBase() {

@@ -97,7 +97,6 @@ Deno.test(async function cacheApi() {
 });
 
 Deno.test(function cacheIllegalConstructor() {
-  // @ts-expect-error illegal constructor
   assertThrows(() => new Cache(), TypeError, "Illegal constructor");
   // @ts-expect-error illegal constructor
   assertThrows(() => new Cache("foo", "bar"), TypeError, "Illegal constructor");
@@ -172,4 +171,21 @@ Deno.test(async function cachePutFailedBody() {
   const response = await cache.match(request);
   // if it fails to read the body, the cache should be empty
   assertEquals(response, undefined);
+});
+
+Deno.test(async function cachePutOverwrite() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const request = new Request("https://example.com/overwrite");
+  const res1 = new Response("res1");
+  const res2 = new Response("res2");
+
+  await cache.put(request, res1);
+  const res = await cache.match(request);
+  assertEquals(await res?.text(), "res1");
+
+  await cache.put(request, res2);
+  const res_ = await cache.match(request);
+  assertEquals(await res_?.text(), "res2");
 });

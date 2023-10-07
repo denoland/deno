@@ -8,7 +8,7 @@ use crate::turbocall;
 use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::OpState;
@@ -76,9 +76,16 @@ pub struct ForeignFunction {
   #[serde(rename = "callback")]
   #[serde(default = "default_callback")]
   callback: bool,
+  #[serde(rename = "optional")]
+  #[serde(default = "default_optional")]
+  optional: bool,
 }
 
 fn default_callback() -> bool {
+  false
+}
+
+fn default_optional() -> bool {
   false
 }
 
@@ -124,11 +131,12 @@ pub struct FfiLoadArgs {
   symbols: HashMap<String, ForeignSymbol>,
 }
 
-#[op(v8)]
-pub fn op_ffi_load<FP, 'scope>(
+#[op2]
+#[serde]
+pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
-  args: FfiLoadArgs,
+  #[serde] args: FfiLoadArgs,
 ) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -137,7 +145,7 @@ where
 
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(Some(&PathBuf::from(&path)))?;
+  permissions.check_partial(Some(&PathBuf::from(&path)))?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen::Error::OpeningLibraryError(std::io::Error::new(
@@ -156,7 +164,7 @@ where
       ForeignSymbol::ForeignStatic(_) => {
         // No-op: Statics will be handled separately and are not part of the Rust-side resource.
       }
-      ForeignSymbol::ForeignFunction(foreign_fn) => {
+      ForeignSymbol::ForeignFunction(foreign_fn) => 'register_symbol: {
         let symbol = match &foreign_fn.name {
           Some(symbol) => symbol,
           None => &symbol_key,
@@ -168,10 +176,18 @@ where
           // SAFETY: The obtained T symbol is the size of a pointer.
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
-            Err(err) => Err(generic_error(format!(
-              "Failed to register symbol {symbol}: {err}"
-            ))),
+            Err(err) => if foreign_fn.optional {
+              let null: v8::Local<v8::Value> = v8::null(scope).into();
+              let func_key = v8::String::new(scope, &symbol_key).unwrap();
+              obj.set(scope, func_key.into(), null);
+              break 'register_symbol;
+            } else {
+              Err(generic_error(format!(
+                "Failed to register symbol {symbol}: {err}"
+              )))
+            },
           }?;
+
         let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
         let cif = libffi::middle::Cif::new(
           foreign_fn
@@ -295,6 +311,8 @@ fn make_sync_fn<'s>(
       scope,
       &turbocall::make_template(sym, &trampoline),
       None,
+      None,
+      None,
     );
     fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
     func
@@ -360,7 +378,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 
       let path = OsStr::new(&path)
         .encode_wide()
-        .chain(Some(0).into_iter())
+        .chain(Some(0))
         .collect::<Vec<_>>();
 
       let arguments = [path.as_ptr()];

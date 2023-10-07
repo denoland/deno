@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
+const listenPort = 4505;
+
 Deno.test(function resourcesCloseBadArgs() {
   assertThrows(() => {
     Deno.close((null as unknown) as number);
@@ -16,8 +18,8 @@ Deno.test(function resourcesStdio() {
 });
 
 Deno.test({ permissions: { net: true } }, async function resourcesNet() {
-  const listener = Deno.listen({ port: 4501 });
-  const dialerConn = await Deno.connect({ port: 4501 });
+  const listener = Deno.listen({ port: listenPort });
+  const dialerConn = await Deno.connect({ port: listenPort });
   const listenerConn = await listener.accept();
 
   const res = Deno.resources();

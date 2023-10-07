@@ -6,4 +6,4 @@ which is specifically tailored to provide a _Deno_ view of code. It is
 integrated into the command line and can be started via the `lsp` sub-command.
 
 This documentation has been moved to the
-[Deno manual](https://deno.land/manual/language_server/overview).
+[Deno manual](https://docs.deno.com/runtime/manual/advanced/language_server/overview).

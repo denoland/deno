@@ -1,0 +1,4 @@
+Task not found: test
+Available tasks:
+- posttest (package.json)
+    echo 'posttest'

@@ -8,8 +8,8 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_core::OpState;
-use deno_web::BlobStore;
 
+#[derive(Clone)]
 struct Permissions;
 
 impl deno_web::TimersPermission for Permissions {
@@ -21,25 +21,31 @@ impl deno_web::TimersPermission for Permissions {
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::init(),
-    deno_url::init(),
-    deno_console::init(),
-    deno_web::init::<Permissions>(BlobStore::default(), None),
-    Extension::builder("bench_setup")
-    .esm(vec![
-      ExtensionFileSource {
-        specifier: "internal:setup".to_string(), 
-        code: ExtensionFileSourceCode::IncludedInBinary(r#"
-      import { setTimeout, handleTimerMacrotask } from "internal:deno_web/02_timers.js";
-      globalThis.setTimeout = setTimeout;
-      Deno.core.setMacrotaskCallback(handleTimerMacrotask);
-      "#)
-      },
-    ])
-    .state(|state| {
-      state.put(Permissions{});
-    })
-    .build()
+    deno_webidl::deno_webidl::init_ops_and_esm(),
+    deno_url::deno_url::init_ops_and_esm(),
+    deno_console::deno_console::init_ops_and_esm(),
+    deno_web::deno_web::init_ops_and_esm::<Permissions>(
+      Default::default(),
+      None,
+    ),
+    Extension {
+      name: "bench_setup",
+      esm_files: std::borrow::Cow::Borrowed(&[ExtensionFileSource {
+        specifier: "ext:bench_setup/setup",
+        code: ExtensionFileSourceCode::IncludedInBinary(
+          r#"
+            import { setTimeout, handleTimerMacrotask } from "ext:deno_web/02_timers.js";
+            globalThis.setTimeout = setTimeout;
+            Deno.core.setMacrotaskCallback(handleTimerMacrotask);
+          "#,
+        ),
+      }]),
+      esm_entry_point: Some("ext:bench_setup/setup"),
+      op_state_fn: Some(Box::new(|state| {
+        state.put(Permissions {});
+      })),
+      ..Default::default()
+    },
   ]
 }
 

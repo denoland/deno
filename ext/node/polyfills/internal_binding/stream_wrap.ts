@@ -27,15 +27,21 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { HandleWrap } from "internal:deno_node/internal_binding/handle_wrap.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Buffer } from "node:buffer";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/internal_binding/async_wrap.ts";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
+} from "ext:deno_node/internal_binding/async_wrap.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+
+const core = globalThis.Deno.core;
+const { ops } = core;
 
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -51,7 +57,7 @@ export interface Closer {
 
 type Ref = { ref(): void; unref(): void };
 
-enum StreamBaseStateFields {
+const enum StreamBaseStateFields {
   kReadBytesOrError,
   kArrayBufferOffset,
   kBytesWritten,
@@ -108,6 +114,7 @@ export class LibuvStreamWrap extends HandleWrap {
   writeQueueSize = 0;
   bytesRead = 0;
   bytesWritten = 0;
+  #buf = new Uint8Array(SUGGESTED_SIZE);
 
   onread!: (_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined;
 
@@ -192,6 +199,35 @@ export class LibuvStreamWrap extends HandleWrap {
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
   ): number {
+    const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
+    const rid = this[kStreamBaseField]!.rid;
+    // Fast case optimization: two chunks, and all buffers.
+    if (
+      chunks.length === 2 && allBuffers && supportsWritev &&
+      ops.op_can_write_vectored(rid)
+    ) {
+      // String chunks.
+      if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
+      if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
+
+      ops.op_raw_write_vectored(
+        rid,
+        chunks[0],
+        chunks[1],
+      ).then((nwritten) => {
+        try {
+          req.oncomplete(0);
+        } catch {
+          // swallow callback errors.
+        }
+
+        streamBaseState[kBytesWritten] = nwritten;
+        this.bytesWritten += nwritten;
+      });
+
+      return 0;
+    }
+
     const count = allBuffers ? chunks.length : chunks.length >> 1;
     const buffers: Buffer[] = new Array(count);
 
@@ -276,12 +312,18 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    let buf = new Uint8Array(SUGGESTED_SIZE);
-
+    let buf = this.#buf;
     let nread: number | null;
+    const ridBefore = this[kStreamBaseField]!.rid;
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]!.rid) {
+        return this.#read();
+      }
+
       if (
         e instanceof Deno.errors.Interrupted ||
         e instanceof Deno.errors.BadResource
@@ -295,8 +337,6 @@ export class LibuvStreamWrap extends HandleWrap {
       } else {
         nread = codeMap.get("UNKNOWN")!;
       }
-
-      buf = new Uint8Array(0);
     }
 
     nread ??= codeMap.get("EOF")!;
@@ -330,15 +370,23 @@ export class LibuvStreamWrap extends HandleWrap {
   async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
     const { byteLength } = data;
 
+    const ridBefore = this[kStreamBaseField]!.rid;
+
+    let nwritten = 0;
     try {
       // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
-      let nwritten = 0;
       while (nwritten < data.length) {
         nwritten += await this[kStreamBaseField]!.write(
           data.subarray(nwritten),
         );
       }
     } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]!.rid) {
+        return this.#write(req, data.subarray(nwritten));
+      }
+
       let status: number;
 
       // TODO(cmorten): map err to status codes

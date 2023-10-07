@@ -1,24 +1,27 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { Transform } from "internal:deno_node/stream.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Buffer } from "node:buffer";
+import { Transform } from "node:stream";
 import {
   forgivingBase64Encode as encodeToBase64,
   forgivingBase64UrlEncode as encodeToBase64Url,
-} from "internal:deno_web/00_infra.js";
-import type { TransformOptions } from "internal:deno_node/_stream.d.ts";
-import { validateString } from "internal:deno_node/internal/validators.mjs";
+} from "ext:deno_web/00_infra.js";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import type {
   BinaryToTextEncoding,
   Encoding,
-} from "internal:deno_node/internal/crypto/types.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
 import {
+  getKeyMaterial,
   KeyObject,
   prepareSecretKey,
-} from "internal:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
+} from "ext:deno_node/internal/crypto/keys.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 
@@ -66,14 +69,14 @@ export class Hash extends Transform {
         callback();
       },
       flush(callback: () => void) {
-        this.push(context.digest(undefined));
+        this.push(this.digest(undefined));
         callback();
       },
     });
 
     if (typeof algorithm === "string") {
       this.#context = ops.op_node_create_hash(
-        algorithm,
+        algorithm.toLowerCase(),
       );
       if (this.#context === 0) {
         throw new TypeError(`Unknown hash algorithm: ${algorithm}`);
@@ -170,15 +173,14 @@ class HmacImpl extends Transform {
     });
     // deno-lint-ignore no-this-alias
     const self = this;
-    if (key instanceof KeyObject) {
-      notImplemented("Hmac: KeyObject key is not implemented");
-    }
 
     validateString(hmac, "hmac");
-    const u8Key = prepareSecretKey(key, options?.encoding) as Buffer;
+
+    const u8Key = key instanceof KeyObject
+      ? getKeyMaterial(key)
+      : prepareSecretKey(key, options?.encoding) as Buffer;
 
     const alg = hmac.toLowerCase();
-    this.#hash = new Hash(alg, options);
     this.#algorithm = alg;
     const blockSize = (alg === "sha512" || alg === "sha384") ? 128 : 64;
     const keySize = u8Key.length;
@@ -186,7 +188,8 @@ class HmacImpl extends Transform {
     let bufKey: Buffer;
 
     if (keySize > blockSize) {
-      bufKey = this.#hash.update(u8Key).digest() as Buffer;
+      const hash = new Hash(alg, options);
+      bufKey = hash.update(u8Key).digest() as Buffer;
     } else {
       bufKey = Buffer.concat([u8Key, this.#ZEROES], blockSize);
     }
@@ -227,6 +230,14 @@ Hmac.prototype = HmacImpl.prototype;
  */
 export function createHash(algorithm: string, opts?: TransformOptions) {
   return new Hash(algorithm, opts);
+}
+
+/**
+ * Get the list of implemented hash algorithms.
+ * @returns Array of hash algorithm names.
+ */
+export function getHashes() {
+  return ops.op_node_get_hashes();
 }
 
 export default {

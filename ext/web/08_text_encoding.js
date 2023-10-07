@@ -11,9 +11,12 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   PromiseReject,
   PromiseResolve,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
@@ -21,6 +24,10 @@ const {
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   ObjectPrototypeIsPrototypeOf,
   ArrayBufferIsView,
@@ -46,14 +53,12 @@ class TextDecoder {
    */
   constructor(label = "utf-8", options = {}) {
     const prefix = "Failed to construct 'TextDecoder'";
-    label = webidl.converters.DOMString(label, {
+    label = webidl.converters.DOMString(label, prefix, "Argument 1");
+    options = webidl.converters.TextDecoderOptions(
+      options,
       prefix,
-      context: "Argument 1",
-    });
-    options = webidl.converters.TextDecoderOptions(options, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
     const encoding = ops.op_encoding_normalize_label(label);
     this.#encoding = encoding;
     this.#fatal = options.fatal;
@@ -88,29 +93,42 @@ class TextDecoder {
     webidl.assertBranded(this, TextDecoderPrototype);
     const prefix = "Failed to execute 'decode' on 'TextDecoder'";
     if (input !== undefined) {
-      input = webidl.converters.BufferSource(input, {
-        prefix,
-        context: "Argument 1",
+      input = webidl.converters.BufferSource(input, prefix, "Argument 1", {
         allowShared: true,
       });
     }
     let stream = false;
     if (options !== undefined) {
-      options = webidl.converters.TextDecodeOptions(options, {
+      options = webidl.converters.TextDecodeOptions(
+        options,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
       stream = options.stream;
     }
 
     try {
+      /** @type {ArrayBufferLike} */
+      let buffer = input;
+      if (ArrayBufferIsView(input)) {
+        if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
+          // TypedArray
+          buffer = TypedArrayPrototypeGetBuffer(
+            /** @type {Uint8Array} */ (input),
+          );
+        } else {
+          // DataView
+          buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (input));
+        }
+      }
+
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
       if (
         ObjectPrototypeIsPrototypeOf(
           // deno-lint-ignore prefer-primordials
           SharedArrayBuffer.prototype,
-          input || input.buffer,
+          buffer,
         )
       ) {
         // We clone the data into a non-shared ArrayBuffer so we can pass it
@@ -118,13 +136,27 @@ class TextDecoder {
         // `input` is now a Uint8Array, and calling the TypedArray constructor
         // with a TypedArray argument copies the data.
         if (ArrayBufferIsView(input)) {
-          input = new Uint8Array(
-            input.buffer,
-            input.byteOffset,
-            input.byteLength,
-          );
+          if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
+            // TypedArray
+            input = new Uint8Array(
+              buffer,
+              TypedArrayPrototypeGetByteOffset(
+                /** @type {Uint8Array} */ (input),
+              ),
+              TypedArrayPrototypeGetByteLength(
+                /** @type {Uint8Array} */ (input),
+              ),
+            );
+          } else {
+            // DataView
+            input = new Uint8Array(
+              buffer,
+              DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+              DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+            );
+          }
         } else {
-          input = new Uint8Array(input);
+          input = new Uint8Array(buffer);
         }
       }
 
@@ -180,13 +212,13 @@ class TextEncoder {
    */
   encode(input = "") {
     webidl.assertBranded(this, TextEncoderPrototype);
-    const prefix = "Failed to execute 'encode' on 'TextEncoder'";
     // The WebIDL type of `input` is `USVString`, but `core.encode` already
     // converts lone surrogates to the replacement character.
-    input = webidl.converters.DOMString(input, {
-      prefix,
-      context: "Argument 1",
-    });
+    input = webidl.converters.DOMString(
+      input,
+      "Failed to execute 'encode' on 'TextEncoder'",
+      "Argument 1",
+    );
     return core.encode(input);
   }
 
@@ -200,15 +232,15 @@ class TextEncoder {
     const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
     // The WebIDL type of `source` is `USVString`, but the ops bindings
     // already convert lone surrogates to the replacement character.
-    source = webidl.converters.DOMString(source, {
+    source = webidl.converters.DOMString(source, prefix, "Argument 1");
+    destination = webidl.converters.Uint8Array(
+      destination,
       prefix,
-      context: "Argument 1",
-    });
-    destination = webidl.converters.Uint8Array(destination, {
-      prefix,
-      context: "Argument 2",
-      allowShared: true,
-    });
+      "Argument 2",
+      {
+        allowShared: true,
+      },
+    );
     ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
     return {
       read: encodeIntoBuf[0],
@@ -234,21 +266,19 @@ class TextDecoderStream {
    */
   constructor(label = "utf-8", options = {}) {
     const prefix = "Failed to construct 'TextDecoderStream'";
-    label = webidl.converters.DOMString(label, {
+    label = webidl.converters.DOMString(label, prefix, "Argument 1");
+    options = webidl.converters.TextDecoderOptions(
+      options,
       prefix,
-      context: "Argument 1",
-    });
-    options = webidl.converters.TextDecoderOptions(options, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
     this.#decoder = new TextDecoder(label, options);
     this.#transform = new TransformStream({
       // The transform and flush functions need access to TextDecoderStream's
       // `this`, so they are defined as functions rather than methods.
       transform: (chunk, controller) => {
         try {
-          chunk = webidl.converters.BufferSource(chunk, {
+          chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
             allowShared: true,
           });
           const decoded = this.#decoder.decode(chunk, { stream: true });

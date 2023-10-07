@@ -1,8 +1,0 @@
-{
-  "textDocument": {
-    "uri": "file:///a/file.ts",
-    "languageId": "typescript",
-    "version": 1,
-    "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
-  }
-}

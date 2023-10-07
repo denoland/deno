@@ -23,15 +23,15 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op;
+use deno_core::op2;
 
 use deno_core::parking_lot::Mutex;
+use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -62,6 +62,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::io::ErrorKind;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -74,7 +75,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::task::spawn_local;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Flow {
@@ -116,12 +116,26 @@ impl TlsStream {
     Self::new(tcp, Connection::Client(tls))
   }
 
+  pub fn new_client_side_from(
+    tcp: TcpStream,
+    connection: ClientConnection,
+  ) -> Self {
+    Self::new(tcp, Connection::Client(connection))
+  }
+
   pub fn new_server_side(
     tcp: TcpStream,
     tls_config: Arc<ServerConfig>,
   ) -> Self {
     let tls = ServerConnection::new(tls_config).unwrap();
     Self::new(tcp, Connection::Server(tls))
+  }
+
+  pub fn new_server_side_from(
+    tcp: TcpStream,
+    connection: ServerConnection,
+  ) -> Self {
+    Self::new(tcp, Connection::Server(connection))
   }
 
   pub fn into_split(self) -> (ReadHalf, WriteHalf) {
@@ -131,6 +145,16 @@ impl TlsStream {
     };
     let wr = WriteHalf { shared };
     (rd, wr)
+  }
+
+  /// Convenience method to match [`TcpStream`].
+  pub fn peer_addr(&self) -> Result<SocketAddr, io::Error> {
+    self.0.as_ref().unwrap().tcp.peer_addr()
+  }
+
+  /// Convenience method to match [`TcpStream`].
+  pub fn local_addr(&self) -> Result<SocketAddr, io::Error> {
+    self.0.as_ref().unwrap().tcp.local_addr()
   }
 
   /// Tokio-rustls compatibility: returns a reference to the underlying TCP
@@ -200,9 +224,9 @@ impl Drop for TlsStream {
     let use_linger_task = inner.poll_close(&mut cx).is_pending();
 
     if use_linger_task {
-      spawn_local(poll_fn(move |cx| inner.poll_close(cx)));
+      spawn(poll_fn(move |cx| inner.poll_close(cx)));
     } else if cfg!(debug_assertions) {
-      spawn_local(async {}); // Spawn dummy task to detect missing LocalSet.
+      spawn(async {}); // Spawn dummy task to detect missing runtime.
     }
   }
 }
@@ -653,16 +677,6 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
-  vec![
-    op_tls_start::decl::<P>(),
-    op_net_connect_tls::decl::<P>(),
-    op_net_listen_tls::decl::<P>(),
-    op_net_accept_tls::decl(),
-    op_tls_handshake::decl(),
-  ]
-}
-
 #[derive(Debug)]
 pub struct TlsStreamResource {
   rd: AsyncRefCell<ReadHalf>,
@@ -765,10 +779,11 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
-  args: StartTlsArgs,
+  #[serde] args: StartTlsArgs,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -799,14 +814,10 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  // TODO(@justinmchase): Ideally the certificate store is created once
-  // and not cloned. The store should be wrapped in Arc<T> to reduce
-  // copying memory unnecessarily.
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
 
   let resource_rc = state
     .borrow_mut()
@@ -831,7 +842,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.startTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -851,11 +861,12 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
-  addr: IpAddr,
-  args: ConnectTlsArgs,
+  #[serde] addr: IpAddr,
+  #[serde] args: ConnectTlsArgs,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -867,10 +878,10 @@ where
     .and_then(|it| it.0.clone());
 
   if args.cert_chain.is_some() {
-    super::check_unstable2(&state, "ConnectTlsOptions.certChain");
+    super::check_unstable(&state.borrow(), "ConnectTlsOptions.certChain");
   }
   if args.private_key.is_some() {
-    super::check_unstable2(&state, "ConnectTlsOptions.privateKey");
+    super::check_unstable(&state.borrow(), "ConnectTlsOptions.privateKey");
   }
 
   {
@@ -898,8 +909,7 @@ where
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
   let hostname_dns = ServerName::try_from(&*addr.hostname)
     .map_err(|_| invalid_hostname(&addr.hostname))?;
   let connect_addr = resolve_addr(&addr.hostname, addr.port)
@@ -931,7 +941,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.connectTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -965,8 +974,8 @@ fn load_private_keys_from_file(
 }
 
 pub struct TlsListenerResource {
-  tcp_listener: AsyncRefCell<TcpListener>,
-  tls_config: Arc<ServerConfig>,
+  pub(crate) tcp_listener: AsyncRefCell<TcpListener>,
+  pub(crate) tls_config: Arc<ServerConfig>,
   cancel_handle: CancelHandle,
 }
 
@@ -993,11 +1002,12 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
-  addr: IpAddr,
-  args: ListenTlsArgs,
+  #[serde] addr: IpAddr,
+  #[serde] args: ListenTlsArgs,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1048,9 +1058,14 @@ where
     .with_safe_defaults()
     .with_no_client_auth()
     .with_single_cert(cert_chain, key_der)
-    .expect("invalid key or certificate");
+    .map_err(|e| {
+      custom_error(
+        "InvalidData",
+        format!("Error creating TLS certificate: {:?}", e),
+      )
+    })?;
+
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable(state, "Deno.listenTls#alpn_protocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -1089,10 +1104,11 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
   let resource = state
     .borrow()
@@ -1130,10 +1146,11 @@ pub async fn op_net_accept_tls(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()

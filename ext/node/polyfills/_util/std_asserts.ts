@@ -1,12 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // vendored from std/testing/asserts.ts
 
-import { red } from "internal:deno_node/_util/std_fmt_colors.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { red } from "ext:deno_node/_util/std_fmt_colors.ts";
 import {
   buildMessage,
   diff,
   diffstr,
-} from "internal:deno_node/_util/std_testing_diff.ts";
+} from "ext:deno_node/_util/std_testing_diff.ts";
 
 /** Converts the input into a string. Objects, Sets and Maps are sorted so as to
  * make tests less flaky */
@@ -136,7 +139,6 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-// deno-lint-ignore ban-types
 function constructorsEqual(a: object, b: object) {
   return a.constructor === b.constructor ||
     a.constructor === Object && !b.constructor ||

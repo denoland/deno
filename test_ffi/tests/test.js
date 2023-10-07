@@ -78,6 +78,7 @@ const Point = ["f64", "f64"];
 const Size = ["f64", "f64"];
 const Rect = ["f64", "f64", "f64", "f64"];
 const RectNested = [{ struct: Point }, { struct: Size }];
+const RectNestedCached = [{ struct: Size }, { struct: Size }];
 const Mixed = ["u8", "f32", { struct: Rect }, "usize", { struct: ["u32", "u32"] }];
 
 const dylib = Deno.dlopen(libPath, {
@@ -251,6 +252,7 @@ const dylib = Deno.dlopen(libPath, {
    */
   "static_char": {
     type: "pointer",
+    optional: true,
   },
   "hash": { parameters: ["buffer", "u32"], result: "u32" },
   make_rect: {
@@ -264,7 +266,7 @@ const dylib = Deno.dlopen(libPath, {
     result: { struct: RectNested },
   },
   print_rect: {
-    parameters: [{ struct: Rect }],
+    parameters: [{ struct: RectNestedCached }],
     result: "void",
   },
   print_rect_async: {
@@ -280,6 +282,22 @@ const dylib = Deno.dlopen(libPath, {
   print_mixed: {
     parameters: [{ struct: Mixed }],
     result: "void",
+    optional: true,
+  },
+  non_existent_symbol: {
+    parameters: [],
+    result: "void",
+    optional: true,
+  },
+  non_existent_nonblocking_symbol: {
+    parameters: [],
+    result: "void",
+    nonblocking: true,
+    optional: true,
+  },
+  non_existent_static: {
+    type: "u32",
+    optional: true,
   },
 });
 const { symbols } = dylib;
@@ -323,13 +341,13 @@ const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
 console.log(stringPtrview.getCString(11));
-console.log(dylib.symbols.is_null_ptr(ptr0));
-console.log(dylib.symbols.is_null_ptr(null));
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
+console.log("false", dylib.symbols.is_null_ptr(ptr0));
+console.log("true", dylib.symbols.is_null_ptr(null));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
 const emptyBuffer = new Uint8Array(0);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
+console.log("true", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
 const emptySlice = into.subarray(6);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
 
 const { is_null_buf } = symbols;
 function isNullBuffer(buffer) { return is_null_buf(buffer); };
@@ -368,10 +386,9 @@ const externalOneBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(p
 assertEquals(isNullBuffer(externalOneBuffer), false, "isNullBuffer(externalOneBuffer) !== false");
 assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(externalOneBuffer) !== false");
 
-// Due to ops macro using `Local<ArrayBuffer>->Data()` to get the pointer for the slice that is then used to get
-// the pointer of an ArrayBuffer / TypedArray, the same effect can be seen where a zero byte length buffer returns
-// a null pointer as its pointer value.
-assertEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) !== null");
+// UnsafePointer.of uses an exact-pointer fallback for zero-length buffers and slices to ensure that it always gets
+// the underlying pointer right.
+assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
@@ -708,7 +725,9 @@ assertEquals(view.getUint32(), 55);
   assertThrows(() => Deno.UnsafePointer.offset(null, 5));
   const offsetPointer = Deno.UnsafePointer.offset(createdPointer, 5);
   assertEquals(Deno.UnsafePointer.value(offsetPointer), 6);
-  assertEquals(Deno.UnsafePointer.offset(offsetPointer, -6), null);
+  const zeroPointer = Deno.UnsafePointer.offset(offsetPointer, -6);
+  assertEquals(Deno.UnsafePointer.value(zeroPointer), 0);
+  assertEquals(zeroPointer, null);
 }
 
 // Test non-UTF-8 characters

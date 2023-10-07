@@ -46,6 +46,11 @@ const remote = Deno.dlopen(
       parameters: ["bool"],
       result: "bool",
     },
+    method25: {
+      parameters: [],
+      result: "void",
+      optional: true,
+    },
     static1: { type: "usize" },
     static2: { type: "pointer" },
     static3: { type: "usize" },
@@ -61,6 +66,10 @@ const remote = Deno.dlopen(
     static13: { type: "f32" },
     static14: { type: "f64" },
     static15: { type: "bool" },
+    static16: {
+      type: "bool",
+      optional: true,
+    },
   },
 );
 
@@ -164,7 +173,7 @@ result4.then((_0: Deno.BufferSource) => {});
 result4.then((_1: null | Deno.UnsafePointer) => {});
 
 const fnptr = new Deno.UnsafeFnPointer(
-  {} as NonNullable<Deno.PointerValue>,
+  {} as Deno.PointerObject,
   {
     parameters: ["u32", "pointer"],
     result: "void",
@@ -277,6 +286,9 @@ let r24_0: true = remote.symbols.method24(true);
 let r42_1: number = remote.symbols.method24(true);
 <boolean> remote.symbols.method24(Math.random() > 0.5);
 
+// @ts-expect-error: Optional symbol; can be null.
+remote.symbols.method25();
+
 // @ts-expect-error: Invalid member type
 const static1_wrong: null = remote.symbols.static1;
 const static1_right: number | bigint = remote.symbols.static1;
@@ -322,6 +334,9 @@ const static14_right: number = remote.symbols.static14;
 // @ts-expect-error: Invalid member type
 const static15_wrong: number = remote.symbols.static15;
 const static15_right: boolean = remote.symbols.static15;
+// @ts-expect-error: Invalid member type
+const static16_wrong: boolean = remote.symbols.static16;
+const static16_right: boolean | null = remote.symbols.static16;
 
 // Adapted from https://stackoverflow.com/a/53808212/10873797
 type Equal<T, U> = (<G>() => G extends T ? 1 : 2) extends
@@ -342,6 +357,24 @@ type AssertNotEqual<
   Got,
   $ = [Equal<Expected, Got>] extends [true] ? never : Expected,
 > = never;
+
+const enum FooEnum {
+  Foo,
+  Bar,
+}
+const foo = "u8" as Deno.NativeU8Enum<FooEnum>;
+
+declare const brand: unique symbol;
+class MyPointerClass {}
+type MyPointer = Deno.PointerObject & { [brand]: MyPointerClass };
+const myPointer = "pointer" as Deno.NativeTypedPointer<MyPointer>;
+type MyFunctionDefinition = Deno.UnsafeCallbackDefinition<
+  [typeof foo, "u32"],
+  typeof myPointer
+>;
+const myFunction = "function" as Deno.NativeTypedFunction<
+  MyFunctionDefinition
+>;
 
 type __Tests__ = [
   empty: AssertEqual<
@@ -425,6 +458,72 @@ type __Tests__ = [
     },
     Deno.DynamicLibrary<
       { foo: { parameters: []; result: "i32" } }
+    >
+  >,
+  enum_param: AssertEqual<
+    {
+      symbols: {
+        foo: (arg: FooEnum) => void;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: [typeof foo]; result: "void" } }
+    >
+  >,
+  enum_return: AssertEqual<
+    {
+      symbols: {
+        foo: () => FooEnum;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: typeof foo } }
+    >
+  >,
+  typed_pointer_param: AssertEqual<
+    {
+      symbols: {
+        foo: (arg: MyPointer | null) => void;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: [typeof myPointer]; result: "void" } }
+    >
+  >,
+  typed_pointer_return: AssertEqual<
+    {
+      symbols: {
+        foo: () => MyPointer | null;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: typeof myPointer } }
+    >
+  >,
+  typed_function_param: AssertEqual<
+    {
+      symbols: {
+        foo: (arg: Deno.PointerObject<MyFunctionDefinition> | null) => void;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: [typeof myFunction]; result: "void" } }
+    >
+  >,
+  typed_function_return: AssertEqual<
+    {
+      symbols: {
+        foo: () => Deno.PointerObject<MyFunctionDefinition> | null;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: typeof myFunction } }
     >
   >,
 ];

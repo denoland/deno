@@ -14,12 +14,12 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { structuredClone } from "internal:deno_web/02_structured_clone.js";
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
-import { EventTarget } from "internal:deno_web/02_event.js";
-import { opNow } from "internal:deno_web/02_timers.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { EventTarget } from "ext:deno_web/02_event.js";
+import { opNow } from "ext:deno_web/02_timers.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 const customInspect = SymbolFor("Deno.customInspect");
@@ -41,11 +41,16 @@ webidl.converters["PerformanceMarkOptions"] = webidl
     ],
   );
 
-webidl.converters["DOMString or DOMHighResTimeStamp"] = (V, opts) => {
+webidl.converters["DOMString or DOMHighResTimeStamp"] = (
+  V,
+  prefix,
+  context,
+  opts,
+) => {
   if (webidl.type(V) === "Number" && V !== null) {
-    return webidl.converters.DOMHighResTimeStamp(V, opts);
+    return webidl.converters.DOMHighResTimeStamp(V, prefix, context, opts);
   }
-  return webidl.converters.DOMString(V, opts);
+  return webidl.converters.DOMString(V, prefix, context, opts);
 };
 
 webidl.converters["PerformanceMeasureOptions"] = webidl
@@ -71,11 +76,21 @@ webidl.converters["PerformanceMeasureOptions"] = webidl
     ],
   );
 
-webidl.converters["DOMString or PerformanceMeasureOptions"] = (V, opts) => {
+webidl.converters["DOMString or PerformanceMeasureOptions"] = (
+  V,
+  prefix,
+  context,
+  opts,
+) => {
   if (webidl.type(V) === "Object" && V !== null) {
-    return webidl.converters["PerformanceMeasureOptions"](V, opts);
+    return webidl.converters["PerformanceMeasureOptions"](
+      V,
+      prefix,
+      context,
+      opts,
+    );
   }
-  return webidl.converters.DOMString(V, opts);
+  return webidl.converters.DOMString(V, prefix, context, opts);
 };
 
 function setTimeOrigin(origin) {
@@ -219,17 +234,15 @@ class PerformanceMark extends PerformanceEntry {
     options = {},
   ) {
     const prefix = "Failed to construct 'PerformanceMark'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters.DOMString(name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters.DOMString(name, prefix, "Argument 1");
 
-    options = webidl.converters.PerformanceMarkOptions(options, {
+    options = webidl.converters.PerformanceMarkOptions(
+      options,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
 
     const { detail = null, startTime = now() } = options;
 
@@ -345,10 +358,11 @@ class Performance extends EventTarget {
   clearMarks(markName = undefined) {
     webidl.assertBranded(this, PerformancePrototype);
     if (markName !== undefined) {
-      markName = webidl.converters.DOMString(markName, {
-        prefix: "Failed to execute 'clearMarks' on 'Performance'",
-        context: "Argument 1",
-      });
+      markName = webidl.converters.DOMString(
+        markName,
+        "Failed to execute 'clearMarks' on 'Performance'",
+        "Argument 1",
+      );
 
       performanceEntries = ArrayPrototypeFilter(
         performanceEntries,
@@ -365,10 +379,11 @@ class Performance extends EventTarget {
   clearMeasures(measureName = undefined) {
     webidl.assertBranded(this, PerformancePrototype);
     if (measureName !== undefined) {
-      measureName = webidl.converters.DOMString(measureName, {
-        prefix: "Failed to execute 'clearMeasures' on 'Performance'",
-        context: "Argument 1",
-      });
+      measureName = webidl.converters.DOMString(
+        measureName,
+        "Failed to execute 'clearMeasures' on 'Performance'",
+        "Argument 1",
+      );
 
       performanceEntries = ArrayPrototypeFilter(
         performanceEntries,
@@ -394,18 +409,12 @@ class Performance extends EventTarget {
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters.DOMString(name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters.DOMString(name, prefix, "Argument 1");
 
     if (type !== undefined) {
-      type = webidl.converters.DOMString(type, {
-        prefix,
-        context: "Argument 2",
-      });
+      type = webidl.converters.DOMString(type, prefix, "Argument 2");
     }
 
     return filterByNameType(name, type);
@@ -414,12 +423,9 @@ class Performance extends EventTarget {
   getEntriesByType(type) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    type = webidl.converters.DOMString(type, {
-      prefix,
-      context: "Argument 1",
-    });
+    type = webidl.converters.DOMString(type, prefix, "Argument 1");
 
     return filterByNameType(undefined, type);
   }
@@ -430,17 +436,15 @@ class Performance extends EventTarget {
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'mark' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    markName = webidl.converters.DOMString(markName, {
-      prefix,
-      context: "Argument 1",
-    });
+    markName = webidl.converters.DOMString(markName, prefix, "Argument 1");
 
-    markOptions = webidl.converters.PerformanceMarkOptions(markOptions, {
+    markOptions = webidl.converters.PerformanceMarkOptions(
+      markOptions,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
 
     // 3.1.1.1 If the global object is a Window object and markName uses the
     // same name as a read only attribute in the PerformanceTiming interface,
@@ -458,24 +462,23 @@ class Performance extends EventTarget {
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'measure' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    measureName = webidl.converters.DOMString(measureName, {
+    measureName = webidl.converters.DOMString(
+      measureName,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
 
     startOrMeasureOptions = webidl.converters
-      ["DOMString or PerformanceMeasureOptions"](startOrMeasureOptions, {
+      ["DOMString or PerformanceMeasureOptions"](
+        startOrMeasureOptions,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
 
     if (endMark !== undefined) {
-      endMark = webidl.converters.DOMString(endMark, {
-        prefix,
-        context: "Argument 3",
-      });
+      endMark = webidl.converters.DOMString(endMark, prefix, "Argument 3");
     }
 
     if (

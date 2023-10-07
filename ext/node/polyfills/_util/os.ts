@@ -2,7 +2,7 @@
 
 const { ops } = globalThis.__bootstrap.core;
 
-export type OSType = "windows" | "linux" | "darwin" | "freebsd";
+export type OSType = "windows" | "linux" | "darwin" | "freebsd" | "openbsd";
 
 export const osType: OSType = ops.op_node_build_os();
 

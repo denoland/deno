@@ -4,9 +4,10 @@ use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
-use crate::emit::get_source_hash;
-use crate::proc_state::ProcState;
+use crate::factory::CliFactory;
+use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
+use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
@@ -20,6 +21,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleCode;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -27,6 +29,7 @@ use std::io::BufWriter;
 use std::io::Error;
 use std::io::Write;
 use std::io::{self};
+use std::path::Path;
 use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
@@ -125,17 +128,24 @@ impl CoverageCollector {
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
+      // Filter out internal JS files from being included in coverage reports
+      if script_coverage.url.starts_with("ext:")
+        || script_coverage.url.starts_with("[ext:")
+      {
+        continue;
+      }
+
       let filename = format!("{}.json", Uuid::new_v4());
       let filepath = self.dir.join(filename);
 
       let mut out = BufWriter::new(File::create(filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formated_coverage = format_json(&coverage, &Default::default())
+      let formatted_coverage = format_json(&coverage, &Default::default())
         .ok()
         .flatten()
         .unwrap_or(coverage);
 
-      out.write_all(formated_coverage.as_bytes())?;
+      out.write_all(formatted_coverage.as_bytes())?;
       out.flush()?;
     }
 
@@ -170,16 +180,16 @@ struct CoverageReport {
 
 fn generate_coverage_report(
   script_coverage: &ScriptCoverage,
-  script_source: &str,
+  script_source: String,
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
-  let text_lines = TextLines::new(script_source);
+  let text_lines = TextLines::new(&script_source);
 
-  let comment_ranges = deno_ast::lex(script_source, MediaType::JavaScript)
+  let comment_ranges = deno_ast::lex(&script_source, MediaType::JavaScript)
     .into_iter()
     .filter(|item| {
       matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
@@ -531,20 +541,20 @@ impl CoverageReporter for PrettyCoverageReporter {
     let mut last_line = None;
     for line_index in missed_lines {
       const WIDTH: usize = 4;
-      const SEPERATOR: &str = "|";
+      const SEPARATOR: &str = "|";
 
       // Put a horizontal separator between disjoint runs of lines
       if let Some(last_line) = last_line {
         if last_line + 1 != line_index {
           let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
+          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
         }
       }
 
       println!(
         "{:width$} {} {}",
         line_index + 1,
-        colors::gray(SEPERATOR),
+        colors::gray(SEPARATOR),
         colors::red(&lines[line_index]),
         width = WIDTH
       );
@@ -562,12 +572,20 @@ fn collect_coverages(
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = FileCollector::new(|file_path| {
-    file_path.extension().map_or(false, |ext| ext == "json")
+    file_path
+      .extension()
+      .map(|ext| ext == "json")
+      .unwrap_or(false)
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .ignore_vendor_folder()
   .add_ignore_paths(&files.ignore)
-  .collect_files(&files.include)?;
+  .collect_files(if files.include.is_empty() {
+    None
+  } else {
+    Some(&files.include)
+  })?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
@@ -584,6 +602,7 @@ fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
+  npm_resolver: &dyn CliNpmResolver,
 ) -> Vec<ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -594,10 +613,15 @@ fn filter_coverages(
   coverages
     .into_iter()
     .filter(|e| {
-      let is_internal = e.url.starts_with("internal:")
+      let is_internal = e.url.starts_with("ext:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
-        || e.url.ends_with(".snap");
+        || e.url.ends_with(".snap")
+        || is_supported_test_path(Path::new(e.url.as_str()))
+        || Url::parse(&e.url)
+          .ok()
+          .map(|url| npm_resolver.in_npm_package(&url))
+          .unwrap_or(false);
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
@@ -615,13 +639,18 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let ps = ProcState::build(flags).await?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let npm_resolver = factory.npm_resolver().await?;
+  let file_fetcher = factory.file_fetcher()?;
+  let cli_options = factory.cli_options();
+  let emitter = factory.emitter()?;
 
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
+    npm_resolver.as_ref(),
   );
 
   let proc_coverages: Vec<_> = script_coverages
@@ -655,13 +684,15 @@ pub async fn cover_files(
   };
 
   for script_coverage in script_coverages {
-    let module_specifier =
-      deno_core::resolve_url_or_path(&script_coverage.url)?;
+    let module_specifier = deno_core::resolve_url_or_path(
+      &script_coverage.url,
+      cli_options.initial_cwd(),
+    )?;
 
     let maybe_file = if module_specifier.scheme() == "file" {
-      ps.file_fetcher.get_source(&module_specifier)
+      file_fetcher.get_source(&module_specifier)
     } else {
-      ps.file_fetcher
+      file_fetcher
         .fetch_cached(&module_specifier, 10)
         .with_context(|| {
           format!("Failed to fetch \"{module_specifier}\" from cache.")
@@ -675,22 +706,21 @@ pub async fn cover_files(
     })?;
 
     // Check if file was transpiled
-    let original_source = &file.source;
-    let transpiled_code = match file.media_type {
+    let original_source = file.source.clone();
+    let transpiled_code: ModuleCode = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.as_ref().to_string(),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
+      | MediaType::Json => file.source.clone().into(),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        let source_hash = get_source_hash(&file.source, ps.emit_options_hash);
-        match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
-          Some(code) => code,
+        match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+          Some(code) => code.into(),
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -705,15 +735,16 @@ pub async fn cover_files(
       }
     };
 
+    let source_map = source_map_from_code(&transpiled_code);
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      &transpiled_code,
-      &source_map_from_code(&transpiled_code),
+      transpiled_code.as_str().to_owned(),
+      &source_map,
       &out_mode,
     );
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, original_source)?;
+      reporter.report(&coverage_report, &original_source)?;
     }
   }
 

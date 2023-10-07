@@ -1,10 +1,8 @@
 {
   "lint": {
-    "files": {
-      "exclude": [
-        "ignored.ts"
-      ]
-    },
+    "exclude": [
+      "ignored.ts"
+    ],
     "rules": {
       "exclude": [
         "camelcase"

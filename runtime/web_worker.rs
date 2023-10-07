@@ -3,12 +3,14 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
-use crate::tokio_util::run_local;
+use crate::shared::runtime;
+use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -25,6 +27,7 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
+use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -32,9 +35,12 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_node::RequireNpmResolver;
-use deno_tls::rustls::RootCertStore;
+use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
@@ -97,7 +103,7 @@ impl Serialize for WorkerControlEvent {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("internal:"),
+              Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
             });
             json!({
@@ -230,10 +236,10 @@ pub struct WebWorkerHandle {
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
+  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn get_control_event(
     &self,
   ) -> Result<Option<WorkerControlEvent>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut receiver = self.receiver.borrow_mut();
     Ok(receiver.next().await)
   }
@@ -326,19 +332,18 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
+  pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
-  pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub get_error_class_fn: Option<GetErrorClassFn>,
-  pub blob_store: BlobStore,
+  pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -368,107 +373,152 @@ impl WebWorker {
     worker_id: WorkerId,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
+    deno_core::extension!(deno_permissions_web_worker,
+      options = {
+        permissions: PermissionsContainer,
+        enable_testing_features: bool,
+      },
+      state = |state, options| {
+        state.put::<PermissionsContainer>(options.permissions);
+        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
+      },
+    );
+
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder("deno_permissions_web_worker")
-      .state(move |state| {
-        state.put::<PermissionsContainer>(permissions.clone());
-        state.put(ops::UnstableChecker { unstable });
-        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-      })
-      .build();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
       CreateCache(Arc::new(create_cache_fn))
     });
 
-    let mut extensions: Vec<Extension> = vec![
+    // NOTE(bartlomieju): ordering is important here, keep it in sync with
+    // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
+
+    let mut extensions = vec![
       // Web APIs
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init_ops_and_esm(),
+      deno_console::deno_console::init_ops_and_esm(),
+      deno_url::deno_url::init_ops_and_esm(),
+      deno_web::deno_web::init_ops_and_esm::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
-        user_agent: options.bootstrap.user_agent.clone(),
-        root_cert_store: options.root_cert_store.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-        ..Default::default()
-      }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
+        deno_fetch::Options {
+          user_agent: options.bootstrap.user_agent.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
+          unsafely_ignore_certificate_errors: options
+            .unsafely_ignore_certificate_errors
+            .clone(),
+          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          ..Default::default()
+        },
+      ),
+      deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(
+        create_cache,
+      ),
+      deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init(None).disable(),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
-      // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
+      deno_webstorage::deno_webstorage::init_ops_and_esm(None).disable(),
+      deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
+        options.broadcast_channel.clone(),
+      ),
+      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
+      deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
+        options.root_cert_store_provider.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
+      deno_tls::deno_tls::init_ops_and_esm(),
+      deno_kv::deno_kv::init_ops_and_esm(
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(None),
+      ),
+      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
+      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
+      deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
+      deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
+        options.fs.clone(),
+      ),
+      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+        options.npm_resolver,
+        options.fs,
+      ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::init(),
-      ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(
+      ops::web_worker::deno_web_worker::init_ops_and_esm(),
+      ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
+      ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
-        options.preload_module_cb.clone(),
-        options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      // Extensions providing Deno.* features
-      ops::fs_events::init(),
-      deno_fs::init::<PermissionsContainer>(unstable),
-      deno_io::init(options.stdio),
-      deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
-        options.root_cert_store.clone(),
-        unstable,
-        options.unsafely_ignore_certificate_errors.clone(),
+      ops::fs_events::deno_fs_events::init_ops_and_esm(),
+      ops::os::deno_os_worker::init_ops_and_esm(),
+      ops::permissions::deno_permissions::init_ops_and_esm(),
+      ops::process::deno_process::init_ops_and_esm(),
+      ops::signal::deno_signal::init_ops_and_esm(),
+      ops::tty::deno_tty::init_ops_and_esm(),
+      ops::http::deno_http_runtime::init_ops_and_esm(),
+      deno_permissions_web_worker::init_ops_and_esm(
+        permissions,
+        enable_testing_features,
       ),
-      deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
-      deno_node::init::<PermissionsContainer>(options.npm_resolver),
-      ops::os::init_for_worker(),
-      ops::permissions::init(),
-      ops::process::init_ops(),
-      ops::signal::init(),
-      ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
-      ops::http::init(),
-      // Permissions ext (worker specific state)
-      perm_ext,
+      runtime::init_ops_and_esm(),
     ];
 
-    // Append exts
+    for extension in &mut extensions {
+      #[cfg(not(feature = "__runtime_js_sources"))]
+      {
+        extension.js_files = std::borrow::Cow::Borrowed(&[]);
+        extension.esm_files = std::borrow::Cow::Borrowed(&[]);
+        extension.esm_entry_point = None;
+      }
+      #[cfg(feature = "__runtime_js_sources")]
+      {
+        use crate::shared::maybe_transpile_source;
+        for source in extension.esm_files.to_mut() {
+          maybe_transpile_source(source).unwrap();
+        }
+        for source in extension.js_files.to_mut() {
+          maybe_transpile_source(source).unwrap();
+        }
+      }
+    }
+
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
-    let startup_snapshot = options
-      .startup_snapshot
-      .unwrap_or_else(crate::js::deno_isolate_init);
-    #[cfg(feature = "dont_create_runtime_snapshot")]
-    let startup_snapshot = options.startup_snapshot
-      .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
+    #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
+    options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+
+    // Clear extension modules from the module map, except preserve `node:*`
+    // modules as `node:` specifiers.
+    let preserve_snapshotted_modules =
+      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(startup_snapshot),
+      startup_snapshot: options
+        .startup_snapshot
+        .or_else(crate::js::deno_isolate_init),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
+      preserve_snapshotted_modules,
       ..Default::default()
     });
+
+    if unstable {
+      let op_state = js_runtime.op_state();
+      op_state
+        .borrow_mut()
+        .feature_checker
+        .enable_legacy_unstable();
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
@@ -495,7 +545,7 @@ impl WebWorker {
     };
 
     let bootstrap_fn_global = {
-      let context = js_runtime.global_context();
+      let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
@@ -536,8 +586,7 @@ impl WebWorker {
     // WebWorkers can have empty string as name.
     {
       let scope = &mut self.js_runtime.handle_scope();
-      let options_v8 =
-        deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+      let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
       let undefined = v8::undefined(scope);
@@ -548,20 +597,22 @@ impl WebWorker {
           .unwrap()
           .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[options_v8, name_str, id_str])
+        .call(scope, undefined.into(), &[args, name_str, id_str])
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
     // Save a reference to function that will start polling for messages
     // from a worker host; it will be called after the user code is loaded.
-    let script = r#"
+    let script = ascii_str!(
+      r#"
     const pollForMessages = globalThis.pollForMessages;
     delete globalThis.pollForMessages;
     pollForMessages
-    "#;
+    "#
+    );
     let poll_for_messages_fn = self
       .js_runtime
-      .execute_script(&located_script_name!(), script)
+      .execute_script(located_script_name!(), script)
       .expect("Failed to execute worker bootstrap script");
     self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
@@ -569,8 +620,8 @@ impl WebWorker {
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script(
     &mut self,
-    name: &str,
-    source_code: &str,
+    name: &'static str,
+    source_code: ModuleCode,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())
@@ -728,11 +779,9 @@ fn print_worker_error(
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 pub fn run_web_worker(
-  worker: WebWorker,
+  mut worker: WebWorker,
   specifier: ModuleSpecifier,
-  maybe_source_code: Option<String>,
-  preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
-  pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
@@ -742,24 +791,10 @@ pub fn run_web_worker(
 
   let fut = async move {
     let internal_handle = worker.internal_handle.clone();
-    let result = (preload_module_cb)(worker).await;
-
-    let mut worker = match result {
-      Ok(worker) => worker,
-      Err(e) => {
-        print_worker_error(&e, &name, format_js_error_fn.as_deref());
-        internal_handle
-          .post_event(WorkerControlEvent::TerminalError(e))
-          .expect("Failed to post message to host");
-
-        // Failure to execute script is a terminal error, bye, bye.
-        return Ok(());
-      }
-    };
 
     // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code {
-      let r = worker.execute_script(&located_script_name!(), &source_code);
+    let result = if let Some(source_code) = maybe_source_code.take() {
+      let r = worker.execute_script(located_script_name!(), source_code.into());
       worker.start_polling_for_messages();
       r
     } else {
@@ -767,18 +802,6 @@ pub fn run_web_worker(
       // script instead of module
       match worker.preload_main_module(&specifier).await {
         Ok(id) => {
-          worker = match (pre_execute_module_cb)(worker).await {
-            Ok(worker) => worker,
-            Err(e) => {
-              print_worker_error(&e, &name, format_js_error_fn.as_deref());
-              internal_handle
-                .post_event(WorkerControlEvent::TerminalError(e))
-                .expect("Failed to post message to host");
-
-              // Failure to execute script is a terminal error, bye, bye.
-              return Ok(());
-            }
-          };
           worker.start_polling_for_messages();
           worker.execute_main_module(id).await
         }
@@ -811,5 +834,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_local(fut)
+  create_and_run_current_thread(fut)
 }

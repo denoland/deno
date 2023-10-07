@@ -1,11 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use flate2::write::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::write::GzDecoder;
@@ -38,10 +39,11 @@ impl Resource for CompressionResource {
   }
 }
 
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_compression_new(
   state: &mut OpState,
-  format: &str,
+  #[string] format: &str,
   is_decoder: bool,
 ) -> ResourceId {
   let w = Vec::new();
@@ -64,42 +66,43 @@ pub fn op_compression_new(
   state.resource_table.add(resource)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_compression_write(
   state: &mut OpState,
-  rid: ResourceId,
-  input: &[u8],
-) -> Result<ZeroCopyBuf, AnyError> {
+  #[smi] rid: ResourceId,
+  #[anybuffer] input: &[u8],
+) -> Result<ToJsBuffer, AnyError> {
   let resource = state.resource_table.get::<CompressionResource>(rid)?;
   let mut inner = resource.0.borrow_mut();
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawEncoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
@@ -108,21 +111,30 @@ pub fn op_compression_write(
   Ok(out.into())
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_compression_finish(
   state: &mut OpState,
-  rid: ResourceId,
-) -> Result<ZeroCopyBuf, AnyError> {
+  #[smi] rid: ResourceId,
+) -> Result<ToJsBuffer, AnyError> {
   let resource = state.resource_table.take::<CompressionResource>(rid)?;
   let resource = Rc::try_unwrap(resource).unwrap();
   let inner = resource.0.into_inner();
   let out: Vec<u8> = match inner {
-    Inner::DeflateDecoder(d) => d.finish()?,
-    Inner::DeflateEncoder(d) => d.finish()?,
-    Inner::DeflateRawDecoder(d) => d.finish()?,
-    Inner::DeflateRawEncoder(d) => d.finish()?,
-    Inner::GzDecoder(d) => d.finish()?,
-    Inner::GzEncoder(d) => d.finish()?,
+    Inner::DeflateDecoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::DeflateEncoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::DeflateRawDecoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::DeflateRawEncoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::GzDecoder(d) => d.finish().map_err(|e| type_error(e.to_string()))?,
+    Inner::GzEncoder(d) => d.finish().map_err(|e| type_error(e.to_string()))?,
   };
   Ok(out.into())
 }

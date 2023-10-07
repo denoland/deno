@@ -2,14 +2,16 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { Event, EventTarget } from "internal:deno_web/02_event.js";
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
+  FunctionPrototypeBind,
   SymbolFor,
 } = primordials;
 
-const windowDispatchEvent = EventTarget.prototype.dispatchEvent.bind(
+const windowDispatchEvent = FunctionPrototypeBind(
+  EventTarget.prototype.dispatchEvent,
   globalThis,
 );
 
@@ -61,7 +63,7 @@ function exit(code) {
   }
 
   // Dispatches `unload` only when it's not dispatched yet.
-  if (!globalThis[SymbolFor("isUnloadDispatched")]) {
+  if (!globalThis[SymbolFor("Deno.isUnloadDispatched")]) {
     // Invokes the `unload` hooks before exiting
     // ref: https://github.com/denoland/deno/issues/3603
     windowDispatchEvent(new Event("unload"));

@@ -25,6 +25,9 @@
 // - https://github.com/nodejs/node/blob/master/src/node_options.cc
 // - https://github.com/nodejs/node/blob/master/src/node_options.h
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 export function getOptions() {
   // TODO(kt3k): Return option arguments as parsed object
   return { options: new Map() };

@@ -8,17 +8,19 @@
 
 const core = globalThis.Deno.core;
 const { InterruptedPrototype, ops } = core;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   EventTarget,
   MessageEvent,
   setEventTargetData,
-} from "internal:deno_web/02_event.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
@@ -99,7 +101,7 @@ class MessagePort extends EventTarget {
   postMessage(message, transferOrOptions = {}) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (
@@ -109,21 +111,20 @@ class MessagePort extends EventTarget {
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        prefix,
+        "Argument 2",
       );
       options = { transfer };
     } else {
       options = webidl.converters.StructuredSerializeOptions(
         transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
+        prefix,
+        "Argument 2",
       );
     }
     const { transfer } = options;
     if (ArrayPrototypeIncludes(transfer, this)) {
-      throw new DOMException("Can not tranfer self", "DataCloneError");
+      throw new DOMException("Can not transfer self", "DataCloneError");
     }
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;
@@ -155,6 +156,7 @@ class MessagePort extends EventTarget {
           transferables = v[1];
         } catch (err) {
           const event = new MessageEvent("messageerror", { data: err });
+          setIsTrusted(event, true);
           this.dispatchEvent(event);
           return;
         }
@@ -165,6 +167,7 @@ class MessagePort extends EventTarget {
             (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
           ),
         });
+        setIsTrusted(event, true);
         this.dispatchEvent(event);
       }
       this[_enabled] = false;
@@ -202,34 +205,39 @@ function opCreateEntangledMessagePort() {
 function deserializeJsMessageData(messageData) {
   /** @type {object[]} */
   const transferables = [];
-  const hostObjects = [];
   const arrayBufferIdsInTransferables = [];
   const transferredArrayBuffers = [];
+  let options;
 
-  for (let i = 0; i < messageData.transferables.length; ++i) {
-    const transferable = messageData.transferables[i];
-    switch (transferable.kind) {
-      case "messagePort": {
-        const port = createMessagePort(transferable.data);
-        ArrayPrototypePush(transferables, port);
-        ArrayPrototypePush(hostObjects, port);
-        break;
+  if (messageData.transferables.length > 0) {
+    const hostObjects = [];
+    for (let i = 0; i < messageData.transferables.length; ++i) {
+      const transferable = messageData.transferables[i];
+      switch (transferable.kind) {
+        case "messagePort": {
+          const port = createMessagePort(transferable.data);
+          ArrayPrototypePush(transferables, port);
+          ArrayPrototypePush(hostObjects, port);
+          break;
+        }
+        case "arrayBuffer": {
+          ArrayPrototypePush(transferredArrayBuffers, transferable.data);
+          const index = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, index);
+          break;
+        }
+        default:
+          throw new TypeError("Unreachable");
       }
-      case "arrayBuffer": {
-        ArrayPrototypePush(transferredArrayBuffers, transferable.data);
-        const index = ArrayPrototypePush(transferables, null);
-        ArrayPrototypePush(arrayBufferIdsInTransferables, index);
-        break;
-      }
-      default:
-        throw new TypeError("Unreachable");
     }
+
+    options = {
+      hostObjects,
+      transferredArrayBuffers,
+    };
   }
 
-  const data = core.deserialize(messageData.data, {
-    hostObjects,
-    transferredArrayBuffers,
-  });
+  const data = core.deserialize(messageData.data, options);
 
   for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
     const id = arrayBufferIdsInTransferables[i];
@@ -245,28 +253,36 @@ function deserializeJsMessageData(messageData) {
  * @returns {messagePort.MessageData}
  */
 function serializeJsMessageData(data, transferables) {
+  let options;
   const transferredArrayBuffers = [];
-  for (let i = 0, j = 0; i < transferables.length; i++) {
-    const ab = transferables[i];
-    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
-      if (ab.byteLength === 0 && ops.op_arraybuffer_was_detached(ab)) {
-        throw new DOMException(
-          `ArrayBuffer at index ${j} is already detached`,
-          "DataCloneError",
-        );
+  if (transferables.length > 0) {
+    const hostObjects = [];
+    for (let i = 0, j = 0; i < transferables.length; i++) {
+      const t = transferables[i];
+      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, t)) {
+        if (
+          ArrayBufferPrototypeGetByteLength(t) === 0 &&
+          ops.op_arraybuffer_was_detached(t)
+        ) {
+          throw new DOMException(
+            `ArrayBuffer at index ${j} is already detached`,
+            "DataCloneError",
+          );
+        }
+        j++;
+        ArrayPrototypePush(transferredArrayBuffers, t);
+      } else if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)) {
+        ArrayPrototypePush(hostObjects, t);
       }
-      j++;
-      transferredArrayBuffers.push(ab);
     }
+
+    options = {
+      hostObjects,
+      transferredArrayBuffers,
+    };
   }
 
-  const serializedData = core.serialize(data, {
-    hostObjects: ArrayPrototypeFilter(
-      transferables,
-      (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
-    ),
-    transferredArrayBuffers,
-  }, (err) => {
+  const serializedData = core.serialize(data, options, (err) => {
     throw new DOMException(err, "DataCloneError");
   });
 
@@ -325,11 +341,12 @@ webidl.converters.StructuredSerializeOptions = webidl
 
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
-  options = webidl.converters.StructuredSerializeOptions(options, {
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  options = webidl.converters.StructuredSerializeOptions(
+    options,
     prefix,
-    context: "Argument 2",
-  });
+    "Argument 2",
+  );
   const messageData = serializeJsMessageData(value, options.transfer);
   return deserializeJsMessageData(messageData)[0];
 }

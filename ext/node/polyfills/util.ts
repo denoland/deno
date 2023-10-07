@@ -1,19 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { promisify } from "internal:deno_node/internal/util.mjs";
-import { callbackify } from "internal:deno_node/_util/_util_callbackify.ts";
-import { debuglog } from "internal:deno_node/internal/util/debuglog.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { promisify } from "ext:deno_node/internal/util.mjs";
+import { callbackify } from "ext:deno_node/_util/_util_callbackify.ts";
+import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   format,
   formatWithOptions,
   inspect,
   stripVTControlCharacters,
-} from "internal:deno_node/internal/util/inspect.mjs";
-import { codes } from "internal:deno_node/internal/error_codes.ts";
-import types from "internal:deno_node/util/types.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { isDeepStrictEqual } from "internal:deno_node/internal/util/comparisons.ts";
-import process from "internal:deno_node/process.ts";
-import { validateString } from "internal:deno_node/internal/validators.mjs";
+} from "ext:deno_node/internal/util/inspect.mjs";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
+import types from "node:util/types";
+import { Buffer } from "node:buffer";
+import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
+import process from "node:process";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 
 export {
   callbackify,
@@ -155,7 +159,7 @@ import {
   _TextDecoder,
   _TextEncoder,
   getSystemErrorName,
-} from "internal:deno_node/_utils.ts";
+} from "ext:deno_node/_utils.ts";
 
 /** The global TextDecoder */
 export type TextDecoder = import("./_utils.ts")._TextDecoder;
@@ -194,7 +198,7 @@ function timestamp(): string {
     pad(d.getMinutes()),
     pad(d.getSeconds()),
   ].join(":");
-  return `${(d.getDate())} ${months[(d).getMonth()]} ${t}`;
+  return `${(d.getDate())} ${months[d.getMonth()]} ${t}`;
 }
 
 /**

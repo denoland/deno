@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::cache::calculate_fs_version_at_path;
+use super::language_server::StateNpmSnapshot;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -9,20 +11,16 @@ use crate::args::package_json;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
-use crate::cache::CachedUrlMetadata;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
-use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::node;
-use crate::node::node_resolve_npm_reference;
-use crate::node::NodeResolution;
-use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
-use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
+use crate::lsp::logging::lsp_warn;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
+use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 
@@ -32,22 +30,28 @@ use deno_ast::SourceTextInfo;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use lsp::Url;
 use once_cell::sync::Lazy;
+use package_json::PackageJsonDepsProvider;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
+use std::fs::ReadDir;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
@@ -84,6 +88,15 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .into_iter()
     .collect()
 });
+
+pub const DOCUMENT_SCHEMES: [&str; 6] = [
+  "data",
+  "blob",
+  "file",
+  "http",
+  "https",
+  "deno-notebook-cell",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
@@ -246,6 +259,27 @@ impl AssetOrDocument {
   }
 }
 
+/// Convert a `deno-notebook-cell:` specifier to a `file:` specifier.
+/// ```rust
+/// assert_eq!(
+///   cell_to_file_specifier(
+///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+///   ),
+///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
+/// );
+pub fn cell_to_file_specifier(specifier: &Url) -> Option<Url> {
+  if specifier.scheme() == "deno-notebook-cell" {
+    if let Ok(specifier) = ModuleSpecifier::parse(&format!(
+      "file://{}",
+      &specifier.as_str()
+        [url::quirks::internal_components(specifier).host_end as usize..],
+    )) {
+      return Some(specifier);
+    }
+  }
+  None
+}
+
 #[derive(Debug, Default)]
 struct DocumentDependencies {
   deps: IndexMap<String, deno_graph::Dependency>,
@@ -262,10 +296,32 @@ impl DocumentDependencies {
   }
 
   pub fn from_module(module: &deno_graph::EsmModule) -> Self {
-    Self {
+    let mut deps = Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
+    };
+    if module.specifier.scheme() == "deno-notebook-cell" {
+      for (_, dep) in &mut deps.deps {
+        if let Resolution::Ok(resolved) = &mut dep.maybe_code {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+            resolved.specifier = specifier;
+          }
+        }
+        if let Resolution::Ok(resolved) = &mut dep.maybe_type {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+            resolved.specifier = specifier;
+          }
+        }
+      }
+      if let Some(dep) = &mut deps.maybe_types_dependency {
+        if let Resolution::Ok(resolved) = &mut dep.dependency {
+          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+            resolved.specifier = specifier;
+          }
+        }
+      }
     }
+    deps
   }
 }
 
@@ -490,7 +546,8 @@ impl Document {
   pub fn script_version(&self) -> String {
     self
       .maybe_lsp_version()
-      .map_or_else(|| self.fs_version().to_string(), |v| v.to_string())
+      .map(|v| v.to_string())
+      .unwrap_or_else(|| self.fs_version().to_string())
   }
 
   pub fn is_diagnosable(&self) -> bool {
@@ -527,7 +584,7 @@ impl Document {
     if let Some(Ok(module)) = &self.0.maybe_module {
       return module.media_type;
     }
-    let specifier_media_type = MediaType::from(&self.0.specifier);
+    let specifier_media_type = MediaType::from_specifier(&self.0.specifier);
     if specifier_media_type != MediaType::Unknown {
       return specifier_media_type;
     }
@@ -649,16 +706,16 @@ fn recurse_dependents(
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct SpecifierResolver {
-  cache: HttpCache,
+  cache: Arc<dyn HttpCache>,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
 }
 
 impl SpecifierResolver {
-  pub fn new(cache_path: &Path) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
-      cache: HttpCache::new(cache_path),
+      cache,
       redirects: Mutex::new(HashMap::new()),
     }
   }
@@ -668,13 +725,11 @@ impl SpecifierResolver {
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
     let scheme = specifier.scheme();
-    if !SUPPORTED_SCHEMES.contains(&scheme) {
+    if !DOCUMENT_SCHEMES.contains(&scheme) {
       return None;
     }
 
-    if scheme == "data" || scheme == "blob" || scheme == "file" {
-      Some(specifier.clone())
-    } else {
+    if scheme == "http" || scheme == "https" {
       let mut redirects = self.redirects.lock();
       if let Some(specifier) = redirects.get(specifier) {
         Some(specifier.clone())
@@ -683,6 +738,8 @@ impl SpecifierResolver {
         redirects.insert(specifier.clone(), redirect.clone());
         Some(redirect)
       }
+    } else {
+      Some(specifier.clone())
     }
   }
 
@@ -691,10 +748,13 @@ impl SpecifierResolver {
     specifier: &ModuleSpecifier,
     redirect_limit: usize,
   ) -> Option<ModuleSpecifier> {
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
-    if redirect_limit > 0 && cache_filename.is_file() {
-      let headers = CachedUrlMetadata::read(&cache_filename)
+    if redirect_limit > 0 {
+      let cache_key = self.cache.cache_item_key(specifier).ok()?;
+      let headers = self
+        .cache
+        .read_metadata(&cache_key)
         .ok()
+        .flatten()
         .map(|m| m.headers)?;
       if let Some(location) = headers.get("location") {
         let redirect =
@@ -718,12 +778,15 @@ struct FileSystemDocuments {
 impl FileSystemDocuments {
   pub fn get(
     &mut self,
-    cache: &HttpCache,
+    cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let fs_version = get_document_path(cache, specifier)
-      .and_then(|path| calculate_fs_version(&path));
+    let fs_version = if specifier.scheme() == "data" {
+      Some("1".to_string())
+    } else {
+      calculate_fs_version(cache, specifier)
+    };
     let file_system_doc = self.docs.get(specifier);
     if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
       // attempt to update the file on the file system
@@ -737,14 +800,14 @@ impl FileSystemDocuments {
   /// returning the document.
   fn refresh_document(
     &mut self,
-    cache: &HttpCache,
+    cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let path = get_document_path(cache, specifier)?;
-    let fs_version = calculate_fs_version(&path)?;
-    let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
+      let path = specifier_to_file_path(specifier).ok()?;
+      let fs_version = calculate_fs_version_at_path(&path)?;
+      let bytes = fs::read(path).ok()?;
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
@@ -755,9 +818,20 @@ impl FileSystemDocuments {
         SourceTextInfo::from_string(content),
         resolver,
       )
+    } else if specifier.scheme() == "data" {
+      let (source, _) = get_source_from_data_url(specifier).ok()?;
+      Document::new(
+        specifier.clone(),
+        "1".to_string(),
+        None,
+        SourceTextInfo::from_string(source),
+        resolver,
+      )
     } else {
-      let cache_filename = cache.get_cache_filename(specifier)?;
-      let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
+      let fs_version = calculate_fs_version(cache, specifier)?;
+      let cache_key = cache.cache_item_key(specifier).ok()?;
+      let bytes = cache.read_file_bytes(&cache_key).ok()??;
+      let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
       let maybe_content_type = specifier_metadata.headers.get("content-type");
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let maybe_headers = Some(specifier_metadata.headers);
@@ -774,35 +848,33 @@ impl FileSystemDocuments {
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
   }
-
-  pub fn refresh_dependencies(
-    &mut self,
-    resolver: &dyn deno_graph::source::Resolver,
-  ) {
-    for doc in self.docs.values_mut() {
-      if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
-        *doc = new_doc;
-      }
-    }
-    self.dirty = true;
-  }
 }
 
-fn get_document_path(
-  cache: &HttpCache,
-  specifier: &ModuleSpecifier,
-) -> Option<PathBuf> {
-  match specifier.scheme() {
-    "npm" | "node" => None,
-    "file" => specifier_to_file_path(specifier).ok(),
-    _ => cache.get_cache_filename(specifier),
-  }
+pub struct UpdateDocumentConfigOptions<'a> {
+  pub enabled_paths: Vec<PathBuf>,
+  pub disabled_paths: Vec<PathBuf>,
+  pub document_preload_limit: usize,
+  pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
+  pub maybe_config_file: Option<&'a ConfigFile>,
+  pub maybe_package_json: Option<&'a PackageJson>,
+  pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
-#[derive(Debug, Clone, Default)]
+/// Specify the documents to include on a `documents.documents(...)` call.
+#[derive(Debug, Clone, Copy)]
+pub enum DocumentsFilter {
+  /// Includes all the documents (diagnosable & non-diagnosable, open & file system).
+  All,
+  /// Includes all the diagnosable documents (open & file system).
+  AllDiagnosable,
+  /// Includes only the diagnosable documents that are open.
+  OpenDiagnosable,
+}
+
+#[derive(Debug, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
-  cache: HttpCache,
+  cache: Arc<dyn HttpCache>,
   /// A flag that indicates that stated data is potentially invalid and needs to
   /// be recalculated before being considered valid.
   dirty: bool,
@@ -818,14 +890,12 @@ pub struct Documents {
   resolver_config_hash: u64,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
-  imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
+  imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
-  resolver: CliGraphResolver,
-  /// The npm package requirements found in a package.json file.
-  npm_package_json_reqs: Arc<Vec<NpmPackageReq>>,
+  resolver: Arc<CliGraphResolver>,
   /// The npm package requirements found in npm specifiers.
-  npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
+  npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
@@ -834,21 +904,36 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
-      cache: HttpCache::new(location),
+      cache: cache.clone(),
       dirty: true,
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       resolver_config_hash: 0,
       imports: Default::default(),
-      resolver: CliGraphResolver::default(),
-      npm_package_json_reqs: Default::default(),
+      resolver: Arc::new(CliGraphResolver::new(
+        None,
+        Arc::new(PackageJsonDepsProvider::default()),
+        CliGraphResolverOptions {
+          maybe_jsx_import_source_config: None,
+          maybe_import_map: None,
+          maybe_vendor_dir: None,
+        },
+      )),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
-      specifier_resolver: Arc::new(SpecifierResolver::new(location)),
+      specifier_resolver: Arc::new(SpecifierResolver::new(cache)),
     }
+  }
+
+  pub fn module_graph_imports(&self) -> impl Iterator<Item = &ModuleSpecifier> {
+    self
+      .imports
+      .values()
+      .flat_map(|i| i.dependencies.values())
+      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -893,15 +978,13 @@ impl Documents {
         let mut file_system_docs = self.file_system_docs.lock();
         file_system_docs.docs.remove(specifier)
       })
-      .map_or_else(
-        || {
-          Err(custom_error(
-            "NotFound",
-            format!("The specifier \"{specifier}\" was not found."),
-          ))
-        },
-        Ok,
-      )?;
+      .map(Ok)
+      .unwrap_or_else(|| {
+        Err(custom_error(
+          "NotFound",
+          format!("The specifier \"{specifier}\" was not found."),
+        ))
+      })?;
     self.dirty = true;
     let doc = doc.with_change(version, changes, self.get_resolver())?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());
@@ -944,16 +1027,30 @@ impl Documents {
     }
   }
 
+  pub fn resolve_redirected(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    self.specifier_resolver.resolve(specifier)
+  }
+
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    // keep this fast because it's used by op_exists, which is a hot path in tsc
     let specifier = self.specifier_resolver.resolve(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
         return true;
       }
-      if let Some(path) = get_document_path(&self.cache, &specifier) {
-        return path.is_file();
+      if specifier.scheme() == "data" {
+        return true;
+      }
+      if specifier.scheme() == "file" {
+        return specifier_to_file_path(&specifier)
+          .map(|p| p.is_file())
+          .unwrap_or(false);
+      }
+      if self.cache.contains(&specifier) {
+        return true;
       }
     }
     false
@@ -977,15 +1074,9 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Vec<NpmPackageReq> {
+  pub fn npm_package_reqs(&mut self) -> Arc<Vec<PackageReq>> {
     self.calculate_dependents_if_dirty();
-    let mut reqs = Vec::with_capacity(
-      self.npm_package_json_reqs.len() + self.npm_specifier_reqs.len(),
-    );
-    // resolve the package.json reqs first, then the npm specifiers
-    reqs.extend(self.npm_package_json_reqs.iter().cloned());
-    reqs.extend(self.npm_specifier_reqs.iter().cloned());
-    reqs
+    self.npm_specifier_reqs.clone()
   }
 
   /// Returns if a @types/node package was injected into the npm
@@ -1005,47 +1096,44 @@ impl Documents {
     }
   }
 
-  /// Return a vector of documents that are contained in the document store,
-  /// where `open_only` flag would provide only those documents currently open
-  /// in the editor and `diagnosable_only` would provide only those documents
-  /// that the language server can provide diagnostics for.
-  pub fn documents(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<Document> {
-    if open_only {
-      self
+  /// Return a collection of documents that are contained in the document store
+  /// based on the provided filter.
+  pub fn documents(&self, filter: DocumentsFilter) -> Vec<Document> {
+    match filter {
+      DocumentsFilter::OpenDiagnosable => self
         .open_docs
         .values()
         .filter_map(|doc| {
-          if !diagnosable_only || doc.is_diagnosable() {
+          if doc.is_diagnosable() {
             Some(doc.clone())
           } else {
             None
           }
         })
-        .collect()
-    } else {
-      // it is technically possible for a Document to end up in both the open
-      // and closed documents so we need to ensure we don't return duplicates
-      let mut seen_documents = HashSet::new();
-      let file_system_docs = self.file_system_docs.lock();
-      self
-        .open_docs
-        .values()
-        .chain(file_system_docs.docs.values())
-        .filter_map(|doc| {
-          // this prefers the open documents
-          if seen_documents.insert(doc.specifier().clone())
-            && (!diagnosable_only || doc.is_diagnosable())
-          {
-            Some(doc.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
+        .collect(),
+      DocumentsFilter::AllDiagnosable | DocumentsFilter::All => {
+        let diagnosable_only =
+          matches!(filter, DocumentsFilter::AllDiagnosable);
+        // it is technically possible for a Document to end up in both the open
+        // and closed documents so we need to ensure we don't return duplicates
+        let mut seen_documents = HashSet::new();
+        let file_system_docs = self.file_system_docs.lock();
+        self
+          .open_docs
+          .values()
+          .chain(file_system_docs.docs.values())
+          .filter_map(|doc| {
+            // this prefers the open documents
+            if seen_documents.insert(doc.specifier().clone())
+              && (!diagnosable_only || doc.is_diagnosable())
+            {
+              Some(doc.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      }
     }
   }
 
@@ -1056,7 +1144,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_npm_resolver: Option<&NpmPackageResolver>,
+    maybe_npm: Option<&StateNpmSnapshot>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1065,38 +1153,27 @@ impl Documents {
     };
     let mut results = Vec::new();
     for specifier in specifiers {
-      if let Some(npm_resolver) = maybe_npm_resolver {
-        if npm_resolver.in_npm_package(referrer) {
+      if let Some(npm) = maybe_npm {
+        if npm.node_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
-            node::node_resolve(
-              &specifier,
-              referrer,
-              NodeResolutionMode::Types,
-              npm_resolver,
-              &mut PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten(),
-          )));
-          continue;
-        }
-      }
-      if let Some(module_name) = specifier.strip_prefix("node:") {
-        if crate::node::resolve_builtin_node_module(module_name).is_ok() {
-          // return itself for node: specifiers because during type checking
-          // we resolve to the ambient modules in the @types/node package
-          // rather than deno_std/node
-          results.push(Some((
-            ModuleSpecifier::parse(&specifier).unwrap(),
-            MediaType::Dts,
+            npm
+              .node_resolver
+              .resolve(
+                &specifier,
+                referrer,
+                NodeResolutionMode::Types,
+                &PermissionsContainer::allow_all(),
+              )
+              .ok()
+              .flatten(),
           )));
           continue;
         }
       }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
-          let media_type = MediaType::from(&specifier);
+          let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
@@ -1105,9 +1182,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
         } else {
           results.push(None);
         }
@@ -1115,11 +1192,15 @@ impl Documents {
         .resolve_imports_dependency(&specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+        results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(&specifier)
       {
-        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm_resolver));
+        results.push(node_resolve_npm_req_ref(
+          npm_req_ref,
+          maybe_npm,
+          referrer,
+        ));
       } else {
         results.push(None);
       }
@@ -1128,10 +1209,10 @@ impl Documents {
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_location(&mut self, location: &Path) {
+  pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
     // TODO update resolved dependencies?
-    self.cache = HttpCache::new(location);
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(location));
+    self.cache = cache.clone();
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(cache));
     self.dirty = true;
   }
 
@@ -1159,107 +1240,195 @@ impl Documents {
     Ok(())
   }
 
-  pub fn update_config(
-    &mut self,
-    maybe_import_map: Option<Arc<import_map::ImportMap>>,
-    maybe_config_file: Option<&ConfigFile>,
-    maybe_package_json: Option<&PackageJson>,
-    npm_registry_api: NpmRegistryApi,
-    npm_resolution: NpmResolution,
-  ) {
+  pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     fn calculate_resolver_config_hash(
+      enabled_paths: &[PathBuf],
+      document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
+      maybe_vendor_dir: Option<bool>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
+      hasher.write_hashable(document_preload_limit);
+      hasher.write_hashable(&{
+        // ensure these are sorted so the hashing is deterministic
+        let mut enabled_paths = enabled_paths.to_vec();
+        enabled_paths.sort_unstable();
+        enabled_paths
+      });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      if let Some(jsx_config) = maybe_jsx_config {
-        hasher.write_hashable(&jsx_config);
+      hasher.write_hashable(maybe_vendor_dir);
+      hasher.write_hashable(maybe_jsx_config);
+      if let Some(package_json_deps) = &maybe_package_json_deps {
+        // We need to ensure the hashing is deterministic so explicitly type
+        // this in order to catch if the type of package_json_deps ever changes
+        // from a sorted/deterministic IndexMap to something else.
+        let package_json_deps: &IndexMap<_, _> = *package_json_deps;
+        for (key, value) in package_json_deps {
+          hasher.write_hashable(key);
+          match value {
+            Ok(value) => {
+              hasher.write_hashable(value);
+            }
+            Err(err) => {
+              hasher.write_str(&err.to_string());
+            }
+          }
+        }
       }
-      if let Some(deps) = maybe_package_json_deps {
-        hasher.write_hashable(&deps);
-      }
+
       hasher.finish()
     }
 
-    let maybe_package_json_deps = maybe_package_json.map(|package_json| {
-      package_json::get_local_package_json_version_reqs(package_json)
-    });
-    let maybe_jsx_config =
-      maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
+    let maybe_package_json_deps =
+      options.maybe_package_json.map(|package_json| {
+        package_json::get_local_package_json_version_reqs(package_json)
+      });
+    let maybe_jsx_config = options
+      .maybe_config_file
+      .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      maybe_import_map.as_deref(),
+      &options.enabled_paths,
+      options.document_preload_limit,
+      options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
+      options.maybe_config_file.and_then(|c| c.vendor_dir_flag()),
       maybe_package_json_deps.as_ref(),
     );
-    self.npm_package_json_reqs = Arc::new({
-      match &maybe_package_json_deps {
-        Some(deps) => {
-          let mut reqs = deps
-            .values()
-            .filter_map(|r| r.as_ref().ok())
-            .cloned()
-            .collect::<Vec<_>>();
-          reqs.sort();
-          reqs
-        }
-        None => Vec::new(),
-      }
-    });
-    let deps_installer = PackageJsonDepsInstaller::new(
-      npm_registry_api.clone(),
-      npm_resolution.clone(),
-      maybe_package_json_deps,
-    );
-    self.resolver = CliGraphResolver::new(
-      maybe_jsx_config,
-      maybe_import_map,
-      false,
-      npm_registry_api,
-      npm_resolution,
-      deps_installer,
-    );
+    let deps_provider =
+      Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
+    self.resolver = Arc::new(CliGraphResolver::new(
+      options.npm_resolver,
+      deps_provider,
+      CliGraphResolverOptions {
+        maybe_jsx_import_source_config: maybe_jsx_config,
+        maybe_import_map: options.maybe_import_map,
+        maybe_vendor_dir: options
+          .maybe_config_file
+          .and_then(|c| c.vendor_dir_path())
+          .as_ref(),
+      },
+    ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
-        maybe_config_file.map(|cf| cf.to_maybe_imports())
+        options.maybe_config_file.map(|cf| cf.to_maybe_imports())
       {
         imports
           .into_iter()
-          .map(|import| {
-            let graph_import = GraphImport::new(
-              &import.referrer,
-              import.imports,
-              Some(self.get_resolver()),
-            );
-            (import.referrer, graph_import)
+          .map(|(referrer, imports)| {
+            let graph_import =
+              GraphImport::new(&referrer, imports, Some(self.get_resolver()));
+            (referrer, graph_import)
           })
           .collect()
       } else {
-        HashMap::new()
+        IndexMap::new()
       },
     );
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies();
+      self.refresh_dependencies(
+        options.enabled_paths,
+        options.disabled_paths,
+        options.document_preload_limit,
+      );
       self.resolver_config_hash = new_resolver_config_hash;
-    }
 
-    self.dirty = true;
+      self.dirty = true;
+      self.calculate_dependents_if_dirty();
+    }
   }
 
-  fn refresh_dependencies(&mut self) {
+  fn refresh_dependencies(
+    &mut self,
+    enabled_paths: Vec<PathBuf>,
+    disabled_paths: Vec<PathBuf>,
+    document_preload_limit: usize,
+  ) {
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
         *doc = new_doc;
       }
     }
-    self.file_system_docs.lock().refresh_dependencies(resolver);
+
+    // update the file system documents
+    let mut fs_docs = self.file_system_docs.lock();
+    if document_preload_limit > 0 {
+      let mut not_found_docs =
+        fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+      let open_docs = &mut self.open_docs;
+
+      log::debug!("Preloading documents from enabled urls...");
+      let mut finder =
+        PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+          enabled_paths,
+          disabled_paths,
+          limit: document_preload_limit,
+        });
+      for specifier in finder.by_ref() {
+        // mark this document as having been found
+        not_found_docs.remove(&specifier);
+
+        if !open_docs.contains_key(&specifier)
+          && !fs_docs.docs.contains_key(&specifier)
+        {
+          fs_docs.refresh_document(&self.cache, resolver, &specifier);
+        } else {
+          // update the existing entry to have the new resolver
+          if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+            if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+              *doc = new_doc;
+            }
+          }
+        }
+      }
+
+      if finder.hit_limit() {
+        lsp_warn!(
+            concat!(
+              "Hit the language server document preload limit of {} file system entries. ",
+              "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
+              "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
+              "In cases where Deno ends up using too much memory, you may want to lower the limit."
+            ),
+            document_preload_limit,
+          );
+
+        // since we hit the limit, just update everything to use the new resolver
+        for uri in not_found_docs {
+          if let Some(doc) = fs_docs.docs.get_mut(&uri) {
+            if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+              *doc = new_doc;
+            }
+          }
+        }
+      } else {
+        // clean up and remove any documents that weren't found
+        for uri in not_found_docs {
+          fs_docs.docs.remove(&uri);
+        }
+      }
+    } else {
+      // This log statement is used in the tests to ensure preloading doesn't
+      // happen, which is not useful in the repl and could be very expensive
+      // if the repl is launched from a directory with a lot of descendants.
+      log::debug!("Skipping document preload.");
+
+      // just update to use the new resolver
+      for doc in fs_docs.docs.values_mut() {
+        if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+          *doc = new_doc;
+        }
+      }
+    }
+
+    fs_docs.dirty = true;
   }
 
   /// Iterate through the documents, building a map where the key is a unique
@@ -1271,7 +1440,7 @@ impl Documents {
       dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
       analyzed_specifiers: HashSet<ModuleSpecifier>,
       pending_specifiers: VecDeque<ModuleSpecifier>,
-      npm_reqs: HashSet<NpmPackageReq>,
+      npm_reqs: HashSet<PackageReq>,
       has_node_builtin_specifier: bool,
     }
 
@@ -1283,7 +1452,7 @@ impl Documents {
           // been analyzed in order to not cause an extra file system lookup
           self.pending_specifiers.push_back(dep.clone());
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            self.npm_reqs.insert(reference.req);
+            self.npm_reqs.insert(reference.into_inner().req);
           }
         }
 
@@ -1296,12 +1465,11 @@ impl Documents {
 
       fn analyze_doc(&mut self, specifier: &ModuleSpecifier, doc: &Document) {
         self.analyzed_specifiers.insert(specifier.clone());
-        for (name, dependency) in doc.dependencies() {
-          if !self.has_node_builtin_specifier && name.starts_with("node:") {
-            self.has_node_builtin_specifier = true;
-          }
-
+        for dependency in doc.dependencies().values() {
           if let Some(dep) = dependency.get_code() {
+            if !self.has_node_builtin_specifier && dep.scheme() == "node" {
+              self.has_node_builtin_specifier = true;
+            }
             self.add(dep, specifier);
           }
           if let Some(dep) = dependency.get_type() {
@@ -1342,7 +1510,7 @@ impl Documents {
       .has_node_builtin_specifier
       && !npm_reqs.iter().any(|r| r.name == "@types/node");
     if self.has_injected_types_node_package {
-      npm_reqs.insert(NpmPackageReq::from_str("@types/node").unwrap());
+      npm_reqs.insert(PackageReq::from_str("@types/node").unwrap());
     }
 
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
@@ -1362,10 +1530,20 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_npm_resolver: Option<&NpmPackageResolver>,
+    maybe_npm: Option<&StateNpmSnapshot>,
+    referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+      if deno_node::is_builtin_node_module(module_name) {
+        // return itself for node: specifiers because during type checking
+        // we resolve to the ambient modules in the @types/node package
+        // rather than deno_std/node
+        return Some((specifier.clone(), MediaType::Dts));
+      }
+    }
+
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_npm_resolver);
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm, referrer);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1374,10 +1552,10 @@ impl Documents {
     if let Some(specifier) =
       maybe_types_dependency.and_then(|d| d.maybe_specifier())
     {
-      self.resolve_dependency(specifier, maybe_npm_resolver)
+      self.resolve_dependency(specifier, maybe_npm, referrer)
     } else {
       let media_type = doc.media_type();
-      Some((specifier.clone(), media_type))
+      Some((doc.specifier().clone(), media_type))
     }
   }
 
@@ -1397,23 +1575,27 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_npm_resolver: Option<&NpmPackageResolver>,
+  maybe_npm: Option<&StateNpmSnapshot>,
+  referrer: &ModuleSpecifier,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  maybe_npm_resolver.map(|npm_resolver| {
+  maybe_npm.map(|npm| {
     NodeResolution::into_specifier_and_media_type(
-      npm_resolver
-        .resolution()
-        .pkg_req_ref_to_nv_ref(npm_req_ref)
+      npm
+        .npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)
         .ok()
-        .and_then(|pkg_id_ref| {
-          node_resolve_npm_reference(
-            &pkg_id_ref,
-            NodeResolutionMode::Types,
-            npm_resolver,
-            &mut PermissionsContainer::allow_all(),
-          )
-          .ok()
-          .flatten()
+        .and_then(|package_folder| {
+          npm
+            .node_resolver
+            .resolve_package_subpath_from_deno_module(
+              &package_folder,
+              npm_req_ref.sub_path(),
+              referrer,
+              NodeResolutionMode::Types,
+              &PermissionsContainer::allow_all(),
+            )
+            .ok()
+            .flatten()
         }),
     )
   })
@@ -1425,24 +1607,53 @@ pub struct OpenDocumentsGraphLoader<'a> {
   pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
 }
 
+impl<'a> OpenDocumentsGraphLoader<'a> {
+  fn load_from_docs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<deno_graph::source::LoadFuture> {
+    if specifier.scheme() == "file" {
+      if let Some(doc) = self.open_docs.get(specifier) {
+        return Some(
+          future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
+            content: doc.content(),
+            specifier: doc.specifier().clone(),
+            maybe_headers: None,
+          })))
+          .boxed_local(),
+        );
+      }
+    }
+    None
+  }
+}
+
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
+  fn registry_url(&self) -> &Url {
+    self.inner_loader.registry_url()
+  }
+
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
+    cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
-    if specifier.scheme() == "file" {
-      if let Some(doc) = self.open_docs.get(specifier) {
-        return Box::pin(future::ready(Ok(Some(
-          deno_graph::source::LoadResponse::Module {
-            content: doc.content(),
-            specifier: doc.specifier().clone(),
-            maybe_headers: None,
-          },
-        ))));
-      }
+    match self.load_from_docs(specifier) {
+      Some(fut) => fut,
+      None => self.inner_loader.load(specifier, is_dynamic, cache_setting),
     }
-    self.inner_loader.load(specifier, is_dynamic)
+  }
+
+  fn cache_module_info(
+    &mut self,
+    specifier: &deno_ast::ModuleSpecifier,
+    source: &str,
+    module_info: &deno_graph::ModuleInfo,
+  ) {
+    self
+      .inner_loader
+      .cache_module_info(specifier, source, module_info)
   }
 }
 
@@ -1486,24 +1697,268 @@ fn analyze_module(
       parsed_source,
       Some(resolver),
     )),
-    Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
-      specifier.clone(),
-      err.clone(),
+    Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
+      deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
     )),
   }
 }
 
+enum PendingEntry {
+  /// File specified as a root url.
+  SpecifiedRootFile(PathBuf),
+  /// Directory that is queued to read.
+  Dir(PathBuf),
+  /// The current directory being read.
+  ReadDir(Box<ReadDir>),
+}
+
+struct PreloadDocumentFinderOptions {
+  enabled_paths: Vec<PathBuf>,
+  disabled_paths: Vec<PathBuf>,
+  limit: usize,
+}
+
+/// Iterator that finds documents that can be preloaded into
+/// the LSP on startup.
+struct PreloadDocumentFinder {
+  limit: usize,
+  entry_count: usize,
+  pending_entries: VecDeque<PendingEntry>,
+  disabled_globs: glob::GlobSet,
+  disabled_paths: HashSet<PathBuf>,
+}
+
+impl PreloadDocumentFinder {
+  pub fn new(options: PreloadDocumentFinderOptions) -> Self {
+    fn paths_into_globs_and_paths(
+      input_paths: Vec<PathBuf>,
+    ) -> (glob::GlobSet, HashSet<PathBuf>) {
+      let mut globs = Vec::with_capacity(input_paths.len());
+      let mut paths = HashSet::with_capacity(input_paths.len());
+      for path in input_paths {
+        if let Ok(Some(glob)) =
+          glob::GlobPattern::new_if_pattern(&path.to_string_lossy())
+        {
+          globs.push(glob);
+        } else {
+          paths.insert(path);
+        }
+      }
+      (glob::GlobSet::new(globs), paths)
+    }
+
+    fn is_allowed_root_dir(dir_path: &Path) -> bool {
+      if dir_path.parent().is_none() {
+        // never search the root directory of a drive
+        return false;
+      }
+      true
+    }
+
+    let (disabled_globs, disabled_paths) =
+      paths_into_globs_and_paths(options.disabled_paths);
+    let mut finder = PreloadDocumentFinder {
+      limit: options.limit,
+      entry_count: 0,
+      pending_entries: Default::default(),
+      disabled_globs,
+      disabled_paths,
+    };
+
+    // initialize the finder with the initial paths
+    let mut dirs = Vec::with_capacity(options.enabled_paths.len());
+    for path in options.enabled_paths {
+      if !finder.disabled_paths.contains(&path)
+        && !finder.disabled_globs.matches_path(&path)
+      {
+        if path.is_dir() {
+          if is_allowed_root_dir(&path) {
+            dirs.push(path);
+          }
+        } else {
+          finder
+            .pending_entries
+            .push_back(PendingEntry::SpecifiedRootFile(path));
+        }
+      }
+    }
+    for dir in sort_and_remove_non_leaf_dirs(dirs) {
+      finder.pending_entries.push_back(PendingEntry::Dir(dir));
+    }
+    finder
+  }
+
+  pub fn hit_limit(&self) -> bool {
+    self.entry_count >= self.limit
+  }
+
+  fn get_valid_specifier(path: &Path) -> Option<ModuleSpecifier> {
+    fn is_allowed_media_type(media_type: MediaType) -> bool {
+      match media_type {
+        MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Tsx => true,
+        MediaType::Json // ignore because json never depends on other files
+        | MediaType::Wasm
+        | MediaType::SourceMap
+        | MediaType::TsBuildInfo
+        | MediaType::Unknown => false,
+      }
+    }
+
+    let media_type = MediaType::from_path(path);
+    if is_allowed_media_type(media_type) {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+        return Some(specifier);
+      }
+    }
+    None
+  }
+}
+
+impl Iterator for PreloadDocumentFinder {
+  type Item = ModuleSpecifier;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    fn is_discoverable_dir(dir_path: &Path) -> bool {
+      if let Some(dir_name) = dir_path.file_name() {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        // We ignore these directories by default because there is a
+        // high likelihood they aren't relevant. Someone can opt-into
+        // them by specifying one of them as an enabled path.
+        if matches!(dir_name.as_str(), "node_modules" | ".git") {
+          return false;
+        }
+
+        // ignore cargo target directories for anyone using Deno with Rust
+        if dir_name == "target"
+          && dir_path
+            .parent()
+            .map(|p| p.join("Cargo.toml").exists())
+            .unwrap_or(false)
+        {
+          return false;
+        }
+
+        true
+      } else {
+        false
+      }
+    }
+
+    fn is_discoverable_file(file_path: &Path) -> bool {
+      // Don't auto-discover minified files as they are likely to be very large
+      // and likely not to have dependencies on code outside them that would
+      // be useful in the LSP
+      if let Some(file_name) = file_path.file_name() {
+        let file_name = file_name.to_string_lossy().to_lowercase();
+        !file_name.as_str().contains(".min.")
+      } else {
+        false
+      }
+    }
+
+    while let Some(entry) = self.pending_entries.pop_front() {
+      match entry {
+        PendingEntry::SpecifiedRootFile(file) => {
+          // since it was a file that was specified as a root url, only
+          // verify that it's valid
+          if let Some(specifier) = Self::get_valid_specifier(&file) {
+            return Some(specifier);
+          }
+        }
+        PendingEntry::Dir(dir_path) => {
+          if let Ok(read_dir) = fs::read_dir(&dir_path) {
+            self
+              .pending_entries
+              .push_back(PendingEntry::ReadDir(Box::new(read_dir)));
+          }
+        }
+        PendingEntry::ReadDir(mut entries) => {
+          while let Some(entry) = entries.next() {
+            self.entry_count += 1;
+
+            if self.hit_limit() {
+              self.pending_entries.clear(); // stop searching
+              return None;
+            }
+
+            if let Ok(entry) = entry {
+              let path = entry.path();
+              if let Ok(file_type) = entry.file_type() {
+                if !self.disabled_paths.contains(&path)
+                  && !self.disabled_globs.matches_path(&path)
+                {
+                  if file_type.is_dir() && is_discoverable_dir(&path) {
+                    self
+                      .pending_entries
+                      .push_back(PendingEntry::Dir(path.to_path_buf()));
+                  } else if file_type.is_file() && is_discoverable_file(&path) {
+                    if let Some(specifier) = Self::get_valid_specifier(&path) {
+                      // restore the next entries for next time
+                      self
+                        .pending_entries
+                        .push_front(PendingEntry::ReadDir(entries));
+                      return Some(specifier);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    None
+  }
+}
+
+/// Removes any directories that are a descendant of another directory in the collection.
+fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
+  if dirs.is_empty() {
+    return dirs;
+  }
+
+  dirs.sort();
+  if !dirs.is_empty() {
+    for i in (0..dirs.len() - 1).rev() {
+      let prev = &dirs[i + 1];
+      if prev.starts_with(&dirs[i]) {
+        dirs.remove(i + 1);
+      }
+    }
+  }
+
+  dirs
+}
+
 #[cfg(test)]
 mod tests {
-  use crate::npm::NpmResolution;
+  use crate::cache::GlobalHttpCache;
+  use crate::cache::RealDenoCacheEnv;
 
   use super::*;
   use import_map::ImportMap;
+  use pretty_assertions::assert_eq;
+  use test_util::PathRef;
   use test_util::TempDir;
 
-  fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
+  fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(&location);
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      RealDenoCacheEnv,
+    ));
+    let documents = Documents::new(cache);
     (documents, location)
   }
 
@@ -1575,8 +2030,8 @@ console.log(b, "hello deno");
     let (mut documents, documents_path) = setup(&temp_dir);
     let file_path = documents_path.join("file.ts");
     let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
-    fs::create_dir_all(&documents_path).unwrap();
-    fs::write(&file_path, "").unwrap();
+    documents_path.create_dir_all();
+    file_path.write("");
 
     // open the document
     documents.open(
@@ -1592,15 +2047,11 @@ console.log(b, "hello deno");
 
     // At this point the document will be in both documents and the shared file system documents.
     // Now make sure that the original documents doesn't return both copies
-    assert_eq!(documents.documents(false, false).len(), 1);
+    assert_eq!(documents.documents(DocumentsFilter::All).len(), 1);
   }
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_registry_api = NpmRegistryApi::new_uninitialized();
-    let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
-
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
@@ -1630,13 +2081,15 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file2.ts".to_string())
         .unwrap();
 
-      documents.update_config(
-        Some(Arc::new(import_map)),
-        None,
-        None,
-        npm_registry_api.clone(),
-        npm_resolution.clone(),
-      );
+      documents.update_config(UpdateDocumentConfigOptions {
+        enabled_paths: vec![],
+        disabled_paths: vec![],
+        document_preload_limit: 1_000,
+        maybe_import_map: Some(Arc::new(import_map)),
+        maybe_config_file: None,
+        maybe_package_json: None,
+        npm_resolver: None,
+      });
 
       // open the document
       let document = documents.open(
@@ -1669,13 +2122,15 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file3.ts".to_string())
         .unwrap();
 
-      documents.update_config(
-        Some(Arc::new(import_map)),
-        None,
-        None,
-        npm_registry_api,
-        npm_resolution,
-      );
+      documents.update_config(UpdateDocumentConfigOptions {
+        enabled_paths: vec![],
+        disabled_paths: vec![],
+        document_preload_limit: 1_000,
+        maybe_import_map: Some(Arc::new(import_map)),
+        maybe_config_file: None,
+        maybe_package_json: None,
+        npm_resolver: None,
+      });
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();
@@ -1690,5 +2145,168 @@ console.log(b, "hello deno");
         Some(file3_specifier),
       );
     }
+  }
+
+  #[test]
+  pub fn test_pre_load_document_finder() {
+    let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("root1/node_modules/");
+    temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
+
+    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/target");
+    temp_dir.create_dir_all("root1/node_modules");
+    temp_dir.create_dir_all("root1/.git");
+    temp_dir.create_dir_all("root1/file.ts"); // no, directory
+    temp_dir.write("root1/mod1.ts", ""); // yes
+    temp_dir.write("root1/mod2.js", ""); // yes
+    temp_dir.write("root1/mod3.tsx", ""); // yes
+    temp_dir.write("root1/mod4.d.ts", ""); // yes
+    temp_dir.write("root1/mod5.jsx", ""); // yes
+    temp_dir.write("root1/mod6.mjs", ""); // yes
+    temp_dir.write("root1/mod7.mts", ""); // yes
+    temp_dir.write("root1/mod8.d.mts", ""); // yes
+    temp_dir.write("root1/other.json", ""); // no, json
+    temp_dir.write("root1/other.txt", ""); // no, text file
+    temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/Cargo.toml", ""); // no
+    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
+    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+    temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
+    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
+
+    temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/sub_folder");
+    temp_dir.write("root2/file1.ts", ""); // yes, provided
+    temp_dir.write("root2/file2.ts", ""); // no, not provided
+    temp_dir.write("root2/main.min.ts", ""); // yes, provided
+    temp_dir.write("root2/folder/main.ts", ""); // yes, provided
+    temp_dir.write("root2/sub_folder/a.js", ""); // no, not provided
+    temp_dir.write("root2/sub_folder/b.ts", ""); // no, not provided
+    temp_dir.write("root2/sub_folder/c.js", ""); // no, not provided
+
+    temp_dir.create_dir_all("root3/");
+    temp_dir.write("root3/mod.ts", ""); // no, not provided
+
+    let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+      enabled_paths: vec![
+        temp_dir.path().to_path_buf().join("root1"),
+        temp_dir.path().to_path_buf().join("root2").join("file1.ts"),
+        temp_dir
+          .path()
+          .to_path_buf()
+          .join("root2")
+          .join("main.min.ts"),
+        temp_dir.path().to_path_buf().join("root2").join("folder"),
+      ],
+      disabled_paths: Vec::new(),
+      limit: 1_000,
+    })
+    .collect::<Vec<_>>();
+
+    // Ideally we would test for order here, which should be BFS, but
+    // different file systems have different directory iteration
+    // so we sort the results
+    urls.sort();
+
+    assert_eq!(
+      urls,
+      vec![
+        temp_dir.uri().join("root1/mod1.ts").unwrap(),
+        temp_dir.uri().join("root1/mod2.js").unwrap(),
+        temp_dir.uri().join("root1/mod3.tsx").unwrap(),
+        temp_dir.uri().join("root1/mod4.d.ts").unwrap(),
+        temp_dir.uri().join("root1/mod5.jsx").unwrap(),
+        temp_dir.uri().join("root1/mod6.mjs").unwrap(),
+        temp_dir.uri().join("root1/mod7.mts").unwrap(),
+        temp_dir.uri().join("root1/mod8.d.mts").unwrap(),
+        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/main.min.ts").unwrap(),
+      ]
+    );
+
+    // now try iterating with a low limit
+    let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+      enabled_paths: vec![temp_dir.path().to_path_buf()],
+      disabled_paths: Vec::new(),
+      limit: 10, // entries and not results
+    })
+    .collect::<Vec<_>>();
+
+    // since different file system have different iteration
+    // order, the number here may vary, so just assert it's below
+    // a certain amount
+    assert!(urls.len() < 5, "Actual length: {}", urls.len());
+
+    // now try with certain directories and files disabled
+    let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+      enabled_paths: vec![temp_dir.path().to_path_buf()],
+      disabled_paths: vec![
+        temp_dir.path().to_path_buf().join("root1"),
+        temp_dir.path().to_path_buf().join("root2").join("file1.ts"),
+        temp_dir.path().to_path_buf().join("**/*.js"), // ignore js files
+      ],
+      limit: 1_000,
+    })
+    .collect::<Vec<_>>();
+    urls.sort();
+    assert_eq!(
+      urls,
+      vec![
+        temp_dir.uri().join("root2/file2.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/sub_folder/b.ts").unwrap(), // won't have the javascript files
+        temp_dir.uri().join("root3/mod.ts").unwrap(),
+      ]
+    );
+  }
+
+  #[test]
+  pub fn test_pre_load_document_finder_disallowed_dirs() {
+    if cfg!(windows) {
+      let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+        enabled_paths: vec![PathBuf::from("C:\\")],
+        disabled_paths: Vec::new(),
+        limit: 1_000,
+      })
+      .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    } else {
+      let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+        enabled_paths: vec![PathBuf::from("/")],
+        disabled_paths: Vec::new(),
+        limit: 1_000,
+      })
+      .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    }
+  }
+
+  #[test]
+  fn test_sort_and_remove_non_leaf_dirs() {
+    fn run_test(paths: Vec<&str>, expected_output: Vec<&str>) {
+      let paths = sort_and_remove_non_leaf_dirs(
+        paths.into_iter().map(PathBuf::from).collect(),
+      );
+      let dirs: Vec<_> =
+        paths.iter().map(|dir| dir.to_string_lossy()).collect();
+      assert_eq!(dirs, expected_output);
+    }
+
+    run_test(
+      vec![
+        "/test/asdf/test/asdf/",
+        "/test/asdf/test/asdf/test.ts",
+        "/test/asdf/",
+        "/test/asdf/",
+        "/testing/456/893/",
+        "/testing/456/893/test/",
+      ],
+      vec!["/test/asdf/", "/testing/456/893/"],
+    );
+    run_test(vec![], vec![]);
   }
 }

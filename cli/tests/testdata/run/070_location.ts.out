@@ -1,5 +1,5 @@
-[WILDCARD][Class: Location]
-Location {}
+[class Location]
+Object [Location] {}
 Location {
   hash: "#bat",
   host: "foo",
@@ -13,4 +13,3 @@ Location {
 }
 NotSupportedError: Cannot set "location".
 NotSupportedError: Cannot set "location.hostname".
-[WILDCARD]

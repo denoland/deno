@@ -6,29 +6,34 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 
-use deno_core::op;
+use deno_core::op2;
 use deno_core::Extension;
 
+deno_core::extension!(
+  bench_setup,
+  ops = [
+    // op_pi_json,
+    op_pi_async,
+    op_nop
+  ]
+);
+
 fn setup() -> Vec<Extension> {
-  vec![Extension::builder("bench_setup")
-    .ops(vec![
-      op_pi_json::decl(),
-      op_pi_async::decl(),
-      op_nop::decl(),
-    ])
-    .build()]
+  vec![bench_setup::init_ops()]
 }
 
-#[op]
+#[op2(fast)]
 fn op_nop() {}
 
-#[op]
+#[op2(fast)]
+#[number]
 fn op_pi_json() -> i64 {
   314159
 }
 
 // this is a function since async closures aren't stable
-#[op]
+#[op2(async)]
+#[number]
 async fn op_pi_async() -> i64 {
   314159
 }

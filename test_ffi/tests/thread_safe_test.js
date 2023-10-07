@@ -69,7 +69,9 @@ await sendWorkerMessage("register");
 
 dylib.symbols.call_stored_function();
 
-// Unref both main and worker thread callbacks and terminate the wrorker: Note, the stored function pointer in lib is now dangling.
+// Unref both main and worker thread callbacks and terminate the worker: Note, the stored function pointer in lib is now dangling.
+
+dylib.symbols.store_function(null);
 
 mainThreadCallback.unref();
 await sendWorkerMessage("unref");
@@ -82,7 +84,8 @@ const cleanupCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback being called");
-    queueMicrotask(() => cleanup());
+    // Defer the cleanup to give the spawned thread all the time it needs to properly shut down
+    setTimeout(() => cleanup(), 100);
   },
 );
 
@@ -90,6 +93,9 @@ cleanupCallback.ref();
 
 function cleanup() {
   cleanupCallback.unref();
+  dylib.symbols.store_function(null);
+  mainThreadCallback.close();
+  cleanupCallback.close();
   console.log("Isolate should now exit");
 }
 

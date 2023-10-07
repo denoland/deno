@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
+use util::env_vars_for_npm_tests;
 
 #[test]
 fn node_compat_tests() {
@@ -8,12 +9,6 @@ fn node_compat_tests() {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
-    .arg("--import-map")
-    .arg(
-      util::tests_path()
-        .join("node_compat")
-        .join("import_map.json"),
-    )
     .arg("-A")
     .arg(util::tests_path().join("node_compat"))
     .spawn()
@@ -23,3 +18,11 @@ fn node_compat_tests() {
   assert_eq!(Some(0), status.code());
   assert!(status.success());
 }
+
+itest!(node_test_module {
+  args: "test node/test.js",
+  output: "node/test.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});

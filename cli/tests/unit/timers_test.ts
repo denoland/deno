@@ -557,7 +557,7 @@ Deno.test({
   permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
-      const timer = setTimeout(() => console.log("1"));
+      const timer = setTimeout(() => console.log("1"), 1);
       Deno.unrefTimer(timer);
     `);
     assertEquals(statusCode, 0);
@@ -725,5 +725,51 @@ Deno.test({
     `);
     assertEquals(statusCode, 0);
     assertEquals(output, "");
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/19866
+Deno.test({
+  name: "regression for #19866",
+  fn: async () => {
+    const timeoutsFired = [];
+
+    // deno-lint-ignore require-await
+    async function start(n: number) {
+      let i = 0;
+      const intervalId = setInterval(() => {
+        i++;
+        if (i > 2) {
+          clearInterval(intervalId!);
+        }
+        timeoutsFired.push(n);
+      }, 20);
+    }
+
+    for (let n = 0; n < 100; n++) {
+      start(n);
+    }
+
+    // 3s should be plenty of time for all the intervals to fire
+    // but it might still be flaky on CI.
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    assertEquals(timeoutsFired.length, 300);
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/20367
+Deno.test({
+  name: "regression for #20367",
+  fn: async () => {
+    const promise = deferred<number>();
+    const start = performance.now();
+    setTimeout(() => {
+      const end = performance.now();
+      promise.resolve(end - start);
+    }, 1000);
+    clearTimeout(setTimeout(() => {}, 1000));
+
+    const result = await promise;
+    assert(result >= 1000);
   },
 });

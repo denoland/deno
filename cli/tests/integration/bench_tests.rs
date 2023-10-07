@@ -3,6 +3,7 @@
 use deno_core::url::Url;
 use test_util as util;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests;
 use util::TestContext;
 
@@ -40,6 +41,12 @@ itest!(fail {
   args: "bench bench/fail.ts",
   exit_code: 1,
   output: "bench/fail.out",
+});
+
+itest!(bench_formatting {
+  args: "bench bench/bench_formatting.ts",
+  exit_code: 0,
+  output: "bench/bench_formatting.out",
 });
 
 itest!(collect {
@@ -114,6 +121,11 @@ itest!(finally_timeout {
   output: "bench/finally_timeout.out",
 });
 
+itest!(before_unload_prevent_default {
+  args: "bench --quiet bench/before_unload_prevent_default.ts",
+  output: "bench/before_unload_prevent_default.out",
+});
+
 itest!(group_baseline {
   args: "bench bench/group_baseline.ts",
   exit_code: 0,
@@ -136,6 +148,12 @@ itest!(filter {
   args: "bench --filter=foo bench/filter",
   exit_code: 0,
   output: "bench/filter.out",
+});
+
+itest!(no_run {
+  args: "bench --no-run bench/no_run.ts",
+  output: "bench/no_run.out",
+  exit_code: 1,
 });
 
 itest!(no_prompt_by_default {
@@ -161,6 +179,17 @@ itest!(check_local_by_default2 {
   output: "bench/check_local_by_default2.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(bench_explicit_start_end {
+  args: "bench --quiet -A bench/explicit_start_and_end.ts",
+  output: "bench/explicit_start_and_end.out",
+  exit_code: 1,
+});
+
+itest_flaky!(bench_explicit_start_end_low_precision {
+  args: "bench --quiet -A bench/explicit_start_and_end_low_precision.ts",
+  output: "bench/explicit_start_and_end_low_precision.out",
 });
 
 itest!(bench_with_config {
@@ -224,3 +253,33 @@ itest!(package_json_basic {
   copy_temp_dir: Some("package_json/basic"),
   exit_code: 0,
 });
+
+itest!(bench_lock {
+  args: "bench",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(bench_no_lock {
+  args: "bench --no-lock",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/bench.nolock.out",
+});
+
+#[test]
+fn conditionally_loads_type_graph() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("bench --reload -L debug run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("bench --reload -L debug --no-check run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}

@@ -1,5 +1,4 @@
-[WILDCARD][Class: Location]
-Location {}
+[class Location]
+Object [Location] {}
 undefined
 /bar
-[WILDCARD]

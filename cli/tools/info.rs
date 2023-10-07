@@ -10,67 +10,99 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::npm::NpmPackageNvReference;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
+use deno_graph::GraphKind;
 use deno_graph::Module;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_runtime::colors;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmPackageResolver;
-use crate::npm::NpmResolutionPackage;
-use crate::npm::NpmResolutionSnapshot;
-use crate::proc_state::ProcState;
+use crate::factory::CliFactory;
+use crate::graph_util::graph_lock_or_exit;
+use crate::npm::CliNpmResolver;
+use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
   if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier)?;
-    let mut loader = ps.create_graph_loader();
+    let module_graph_builder = factory.module_graph_builder().await?;
+    let npm_resolver = factory.npm_resolver().await?;
+    let maybe_lockfile = factory.maybe_lockfile();
+    let maybe_imports_map = factory.maybe_import_map().await?;
+
+    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
+      if let Ok(imports_specifier) =
+        imports_map.resolve(&specifier, imports_map.base_url())
+      {
+        Some(imports_specifier)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+
+    let specifier = match maybe_import_specifier {
+      Some(specifier) => specifier,
+      None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
+    };
+
+    let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
-    let graph = ps
-      .create_graph_with_loader(vec![specifier], &mut loader)
+    let graph = module_graph_builder
+      .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
+
+    if let Some(lockfile) = maybe_lockfile {
+      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    }
 
     if info_flags.json {
       let mut json_graph = json!(graph);
-      add_npm_packages_to_json(&mut json_graph, &ps.npm_resolver);
+      add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref());
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
-      GraphDisplayContext::write(&graph, &ps.npm_resolver, &mut output)?;
+      GraphDisplayContext::write(&graph, npm_resolver.as_ref(), &mut output)?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
     // If it was just "deno info" print location of caches and exit
     print_cache_info(
-      &ps,
+      &factory,
       info_flags.json,
-      ps.options.location_flag().as_ref(),
+      cli_options.location_flag().as_ref(),
     )?;
   }
   Ok(())
 }
 
 fn print_cache_info(
-  state: &ProcState,
+  factory: &CliFactory,
   json: bool,
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
-  let deno_dir = &state.dir.root_path_for_display();
-  let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
-  let typescript_cache = &state.dir.gen_cache.location;
-  let registry_cache = &state.dir.registries_folder_path();
-  let mut origin_dir = state.dir.origin_data_folder_path();
+  let dir = factory.deno_dir()?;
+  #[allow(deprecated)]
+  let modules_cache = factory.global_http_cache()?.get_global_cache_location();
+  let npm_cache = factory.deno_dir()?.npm_folder_path();
+  let typescript_cache = &dir.gen_cache.location;
+  let registry_cache = dir.registries_folder_path();
+  let mut origin_dir = dir.origin_data_folder_path();
+  let deno_dir = dir.root_path_for_display().to_string();
 
   if let Some(location) = &location {
     origin_dir =
@@ -81,7 +113,7 @@ fn print_cache_info(
 
   if json {
     let mut output = json!({
-      "denoDir": deno_dir.to_string(),
+      "denoDir": deno_dir,
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
@@ -134,8 +166,12 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_resolver: &NpmPackageResolver,
+  npm_resolver: &dyn CliNpmResolver,
 ) {
+  let Some(npm_resolver) = npm_resolver.as_managed() else {
+    return; // does not include byonm to deno info's output
+  };
+
   // ideally deno_graph could handle this, but for now we just modify the json here
   let snapshot = npm_resolver.snapshot();
   let json = json.as_object_mut().unwrap();
@@ -154,15 +190,13 @@ fn add_npm_packages_to_json(
         .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
         .and_then(|package_ref| {
           snapshot
-            .resolve_package_from_deno_module(&package_ref.nv)
+            .resolve_package_from_deno_module(package_ref.nv())
             .ok()
         });
       if let Some(pkg) = maybe_package {
         if let Some(module) = module.as_object_mut() {
-          module.insert(
-            "npmPackage".to_string(),
-            pkg.pkg_id.as_serialized().into(),
-          );
+          module
+            .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
         }
       }
     } else {
@@ -191,11 +225,12 @@ fn add_npm_packages_to_json(
             let specifier = dep.get("specifier").and_then(|s| s.as_str());
             if let Some(specifier) = specifier {
               if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-                if let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(&npm_ref.req)
+                if let Ok(pkg) =
+                  snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
                 {
                   dep.insert(
                     "npmPackage".to_string(),
-                    pkg.pkg_id.as_serialized().into(),
+                    pkg.id.as_serialized().into(),
                   );
                 }
               }
@@ -206,16 +241,14 @@ fn add_npm_packages_to_json(
     }
   }
 
-  let mut sorted_packages = snapshot.all_packages();
-  sorted_packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
+  let mut sorted_packages =
+    snapshot.all_packages_for_every_system().collect::<Vec<_>>();
+  sorted_packages.sort_by(|a, b| a.id.cmp(&b.id));
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.pkg_id.nv.name.to_string().into());
-    kv.insert(
-      "version".to_string(),
-      pkg.pkg_id.nv.version.to_string().into(),
-    );
+    kv.insert("name".to_string(), pkg.id.nv.name.to_string().into());
+    kv.insert("version".to_string(), pkg.id.nv.version.to_string().into());
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let deps = deps
@@ -224,7 +257,7 @@ fn add_npm_packages_to_json(
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
 
-    json_packages.insert(pkg.pkg_id.as_serialized(), kv.into());
+    json_packages.insert(pkg.id.as_serialized(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
@@ -304,14 +337,14 @@ fn print_tree_node<TWrite: Write>(
 #[derive(Default)]
 struct NpmInfo {
   package_sizes: HashMap<NpmPackageId, u64>,
-  resolved_ids: HashMap<NpmPackageNv, NpmPackageId>,
+  resolved_ids: HashMap<PackageNv, NpmPackageId>,
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
 impl NpmInfo {
   pub fn build<'a>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a ManagedCliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
@@ -321,10 +354,10 @@ impl NpmInfo {
 
     for module in graph.modules() {
       if let Module::Npm(module) = module {
-        let nv = &module.nv_reference.nv;
+        let nv = module.nv_reference.nv();
         if let Ok(package) = npm_snapshot.resolve_package_from_deno_module(nv) {
-          info.resolved_ids.insert(nv.clone(), package.pkg_id.clone());
-          if !info.packages.contains_key(&package.pkg_id) {
+          info.resolved_ids.insert(nv.clone(), package.id.clone());
+          if !info.packages.contains_key(&package.id) {
             info.fill_package_info(package, npm_resolver, npm_snapshot);
           }
         }
@@ -337,14 +370,12 @@ impl NpmInfo {
   fn fill_package_info<'a>(
     &mut self,
     package: &NpmResolutionPackage,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a ManagedCliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
-    self
-      .packages
-      .insert(package.pkg_id.clone(), package.clone());
-    if let Ok(size) = npm_resolver.package_size(&package.pkg_id) {
-      self.package_sizes.insert(package.pkg_id.clone(), size);
+    self.packages.insert(package.id.clone(), package.clone());
+    if let Ok(size) = npm_resolver.package_size(&package.id) {
+      self.package_sizes.insert(package.id.clone(), size);
     }
     for id in package.dependencies.values() {
       if !self.packages.contains_key(id) {
@@ -357,7 +388,7 @@ impl NpmInfo {
 
   pub fn resolve_package(
     &self,
-    nv: &NpmPackageNv,
+    nv: &PackageNv,
   ) -> Option<&NpmResolutionPackage> {
     let id = self.resolved_ids.get(nv)?;
     self.packages.get(id)
@@ -373,11 +404,16 @@ struct GraphDisplayContext<'a> {
 impl<'a> GraphDisplayContext<'a> {
   pub fn write<TWrite: Write>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a dyn CliNpmResolver,
     writer: &mut TWrite,
   ) -> fmt::Result {
-    let npm_snapshot = npm_resolver.snapshot();
-    let npm_info = NpmInfo::build(graph, npm_resolver, &npm_snapshot);
+    let npm_info = match npm_resolver.as_managed() {
+      Some(npm_resolver) => {
+        let npm_snapshot = npm_resolver.snapshot();
+        NpmInfo::build(graph, npm_resolver, &npm_snapshot)
+      }
+      None => NpmInfo::default(),
+    };
     Self {
       graph,
       npm_info,
@@ -472,14 +508,15 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleGraphError::Missing(_, _) = *err {
+        if let ModuleGraphError::ModuleError(ModuleError::Missing(_, _)) = *err
+        {
           writeln!(
             writer,
             "{} module could not be found",
             colors::red("error:")
           )
         } else {
-          writeln!(writer, "{} {}", colors::red("error:"), err)
+          writeln!(writer, "{} {:#}", colors::red("error:"), err)
         }
       }
       Ok(None) => {
@@ -516,14 +553,14 @@ impl<'a> GraphDisplayContext<'a> {
     use PackageOrSpecifier::*;
 
     let package_or_specifier = match module.npm() {
-      Some(npm) => match self.npm_info.resolve_package(&npm.nv_reference.nv) {
+      Some(npm) => match self.npm_info.resolve_package(npm.nv_reference.nv()) {
         Some(package) => Package(package.clone()),
         None => Specifier(module.specifier().clone()), // should never happen
       },
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.pkg_id.as_serialized(),
+      Package(package) => package.id.as_serialized(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = if was_seen {
@@ -541,7 +578,7 @@ impl<'a> GraphDisplayContext<'a> {
       };
       let maybe_size = match &package_or_specifier {
         Package(package) => {
-          self.npm_info.package_sizes.get(&package.pkg_id).copied()
+          self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
           Module::Esm(module) => Some(module.size() as u64),
@@ -589,13 +626,13 @@ impl<'a> GraphDisplayContext<'a> {
       let maybe_size = self.npm_info.package_sizes.get(dep_id).cloned();
       let size_str = maybe_size_to_text(maybe_size);
       let mut child = TreeNode::from_text(format!(
-        "npm:{} {}",
+        "npm:/{} {}",
         dep_id.as_serialized(),
         size_str
       ));
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
-          let was_seen = !self.seen.insert(package.pkg_id.as_serialized());
+          let was_seen = !self.seen.insert(package.id.as_serialized());
           if was_seen {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {
@@ -616,27 +653,34 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::InvalidTypeAssertion { .. } => {
-        self.build_error_msg(specifier, "(invalid import assertion)")
-      }
-      ModuleGraphError::LoadingErr(_, _, _) => {
-        self.build_error_msg(specifier, "(loading error)")
-      }
-      ModuleGraphError::ParseErr(_, _) => {
-        self.build_error_msg(specifier, "(parsing error)")
-      }
+      ModuleGraphError::ModuleError(err) => match err {
+        ModuleError::InvalidTypeAssertion { .. } => {
+          self.build_error_msg(specifier, "(invalid import attribute)")
+        }
+        ModuleError::LoadingErr(_, _, _) => {
+          self.build_error_msg(specifier, "(loading error)")
+        }
+        ModuleError::ParseErr(_, _) => {
+          self.build_error_msg(specifier, "(parsing error)")
+        }
+        ModuleError::UnsupportedImportAttributeType { .. } => {
+          self.build_error_msg(specifier, "(unsupported import attribute)")
+        }
+        ModuleError::UnsupportedMediaType { .. } => {
+          self.build_error_msg(specifier, "(unsupported)")
+        }
+        ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+          self.build_error_msg(specifier, "(missing)")
+        }
+        ModuleError::UnknownPackage { .. } => {
+          self.build_error_msg(specifier, "(unknown package)")
+        }
+        ModuleError::UnknownPackageReq { .. } => {
+          self.build_error_msg(specifier, "(unknown package constraint)")
+        }
+      },
       ModuleGraphError::ResolutionError(_) => {
         self.build_error_msg(specifier, "(resolution error)")
-      }
-      ModuleGraphError::UnsupportedImportAssertionType { .. } => {
-        self.build_error_msg(specifier, "(unsupported import assertion)")
-      }
-      ModuleGraphError::UnsupportedMediaType { .. } => {
-        self.build_error_msg(specifier, "(unsupported)")
-      }
-      ModuleGraphError::Missing(_, _)
-      | ModuleGraphError::MissingDynamic(_, _) => {
-        self.build_error_msg(specifier, "(missing)")
       }
     }
   }

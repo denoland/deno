@@ -41,8 +41,10 @@ pub unsafe extern "C" fn napi_fatal_error(
 // napi-3
 
 #[napi_sym::napi_sym]
-fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+fn napi_fatal_exception(env: *mut Env, value: napi_value) -> napi_status {
+  let Some(env) = env.as_mut() else {
+    return napi_invalid_arg;
+  };
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let error = value.to_rust_string_lossy(&mut env.scope());
   panic!("Fatal exception triggered by napi_fatal_exception!\n{error}");
@@ -53,8 +55,10 @@ fn napi_add_env_cleanup_hook(
   env: *mut Env,
   hook: extern "C" fn(*const c_void),
   data: *const c_void,
-) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+) -> napi_status {
+  let Some(env) = env.as_mut() else {
+    return napi_invalid_arg;
+  };
 
   {
     let mut env_cleanup_hooks = env.cleanup_hooks.borrow_mut();
@@ -66,7 +70,7 @@ fn napi_add_env_cleanup_hook(
     }
     env_cleanup_hooks.push((hook, data));
   }
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
@@ -74,8 +78,10 @@ fn napi_remove_env_cleanup_hook(
   env: *mut Env,
   hook: extern "C" fn(*const c_void),
   data: *const c_void,
-) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+) -> napi_status {
+  let Some(env) = env.as_mut() else {
+    return napi_invalid_arg;
+  };
 
   {
     let mut env_cleanup_hooks = env.cleanup_hooks.borrow_mut();
@@ -91,7 +97,7 @@ fn napi_remove_env_cleanup_hook(
     }
   }
 
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
@@ -100,46 +106,52 @@ fn napi_open_callback_scope(
   _resource_object: napi_value,
   _context: napi_value,
   _result: *mut napi_callback_scope,
-) -> Result {
+) -> napi_status {
   // we open scope automatically when it's needed
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
 fn napi_close_callback_scope(
   _env: *mut Env,
   _scope: napi_callback_scope,
-) -> Result {
+) -> napi_status {
   // we close scope automatically when it's needed
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
 fn node_api_get_module_file_name(
   env: *mut Env,
   result: *mut *const c_char,
-) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+) -> napi_status {
+  let Some(env) = env.as_mut() else {
+    return napi_invalid_arg;
+  };
 
   let shared = env.shared();
   *result = shared.filename;
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
-fn napi_module_register(module: *const NapiModule) -> Result {
-  MODULE.with(|cell| {
+fn napi_module_register(module: *const NapiModule) -> napi_status {
+  MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();
-    slot.replace(module);
+    let prev = slot.replace(module);
+    assert!(prev.is_none());
   });
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
-fn napi_get_uv_event_loop(_env: *mut Env, uv_loop: *mut *mut ()) -> Result {
+fn napi_get_uv_event_loop(
+  _env: *mut Env,
+  uv_loop: *mut *mut (),
+) -> napi_status {
   // There is no uv_loop in Deno
   *uv_loop = std::ptr::null_mut();
-  Ok(())
+  napi_ok
 }
 
 const NODE_VERSION: napi_node_version = napi_node_version {
@@ -153,10 +165,10 @@ const NODE_VERSION: napi_node_version = napi_node_version {
 fn napi_get_node_version(
   env: *mut Env,
   result: *mut *const napi_node_version,
-) -> Result {
+) -> napi_status {
   crate::check_env!(env);
   crate::check_arg!(env, result);
 
   *result = &NODE_VERSION as *const napi_node_version;
-  Ok(())
+  napi_ok
 }

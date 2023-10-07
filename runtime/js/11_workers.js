@@ -4,29 +4,31 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
   Error,
   ObjectPrototypeIsPrototypeOf,
-  StringPrototypeStartsWith,
   String,
+  StringPrototypeStartsWith,
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { URL } from "internal:deno_url/00_url.js";
-import { getLocationHref } from "internal:deno_web/12_location.js";
-import { serializePermissions } from "internal:runtime/10_permissions.js";
-import { log } from "internal:runtime/06_util.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { URL } from "ext:deno_url/00_url.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
+import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { log } from "ext:runtime/06_util.js";
 import {
   defineEventHandler,
   ErrorEvent,
   EventTarget,
   MessageEvent,
-} from "internal:deno_web/02_event.js";
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
 import {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "internal:deno_web/13_message_port.js";
+} from "ext:deno_web/13_message_port.js";
 
 function createWorker(
   specifier,
@@ -186,23 +188,26 @@ class Worker extends EventTarget {
           cancelable: false,
           data: err,
         });
+        setIsTrusted(event, true);
         this.dispatchEvent(event);
         return;
       }
       const event = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) =>
-          ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
+        ports: ArrayPrototypeFilter(
+          transferables,
+          (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
         ),
       });
+      setIsTrusted(event, true);
       this.dispatchEvent(event);
     }
   };
 
   postMessage(message, transferOrOptions = {}) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (
@@ -212,16 +217,15 @@ class Worker extends EventTarget {
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        prefix,
+        "Argument 2",
       );
       options = { transfer };
     } else {
       options = webidl.converters.StructuredSerializeOptions(
         transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
+        prefix,
+        "Argument 2",
       );
     }
     const { transfer } = options;

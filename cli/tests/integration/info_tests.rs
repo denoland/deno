@@ -1,38 +1,32 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
-use util::env_vars_for_npm_tests_no_sync_download;
+use util::env_vars_for_npm_tests;
+use util::TestContextBuilder;
 
 #[test]
 fn info_with_compiled_source() {
-  let _g = util::http_server();
+  let context = TestContextBuilder::new().use_http_server().build();
   let module_path = "http://127.0.0.1:4545/run/048_media_types_jsx.ts";
-  let t = TempDir::new();
 
-  let mut deno = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(module_path)
-    .spawn()
-    .unwrap();
-  let status = deno.wait().unwrap();
-  assert!(status.success());
+  let output = context
+    .new_command()
+    .cwd(util::testdata_path())
+    .args_vec(["cache", module_path])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .env("NO_COLOR", "1")
-    .current_dir(util::testdata_path())
-    .arg("info")
-    .arg(module_path)
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .cwd(util::testdata_path())
+    .args_vec(["info", module_path])
+    .split_output()
+    .run();
 
-  let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
   // check the output of the test.ts program.
-  assert!(str_output.contains("emit: "));
-  assert_eq!(output.stderr, b"");
+  assert!(output.stdout().trim().contains("emit: "));
+  assert_eq!(output.stderr(), "");
 }
 
 itest!(multiple_imports {
@@ -94,6 +88,21 @@ itest!(info_missing_module {
   output: "info/info_missing_module.out",
 });
 
+itest!(info_lock {
+  args: "info main.ts",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(info_no_lock {
+  args: "info --no-lock main.ts",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/info.nolock.out",
+});
+
 itest!(info_recursive_modules {
   args: "info --quiet info/info_recursive_imports_test.ts",
   output: "info/info_recursive_imports_test.out",
@@ -132,9 +141,16 @@ itest!(with_config_override {
 itest!(package_json_basic {
   args: "info --quiet main.ts",
   output: "package_json/basic/main.info.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   cwd: Some("package_json/basic"),
   copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
+});
+
+itest!(info_import_map {
+  args: "info preact/debug",
+  output: "info/with_import_map/with_import_map.out",
+  cwd: Some("info/with_import_map"),
   exit_code: 0,
 });

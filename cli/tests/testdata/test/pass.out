@@ -1,5 +1,5 @@
 Check [WILDCARD]/test/pass.ts
-running 10 tests from ./test/pass.ts
+running 16 tests from ./test/pass.ts
 test 0 ... ok ([WILDCARD])
 test 1 ... ok ([WILDCARD])
 test 2 ... ok ([WILDCARD])
@@ -18,6 +18,36 @@ test 9 ...
 console.error
 ----- output end -----
 test 9 ... ok ([WILDCARD])
+test\b ...
+------- output -------
+console.error
+----- output end -----
+test\b ... ok ([WILDCARD])
+test\f ...
+------- output -------
+console.error
+----- output end -----
+test\f ... ok ([WILDCARD])
+test\t ...
+------- output -------
+console.error
+----- output end -----
+test\t ... ok ([WILDCARD])
+test\n ...
+------- output -------
+console.error
+----- output end -----
+test\n ... ok ([WILDCARD])
+test\r ...
+------- output -------
+console.error
+----- output end -----
+test\r ... ok ([WILDCARD])
+test\v ...
+------- output -------
+console.error
+----- output end -----
+test\v ... ok ([WILDCARD])
 
-ok | 10 passed | 0 failed ([WILDCARD])
+ok | 16 passed | 0 failed ([WILDCARD])
 

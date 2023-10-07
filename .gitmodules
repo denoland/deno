@@ -1,7 +1,3 @@
-[submodule "deno_third_party"]
-	path = third_party
-	url = https://github.com/denoland/deno_third_party.git
-	shallow = true
 [submodule "test_util/std"]
 	path = test_util/std
 	url = https://github.com/denoland/deno_std
@@ -10,3 +6,6 @@
 	path = test_util/wpt
 	url = https://github.com/web-platform-tests/wpt.git
 
+[submodule "tools/node_compat/node"]
+	path = tools/node_compat/node
+	url = https://github.com/denoland/node_test.git

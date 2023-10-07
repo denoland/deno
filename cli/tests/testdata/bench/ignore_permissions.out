@@ -3,5 +3,5 @@ cpu: [WILDCARD]
 runtime: deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/bench/ignore_permissions.ts
-benchmark      time (avg)             (min … max)       p75       p99      p995
-------------------------------------------------- -----------------------------
+benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
+--------------------------------------------------------------- -----------------------------

@@ -1,18 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   emitRecursiveRmdirWarning,
   getValidatedPath,
   validateRmdirOptions,
   validateRmOptions,
   validateRmOptionsSync,
-} from "internal:deno_node/internal/fs/utils.mjs";
-import { toNamespacedPath } from "internal:deno_node/path.ts";
+} from "ext:deno_node/internal/fs/utils.mjs";
+import { toNamespacedPath } from "node:path";
 import {
   denoErrorToNodeError,
   ERR_FS_RMDIR_ENOTDIR,
-} from "internal:deno_node/internal/errors.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/internal/errors.ts";
+import { Buffer } from "node:buffer";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 type rmdirOptions = {
   maxRetries?: number;

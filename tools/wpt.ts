@@ -37,6 +37,31 @@ import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
 import { writeAll, writeAllSync } from "../test_util/std/streams/write_all.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
+class TestFilter {
+  filter?: string[];
+  constructor(filter?: string[]) {
+    this.filter = filter;
+  }
+
+  matches(path: string): boolean {
+    if (this.filter === undefined || this.filter.length == 0) {
+      return true;
+    }
+    for (const filter of this.filter) {
+      if (filter.startsWith("/")) {
+        if (path.startsWith(filter)) {
+          return true;
+        }
+      } else {
+        if (path.substring(1).startsWith(filter)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+}
+
 const command = Deno.args[0];
 
 switch (command) {
@@ -145,20 +170,33 @@ interface TestToRun {
   expectation: boolean | string[];
 }
 
+function getTestTimeout(test: TestToRun) {
+  if (Deno.env.get("CI")) {
+    // Don't give expected failures the full time
+    if (test.expectation === false) {
+      return { long: 60_000, default: 10_000 };
+    }
+    return { long: 4 * 60_000, default: 4 * 60_000 };
+  }
+
+  return { long: 60_000, default: 10_000 };
+}
+
 async function run() {
   const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
   const expectation = getExpectation();
+  const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(
-    rest.length == 0 ? undefined : rest,
+    filter,
     expectation,
   );
-  assertAllExpectationsHaveTests(expectation, tests, rest);
-  console.log(`Going to run ${tests.length} test files.`);
+  assertAllExpectationsHaveTests(expectation, tests, filter);
+  const cores = navigator.hardwareConcurrency;
+  console.log(`Going to run ${tests.length} test files on ${cores} cores.`);
 
   const results = await runWithTestUtil(false, async () => {
     const results: { test: TestToRun; result: TestResult }[] = [];
-    const cores = navigator.hardwareConcurrency;
     const inParallel = !(cores === 1 || tests.length === 1);
     // ideally we would parallelize all tests, but we ran into some flakiness
     // on the CI, so here we're partitioning based on the start of the test path
@@ -174,9 +212,7 @@ async function run() {
           test.options,
           inParallel ? () => {} : createReportTestCase(test.expectation),
           inspectBrk,
-          Deno.env.get("CI")
-            ? { long: 4 * 60_000, default: 4 * 60_000 }
-            : { long: 60_000, default: 10_000 },
+          getTestTimeout(test),
         );
         results.push({ test, result });
         if (inParallel) {
@@ -217,7 +253,7 @@ async function run() {
     await Deno.writeTextFile(wptreport, JSON.stringify(report));
   }
 
-  const code = reportFinal(results);
+  const code = reportFinal(results, endTime - startTime);
   Deno.exit(code);
 }
 
@@ -285,20 +321,14 @@ async function generateWptReport(
 function assertAllExpectationsHaveTests(
   expectation: Expectation,
   testsToRun: TestToRun[],
-  filter?: string[],
+  filter: TestFilter,
 ): void {
   const tests = new Set(testsToRun.map((t) => t.path));
   const missingTests: string[] = [];
-
   function walk(parentExpectation: Expectation, parent: string) {
     for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
-      if (
-        filter &&
-        !filter.find((filter) => path.substring(1).startsWith(filter))
-      ) {
-        continue;
-      }
+      if (!filter.matches(path)) continue;
       if (typeof expectation == "boolean" || Array.isArray(expectation)) {
         if (!tests.has(path)) {
           missingTests.push(path);
@@ -325,7 +355,9 @@ function assertAllExpectationsHaveTests(
 
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
-  const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest, true);
+  const startTime = new Date().getTime();
+  const filter = new TestFilter(rest);
+  const tests = discoverTestsToRun(filter, true);
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
@@ -346,6 +378,7 @@ async function update() {
 
     return results;
   });
+  const endTime = new Date().getTime();
 
   if (json) {
     await Deno.writeTextFile(json, JSON.stringify(results));
@@ -394,7 +427,7 @@ async function update() {
 
   saveExpectation(currentExpectation);
 
-  reportFinal(results);
+  reportFinal(results, endTime - startTime);
 
   console.log(blue("Updated expectation.json to match reality."));
 
@@ -428,6 +461,7 @@ function insertExpectation(
 
 function reportFinal(
   results: { test: TestToRun; result: TestResult }[],
+  duration: number,
 ): number {
   const finalTotalCount = results.length;
   let finalFailedCount = 0;
@@ -509,7 +543,7 @@ function reportFinal(
   console.log(
     `\nfinal result: ${
       failed ? red("failed") : green("ok")
-    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`,
+    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)\n`,
   );
 
   return failed ? 1 : 0;
@@ -554,8 +588,9 @@ function analyzeTestResult(
 
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
   if (result.status !== 0 || result.harnessStatus === null) {
-    console.log(`test stderr:`);
-    writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
+    if (result.stderr) {
+      console.log(`test stderr:\n${result.stderr}\n`);
+    }
 
     const expectFail = expectation === false;
     const failReason = result.status !== 0
@@ -564,7 +599,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. ${failReason}\n`,
+      }. ${failReason} (${formatDuration(result.duration)})\n`,
     );
     return;
   }
@@ -598,10 +633,15 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   for (const result of expectedFailedButPassed) {
     console.log(`        ${JSON.stringify(result.name)}`);
   }
+  if (result.stderr) {
+    console.log("\ntest stderr:\n" + result.stderr);
+  }
   console.log(
     `\nfile result: ${
       failedCount > 0 ? red("failed") : green("ok")
-    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount}\n`,
+    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount} (${
+      formatDuration(result.duration)
+    })\n`,
   );
 }
 
@@ -649,7 +689,7 @@ function createReportTestCase(expectation: boolean | string[]) {
 }
 
 function discoverTestsToRun(
-  filter?: string[],
+  filter: TestFilter,
   expectation: Expectation | string[] | boolean = getExpectation(),
 ): TestToRun[] {
   const manifestFolder = getManifest().items.testharness;
@@ -717,12 +757,8 @@ function discoverTestsToRun(
             );
           }
 
-          if (
-            filter &&
-            !filter.find((filter) => finalPath.substring(1).startsWith(filter))
-          ) {
-            continue;
-          }
+          if (!filter.matches(finalPath)) continue;
+
           testsToRun.push({
             path: finalPath,
             url,
@@ -750,6 +786,11 @@ function discoverTestsToRun(
 function partitionTests(tests: TestToRun[]): TestToRun[][] {
   const testsByKey: { [key: string]: TestToRun[] } = {};
   for (const test of tests) {
+    // Run all WebCryptoAPI tests in parallel
+    if (test.path.includes("/WebCryptoAPI")) {
+      testsByKey[test.path] = [test];
+      continue;
+    }
     // Paths looks like: /fetch/corb/img-html-correctly-labeled.sub-ref.html
     const key = test.path.split("/")[1];
     if (!(key in testsByKey)) {
@@ -758,4 +799,14 @@ function partitionTests(tests: TestToRun[]): TestToRun[][] {
     testsByKey[key].push(test);
   }
   return Object.values(testsByKey);
+}
+
+function formatDuration(duration: number): string {
+  if (duration >= 5000) {
+    return red(`${duration}ms`);
+  } else if (duration >= 1000) {
+    return yellow(`${duration}ms`);
+  } else {
+    return `${duration}ms`;
+  }
 }

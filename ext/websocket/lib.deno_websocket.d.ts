@@ -1,20 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
 /** @category Web Sockets */
-interface CloseEventInit extends EventInit {
+declare interface CloseEventInit extends EventInit {
   code?: number;
   reason?: string;
   wasClean?: boolean;
 }
 
 /** @category Web Sockets */
-declare class CloseEvent extends Event {
-  constructor(type: string, eventInitDict?: CloseEventInit);
+declare interface CloseEvent extends Event {
   /**
    * Returns the WebSocket connection close code provided by the server.
    */
@@ -29,8 +28,13 @@ declare class CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
+declare var CloseEvent: {
+  readonly prototype: CloseEvent;
+  new (type: string, eventInitDict?: CloseEventInit): CloseEvent;
+};
+
 /** @category Web Sockets */
-interface WebSocketEventMap {
+declare interface WebSocketEventMap {
   close: CloseEvent;
   error: Event;
   message: MessageEvent;
@@ -47,14 +51,7 @@ interface WebSocketEventMap {
  * @tags allow-net
  * @category Web Sockets
  */
-declare class WebSocket extends EventTarget {
-  constructor(url: string | URL, protocols?: string | string[]);
-
-  static readonly CLOSED: number;
-  static readonly CLOSING: number;
-  static readonly CONNECTING: number;
-  static readonly OPEN: number;
-
+declare interface WebSocket extends EventTarget {
   /**
    * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
    *
@@ -122,4 +119,14 @@ declare class WebSocket extends EventTarget {
 }
 
 /** @category Web Sockets */
-type BinaryType = "arraybuffer" | "blob";
+declare var WebSocket: {
+  readonly prototype: WebSocket;
+  new (url: string | URL, protocols?: string | string[]): WebSocket;
+  readonly CLOSED: number;
+  readonly CLOSING: number;
+  readonly CONNECTING: number;
+  readonly OPEN: number;
+};
+
+/** @category Web Sockets */
+declare type BinaryType = "arraybuffer" | "blob";

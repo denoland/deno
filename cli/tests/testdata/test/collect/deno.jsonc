@@ -1,7 +1,5 @@
 {
   "test": {
-    "files": {
-      "exclude": ["./ignore"]
-    }
+    "exclude": ["./ignore"]
   }
 }

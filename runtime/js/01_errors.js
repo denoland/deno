@@ -131,6 +131,34 @@ class NotSupported extends Error {
   }
 }
 
+class FilesystemLoop extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "FilesystemLoop";
+  }
+}
+
+class IsADirectory extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "IsADirectory";
+  }
+}
+
+class NetworkUnreachable extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "NetworkUnreachable";
+  }
+}
+
+class NotADirectory extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "NotADirectory";
+  }
+}
+
 const errors = {
   NotFound,
   PermissionDenied,
@@ -152,6 +180,10 @@ const errors = {
   Http,
   Busy,
   NotSupported,
+  FilesystemLoop,
+  IsADirectory,
+  NetworkUnreachable,
+  NotADirectory,
 };
 
 export { errors };

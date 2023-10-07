@@ -1,26 +1,26 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::parse_sys_kind;
+use crate::permissions::PermissionState;
 use crate::permissions::PermissionsContainer;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::url;
-use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
+use serde::Serialize;
 use std::path::Path;
 
-pub fn init() -> Extension {
-  Extension::builder("deno_permissions")
-    .ops(vec![
-      op_query_permission::decl(),
-      op_revoke_permission::decl(),
-      op_request_permission::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_permissions,
+  ops = [
+    op_query_permission,
+    op_revoke_permission,
+    op_request_permission,
+  ],
+);
 
 #[derive(Deserialize)]
 pub struct PermissionArgs {
@@ -32,11 +32,31 @@ pub struct PermissionArgs {
   command: Option<String>,
 }
 
-#[op]
+#[derive(Serialize)]
+pub struct PermissionStatus {
+  state: String,
+  partial: bool,
+}
+
+impl From<PermissionState> for PermissionStatus {
+  fn from(state: PermissionState) -> Self {
+    PermissionStatus {
+      state: if state == PermissionState::GrantedPartial {
+        PermissionState::Granted.to_string()
+      } else {
+        state.to_string()
+      },
+      partial: state == PermissionState::GrantedPartial,
+    }
+  }
+}
+
+#[op2]
+#[serde]
 pub fn op_query_permission(
   state: &mut OpState,
-  args: PermissionArgs,
-) -> Result<String, AnyError> {
+  #[serde] args: PermissionArgs,
+) -> Result<PermissionStatus, AnyError> {
   let permissions = state.borrow::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -63,14 +83,15 @@ pub fn op_query_permission(
       ))
     }
   };
-  Ok(perm.to_string())
+  Ok(PermissionStatus::from(perm))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_revoke_permission(
   state: &mut OpState,
-  args: PermissionArgs,
-) -> Result<String, AnyError> {
+  #[serde] args: PermissionArgs,
+) -> Result<PermissionStatus, AnyError> {
   let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -97,14 +118,15 @@ pub fn op_revoke_permission(
       ))
     }
   };
-  Ok(perm.to_string())
+  Ok(PermissionStatus::from(perm))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_request_permission(
   state: &mut OpState,
-  args: PermissionArgs,
-) -> Result<String, AnyError> {
+  #[serde] args: PermissionArgs,
+) -> Result<PermissionStatus, AnyError> {
   let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -131,7 +153,7 @@ pub fn op_request_permission(
       ))
     }
   };
-  Ok(perm.to_string())
+  Ok(PermissionStatus::from(perm))
 }
 
 fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {

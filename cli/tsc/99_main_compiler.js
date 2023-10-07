@@ -12,16 +12,13 @@
 // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
 delete Object.prototype.__proto__;
 
-((window) => {
+((/** @type {any} */ window) => {
   /** @type {DenoCore} */
   const core = window.Deno.core;
   const ops = core.ops;
 
   let logDebug = false;
   let logSource = "JS";
-
-  /** @type {string=} */
-  let cwd;
 
   // The map from the normalized specifier to the original.
   // TypeScript normalizes the specifier in its internal processing,
@@ -31,6 +28,38 @@ delete Object.prototype.__proto__;
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
   /** @type {Map<string, string>} */
   const normalizedToOriginalMap = new Map();
+
+  /** @type {ReadonlySet<string>} */
+  const unstableDenoProps = new Set([
+    "AtomicOperation",
+    "CreateHttpClientOptions",
+    "DatagramConn",
+    "HttpClient",
+    "Kv",
+    "KvListIterator",
+    "KvU64",
+    "UnsafeCallback",
+    "UnsafePointer",
+    "UnsafePointerView",
+    "UnsafeFnPointer",
+    "UnixConnectOptions",
+    "UnixListenOptions",
+    "createHttpClient",
+    "dlopen",
+    "flock",
+    "flockSync",
+    "funlock",
+    "funlockSync",
+    "listen",
+    "listenDatagram",
+    "openKv",
+    "upgradeHttp",
+    "umask",
+  ]);
+  const unstableMsgSuggestion =
+    "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
+    "or add a triple-slash directive to the top of your entrypoint (main file): " +
+    '/// <reference lib="deno.unstable" />';
 
   /**
    * @param {unknown} value
@@ -51,6 +80,10 @@ delete Object.prototype.__proto__;
       : { languageVersion: versionOrOptions ?? ts.ScriptTarget.ESNext };
   }
 
+  /**
+   * @param debug {boolean}
+   * @param source {string}
+   */
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -58,10 +91,12 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @param msg {string} */
   function printStderr(msg) {
     core.print(msg, true);
   }
 
+  /** @param args {any[]} */
   function debug(...args) {
     if (logDebug) {
       const stringifiedArgs = args.map((arg) =>
@@ -71,6 +106,7 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @param args {any[]} */
   function error(...args) {
     const stringifiedArgs = args.map((arg) =>
       typeof arg === "string" || arg instanceof Error
@@ -81,12 +117,14 @@ delete Object.prototype.__proto__;
   }
 
   class AssertionError extends Error {
+    /** @param msg {string} */
     constructor(msg) {
       super(msg);
       this.name = "AssertionError";
     }
   }
 
+  /** @param cond {boolean} */
   function assert(cond, msg = "Assertion failed.") {
     if (!cond) {
       throw new AssertionError(msg);
@@ -104,6 +142,7 @@ delete Object.prototype.__proto__;
       }
     }
 
+    /** @param specifier {string} */
     has(specifier) {
       return this.#cache.has(specifier);
     }
@@ -138,7 +177,7 @@ delete Object.prototype.__proto__;
   // We need to use a custom document registry in order to provide source files
   // with an impliedNodeFormat to the ts language service
 
-  /** @type {Map<string, ts.SourceFile} */
+  /** @type {Map<string, ts.SourceFile>} */
   const documentRegistrySourceFileCache = new Map();
   const { getKeyForCompilationSettings } = ts.createDocumentRegistry(); // reuse this code
   /** @type {ts.DocumentRegistry} */
@@ -248,7 +287,9 @@ delete Object.prototype.__proto__;
           sourceFile,
           scriptSnapshot,
           version,
-          scriptSnapshot.getChangeRange(sourceFile.scriptSnapShot),
+          scriptSnapshot.getChangeRange(
+            /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
+          ),
         );
       }
       return sourceFile;
@@ -294,6 +335,50 @@ delete Object.prototype.__proto__;
     return isNodeSourceFile;
   });
 
+  /**
+   * @param msg {string}
+   * @param code {number}
+   */
+  function formatMessage(msg, code) {
+    switch (code) {
+      case 2304: {
+        if (msg === "Cannot find name 'Deno'.") {
+          msg += " Do you need to change your target library? " +
+            "Try changing the 'lib' compiler option to include 'deno.ns' " +
+            "or add a triple-slash directive to the top of your entrypoint " +
+            '(main file): /// <reference lib="deno.ns" />';
+        }
+        return msg;
+      }
+      case 2339: {
+        const property = getProperty();
+        if (property && unstableDenoProps.has(property)) {
+          return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag? ${unstableMsgSuggestion}`;
+        }
+        return msg;
+      }
+      default: {
+        const property = getProperty();
+        if (property && unstableDenoProps.has(property)) {
+          const suggestion = getMsgSuggestion();
+          if (suggestion) {
+            return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
+          }
+        }
+        return msg;
+      }
+    }
+
+    function getProperty() {
+      return /Property '([^']+)' does not exist on type 'typeof Deno'/
+        .exec(msg)?.[1];
+    }
+
+    function getMsgSuggestion() {
+      return / Did you mean '([^']+)'\?/.exec(msg)?.[1];
+    }
+  }
+
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
     start,
@@ -307,7 +392,7 @@ delete Object.prototype.__proto__;
     if (typeof msgText === "object") {
       messageChain = msgText;
     } else {
-      messageText = msgText;
+      messageText = formatMessage(msgText, ri.code);
     }
     if (start !== undefined && length !== undefined && file) {
       const startPos = file.getLineAndCharacterOfPosition(start);
@@ -331,8 +416,8 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {ts.Diagnostic[]} diagnostics */
-  function fromTypeScriptDiagnostic(diagnostics) {
+  /** @param {readonly ts.Diagnostic[]} diagnostics */
+  function fromTypeScriptDiagnostics(diagnostics) {
     return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
       /** @type {any} */
       const value = fromRelatedInformation(diag);
@@ -349,6 +434,7 @@ delete Object.prototype.__proto__;
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
   const ASSETS_URL_PREFIX = "asset:///";
+  const CACHE_URL_PREFIX = "cache:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
@@ -364,9 +450,6 @@ delete Object.prototype.__proto__;
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.
     2688,
-    // TS2691: An import path cannot end with a '.ts' extension. Consider
-    // importing 'bad-module' instead.
-    2691,
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
     2792,
@@ -447,8 +530,9 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.fileExists("${specifier}")`);
       }
-      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return ops.op_exists({ specifier });
+      // this is used by typescript to find the libs path
+      // so we can completely ignore it
+      return false;
     },
     readFile(specifier) {
       if (logDebug) {
@@ -527,7 +611,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getCurrentDirectory()`);
       }
-      return cwd ?? ops.op_cwd();
+      return CACHE_URL_PREFIX;
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -617,7 +701,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return ops.op_create_hash({ data }).hash;
+      return ops.op_create_hash(data);
     },
 
     // LanguageServiceHost
@@ -754,6 +838,7 @@ delete Object.prototype.__proto__;
    * @property {Record<string, any>} config
    * @property {boolean} debug
    * @property {string[]} rootNames
+   * @property {boolean} localOnly
    */
 
   /**
@@ -780,7 +865,7 @@ delete Object.prototype.__proto__;
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
-  function exec({ config, debug: debugFlag, rootNames }) {
+  function exec({ config, debug: debugFlag, rootNames, localOnly }) {
     setLogDebug(debugFlag, "TS");
     performanceStart();
     if (logDebug) {
@@ -804,12 +889,48 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
+    const checkFiles = localOnly
+      ? rootNames
+        .filter((n) => !n.startsWith("http"))
+        .map((checkName) => {
+          const sourceFile = program.getSourceFile(checkName);
+          if (sourceFile == null) {
+            throw new Error("Could not find source file for: " + checkName);
+          }
+          return sourceFile;
+        })
+      : undefined;
+
+    if (checkFiles != null) {
+      // When calling program.getSemanticDiagnostics(...) with a source file, we
+      // need to call this code first in order to get it to invalidate cached
+      // diagnostics correctly. This is what program.getSemanticDiagnostics()
+      // does internally when calling without any arguments.
+      const checkFileNames = new Set(checkFiles.map((f) => f.fileName));
+      while (
+        program.getSemanticDiagnosticsOfNextAffectedFile(
+          undefined,
+          /* ignoreSourceFile */ (s) => !checkFileNames.has(s.fileName),
+        )
+      ) {
+        // keep going until there are no more affected files
+      }
+    }
+
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
-      ...program.getSyntacticDiagnostics(),
+      ...(checkFiles == null
+        ? program.getSyntacticDiagnostics()
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSyntacticDiagnostics(s)).flat(),
+        )),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
-      ...program.getSemanticDiagnostics(),
+      ...(checkFiles == null
+        ? program.getSemanticDiagnostics()
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
+        )),
     ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
 
     // emit the tsbuildinfo file
@@ -819,7 +940,7 @@ delete Object.prototype.__proto__;
     performanceProgram({ program });
 
     ops.op_respond({
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
+      diagnostics: fromTypeScriptDiagnostics(diagnostics),
       stats: performanceEnd(),
     });
     debug("<<< exec stop");
@@ -847,167 +968,48 @@ delete Object.prototype.__proto__;
     ops.op_respond({ id, data });
   }
 
-  /**
-   * @param {LanguageServerRequest} request
-   */
-  function serverRequest({ id, ...request }) {
+  function serverRequest(id, method, args) {
     if (logDebug) {
-      debug(`serverRequest()`, { id, ...request });
+      debug(`serverRequest()`, id, method, args);
     }
 
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
-    switch (request.method) {
-      case "restart": {
+    switch (method) {
+      case "$restart": {
         serverRestart();
         return respond(id, true);
       }
-      case "configure": {
+      case "$configure": {
         const { options, errors } = ts
-          .convertCompilerOptionsFromJson(request.compilerOptions, "");
-        Object.assign(options, { allowNonTsExtensions: true });
-        if (errors.length) {
+          .convertCompilerOptionsFromJson(args[0], "");
+        Object.assign(options, {
+          allowNonTsExtensions: true,
+          allowImportingTsExtensions: true,
+        });
+        if (errors.length > 0 && logDebug) {
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
         return respond(id, true);
       }
-      case "findRenameLocations": {
+      case "$getSupportedCodeFixes": {
         return respond(
           id,
-          languageService.findRenameLocations(
-            request.specifier,
-            request.position,
-            request.findInStrings,
-            request.findInComments,
-            request.providePrefixAndSuffixTextForRename,
-          ),
+          ts.getSupportedCodeFixes(),
         );
       }
-      case "getAssets": {
+      case "$getAssets": {
         return respond(id, getAssets());
       }
-      case "getApplicableRefactors": {
-        return respond(
-          id,
-          languageService.getApplicableRefactors(
-            request.specifier,
-            request.range,
-            {
-              quotePreference: "double",
-              allowTextChangesInNewFiles: true,
-              provideRefactorNotApplicableReason: true,
-            },
-            undefined,
-            request.kind,
-          ),
-        );
-      }
-      case "getEditsForRefactor": {
-        return respond(
-          id,
-          languageService.getEditsForRefactor(
-            request.specifier,
-            {
-              indentSize: 2,
-              indentStyle: ts.IndentStyle.Smart,
-              semicolons: ts.SemicolonPreference.Insert,
-              convertTabsToSpaces: true,
-              insertSpaceBeforeAndAfterBinaryOperators: true,
-              insertSpaceAfterCommaDelimiter: true,
-            },
-            request.range,
-            request.refactorName,
-            request.actionName,
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCodeFixes": {
-        return respond(
-          id,
-          languageService.getCodeFixesAtPosition(
-            request.specifier,
-            request.startPosition,
-            request.endPosition,
-            request.errorCodes.map((v) => Number(v)),
-            {
-              indentSize: 2,
-              indentStyle: ts.IndentStyle.Block,
-              semicolons: ts.SemicolonPreference.Insert,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCombinedCodeFix": {
-        return respond(
-          id,
-          languageService.getCombinedCodeFix(
-            {
-              type: "file",
-              fileName: request.specifier,
-            },
-            request.fixId,
-            {
-              indentSize: 2,
-              indentStyle: ts.IndentStyle.Block,
-              semicolons: ts.SemicolonPreference.Insert,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCompletionDetails": {
-        if (logDebug) {
-          debug("request", request);
-        }
-        return respond(
-          id,
-          languageService.getCompletionEntryDetails(
-            request.args.specifier,
-            request.args.position,
-            request.args.name,
-            {},
-            request.args.source,
-            request.args.preferences,
-            request.args.data,
-          ),
-        );
-      }
-      case "getCompletions": {
-        return respond(
-          id,
-          languageService.getCompletionsAtPosition(
-            request.specifier,
-            request.position,
-            request.preferences,
-          ),
-        );
-      }
-      case "getDefinition": {
-        return respond(
-          id,
-          languageService.getDefinitionAndBoundSpan(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getDiagnostics": {
+      case "$getDiagnostics": {
         try {
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
-          for (const specifier of request.specifiers) {
-            diagnosticMap[specifier] = fromTypeScriptDiagnostic([
+          for (const specifier of args[0]) {
+            diagnosticMap[specifier] = fromTypeScriptDiagnostics([
               ...languageService.getSemanticDiagnostics(specifier),
               ...languageService.getSuggestionDiagnostics(specifier),
               ...languageService.getSyntacticDiagnostics(specifier),
@@ -1028,162 +1030,28 @@ delete Object.prototype.__proto__;
           return respond(id, {});
         }
       }
-      case "getDocumentHighlights": {
-        return respond(
-          id,
-          languageService.getDocumentHighlights(
-            request.specifier,
-            request.position,
-            request.filesToSearch,
-          ),
-        );
-      }
-      case "getEncodedSemanticClassifications": {
-        return respond(
-          id,
-          languageService.getEncodedSemanticClassifications(
-            request.specifier,
-            request.span,
-            ts.SemanticClassificationFormat.TwentyTwenty,
-          ),
-        );
-      }
-      case "getImplementation": {
-        return respond(
-          id,
-          languageService.getImplementationAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getNavigateToItems": {
-        return respond(
-          id,
-          languageService.getNavigateToItems(
-            request.search,
-            request.maxResultCount,
-            request.fileName,
-          ),
-        );
-      }
-      case "getNavigationTree": {
-        return respond(
-          id,
-          languageService.getNavigationTree(request.specifier),
-        );
-      }
-      case "getOutliningSpans": {
-        return respond(
-          id,
-          languageService.getOutliningSpans(
-            request.specifier,
-          ),
-        );
-      }
-      case "getQuickInfo": {
-        return respond(
-          id,
-          languageService.getQuickInfoAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getReferences": {
-        return respond(
-          id,
-          languageService.getReferencesAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSignatureHelpItems": {
-        return respond(
-          id,
-          languageService.getSignatureHelpItems(
-            request.specifier,
-            request.position,
-            request.options,
-          ),
-        );
-      }
-      case "getSmartSelectionRange": {
-        return respond(
-          id,
-          languageService.getSmartSelectionRange(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSupportedCodeFixes": {
-        return respond(
-          id,
-          ts.getSupportedCodeFixes(),
-        );
-      }
-      case "getTypeDefinition": {
-        return respond(
-          id,
-          languageService.getTypeDefinitionAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "prepareCallHierarchy": {
-        return respond(
-          id,
-          languageService.prepareCallHierarchy(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideCallHierarchyIncomingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyIncomingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideCallHierarchyOutgoingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyOutgoingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideInlayHints":
-        return respond(
-          id,
-          languageService.provideInlayHints(
-            request.specifier,
-            request.span,
-            request.preferences,
-          ),
-        );
       default:
+        if (typeof languageService[method] === "function") {
+          // The `getCompletionEntryDetails()` method returns null if the
+          // `source` is `null` for whatever reason. It must be `undefined`.
+          if (method == "getCompletionEntryDetails") {
+            args[4] ??= undefined;
+          }
+          return respond(id, languageService[method](...args));
+        }
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
-          `Invalid request method for request: "${request.method}" (${id})`,
+          `Invalid request method for request: "${method}" (${id})`,
         );
     }
   }
 
-  /** @param {{ debug: boolean; rootUri?: string; }} init */
-  function serverInit({ debug: debugFlag, rootUri }) {
+  /** @param {{ debug: boolean; }} init */
+  function serverInit({ debug: debugFlag }) {
     if (hasStarted) {
       throw new Error("The language server has already been initialized.");
     }
     hasStarted = true;
-    cwd = rootUri;
     languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
@@ -1215,6 +1083,46 @@ delete Object.prototype.__proto__;
 
   ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
 
+  // list of globals that should be kept in Node's globalThis
+  ts.deno.setNodeOnlyGlobalNames([
+    // when bumping the @types/node version we should check if
+    // anything needs to be updated here
+    "NodeRequire",
+    "RequireResolve",
+    "RequireResolve",
+    "process",
+    "console",
+    "__filename",
+    "__dirname",
+    "require",
+    "module",
+    "exports",
+    "gc",
+    "BufferEncoding",
+    "BufferConstructor",
+    "WithImplicitCoercion",
+    "Buffer",
+    "Console",
+    "ImportMeta",
+    "setTimeout",
+    "setInterval",
+    "setImmediate",
+    "Global",
+    "AbortController",
+    "AbortSignal",
+    "Blob",
+    "BroadcastChannel",
+    "MessageChannel",
+    "MessagePort",
+    "Event",
+    "EventTarget",
+    "performance",
+    "TextDecoder",
+    "TextEncoder",
+    "URL",
+    "URLSearchParams",
+  ]);
+
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
@@ -1226,7 +1134,7 @@ delete Object.prototype.__proto__;
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
     assert(
-      host.getSourceFile(
+      !!host.getSourceFile(
         `${ASSETS_URL_PREFIX}${specifier}`,
         ts.ScriptTarget.ESNext,
       ),
@@ -1245,14 +1153,16 @@ delete Object.prototype.__proto__;
   // remove this now that we don't need it anymore for warming up tsc
   sourceFileCache.delete(buildSpecifier);
 
-  // exposes the two functions that are called by `tsc::exec()` when type
+  // exposes the functions that are called by `tsc::exec()` when type
   // checking TypeScript.
-  globalThis.startup = startup;
-  globalThis.exec = exec;
-  globalThis.getAssets = getAssets;
+  /** @type {any} */
+  const global = globalThis;
+  global.startup = startup;
+  global.exec = exec;
+  global.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
-  globalThis.serverInit = serverInit;
-  globalThis.serverRequest = serverRequest;
+  global.serverInit = serverInit;
+  global.serverRequest = serverRequest;
 })(this);

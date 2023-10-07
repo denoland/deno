@@ -1,3 +1,0 @@
-pub fn op_import_spki_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
-  // ...
-}

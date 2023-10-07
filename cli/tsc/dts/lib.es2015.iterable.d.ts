@@ -14,9 +14,7 @@ and limitations under the License.
 ***************************************************************************** */
 
 
-
 /// <reference no-default-lib="true"/>
-
 
 /// <reference lib="es2015.symbol" />
 
@@ -161,10 +159,10 @@ interface MapConstructor {
     new <K, V>(iterable?: Iterable<readonly [K, V]> | null): Map<K, V>;
 }
 
-interface WeakMap<K extends object, V> { }
+interface WeakMap<K extends WeakKey, V> { }
 
 interface WeakMapConstructor {
-    new <K extends object, V>(iterable: Iterable<readonly [K, V]>): WeakMap<K, V>;
+    new <K extends WeakKey, V>(iterable: Iterable<readonly [K, V]>): WeakMap<K, V>;
 }
 
 interface Set<T> {
@@ -209,10 +207,10 @@ interface SetConstructor {
     new <T>(iterable?: Iterable<T> | null): Set<T>;
 }
 
-interface WeakSet<T extends object> { }
+interface WeakSet<T extends WeakKey> { }
 
 interface WeakSetConstructor {
-    new <T extends object = object>(iterable: Iterable<T>): WeakSet<T>;
+    new <T extends WeakKey = WeakKey>(iterable: Iterable<T>): WeakSet<T>;
 }
 
 interface Promise<T> { }

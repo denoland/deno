@@ -1,18 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::AnyError;
+
 use std::path::PathBuf;
 
-use crate::args::config_file::LockConfig;
+use deno_core::error::AnyError;
+
 use crate::args::ConfigFile;
-use crate::npm::NpmResolutionPackage;
 use crate::Flags;
 
 use super::DenoSubcommand;
 
 pub use deno_lockfile::Lockfile;
 pub use deno_lockfile::LockfileError;
-use deno_lockfile::NpmPackageDependencyLockfileInfo;
-use deno_lockfile::NpmPackageLockfileInfo;
 
 pub fn discover(
   flags: &Flags,
@@ -32,22 +30,9 @@ pub fn discover(
     None => match maybe_config_file {
       Some(config_file) => {
         if config_file.specifier.scheme() == "file" {
-          match config_file.to_lock_config()? {
-            Some(LockConfig::Bool(lock)) if !lock => {
-              return Ok(None);
-            }
-            Some(LockConfig::PathBuf(lock)) => config_file
-              .specifier
-              .to_file_path()
-              .unwrap()
-              .parent()
-              .unwrap()
-              .join(lock),
-            _ => {
-              let mut path = config_file.specifier.to_file_path().unwrap();
-              path.set_file_name("deno.lock");
-              path
-            }
+          match config_file.resolve_lockfile_path()? {
+            Some(path) => path,
+            None => return Ok(None),
           }
         } else {
           return Ok(None);
@@ -59,26 +44,4 @@ pub fn discover(
 
   let lockfile = Lockfile::new(filename, flags.lock_write)?;
   Ok(Some(lockfile))
-}
-
-// NOTE(bartlomieju): we don't want a reverse mapping to be possible.
-#[allow(clippy::from_over_into)]
-impl Into<NpmPackageLockfileInfo> for NpmResolutionPackage {
-  fn into(self) -> NpmPackageLockfileInfo {
-    let dependencies = self
-      .dependencies
-      .into_iter()
-      .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-        name,
-        id: id.as_serialized(),
-      })
-      .collect();
-
-    NpmPackageLockfileInfo {
-      display_id: self.pkg_id.nv.to_string(),
-      serialized_id: self.pkg_id.as_serialized(),
-      integrity: self.dist.integrity().to_string(),
-      dependencies,
-    }
-  }
 }

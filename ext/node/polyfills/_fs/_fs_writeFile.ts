@@ -1,7 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Encodings } from "internal:deno_node/_utils.ts";
-import { fromFileUrl } from "internal:deno_node/path.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Encodings } from "ext:deno_node/_utils.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { Buffer } from "node:buffer";
 import {
   CallbackWithError,
   checkEncoding,
@@ -9,17 +13,17 @@ import {
   getOpenOptions,
   isFileOptions,
   WriteFileOptions,
-} from "internal:deno_node/_fs/_fs_common.ts";
-import { isWindows } from "internal:deno_node/_util/os.ts";
+} from "ext:deno_node/_fs/_fs_common.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 import {
   AbortError,
   denoErrorToNodeError,
-} from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   showStringCoercionDeprecation,
   validateStringAfterArrayBufferView,
-} from "internal:deno_node/internal/fs/utils.mjs";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/internal/fs/utils.mjs";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
@@ -41,7 +45,7 @@ export function writeFile(
     throw new TypeError("Callback must be a function.");
   }
 
-  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
+  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
 
   const flag: string | undefined = isFileOptions(options)
     ? options.flag
@@ -107,7 +111,7 @@ export function writeFileSync(
   data: string | Uint8Array | Object,
   options?: Encodings | WriteFileOptions,
 ) {
-  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
+  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
 
   const flag: string | undefined = isFileOptions(options)
     ? options.flag

@@ -6,20 +6,14 @@ test 2 ... FAILED ([WILDCARD])
  ERRORS 
 
 test 1 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
-error: AssertionError: Test case is leaking async ops.
-
- - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call.
-
+error: Leaking async ops:
+  - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call.
 To get more details where ops were leaked, run again with --trace-ops flag.
-    at [WILDCARD]
 
 test 2 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
-error: AssertionError: Test case is leaking async ops.
-
- - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call.
-
+error: Leaking async ops:
+  - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call.
 To get more details where ops were leaked, run again with --trace-ops flag.
-    at [WILDCARD]
 
  FAILURES 
 

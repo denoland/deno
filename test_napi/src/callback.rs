@@ -5,6 +5,7 @@ use crate::napi_get_callback_info;
 use crate::napi_new_property;
 use napi_sys::ValueType::napi_function;
 use napi_sys::ValueType::napi_object;
+use napi_sys::ValueType::napi_undefined;
 use napi_sys::*;
 use std::ptr;
 
@@ -13,7 +14,9 @@ extern "C" fn test_callback_run(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  // We want to have argv with size 4, even though the callback will have
+  // only two arguments. We'll assert that the remaining two args are undefined.
+  let (args, argc, _) = napi_get_callback_info!(env, info, 4);
   assert_eq!(argc, 2);
 
   let mut ty = -1;
@@ -23,6 +26,14 @@ extern "C" fn test_callback_run(
   let mut ty = -1;
   assert_napi_ok!(napi_typeof(env, args[1], &mut ty));
   assert_eq!(ty, napi_object);
+
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[2], &mut ty));
+  assert_eq!(ty, napi_undefined);
+
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[3], &mut ty));
+  assert_eq!(ty, napi_undefined);
 
   let mut len = 0;
   assert_napi_ok!(napi_get_array_length(env, args[1], &mut len));

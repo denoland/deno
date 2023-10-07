@@ -25,6 +25,9 @@
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.h
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 export function registerDestroyHook(
   // deno-lint-ignore no-explicit-any
   _target: any,

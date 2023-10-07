@@ -9,11 +9,14 @@ use napi_sys::*;
 pub mod array;
 pub mod arraybuffer;
 pub mod r#async;
+pub mod bigint;
 pub mod callback;
 pub mod coerce;
 pub mod date;
 pub mod env;
 pub mod error;
+pub mod finalizer;
+pub mod make_callback;
 pub mod mem;
 pub mod numbers;
 pub mod object_wrap;
@@ -21,6 +24,7 @@ pub mod primitives;
 pub mod promise;
 pub mod properties;
 pub mod strings;
+pub mod symbol;
 pub mod tsfn;
 pub mod typedarray;
 
@@ -146,6 +150,7 @@ unsafe extern "C" fn napi_register_module_v1(
   array::init(env, exports);
   env::init(env, exports);
   error::init(env, exports);
+  finalizer::init(env, exports);
   primitives::init(env, exports);
   properties::init(env, exports);
   promise::init(env, exports);
@@ -156,6 +161,9 @@ unsafe extern "C" fn napi_register_module_v1(
   date::init(env, exports);
   tsfn::init(env, exports);
   mem::init(env, exports);
+  bigint::init(env, exports);
+  symbol::init(env, exports);
+  make_callback::init(env, exports);
 
   init_cleanup_hook(env, exports);
 
