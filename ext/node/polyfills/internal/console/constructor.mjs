@@ -465,7 +465,6 @@ const consoleMethods = {
 
   // https://console.spec.whatwg.org/#table
   table(tabularData, properties) {
-    console.log("tabularData", tabularData);
     if (properties !== undefined) {
       validateArray(properties, "properties");
     }
