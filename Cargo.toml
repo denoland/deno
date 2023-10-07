@@ -162,9 +162,9 @@ hkdf = "0.12.3"
 
 # webgpu
 raw-window-handle = "0.5.0"
-wgpu-core = "0.17"
-wgpu-types = "0.17"
-wgpu-hal = "0.17"
+wgpu-core = { git = "https://github.com/gfx-rs/wgpu.git", rev = "d0a7f46e3a738247243fe6c2eb1a311d6ddd7f76" }
+wgpu-types = { git = "https://github.com/gfx-rs/wgpu.git", rev = "d0a7f46e3a738247243fe6c2eb1a311d6ddd7f76" }
+wgpu-hal = { git = "https://github.com/gfx-rs/wgpu.git", rev = "d0a7f46e3a738247243fe6c2eb1a311d6ddd7f76" }
 
 # macros
 proc-macro2 = "1"

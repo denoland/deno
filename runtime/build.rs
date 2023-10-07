@@ -211,7 +211,7 @@ mod startup_snapshot {
         Default::default(),
         Default::default(),
       ),
-      deno_web::deno_webgpu::init_ops_and_esm(false),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(false),
       deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(
         Default::default(),
       ),
