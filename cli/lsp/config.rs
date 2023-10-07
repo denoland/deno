@@ -692,10 +692,14 @@ impl WorkspaceSettings {
     self.code_lens.implementations || self.code_lens.references
   }
 
+  // TODO(nayeemrmn): Factor in out-of-band media type here.
   pub fn language_settings_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<&LanguageWorkspaceSettings> {
+    if specifier.scheme() == "deno-notebook-cell" {
+      return Some(&self.typescript);
+    }
     match MediaType::from_specifier(specifier) {
       MediaType::JavaScript
       | MediaType::Jsx

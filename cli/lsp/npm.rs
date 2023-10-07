@@ -12,8 +12,8 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::permissions::PermissionsContainer;
 use serde::Deserialize;
 
+use crate::args::npm_registry_default_url;
 use crate::file_fetcher::FileFetcher;
-use crate::npm::CliNpmRegistryApi;
 
 #[async_trait::async_trait]
 pub trait NpmSearchApi {
@@ -36,7 +36,7 @@ impl CliNpmSearchApi {
   pub fn new(file_fetcher: FileFetcher, custom_base_url: Option<Url>) -> Self {
     Self {
       base_url: custom_base_url
-        .unwrap_or_else(|| CliNpmRegistryApi::default_url().clone()),
+        .unwrap_or_else(|| npm_registry_default_url().clone()),
       file_fetcher,
       info_cache: Default::default(),
       search_cache: Default::default(),

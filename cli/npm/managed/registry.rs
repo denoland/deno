@@ -21,7 +21,6 @@ use deno_core::url::Url;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
-use once_cell::sync::Lazy;
 
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
@@ -32,32 +31,10 @@ use crate::util::sync::AtomicFlag;
 
 use super::cache::NpmCache;
 
-static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
-  let env_var_name = "NPM_CONFIG_REGISTRY";
-  if let Ok(registry_url) = std::env::var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
-      }
-    }
-  }
-
-  Url::parse("https://registry.npmjs.org").unwrap()
-});
-
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
-  pub fn default_url() -> &'static Url {
-    &NPM_REGISTRY_DEFAULT_URL
-  }
-
   pub fn new(
     base_url: Url,
     cache: Arc<NpmCache>,
@@ -73,12 +50,6 @@ impl CliNpmRegistryApi {
       http_client,
       progress_bar,
     })))
-  }
-
-  /// Creates an npm registry API that will be uninitialized. This is
-  /// useful for tests or for initializing the LSP.
-  pub fn new_uninitialized() -> Self {
-    Self(None)
   }
 
   /// Clears the internal memory cache.

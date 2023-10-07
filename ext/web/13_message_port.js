@@ -205,34 +205,39 @@ function opCreateEntangledMessagePort() {
 function deserializeJsMessageData(messageData) {
   /** @type {object[]} */
   const transferables = [];
-  const hostObjects = [];
   const arrayBufferIdsInTransferables = [];
   const transferredArrayBuffers = [];
+  let options;
 
-  for (let i = 0; i < messageData.transferables.length; ++i) {
-    const transferable = messageData.transferables[i];
-    switch (transferable.kind) {
-      case "messagePort": {
-        const port = createMessagePort(transferable.data);
-        ArrayPrototypePush(transferables, port);
-        ArrayPrototypePush(hostObjects, port);
-        break;
+  if (messageData.transferables.length > 0) {
+    const hostObjects = [];
+    for (let i = 0; i < messageData.transferables.length; ++i) {
+      const transferable = messageData.transferables[i];
+      switch (transferable.kind) {
+        case "messagePort": {
+          const port = createMessagePort(transferable.data);
+          ArrayPrototypePush(transferables, port);
+          ArrayPrototypePush(hostObjects, port);
+          break;
+        }
+        case "arrayBuffer": {
+          ArrayPrototypePush(transferredArrayBuffers, transferable.data);
+          const index = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, index);
+          break;
+        }
+        default:
+          throw new TypeError("Unreachable");
       }
-      case "arrayBuffer": {
-        ArrayPrototypePush(transferredArrayBuffers, transferable.data);
-        const index = ArrayPrototypePush(transferables, null);
-        ArrayPrototypePush(arrayBufferIdsInTransferables, index);
-        break;
-      }
-      default:
-        throw new TypeError("Unreachable");
     }
+
+    options = {
+      hostObjects,
+      transferredArrayBuffers,
+    };
   }
 
-  const data = core.deserialize(messageData.data, {
-    hostObjects,
-    transferredArrayBuffers,
-  });
+  const data = core.deserialize(messageData.data, options);
 
   for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
     const id = arrayBufferIdsInTransferables[i];
@@ -248,31 +253,36 @@ function deserializeJsMessageData(messageData) {
  * @returns {messagePort.MessageData}
  */
 function serializeJsMessageData(data, transferables) {
+  let options;
   const transferredArrayBuffers = [];
-  for (let i = 0, j = 0; i < transferables.length; i++) {
-    const ab = transferables[i];
-    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
-      if (
-        ArrayBufferPrototypeGetByteLength(ab) === 0 &&
-        ops.op_arraybuffer_was_detached(ab)
-      ) {
-        throw new DOMException(
-          `ArrayBuffer at index ${j} is already detached`,
-          "DataCloneError",
-        );
+  if (transferables.length > 0) {
+    const hostObjects = [];
+    for (let i = 0, j = 0; i < transferables.length; i++) {
+      const t = transferables[i];
+      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, t)) {
+        if (
+          ArrayBufferPrototypeGetByteLength(t) === 0 &&
+          ops.op_arraybuffer_was_detached(t)
+        ) {
+          throw new DOMException(
+            `ArrayBuffer at index ${j} is already detached`,
+            "DataCloneError",
+          );
+        }
+        j++;
+        ArrayPrototypePush(transferredArrayBuffers, t);
+      } else if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)) {
+        ArrayPrototypePush(hostObjects, t);
       }
-      j++;
-      ArrayPrototypePush(transferredArrayBuffers, ab);
     }
+
+    options = {
+      hostObjects,
+      transferredArrayBuffers,
+    };
   }
 
-  const serializedData = core.serialize(data, {
-    hostObjects: ArrayPrototypeFilter(
-      transferables,
-      (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
-    ),
-    transferredArrayBuffers,
-  }, (err) => {
+  const serializedData = core.serialize(data, options, (err) => {
     throw new DOMException(err, "DataCloneError");
   });
 
