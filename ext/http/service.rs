@@ -265,6 +265,12 @@ impl HttpRecord {
   fn cancel(self: Rc<Self>) {
     http_trace!(self, "HttpRecord::cancel");
     let mut inner = self.self_mut();
+    if inner.response_ready {
+      // Future dropped between wake() and async fn resuming.
+      drop(inner);
+      self.recycle();
+      return;
+    }
     inner.been_dropped = true;
     // The request body might include actual resources.
     inner.request_body.take();
