@@ -5,7 +5,6 @@ use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -476,7 +475,8 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   Ok(sys_info::os_uptime())
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   os_uptime(state)
 }
