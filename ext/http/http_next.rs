@@ -8,11 +8,11 @@ use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
-use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
 use crate::service::handle_request;
 use crate::service::http_trace;
 use crate::service::HttpRecord;
+use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
 use crate::websocket_upgrade::WebSocketUpgrade;
@@ -182,7 +182,7 @@ pub fn op_http_upgrade_raw(
   let (read_rx, write_tx) = tokio::io::split(read);
   let (mut write_rx, mut read_tx) = tokio::io::split(write);
   spawn(async move {
-    let mut upgrade_stream = WebSocketUpgrade::<ResponseBytes>::default();
+    let mut upgrade_stream = WebSocketUpgrade::<()>::default();
 
     // Stage 2: Extract the Upgraded connection
     let mut buf = [0; 1024];
@@ -191,7 +191,8 @@ pub fn op_http_upgrade_raw(
       match upgrade_stream.write(&buf[..read]) {
         Ok(None) => continue,
         Ok(Some((response, bytes))) => {
-          *http.response() = response;
+          let (response_parts, _) = response.into_parts();
+          *http.response_parts() = response_parts;
           http.complete();
           let mut upgraded = TokioIo::new(upgrade.await?);
           upgraded.write_all(&bytes).await?;
@@ -250,10 +251,10 @@ pub async fn op_http_upgrade_websocket_next(
   // Stage 1: set the response to 101 Switching Protocols and send it
   let upgrade = http.upgrade()?;
   {
-    let mut response = http.response();
-    *response.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
+    let mut response_parts = http.response_parts();
+    response_parts.status = StatusCode::SWITCHING_PROTOCOLS;
     for (name, value) in headers {
-      response.headers_mut().append(
+      response_parts.headers.append(
         HeaderName::from_bytes(&name).unwrap(),
         HeaderValue::from_bytes(&value).unwrap(),
       );
@@ -277,7 +278,7 @@ pub fn op_http_set_promise_complete(external: *const c_void, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
   // will quitely ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
-    *http.response().status_mut() = code;
+    http.response_parts().status = code;
   }
   http.complete();
 }
@@ -441,7 +442,7 @@ pub fn op_http_read_request_body(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_read_request_body") };
-  let rid = if let Some(incoming) = http.take_body() {
+  let rid = if let Some(incoming) = http.take_request_body() {
     let body_resource = Rc::new(HttpRequestBody::new(incoming));
     state.borrow_mut().resource_table.add_rc(body_resource)
   } else {
@@ -462,8 +463,7 @@ pub fn op_http_set_response_header(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_set_response_header") };
-  let mut response = http.response();
-  let resp_headers = response.headers_mut();
+  let mut response_parts = http.response_parts();
   // These are valid latin-1 strings
   let name = HeaderName::from_bytes(&name).unwrap();
   let value = match value {
@@ -473,7 +473,7 @@ pub fn op_http_set_response_header(
       HeaderValue::from_maybe_shared_unchecked(bytes::Bytes::from(bytes_vec))
     },
   };
-  resp_headers.append(name, value);
+  response_parts.headers.append(name, value);
 }
 
 #[op2]
@@ -486,12 +486,13 @@ pub fn op_http_set_response_headers(
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_set_response_headers") };
   // TODO(mmastrac): Invalid headers should be handled?
-  let mut response = http.response();
-  let resp_headers = response.headers_mut();
+  let mut response_parts = http.response_parts();
 
   let len = headers.length();
   let header_len = len * 2;
-  resp_headers.reserve(header_len.try_into().unwrap());
+  response_parts
+    .headers
+    .reserve(header_len.try_into().unwrap());
 
   for i in 0..len {
     let item = headers.get_index(scope, i).unwrap();
@@ -505,7 +506,7 @@ pub fn op_http_set_response_headers(
     let header_value =
       // SAFETY: These are valid latin-1 strings
       unsafe { HeaderValue::from_maybe_shared_unchecked(v8_value) };
-    resp_headers.append(header_name, header_value);
+    response_parts.headers.append(header_name, header_value);
   }
 }
 
@@ -525,7 +526,7 @@ pub fn op_http_set_response_trailers(
     let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
     trailer_map.append(name, value);
   }
-  *http.trailers().borrow_mut() = Some(trailer_map);
+  *http.trailers() = Some(trailer_map);
 }
 
 fn is_request_compressible(
@@ -663,20 +664,19 @@ fn set_response(
   // The request may have been cancelled by this point and if so, there's no need for us to
   // do all of this work to send the response.
   if !http.cancelled() {
-    let resource = http.take_resource();
     let compression =
       is_request_compressible(length, &http.request_parts().headers);
-    let mut response = http.response();
+    let mut response_headers =
+      std::cell::RefMut::map(http.response_parts(), |this| &mut this.headers);
     let compression =
-      modify_compressibility_from_response(compression, response.headers_mut());
-    response
-      .body_mut()
-      .initialize(response_fn(compression), resource);
+      modify_compressibility_from_response(compression, &mut response_headers);
+    drop(response_headers);
+    http.set_response_body(response_fn(compression));
 
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
     // will quitely ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
-      *response.status_mut() = code;
+      http.response_parts().status = code;
     }
   } else if force_instantiate_body {
     response_fn(Compression::None).abort();
@@ -760,7 +760,7 @@ pub async fn op_http_track(
 ) -> Result<(), AnyError> {
   // SAFETY: op is called with external.
   let http = unsafe { clone_external!(external, "op_http_track") };
-  let handle = http.body_promise();
+  let handle = http.into_body_promise();
 
   let join_handle = state
     .borrow_mut()
@@ -781,7 +781,7 @@ pub async fn op_http_track(
 
 fn serve_http11_unconditional(
   io: impl HttpServeStream,
-  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+  svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
 ) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
   let conn = http1::Builder::new()
@@ -803,7 +803,7 @@ fn serve_http11_unconditional(
 
 fn serve_http2_unconditional(
   io: impl HttpServeStream,
-  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+  svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
 ) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
   let conn =
@@ -821,7 +821,7 @@ fn serve_http2_unconditional(
 
 async fn serve_http2_autodetect(
   io: impl HttpServeStream,
-  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+  svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
 ) -> Result<(), AnyError> {
   let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
