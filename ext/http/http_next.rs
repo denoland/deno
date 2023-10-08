@@ -274,6 +274,10 @@ pub fn op_http_set_promise_complete(external: *const c_void, status: u16) {
   let http =
     // SAFETY: external is deleted before calling this op.
     unsafe { take_external!(external, "op_http_set_promise_complete") };
+  set_promise_complete(http, status);
+}
+
+fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
   // will quitely ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
@@ -652,14 +656,12 @@ fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
 /// Sets the appropriate response body. Use `force_instantiate_body` if you need
 /// to ensure that the response is cleaned up correctly (eg: for resources).
 fn set_response(
-  external: *const c_void,
+  http: Rc<HttpRecord>,
   length: Option<usize>,
   status: u16,
   force_instantiate_body: bool,
   response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
 ) {
-  // SAFETY: external is deleted before calling this op.
-  let http = unsafe { take_external!(external, "set_response") };
   // The request may have been cancelled by this point and if so, there's no need for us to
   // do all of this work to send the response.
   if !http.cancelled() {
@@ -692,6 +694,10 @@ pub fn op_http_set_response_body_resource(
   auto_close: bool,
   status: u16,
 ) -> Result<(), AnyError> {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_set_response_body_resource") };
+
   // IMPORTANT: We might end up requiring the OpState lock in set_response if we need to drop the request
   // body resource so we _cannot_ hold the OpState lock longer than necessary.
 
@@ -709,7 +715,7 @@ pub fn op_http_set_response_body_resource(
   };
 
   set_response(
-    external,
+    http,
     resource.size_hint().1.map(|s| s as usize),
     status,
     true,
@@ -727,12 +733,15 @@ pub fn op_http_set_response_body_text(
   #[string] text: String,
   status: u16,
 ) {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_set_response_body_text") };
   if !text.is_empty() {
-    set_response(external, Some(text.len()), status, false, |compression| {
+    set_response(http, Some(text.len()), status, false, |compression| {
       ResponseBytesInner::from_vec(compression, text.into_bytes())
     });
   } else {
-    op_http_set_promise_complete::call(external, status);
+    set_promise_complete(http, status);
   }
 }
 
@@ -742,12 +751,15 @@ pub fn op_http_set_response_body_bytes(
   #[buffer] buffer: JsBuffer,
   status: u16,
 ) {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_set_response_body_bytes") };
   if !buffer.is_empty() {
-    set_response(external, Some(buffer.len()), status, false, |compression| {
+    set_response(http, Some(buffer.len()), status, false, |compression| {
       ResponseBytesInner::from_bufview(compression, BufView::from(buffer))
     });
   } else {
-    op_http_set_promise_complete::call(external, status);
+    set_promise_complete(http, status);
   }
 }
 
