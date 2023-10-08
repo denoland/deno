@@ -372,6 +372,12 @@ export class ClientHttp2Session extends Http2Session {
       const eventName = url.startsWith("https") ? "secureConnect" : "connect";
       console.log("eventName", eventName, url);
       socket.once(eventName, () => {
+        console.log(
+          "emitted",
+          eventName,
+          socket[kHandle][kStreamBaseField].rid,
+        );
+        console.table(Deno.resources());
         const rid = socket[kHandle][kStreamBaseField].rid;
         resolve(rid);
       });

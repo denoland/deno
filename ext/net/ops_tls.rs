@@ -1152,9 +1152,11 @@ pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<TlsHandshakeInfo, AnyError> {
+  eprintln!("handshake started");
   let resource = state
     .borrow()
     .resource_table
     .get::<TlsStreamResource>(rid)?;
+  eprintln!("handshake finished");
   resource.handshake().await
 }
