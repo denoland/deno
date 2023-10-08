@@ -387,7 +387,8 @@ pub async fn op_crypto_verify_key(
       let public_key_bytes = match args.key.r#type {
         KeyType::Private => {
           let rng = RingRand::SystemRandom::new();
-          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
+          private_key =
+            EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
 
           private_key.public_key().as_ref()
         }
