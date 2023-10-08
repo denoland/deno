@@ -37,6 +37,7 @@
  */
 
 const core = globalThis.Deno.core;
+
 const internals = globalThis.__bootstrap.internals;
 
 const $display = Symbol.for("Jupyter.display");
@@ -201,48 +202,48 @@ function makeDisplayable(obj) {
  * Format an object for displaying in Deno
  *
  * @param obj - The object to be displayed
- * @returns Displayable or undefined
+ * @returns Displayable
  */
 async function format(obj) {
-  if (hasDisplaySymbol(obj)) {
-    return await obj[$display]();
-  }
-  if (isCanvasLike(obj)) {
-    const dataURL = obj.toDataURL();
-    const parts = dataURL.split(",");
-    const mime = parts[0].split(":")[1].split(";")[0];
-    const data = parts[1];
-    return {
-      [mime]: data,
-    };
-  }
-  if (isVegaLike(obj)) {
-    return extractVega(obj);
-  }
-  if (isDataFrameLike(obj)) {
-    return extractDataFrame(obj);
-  }
-  if (isSVGElementLike(obj)) {
-    return {
-      "image/svg+xml": obj.outerHTML,
-    };
-  }
-  if (isHTMLElementLike(obj)) {
-    return {
-      "text/html": obj.outerHTML,
-    };
-  }
-  const internalSymbol = Deno.internal;
-  if (typeof internalSymbol === "symbol") {
+  try {
+    if (hasDisplaySymbol(obj)) {
+      return await obj[$display]();
+    }
+    if (isCanvasLike(obj)) {
+      const dataURL = obj.toDataURL();
+      const parts = dataURL.split(",");
+      const mime = parts[0].split(":")[1].split(";")[0];
+      const data = parts[1];
+      return {
+        [mime]: data,
+      };
+    }
+    if (isVegaLike(obj)) {
+      return extractVega(obj);
+    }
+    if (isDataFrameLike(obj)) {
+      return extractDataFrame(obj);
+    }
+    if (isSVGElementLike(obj)) {
+      return {
+        "image/svg+xml": obj.outerHTML,
+      };
+    }
+    if (isHTMLElementLike(obj)) {
+      return {
+        "text/html": obj.outerHTML,
+      };
+    }
     return {
       "text/plain": Deno[Deno.internal].inspectArgs(["%o", obj], {
         colors: !Deno.noColor,
       }),
     };
+  } catch (err) {
+    return {
+      "text/plain": Deno[Deno.internal].inspectArgs(["%o", err]),
+    };
   }
-  return {
-    "text/plain": Deno.inspect(obj),
-  };
 }
 
 /**
