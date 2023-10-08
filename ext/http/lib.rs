@@ -108,6 +108,7 @@ deno_core::extension!(
     op_http_write_headers,
     op_http_write_resource,
     op_http_write,
+    http_next::op_http_finalizer_complete,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_get_request_method_and_url<HTTP>,

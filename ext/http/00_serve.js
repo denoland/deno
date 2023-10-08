@@ -43,6 +43,7 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  PromisePrototypeThen,
   Symbol,
   TypeError,
   Uint8Array,
@@ -50,6 +51,7 @@ const {
 } = primordials;
 
 const {
+  op_http_finalizer_complete,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
@@ -386,9 +388,10 @@ class ServeHandlerInfo {
   }
 }
 
-function fastSyncResponseOrStream(req, respBody, status) {
+function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
+    innerRequest?.close();
     op_http_set_promise_complete(req, status);
     return;
   }
@@ -397,36 +400,43 @@ function fastSyncResponseOrStream(req, respBody, status) {
   const body = stream.body;
 
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
+    innerRequest?.close();
     op_http_set_response_body_bytes(req, body, status);
     return;
   }
 
   if (typeof body === "string") {
+    innerRequest?.close();
     op_http_set_response_body_text(req, body, status);
     return;
   }
 
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
+    innerRequest?.close();
     throw TypeError("invalid response");
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
+  let rid, autoClose;
   if (resourceBacking) {
-    op_http_set_response_body_resource(
-      req,
-      resourceBacking.rid,
-      resourceBacking.autoClose,
-      status,
-    );
+    rid = resourceBacking.rid;
+    autoClose = resourceBacking.autoClose;
   } else {
-    const rid = resourceForReadableStream(stream);
+    rid = resourceForReadableStream(stream);
+    autoClose = true;
+  }
+  PromisePrototypeThen(
     op_http_set_response_body_resource(
       req,
       rid,
-      true,
+      autoClose,
       status,
-    );
-  }
+    ),
+    () => {
+      innerRequest?.close();
+      op_http_finalizer_complete(req);
+    },
+  );
 }
 
 /**
@@ -499,8 +509,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    innerRequest?.close();
-    fastSyncResponseOrStream(req, inner.body, status);
+    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 }
 
