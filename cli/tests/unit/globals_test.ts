@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-window-prefix
-import { assert } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
   assert(globalThis != null);
@@ -130,14 +130,13 @@ Deno.test(function webApiGlobalThis() {
 });
 
 Deno.test(function windowNameIsDefined() {
-  assert(typeof globalThis.name === "string");
-  assert(name === "");
-  assert(window.name === name);
+  assertEquals(typeof globalThis.name, "string");
+  assertEquals(name, "");
+  assertEquals(window.name, name);
   name = "foobar";
-  // @ts-ignore somehow TS doesn't understand that name === window.name
-  assert(window.name === "foobar");
-  assert(name === "foobar");
+  assertEquals(window.name, "foobar");
+  assertEquals(name, "foobar");
   name = "";
-  assert(window.name === "");
-  assert(name === "");
+  assertEquals(window.name, "");
+  assertEquals(name, "");
 });
