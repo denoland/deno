@@ -552,16 +552,16 @@ async fn get_jupyter_display(
       "Runtime.callFunctionOn",
       Some(json!({
         "functionDeclaration": r#"async function (object) {
-      if (typeof object[Symbol.for("Jupyter.display")] !== "function") {
-        return null;
-      }
+      const representation = await Deno.jupyter.format(object);
 
-      try {
-        const representation = await object[Symbol.for("Jupyter.display")]();
-        return JSON.stringify(representation);
-      } catch {
-        return null;
-      }
+      // TODO(rgbkrk): Broadcast the execute result directly here
+      // await Deno.jupyter.broadcast("execute_result", {
+      //   data: representation,
+      //   metadata: {},
+      //   execution_count: 999
+      // });
+
+      return JSON.stringify(representation);
     }"#,
         "arguments": [cdp::CallArgument::from(evaluate_result)],
         "executionContextId": session.context_id,
@@ -616,12 +616,8 @@ async fn get_jupyter_display_or_eval_value(
     return Ok(HashMap::default());
   }
 
-  // If the response is a primitive value we don't need to try and format
-  // Jupyter response.
-  if evaluate_result.object_id.is_some() {
-    if let Some(data) = get_jupyter_display(session, evaluate_result).await? {
-      return Ok(data);
-    }
+  if let Some(data) = get_jupyter_display(session, evaluate_result).await? {
+    return Ok(data);
   }
 
   let response = session
