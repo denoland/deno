@@ -687,7 +687,7 @@ fn set_response(
 }
 
 /// Returned promise resolves when body streaming finishes.
-/// Call [`op_http_finalizer_complete`] when done with the external.
+/// Call [`op_http_close_after_finish`] when done with the external.
 #[op2(async)]
 pub async fn op_http_set_response_body_resource(
   state: Rc<RefCell<OpState>>,
@@ -699,7 +699,6 @@ pub async fn op_http_set_response_body_resource(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_set_response_body_resource") };
-  http.finalizer_add();
 
   // IMPORTANT: We might end up requiring the OpState lock in set_response if we need to drop the request
   // body resource so we _cannot_ hold the OpState lock longer than necessary.
@@ -727,17 +726,17 @@ pub async fn op_http_set_response_body_resource(
     },
   );
 
-  http.into_body_promise().await;
+  *http.needs_close_after_finish() = true;
+  http.response_body_finished().await;
   Ok(())
 }
 
 #[op2(fast)]
-pub fn op_http_finalizer_complete(external: *const c_void) {
-  // SAFETY: external is deleted and add_finalizer called before calling this op.
-  unsafe {
-    let http = take_external!(external, "op_http_finalizer_complete");
-    http.finalizer_complete();
-  }
+pub fn op_http_close_after_finish(external: *const c_void) {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_close_after_finish") };
+  http.close_after_finish();
 }
 
 #[op2(fast)]
@@ -773,17 +772,6 @@ pub fn op_http_set_response_body_bytes(
     });
   } else {
     set_promise_complete(http, status);
-  }
-}
-
-#[op2(async)]
-pub async fn op_http_track(external: *const c_void) -> Result<(), AnyError> {
-  // SAFETY: op is called with external.
-  let http = unsafe { clone_external!(external, "op_http_track") };
-  if http.into_body_promise().await {
-    Ok(())
-  } else {
-    Err(AnyError::msg("connection closed before message completed"))
   }
 }
 

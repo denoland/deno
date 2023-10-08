@@ -51,7 +51,7 @@ const {
 } = primordials;
 
 const {
-  op_http_finalizer_complete,
+  op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
@@ -434,7 +434,7 @@ function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
     ),
     () => {
       innerRequest?.close();
-      op_http_finalizer_complete(req);
+      op_http_close_after_finish(req);
     },
   );
 }

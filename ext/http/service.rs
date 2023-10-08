@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::request_properties::HttpConnectionProperties;
-use crate::response_body::CompletionHandle;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
 use deno_core::error::AnyError;
@@ -25,6 +24,9 @@ use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 
 pub type Request = hyper1::Request<Incoming>;
 pub type Response = hyper1::Response<HttpRecordResponse>;
@@ -47,7 +49,7 @@ pub(crate) use http_trace;
 
 struct HttpServerStateInner {
   pool: Vec<(Rc<HttpRecord>, HeaderMap)>,
-  drain_waker: Option<std::task::Waker>,
+  drain_waker: Option<Waker>,
 }
 
 pub struct HttpServerState(RefCell<HttpServerStateInner>);
@@ -67,16 +69,16 @@ impl HttpServerState {
       type Output = ();
 
       fn poll(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-      ) -> std::task::Poll<Self::Output> {
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+      ) -> Poll<Self::Output> {
         let server_state = self.0;
         http_trace!(server_state, "HttpServerState::drain poll");
         if Rc::strong_count(server_state) <= 1 {
-          return std::task::Poll::Ready(());
+          return Poll::Ready(());
         }
         server_state.0.borrow_mut().drain_waker = Some(cx.waker().clone());
-        std::task::Poll::Pending
+        Poll::Pending
       }
     }
 
@@ -149,12 +151,14 @@ struct HttpRecordInner {
   request_body: Option<RequestBodyState>,
   response_parts: Option<http::response::Parts>,
   response_ready: bool,
-  response_waker: Option<std::task::Waker>,
+  response_waker: Option<Waker>,
   response_body: ResponseBytesInner,
-  completion_handle: Option<CompletionHandle>,
+  response_body_finished: bool,
+  response_body_waker: Option<Waker>,
   trailers: Option<HeaderMap>,
   been_dropped: bool,
-  finalizers: usize,
+  finished: bool,
+  needs_close_after_finish: bool,
 }
 
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
@@ -208,30 +212,43 @@ impl HttpRecord {
       response_ready: false,
       response_waker: None,
       response_body: ResponseBytesInner::Empty,
-      completion_handle: None,
+      response_body_finished: false,
+      response_body_waker: None,
       trailers: None,
       been_dropped: false,
-      finalizers: 1,
+      finished: false,
+      needs_close_after_finish: false,
     });
     record
   }
 
-  fn finish(self: Rc<Self>, success: bool) {
+  fn finish(self: Rc<Self>) {
+    http_trace!(self, "HttpRecord::finish");
     let mut inner = self.self_mut();
-    http_trace!(
-      self,
-      "HttpRecord::finish success={} finalizers={}",
-      success,
-      inner.finalizers
-    );
-    if let Some(completion_handle) = inner.completion_handle.take() {
-      completion_handle.complete(success);
-    }
+    inner.response_body_finished = true;
+    let response_body_waker = inner.response_body_waker.take();
+    let needs_close_after_finish = inner.needs_close_after_finish;
     drop(inner);
-    // SAFETY: called exactly onece `new` initializes finalizers to 1.
-    unsafe {
-      self.finalizer_complete();
+    if let Some(waker) = response_body_waker {
+      waker.wake();
     }
+    if !needs_close_after_finish {
+      self.recycle();
+    }
+  }
+
+  pub fn close_after_finish(self: Rc<Self>) {
+    debug_assert!(self.self_ref().needs_close_after_finish);
+    let mut inner = self.self_mut();
+    inner.needs_close_after_finish = false;
+    if !inner.finished {
+      drop(inner);
+      self.recycle();
+    }
+  }
+
+  pub fn needs_close_after_finish(&self) -> RefMut<'_, bool> {
+    RefMut::map(self.self_mut(), |inner| &mut inner.needs_close_after_finish)
   }
 
   fn recycle(self: Rc<Self>) {
@@ -316,7 +333,7 @@ impl HttpRecord {
     if inner.response_ready {
       // Future dropped between wake() and async fn resuming.
       drop(inner);
-      self.finish(false);
+      self.finish();
       return;
     }
     inner.been_dropped = true;
@@ -334,7 +351,7 @@ impl HttpRecord {
     );
     if inner.been_dropped {
       drop(inner);
-      self.finish(false);
+      self.finish();
       return;
     }
     inner.response_ready = true;
@@ -377,21 +394,6 @@ impl HttpRecord {
     inner.response_body = response_body;
   }
 
-  /// Finalizers keep the record alive until the matching finalizer_complete is called.
-  pub fn finalizer_add(&self) {
-    self.self_mut().finalizers += 1;
-  }
-
-  /// Must be called exactly once per finalizer_add.
-  pub unsafe fn finalizer_complete(self: Rc<Self>) {
-    let mut inner = self.self_mut();
-    inner.finalizers -= 1;
-    if inner.finalizers == 0 {
-      drop(inner);
-      self.recycle();
-    }
-  }
-
   /// Take the response.
   fn into_response(self: Rc<Self>) -> Response {
     let parts = self.self_mut().response_parts.take().unwrap();
@@ -409,38 +411,50 @@ impl HttpRecord {
     Ref::map(self.self_ref(), |inner| &inner.request_parts)
   }
 
-  /// Get a reference to the completion handle.
+  /// Resolves when response head is ready.
   fn response_ready(&self) -> impl Future<Output = ()> + '_ {
-    struct HttpRecordComplete<'a>(&'a HttpRecord);
+    struct HttpRecordReady<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordComplete<'a> {
+    impl<'a> Future for HttpRecordReady<'a> {
       type Output = ();
 
       fn poll(
         self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-      ) -> std::task::Poll<Self::Output> {
+        cx: &mut Context<'_>,
+      ) -> Poll<Self::Output> {
         let mut mut_self = self.0.self_mut();
         if mut_self.response_ready {
-          return std::task::Poll::Ready(());
+          return Poll::Ready(());
         }
         mut_self.response_waker = Some(cx.waker().clone());
-        std::task::Poll::Pending
+        Poll::Pending
       }
     }
 
-    HttpRecordComplete(self)
+    HttpRecordReady(self)
   }
 
-  /// Get a reference to the response body completion handle.
-  pub fn into_body_promise(self: Rc<Self>) -> CompletionHandle {
-    let mut inner = self.self_mut();
-    if let Some(completion_handle) = inner.completion_handle.as_ref() {
-      return completion_handle.clone();
+  /// Resolves when response body has finished streaming.
+  pub fn response_body_finished(&self) -> impl Future<Output = ()> + '_ {
+    struct HttpRecordFinished<'a>(&'a HttpRecord);
+
+    impl<'a> Future for HttpRecordFinished<'a> {
+      type Output = ();
+
+      fn poll(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+      ) -> Poll<Self::Output> {
+        let mut mut_self = self.0.self_mut();
+        if mut_self.response_body_finished {
+          return Poll::Ready(());
+        }
+        mut_self.response_body_waker = Some(cx.waker().clone());
+        Poll::Pending
+      }
     }
-    let completion_handle = CompletionHandle::default();
-    inner.completion_handle = Some(completion_handle.clone());
-    completion_handle
+
+    HttpRecordFinished(self)
   }
 }
 
@@ -453,8 +467,8 @@ impl Body for HttpRecordResponse {
 
   fn poll_frame(
     self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     use crate::response_body::PollFrame;
     let record = &self.0;
 
@@ -463,7 +477,7 @@ impl Body for HttpRecordResponse {
       let res = match &mut inner.response_body {
         ResponseBytesInner::Done | ResponseBytesInner::Empty => {
           if let Some(trailers) = inner.trailers.take() {
-            return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+            return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
           }
           unreachable!()
         }
@@ -473,7 +487,7 @@ impl Body for HttpRecordResponse {
           else {
             unreachable!();
           };
-          return std::task::Poll::Ready(Some(Ok(Frame::data(data))));
+          return Poll::Ready(Some(Ok(Frame::data(data))));
         }
         ResponseBytesInner::UncompressedStream(stm) => {
           ready!(Pin::new(stm).poll_frame(cx))
@@ -494,11 +508,11 @@ impl Body for HttpRecordResponse {
 
     if matches!(res, ResponseStreamResult::EndOfStream) {
       if let Some(trailers) = record.self_mut().trailers.take() {
-        return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+        return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
       }
       record.take_response_body();
     }
-    std::task::Poll::Ready(res.into())
+    Poll::Ready(res.into())
   }
 
   fn is_end_stream(&self) -> bool {
@@ -521,12 +535,7 @@ impl Drop for HttpRecordResponse {
     // SAFETY: this ManuallyDrop is not used again.
     let record = unsafe { ManuallyDrop::take(&mut self.0) };
     http_trace!(record, "HttpRecordResponse::drop");
-    // We won't actually poll_frame for Empty responses so this is where we return success
-    let success = matches!(
-      record.self_ref().response_body,
-      ResponseBytesInner::Empty | ResponseBytesInner::Done
-    );
-    record.finish(success);
+    record.finish();
   }
 }
 

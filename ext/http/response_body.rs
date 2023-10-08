@@ -1,10 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use std::cell::RefCell;
-use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::Waker;
 
 use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::ffi::compressor::BrotliEncoderState;
@@ -51,52 +48,6 @@ impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
       // This result should be handled by retrying
       ResponseStreamResult::NoData => unimplemented!(),
     }
-  }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct CompletionHandle {
-  inner: Rc<RefCell<CompletionHandleInner>>,
-}
-
-#[derive(Debug, Default)]
-struct CompletionHandleInner {
-  complete: bool,
-  success: bool,
-  waker: Option<Waker>,
-}
-
-impl CompletionHandle {
-  pub fn complete(&self, success: bool) {
-    let mut mut_self = self.inner.borrow_mut();
-    mut_self.complete = true;
-    mut_self.success = success;
-    if let Some(waker) = mut_self.waker.take() {
-      drop(mut_self);
-      waker.wake();
-    }
-  }
-
-  #[allow(dead_code)]
-  pub fn is_completed(&self) -> bool {
-    self.inner.borrow().complete
-  }
-}
-
-impl Future for CompletionHandle {
-  type Output = bool;
-
-  fn poll(
-    self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    let mut mut_self = self.inner.borrow_mut();
-    if mut_self.complete {
-      return std::task::Poll::Ready(mut_self.success);
-    }
-
-    mut_self.waker = Some(cx.waker().clone());
-    std::task::Poll::Pending
   }
 }
 
