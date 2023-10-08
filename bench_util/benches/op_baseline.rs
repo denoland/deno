@@ -9,14 +9,7 @@ use deno_bench_util::bencher::Bencher;
 use deno_core::op2;
 use deno_core::Extension;
 
-deno_core::extension!(
-  bench_setup,
-  ops = [
-    // op_pi_json,
-    op_pi_async,
-    op_nop
-  ]
-);
+deno_core::extension!(bench_setup, ops = [op_pi_json, op_pi_async, op_nop]);
 
 fn setup() -> Vec<Extension> {
   vec![bench_setup::init_ops()]
