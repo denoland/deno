@@ -489,6 +489,10 @@ function bootstrapMainRuntime(runtimeOptions) {
   }
   ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
+    // TODO(bartlomieju): in the future we might want to change the
+    // behavior of setting `name` to actually update the process name.
+    // Empty string matches what browsers do.
+    name: util.writable(""),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
   });
