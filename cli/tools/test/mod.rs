@@ -473,6 +473,12 @@ pub async fn test_specifier(
   Ok(())
 }
 
+pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
+  let state_rc = worker.js_runtime.op_state();
+  let state = state_rc.borrow();
+  !state.borrow::<ops::testing::TestContainer>().0.is_empty()
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,

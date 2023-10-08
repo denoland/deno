@@ -325,15 +325,15 @@ impl NodeResolver {
     Ok(resolved)
   }
 
-  pub fn resolve_npm_reference(
+  pub fn resolve_package_subpath_from_deno_module(
     &self,
     package_dir: &Path,
     package_subpath: Option<&str>,
+    referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
     let package_json_path = package_dir.join("package.json");
-    let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
     let package_json =
       self.load_package_json(permissions, package_json_path.clone())?;
     let node_module_kind = NodeModuleKind::Esm;
@@ -344,7 +344,7 @@ impl NodeResolver {
       .resolve_package_subpath(
         &package_json,
         &package_subpath,
-        &referrer,
+        referrer,
         node_module_kind,
         DEFAULT_CONDITIONS,
         mode,
