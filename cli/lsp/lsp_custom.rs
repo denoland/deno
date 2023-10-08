@@ -50,6 +50,21 @@ pub struct DiagnosticBatchNotificationParams {
   pub messages_len: usize,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DidChangeDenoConfigurationNotificationParams {
+  pub changes: Vec<lsp::FileEvent>,
+}
+
+pub enum DidChangeDenoConfigurationNotification {}
+
+impl lsp::notification::Notification
+  for DidChangeDenoConfigurationNotification
+{
+  type Params = DidChangeDenoConfigurationNotificationParams;
+
+  const METHOD: &'static str = "deno/didChangeDenoConfiguration";
+}
+
 /// This notification is only sent for testing purposes
 /// in order to know what the latest diagnostics are.
 pub enum DiagnosticBatchNotification {}

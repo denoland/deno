@@ -22,6 +22,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use import_map::ImportMap;
 use log::error;
 use serde_json::from_value;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -1517,8 +1518,36 @@ impl Inner {
 
     // if the current deno.json has changed, we need to reload it
     if has_config_changed(&self.config, &changes) {
+      let mut files_to_check = HashSet::with_capacity(4);
+      if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
+        files_to_check.insert(url.clone());
+      }
+      if let Some(url) = self.config.maybe_config_file_canonicalized_specifier()
+      {
+        files_to_check.insert(url.clone());
+      }
       if let Err(err) = self.update_config_file().await {
         self.client.show_message(MessageType::WARNING, err);
+      }
+      if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
+        files_to_check.insert(url.clone());
+      }
+      if let Some(url) = self.config.maybe_config_file_canonicalized_specifier()
+      {
+        files_to_check.insert(url.clone());
+      }
+      let changes = params
+        .changes
+        .iter()
+        .filter(|e| files_to_check.contains(&e.uri))
+        .cloned()
+        .collect::<Vec<_>>();
+      if !changes.is_empty() {
+        self.client.send_did_change_deno_configuration_notification(
+          lsp_custom::DidChangeDenoConfigurationNotificationParams {
+            changes: { changes },
+          },
+        );
       }
       if let Err(err) = self.update_tsconfig().await {
         self.client.show_message(MessageType::WARNING, err);
@@ -3573,12 +3602,23 @@ impl Inner {
   }
 
   fn get_tasks(&self) -> LspResult<Option<Value>> {
-    Ok(
-      self
-        .config
-        .maybe_config_file()
-        .and_then(|cf| cf.to_lsp_tasks()),
-    )
+    Ok(self.config.maybe_config_file().and_then(|cf| {
+      let value = cf.json.tasks.clone()?;
+      let tasks: BTreeMap<String, String> =
+        serde_json::from_value(value).ok()?;
+      Some(
+        tasks
+          .into_iter()
+          .map(|(key, value)| {
+            json!({
+              "name": key,
+              "detail": value,
+              "sourceUri": &cf.specifier,
+            })
+          })
+          .collect(),
+      )
+    }))
   }
 
   async fn inlay_hint(
