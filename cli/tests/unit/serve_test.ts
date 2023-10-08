@@ -15,6 +15,7 @@ import {
   deferred,
   execCode,
   fail,
+  tmpUnixSocketPath,
 } from "./test_util.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
@@ -3726,3 +3727,37 @@ Deno.test("Deno.Server is not thenable", async () => {
   const server = await serveTest();
   await server.shutdown();
 });
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true, read: true, write: true },
+  },
+  async function httpServerUnixDomainSocket() {
+    const d = deferred();
+    const ac = new AbortController();
+    const filePath = tmpUnixSocketPath();
+    const server = Deno.serve(
+      {
+        signal: ac.signal,
+        path: filePath,
+        onListen(info) {
+          d.resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (_req, { remoteAddr }) => {
+        assertEquals(remoteAddr, { path: filePath, transport: "unix" });
+        return new Response("hello world!");
+      },
+    );
+
+    assertEquals(await d, { path: filePath });
+    assertEquals(
+      "hello world!",
+      await curlRequest(["--unix-socket", filePath, "http://localhost"]),
+    );
+    ac.abort();
+    await server.finished;
+  },
+);
