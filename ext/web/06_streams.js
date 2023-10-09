@@ -5437,7 +5437,7 @@ class ReadableStreamBYOBReader {
     if (options.min === 0) {
       return PromiseReject(new TypeError("options.min must be non-zero"));
     }
-    if (TypedArrayPrototypeGetSymbolToStringTag(view) !== null) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) !== undefined) {
       if (options.min > view.length) {
         return PromiseReject(
           new RangeError("options.min must be smaller or equal to view's size"),
