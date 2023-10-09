@@ -30,6 +30,7 @@ interface PullIntoDescriptor {
   byteOffset: number;
   byteLength: number;
   bytesFilled: number;
+  minimumFill: number;
   elementSize: number;
   // deno-lint-ignore no-explicit-any
   viewConstructor: any;

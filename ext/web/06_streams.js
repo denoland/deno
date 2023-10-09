@@ -1265,7 +1265,9 @@ function readableByteStreamControllerClose(controller) {
   }
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
-    if (firstPendingPullInto.bytesFilled > 0) {
+    if (
+      firstPendingPullInto.bytesFilled % firstPendingPullInto.elementSize !== 0
+    ) {
       const e = new TypeError(
         "Insufficient bytes to fill elements in the given buffer",
       );
@@ -1813,10 +1815,11 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
 /**
  * @param {ReadableStreamBYOBReader} reader
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
-function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
+function readableStreamBYOBReaderRead(reader, view, min, readIntoRequest) {
   const stream = reader[_stream];
   assert(stream);
   stream[_disturbed] = true;
@@ -1826,6 +1829,7 @@ function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
     readableByteStreamControllerPullInto(
       stream[_controller],
       view,
+      min,
       readIntoRequest,
     );
   }
@@ -1902,12 +1906,14 @@ function readableByteStreamControllerProcessReadRequestsUsingQueue(
 /**
  * @param {ReadableByteStreamController} controller
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
 function readableByteStreamControllerPullInto(
   controller,
   view,
+  min,
   readIntoRequest,
 ) {
   const stream = controller[_stream];
@@ -1977,6 +1983,10 @@ function readableByteStreamControllerPullInto(
     );
   }
 
+  const minimumFill = min * elementSize;
+  assert(minimumFill >= 0 && minimumFill <= byteLength);
+  assert(minimumFill % elementSize === 0);
+
   try {
     buffer = transferArrayBuffer(buffer);
   } catch (e) {
@@ -1991,6 +2001,7 @@ function readableByteStreamControllerPullInto(
     byteOffset,
     byteLength,
     bytesFilled: 0,
+    minimumFill,
     elementSize,
     viewConstructor: ctor,
     readerType: "byob",
@@ -2106,7 +2117,7 @@ function readableByteStreamControllerRespondInReadableState(
     );
     return;
   }
-  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize) {
+  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill) {
     return;
   }
   readableByteStreamControllerShiftPendingPullInto(controller);
@@ -2186,7 +2197,7 @@ function readableByteStreamControllerRespondInClosedState(
   controller,
   firstDescriptor,
 ) {
-  assert(firstDescriptor.bytesFilled === 0);
+  assert(firstDescriptor.bytesFilled % firstDescriptor.elementSize === 0);
   if (firstDescriptor.readerType === "none") {
     readableByteStreamControllerShiftPendingPullInto(controller);
   }
@@ -2216,7 +2227,9 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
   assert(pullIntoDescriptor.readerType !== "none");
   let done = false;
   if (stream[_state] === "closed") {
-    assert(pullIntoDescriptor.bytesFilled === 0);
+    assert(
+      pullIntoDescriptor.bytesFilled % pullIntoDescriptor.elementSize === 0,
+    );
     done = true;
   }
   const filledView = readableByteStreamControllerConvertPullIntoDescriptor(
@@ -2307,19 +2320,18 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   controller,
   pullIntoDescriptor,
 ) {
-  const elementSize = pullIntoDescriptor.elementSize;
-  const currentAlignedBytes = pullIntoDescriptor.bytesFilled -
-    (pullIntoDescriptor.bytesFilled % elementSize);
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
     // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
-  const maxAlignedBytes = maxBytesFilled - (maxBytesFilled % elementSize);
   let totalBytesToCopyRemaining = maxBytesToCopy;
   let ready = false;
-  if (maxAlignedBytes > currentAlignedBytes) {
+  assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
+  const maxAlignedBytes = maxBytesFilled -
+    (maxBytesFilled % pullIntoDescriptor.elementSize);
+  if (maxAlignedBytes >= pullIntoDescriptor.minimumFill) {
     totalBytesToCopyRemaining = maxAlignedBytes -
       pullIntoDescriptor.bytesFilled;
     ready = true;
@@ -2369,7 +2381,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   if (!ready) {
     assert(controller[_queueTotalSize] === 0);
     assert(pullIntoDescriptor.bytesFilled > 0);
-    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize);
+    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
   }
   return ready;
 }
@@ -3342,7 +3354,7 @@ function readableByteStreamTee(stream) {
         reading = false;
       },
     };
-    readableStreamBYOBReaderRead(reader, view, readIntoRequest);
+    readableStreamBYOBReaderRead(reader, view, 1, readIntoRequest);
   }
 
   function pull1Algorithm() {
@@ -5378,13 +5390,19 @@ class ReadableStreamBYOBReader {
 
   /**
    * @param {ArrayBufferView} view
+   * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view) {
+  read(view, options = {}) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
       view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
+      options = webidl.converters.ReadableStreamBYOBReaderReadOptions(
+        options,
+        prefix,
+        "Argument 2",
+      );
     } catch (err) {
       return PromiseReject(err);
     }
@@ -5416,6 +5434,22 @@ class ReadableStreamBYOBReader {
         new TypeError("view's buffer has been detached"),
       );
     }
+    if (options.min === 0) {
+      return PromiseReject(new TypeError("options.min must be non-zero"));
+    }
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) !== null) {
+      if (options.min > view.length) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
+    } else {
+      if (options.min > view.byteLength) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
+    }
     if (this[_stream] === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
@@ -5435,7 +5469,7 @@ class ReadableStreamBYOBReader {
         promise.reject(e);
       },
     };
-    readableStreamBYOBReaderRead(this, view, readIntoRequest);
+    readableStreamBYOBReaderRead(this, view, options.min, readIntoRequest);
     return promise.promise;
   }
 
@@ -6557,6 +6591,17 @@ webidl.converters.ReadableStreamGetReaderOptions = webidl
   .createDictionaryConverter("ReadableStreamGetReaderOptions", [{
     key: "mode",
     converter: webidl.converters.ReadableStreamReaderMode,
+  }]);
+
+webidl.converters.ReadableStreamBYOBReaderReadOptions = webidl
+  .createDictionaryConverter("ReadableStreamBYOBReaderReadOptions", [{
+    key: "min",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    defaultValue: 1,
   }]);
 
 webidl.converters.ReadableWritablePair = webidl
