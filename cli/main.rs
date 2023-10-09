@@ -256,6 +256,10 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+extern "C" fn atexit_fn() {
+  eprintln!("at exit fn");
+}
+
 pub fn main() {
   setup_panic_hook();
 
@@ -273,6 +277,8 @@ pub fn main() {
   // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
   // initalize the V8 platform on a parent thread of all threads that will spawn
   // V8 isolates.
+
+  unsafe { libc::atexit(atexit_fn) };
 
   let future = async move {
     let current_exe_path = current_exe()?;
