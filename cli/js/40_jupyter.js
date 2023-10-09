@@ -205,45 +205,39 @@ function makeDisplayable(obj) {
  * @returns Displayable
  */
 async function format(obj) {
-  try {
-    if (hasDisplaySymbol(obj)) {
-      return await obj[$display]();
-    }
-    if (isCanvasLike(obj)) {
-      const dataURL = obj.toDataURL();
-      const parts = dataURL.split(",");
-      const mime = parts[0].split(":")[1].split(";")[0];
-      const data = parts[1];
-      return {
-        [mime]: data,
-      };
-    }
-    if (isVegaLike(obj)) {
-      return extractVega(obj);
-    }
-    if (isDataFrameLike(obj)) {
-      return extractDataFrame(obj);
-    }
-    if (isSVGElementLike(obj)) {
-      return {
-        "image/svg+xml": obj.outerHTML,
-      };
-    }
-    if (isHTMLElementLike(obj)) {
-      return {
-        "text/html": obj.outerHTML,
-      };
-    }
+  if (hasDisplaySymbol(obj)) {
+    return await obj[$display]();
+  }
+  if (isCanvasLike(obj)) {
+    const dataURL = obj.toDataURL();
+    const parts = dataURL.split(",");
+    const mime = parts[0].split(":")[1].split(";")[0];
+    const data = parts[1];
     return {
-      "text/plain": Deno[Deno.internal].inspectArgs(["%o", obj], {
-        colors: !Deno.noColor,
-      }),
-    };
-  } catch (err) {
-    return {
-      "text/plain": Deno[Deno.internal].inspectArgs(["%o", err]),
+      [mime]: data,
     };
   }
+  if (isVegaLike(obj)) {
+    return extractVega(obj);
+  }
+  if (isDataFrameLike(obj)) {
+    return extractDataFrame(obj);
+  }
+  if (isSVGElementLike(obj)) {
+    return {
+      "image/svg+xml": obj.outerHTML,
+    };
+  }
+  if (isHTMLElementLike(obj)) {
+    return {
+      "text/html": obj.outerHTML,
+    };
+  }
+  return {
+    "text/plain": Deno[Deno.internal].inspectArgs(["%o", obj], {
+      colors: !Deno.noColor,
+    }),
+  };
 }
 
 /**
