@@ -5292,20 +5292,8 @@
         "request-referrer.any.html": false,
         "request-referrer.any.worker.html": false,
         "error-after-response.any.html": false,
-        "mode-no-cors.sub.any.html": {
-          "ignore": true
-        },
-        "mode-no-cors.sub.any.worker.html": {
-          "ignore": true
-        },
         "request-private-network-headers.tentative.any.html": false,
-        "request-private-network-headers.tentative.any.worker.html": false,
-        "response-null-body.any.html": {
-          "ignore": true
-        },
-        "response-null-body.any.worker.html": {
-          "ignore": true
-        }
+        "request-private-network-headers.tentative.any.worker.html": false
       },
       "response": {
         "json.any.html": true,
