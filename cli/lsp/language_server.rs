@@ -1651,11 +1651,11 @@ impl Inner {
     }
 
     // spawn a blocking task to allow doing other work while this is occurring
-    let format_result = deno_core::unsync::spawn_blocking({
+    let text_edits = deno_core::unsync::spawn_blocking({
       let fmt_options = self.fmt_options.options.clone();
       let document = document.clone();
       move || {
-        match document.maybe_parsed_source() {
+        let format_result = match document.maybe_parsed_source() {
           Some(Ok(parsed_source)) => {
             format_parsed_source(&parsed_source, &fmt_options)
           }
@@ -1672,25 +1672,23 @@ impl Inner {
             // it's not a js/ts file, so attempt to format its contents
             format_file(&file_path, &document.content(), &fmt_options)
           }
+        };
+        match format_result {
+          Ok(Some(new_text)) => Some(text::get_edits(
+            &document.content(),
+            &new_text,
+            document.line_index().as_ref(),
+          )),
+          Ok(None) => Some(Vec::new()),
+          Err(err) => {
+            lsp_warn!("Format error: {:#}", err);
+            None
+          }
         }
       }
     })
     .await
     .unwrap();
-
-    let text_edits = match format_result {
-      Ok(Some(new_text)) => Some(text::get_edits(
-        &document.content(),
-        &new_text,
-        document.line_index().as_ref(),
-      )),
-      Ok(None) => Some(Vec::new()),
-      Err(err) => {
-        // TODO(lucacasonato): handle error properly
-        lsp_warn!("Format error: {:#}", err);
-        None
-      }
-    };
 
     self.performance.measure(mark);
     if let Some(text_edits) = text_edits {
