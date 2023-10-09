@@ -458,6 +458,11 @@ function pathFromURL(pathOrUrl) {
 // it in unit tests
 internals.pathFromURL = pathFromURL;
 
+// deno-lint-ignore prefer-primordials
+export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolAsyncDispose = Symbol.asyncDispose ?? Symbol("Symbol.asyncDispose");
+
 export {
   ASCII_ALPHA,
   ASCII_ALPHANUMERIC,

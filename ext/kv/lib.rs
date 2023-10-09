@@ -45,7 +45,7 @@ const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
 const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
 
 deno_core::extension!(deno_kv,
-  deps = [ deno_console ],
+  deps = [ deno_console, deno_web ],
   parameters = [ DBH: DatabaseHandler ],
   ops = [
     op_kv_database_open<DBH>,

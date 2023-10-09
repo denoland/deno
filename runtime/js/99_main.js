@@ -70,11 +70,23 @@ import {
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
+import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
 
-// deno-lint-ignore prefer-primordials
-Symbol.dispose ??= Symbol("Symbol.dispose");
-// deno-lint-ignore prefer-primordials
-Symbol.asyncDispose ??= Symbol("Symbol.asyncDispose");
+if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
+ObjectDefineProperties(Symbol, {
+  dispose: {
+    value: SymbolAsyncDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+  asyncDispose: {
+    value: SymbolDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+});
 
 let windowIsClosing = false;
 let globalThis_;
