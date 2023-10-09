@@ -357,15 +357,42 @@ async function display(obj, options = { raw: false, update: false }) {
   return;
 }
 
+async function broadcastResult(execution_count, result) {
+  try {
+    if (result === undefined) {
+      return;
+    }
+
+    const data = await format(result);
+    await Deno.jupyter.broadcast("execute_result", {
+      execution_count,
+      data,
+      metadata: {},
+    });
+  } catch (err) {
+    await Deno.jupyter.broadcast("error", {
+      execution_count,
+      ename: err.name,
+      evalue: err.message,
+      traceback: [],
+    });
+  }
+}
+
 function enableJupyter() {
   const {
     op_jupyter_broadcast,
   } = core.ensureFastOps();
 
+  internals.jupyter = {
+    broadcastResult,
+  };
+
   globalThis.Deno.jupyter = {
     async broadcast(msgType, content, { metadata = {}, buffers = [] } = {}) {
       await op_jupyter_broadcast(msgType, content, metadata, buffers);
     },
+    broadcastResult,
     display,
     format,
     md,

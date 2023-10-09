@@ -388,21 +388,13 @@ impl JupyterServer {
     } = evaluate_response.value;
 
     if exception_details.is_none() {
-      let output =
-        get_jupyter_display_or_eval_value(&mut self.repl_session, &result)
-          .await?;
-      // Don't bother sending `execute_result` reply if the MIME bundle is empty
-      if !output.is_empty() {
-        msg
-          .new_message("execute_result")
-          .with_content(json!({
-              "execution_count": self.execution_count,
-              "data": output,
-              "metadata": {},
-          }))
-          .send(&mut *self.iopub_socket.lock().await)
-          .await?;
-      }
+      get_jupyter_display(
+        &mut self.repl_session,
+        &result,
+        self.execution_count,
+      )
+      .await?;
+
       msg
         .new_reply()
         .with_content(json!({
@@ -546,101 +538,42 @@ fn kernel_info() -> serde_json::Value {
 async fn get_jupyter_display(
   session: &mut repl::ReplSession,
   evaluate_result: &cdp::RemoteObject,
+  execution_count: usize,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
+  let arg0 = cdp::CallArgument {
+    value: Some(serde_json::Value::Number(execution_count.into())),
+    unserializable_value: None,
+    object_id: None,
+  };
+
+  let arg1 = cdp::CallArgument::from(evaluate_result);
+
   let response = session
     .post_message_with_event_loop(
       "Runtime.callFunctionOn",
       Some(json!({
-        "functionDeclaration": r#"async function (object) {
-      const representation = await Deno.jupyter.format(object);
-
-      // TODO(rgbkrk): Broadcast the execute result directly here
-      // await Deno.jupyter.broadcast("execute_result", {
-      //   data: representation,
-      //   metadata: {},
-      //   execution_count: 999
-      // });
-
-      return JSON.stringify(representation);
+        "functionDeclaration": r#"async function (execution_count, result) {
+          await Deno.jupyter.broadcastResult(execution_count, result);
     }"#,
-        "arguments": [cdp::CallArgument::from(evaluate_result)],
+        "arguments": [arg0, arg1],
         "executionContextId": session.context_id,
         "awaitPromise": true,
       })),
     )
     .await?;
-  let response: cdp::CallFunctionOnResponse = serde_json::from_value(response)?;
 
-  if let Some(exception_details) = &response.exception_details {
-    // If the object doesn't have a Jupyter.display method or it throws an
-    // exception, we just ignore it and let the caller handle it.
-    eprintln!("Exception encountered: {}", exception_details.text);
-    return Ok(None);
-  }
-
-  match response.result.value {
-    Some(serde_json::Value::String(json_str)) => {
-      let Ok(data) =
-        serde_json::from_str::<HashMap<String, serde_json::Value>>(&json_str)
-      else {
-        eprintln!("Unexpected response from Jupyter.display: {json_str}");
-        return Ok(None);
-      };
-
-      if !data.is_empty() {
-        return Ok(Some(data));
-      }
-    }
-    Some(serde_json::Value::Null) => {
-      // Object did not have the Jupyter display spec
-      return Ok(None);
-    }
-    _ => {
-      eprintln!(
-        "Unexpected response from Jupyter.display: {:?}",
-        response.result
-      )
+  println!("response: {}", response);
+  if let Some(result) = response.get("result") {
+    if let Some(error) = result.get("exception") {
+      let error_type = error.get("type").unwrap().as_str().unwrap();
+      let error_description =
+        error.get("description").unwrap().as_str().unwrap();
+      println!("Error: {}: {}", error_type, error_description);
+      // Handle the error here
     }
   }
 
   Ok(None)
-}
-
-async fn get_jupyter_display_or_eval_value(
-  session: &mut repl::ReplSession,
-  evaluate_result: &cdp::RemoteObject,
-) -> Result<HashMap<String, serde_json::Value>, AnyError> {
-  // Printing "undefined" generates a lot of noise, so let's skip
-  // these.
-  if evaluate_result.kind == "undefined" {
-    return Ok(HashMap::default());
-  }
-
-  if let Some(data) = get_jupyter_display(session, evaluate_result).await? {
-    return Ok(data);
-  }
-
-  let response = session
-    .call_function_on_args(
-      format!(
-        r#"function (object) {{
-        try {{
-          return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-        }} catch (err) {{
-          return {0}.inspectArgs(["%o", err]);
-        }}
-      }}"#,
-        *repl::REPL_INTERNALS_NAME
-      ),
-      &[evaluate_result.clone()],
-    )
-    .await?;
-  let mut data = HashMap::default();
-  if let Some(value) = response.result.value {
-    data.insert("text/plain".to_string(), value);
-  }
-
-  Ok(data)
 }
 
 // TODO(bartlomieju): dedup with repl::editor
