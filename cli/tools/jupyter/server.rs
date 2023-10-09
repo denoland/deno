@@ -549,7 +549,7 @@ async fn publish_result(
       "Runtime.callFunctionOn",
       Some(json!({
         "functionDeclaration": r#"async function (execution_count, result) {
-          await Deno.jupyter.broadcastResult(execution_count, result);
+          await Deno[Deno.internal].jupyter.broadcastResult(execution_count, result);
     }"#,
         "arguments": [arg0, arg1],
         "executionContextId": session.context_id,

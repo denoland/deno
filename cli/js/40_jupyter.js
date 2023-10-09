@@ -401,7 +401,6 @@ function enableJupyter() {
     async broadcast(msgType, content, { metadata = {}, buffers = [] } = {}) {
       await op_jupyter_broadcast(msgType, content, metadata, buffers);
     },
-    broadcastResult,
     display,
     format,
     md,
