@@ -137,7 +137,7 @@ pub async fn handle_request(
   http_trace!(*guarded_record, "handle_request response_ready.await");
   guarded_record.response_ready().await;
 
-  // Defuse the guard. Must not await after the point.
+  // Defuse the guard. Must not await after this point.
   let record = ScopeGuard::into_inner(guarded_record);
   http_trace!(record, "handle_request complete");
   let response = record.into_response();
