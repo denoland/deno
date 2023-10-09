@@ -105,3 +105,19 @@ pub fn maybe_transpile_source(
     ExtensionFileSourceCode::Computed(transpiled_source.text.into());
   Ok(())
 }
+
+#[allow(dead_code)]
+pub fn unstable_exit_cb(_feature: &str, api_name: &str) {
+  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
+  eprintln!(
+    "Unstable API '{api_name}'. The `--unstable` flag must be provided."
+  );
+  std::process::exit(70);
+}
+
+#[allow(dead_code)]
+pub fn unstable_warn_cb(feature: &str) {
+  eprintln!(
+    "The `--unstable` flag is deprecated, use `--unstable-{feature}` instead."
+  );
+}
