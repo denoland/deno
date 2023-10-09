@@ -1941,7 +1941,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface Server {
+  export interface HttpServer {
     /** Gracefully close the server. No more new connections will be accepted,
      * while pending requests will be allowed to finish.
      */
