@@ -388,12 +388,8 @@ impl JupyterServer {
     } = evaluate_response.value;
 
     if exception_details.is_none() {
-      get_jupyter_display(
-        &mut self.repl_session,
-        &result,
-        self.execution_count,
-      )
-      .await?;
+      publish_result(&mut self.repl_session, &result, self.execution_count)
+        .await?;
 
       msg
         .new_reply()
@@ -535,7 +531,7 @@ fn kernel_info() -> serde_json::Value {
   })
 }
 
-async fn get_jupyter_display(
+async fn publish_result(
   session: &mut repl::ReplSession,
   evaluate_result: &cdp::RemoteObject,
   execution_count: usize,
@@ -562,15 +558,13 @@ async fn get_jupyter_display(
     )
     .await?;
 
-  println!("response: {}", response);
-  if let Some(result) = response.get("result") {
-    if let Some(error) = result.get("exception") {
-      let error_type = error.get("type").unwrap().as_str().unwrap();
-      let error_description =
-        error.get("description").unwrap().as_str().unwrap();
-      println!("Error: {}: {}", error_type, error_description);
-      // Handle the error here
-    }
+  let response: cdp::CallFunctionOnResponse = serde_json::from_value(response)?;
+
+  if let Some(exception_details) = &response.exception_details {
+    // If the object doesn't have a Jupyter.display method or it throws an
+    // exception, we just ignore it and let the caller handle it.
+    eprintln!("Exception encountered: {}", exception_details.text);
+    return Ok(None);
   }
 
   Ok(None)
