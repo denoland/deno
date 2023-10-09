@@ -156,14 +156,14 @@ function extractDataFrame(df) {
   let htmlTable = "<table>";
   htmlTable += "<thead><tr>";
   schema.fields.forEach((field) => {
-    htmlTable += `<th>${escapeHTML(field.name)}</th>`;
+    htmlTable += `<th>${escapeHTML(String(field.name))}</th>`;
   });
   htmlTable += "</tr></thead>";
   htmlTable += "<tbody>";
   df.head(10).toRecords().forEach((row) => {
     htmlTable += "<tr>";
     schema.fields.forEach((field) => {
-      htmlTable += `<td>${escapeHTML(row[field.name])}</td>`;
+      htmlTable += `<td>${escapeHTML(String(row[field.name]))}</td>`;
     });
     htmlTable += "</tr>";
   });
