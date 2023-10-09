@@ -4338,7 +4338,7 @@ declare namespace Deno {
      * status. */
     output(): Promise<CommandOutput>;
     /** Kills the process with given {@linkcode Deno.Signal}.
-     * 
+     *
      * Defaults to `SIGTERM` if no signal is provided.
      *
      * @param [signo="SIGTERM"]
