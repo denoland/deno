@@ -208,6 +208,14 @@ async function format(obj) {
   if (hasDisplaySymbol(obj)) {
     return await obj[$display]();
   }
+  if (typeof obj !== "object") {
+    return {
+      "text/plain": Deno[Deno.internal].inspectArgs(["%o", obj], {
+        colors: !Deno.noColor,
+      }),
+    };
+  }
+
   if (isCanvasLike(obj)) {
     const dataURL = obj.toDataURL();
     const parts = dataURL.split(",");
