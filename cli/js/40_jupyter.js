@@ -364,12 +364,27 @@ async function broadcastResult(execution_count, result) {
       metadata: {},
     });
   } catch (err) {
-    await Deno.jupyter.broadcast("error", {
-      execution_count,
-      ename: err.name,
-      evalue: err.message,
-      traceback: [],
-    });
+    if (err instanceof Error) {
+      const stack = err.stack || "";
+      await Deno.jupyter.broadcast("error", {
+        ename: err.name,
+        evalue: err.message,
+        traceback: stack.split("\n"),
+      });
+    } else if (typeof err == "string") {
+      await Deno.jupyter.broadcast("error", {
+        ename: "Error",
+        evalue: err,
+        traceback: [],
+      });
+    } else {
+      await Deno.jupyter.broadcast("error", {
+        ename: "Error",
+        evalue:
+          "An error occurred while formatting a result, but it could not be identified",
+        traceback: [],
+      });
+    }
   }
 }
 
