@@ -55,14 +55,6 @@ mod startup_snapshot {
     fn allow_hrtime(&mut self) -> bool {
       unreachable!("snapshotting!")
     }
-
-    fn check_unstable(
-      &self,
-      _state: &deno_core::OpState,
-      _api_name: &'static str,
-    ) {
-      unreachable!("snapshotting!")
-    }
   }
 
   impl deno_ffi::FfiPermissions for Permissions {
