@@ -347,6 +347,7 @@ function _afterConnect(
   socket._sockname = null;
 
   if (status === 0) {
+    console.log("afterConnect", socket.readable, !readable, socket.isPaused());
     if (socket.readable && !readable) {
       socket.push(null);
       socket.read();
@@ -824,6 +825,7 @@ export class Socket extends Duplex {
 
     _initSocketHandle(this);
 
+    console.log("net.Socket", options.manualStart, options);
     // If we have a handle, then start the flow of data into the
     // buffer. If not, then this will happen when we connect.
     if (this._handle && options.readable !== false) {

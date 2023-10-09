@@ -379,7 +379,9 @@ export class ClientHttp2Session extends Http2Session {
         );
         console.table(Deno.resources());
         const rid = socket[kHandle][kStreamBaseField].rid;
-        resolve(rid);
+        nextTick(() => {
+          resolve(rid);
+        });
       });
     });
     socket[kSession] = this;
@@ -1554,12 +1556,12 @@ export function connect(
     switch (protocol) {
       case "http:":
         url = `http://${host}${port == 80 ? "" : (":" + port)}`;
-        socket = netConnect({ port, host, ...options });
+        socket = netConnect({ port, host, ...options, pauseOnCreate: true });
         break;
       case "https:":
         // TODO(bartlomieju): handle `initializeTLSOptions` here
         url = `https://${host}${port == 443 ? "" : (":" + port)}`;
-        socket = tlsConnect(port, host, {});
+        socket = tlsConnect(port, host, { manualStart: true });
         break;
       default:
         throw new ERR_HTTP2_UNSUPPORTED_PROTOCOL(protocol);
