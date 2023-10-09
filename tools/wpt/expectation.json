@@ -5106,8 +5106,12 @@
         "response-url.sub.any.worker.html": true,
         "scheme-about.any.html": true,
         "scheme-about.any.worker.html": true,
-        "scheme-blob.sub.any.html": true,
-        "scheme-blob.sub.any.worker.html": true,
+        "scheme-blob.sub.any.html": [
+          "Fetching URL.createObjectURL(invalid_type_blob) is OK"
+        ],
+        "scheme-blob.sub.any.worker.html": [
+          "Fetching URL.createObjectURL(invalid_type_blob) is OK"
+        ],
         "scheme-data.any.html": true,
         "scheme-data.any.worker.html": true,
         "scheme-others.sub.any.html": true,
@@ -5160,7 +5164,6 @@
           "Accept-Encoding is a forbidden request header",
           "Access-Control-Request-Headers is a forbidden request header",
           "Access-Control-Request-Method is a forbidden request header",
-          "Access-Control-Request-Private-Network is a forbidden request header",
           "Connection is a forbidden request header",
           "Cookie is a forbidden request header",
           "Cookie2 is a forbidden request header",
@@ -5226,7 +5229,6 @@
           "Accept-Encoding is a forbidden request header",
           "Access-Control-Request-Headers is a forbidden request header",
           "Access-Control-Request-Method is a forbidden request header",
-          "Access-Control-Request-Private-Network is a forbidden request header",
           "Connection is a forbidden request header",
           "Cookie is a forbidden request header",
           "Cookie2 is a forbidden request header",
@@ -5288,7 +5290,20 @@
           "header X-METHOD-OVERRIDE is forbidden to use value trace,"
         ],
         "request-referrer.any.html": false,
-        "request-referrer.any.worker.html": false
+        "request-referrer.any.worker.html": false,
+        "error-after-response.any.html": false,
+        "mode-no-cors.sub.any.html": [
+          "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with no-cors mode",
+          "Fetch http://web-platform.test:57820/fetch/api/resources/top.txt with no-cors mode"
+        ],
+        "mode-no-cors.sub.any.worker.html": [
+          "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with no-cors mode",
+          "Fetch http://web-platform.test:57820/fetch/api/resources/top.txt with no-cors mode"
+        ],
+        "request-private-network-headers.tentative.any.html": false,
+        "request-private-network-headers.tentative.any.worker.html": false,
+        "response-null-body.any.html": true,
+        "response-null-body.any.worker.html": true
       },
       "response": {
         "json.any.html": true,
