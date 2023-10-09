@@ -426,7 +426,7 @@ class Response {
   }
 }
 
-webidl.configurePrototype(Response);
+webidl.configureInterface(Response);
 ObjectDefineProperties(Response, {
   json: { enumerable: true },
   redirect: { enumerable: true },

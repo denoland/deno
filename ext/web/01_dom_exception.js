@@ -170,7 +170,7 @@ ObjectDefineProperty(DOMException.prototype, "__callSiteEvals", {
 
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
-webidl.configurePrototype(DOMException);
+webidl.configureInterface(DOMException);
 const DOMExceptionPrototype = DOMException.prototype;
 
 const entries = ObjectEntries({

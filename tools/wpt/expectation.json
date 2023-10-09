@@ -2450,7 +2450,8 @@
       "respond-after-enqueue.any.html": true,
       "respond-after-enqueue.any.worker.html": true,
       "enqueue-with-detached-buffer.any.html": true,
-      "enqueue-with-detached-buffer.any.worker.html": true
+      "enqueue-with-detached-buffer.any.worker.html": true,
+      "enqueue-with-detached-buffer.window.html": false
     },
     "readable-streams": {
       "async-iterator.any.html": true,
@@ -2492,20 +2493,32 @@
     "transform-streams": {
       "backpressure.any.html": true,
       "backpressure.any.worker.html": true,
-      "errors.any.html": true,
-      "errors.any.worker.html": true,
+      "errors.any.html": [
+        "controller.error() should close writable immediately after readable.cancel()"
+      ],
+      "errors.any.worker.html": [
+        "controller.error() should close writable immediately after readable.cancel()"
+      ],
       "flush.any.html": true,
       "flush.any.worker.html": true,
-      "general.any.html": true,
-      "general.any.worker.html": true,
+      "general.any.html": [
+        "terminate() should abort writable immediately after readable.cancel()"
+      ],
+      "general.any.worker.html": [
+        "terminate() should abort writable immediately after readable.cancel()"
+      ],
       "lipfuzz.any.html": true,
       "lipfuzz.any.worker.html": true,
       "patched-global.any.html": true,
       "patched-global.any.worker.html": true,
       "properties.any.html": true,
       "properties.any.worker.html": true,
-      "reentrant-strategies.any.html": true,
-      "reentrant-strategies.any.worker.html": true,
+      "reentrant-strategies.any.html": [
+        "writer.abort() inside size() should work"
+      ],
+      "reentrant-strategies.any.worker.html": [
+        "writer.abort() inside size() should work"
+      ],
       "strategies.any.html": true,
       "strategies.any.worker.html": true,
       "terminate.any.html": true,
@@ -2844,12 +2857,8 @@
       "URL: no structured serialize/deserialize support",
       "URLSearchParams: no structured serialize/deserialize support"
     ],
-    "idlharness.any.html": [
-      "URL interface: operation canParse(USVString, optional USVString)"
-    ],
-    "idlharness.any.worker.html": [
-      "URL interface: operation canParse(USVString, optional USVString)"
-    ],
+    "idlharness.any.html": true,
+    "idlharness.any.worker.html": true,
     "toascii.window.html": [
       "aa-- (using <a>.host)",
       "aa-- (using <a>.hostname)",
@@ -3758,6 +3767,10 @@
       "<area>: Setting <data:/nospace>.pathname = 'space ' Non-special URLs with non-opaque paths percent-encode U+0020",
       "<a>: Setting <sc:/nospace>.pathname = 'space '",
       "<area>: Setting <sc:/nospace>.pathname = 'space '",
+      "<a>: Setting <http://example.net>.pathname = ' ' Trailing space should be encoded",
+      "<area>: Setting <http://example.net>.pathname = ' ' Trailing space should be encoded",
+      "<a>: Setting <http://example.net>.pathname = '\u0000' Trailing C0 control should be encoded",
+      "<area>: Setting <http://example.net>.pathname = '\u0000' Trailing C0 control should be encoded",
       "<a>: Setting <https://example.net#nav>.search = 'lang=fr'",
       "<area>: Setting <https://example.net#nav>.search = 'lang=fr'",
       "<a>: Setting <https://example.net?lang=en-US#nav>.search = 'lang=fr'",
@@ -3786,6 +3799,10 @@
       "<area>: Setting <data:space  ?query#fragment>.search = '' Do not drop trailing spaces from non-trailing opaque paths",
       "<a>: Setting <sc:space  ?query#fragment>.search = ''",
       "<area>: Setting <sc:space  ?query#fragment>.search = ''",
+      "<a>: Setting <http://example.net>.search = ' ' Trailing space should be encoded",
+      "<area>: Setting <http://example.net>.search = ' ' Trailing space should be encoded",
+      "<a>: Setting <http://example.net>.search = '\u0000' Trailing C0 control should be encoded",
+      "<area>: Setting <http://example.net>.search = '\u0000' Trailing C0 control should be encoded",
       "<a>: Setting <https://example.net>.hash = 'main'",
       "<area>: Setting <https://example.net>.hash = 'main'",
       "<a>: Setting <https://example.net#nav>.hash = 'main'",
@@ -3823,7 +3840,11 @@
       "<a>: Setting <data:space  ?query#fragment>.hash = '' Do not drop trailing spaces from non-trailing opaque paths",
       "<area>: Setting <data:space  ?query#fragment>.hash = '' Do not drop trailing spaces from non-trailing opaque paths",
       "<a>: Setting <sc:space  ?query#fragment>.hash = ''",
-      "<area>: Setting <sc:space  ?query#fragment>.hash = ''"
+      "<area>: Setting <sc:space  ?query#fragment>.hash = ''",
+      "<a>: Setting <http://example.net>.hash = ' ' Trailing space should be encoded",
+      "<area>: Setting <http://example.net>.hash = ' ' Trailing space should be encoded",
+      "<a>: Setting <http://example.net>.hash = '\u0000' Trailing C0 control should be encoded",
+      "<area>: Setting <http://example.net>.hash = '\u0000' Trailing C0 control should be encoded"
     ],
     "url-setters-a-area.window.html?include=file": [
       "<a>: Setting <file://localhost/>.protocol = 'http' Can’t switch from file URL with no host",
@@ -4015,7 +4036,6 @@
           "Adding invalid request header \"Accept-Encoding: KO\"",
           "Adding invalid request header \"Access-Control-Request-Headers: KO\"",
           "Adding invalid request header \"Access-Control-Request-Method: KO\"",
-          "Adding invalid request header \"Access-Control-Request-Private-Network: KO\"",
           "Adding invalid request header \"Connection: KO\"",
           "Adding invalid request header \"Content-Length: KO\"",
           "Adding invalid request header \"Cookie: KO\"",
@@ -4055,7 +4075,6 @@
           "Adding invalid request header \"Accept-Encoding: KO\"",
           "Adding invalid request header \"Access-Control-Request-Headers: KO\"",
           "Adding invalid request header \"Access-Control-Request-Method: KO\"",
-          "Adding invalid request header \"Access-Control-Request-Private-Network: KO\"",
           "Adding invalid request header \"Connection: KO\"",
           "Adding invalid request header \"Content-Length: KO\"",
           "Adding invalid request header \"Cookie: KO\"",
