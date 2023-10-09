@@ -372,6 +372,8 @@ pub async fn upgrade(
   };
 
   let download_url = if upgrade_flags.canary {
+    // NOTE(bartlomieju): to keep clippy happy on M1 macs.
+    #[allow(clippy::eq_op)]
     if env!("TARGET") == "aarch64-apple-darwin" {
       bail!("Canary builds are not available for M1/M2");
     }

@@ -15,7 +15,6 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_core::OpState;
 use log;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -1433,13 +1432,6 @@ impl deno_web::TimersPermission for PermissionsContainer {
   #[inline(always)]
   fn allow_hrtime(&mut self) -> bool {
     self.0.lock().hrtime.check().is_ok()
-  }
-
-  #[inline(always)]
-  fn check_unstable(&self, _state: &OpState, _api_name: &'static str) {
-    // let name = unreachable!();
-    // crate::ops::check_unstable(state, name, api_name);
-    unreachable!();
   }
 }
 
