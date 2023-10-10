@@ -366,7 +366,6 @@ export class ClientHttp2Session extends Http2Session {
     this[kDenoConnRid] = undefined;
     this[kPollConnPromiseId] = undefined;
 
-    socket.pause();
     socket.on("error", socketOnError);
     socket.on("close", socketOnClose);
     const connPromise = new Promise((resolve) => {
@@ -1569,6 +1568,9 @@ export function connect(
     }
   }
 
+  // Pause so no "socket.read()" starts in the background that would
+  // prevent us from taking ownership of the socket in `ClientHttp2Session`
+  socket.pause();
   const session = new ClientHttp2Session(socket, url, options);
 
   session[kAuthority] = `${options.servername || host}:${port}`;
