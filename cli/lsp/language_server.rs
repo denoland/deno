@@ -1632,23 +1632,30 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let specifier = self
+    let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = match self.documents.get(&specifier) {
-      Some(doc) if doc.is_open() => doc,
-      _ => return Ok(None),
-    };
-    let mark = self.performance.mark("formatting", Some(&params));
-    let file_path = specifier_to_file_path(&specifier).map_err(|err| {
-      error!("{}", err);
-      LspError::invalid_request()
-    })?;
-
     // skip formatting any files ignored by the config file
     if !self.fmt_options.files.matches_specifier(&specifier) {
       return Ok(None);
     }
+    let document = match self.documents.get(&specifier) {
+      Some(doc) if doc.is_open() => doc,
+      _ => return Ok(None),
+    };
+    // Detect vendored paths. Vendor file URLs will normalize to their remote
+    // counterparts, but for formatting we want to favour the file URL.
+    // TODO(nayeemrmn): Implement `Document::file_resource_path()` or similar.
+    if specifier.scheme() != "file"
+      && params.text_document.uri.scheme() == "file"
+    {
+      specifier = params.text_document.uri.clone();
+    }
+    let file_path = specifier_to_file_path(&specifier).map_err(|err| {
+      error!("{}", err);
+      LspError::invalid_request()
+    })?;
+    let mark = self.performance.mark("formatting", Some(&params));
 
     // spawn a blocking task to allow doing other work while this is occurring
     let text_edits = deno_core::unsync::spawn_blocking({
@@ -3028,7 +3035,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let referrer = serde_json::to_value(arguments.next()).unwrap();
       let referrer: Url = serde_json::from_value(referrer)
         .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      return self
+      self
         .cache_request(Some(
           serde_json::to_value(lsp_custom::CacheParams {
             referrer: TextDocumentIdentifier { uri: referrer },
@@ -3039,9 +3046,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
           })
           .expect("well formed json"),
         ))
-        .await;
+        .await
+    } else if params.command == "deno.reloadImportRegistries" {
+      self.0.write().await.reload_import_registries().await
+    } else {
+      Ok(None)
     }
-    Ok(None)
   }
 
   async fn initialize(

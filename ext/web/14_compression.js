@@ -62,7 +62,7 @@ class CompressionStream {
   }
 }
 
-webidl.configurePrototype(CompressionStream);
+webidl.configureInterface(CompressionStream);
 const CompressionStreamPrototype = CompressionStream.prototype;
 
 class DecompressionStream {
@@ -110,7 +110,7 @@ function maybeEnqueue(controller, output) {
   }
 }
 
-webidl.configurePrototype(DecompressionStream);
+webidl.configureInterface(DecompressionStream);
 const DecompressionStreamPrototype = DecompressionStream.prototype;
 
 export { CompressionStream, DecompressionStream };
