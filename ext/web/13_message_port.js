@@ -64,7 +64,7 @@ class MessageChannel {
   }
 }
 
-webidl.configurePrototype(MessageChannel);
+webidl.configureInterface(MessageChannel);
 const MessageChannelPrototype = MessageChannel.prototype;
 
 const _id = Symbol("id");
@@ -188,7 +188,7 @@ defineEventHandler(MessagePort.prototype, "message", function (self) {
 });
 defineEventHandler(MessagePort.prototype, "messageerror");
 
-webidl.configurePrototype(MessagePort);
+webidl.configureInterface(MessagePort);
 const MessagePortPrototype = MessagePort.prototype;
 
 /**

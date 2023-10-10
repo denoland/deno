@@ -19,7 +19,6 @@ use std::time::Instant;
 
 pub trait TimersPermission {
   fn allow_hrtime(&mut self) -> bool;
-  fn check_unstable(&self, state: &OpState, api_name: &'static str);
 }
 
 pub type StartTime = Instant;
