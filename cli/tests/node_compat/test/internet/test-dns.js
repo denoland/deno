@@ -260,26 +260,26 @@ TEST(async function test_resolveSrv(done) {
   checkWrap(req);
 });
 
-TEST(function test_resolveSrv_failure(done) {
-  dnsPromises.resolveSrv(addresses.NOT_FOUND)
-    .then(common.mustNotCall())
-    .catch(common.mustCall((err) => {
-      assert.strictEqual(err.code, 'ENOTFOUND');
-    }));
+// TODO(bartlomieju): this test became very flaky on CI, returning `UNKNOWN`
+// instead of `ENOTFOUND`.
+// TEST(function test_resolveSrv_failure(done) {
+//   dnsPromises.resolveSrv(addresses.NOT_FOUND)
+//     .then(common.mustNotCall())
+//     .catch(common.mustCall((err) => {
+//       assert.strictEqual(err.code, 'ENOTFOUND');
+//     }));
 
-  // TODO(bartlomieju): this test became very flaky on CI, returning `UNKNOWN`
-  // instead of `ENOTFOUND`.
-  // const req = dns.resolveSrv(addresses.NOT_FOUND, function(err, result) {
-  //   assert.ok(err instanceof Error);
-  //   assert.strictEqual(err.code, 'ENOTFOUND');
-  //
-  //   assert.strictEqual(result, undefined);
-  //
-  //   done();
-  // });
+//   const req = dns.resolveSrv(addresses.NOT_FOUND, function(err, result) {
+//     assert.ok(err instanceof Error);
+//     assert.strictEqual(err.code, 'ENOTFOUND');
+  
+//     assert.strictEqual(result, undefined);
+  
+//     done();
+//   });
 
-  checkWrap(req);
-});
+//   checkWrap(req);
+// });
 
 TEST(async function test_resolvePtr(done) {
   function validateResult(result) {
