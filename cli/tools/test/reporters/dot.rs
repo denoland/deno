@@ -184,7 +184,13 @@ impl TestReporter for DotTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    common::report_summary(&self.cwd, &self.summary, elapsed);
+    common::report_summary(
+      &mut std::io::stdout(),
+      &self.cwd,
+      &self.summary,
+      elapsed,
+    );
+    println!();
   }
 
   fn report_sigint(
@@ -193,7 +199,13 @@ impl TestReporter for DotTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    common::report_sigint(&self.cwd, tests_pending, tests, test_steps);
+    common::report_sigint(
+      &mut std::io::stdout(),
+      &self.cwd,
+      tests_pending,
+      tests,
+      test_steps,
+    );
   }
 
   fn flush_report(

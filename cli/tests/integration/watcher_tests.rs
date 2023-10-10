@@ -1603,3 +1603,45 @@ async fn run_watch_dynamic_imports() {
 
   check_alive_then_kill(child);
 }
+
+#[tokio::test]
+async fn run_watch_inspect() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      console.log("hello world");
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--inspect")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Debugger listening", &mut stderr_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("hello world", &mut stdout_lines).await;
+
+  file_to_watch.write(
+    r#"
+      console.log("updated file");
+    "#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Debugger listening", &mut stderr_lines).await;
+  wait_contains("updated file", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}

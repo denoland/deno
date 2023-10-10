@@ -391,15 +391,18 @@ impl JupyterServer {
       let output =
         get_jupyter_display_or_eval_value(&mut self.repl_session, &result)
           .await?;
-      msg
-        .new_message("execute_result")
-        .with_content(json!({
-            "execution_count": self.execution_count,
-            "data": output,
-            "metadata": {},
-        }))
-        .send(&mut *self.iopub_socket.lock().await)
-        .await?;
+      // Don't bother sending `execute_result` reply if the MIME bundle is empty
+      if !output.is_empty() {
+        msg
+          .new_message("execute_result")
+          .with_content(json!({
+              "execution_count": self.execution_count,
+              "data": output,
+              "metadata": {},
+          }))
+          .send(&mut *self.iopub_socket.lock().await)
+          .await?;
+      }
       msg
         .new_reply()
         .with_content(json!({
@@ -413,9 +416,7 @@ impl JupyterServer {
       // Otherwise, executing multiple cells one-by-one might lead to output
       // from various cells be grouped together in another cell result.
       tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    } else {
-      let exception_details = exception_details.unwrap();
-
+    } else if let Some(exception_details) = exception_details {
       // Determine the exception value and name
       let (name, message, stack) =
         if let Some(exception) = exception_details.exception {
@@ -550,15 +551,14 @@ async fn get_jupyter_display(
     .post_message_with_event_loop(
       "Runtime.callFunctionOn",
       Some(json!({
-        "functionDeclaration": r#"function (object) {
-      const display = object[Symbol.for("Jupyter.display")];
-
-      if (typeof display !== "function") {
+        "functionDeclaration": r#"async function (object) {
+      if (typeof object[Symbol.for("Jupyter.display")] !== "function") {
         return null;
       }
-      
+
       try {
-        return JSON.stringify(display());
+        const representation = await object[Symbol.for("Jupyter.display")]();
+        return JSON.stringify(representation);
       } catch {
         return null;
       }

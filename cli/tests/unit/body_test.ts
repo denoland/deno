@@ -155,3 +155,35 @@ Deno.test(async function bodyArrayBufferMultipleParts() {
   const body = buildBody(stream);
   assertEquals((await body.arrayBuffer()).byteLength, size);
 });
+
+// https://github.com/denoland/deno/issues/20793
+Deno.test(
+  { permissions: { net: true } },
+  async function bodyMultipartFormDataMultipleHeaders() {
+    const boundary = "----formdata-polyfill-0.970665446687947";
+    const payload = [
+      "------formdata-polyfill-0.970665446687947",
+      'Content-Disposition: form-data; name="x"; filename="blob"',
+      "Content-Length: 1",
+      "Content-Type: application/octet-stream",
+      "last-modified: Wed, 04 Oct 2023 20:28:45 GMT",
+      "",
+      "y",
+      "------formdata-polyfill-0.970665446687947--",
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    const file = formData.get("x");
+    assert(file instanceof File);
+    const text = await file.text();
+    assertEquals(text, "y");
+    assertEquals(file.size, 1);
+  },
+);
