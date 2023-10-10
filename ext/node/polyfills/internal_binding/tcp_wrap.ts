@@ -204,6 +204,7 @@ export class TCP extends ConnectionWrap {
       hostname: this.#address!,
       port: this.#port!,
       transport: "tcp" as const,
+      reusePort: true,
     };
 
     let listener;
