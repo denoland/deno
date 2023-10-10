@@ -419,7 +419,11 @@ class Datagram {
 
 const listenOptionApiName = Symbol("listenOptionApiName");
 
-function listen(args, checkUnstable = true) {
+function listen(args) {
+  return listenInternal(args, true);
+}
+
+function listenInternal(args, checkUnstable = true) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
       const { 0: rid, 1: addr } = ops.op_net_listen_tcp(
@@ -515,6 +519,7 @@ export {
   Datagram,
   listen,
   Listener,
+  listenInternal,
   listenOptionApiName,
   resolveDns,
   shutdown,

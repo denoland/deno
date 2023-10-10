@@ -45,7 +45,7 @@ import {
   INITIAL_ACCEPT_BACKOFF_DELAY,
   MAX_ACCEPT_BACKOFF_DELAY,
 } from "ext:deno_node/internal_binding/_listen.ts";
-import { listen } from "ext:deno_net/01_net.js";
+import { listenInternal } from "ext:deno_net/01_net.js";
 
 /** The type of TCP socket. */
 enum socketType {
@@ -211,7 +211,7 @@ export class TCP extends ConnectionWrap {
     let listener;
 
     try {
-      listener = listen(listenOptions, false);
+      listener = listenInternal(listenOptions, false);
     } catch (e) {
       if (e instanceof Deno.errors.AddrInUse) {
         return codeMap.get("EADDRINUSE")!;
