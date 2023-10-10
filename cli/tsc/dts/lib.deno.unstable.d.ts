@@ -2143,6 +2143,7 @@ declare namespace Deno {
      * Create a Markdown view.
      *
      * ```typescript
+     * const { md } = Deno.jupyter;
      * md`# Notebooks in TypeScript via Deno ![Deno logo](https://github.com/denoland.png?size=32)
      *
      * * TypeScript ${Deno.version.typescript}
@@ -2166,6 +2167,7 @@ declare namespace Deno {
      * @example
      * Create an HTML view.
      * ```typescript
+     * const { html } = Deno.jupyter;
      * html`<h1>Hello, world!</h1>`
      * ```
      */

@@ -339,15 +339,15 @@ async function display(obj, options = { raw: false, update: false }) {
   } else {
     bundle = await format(obj);
   }
-  let message_type = "display_data";
+  let messageType = "display_data";
   if (options.update) {
-    message_type = "update_display_data";
+    messageType = "update_display_data";
   }
   let transient = {};
   if (options.display_id) {
     transient = { display_id: options.display_id };
   }
-  await Deno.jupyter.broadcast(message_type, {
+  await Deno.jupyter.broadcast(messageType, {
     data: bundle,
     metadata: {},
     transient,
@@ -355,7 +355,7 @@ async function display(obj, options = { raw: false, update: false }) {
   return;
 }
 
-async function broadcastResult(execution_count, result) {
+async function broadcastResult(executionCount, result) {
   try {
     if (result === undefined) {
       return;
@@ -363,7 +363,7 @@ async function broadcastResult(execution_count, result) {
 
     const data = await format(result);
     await Deno.jupyter.broadcast("execute_result", {
-      execution_count,
+      execution_count: executionCount,
       data,
       metadata: {},
     });
