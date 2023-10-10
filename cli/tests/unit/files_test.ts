@@ -846,9 +846,8 @@ Deno.test(
   { permissions: { read: true } },
   async function fsFileExplicitResourceManagementManualClose() {
     using file = await Deno.open("cli/tests/testdata/assets/hello.txt");
-
     file.close();
-
-    assertThrows(() => file.statSync(), Deno.errors.BadResource);
+    assertThrows(() => file.statSync(), Deno.errors.BadResource); // definitely closed
+    // calling [Symbol.dispose] after manual close is a no-op
   },
 );
