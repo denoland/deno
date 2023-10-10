@@ -2076,6 +2076,66 @@ declare namespace Deno {
    *
    * @category Jupyter */
   export namespace jupyter {
+    export interface DisplayOptions {
+      raw?: boolean;
+      update?: boolean;
+      display_id?: string;
+    }
+
+    type VegaObject = {
+      $schema: string;
+      [key: string]: unknown;
+    };
+
+    export type MediaBundle = {
+      "text/plain"?: string;
+      "text/html"?: string;
+      "image/svg+xml"?: string;
+      "text/markdown"?: string;
+      "application/javascript"?: string;
+
+      // Images (sadly, per Jupyter spec) must be base64 encoded. We could _allow_
+      // accepting Uint8Array or ArrayBuffer within `display` calls, however we still
+      // need to encode them for jupyter.
+      "image/png"?: string; // WISH: Uint8Array | ArrayBuffer
+      "image/jpeg"?: string; // WISH: Uint8Array | ArrayBuffer
+      "image/gif"?: string; // WISH: Uint8Array | ArrayBuffer
+      "application/pdf"?: string; // WISH: Uint8Array | ArrayBuffer
+
+      // NOTE: all JSON types must be objects at the top level (no arrays, strings, or other primitives)
+      "application/json"?: object;
+      "application/geo+json"?: object;
+      "application/vdom.v1+json"?: object;
+      "application/vnd.plotly.v1+json"?: object;
+      "application/vnd.vega.v5+json"?: VegaObject;
+      "application/vnd.vegalite.v4+json"?: VegaObject;
+      "application/vnd.vegalite.v5+json"?: VegaObject;
+
+      // Must support a catch all for custom mime-types
+      [key: string]: string | object | undefined;
+    };
+
+    export const $display: unique symbol;
+
+    export type Displayable = {
+      [$display]: () => MediaBundle | Promise<MediaBundle>;
+    };
+
+    /**
+     * Display function for Jupyter Deno Kernel.
+     * Mimics the behavior of IPython's `display(obj, raw=True)` function to allow
+     * asynchronous displaying of objects in Jupyter.
+     *
+     * @param obj - The object to be displayed
+     * @param options - Display options with a default { raw: true }
+     */
+    export function display(obj: unknown, options?: DisplayOptions): void;
+
+    export function md(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Displayable;
+
     /**
      * Broadcast a message on IO pub channel.
      *

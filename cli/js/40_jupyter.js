@@ -326,15 +326,11 @@ function isMediaBundle(obj) {
 
 /**
  * Display function for Jupyter Deno Kernel.
- * Mimics the behavior of IPython's display(obj, raw=True) while working with
- * the limitations of the 1.37 release of Deno (for now).
- *
- * Given that we don't have a direct way to create `display_data` (yet) in Deno,
- * at least from userspace, this function can only be used as the result in a cell.
+ * Mimics the behavior of IPython's `display(obj, raw=True)` function to allow
+ * asynchronous displaying of objects in Jupyter.
  *
  * @param obj - The object to be displayed
- * @param options - Display options with a default { raw: true }
- * @returns An object that Deno can display
+ * @param options - Display options
  */
 async function display(obj, options = { raw: false, update: false }) {
   let bundle;
@@ -414,6 +410,7 @@ function enableJupyter() {
     md,
     html,
     svg,
+    $display,
   };
 }
 
