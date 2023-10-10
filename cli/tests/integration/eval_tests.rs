@@ -77,3 +77,13 @@ itest!(check_local_by_default2 {
   output: "eval/check_local_by_default2.out",
   http_server: true,
 });
+
+itest!(env_file {
+  args: "eval --env=env console.log(Deno.env.get(\"ANOTHER_FOO\"))",
+  output_str: Some("ANOTHER_BAR\n"),
+});
+
+itest!(env_file_missing {
+  args: "eval --env=missing console.log(Deno.env.get(\"ANOTHER_FOO\"))",
+  output_str: Some("undefined\n"),
+});

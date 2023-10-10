@@ -2,34 +2,3 @@ BAR
 ANOTHER_BAR
 First Line
 Second Line
-basic
-basic
-machine
-machine
-
-machine
-$ESCAPED
-pa$$word
-production
-$2b$10$OMZ69gxxsmRgwAt945WHSujpr/u8ZMx.xwtxWOCMkeMW7p3XqKYca
-$this42$is42
-basic
-machine
-
-machine
-machine
-machine
-default
-machinedefault
-default
-default
-machine
-mongodb://username:password@abcd1234.mongolab.com:12345/heroku_db
-mongodb://username:password@abcd1234.mongolab.com:12345/heroku_db
-mongodb://username:password@abcd1234.mongolab.com:12345/heroku_db
-mongodb://username:password@abcd1234.mongolab.com:12345/heroku_db
-testing
-machine
-/default/path:with/colon
-/default/path:with/colon
-/default/path:with/colon

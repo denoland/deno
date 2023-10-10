@@ -642,7 +642,13 @@ impl CliOptions {
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
 
     if let Some(env_file_name) = &flags.env_file {
-      from_filename(env_file_name)?;
+      from_filename(env_file_name).expect(
+        format!(
+          "Unable to load '{}' environment variable file",
+          env_file_name.as_str()
+        )
+        .as_str(),
+      );
     }
 
     Ok(Self {
