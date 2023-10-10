@@ -29,7 +29,17 @@ console.log(Deno.env.get("MONGOLAB_URI_RECURSIVELY")); // "mongodb://username:pa
 console.log(Deno.env.get("WITHOUT_CURLY_BRACES_URI")); // "mongodb://username:password@abcd1234.mongolab.com:12345/heroku_db"
 console.log(Deno.env.get("WITHOUT_CURLY_BRACES_URI_RECURSIVELY")); // "mongodb://username:password@abcd1234.mongolab.com:12345/heroku_db"
 console.log(Deno.env.get("SHOULD_NOT_EXIST")); // "testing"
-console.log(Deno.env.get("DEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS")); // "machine"
-console.log(Deno.env.get("UNDEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS")); // "/default/path:with/colon"
-console.log(Deno.env.get("WITHOUT_CURLY_BRACES_UNDEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS")); // "/default/path:with/colon"
-console.log(Deno.env.get("UNDEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS_NESTED")); // "/default/path:with/colon"
+console.log(
+  Deno.env.get("DEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS"),
+); // "machine"
+console.log(
+  Deno.env.get("UNDEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS"),
+); // "/default/path:with/colon"
+console.log(
+  Deno.env.get(
+    "WITHOUT_CURLY_BRACES_UNDEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS",
+  ),
+); // "/default/path:with/colon"
+console.log(
+  Deno.env.get("UNDEFINED_EXPAND_WITH_DEFAULT_WITH_SPECIAL_CHARACTERS_NESTED"),
+); // "/default/path:with/colon"
