@@ -873,6 +873,18 @@ fn lsp_deno_task() {
 }
 
 #[test]
+fn lsp_reload_import_registries_command() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "workspace/executeCommand",
+    json!({ "command": "deno.reloadImportRegistries" }),
+  );
+  assert_eq!(res, json!(true));
+}
+
+#[test]
 fn lsp_import_attributes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

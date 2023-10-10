@@ -3035,7 +3035,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let referrer = serde_json::to_value(arguments.next()).unwrap();
       let referrer: Url = serde_json::from_value(referrer)
         .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      return self
+      self
         .cache_request(Some(
           serde_json::to_value(lsp_custom::CacheParams {
             referrer: TextDocumentIdentifier { uri: referrer },
@@ -3046,9 +3046,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
           })
           .expect("well formed json"),
         ))
-        .await;
+        .await
+    } else if params.command == "deno.reloadImportRegistries" {
+      self.0.write().await.reload_import_registries().await
+    } else {
+      Ok(None)
     }
-    Ok(None)
   }
 
   async fn initialize(
