@@ -422,10 +422,14 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args, checkUnstable = true) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
-        hostname: args.hostname ?? "0.0.0.0",
-        port: Number(args.port),
-      }, args.reusePort, checkUnstable);
+      const { 0: rid, 1: addr } = ops.op_net_listen_tcp(
+        {
+          hostname: args.hostname ?? "0.0.0.0",
+          port: Number(args.port),
+        },
+        args.reusePort,
+        checkUnstable,
+      );
       addr.transport = "tcp";
       return new Listener(rid, addr);
     }
