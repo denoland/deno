@@ -229,10 +229,8 @@ pub fn take_network_stream_resource(
   if let Ok(resource_rc) = resource_table.take::<TcpStreamResource>(stream_rid)
   {
     // This TCP connection might be used somewhere else.
-    let resource = Rc::try_unwrap(resource_rc).map_err(|_| {
-      panic!();
-      bad_resource("TCP stream is currently in use")
-    })?;
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| bad_resource("TCP stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     return Ok(NetworkStream::Tcp(tcp_stream));
@@ -241,10 +239,8 @@ pub fn take_network_stream_resource(
   if let Ok(resource_rc) = resource_table.take::<TlsStreamResource>(stream_rid)
   {
     // This TLS connection might be used somewhere else.
-    let resource = Rc::try_unwrap(resource_rc).map_err(|_| {
-      panic!();
-      bad_resource("TLS stream is currently in use")
-    })?;
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| bad_resource("TLS stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.reunite(write_half);
     return Ok(NetworkStream::Tls(tls_stream));
