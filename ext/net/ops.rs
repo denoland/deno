@@ -356,11 +356,13 @@ pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   reuse_port: bool,
+  check_unstable: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  if reuse_port {
+  // Do not check for unstable if used by internal Node code,
+  if check_unstable && reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
   state
