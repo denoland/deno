@@ -3161,32 +3161,20 @@
     "transform-streams": {
       "backpressure.any.html": true,
       "backpressure.any.worker.html": true,
-      "errors.any.html": [
-        "controller.error() should close writable immediately after readable.cancel()"
-      ],
-      "errors.any.worker.html": [
-        "controller.error() should close writable immediately after readable.cancel()"
-      ],
+      "errors.any.html": true,
+      "errors.any.worker.html": true,
       "flush.any.html": true,
       "flush.any.worker.html": true,
-      "general.any.html": [
-        "terminate() should abort writable immediately after readable.cancel()"
-      ],
-      "general.any.worker.html": [
-        "terminate() should abort writable immediately after readable.cancel()"
-      ],
+      "general.any.html": true,
+      "general.any.worker.html": true,
       "lipfuzz.any.html": true,
       "lipfuzz.any.worker.html": true,
       "patched-global.any.html": true,
       "patched-global.any.worker.html": true,
       "properties.any.html": true,
       "properties.any.worker.html": true,
-      "reentrant-strategies.any.html": [
-        "writer.abort() inside size() should work"
-      ],
-      "reentrant-strategies.any.worker.html": [
-        "writer.abort() inside size() should work"
-      ],
+      "reentrant-strategies.any.html": true,
+      "reentrant-strategies.any.worker.html": true,
       "strategies.any.html": true,
       "strategies.any.worker.html": true,
       "terminate.any.html": true,
