@@ -75,13 +75,13 @@ import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
 if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
 ObjectDefineProperties(Symbol, {
   dispose: {
-    value: SymbolAsyncDispose,
+    value: SymbolDispose,
     enumerable: false,
     writable: false,
     configurable: false,
   },
   asyncDispose: {
-    value: SymbolDispose,
+    value: SymbolAsyncDispose,
     enumerable: false,
     writable: false,
     configurable: false,

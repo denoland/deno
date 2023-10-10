@@ -11,7 +11,6 @@ import {
   readableStreamForRid,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -255,10 +254,6 @@ class Stdin {
   setRaw(mode, options = {}) {
     const cbreak = !!(options.cbreak ?? false);
     ops.op_stdin_set_raw(mode, cbreak);
-  }
-
-  [SymbolDispose]() {
-    core.tryClose(this.rid);
   }
 }
 

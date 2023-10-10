@@ -1724,7 +1724,7 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export class Kv {
+  export class Kv implements Disposable {
     /**
      * Retrieve the value and versionstamp for the given key from the database
      * in the form of a {@linkcode Deno.KvEntryMaybe}. If no value exists for
@@ -1920,6 +1920,8 @@ declare namespace Deno {
      * operations immediately.
      */
     close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
