@@ -366,6 +366,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
       Default::default(),
       Default::default(),
     ),
+    deno_webgpu::deno_webgpu::init_ops(false),
     deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
     deno_cache::deno_cache::init_ops::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
