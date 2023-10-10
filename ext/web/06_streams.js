@@ -4866,7 +4866,7 @@ class ByteLengthQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(ByteLengthQueuingStrategy);
+webidl.configureInterface(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
@@ -4920,7 +4920,7 @@ class CountQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(CountQueuingStrategy);
+webidl.configureInterface(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
@@ -5254,7 +5254,7 @@ ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
   configurable: true,
 });
 
-webidl.configurePrototype(ReadableStream);
+webidl.configureInterface(ReadableStream);
 const ReadableStreamPrototype = ReadableStream.prototype;
 
 function errorReadableStream(stream, e) {
@@ -5354,7 +5354,7 @@ class ReadableStreamDefaultReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultReader);
+webidl.configureInterface(ReadableStreamDefaultReader);
 const ReadableStreamDefaultReaderPrototype =
   ReadableStreamDefaultReader.prototype;
 
@@ -5484,7 +5484,7 @@ class ReadableStreamBYOBReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBReader);
+webidl.configureInterface(ReadableStreamBYOBReader);
 const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 
 class ReadableStreamBYOBRequest {
@@ -5564,7 +5564,7 @@ class ReadableStreamBYOBRequest {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBRequest);
+webidl.configureInterface(ReadableStreamBYOBRequest);
 const ReadableStreamBYOBRequestPrototype = ReadableStreamBYOBRequest.prototype;
 
 class ReadableByteStreamController {
@@ -5761,7 +5761,7 @@ class ReadableByteStreamController {
   }
 }
 
-webidl.configurePrototype(ReadableByteStreamController);
+webidl.configureInterface(ReadableByteStreamController);
 const ReadableByteStreamControllerPrototype =
   ReadableByteStreamController.prototype;
 
@@ -5884,7 +5884,7 @@ class ReadableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultController);
+webidl.configureInterface(ReadableStreamDefaultController);
 const ReadableStreamDefaultControllerPrototype =
   ReadableStreamDefaultController.prototype;
 
@@ -6002,7 +6002,7 @@ class TransformStream {
   }
 }
 
-webidl.configurePrototype(TransformStream);
+webidl.configureInterface(TransformStream);
 const TransformStreamPrototype = TransformStream.prototype;
 
 /** @template O */
@@ -6069,7 +6069,7 @@ class TransformStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(TransformStreamDefaultController);
+webidl.configureInterface(TransformStreamDefaultController);
 const TransformStreamDefaultControllerPrototype =
   TransformStreamDefaultController.prototype;
 
@@ -6204,7 +6204,7 @@ class WritableStream {
   }
 }
 
-webidl.configurePrototype(WritableStream);
+webidl.configureInterface(WritableStream);
 const WritableStreamPrototype = WritableStream.prototype;
 
 /** @template W */
@@ -6350,7 +6350,7 @@ class WritableStreamDefaultWriter {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultWriter);
+webidl.configureInterface(WritableStreamDefaultWriter);
 const WritableStreamDefaultWriterPrototype =
   WritableStreamDefaultWriter.prototype;
 
@@ -6428,7 +6428,7 @@ class WritableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultController);
+webidl.configureInterface(WritableStreamDefaultController);
 const WritableStreamDefaultControllerPrototype =
   WritableStreamDefaultController.prototype;
 
