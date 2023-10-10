@@ -777,3 +777,37 @@ Deno.test("[node/http] server emits error if addr in use", async () => {
     `Wrong error: ${err.message}`,
   );
 });
+
+Deno.test(
+  "[node/http] client destroy doesn't leak",
+  { permissions: { net: true } },
+  async () => {
+    const ac = new AbortController();
+    let timerId;
+
+    const server = Deno.serve(
+      { port: 5929, signal: ac.signal },
+      async (_req) => {
+        await new Promise((resolve) => {
+          timerId = setTimeout(resolve, 5000);
+        });
+        return new Response("hello");
+      },
+    );
+    const promise = deferred();
+
+    const request = http.request("http://localhost:5929/");
+    request.on("error", promise.reject);
+    request.on("close", () => {});
+    request.end();
+    setTimeout(() => {
+      request.destroy(new Error());
+      promise.resolve();
+    }, 100);
+
+    await promise;
+    clearTimeout(timerId);
+    ac.abort();
+    await server.finished;
+  },
+);

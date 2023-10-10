@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::ConfigFlag;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -158,6 +159,13 @@ pub struct InstallFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JupyterFlags {
+  pub install: bool,
+  pub kernel: bool,
+  pub conn_file: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlags {
   pub name: String,
   pub root: Option<PathBuf>,
@@ -226,6 +234,7 @@ pub enum TestReporterConfig {
   Pretty,
   Dot,
   Junit,
+  Tap,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -276,6 +285,7 @@ pub enum DenoSubcommand {
   Init(InitFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
@@ -332,19 +342,6 @@ impl TypeCheckMode {
 impl Default for TypeCheckMode {
   fn default() -> Self {
     Self::None
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ConfigFlag {
-  Discover,
-  Path(String),
-  Disabled,
-}
-
-impl Default for ConfigFlag {
-  fn default() -> Self {
-    Self::Discover
   }
 }
 
@@ -691,7 +688,8 @@ impl Flags {
         std::env::current_dir().ok()
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
-      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
+      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
+      | Vendor(_) => None,
     }
   }
 
@@ -809,6 +807,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
     flags.log_level = match log_level.as_str() {
+      "trace" => Some(Level::Trace),
       "debug" => Some(Level::Debug),
       "info" => Some(Level::Info),
       _ => unreachable!(),
@@ -830,6 +829,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "init" => init_parse(&mut flags, &mut m),
       "info" => info_parse(&mut flags, &mut m),
       "install" => install_parse(&mut flags, &mut m),
+      "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m),
       "lsp" => lsp_parse(&mut flags, &mut m),
       "repl" => repl_parse(&mut flags, &mut m),
@@ -904,7 +904,7 @@ fn clap_root() -> Command {
         .long("log-level")
         .help("Set log level")
         .hide(true)
-        .value_parser(["debug", "info"])
+        .value_parser(["trace", "debug", "info"])
         .global(true),
     )
     .arg(
@@ -931,6 +931,7 @@ fn clap_root() -> Command {
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
         .subcommand(install_subcommand())
+        .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
@@ -1124,7 +1125,6 @@ supported in canary.
     )
     .defer(|cmd| {
       runtime_args(cmd, true, false)
-      .arg(script_arg().required(true))
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -1165,6 +1165,7 @@ supported in canary.
           .action(ArgAction::SetTrue),
       )
       .arg(executable_ext_arg())
+      .arg(script_arg().required(true).trailing_var_arg(true))
     })
 }
 
@@ -1625,6 +1626,33 @@ These must be added to the path manually if required.")
       )
 }
 
+fn jupyter_subcommand() -> Command {
+  Command::new("jupyter")
+    .arg(
+      Arg::new("install")
+        .long("install")
+        .help("Installs kernelspec, requires 'jupyter' command to be available.")
+        .conflicts_with("kernel")
+        .action(ArgAction::SetTrue)
+    )
+    .arg(
+      Arg::new("kernel")
+        .long("kernel")
+        .help("Start the kernel")
+        .conflicts_with("install")
+        .requires("conn")
+        .action(ArgAction::SetTrue)
+    )
+    .arg(
+      Arg::new("conn")
+        .long("conn")
+        .help("Path to JSON file describing connection parameters, provided by Jupyter")
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::FilePath)
+        .conflicts_with("install"))
+    .about("Deno kernel for Jupyter notebooks")
+}
+
 fn uninstall_subcommand() -> Command {
   Command::new("uninstall")
       .about("Uninstall a script previously installed with deno install")
@@ -1802,13 +1830,8 @@ fn repl_subcommand() -> Command {
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
-    .arg(
-      watch_arg(true)
-        .conflicts_with("inspect")
-        .conflicts_with("inspect-wait")
-        .conflicts_with("inspect-brk"),
-    )
     .arg(hot_reload_arg())
+    .arg(watch_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     .arg(
@@ -1995,7 +2018,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("reporter")
         .long("reporter")
         .help("Select reporter to use. Default to 'pretty'.")
-        .value_parser(["pretty", "dot", "junit"])
+        .value_parser(["pretty", "dot", "junit", "tap"])
     )
   )
 }
@@ -3187,6 +3210,18 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
+fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let conn_file = matches.remove_one::<PathBuf>("conn");
+  let kernel = matches.get_flag("kernel");
+  let install = matches.get_flag("install");
+
+  flags.subcommand = DenoSubcommand::Jupyter(JupyterFlags {
+    install,
+    kernel,
+    conn_file,
+  });
+}
+
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let root = matches.remove_one::<PathBuf>("root");
 
@@ -3392,13 +3427,14 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         "pretty" => TestReporterConfig::Pretty,
         "junit" => TestReporterConfig::Junit,
         "dot" => TestReporterConfig::Dot,
+        "tap" => TestReporterConfig::Tap,
         _ => unreachable!(),
       }
     } else {
       TestReporterConfig::Pretty
     };
 
-  if matches!(reporter, TestReporterConfig::Dot) {
+  if matches!(reporter, TestReporterConfig::Dot | TestReporterConfig::Tap) {
     flags.log_level = Some(Level::Error);
   }
 
@@ -6875,6 +6911,21 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "test", "--reporter=tap"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          reporter: TestReporterConfig::Tap,
+          ..Default::default()
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
+
     let r = flags_from_vec(svec![
       "deno",
       "test",
@@ -7284,14 +7335,14 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: Some(PathBuf::from("colors")),
-          args: svec!["foo", "bar"],
+          args: svec!["foo", "bar", "-p", "8080"],
           target: None,
           no_terminal: true,
           include: vec![]
@@ -7850,5 +7901,70 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn jupyter() {
+    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          kernel: false,
+          conn_file: None,
+        }),
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable", "--install"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: true,
+          kernel: false,
+          conn_file: None,
+        }),
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--unstable",
+      "--kernel",
+      "--conn",
+      "path/to/conn/file"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          kernel: true,
+          conn_file: Some(PathBuf::from("path/to/conn/file")),
+        }),
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--install",
+      "--conn",
+      "path/to/conn/file"
+    ]);
+    r.unwrap_err();
+    let r = flags_from_vec(svec!["deno", "jupyter", "--kernel",]);
+    r.unwrap_err();
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--kernel",]);
+    r.unwrap_err();
   }
 }

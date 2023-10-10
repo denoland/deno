@@ -3,8 +3,8 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
-use crate::worker::runtime;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -38,7 +38,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
@@ -236,10 +236,10 @@ pub struct WebWorkerHandle {
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
+  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn get_control_event(
     &self,
   ) -> Result<Option<WorkerControlEvent>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut receiver = self.receiver.borrow_mut();
     Ok(receiver.next().await)
   }
@@ -376,12 +376,10 @@ impl WebWorker {
     deno_core::extension!(deno_permissions_web_worker,
       options = {
         permissions: PermissionsContainer,
-        unstable: bool,
         enable_testing_features: bool,
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::UnstableChecker { unstable: options.unstable });
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
     );
@@ -429,24 +427,20 @@ impl WebWorker {
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         options.broadcast_channel.clone(),
-        unstable,
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(unstable),
+      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
         options.root_cert_store_provider.clone(),
-        unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(None),
-        unstable,
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(None),
       ),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        unstable,
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
@@ -469,7 +463,6 @@ impl WebWorker {
       ops::http::deno_http_runtime::init_ops_and_esm(),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
-        unstable,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
@@ -484,7 +477,7 @@ impl WebWorker {
       }
       #[cfg(feature = "__runtime_js_sources")]
       {
-        use crate::worker::maybe_transpile_source;
+        use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
           maybe_transpile_source(source).unwrap();
         }
@@ -518,6 +511,14 @@ impl WebWorker {
       preserve_snapshotted_modules,
       ..Default::default()
     });
+
+    if unstable {
+      let op_state = js_runtime.op_state();
+      op_state
+        .borrow_mut()
+        .feature_checker
+        .enable_legacy_unstable();
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

@@ -17,20 +17,24 @@ path = "src/test_server.rs"
 anyhow.workspace = true
 async-stream = "0.3.3"
 base64.workspace = true
+bytes.workspace = true
 console_static_text.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade"] }
 flate2.workspace = true
 futures.workspace = true
 glob.workspace = true
+h2.workspace = true
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
 lazy-regex.workspace = true
 libc.workspace = true
 lsp-types.workspace = true
+monch.workspace = true
 nix.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true
 pretty_assertions.workspace = true
+prost.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
@@ -40,9 +44,13 @@ serde.workspace = true
 serde_json.workspace = true
 tar.workspace = true
 tempfile.workspace = true
+termcolor.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 url.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+
+[build-dependencies]
+prost-build.workspace = true

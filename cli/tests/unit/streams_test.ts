@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { fail } from "https://deno.land/std@v0.42.0/testing/asserts.ts";
-import { assertEquals, Deferred, deferred } from "./test_util.ts";
+import { assertEquals, Deferred, deferred, fail } from "./test_util.ts";
 
 const {
   core,
@@ -61,6 +60,28 @@ function longStream() {
   }).pipeThrough(new TextEncoderStream());
 }
 
+// Long stream with Lorem Ipsum text.
+// deno-lint-ignore no-explicit-any
+function longAsyncStream(completion?: Deferred<any>) {
+  let currentTimeout: number | undefined = undefined;
+  return new ReadableStream({
+    async start(controller) {
+      for (let i = 0; i < 100; i++) {
+        await new Promise((r) => currentTimeout = setTimeout(r, 1));
+        currentTimeout = undefined;
+        controller.enqueue(LOREM);
+      }
+      controller.close();
+    },
+    cancel(reason) {
+      completion?.resolve(reason);
+      if (currentTimeout !== undefined) {
+        clearTimeout(currentTimeout);
+      }
+    },
+  }).pipeThrough(new TextEncoderStream());
+}
+
 // Empty stream, closes either immediately or on a call to pull.
 function emptyStream(onPull: boolean) {
   return new ReadableStream({
@@ -77,6 +98,22 @@ function emptyStream(onPull: boolean) {
   }).pipeThrough(new TextEncoderStream());
 }
 
+function largePacketStream(packetSize: number, count: number) {
+  return new ReadableStream({
+    pull(controller) {
+      if (count-- > 0) {
+        const buffer = new Uint8Array(packetSize);
+        for (let i = 0; i < 256; i++) {
+          buffer[i * (packetSize / 256)] = i;
+        }
+        controller.enqueue(buffer);
+      } else {
+        controller.close();
+      }
+    },
+  });
+}
+
 // Include an empty chunk
 function emptyChunkStream() {
   return new ReadableStream({
@@ -84,6 +121,20 @@ function emptyChunkStream() {
       controller.enqueue(new Uint8Array([1]));
       controller.enqueue(new Uint8Array([]));
       controller.enqueue(new Uint8Array([2]));
+      controller.close();
+    },
+  });
+}
+
+// Try to blow up any recursive reads. Note that because of the use of Array.shift in
+// ReadableStream, this might not actually be able to complete with larger values of
+// length.
+function veryLongTinyPacketStream(length: number) {
+  return new ReadableStream({
+    start(controller) {
+      for (let i = 0; i < length; i++) {
+        controller.enqueue(new Uint8Array([1]));
+      }
       controller.close();
     },
   });
@@ -142,7 +193,7 @@ Deno.test(async function readableStreamClose() {
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 12);
   core.ops.op_close(rid);
-  assertEquals(await cancel, undefined);
+  assertEquals(await cancel, "resource closed");
 });
 
 // Close the stream without reading everything
@@ -153,7 +204,7 @@ Deno.test(async function readableStreamClosePartialRead() {
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 5);
   core.ops.op_close(rid);
-  assertEquals(await cancel, undefined);
+  assertEquals(await cancel, "resource closed");
 });
 
 // Close the stream without reading anything
@@ -161,7 +212,15 @@ Deno.test(async function readableStreamCloseWithoutRead() {
   const cancel = deferred();
   const rid = resourceForReadableStream(helloWorldStream(false, cancel));
   core.ops.op_close(rid);
-  assertEquals(await cancel, undefined);
+  assertEquals(await cancel, "resource closed");
+});
+
+// Close the stream without reading anything
+Deno.test(async function readableStreamCloseWithoutRead2() {
+  const cancel = deferred();
+  const rid = resourceForReadableStream(longAsyncStream(cancel));
+  core.ops.op_close(rid);
+  assertEquals(await cancel, "resource closed");
 });
 
 Deno.test(async function readableStreamPartial() {
@@ -179,6 +238,20 @@ Deno.test(async function readableStreamLongReadAll() {
   const rid = resourceForReadableStream(longStream());
   const buffer = await core.ops.op_read_all(rid);
   assertEquals(buffer.length, LOREM.length * 4);
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamLongAsyncReadAll() {
+  const rid = resourceForReadableStream(longAsyncStream());
+  const buffer = await core.ops.op_read_all(rid);
+  assertEquals(buffer.length, LOREM.length * 100);
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamVeryLongReadAll() {
+  const rid = resourceForReadableStream(veryLongTinyPacketStream(10000));
+  const buffer = await core.ops.op_read_all(rid);
+  assertEquals(buffer.length, 10000);
   core.ops.op_close(rid);
 });
 
@@ -205,7 +278,13 @@ for (
 ) {
   Deno.test(`readableStreamError_${type}`, async function () {
     const rid = resourceForReadableStream(errorStream(type));
-    assertEquals(12, await core.ops.op_read(rid, new Uint8Array(16)));
+    let nread;
+    try {
+      nread = await core.ops.op_read(rid, new Uint8Array(16));
+    } catch (_) {
+      fail("Should not have thrown");
+    }
+    assertEquals(12, nread);
     try {
       await core.ops.op_read(rid, new Uint8Array(1));
       fail();
@@ -254,6 +333,61 @@ Deno.test(async function readableStreamWithEmptyChunkOneByOne() {
   core.ops.op_close(rid);
 });
 
+// Ensure that we correctly transmit all the sub-chunks of the larger chunks.
+Deno.test(async function readableStreamReadSmallerChunks() {
+  const packetSize = 16 * 1024;
+  const rid = resourceForReadableStream(largePacketStream(packetSize, 1));
+  const buffer = new Uint8Array(packetSize);
+  for (let i = 0; i < packetSize / 1024; i++) {
+    await core.ops.op_read(rid, buffer.subarray(i * 1024, i * 1024 + 1024));
+  }
+  for (let i = 0; i < 256; i++) {
+    assertEquals(
+      i,
+      buffer[i * (packetSize / 256)],
+      `at index ${i * (packetSize / 256)}`,
+    );
+  }
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamLargePackets() {
+  const packetSize = 128 * 1024;
+  const rid = resourceForReadableStream(largePacketStream(packetSize, 1024));
+  for (let i = 0; i < 1024; i++) {
+    const buffer = new Uint8Array(packetSize);
+    assertEquals(packetSize, await core.ops.op_read(rid, buffer));
+    for (let i = 0; i < 256; i++) {
+      assertEquals(
+        i,
+        buffer[i * (packetSize / 256)],
+        `at index ${i * (packetSize / 256)}`,
+      );
+    }
+  }
+  assertEquals(0, await core.ops.op_read(rid, new Uint8Array(1)));
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamVeryLargePackets() {
+  // 1024 packets of 1MB
+  const rid = resourceForReadableStream(largePacketStream(1024 * 1024, 1024));
+  let total = 0;
+  // Read 96kB up to 12,288 times (96kB is not an even multiple of the 1MB packet size to test this)
+  const readCounts: Record<number, number> = {};
+  for (let i = 0; i < 12 * 1024; i++) {
+    const nread = await core.ops.op_read(rid, new Uint8Array(96 * 1024));
+    total += nread;
+    readCounts[nread] = (readCounts[nread] || 0) + 1;
+    if (nread == 0) {
+      break;
+    }
+  }
+  assertEquals({ 0: 1, 65536: 1024, 98304: 10 * 1024 }, readCounts);
+  assertEquals(total, 1024 * 1024 * 1024);
+  core.ops.op_close(rid);
+});
+
 for (const count of [0, 1, 2, 3]) {
   for (const delay of [0, 1, 10]) {
     // Creating a stream that errors in start will throw
@@ -297,3 +431,32 @@ function createStreamTest(
     }
   });
 }
+
+Deno.test(async function readableStreamWithAggressiveResourceClose() {
+  let first = true;
+  const reasonPromise = deferred();
+  const rid = resourceForReadableStream(
+    new ReadableStream({
+      pull(controller) {
+        if (first) {
+          // We queue this up and then immediately close the resource (not the reader)
+          controller.enqueue(new Uint8Array(1));
+          core.close(rid);
+          // This doesn't throw, even though the resource is closed
+          controller.enqueue(new Uint8Array(1));
+          first = false;
+        }
+      },
+      cancel(reason) {
+        reasonPromise.resolve(reason);
+      },
+    }),
+  );
+  try {
+    await core.ops.op_read(rid, new Uint8Array(1));
+    fail();
+  } catch (e) {
+    assertEquals(e.message, "operation canceled");
+  }
+  assertEquals(await reasonPromise, "resource closed");
+});

@@ -5,6 +5,7 @@ use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::url;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -108,11 +109,12 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op]
+#[op2]
+#[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
-  api_name: String,
-  url: String,
+  #[string] api_name: String,
+  #[string] url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
 where
@@ -167,14 +169,15 @@ async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
   Ok((stream, response))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  api_name: String,
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-  headers: Option<Vec<(ByteString, ByteString)>>,
+  #[string] api_name: String,
+  #[string] url: String,
+  #[string] protocols: String,
+  #[smi] cancel_handle: Option<ResourceId>,
+  #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -288,7 +291,9 @@ where
   };
 
   if let Some(cancel_rid) = cancel_handle {
-    state.borrow_mut().resource_table.close(cancel_rid).ok();
+    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+      res.close();
+    }
   }
 
   let mut state = state.borrow_mut();
@@ -405,14 +410,13 @@ pub fn ws_create_server_stream(
   Ok(rid)
 }
 
-#[op(fast)]
-pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
+fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let data = data.to_vec();
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
-  deno_core::task::spawn(async move {
+  deno_core::unsync::spawn(async move {
     if let Err(err) = resource
       .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
       .await
@@ -424,13 +428,35 @@ pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op(fast)]
-pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
+#[op2(fast)]
+pub fn op_ws_send_binary(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[anybuffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
+}
+
+#[op2(fast)]
+pub fn op_ws_send_binary_ab(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[arraybuffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
+}
+
+#[op2(fast)]
+pub fn op_ws_send_text(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
+) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
-  deno_core::task::spawn(async move {
+  deno_core::unsync::spawn(async move {
     if let Err(err) = resource
       .write_frame(
         lock,
@@ -485,8 +511,12 @@ pub async fn op_ws_send_text_async(
 
 const EMPTY_PAYLOAD: &[u8] = &[];
 
-#[op(fast)]
-pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
+#[op2(fast)]
+#[smi]
+pub fn op_ws_get_buffered_amount(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> u32 {
   state
     .resource_table
     .get::<ServerWebSocket>(rid)
@@ -495,10 +525,10 @@ pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
     .get() as u32
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_ws_send_pong(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -510,10 +540,10 @@ pub async fn op_ws_send_pong(
     .await
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -528,12 +558,12 @@ pub async fn op_ws_send_ping(
     .await
 }
 
-#[op(deferred)]
+#[op2(async(lazy))]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  code: Option<u16>,
-  reason: Option<String>,
+  #[smi] rid: ResourceId,
+  #[smi] code: Option<u16>,
+  #[string] reason: Option<String>,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -549,23 +579,29 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[op]
-pub fn op_ws_get_buffer(state: &mut OpState, rid: ResourceId) -> ToJsBuffer {
+#[op2]
+#[serde]
+pub fn op_ws_get_buffer(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> ToJsBuffer {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.buffer.take().unwrap().into()
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> String {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.string.take().unwrap()
 }
 
-#[op]
-pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
+#[op2]
+#[string]
+pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
     return "Bad resource".into();
   };
@@ -581,7 +617,8 @@ pub async fn op_ws_next_event(
   let Ok(resource) = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid) else {
+    .get::<ServerWebSocket>(rid)
+  else {
     // op_ws_get_error will correctly handle a bad resource
     return MessageKind::Error as u16;
   };
@@ -657,6 +694,7 @@ deno_core::extension!(deno_websocket,
     op_ws_get_buffer_as_string,
     op_ws_get_error,
     op_ws_send_binary,
+    op_ws_send_binary_ab,
     op_ws_send_text,
     op_ws_send_binary_async,
     op_ws_send_text_async,
@@ -719,6 +757,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }

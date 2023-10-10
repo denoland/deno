@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
 const internals = globalThis.__bootstrap.internals;
 
-const { BadResourcePrototype } = core;
+const { BadResourcePrototype, InterruptedPrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
 import {
@@ -34,11 +34,11 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { listen, TcpConn } from "ext:deno_net/01_net.js";
+import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
   ArrayPrototypePush,
-  Error,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   Symbol,
@@ -65,6 +65,8 @@ const {
   op_http_upgrade_websocket_next,
   op_http_try_wait,
   op_http_wait,
+  op_http_cancel,
+  op_http_close,
 } = core.ensureFastOps();
 const _upgraded = Symbol("_upgraded");
 
@@ -133,10 +135,6 @@ class InnerRequest {
   }
 
   close() {
-    if (this.#streamRid !== undefined) {
-      core.close(this.#streamRid);
-      this.#streamRid = undefined;
-    }
     this.#slabId = undefined;
   }
 
@@ -274,6 +272,13 @@ class InnerRequest {
   }
 
   get remoteAddr() {
+    const transport = this.#context.listener?.addr.transport;
+    if (transport === "unix" || transport === "unixpacket") {
+      return {
+        transport,
+        path: this.#context.listener.addr.path,
+      };
+    }
     if (this.#methodAndUri === undefined) {
       if (this.#slabId === undefined) {
         throw new TypeError("request closed");
@@ -338,11 +343,16 @@ class CallbackContext {
   fallbackHost;
   serverRid;
   closed;
+  closing;
+  listener;
 
-  constructor(signal, args) {
+  constructor(signal, args, listener) {
+    // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
-      () => this.close(),
+      () => {
+        op_http_cancel(this.serverRid, false);
+      },
       { once: true },
     );
     this.abortController = new AbortController();
@@ -350,6 +360,7 @@ class CallbackContext {
     this.scheme = args[1];
     this.fallbackHost = args[2];
     this.closed = false;
+    this.listener = listener;
   }
 
   close() {
@@ -517,11 +528,29 @@ function serve(arg1, arg2) {
   }
 
   const wantsHttps = options.cert || options.key;
+  const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
     console.error(error);
     return internalServerError();
   };
+
+  if (wantsUnix) {
+    const listener = listen({
+      transport: "unix",
+      path: options.path,
+      [listenOptionApiName]: "Deno.serve",
+    });
+    const path = listener.addr.path;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen({ path });
+      } else {
+        console.log(`Listening on ${path}`);
+      }
+    });
+  }
+
   const listenOpts = {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
@@ -579,7 +608,11 @@ function serve(arg1, arg2) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
-  const context = new CallbackContext(signal, op_http_serve(listener.rid));
+  const context = new CallbackContext(
+    signal,
+    op_http_serve(listener.rid),
+    listener,
+  );
   const callback = mapToCallback(context, handler, onError);
 
   onListen(context.scheme);
@@ -591,7 +624,11 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary connection.
  */
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
-  const context = new CallbackContext(signal, op_http_serve_on(connection.rid));
+  const context = new CallbackContext(
+    signal,
+    op_http_serve_on(connection.rid),
+    null,
+  );
   const callback = mapToCallback(context, handler, onError);
 
   onListen(context.scheme);
@@ -634,6 +671,9 @@ function serveHttpOn(context, callback) {
         if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
           break;
         }
+        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+          break;
+        }
         throw new Deno.errors.Http(error);
       }
       if (req === -1) {
@@ -641,14 +681,23 @@ function serveHttpOn(context, callback) {
       }
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
+
+    if (!context.closed && !context.closing) {
+      context.closed = true;
+      await op_http_close(rid, false);
+      context.close();
+    }
   })();
 
   return {
     finished,
-    then() {
-      throw new Error(
-        "Deno.serve no longer returns a promise. await server.finished instead of server.",
-      );
+    async shutdown() {
+      if (!context.closed && !context.closing) {
+        // Shut this HTTP server down gracefully
+        context.closing = true;
+        await op_http_close(context.serverRid, true);
+        context.closed = true;
+      }
     },
     ref() {
       ref = true;

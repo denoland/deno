@@ -131,15 +131,15 @@ fn lint_with_glob_config() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\nested\fizz\fizz.ts:1:10"#);
-    assert_contains!(output, r#"glob\pages\[id].ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\fizz\bar.ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\foo\foo.ts:1:10"#);
-    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
-    assert_contains!(output, r#"glob\nested\foo\bar.ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\foo\fizz.ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\fizz\foo.ts:1:10"#);
-    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+    assert_contains!(output, r"glob\nested\fizz\fizz.ts:1:10");
+    assert_contains!(output, r"glob\pages\[id].ts:1:10");
+    assert_contains!(output, r"glob\nested\fizz\bar.ts:1:10");
+    assert_contains!(output, r"glob\nested\foo\foo.ts:1:10");
+    assert_contains!(output, r"glob\data\test1.js:1:10");
+    assert_contains!(output, r"glob\nested\foo\bar.ts:1:10");
+    assert_contains!(output, r"glob\nested\foo\fizz.ts:1:10");
+    assert_contains!(output, r"glob\nested\fizz\foo.ts:1:10");
+    assert_contains!(output, r"glob\data\test1.ts:1:10");
   } else {
     assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
     assert_contains!(output, "glob/pages/[id].ts:1:10");
@@ -168,15 +168,15 @@ fn lint_with_glob_config_and_flags() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\nested\fizz\fizz.ts:1:10"#);
-    assert_contains!(output, r#"glob\pages\[id].ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\fizz\bazz.ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\foo\foo.ts:1:10"#);
-    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
-    assert_contains!(output, r#"glob\nested\foo\bazz.ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\foo\fizz.ts:1:10"#);
-    assert_contains!(output, r#"glob\nested\fizz\foo.ts:1:10"#);
-    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+    assert_contains!(output, r"glob\nested\fizz\fizz.ts:1:10");
+    assert_contains!(output, r"glob\pages\[id].ts:1:10");
+    assert_contains!(output, r"glob\nested\fizz\bazz.ts:1:10");
+    assert_contains!(output, r"glob\nested\foo\foo.ts:1:10");
+    assert_contains!(output, r"glob\data\test1.js:1:10");
+    assert_contains!(output, r"glob\nested\foo\bazz.ts:1:10");
+    assert_contains!(output, r"glob\nested\foo\fizz.ts:1:10");
+    assert_contains!(output, r"glob\nested\fizz\foo.ts:1:10");
+    assert_contains!(output, r"glob\data\test1.ts:1:10");
   } else {
     assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
     assert_contains!(output, "glob/pages/[id].ts:1:10");
@@ -200,8 +200,8 @@ fn lint_with_glob_config_and_flags() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
-    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+    assert_contains!(output, r"glob\data\test1.js:1:10");
+    assert_contains!(output, r"glob\data\test1.ts:1:10");
   } else {
     assert_contains!(output, "glob/data/test1.js:1:10");
     assert_contains!(output, "glob/data/test1.ts:1:10");

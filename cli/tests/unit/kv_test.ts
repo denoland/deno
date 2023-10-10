@@ -20,6 +20,9 @@ try {
   isCI = true;
 }
 
+// Defined in test_util/src/lib.rs
+Deno.env.set("DENO_KV_ACCESS_TOKEN", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
 Deno.test({
   name: "openKv :memory: no permissions",
   permissions: {},
@@ -1211,6 +1214,28 @@ dbTest("operation size limit", async (db) => {
     "too many checks (max 10)",
   );
 
+  const validMutateKeys: Deno.KvKey[] = new Array(1000).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+  const invalidMutateKeys: Deno.KvKey[] = new Array(1001).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+
+  const res4 = await db.atomic()
+    .check(...lastValidKeys.map((key) => ({
+      key,
+      versionstamp: null,
+    })))
+    .mutate(...validMutateKeys.map((key) => ({
+      key,
+      type: "set",
+      value: 1,
+    } satisfies Deno.KvMutation)))
+    .commit();
+  assert(res4);
+
   await assertRejects(
     async () => {
       await db.atomic()
@@ -1218,7 +1243,7 @@ dbTest("operation size limit", async (db) => {
           key,
           versionstamp: null,
         })))
-        .mutate(...firstInvalidKeys.map((key) => ({
+        .mutate(...invalidMutateKeys.map((key) => ({
           key,
           type: "set",
           value: 1,
@@ -1226,7 +1251,50 @@ dbTest("operation size limit", async (db) => {
         .commit();
     },
     TypeError,
-    "too many mutations (max 10)",
+    "too many mutations (max 1000)",
+  );
+});
+
+dbTest("total mutation size limit", async (db) => {
+  const keys: Deno.KvKey[] = new Array(1000).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+
+  const atomic = db.atomic();
+  for (const key of keys) {
+    atomic.set(key, "foo");
+  }
+  const res = await atomic.commit();
+  assert(res);
+
+  // Use bigger values to trigger "total mutation size too large" error
+  await assertRejects(
+    async () => {
+      const value = new Array(3000).fill("a").join("");
+      const atomic = db.atomic();
+      for (const key of keys) {
+        atomic.set(key, value);
+      }
+      await atomic.commit();
+    },
+    TypeError,
+    "total mutation size too large (max 819200 bytes)",
+  );
+});
+
+dbTest("total key size limit", async (db) => {
+  const longString = new Array(1100).fill("a").join("");
+  const keys: Deno.KvKey[] = new Array(80).fill(0).map(() => [longString]);
+
+  const atomic = db.atomic();
+  for (const key of keys) {
+    atomic.set(key, "foo");
+  }
+  await assertRejects(
+    () => atomic.commit(),
+    TypeError,
+    "total key size too large (max 81920 bytes)",
   );
 });
 
@@ -1482,9 +1550,9 @@ dbTest("queue nan delay", async (db) => {
 });
 
 dbTest("queue large delay", async (db) => {
-  await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 });
+  await db.enqueue("test", { delay: 30 * 24 * 60 * 60 * 1000 });
   await assertRejects(async () => {
-    await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 + 1 });
+    await db.enqueue("test", { delay: 30 * 24 * 60 * 60 * 1000 + 1 });
   }, TypeError);
 });
 
@@ -1653,7 +1721,7 @@ Deno.test({
         if (count == 3) {
           promise.resolve();
         }
-        await sleep(60000);
+        await new Promise(() => {});
       });
 
       // Enqueue 3 messages.
@@ -1748,6 +1816,50 @@ Deno.test({
         // pass
       }
     }
+  },
+});
+
+Deno.test({
+  name: "different kv instances for enqueue and queueListen",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "queue_db" });
+    try {
+      const db0 = await Deno.openKv(filename);
+      const db1 = await Deno.openKv(filename);
+      const promise = deferred();
+      let dequeuedMessage: unknown = null;
+      const listener = db0.listenQueue((msg) => {
+        dequeuedMessage = msg;
+        promise.resolve();
+      });
+      try {
+        const res = await db1.enqueue("test");
+        assert(res.ok);
+        assertNotEquals(res.versionstamp, null);
+        await promise;
+        assertEquals(dequeuedMessage, "test");
+      } finally {
+        db0.close();
+        await listener;
+        db1.close();
+      }
+    } finally {
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "queue graceful close",
+  async fn() {
+    const db: Deno.Kv = await Deno.openKv(":memory:");
+    const listener = db.listenQueue((_msg) => {});
+    db.close();
+    await listener;
   },
 });
 
@@ -1929,6 +2041,77 @@ Deno.test({
       } catch {
         // pass
       }
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend",
+  async fn() {
+    const db = await Deno.openKv("http://localhost:4545/kv_remote_authorize");
+    try {
+      await db.set(["some-key"], 1);
+      const entry = await db.get(["some-key"]);
+      assertEquals(entry.value, null);
+      assertEquals(entry.versionstamp, null);
+    } finally {
+      db.close();
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend invalid format",
+  async fn() {
+    const db = await Deno.openKv(
+      "http://localhost:4545/kv_remote_authorize_invalid_format",
+    );
+    let ok = false;
+    try {
+      await db.set(["some-key"], 1);
+    } catch (e) {
+      if (
+        e.name === "TypeError" &&
+        e.message.startsWith("Metadata error: Failed to decode metadata: ")
+      ) {
+        ok = true;
+      } else {
+        throw e;
+      }
+    } finally {
+      db.close();
+    }
+
+    if (!ok) {
+      throw new Error("did not get expected error");
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend invalid version",
+  async fn() {
+    const db = await Deno.openKv(
+      "http://localhost:4545/kv_remote_authorize_invalid_version",
+    );
+    let ok = false;
+    try {
+      await db.set(["some-key"], 1);
+    } catch (e) {
+      if (
+        e.name === "TypeError" &&
+        e.message === "Metadata error: Unsupported metadata version: 2"
+      ) {
+        ok = true;
+      } else {
+        throw e;
+      }
+    } finally {
+      db.close();
+    }
+
+    if (!ok) {
+      throw new Error("did not get expected error");
     }
   },
 });

@@ -18,8 +18,6 @@ use deno_core::futures::Future;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
-#[cfg(feature = "__runtime_js_sources")]
-use deno_core::ExtensionFileSource;
 use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
@@ -35,7 +33,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
@@ -44,6 +42,7 @@ use log::debug;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::runtime;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
@@ -59,78 +58,6 @@ impl ExitCode {
   pub fn set(&mut self, code: i32) {
     self.0.store(code, Relaxed);
   }
-}
-
-// Duplicated in `build.rs`. Keep in sync!
-deno_core::extension!(
-  runtime,
-  esm_entry_point = "ext:runtime/90_deno_ns.js",
-  esm = [
-    dir "js",
-    "01_errors.js",
-    "01_version.ts",
-    "06_util.js",
-    "10_permissions.js",
-    "11_workers.js",
-    "13_buffer.js",
-    "30_os.js",
-    "40_fs_events.js",
-    "40_http.js",
-    "40_process.js",
-    "40_signals.js",
-    "40_tty.js",
-    "41_prompt.js",
-    "90_deno_ns.js",
-    "98_global_scope.js"
-  ],
-);
-
-// Duplicated in `build.rs`. Keep in sync!
-#[cfg(feature = "__runtime_js_sources")]
-pub fn maybe_transpile_source(
-  source: &mut ExtensionFileSource,
-) -> Result<(), AnyError> {
-  use deno_ast::MediaType;
-  use deno_ast::ParseParams;
-  use deno_ast::SourceTextInfo;
-  use deno_core::ExtensionFileSourceCode;
-  use std::path::Path;
-
-  // Always transpile `node:` built-in modules, since they might be TypeScript.
-  let media_type = if source.specifier.starts_with("node:") {
-    MediaType::TypeScript
-  } else {
-    MediaType::from_path(Path::new(&source.specifier))
-  };
-
-  match media_type {
-    MediaType::TypeScript => {}
-    MediaType::JavaScript => return Ok(()),
-    MediaType::Mjs => return Ok(()),
-    _ => panic!(
-      "Unsupported media type for snapshotting {media_type:?} for file {}",
-      source.specifier
-    ),
-  }
-  let code = source.load()?;
-
-  let parsed = deno_ast::parse_module(ParseParams {
-    specifier: source.specifier.to_string(),
-    text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
-    media_type,
-    capture_tokens: false,
-    scope_analysis: false,
-    maybe_syntax: None,
-  })?;
-  let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
-    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-    inline_source_map: false,
-    ..Default::default()
-  })?;
-
-  source.code =
-    ExtensionFileSourceCode::Computed(transpiled_source.text.into());
-  Ok(())
 }
 
 /// This worker is created and used by almost all
@@ -269,12 +196,10 @@ impl MainWorker {
     deno_core::extension!(deno_permissions_worker,
       options = {
         permissions: PermissionsContainer,
-        unstable: bool,
         enable_testing_features: bool,
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::UnstableChecker { unstable: options.unstable });
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
     );
@@ -324,26 +249,22 @@ impl MainWorker {
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         options.broadcast_channel.clone(),
-        unstable,
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(unstable),
+      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
         options.root_cert_store_provider.clone(),
-        unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           options.origin_storage_dir.clone(),
         ),
-        unstable,
       ),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        unstable,
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
@@ -365,7 +286,6 @@ impl MainWorker {
       ops::http::deno_http_runtime::init_ops_and_esm(),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
-        unstable,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
@@ -380,6 +300,7 @@ impl MainWorker {
       }
       #[cfg(feature = "__runtime_js_sources")]
       {
+        use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
           maybe_transpile_source(source).unwrap();
         }
@@ -415,6 +336,14 @@ impl MainWorker {
       is_main: true,
       ..Default::default()
     });
+
+    if unstable {
+      let op_state = js_runtime.op_state();
+      op_state
+        .borrow_mut()
+        .feature_checker
+        .enable_legacy_unstable();
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

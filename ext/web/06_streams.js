@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file camelcase
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -16,6 +15,7 @@ const {
   op_readable_stream_resource_get_sink,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_buf,
+  op_readable_stream_resource_write_sync,
   op_readable_stream_resource_close,
   op_readable_stream_resource_await_close,
 } = core.ensureFastOps();
@@ -54,10 +54,8 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   ObjectCreate,
-  ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
-  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
@@ -319,6 +317,7 @@ const _controller = Symbol("[[controller]]");
 const _detached = Symbol("[[Detached]]");
 const _disturbed = Symbol("[[disturbed]]");
 const _errorSteps = Symbol("[[ErrorSteps]]");
+const _finishPromise = Symbol("[[finishPromise]]");
 const _flushAlgorithm = Symbol("[[flushAlgorithm]]");
 const _globalObject = Symbol("[[globalObject]]");
 const _highWaterMark = Symbol("[[highWaterMark]]");
@@ -611,8 +610,7 @@ function initializeTransformStream(
   }
 
   function cancelAlgorithm(reason) {
-    transformStreamErrorWritableAndUnblockWrite(stream, reason);
-    return resolvePromiseWith(undefined);
+    return transformStreamDefaultSourceCancelAlgorithm(stream, reason);
   }
 
   stream[_readable] = createReadableStream(
@@ -708,6 +706,121 @@ function isReadableStreamDisturbed(stream) {
 }
 
 /**
+ * @param {Error | string | undefined} error
+ * @returns {string}
+ */
+function extractStringErrorFromError(error) {
+  if (typeof error == "string") {
+    return error;
+  }
+  const message = error?.message;
+  const stringMessage = typeof message == "string" ? message : String(message);
+  return stringMessage;
+}
+
+// We don't want to leak resources associated with our sink, even if something bad happens
+const READABLE_STREAM_SOURCE_REGISTRY = new SafeFinalizationRegistry(
+  (external) => {
+    op_readable_stream_resource_close(external);
+  },
+);
+
+class ResourceStreamResourceSink {
+  external;
+  constructor(external) {
+    this.external = external;
+    READABLE_STREAM_SOURCE_REGISTRY.register(this, external, this);
+  }
+  close() {
+    if (this.external === undefined) {
+      return;
+    }
+    READABLE_STREAM_SOURCE_REGISTRY.unregister(this);
+    op_readable_stream_resource_close(this.external);
+    this.external = undefined;
+  }
+}
+
+/**
+ * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+ * @param {any} sink
+ * @param {Uint8Array} chunk
+ */
+function readableStreamWriteChunkFn(reader, sink, chunk) {
+  // Empty chunk. Re-read.
+  if (chunk.length == 0) {
+    readableStreamReadFn(reader, sink);
+    return;
+  }
+
+  const res = op_readable_stream_resource_write_sync(sink.external, chunk);
+  if (res == 0) {
+    // Closed
+    reader.cancel("resource closed");
+    sink.close();
+  } else if (res == 1) {
+    // Successfully written (synchronous). Re-read.
+    readableStreamReadFn(reader, sink);
+  } else if (res == 2) {
+    // Full. If the channel is full, we perform an async await until we can write, and then return
+    // to a synchronous loop.
+    (async () => {
+      if (
+        await op_readable_stream_resource_write_buf(
+          sink.external,
+          chunk,
+        )
+      ) {
+        readableStreamReadFn(reader, sink);
+      } else {
+        reader.cancel("resource closed");
+        sink.close();
+      }
+    })();
+  }
+}
+
+/**
+ * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+ * @param {any} sink
+ */
+function readableStreamReadFn(reader, sink) {
+  // The ops here look like op_write_all/op_close, but we're not actually writing to a
+  // real resource.
+  let reentrant = true;
+  let gotChunk = undefined;
+  readableStreamDefaultReaderRead(reader, {
+    chunkSteps(chunk) {
+      // If the chunk has non-zero length, write it
+      if (reentrant) {
+        gotChunk = chunk;
+      } else {
+        readableStreamWriteChunkFn(reader, sink, chunk);
+      }
+    },
+    closeSteps() {
+      sink.close();
+    },
+    errorSteps(error) {
+      const success = op_readable_stream_resource_write_error(
+        sink.external,
+        extractStringErrorFromError(error),
+      );
+      // We don't cancel the reader if there was an error reading. We'll let the downstream
+      // consumer close the resource after it receives the error.
+      if (!success) {
+        reader.cancel("resource closed");
+      }
+      sink.close();
+    },
+  });
+  reentrant = false;
+  if (gotChunk) {
+    readableStreamWriteChunkFn(reader, sink, gotChunk);
+  }
+}
+
+/**
  * Create a new resource that wraps a ReadableStream. The resource will support
  * read operations, and those read operations will be fed by the output of the
  * ReadableStream source.
@@ -724,48 +837,19 @@ function resourceForReadableStream(stream) {
   PromisePrototypeCatch(
     PromisePrototypeThen(
       op_readable_stream_resource_await_close(rid),
-      () => reader.cancel(),
+      () => reader.cancel("resource closed"),
     ),
     () => {},
   );
 
-  // The ops here look like op_write_all/op_close, but we're not actually writing to a
-  // real resource.
-  (async () => {
-    try {
-      // This allocation is freed in the finally block below, guaranteeing it won't leak
-      const sink = op_readable_stream_resource_get_sink(rid);
-      try {
-        while (true) {
-          let value;
-          try {
-            const read = await reader.read();
-            value = read.value;
-            if (read.done) {
-              break;
-            }
-          } catch (err) {
-            const message = err.message;
-            if (message) {
-              await op_readable_stream_resource_write_error(sink, err.message);
-            } else {
-              await op_readable_stream_resource_write_error(sink, String(err));
-            }
-            break;
-          }
-          // If the chunk has non-zero length, write it
-          if (value.length > 0) {
-            await op_readable_stream_resource_write_buf(sink, value);
-          }
-        }
-      } finally {
-        op_readable_stream_resource_close(sink);
-      }
-    } catch (err) {
-      // Something went terribly wrong with this stream -- log and continue
-      console.error("Unexpected internal error on stream", err);
-    }
-  })();
+  // This allocation is freed when readableStreamReadFn is completed
+  const sink = new ResourceStreamResourceSink(
+    op_readable_stream_resource_get_sink(rid),
+  );
+
+  // Trigger the first read
+  readableStreamReadFn(reader, sink);
+
   return rid;
 }
 
@@ -3606,12 +3690,14 @@ function setUpReadableStreamDefaultReader(reader, stream) {
  * @param {TransformStreamDefaultController<O>} controller
  * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm
  * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm
+ * @param {(reason: any) => Promise<void>} cancelAlgorithm
  */
 function setUpTransformStreamDefaultController(
   stream,
   controller,
   transformAlgorithm,
   flushAlgorithm,
+  cancelAlgorithm,
 ) {
   assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
   assert(stream[_controller] === undefined);
@@ -3619,6 +3705,7 @@ function setUpTransformStreamDefaultController(
   stream[_controller] = controller;
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
+  controller[_cancelAlgorithm] = cancelAlgorithm;
 }
 
 /**
@@ -3646,6 +3733,8 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   };
   /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
   let flushAlgorithm = () => resolvePromiseWith(undefined);
+  /** @type {(reason: any) => Promise<void>} */
+  let cancelAlgorithm = () => resolvePromiseWith(undefined);
   if (transformerDict.transform !== undefined) {
     transformAlgorithm = (chunk, controller) =>
       webidl.invokeCallbackFunction(
@@ -3668,11 +3757,23 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         true,
       );
   }
+  if (transformerDict.cancel !== undefined) {
+    cancelAlgorithm = (reason) =>
+      webidl.invokeCallbackFunction(
+        transformerDict.cancel,
+        [reason],
+        transformer,
+        webidl.converters["Promise<undefined>"],
+        "Failed to call 'cancelAlgorithm' on 'TransformStreamDefaultController'",
+        true,
+      );
+  }
   setUpTransformStreamDefaultController(
     stream,
     controller,
     transformAlgorithm,
     flushAlgorithm,
+    cancelAlgorithm,
   );
 }
 
@@ -3854,6 +3955,7 @@ function setUpWritableStreamDefaultWriter(writer, stream) {
 function transformStreamDefaultControllerClearAlgorithms(controller) {
   controller[_transformAlgorithm] = undefined;
   controller[_flushAlgorithm] = undefined;
+  controller[_cancelAlgorithm] = undefined;
 }
 
 /**
@@ -3923,13 +4025,33 @@ function transformStreamDefaultControllerTerminate(controller) {
 }
 
 /**
- * @param {TransformStream} stream
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
  * @param {any=} reason
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
-  transformStreamError(stream, reason);
-  return resolvePromiseWith(undefined);
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (readable[_state] === "errored") {
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerError(readable[_controller], reason);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -3939,21 +4061,26 @@ function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkCloseAlgorithm(stream) {
-  const readable = stream[_readable];
   const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
   const flushPromise = controller[_flushAlgorithm](controller);
   transformStreamDefaultControllerClearAlgorithms(controller);
-  return transformPromiseWith(flushPromise, () => {
+  transformPromiseWith(flushPromise, () => {
     if (readable[_state] === "errored") {
-      throw readable[_storedError];
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerClose(readable[_controller]);
+      controller[_finishPromise].resolve(undefined);
     }
-    readableStreamDefaultControllerClose(
-      /** @type {ReadableStreamDefaultController} */ readable[_controller],
-    );
   }, (r) => {
-    transformStreamError(stream, r);
-    throw readable[_storedError];
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
   });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -3983,6 +4110,41 @@ function transformStreamDefaultSinkWriteAlgorithm(stream, chunk) {
     });
   }
   return transformStreamDefaultControllerPerformTransform(controller, chunk);
+}
+
+/**
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
+ * @param {any=} reason
+ * @returns {Promise<void>}
+ */
+function transformStreamDefaultSourceCancelAlgorithm(stream, reason) {
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const writable = stream[_writable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (writable[_state] === "errored") {
+      controller[_finishPromise].reject(writable[_storedError]);
+    } else {
+      writableStreamDefaultControllerErrorIfNeeded(
+        writable[_controller],
+        reason,
+      );
+      transformStreamUnblockWrite(stream);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    writableStreamDefaultControllerErrorIfNeeded(writable[_controller], r);
+    transformStreamUnblockWrite(stream);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4020,9 +4182,7 @@ function transformStreamErrorWritableAndUnblockWrite(stream, e) {
     stream[_writable][_controller],
     e,
   );
-  if (stream[_backpressure] === true) {
-    transformStreamSetBackpressure(stream, false);
-  }
+  transformStreamUnblockWrite(stream);
 }
 
 /**
@@ -4036,6 +4196,15 @@ function transformStreamSetBackpressure(stream, backpressure) {
   }
   stream[_backpressureChangePromise] = new Deferred();
   stream[_backpressure] = backpressure;
+}
+
+/**
+ * @param {TransformStream} stream
+ */
+function transformStreamUnblockWrite(stream) {
+  if (stream[_backpressure] === true) {
+    transformStreamSetBackpressure(stream, false);
+  }
 }
 
 /**
@@ -4644,26 +4813,6 @@ function writableStreamUpdateBackpressure(stream, backpressure) {
   stream[_backpressure] = backpressure;
 }
 
-/**
- * @template T
- * @param {T} value
- * @param {boolean} done
- * @returns {IteratorResult<T>}
- */
-function createIteratorResult(value, done) {
-  const result = ObjectCreate(ObjectPrototype);
-  ObjectDefineProperties(result, {
-    value: { value, writable: true, enumerable: true, configurable: true },
-    done: {
-      value: done,
-      writable: true,
-      enumerable: true,
-      configurable: true,
-    },
-  });
-  return result;
-}
-
 /** @type {AsyncIterator<unknown, unknown>} */
 const asyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
 
@@ -4678,7 +4827,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
     const reader = this[_reader];
     function nextSteps() {
       if (reader[_iteratorFinished]) {
-        return PromiseResolve(createIteratorResult(undefined, true));
+        return PromiseResolve({ value: undefined, done: true });
       }
 
       if (reader[_stream] === undefined) {
@@ -4694,11 +4843,11 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       /** @type {ReadRequest} */
       const readRequest = {
         chunkSteps(chunk) {
-          promise.resolve(createIteratorResult(chunk, false));
+          promise.resolve({ value: chunk, done: false });
         },
         closeSteps() {
           readableStreamDefaultReaderRelease(reader);
-          promise.resolve(createIteratorResult(undefined, true));
+          promise.resolve({ value: undefined, done: true });
         },
         errorSteps(e) {
           readableStreamDefaultReaderRelease(reader);
@@ -4711,7 +4860,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
         reader[_iteratorNext] = null;
         if (result.done === true) {
           reader[_iteratorFinished] = true;
-          return createIteratorResult(undefined, true);
+          return { value: undefined, done: true };
         }
         return result;
       }, (reason) => {
@@ -4736,12 +4885,12 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
     const reader = this[_reader];
     const returnSteps = () => {
       if (reader[_iteratorFinished]) {
-        return PromiseResolve(createIteratorResult(arg, true));
+        return PromiseResolve({ value: arg, done: true });
       }
       reader[_iteratorFinished] = true;
 
       if (reader[_stream] === undefined) {
-        return PromiseResolve(createIteratorResult(undefined, true));
+        return PromiseResolve({ value: undefined, done: true });
       }
       assert(reader[_readRequests].length === 0);
       if (this[_preventCancel] === false) {
@@ -4750,7 +4899,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
         return result;
       }
       readableStreamDefaultReaderRelease(reader);
-      return PromiseResolve(createIteratorResult(undefined, true));
+      return PromiseResolve({ value: undefined, done: true });
     };
 
     const returnPromise = reader[_iteratorNext]
@@ -4758,7 +4907,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       : returnSteps();
     return PromisePrototypeThen(
       returnPromise,
-      () => createIteratorResult(arg, true),
+      () => ({ value: arg, done: true }),
     );
   },
 }, asyncIteratorPrototype);
@@ -4802,7 +4951,7 @@ class ByteLengthQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(ByteLengthQueuingStrategy);
+webidl.configureInterface(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
@@ -4856,7 +5005,7 @@ class CountQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(CountQueuingStrategy);
+webidl.configureInterface(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
@@ -5190,7 +5339,7 @@ ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
   configurable: true,
 });
 
-webidl.configurePrototype(ReadableStream);
+webidl.configureInterface(ReadableStream);
 const ReadableStreamPrototype = ReadableStream.prototype;
 
 function errorReadableStream(stream, e) {
@@ -5290,7 +5439,7 @@ class ReadableStreamDefaultReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultReader);
+webidl.configureInterface(ReadableStreamDefaultReader);
 const ReadableStreamDefaultReaderPrototype =
   ReadableStreamDefaultReader.prototype;
 
@@ -5420,7 +5569,7 @@ class ReadableStreamBYOBReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBReader);
+webidl.configureInterface(ReadableStreamBYOBReader);
 const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 
 class ReadableStreamBYOBRequest {
@@ -5500,7 +5649,7 @@ class ReadableStreamBYOBRequest {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBRequest);
+webidl.configureInterface(ReadableStreamBYOBRequest);
 const ReadableStreamBYOBRequestPrototype = ReadableStreamBYOBRequest.prototype;
 
 class ReadableByteStreamController {
@@ -5697,7 +5846,7 @@ class ReadableByteStreamController {
   }
 }
 
-webidl.configurePrototype(ReadableByteStreamController);
+webidl.configureInterface(ReadableByteStreamController);
 const ReadableByteStreamControllerPrototype =
   ReadableByteStreamController.prototype;
 
@@ -5820,7 +5969,7 @@ class ReadableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultController);
+webidl.configureInterface(ReadableStreamDefaultController);
 const ReadableStreamDefaultControllerPrototype =
   ReadableStreamDefaultController.prototype;
 
@@ -5938,11 +6087,15 @@ class TransformStream {
   }
 }
 
-webidl.configurePrototype(TransformStream);
+webidl.configureInterface(TransformStream);
 const TransformStreamPrototype = TransformStream.prototype;
 
 /** @template O */
 class TransformStreamDefaultController {
+  /** @type {(reason: any) => Promise<void>} */
+  [_cancelAlgorithm];
+  /** @type {Promise<void> | undefined} */
+  [_finishPromise];
   /** @type {(controller: this) => Promise<void>} */
   [_flushAlgorithm];
   /** @type {TransformStream<O>} */
@@ -6005,7 +6158,7 @@ class TransformStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(TransformStreamDefaultController);
+webidl.configureInterface(TransformStreamDefaultController);
 const TransformStreamDefaultControllerPrototype =
   TransformStreamDefaultController.prototype;
 
@@ -6140,7 +6293,7 @@ class WritableStream {
   }
 }
 
-webidl.configurePrototype(WritableStream);
+webidl.configureInterface(WritableStream);
 const WritableStreamPrototype = WritableStream.prototype;
 
 /** @template W */
@@ -6286,7 +6439,7 @@ class WritableStreamDefaultWriter {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultWriter);
+webidl.configureInterface(WritableStreamDefaultWriter);
 const WritableStreamDefaultWriterPrototype =
   WritableStreamDefaultWriter.prototype;
 
@@ -6364,7 +6517,7 @@ class WritableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultController);
+webidl.configureInterface(WritableStreamDefaultController);
 const WritableStreamDefaultControllerPrototype =
   WritableStreamDefaultController.prototype;
 

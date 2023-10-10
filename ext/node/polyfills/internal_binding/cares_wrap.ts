@@ -34,7 +34,6 @@ import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
-// deno-lint-ignore camelcase
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";

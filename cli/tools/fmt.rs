@@ -29,7 +29,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use log::debug;
 use log::info;
 use log::warn;
@@ -153,7 +153,7 @@ fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
     .ignore_node_modules()
     .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
-    .collect_files(&files.include)
+    .collect_files(files.include.as_deref())
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks

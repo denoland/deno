@@ -15,11 +15,10 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::util::checksum;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
 use crate::worker::CliMainWorkerFactory;
 
@@ -40,8 +39,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -51,6 +50,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::worker::MainWorker;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -78,17 +78,19 @@ use std::time::Instant;
 use std::time::SystemTime;
 use tokio::signal;
 use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::WeakUnboundedSender;
 
 pub mod fmt;
-mod reporters;
+pub mod reporters;
 
 pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
+use reporters::TapTestReporter;
 use reporters::TestReporter;
 
 /// The test mode is used to determine how a specifier is to be tested.
@@ -171,19 +173,6 @@ pub struct TestDescription {
   pub only: bool,
   pub origin: String,
   pub location: TestLocation,
-}
-
-impl TestDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[self.location.file_name.as_bytes(), self.name.as_bytes()])
-  }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TestOutput {
-  String(String),
-  Bytes(Vec<u8>),
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -296,16 +285,6 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-impl TestStepDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[
-      self.location.file_name.as_bytes(),
-      &self.level.to_be_bytes(),
-      self.name.as_bytes(),
-    ])
-  }
-}
-
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -336,6 +315,7 @@ pub enum TestEvent {
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
+  ForceEndReport,
   Sigint,
 }
 
@@ -359,12 +339,13 @@ struct TestSpecifiersOptions {
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
+  filter: bool,
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
@@ -400,10 +381,15 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
+      options.filter,
+      false,
     )),
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
     }
+    TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+    )),
   };
 
   if let Some(junit_path) = &options.junit_path {
@@ -444,6 +430,13 @@ pub async fn test_specifier(
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
+  if options.trace_ops {
+    worker.execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].core.enableOpCallTracing();",
+    )?;
+  }
+
   // We execute the main module as a side module so that import.meta.main is not set.
   match worker.execute_side_module_possibly_with_npm().await {
     Ok(()) => {}
@@ -461,28 +454,54 @@ pub async fn test_specifier(
   }
 
   let mut worker = worker.into_main_worker();
-  if options.trace_ops {
-    worker.js_runtime.execute_script_static(
-      located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
-    )?;
-  }
+
   worker.dispatch_load_event(located_script_name!())?;
 
-  let tests = {
+  run_tests_for_worker(&mut worker, &specifier, &options, &fail_fast_tracker)
+    .await?;
+
+  // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
+  // event loop to continue beyond what's needed to await results.
+  worker.dispatch_beforeunload_event(located_script_name!())?;
+  worker.dispatch_unload_event(located_script_name!())?;
+
+  if let Some(coverage_collector) = coverage_collector.as_mut() {
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
+  }
+  Ok(())
+}
+
+pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
+  let state_rc = worker.js_runtime.op_state();
+  let state = state_rc.borrow();
+  !state.borrow::<ops::testing::TestContainer>().0.is_empty()
+}
+
+pub async fn run_tests_for_worker(
+  worker: &mut MainWorker,
+  specifier: &ModuleSpecifier,
+  options: &TestSpecifierOptions,
+  fail_fast_tracker: &FailFastTracker,
+) -> Result<(), AnyError> {
+  let (tests, mut sender) = {
     let state_rc = worker.js_runtime.op_state();
     let mut state = state_rc.borrow_mut();
-    std::mem::take(&mut state.borrow_mut::<ops::testing::TestContainer>().0)
+    (
+      std::mem::take(&mut state.borrow_mut::<ops::testing::TestContainer>().0),
+      state.borrow::<TestEventSender>().clone(),
+    )
   };
   let unfiltered = tests.len();
-  let (only, no_only): (Vec<_>, Vec<_>) =
-    tests.into_iter().partition(|(d, _)| d.only);
-  let used_only = !only.is_empty();
-  let tests = if used_only { only } else { no_only };
-  let mut tests = tests
+  let tests = tests
     .into_iter()
     .filter(|(d, _)| options.filter.includes(&d.name))
     .collect::<Vec<_>>();
+  let (only, no_only): (Vec<_>, Vec<_>) =
+    tests.into_iter().partition(|(d, _)| d.only);
+  let used_only = !only.is_empty();
+  let mut tests = if used_only { only } else { no_only };
   if let Some(seed) = options.shuffle {
     tests.shuffle(&mut SmallRng::seed_from_u64(seed));
   }
@@ -547,17 +566,6 @@ pub async fn test_specifier(
     }
     let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
-  }
-
-  // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
-  // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event(located_script_name!())?;
-  worker.dispatch_unload_event(located_script_name!())?;
-
-  if let Some(coverage_collector) = coverage_collector.as_mut() {
-    worker
-      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
-      .await?;
   }
   Ok(())
 }
@@ -826,7 +834,7 @@ async fn test_specifiers(
     specifiers
   };
 
-  let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let (sender, receiver) = unbounded_channel::<TestEvent>();
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
 
@@ -836,13 +844,14 @@ async fn test_specifiers(
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
-  let mut reporter = get_test_reporter(&options);
+  let reporter = get_test_reporter(&options);
+  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
-    let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+    let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     spawn_blocking(move || {
       create_and_run_current_thread(test_specifier(
@@ -855,142 +864,147 @@ async fn test_specifiers(
       ))
     })
   });
-
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let handler = {
-    spawn(async move {
-      let earlier = Instant::now();
-      let mut tests = IndexMap::new();
-      let mut test_steps = IndexMap::new();
-      let mut tests_started = HashSet::new();
-      let mut tests_with_result = HashSet::new();
-      let mut used_only = false;
-      let mut failed = false;
-
-      while let Some(event) = receiver.recv().await {
-        match event {
-          TestEvent::Register(description) => {
-            reporter.report_register(&description);
-            tests.insert(description.id, description);
-          }
-
-          TestEvent::Plan(plan) => {
-            if plan.used_only {
-              used_only = true;
-            }
-
-            reporter.report_plan(&plan);
-          }
-
-          TestEvent::Wait(id) => {
-            if tests_started.insert(id) {
-              reporter.report_wait(tests.get(&id).unwrap());
-            }
-          }
-
-          TestEvent::Output(output) => {
-            reporter.report_output(&output);
-          }
-
-          TestEvent::Result(id, result, elapsed) => {
-            if tests_with_result.insert(id) {
-              match result {
-                TestResult::Failed(_) | TestResult::Cancelled => {
-                  failed = true;
-                }
-                _ => (),
-              }
-              reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
-            }
-          }
-
-          TestEvent::UncaughtError(origin, error) => {
-            failed = true;
-            reporter.report_uncaught_error(&origin, error);
-          }
-
-          TestEvent::StepRegister(description) => {
-            reporter.report_step_register(&description);
-            test_steps.insert(description.id, description);
-          }
-
-          TestEvent::StepWait(id) => {
-            if tests_started.insert(id) {
-              reporter.report_step_wait(test_steps.get(&id).unwrap());
-            }
-          }
-
-          TestEvent::StepResult(id, result, duration) => {
-            if tests_with_result.insert(id) {
-              reporter.report_step_result(
-                test_steps.get(&id).unwrap(),
-                &result,
-                duration,
-                &tests,
-                &test_steps,
-              );
-            }
-          }
-
-          TestEvent::Sigint => {
-            let elapsed = Instant::now().duration_since(earlier);
-            reporter.report_sigint(
-              &tests_started
-                .difference(&tests_with_result)
-                .copied()
-                .collect(),
-              &tests,
-              &test_steps,
-            );
-            if let Err(err) =
-              reporter.flush_report(&elapsed, &tests, &test_steps)
-            {
-              eprint!("Test reporter failed to flush: {}", err)
-            }
-            std::process::exit(130);
-          }
-        }
-      }
-
-      sigint_handler_handle.abort();
-      HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
-
-      let elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&elapsed, &tests, &test_steps);
-      if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
-        return Err(generic_error(format!(
-          "Test reporter failed to flush: {}",
-          err
-        )));
-      }
-
-      if used_only {
-        return Err(generic_error(
-          "Test failed because the \"only\" option was used",
-        ));
-      }
-
-      if failed {
-        return Err(generic_error("Test failed"));
-      }
-
-      Ok(())
-    })
-  };
+  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
 
   let (join_results, result) = future::join(join_stream, handler).await;
-
-  // propagate any errors
+  sigint_handler_handle.abort();
+  HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
   for join_result in join_results {
     join_result??;
   }
-
   result??;
 
   Ok(())
+}
+
+/// Gives receiver back in case it was ended with `TestEvent::ForceEndReport`.
+pub async fn report_tests(
+  mut receiver: UnboundedReceiver<TestEvent>,
+  mut reporter: Box<dyn TestReporter>,
+) -> (Result<(), AnyError>, UnboundedReceiver<TestEvent>) {
+  let mut tests = IndexMap::new();
+  let mut test_steps = IndexMap::new();
+  let mut tests_started = HashSet::new();
+  let mut tests_with_result = HashSet::new();
+  let mut start_time = None;
+  let mut had_plan = false;
+  let mut used_only = false;
+  let mut failed = false;
+
+  while let Some(event) = receiver.recv().await {
+    match event {
+      TestEvent::Register(description) => {
+        reporter.report_register(&description);
+        tests.insert(description.id, description);
+      }
+      TestEvent::Plan(plan) => {
+        if !had_plan {
+          start_time = Some(Instant::now());
+          had_plan = true;
+        }
+        if plan.used_only {
+          used_only = true;
+        }
+        reporter.report_plan(&plan);
+      }
+      TestEvent::Wait(id) => {
+        if tests_started.insert(id) {
+          reporter.report_wait(tests.get(&id).unwrap());
+        }
+      }
+      TestEvent::Output(output) => {
+        reporter.report_output(&output);
+      }
+      TestEvent::Result(id, result, elapsed) => {
+        if tests_with_result.insert(id) {
+          match result {
+            TestResult::Failed(_) | TestResult::Cancelled => {
+              failed = true;
+            }
+            _ => (),
+          }
+          reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
+        }
+      }
+      TestEvent::UncaughtError(origin, error) => {
+        failed = true;
+        reporter.report_uncaught_error(&origin, error);
+      }
+      TestEvent::StepRegister(description) => {
+        reporter.report_step_register(&description);
+        test_steps.insert(description.id, description);
+      }
+      TestEvent::StepWait(id) => {
+        if tests_started.insert(id) {
+          reporter.report_step_wait(test_steps.get(&id).unwrap());
+        }
+      }
+      TestEvent::StepResult(id, result, duration) => {
+        if tests_with_result.insert(id) {
+          reporter.report_step_result(
+            test_steps.get(&id).unwrap(),
+            &result,
+            duration,
+            &tests,
+            &test_steps,
+          );
+        }
+      }
+      TestEvent::ForceEndReport => {
+        break;
+      }
+      TestEvent::Sigint => {
+        let elapsed = start_time
+          .map(|t| Instant::now().duration_since(t))
+          .unwrap_or_default();
+        reporter.report_sigint(
+          &tests_started
+            .difference(&tests_with_result)
+            .copied()
+            .collect(),
+          &tests,
+          &test_steps,
+        );
+        if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+          eprint!("Test reporter failed to flush: {}", err)
+        }
+        std::process::exit(130);
+      }
+    }
+  }
+
+  let elapsed = start_time
+    .map(|t| Instant::now().duration_since(t))
+    .unwrap_or_default();
+  reporter.report_summary(&elapsed, &tests, &test_steps);
+  if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+    return (
+      Err(generic_error(format!(
+        "Test reporter failed to flush: {}",
+        err
+      ))),
+      receiver,
+    );
+  }
+
+  if used_only {
+    return (
+      Err(generic_error(
+        "Test failed because the \"only\" option was used",
+      )),
+      receiver,
+    );
+  }
+
+  if failed {
+    return (Err(generic_error("Test failed")), receiver);
+  }
+
+  (Ok(()), receiver)
 }
 
 /// Checks if the path has a basename and extension Deno supports for tests.
@@ -1000,7 +1014,7 @@ pub(crate) fn is_supported_test_path(path: &Path) -> bool {
     (basename.ends_with("_test")
       || basename.ends_with(".test")
       || basename == "test")
-      && is_supported_ext(path)
+      && is_script_ext(path)
   } else {
     false
   }
@@ -1157,6 +1171,7 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
+      filter: test_options.filter.is_some(),
       reporter: test_options.reporter,
       junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
@@ -1209,7 +1224,9 @@ pub async fn run_tests_with_watch(
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = sender.send(cli_options.watch_paths());
-        let _ = sender.send(test_options.files.include.clone());
+        if let Some(include) = &test_options.files.include {
+          let _ = sender.send(include.clone());
+        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
@@ -1289,6 +1306,7 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
+            filter: test_options.filter.is_some(),
             reporter: test_options.reporter,
             junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {
@@ -1311,7 +1329,7 @@ pub async fn run_tests_with_watch(
 
 /// Tracks failures for the `--fail-fast` argument in
 /// order to tell when to stop running tests.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct FailFastTracker {
   max_count: Option<usize>,
   failure_count: Arc<AtomicUsize>,

@@ -23,8 +23,6 @@ use import_map::ImportMap;
 
 use crate::args::JsxImportSourceConfig;
 use crate::cache::ParsedSourceCache;
-use crate::npm::CliNpmRegistryApi;
-use crate::npm::NpmResolution;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 
@@ -116,6 +114,7 @@ impl Loader for TestLoader {
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
+    _cache_setting: deno_graph::source::CacheSetting,
   ) -> LoadFuture {
     let specifier = self.redirects.get(specifier).unwrap_or(specifier);
     let result = self.files.get(specifier).map(|result| match result {
@@ -294,22 +293,13 @@ fn build_resolver(
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
-  let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
-  let npm_resolution = Arc::new(NpmResolution::from_serialized(
-    npm_registry_api.clone(),
-    None,
-    None,
-  ));
   CliGraphResolver::new(
-    npm_registry_api,
-    npm_resolution,
-    Default::default(),
+    None,
     Default::default(),
     CliGraphResolverOptions {
       maybe_jsx_import_source_config,
       maybe_import_map: original_import_map.map(Arc::new),
       maybe_vendor_dir: None,
-      no_npm: false,
     },
   )
 }

@@ -66,6 +66,7 @@ pub fn format_test_step_for_summary(
 }
 
 pub(super) fn report_sigint(
+  writer: &mut dyn std::io::Write,
   cwd: &Url,
   tests_pending: &HashSet<usize>,
   tests: &IndexMap<usize, TestDescription>,
@@ -84,17 +85,20 @@ pub(super) fn report_sigint(
         .insert(format_test_step_for_summary(cwd, desc, tests, test_steps));
     }
   }
-  println!(
+  writeln!(
+    writer,
     "\n{} The following tests were pending:\n",
     colors::intense_blue("SIGINT")
-  );
+  )
+  .unwrap();
   for entry in formatted_pending {
-    println!("{}", entry);
+    writeln!(writer, "{}", entry).unwrap();
   }
-  println!();
+  writeln!(writer).unwrap();
 }
 
 pub(super) fn report_summary(
+  writer: &mut dyn std::io::Write,
   cwd: &Url,
   summary: &TestSummary,
   elapsed: &Duration,
@@ -120,14 +124,20 @@ pub(super) fn report_summary(
     }
 
     // note: the trailing whitespace is intentional to get a red background
-    println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
+    writeln!(writer, "\n{}\n", colors::white_bold_on_red(" ERRORS ")).unwrap();
     for (origin, (failures, uncaught_error)) in failures_by_origin {
       for (description, failure) in failures {
         if !failure.hide_in_summary() {
           let failure_title = format_test_for_summary(cwd, description);
-          println!("{}", &failure_title);
-          println!("{}: {}", colors::red_bold("error"), failure.to_string());
-          println!();
+          writeln!(writer, "{}", &failure_title).unwrap();
+          writeln!(
+            writer,
+            "{}: {}",
+            colors::red_bold("error"),
+            failure.to_string()
+          )
+          .unwrap();
+          writeln!(writer).unwrap();
           failure_titles.push(failure_title);
         }
       }
@@ -136,22 +146,24 @@ pub(super) fn report_summary(
           "{} (uncaught error)",
           to_relative_path_or_remote_url(cwd, &origin)
         );
-        println!("{}", &failure_title);
-        println!(
+        writeln!(writer, "{}", &failure_title).unwrap();
+        writeln!(
+          writer,
           "{}: {}",
           colors::red_bold("error"),
           format_test_error(js_error)
-        );
-        println!("This error was not caught from a test and caused the test runner to fail on the referenced module.");
-        println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
-        println!();
+        )
+        .unwrap();
+        writeln!(writer, "This error was not caught from a test and caused the test runner to fail on the referenced module.").unwrap();
+        writeln!(writer, "It most likely originated from a dangling promise, event/timeout handler or top-level code.").unwrap();
+        writeln!(writer).unwrap();
         failure_titles.push(failure_title);
       }
     }
     // note: the trailing whitespace is intentional to get a red background
-    println!("{}\n", colors::white_bold_on_red(" FAILURES "));
+    writeln!(writer, "{}\n", colors::white_bold_on_red(" FAILURES ")).unwrap();
     for failure_title in failure_titles {
-      println!("{failure_title}");
+      writeln!(writer, "{failure_title}").unwrap();
     }
   }
 
@@ -201,10 +213,12 @@ pub(super) fn report_summary(
     write!(summary_result, " | {} filtered out", summary.filtered_out).unwrap()
   };
 
-  println!(
-    "\n{} | {} {}\n",
+  writeln!(
+    writer,
+    "\n{} | {} {}",
     status,
     summary_result,
     colors::gray(format!("({})", display::human_elapsed(elapsed.as_millis()))),
-  );
+  )
+  .unwrap();
 }

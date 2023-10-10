@@ -26,7 +26,7 @@ pub fn merge_processes(
     for script_cov in process_cov.result {
       url_to_scripts
         .entry(script_cov.url.clone())
-        .or_insert_with(Vec::new)
+        .or_default()
         .push(script_cov);
     }
   }
@@ -66,10 +66,7 @@ pub fn merge_scripts(
           end: root_range_cov.end_char_offset,
         }
       };
-      range_to_funcs
-        .entry(root_range)
-        .or_insert_with(Vec::new)
-        .push(func_cov);
+      range_to_funcs.entry(root_range).or_default().push(func_cov);
     }
   }
 
@@ -103,11 +100,7 @@ impl Ord for CharRange {
 
 impl PartialOrd for CharRange {
   fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
-    if self.start != other.start {
-      self.start.partial_cmp(&other.start)
-    } else {
-      other.end.partial_cmp(&self.end)
-    }
+    Some(self.cmp(other))
   }
 }
 
@@ -167,7 +160,7 @@ fn into_start_events<'a>(trees: Vec<&'a mut RangeTree<'a>>) -> Vec<StartEvent> {
     for child in tree.children.drain(..) {
       result
         .entry(child.start)
-        .or_insert_with(Vec::new)
+        .or_default()
         .push((parent_index, child));
     }
   }
@@ -229,7 +222,7 @@ impl<'a> Iterator for StartEventQueue<'a> {
               let mut result = self.queue.next().unwrap();
               if pending_offset == queue_offset {
                 let pending_trees = self.pending.take().unwrap().trees;
-                result.trees.extend(pending_trees.into_iter())
+                result.trees.extend(pending_trees)
               }
               Some(result)
             }
@@ -294,7 +287,7 @@ fn merge_range_tree_children<'a>(
           };
           parent_to_nested
             .entry(parent_index)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(child);
         }
       }
@@ -312,10 +305,7 @@ fn merge_range_tree_children<'a>(
             flat_children[parent_index].push(tree);
             continue;
           }
-          parent_to_nested
-            .entry(parent_index)
-            .or_insert_with(Vec::new)
-            .push(tree);
+          parent_to_nested.entry(parent_index).or_default().push(tree);
         }
         start_event_queue.set_pending_offset(open_range_end);
         open_range = Some(CharRange {
@@ -338,7 +328,7 @@ fn merge_range_tree_children<'a>(
 
   let child_forests: Vec<Vec<&'a mut RangeTree<'a>>> = flat_children
     .into_iter()
-    .zip(wrapped_children.into_iter())
+    .zip(wrapped_children)
     .map(|(flat, wrapped)| merge_children_lists(flat, wrapped))
     .collect();
 

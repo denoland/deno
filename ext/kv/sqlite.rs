@@ -2,7 +2,10 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::env::current_dir;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
@@ -19,15 +22,18 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::OpState;
+use deno_node::PathClean;
 use rand::Rng;
 use rusqlite::params;
 use rusqlite::OpenFlags;
 use rusqlite::OptionalExtension;
 use rusqlite::Transaction;
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::OnceCell;
@@ -212,30 +218,35 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       }
     }
 
-    let conn = sqlite_retry_loop(|| {
+    let (conn, queue_waker_key) = sqlite_retry_loop(|| {
       let path = path.clone();
       let default_storage_dir = self.default_storage_dir.clone();
       async move {
         spawn_blocking(move || {
-          let conn = match (path.as_deref(), &default_storage_dir) {
-            (Some(":memory:"), _) | (None, None) => {
-              rusqlite::Connection::open_in_memory()?
-            }
-            (Some(path), _) => {
-              let flags =
-                OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
-              rusqlite::Connection::open_with_flags(path, flags)?
-            }
-            (None, Some(path)) => {
-              std::fs::create_dir_all(path)?;
-              let path = path.join("kv.sqlite3");
-              rusqlite::Connection::open(path)?
-            }
-          };
+          let (conn, queue_waker_key) =
+            match (path.as_deref(), &default_storage_dir) {
+              (Some(":memory:"), _) | (None, None) => {
+                (rusqlite::Connection::open_in_memory()?, None)
+              }
+              (Some(path), _) => {
+                let flags =
+                  OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
+                let resolved_path = canonicalize_path(&PathBuf::from(path))?;
+                (
+                  rusqlite::Connection::open_with_flags(path, flags)?,
+                  Some(resolved_path),
+                )
+              }
+              (None, Some(path)) => {
+                std::fs::create_dir_all(path)?;
+                let path = path.join("kv.sqlite3");
+                (rusqlite::Connection::open(path.clone())?, Some(path))
+              }
+            };
 
           conn.pragma_update(None, "journal_mode", "wal")?;
 
-          Ok::<_, AnyError>(conn)
+          Ok::<_, AnyError>((conn, queue_waker_key))
         })
         .await
         .unwrap()
@@ -277,6 +288,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     Ok(SqliteDb {
       conn,
       queue: OnceCell::new(),
+      queue_waker_key,
       expiration_watcher,
     })
   }
@@ -285,21 +297,13 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 pub struct SqliteDb {
   conn: ProtectedConn,
   queue: OnceCell<SqliteQueue>,
-  expiration_watcher: deno_core::task::JoinHandle<()>,
+  queue_waker_key: Option<PathBuf>,
+  expiration_watcher: deno_core::unsync::JoinHandle<()>,
 }
 
 impl Drop for SqliteDb {
   fn drop(&mut self) {
-    self.expiration_watcher.abort();
-
-    // The above `abort()` operation is asynchronous. It's not
-    // guaranteed that the sqlite connection will be closed immediately.
-    // So here we synchronously take the conn mutex and drop the connection.
-    //
-    // This blocks the event loop if the connection is still being used,
-    // but ensures correctness - deleting the database file after calling
-    // the `close` method will always work.
-    self.conn.conn.lock().unwrap().take();
+    self.close();
   }
 }
 
@@ -355,7 +359,7 @@ impl SqliteDb {
     spawn_blocking(move || {
       let mut db = db.try_lock().ok();
       let Some(db) = db.as_mut().and_then(|x| x.as_mut()) else {
-        return Err(type_error(ERROR_USING_CLOSED_DATABASE))
+        return Err(type_error(ERROR_USING_CLOSED_DATABASE));
       };
       let result = match db.transaction() {
         Ok(tx) => f(tx),
@@ -372,7 +376,7 @@ pub struct DequeuedMessage {
   conn: WeakProtectedConn,
   id: String,
   payload: Option<Vec<u8>>,
-  waker_tx: mpsc::Sender<()>,
+  waker_tx: broadcast::Sender<()>,
   _permit: OwnedSemaphorePermit,
 }
 
@@ -404,9 +408,7 @@ impl QueueMessageHandle for DequeuedMessage {
       Err(e) => {
         // Silently ignore the error if the database has been closed
         // This message will be delivered on the next run
-        if get_custom_error_class(&e) == Some("TypeError")
-          && e.to_string() == ERROR_USING_CLOSED_DATABASE
-        {
+        if is_conn_closed_error(&e) {
           return Ok(());
         }
         return Err(e);
@@ -414,7 +416,7 @@ impl QueueMessageHandle for DequeuedMessage {
     };
     if requeued {
       // If the message was requeued, wake up the dequeue loop.
-      self.waker_tx.send(()).await?;
+      let _ = self.waker_tx.send(());
     }
     Ok(())
   }
@@ -433,25 +435,41 @@ struct SqliteQueue {
   conn: ProtectedConn,
   dequeue_rx: Rc<AsyncRefCell<DequeueReceiver>>,
   concurrency_limiter: Arc<Semaphore>,
-  waker_tx: mpsc::Sender<()>,
+  waker_tx: broadcast::Sender<()>,
   shutdown_tx: watch::Sender<()>,
 }
 
 impl SqliteQueue {
-  fn new(conn: ProtectedConn) -> Self {
+  fn new(
+    conn: ProtectedConn,
+    waker_tx: broadcast::Sender<()>,
+    waker_rx: broadcast::Receiver<()>,
+  ) -> Self {
     let conn_clone = conn.clone();
     let (shutdown_tx, shutdown_rx) = watch::channel::<()>(());
-    let (waker_tx, waker_rx) = mpsc::channel::<()>(1);
     let (dequeue_tx, dequeue_rx) = mpsc::channel::<(Vec<u8>, String)>(64);
 
     spawn(async move {
       // Oneshot requeue of all inflight messages.
-      Self::requeue_inflight_messages(conn.clone()).await.unwrap();
+      if let Err(e) = Self::requeue_inflight_messages(conn.clone()).await {
+        // Exit the dequeue loop cleanly if the database has been closed.
+        if is_conn_closed_error(&e) {
+          return;
+        }
+        panic!("kv: Error in requeue_inflight_messages: {}", e);
+      }
 
       // Continuous dequeue loop.
-      Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
-        .await
-        .unwrap();
+      if let Err(e) =
+        Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
+          .await
+      {
+        // Exit the dequeue loop cleanly if the database has been closed.
+        if is_conn_closed_error(&e) {
+          return;
+        }
+        panic!("kv: Error in dequeue_loop: {}", e);
+      }
     });
 
     Self {
@@ -463,41 +481,36 @@ impl SqliteQueue {
     }
   }
 
-  async fn dequeue(&self) -> Result<DequeuedMessage, AnyError> {
+  async fn dequeue(&self) -> Result<Option<DequeuedMessage>, AnyError> {
     // Wait for the next message to be available from dequeue_rx.
     let (payload, id) = {
       let mut queue_rx = self.dequeue_rx.borrow_mut().await;
       let Some(msg) = queue_rx.recv().await else {
-        return Err(type_error("Database closed"));
+        return Ok(None);
       };
       msg
     };
 
     let permit = self.concurrency_limiter.clone().acquire_owned().await?;
 
-    Ok(DequeuedMessage {
+    Ok(Some(DequeuedMessage {
       conn: self.conn.downgrade(),
       id,
       payload: Some(payload),
       waker_tx: self.waker_tx.clone(),
       _permit: permit,
-    })
-  }
-
-  async fn wake(&self) -> Result<(), AnyError> {
-    self.waker_tx.send(()).await?;
-    Ok(())
+    }))
   }
 
   fn shutdown(&self) {
-    self.shutdown_tx.send(()).unwrap();
+    let _ = self.shutdown_tx.send(());
   }
 
   async fn dequeue_loop(
     conn: ProtectedConn,
     dequeue_tx: mpsc::Sender<(Vec<u8>, String)>,
     mut shutdown_rx: watch::Receiver<()>,
-    mut waker_rx: mpsc::Receiver<()>,
+    mut waker_rx: broadcast::Receiver<()>,
   ) -> Result<(), AnyError> {
     loop {
       let messages = SqliteDb::run_tx(conn.clone(), move |tx| {
@@ -573,7 +586,9 @@ impl SqliteQueue {
         };
         tokio::select! {
           _ = sleep_fut => {}
-          _ = waker_rx.recv() => {}
+          x = waker_rx.recv() => {
+            if let Err(RecvError::Closed) = x {return Ok(());}
+          },
           _ = shutdown_rx.changed() => return Ok(())
         }
       }
@@ -626,16 +641,17 @@ impl SqliteQueue {
     tx: &rusqlite::Transaction<'_>,
   ) -> Result<bool, AnyError> {
     let Some((_, id, data, backoff_schedule, keys_if_undelivered)) = tx
-    .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
-    .query_row([id], |row| {
-      let deadline: u64 = row.get(0)?;
-      let id: String = row.get(1)?;
-      let data: Vec<u8> = row.get(2)?;
-      let backoff_schedule: String = row.get(3)?;
-      let keys_if_undelivered: String = row.get(4)?;
-      Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
-    })
-    .optional()? else {
+      .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
+      .query_row([id], |row| {
+        let deadline: u64 = row.get(0)?;
+        let id: String = row.get(1)?;
+        let data: Vec<u8> = row.get(2)?;
+        let backoff_schedule: String = row.get(3)?;
+        let keys_if_undelivered: String = row.get(4)?;
+        Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
+      })
+      .optional()?
+    else {
       return Ok(false);
     };
 
@@ -724,6 +740,7 @@ impl Database for SqliteDb {
 
   async fn snapshot_read(
     &self,
+    _state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     _options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError> {
@@ -769,6 +786,7 @@ impl Database for SqliteDb {
 
   async fn atomic_write(
     &self,
+    state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError> {
     let write = Arc::new(write);
@@ -887,17 +905,39 @@ impl Database for SqliteDb {
       .await?;
 
     if has_enqueues {
-      if let Some(queue) = self.queue.get() {
-        queue.wake().await?;
+      match self.queue.get() {
+        Some(queue) => {
+          let _ = queue.waker_tx.send(());
+        }
+        None => {
+          if let Some(waker_key) = &self.queue_waker_key {
+            let (waker_tx, _) =
+              shared_queue_waker_channel(waker_key, state.clone());
+            let _ = waker_tx.send(());
+          }
+        }
       }
     }
     Ok(commit_result)
   }
 
-  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError> {
+  async fn dequeue_next_message(
+    &self,
+    state: Rc<RefCell<OpState>>,
+  ) -> Result<Option<Self::QMH>, AnyError> {
     let queue = self
       .queue
-      .get_or_init(|| async move { SqliteQueue::new(self.conn.clone()) })
+      .get_or_init(|| async move {
+        let (waker_tx, waker_rx) = {
+          match &self.queue_waker_key {
+            Some(waker_key) => {
+              shared_queue_waker_channel(waker_key, state.clone())
+            }
+            None => broadcast::channel(1),
+          }
+        };
+        SqliteQueue::new(self.conn.clone(), waker_tx, waker_rx)
+      })
       .await;
     let handle = queue.dequeue().await?;
     Ok(handle)
@@ -907,6 +947,17 @@ impl Database for SqliteDb {
     if let Some(queue) = self.queue.get() {
       queue.shutdown();
     }
+
+    self.expiration_watcher.abort();
+
+    // The above `abort()` operation is asynchronous. It's not
+    // guaranteed that the sqlite connection will be closed immediately.
+    // So here we synchronously take the conn mutex and drop the connection.
+    //
+    // This blocks the event loop if the connection is still being used,
+    // but ensures correctness - deleting the database file after calling
+    // the `close` method will always work.
+    self.conn.conn.lock().unwrap().take();
   }
 }
 
@@ -921,7 +972,9 @@ fn mutate_le64(
   mutate: impl FnOnce(u64, u64) -> u64,
 ) -> Result<(), AnyError> {
   let Value::U64(operand) = *operand else {
-    return Err(type_error(format!("Failed to perform '{op_name}' mutation on a non-U64 operand")));
+    return Err(type_error(format!(
+      "Failed to perform '{op_name}' mutation on a non-U64 operand"
+    )));
   };
 
   let old_value = tx
@@ -989,4 +1042,72 @@ fn encode_value(value: &crate::Value) -> (Cow<'_, [u8]>, i64) {
       (Cow::Owned(buf.to_vec()), VALUE_ENCODING_LE64)
     }
   }
+}
+
+pub struct QueueWaker {
+  wakers_tx: HashMap<PathBuf, broadcast::Sender<()>>,
+}
+
+fn shared_queue_waker_channel(
+  waker_key: &Path,
+  state: Rc<RefCell<OpState>>,
+) -> (broadcast::Sender<()>, broadcast::Receiver<()>) {
+  let mut state = state.borrow_mut();
+  let waker = {
+    let waker = state.try_borrow_mut::<QueueWaker>();
+    match waker {
+      Some(waker) => waker,
+      None => {
+        let waker = QueueWaker {
+          wakers_tx: HashMap::new(),
+        };
+        state.put::<QueueWaker>(waker);
+        state.borrow_mut::<QueueWaker>()
+      }
+    }
+  };
+
+  let waker_tx = waker
+    .wakers_tx
+    .entry(waker_key.to_path_buf())
+    .or_insert_with(|| {
+      let (waker_tx, _) = broadcast::channel(1);
+      waker_tx
+    });
+
+  (waker_tx.clone(), waker_tx.subscribe())
+}
+
+/// Same as Path::canonicalize, but also handles non-existing paths.
+fn canonicalize_path(path: &Path) -> Result<PathBuf, AnyError> {
+  let path = path.to_path_buf().clean();
+  let mut path = path;
+  let mut names_stack = Vec::new();
+  loop {
+    match path.canonicalize() {
+      Ok(mut canonicalized_path) => {
+        for name in names_stack.into_iter().rev() {
+          canonicalized_path = canonicalized_path.join(name);
+        }
+        return Ok(canonicalized_path);
+      }
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        let file_name = path.file_name().map(|os_str| os_str.to_os_string());
+        if let Some(file_name) = file_name {
+          names_stack.push(file_name.to_str().unwrap().to_string());
+          path = path.parent().unwrap().to_path_buf();
+        } else {
+          names_stack.push(path.to_str().unwrap().to_string());
+          let current_dir = current_dir()?;
+          path = current_dir.clone();
+        }
+      }
+      Err(err) => return Err(err.into()),
+    }
+  }
+}
+
+fn is_conn_closed_error(e: &AnyError) -> bool {
+  get_custom_error_class(e) == Some("TypeError")
+    && e.to_string() == ERROR_USING_CLOSED_DATABASE
 }
