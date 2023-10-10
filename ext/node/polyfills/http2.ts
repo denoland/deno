@@ -366,6 +366,7 @@ export class ClientHttp2Session extends Http2Session {
     this[kDenoConnRid] = undefined;
     this[kPollConnPromiseId] = undefined;
 
+    socket.pause();
     socket.on("error", socketOnError);
     socket.on("close", socketOnClose);
     const connPromise = new Promise((resolve) => {
