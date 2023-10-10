@@ -202,7 +202,7 @@ function makeDisplayable(obj) {
  * Format an object for displaying in Deno
  *
  * @param obj - The object to be displayed
- * @returns Displayable
+ * @returns MediaBundle
  */
 async function format(obj) {
   if (hasDisplaySymbol(obj)) {

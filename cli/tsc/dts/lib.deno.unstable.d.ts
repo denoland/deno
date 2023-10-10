@@ -2087,6 +2087,9 @@ declare namespace Deno {
       [key: string]: unknown;
     };
 
+    /**
+     * A collection of supported media types and data for Jupyter frontends.
+     */
     export type MediaBundle = {
       "text/plain"?: string;
       "text/html"?: string;
@@ -2094,9 +2097,9 @@ declare namespace Deno {
       "text/markdown"?: string;
       "application/javascript"?: string;
 
-      // Images (sadly, per Jupyter spec) must be base64 encoded. We could _allow_
+      // Images (per Jupyter spec) must be base64 encoded. We could _allow_
       // accepting Uint8Array or ArrayBuffer within `display` calls, however we still
-      // need to encode them for jupyter.
+      // must encode them for jupyter.
       "image/png"?: string; // WISH: Uint8Array | ArrayBuffer
       "image/jpeg"?: string; // WISH: Uint8Array | ArrayBuffer
       "image/gif"?: string; // WISH: Uint8Array | ArrayBuffer
@@ -2111,7 +2114,7 @@ declare namespace Deno {
       "application/vnd.vegalite.v4+json"?: VegaObject;
       "application/vnd.vegalite.v5+json"?: VegaObject;
 
-      // Must support a catch all for custom mime-types
+      // Must support a catch all for custom media types / mimetypes
       [key: string]: string | object | undefined;
     };
 
@@ -2131,10 +2134,69 @@ declare namespace Deno {
      */
     export function display(obj: unknown, options?: DisplayOptions): void;
 
+    /**
+     * Show Markdown in Jupyter frontends with a tagged template function.
+     *
+     * Takes a template string and returns a displayable object for Jupyter frontends.
+     *
+     * @example
+     * Create a Markdown view.
+     *
+     * ```typescript
+     * md`# Notebooks in TypeScript via Deno ![Deno logo](https://github.com/denoland.png?size=32)
+     *
+     * * TypeScript ${Deno.version.typescript}
+     * * V8 ${Deno.version.v8}
+     * * Deno ${Deno.version.deno}
+     *
+     * Interactive compute with Jupyter _built into Deno_!
+     * `
+     * ```
+     */
     export function md(
       strings: TemplateStringsArray,
       ...values: unknown[]
     ): Displayable;
+
+    /**
+     * Show HTML in Jupyter frontends with a tagged template function.
+     *
+     * Takes a template string and returns a displayable object for Jupyter frontends.
+     *
+     * @example
+     * Create an HTML view.
+     * ```typescript
+     * html`<h1>Hello, world!</h1>`
+     * ```
+     */
+    export function html(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Displayable;
+
+    /**
+     * SVG Tagged Template Function.
+     *
+     * Takes a template string and returns a displayable object for Jupyter frontends.
+     *
+     * Example usage:
+     *
+     * svg`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+     *      <circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
+     *    </svg>`
+     */
+    export function svg(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Displayable;
+
+    /**
+     * Format an object for displaying in Deno
+     *
+     * @param obj - The object to be displayed
+     * @returns MediaBundle
+     */
+    export function format(obj: unknown): MediaBundle;
 
     /**
      * Broadcast a message on IO pub channel.
