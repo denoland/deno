@@ -4132,7 +4132,10 @@ function transformStreamDefaultSourceCancelAlgorithm(stream, reason) {
     if (writable[_state] === "errored") {
       controller[_finishPromise].reject(writable[_storedError]);
     } else {
-      writableStreamDefaultControllerErrorIfNeeded(writable[_controller], reason);
+      writableStreamDefaultControllerErrorIfNeeded(
+        writable[_controller],
+        reason,
+      );
       transformStreamUnblockWrite(stream);
       controller[_finishPromise].resolve(undefined);
     }
