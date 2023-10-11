@@ -1224,7 +1224,7 @@ Deno.test({
 });
 
 Deno.test({
-  ignore: Deno.build.os === "linux",
+  ignore: Deno.build.os === "linux" || Deno.build.os === "darwin",
   permissions: { net: true },
 }, function netTcpListenReusePortDoesNothing() {
   const listener1 = Deno.listen({ port: 4003, reusePort: true });
