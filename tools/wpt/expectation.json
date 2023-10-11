@@ -8180,42 +8180,30 @@
     "send-many-64K-messages-with-backpressure.any.worker.html?wss": true,
     "stream": {
       "tentative": {
-        "abort.any.html?wpt_flags=h2": false,
-        "abort.any.html?wss": false,
-        "abort.any.worker.html?wpt_flags=h2": false,
-        "abort.any.worker.html?wss": false,
+        "abort.any.html?wpt_flags=h2": [
+          "abort after connect should do nothing"
+        ],
+        "abort.any.html?wss": true,
+        "abort.any.worker.html?wpt_flags=h2": [
+          "abort after connect should do nothing"
+        ],
+        "abort.any.worker.html?wss": true,
         "backpressure-receive.any.html?wpt_flags=h2": false,
-        "backpressure-receive.any.html?wss": false,
+        "backpressure-receive.any.html?wss": true,
         "backpressure-receive.any.worker.html?wpt_flags=h2": false,
-        "backpressure-receive.any.worker.html?wss": false,
+        "backpressure-receive.any.worker.html?wss": true,
         "backpressure-send.any.html?wpt_flags=h2": false,
-        "backpressure-send.any.html?wss": false,
+        "backpressure-send.any.html?wss": true,
         "backpressure-send.any.worker.html?wpt_flags=h2": false,
-        "backpressure-send.any.worker.html?wss": false,
+        "backpressure-send.any.worker.html?wss": true,
         "close.any.html?wpt_flags=h2": false,
-        "close.any.html?wss": false,
+        "close.any.html?wss": true,
         "close.any.worker.html?wpt_flags=h2": false,
-        "close.any.worker.html?wss": false,
-        "constructor.any.html?wpt_flags=h2": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ],
-        "constructor.any.html?wss": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ],
-        "constructor.any.worker.html?wpt_flags=h2": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ],
-        "constructor.any.worker.html?wss": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ]
+        "close.any.worker.html?wss": true,
+        "constructor.any.html?wpt_flags=h2": false,
+        "constructor.any.html?wss": true,
+        "constructor.any.worker.html?wpt_flags=h2": false,
+        "constructor.any.worker.html?wss": true
       }
     }
   },
