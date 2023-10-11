@@ -20,12 +20,19 @@ import { mainFetch } from "ext:deno_fetch/26_fetch.js";
 
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  JSONStringify,
+  ArrayPrototypeFind,
   Number,
   NumberIsFinite,
   NumberIsNaN,
   ObjectDefineProperties,
   Promise,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
   Symbol,
 } = primordials;
 
@@ -42,7 +49,7 @@ export class TextLineStream extends TransformStream {
           if (
             this.#allowCR &&
             this.#buf[this.#buf.length - 1] === "\r"
-          ) controller.enqueue(this.#buf.slice(0, -1));
+          ) controller.enqueue(StringPrototypeSlice(this.#buf, 0, -1));
           else controller.enqueue(this.#buf);
         }
       },
@@ -54,17 +61,17 @@ export class TextLineStream extends TransformStream {
     chunk = this.#buf + chunk;
 
     for (;;) {
-      const lfIndex = chunk.indexOf("\n");
+      const lfIndex = StringPrototypeIndexOf(chunk, "\n");
 
       if (this.#allowCR) {
-        const crIndex = chunk.indexOf("\r");
+        const crIndex = StringPrototypeIndexOf(chunk, "\r");
 
         if (
           crIndex !== -1 && crIndex !== (chunk.length - 1) &&
           (lfIndex === -1 || (lfIndex - 1) > crIndex)
         ) {
-          controller.enqueue(chunk.slice(0, crIndex));
-          chunk = chunk.slice(crIndex + 1);
+          controller.enqueue(StringPrototypeSlice(chunk, 0, crIndex));
+          chunk = StringPrototypeSlice(chunk, crIndex + 1);
           continue;
         }
       }
@@ -74,8 +81,8 @@ export class TextLineStream extends TransformStream {
         if (chunk[lfIndex - 1] === "\r") {
           crOrLfIndex--;
         }
-        controller.enqueue(chunk.slice(0, crOrLfIndex));
-        chunk = chunk.slice(lfIndex + 1);
+        controller.enqueue(StringPrototypeSlice(chunk, 0, crOrLfIndex));
+        chunk = StringPrototypeSlice(chunk, lfIndex + 1);
         continue;
       }
 
@@ -205,8 +212,9 @@ class EventSource extends EventTarget {
       /** @type {InnerResponse} */
       const res = await mainFetch(req, true, this[_abortController].signal);
 
-      const contentType = res.headerList.find((header) =>
-        header[0].toLowerCase() === "content-type"
+      const contentType = ArrayPrototypeFind(
+        res.headerList,
+        (header) => StringPrototypeToLowerCase(header[0]) === "content-type",
       );
       if (res.type === "error") {
         if (res.aborted) {
@@ -232,7 +240,10 @@ class EventSource extends EventTarget {
         }
       } else if (
         res.status !== 200 ||
-        !contentType?.[1].toLowerCase().includes("text/event-stream")
+        !StringPrototypeIncludes(
+          contentType?.[1].toLowerCase(),
+          "text/event-stream",
+        )
       ) {
         this[_readyState] = CLOSED;
         this.dispatchEvent(new Event("error"));
@@ -248,6 +259,7 @@ class EventSource extends EventTarget {
         let lastEventID = this[_lastEventID];
 
         for await (
+          // deno-lint-ignore prefer-primordials
           const chunk of res.body.stream
             .pipeThrough(new TextDecoderStream())
             .pipeThrough(new TextLineStream({ allowCR: true }))
@@ -258,8 +270,8 @@ class EventSource extends EventTarget {
               eventType = "";
               continue;
             }
-            if (data.endsWith("\n")) {
-              data = data.slice(0, -1);
+            if (StringPrototypeEndsWith(data, "\n")) {
+              data = StringPrototypeSlice(data, 0, -1);
             }
             const event = new MessageEvent(eventType || "message", {
               data,
@@ -272,15 +284,15 @@ class EventSource extends EventTarget {
             if (this[_readyState] !== CLOSED) {
               this.dispatchEvent(event);
             }
-          } else if (chunk.startsWith(":")) {
+          } else if (StringPrototypeStartsWith(chunk, ":")) {
             continue;
           } else {
             let field = chunk;
             let value = "";
-            if (chunk.includes(":")) {
-              ({ 0: field, 1: value } = chunk.split(":"));
-              if (value.startsWith(" ")) {
-                value = value.slice(1);
+            if (StringPrototypeIncludes(chunk, ":")) {
+              ({ 0: field, 1: value } = StringPrototypeSplit(chunk, ":"));
+              if (StringPrototypeStartsWith(value, " ")) {
+                value = StringPrototypeSlice(value, 1);
               }
             }
 
@@ -294,7 +306,7 @@ class EventSource extends EventTarget {
                 break;
               }
               case "id": {
-                if (!value.includes("\0")) {
+                if (!StringPrototypeIncludes(value, "\0")) {
                   lastEventID = value;
                 }
                 break;
@@ -315,8 +327,6 @@ class EventSource extends EventTarget {
           if (this[_abortController].signal.aborted) {
             break;
           }
-
-          // TODO: Once the end of the file is reached, any pending data must be discarded. (If the file ends in the middle of an event, before the final empty line, the incomplete event is not dispatched.)
         }
         if (this[_readyState] === CLOSED) {
           this[_abortController].abort();
