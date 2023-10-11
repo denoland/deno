@@ -44,7 +44,6 @@ use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::shared::unstable_exit_cb;
-use crate::shared::unstable_warn_cb;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
@@ -339,13 +338,17 @@ impl MainWorker {
       ..Default::default()
     });
 
-    if unstable {
+    {
       let op_state_rc = js_runtime.op_state();
       let mut op_state = op_state_rc.borrow_mut();
       let feature_checker = &mut op_state.feature_checker;
-      feature_checker.enable_legacy_unstable();
       feature_checker.set_exit_cb(Box::new(unstable_exit_cb));
-      feature_checker.set_warn_cb(Box::new(unstable_warn_cb));
+      // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
+      // of granular --unstable-* flags.
+      // feature_checker.set_warn_cb(Box::new(unstable_warn_cb));
+      if unstable {
+        feature_checker.enable_legacy_unstable();
+      }
     }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
