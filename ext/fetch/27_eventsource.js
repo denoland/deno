@@ -36,10 +36,7 @@ export class TextLineStream extends TransformStream {
 
   constructor(options) {
     super({
-      transform: (chunk, controller) => {
-        console.error("chunk tls:", JSONStringify(chunk));
-        return this.#handle(chunk, controller);
-      },
+      transform: (chunk, controller) => this.#handle(chunk, controller),
       flush: (controller) => {
         if (this.#buf.length > 0) {
           if (
@@ -66,7 +63,6 @@ export class TextLineStream extends TransformStream {
           crIndex !== -1 && crIndex !== (chunk.length - 1) &&
           (lfIndex === -1 || (lfIndex - 1) > crIndex)
         ) {
-          console.error("enqueue1:", chunk.slice(0, crIndex));
           controller.enqueue(chunk.slice(0, crIndex));
           chunk = chunk.slice(crIndex + 1);
           continue;
@@ -185,21 +181,22 @@ class EventSource extends EventTarget {
 
   async [_loop]() {
     let lastEventIDValue = "";
-    let lastEventID = "";
     while (this[_readyState] !== CLOSED) {
+      const lastEventIDValueCopy = lastEventIDValue;
+      lastEventIDValue = "";
       const req = newInnerRequest(
         "GET",
         this[_url],
         () =>
-          lastEventIDValue === ""
+          lastEventIDValueCopy === ""
             ? [
               ["accept", "text/event-stream"],
             ]
             : [
               ["accept", "text/event-stream"],
               [
-                "last-event-id",
-                core.ops.op_utf8_to_byte_string(lastEventIDValue),
+                "Last-Event-Id",
+                core.ops.op_utf8_to_byte_string(lastEventIDValueCopy),
               ],
             ],
         null,
@@ -248,12 +245,13 @@ class EventSource extends EventTarget {
 
         let data = "";
         let eventType = "";
+        let lastEventID = this[_lastEventID];
+
         for await (
           const chunk of res.body.stream
             .pipeThrough(new TextDecoderStream())
-            .pipeThrough(new TextLineStream())
+            .pipeThrough(new TextLineStream({ allowCR: true }))
         ) {
-          console.error("chunk:", JSONStringify(chunk));
           if (chunk === "") {
             this[_lastEventID] = lastEventID;
             if (data === "") {
@@ -297,7 +295,6 @@ class EventSource extends EventTarget {
               }
               case "id": {
                 if (!value.includes("\0")) {
-                  console.error("new id:", JSONStringify(value));
                   lastEventID = value;
                 }
                 break;

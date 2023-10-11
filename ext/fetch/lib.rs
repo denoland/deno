@@ -972,7 +972,10 @@ pub fn create_http_client(
   builder.build().map_err(|e| e.into())
 }
 
-#[op]
-pub fn op_utf8_to_byte_string(input: String) -> Result<ByteString, AnyError> {
+#[op2]
+#[serde]
+pub fn op_utf8_to_byte_string(
+  #[string] input: String,
+) -> Result<ByteString, AnyError> {
   Ok(input.into())
 }
