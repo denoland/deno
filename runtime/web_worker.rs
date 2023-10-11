@@ -4,7 +4,6 @@ use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
-use crate::shared::unstable_exit_cb;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
@@ -26,6 +25,7 @@ use deno_core::v8;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleCode;
@@ -350,6 +350,7 @@ pub struct WebWorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
+  pub feature_checker: Arc<FeatureChecker>,
 }
 
 impl WebWorker {
@@ -386,7 +387,6 @@ impl WebWorker {
     );
 
     // Permissions: many ops depend on this
-    let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
@@ -510,21 +510,9 @@ impl WebWorker {
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
       preserve_snapshotted_modules,
+      feature_checker: Some(options.feature_checker.clone()),
       ..Default::default()
     });
-
-    {
-      let op_state_rc = js_runtime.op_state();
-      let mut op_state = op_state_rc.borrow_mut();
-      let feature_checker = &mut op_state.feature_checker;
-      feature_checker.set_exit_cb(Box::new(unstable_exit_cb));
-      // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
-      // of granular --unstable-* flags.
-      // feature_checker.set_warn_cb(Box::new(unstable_warn_cb));
-      if unstable {
-        feature_checker.enable_legacy_unstable();
-      }
-    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

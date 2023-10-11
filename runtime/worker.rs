@@ -18,6 +18,7 @@ use deno_core::futures::Future;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FeatureChecker;
 use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
@@ -43,7 +44,6 @@ use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
-use crate::shared::unstable_exit_cb;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
@@ -142,6 +142,7 @@ pub struct WorkerOptions {
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub feature_checker: Arc<FeatureChecker>,
 }
 
 impl Default for WorkerOptions {
@@ -173,6 +174,7 @@ impl Default for WorkerOptions {
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      feature_checker: Default::default(),
     }
   }
 }
@@ -206,7 +208,6 @@ impl MainWorker {
     );
 
     // Permissions: many ops depend on this
-    let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
@@ -335,21 +336,9 @@ impl MainWorker {
       preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
+      feature_checker: Some(options.feature_checker.clone()),
       ..Default::default()
     });
-
-    {
-      let op_state_rc = js_runtime.op_state();
-      let mut op_state = op_state_rc.borrow_mut();
-      let feature_checker = &mut op_state.feature_checker;
-      feature_checker.set_exit_cb(Box::new(unstable_exit_cb));
-      // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
-      // of granular --unstable-* flags.
-      // feature_checker.set_warn_cb(Box::new(unstable_warn_cb));
-      if unstable {
-        feature_checker.enable_legacy_unstable();
-      }
-    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
