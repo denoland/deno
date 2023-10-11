@@ -1,4 +1,4 @@
-name: 💡 Deno land Feature request
+name: 💡 Deno CLI Feature request
 description: Suggest an idea, feature or enhancement
 labels: [enhancement]
 body:
@@ -7,7 +7,8 @@ body:
       value: |
         Thank you for submitting an idea. It helps make Deno better.
 
-        This is only for CLI / Deno land items. For community projects, please use the Ideas forum in [Discord](https://discord.com/deno).
+        This is only for the Deno CLI and the crates also found in this.
+        For community projects, please use the Ideas forum in [Discord](https://discord.com/deno).
   - type: textarea
     attributes:
       label: What is the problem this feature would solve?
