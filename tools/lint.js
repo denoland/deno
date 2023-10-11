@@ -1,39 +1,41 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
+#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  buildMode,
-  getPrebuiltToolPath,
-  getSources,
-  join,
-  ROOT_PATH,
-} from "./util.js";
+import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 
-let didLint = false;
+const promises = [];
 
-if (Deno.args.includes("--js")) {
-  await dlint();
-  await dlintPreferPrimordials();
-  didLint = true;
+let js = Deno.args.includes("--js");
+let rs = Deno.args.includes("--rs");
+if (!js && !rs) {
+  js = true;
+  rs = true;
 }
 
-if (Deno.args.includes("--rs")) {
-  await clippy();
-  didLint = true;
+if (js) {
+  promises.push(dlint());
+  promises.push(dlintPreferPrimordials());
 }
 
-if (!didLint) {
-  await Promise.all([
-    dlint(),
-    dlintPreferPrimordials(),
-    checkCopyright(),
-    clippy(),
-  ]);
+if (rs) {
+  promises.push(clippy());
+}
+
+if (!js && !rs) {
+  promises.push(checkCopyright());
+}
+
+const results = await Promise.allSettled(promises);
+for (const result of results) {
+  if (result.status === "rejected") {
+    console.error(result.reason);
+    Deno.exit(1);
+  }
 }
 
 async function dlint() {
   const configFile = join(ROOT_PATH, ".dlint.json");
-  const execPath = getPrebuiltToolPath("dlint");
+  const execPath = await getPrebuilt("dlint");
 
   const sourceFiles = await getSources(ROOT_PATH, [
     "*.js",
@@ -41,7 +43,6 @@ async function dlint() {
     ":!:.github/mtime_cache/action.js",
     ":!:cli/tests/testdata/swc_syntax_error.ts",
     ":!:cli/tests/testdata/error_008_checkjs.js",
-    ":!:cli/bench/http/node*.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
@@ -92,7 +93,7 @@ async function dlint() {
 // which is different from other lint rules. This is why this dedicated function
 // is needed.
 async function dlintPreferPrimordials() {
-  const execPath = getPrebuiltToolPath("dlint");
+  const execPath = await getPrebuilt("dlint");
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",

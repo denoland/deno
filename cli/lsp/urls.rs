@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache::LocalLspHttpCache;
 use crate::file_fetcher::map_content_type;
 
 use data_url::DataUrl;
@@ -23,8 +24,6 @@ pub static INVALID_SPECIFIER: Lazy<ModuleSpecifier> =
 /// the component percent encoding set.
 ///
 /// See: <https://url.spec.whatwg.org/#component-percent-encode-set>
-///
-// TODO(@kitsonk) - refactor when #9934 is landed.
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b' ')
   .add(b'"')
@@ -46,6 +45,7 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'^')
   .add(b'|')
   .add(b'$')
+  .add(b'%')
   .add(b'&')
   .add(b'+')
   .add(b',');
@@ -57,6 +57,43 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
     file_name_str.push_str(query);
   }
   crate::util::checksum::gen(&[file_name_str.as_bytes()])
+}
+
+fn to_deno_url(specifier: &Url) -> String {
+  let mut string = String::with_capacity(specifier.as_str().len() + 6);
+  string.push_str("deno:/");
+  string.push_str(specifier.scheme());
+  for p in specifier[Position::BeforeHost..].split('/') {
+    string.push('/');
+    string.push_str(
+      &percent_encoding::utf8_percent_encode(p, COMPONENT).to_string(),
+    );
+  }
+  string
+}
+
+fn from_deno_url(url: &Url) -> Option<Url> {
+  if url.scheme() != "deno" {
+    return None;
+  }
+  let mut segments = url.path_segments()?;
+  let mut string = String::with_capacity(url.as_str().len());
+  string.push_str(segments.next()?);
+  string.push_str("://");
+  string.push_str(
+    &percent_encoding::percent_decode(segments.next()?.as_bytes())
+      .decode_utf8()
+      .ok()?,
+  );
+  for segment in segments {
+    string.push('/');
+    string.push_str(
+      &percent_encoding::percent_decode(segment.as_bytes())
+        .decode_utf8()
+        .ok()?,
+    );
+  }
+  Url::parse(&string).ok()
 }
 
 /// This exists to make it a little bit harder to accidentally use a `Url`
@@ -121,16 +158,30 @@ pub enum LspUrlKind {
 /// specifiers. We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
 #[derive(Debug, Default, Clone)]
-pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
+pub struct LspUrlMap {
+  local_http_cache: Option<Arc<LocalLspHttpCache>>,
+  inner: Arc<Mutex<LspUrlMapInner>>,
+}
 
 impl LspUrlMap {
+  pub fn set_cache(&mut self, http_cache: Option<Arc<LocalLspHttpCache>>) {
+    self.local_http_cache = http_cache;
+  }
+
   /// Normalize a specifier that is used internally within Deno (or tsc) to a
   /// URL that can be handled as a "virtual" document by an LSP client.
   pub fn normalize_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<LspClientUrl, AnyError> {
-    let mut inner = self.0.lock();
+    if let Some(cache) = &self.local_http_cache {
+      if matches!(specifier.scheme(), "http" | "https") {
+        if let Some(file_url) = cache.get_file_url(specifier) {
+          return Ok(LspClientUrl(file_url));
+        }
+      }
+    }
+    let mut inner = self.inner.lock();
     if let Some(url) = inner.get_url(specifier).cloned() {
       Ok(url)
     } else {
@@ -156,16 +207,7 @@ impl LspUrlMap {
             extension
           )
         } else {
-          let mut path =
-            specifier[..Position::BeforePath].replacen("://", "/", 1);
-          let parts: Vec<String> = specifier[Position::BeforePath..]
-            .split('/')
-            .map(|p| {
-              percent_encoding::utf8_percent_encode(p, COMPONENT).to_string()
-            })
-            .collect();
-          path.push_str(&parts.join("/"));
-          format!("deno:/{path}")
+          to_deno_url(specifier)
         };
         let url = LspClientUrl(Url::parse(&specifier_str)?);
         inner.put(specifier.clone(), url.clone());
@@ -184,25 +226,33 @@ impl LspUrlMap {
   /// so we need to force it to in the mapping and nee to explicitly state whether
   /// this is a file or directory url.
   pub fn normalize_url(&self, url: &Url, kind: LspUrlKind) -> ModuleSpecifier {
-    let mut inner = self.0.lock();
-    if let Some(specifier) = inner.get_specifier(url).cloned() {
-      specifier
-    } else {
-      let specifier = if url.scheme() == "file" {
+    if let Some(cache) = &self.local_http_cache {
+      if url.scheme() == "file" {
         if let Ok(path) = url.to_file_path() {
-          match kind {
-            LspUrlKind::Folder => Url::from_directory_path(path).unwrap(),
-            LspUrlKind::File => Url::from_file_path(path).unwrap(),
+          if let Some(remote_url) = cache.get_remote_url(&path) {
+            return remote_url;
           }
-        } else {
-          url.clone()
         }
-      } else {
-        url.clone()
-      };
-      inner.put(specifier.clone(), LspClientUrl(url.clone()));
-      specifier
+      }
     }
+    let mut inner = self.inner.lock();
+    if let Some(specifier) = inner.get_specifier(url).cloned() {
+      return specifier;
+    }
+    let mut specifier = None;
+    if url.scheme() == "file" {
+      if let Ok(path) = url.to_file_path() {
+        specifier = Some(match kind {
+          LspUrlKind::Folder => Url::from_directory_path(path).unwrap(),
+          LspUrlKind::File => Url::from_file_path(path).unwrap(),
+        });
+      }
+    } else if let Some(s) = from_deno_url(url) {
+      specifier = Some(s);
+    }
+    let specifier = specifier.unwrap_or_else(|| url.clone());
+    inner.put(specifier.clone(), LspClientUrl(url.clone()));
+    specifier
   }
 }
 
@@ -238,6 +288,24 @@ mod tests {
   }
 
   #[test]
+  fn test_lsp_url_reverse() {
+    let map = LspUrlMap::default();
+    let fixture =
+      resolve_url("deno:/https/deno.land/x/pkg%401.0.0/mod.ts").unwrap();
+    let actual_specifier = map.normalize_url(&fixture, LspUrlKind::File);
+    let expected_specifier =
+      Url::parse("https://deno.land/x/pkg@1.0.0/mod.ts").unwrap();
+    assert_eq!(&actual_specifier, &expected_specifier);
+
+    let actual_url = map
+      .normalize_specifier(&actual_specifier)
+      .unwrap()
+      .as_url()
+      .clone();
+    assert_eq!(actual_url, fixture);
+  }
+
+  #[test]
   fn test_lsp_url_map_complex_encoding() {
     // Test fix for #9741 - not properly encoding certain URLs
     let map = LspUrlMap::default();
@@ -261,6 +329,22 @@ mod tests {
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
     let expected_url = Url::parse("deno:/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37/data_url.ts").unwrap();
+    assert_eq!(actual_url.as_url(), &expected_url);
+
+    let actual_specifier =
+      map.normalize_url(actual_url.as_url(), LspUrlKind::File);
+    assert_eq!(actual_specifier, fixture);
+  }
+
+  #[test]
+  fn test_lsp_url_map_host_with_port() {
+    let map = LspUrlMap::default();
+    let fixture = resolve_url("http://localhost:8000/mod.ts").unwrap();
+    let actual_url = map
+      .normalize_specifier(&fixture)
+      .expect("could not handle specifier");
+    let expected_url =
+      Url::parse("deno:/http/localhost%3A8000/mod.ts").unwrap();
     assert_eq!(actual_url.as_url(), &expected_url);
 
     let actual_specifier =

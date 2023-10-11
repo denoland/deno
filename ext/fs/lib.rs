@@ -18,13 +18,11 @@ use crate::ops::*;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use std::cell::RefCell;
-use std::convert::From;
 use std::path::Path;
-use std::rc::Rc;
 
 pub trait FsPermissions {
-  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_read(&mut self, path: &Path, api_name: &str)
+    -> Result<(), AnyError>;
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_read_blind(
     &mut self,
@@ -32,7 +30,16 @@ pub trait FsPermissions {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_write_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
   fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_write_blind(
     &mut self,
@@ -57,31 +64,11 @@ pub trait FsPermissions {
   }
 }
 
-struct UnstableChecker {
-  pub unstable: bool,
-}
-
-impl UnstableChecker {
-  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.unstable {
-      eprintln!(
-        "Unstable API '{api_name}'. The --unstable flag must be provided."
-      );
-      std::process::exit(70);
-    }
-  }
-}
-
 /// Helper for checking unstable features. Used for sync ops.
-pub(crate) fn check_unstable(state: &OpState, api_name: &str) {
-  state.borrow::<UnstableChecker>().check_unstable(api_name)
-}
-
-/// Helper for checking unstable features. Used for async ops.
-pub(crate) fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
-  let state = state.borrow();
-  state.borrow::<UnstableChecker>().check_unstable(api_name)
+fn check_unstable(state: &OpState, api_name: &str) {
+  state
+    .feature_checker
+    .check_legacy_unstable_or_exit(api_name);
 }
 
 deno_core::extension!(deno_fs,
@@ -155,11 +142,9 @@ deno_core::extension!(deno_fs,
   ],
   esm = [ "30_fs.js" ],
   options = {
-    unstable: bool,
     fs: FileSystemRc,
   },
   state = |state, options| {
-    state.put(UnstableChecker { unstable: options.unstable });
     state.put(options.fs);
   },
 );

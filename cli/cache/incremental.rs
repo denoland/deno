@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::JoinHandle;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use serde::Serialize;
 

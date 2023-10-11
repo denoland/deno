@@ -40,7 +40,8 @@ const {
   Error,
   TypeError,
 } = primordials;
-import { nodeGlobalThis } from "ext:deno_node/00_globals.js";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
+
 import _httpAgent from "ext:deno_node/_http_agent.mjs";
 import _httpOutgoing from "ext:deno_node/_http_outgoing.ts";
 import _streamDuplex from "ext:deno_node/internal/streams/duplex.mjs";
@@ -109,13 +110,14 @@ import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "ext:deno_node/readline/promises.ts";
-import repl from "ext:deno_node/repl.ts";
+import repl from "node:repl";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
 import streamWeb from "node:stream/web";
 import stringDecoder from "node:string_decoder";
 import sys from "node:sys";
+import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
@@ -218,6 +220,7 @@ function setupBuiltinModules() {
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
     sys,
+    test,
     timers,
     "timers/promises": timersPromises,
     tls,
@@ -342,7 +345,7 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
       err.requestPath = originalPath;
       throw err;
     } else {
-      nodeGlobalThis.process.emitWarning(
+      process.emitWarning(
         `Invalid 'main' field in '${packageJsonPath}' of '${pkg}'. ` +
           "Please either fix that or report it to the module author",
         "DeprecationWarning",
@@ -414,7 +417,7 @@ function getExportsForCircularRequire(module) {
 }
 
 function emitCircularRequireWarning(prop) {
-  nodeGlobalThis.process.emitWarning(
+  process.emitWarning(
     `Accessing non-existent property '${String(prop)}' of module exports ` +
       "inside circular dependency",
   );
@@ -506,6 +509,10 @@ function resolveExports(
     StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
   if (!name) {
     return;
+  }
+
+  if (!parentPath) {
+    return false;
   }
 
   return ops.op_require_resolve_exports(
@@ -704,7 +711,7 @@ Module._load = function (request, parent, isMain) {
   const module = cachedModule || new Module(filename, parent);
 
   if (isMain) {
-    nodeGlobalThis.process.mainModule = module;
+    process.mainModule = module;
     mainModule = module;
     module.id = ".";
   }
@@ -826,7 +833,9 @@ Module._resolveFilename = function (
     isMain,
     parentPath,
   );
-  if (filename) return filename;
+  if (filename) {
+    return ops.op_require_real_path(filename);
+  }
   const requireStack = [];
   for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
     ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
@@ -884,7 +893,7 @@ Module.prototype.load = function (filename) {
     );
   }
 
-  Module._extensions[extension](this, filename);
+  Module._extensions[extension](this, this.filename);
   this.loaded = true;
 
   // TODO: do caching
@@ -912,11 +921,15 @@ Module.prototype.require = function (id) {
   }
 };
 
+// The module wrapper looks slightly different to Node. Instead of using one
+// wrapper function, we use two. The first one exists to performance optimize
+// access to magic node globals, like `Buffer` or `process`. The second one
+// is the actual wrapper function we run the users code in.
+// The only observable difference is that in Deno `arguments.callee` is not
+// null.
 Module.wrapper = [
-  // We provide the non-standard APIs in the CommonJS wrapper
-  // to avoid exposing them in global namespace.
-  "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance} = globalThis; var window = undefined; (function () {",
-  "\n}).call(this); })",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
@@ -950,7 +963,7 @@ function wrapSafe(
   const wrapper = Module.wrap(content);
   const [f, err] = core.evalContext(wrapper, `file://${filename}`);
   if (err) {
-    if (nodeGlobalThis.process.mainModule === cjsModuleInstance) {
+    if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
     }
     if (isEsmSyntaxError(err.thrown)) {
@@ -981,6 +994,20 @@ Module.prototype._compile = function (content, filename) {
     ops.op_require_break_on_next_statement();
   }
 
+  const {
+    Buffer,
+    clearImmediate,
+    clearInterval,
+    clearTimeout,
+    console,
+    global,
+    process,
+    setImmediate,
+    setInterval,
+    setTimeout,
+    performance,
+  } = nodeGlobals;
+
   const result = compiledWrapper.call(
     thisValue,
     exports,
@@ -988,7 +1015,17 @@ Module.prototype._compile = function (content, filename) {
     this,
     filename,
     dirname,
-    nodeGlobalThis,
+    Buffer,
+    clearImmediate,
+    clearInterval,
+    clearTimeout,
+    console,
+    global,
+    process,
+    setImmediate,
+    setInterval,
+    setTimeout,
+    performance,
   );
   if (requireDepth === 0) {
     statCache = null;
@@ -1050,7 +1087,7 @@ Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("fsevents.node")) {
     throw new Error("Using fsevents module is currently not supported");
   }
-  module.exports = ops.op_napi_open(filename, nodeGlobalThis);
+  module.exports = ops.op_napi_open(filename, globalThis);
 };
 
 function createRequireFromPath(filename) {

@@ -9,6 +9,13 @@ use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::tools::test::report_tests;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::reporters::TestReporter;
+use crate::tools::test::run_tests_for_worker;
+use crate::tools::test::worker_has_tests;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventSender;
 
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
@@ -23,9 +30,9 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::unsync::spawn;
 use deno_core::LocalInspectorSession;
 use deno_graph::source::Resolver;
-use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
@@ -117,30 +124,37 @@ pub fn result_to_evaluation_output(
   }
 }
 
-struct TsEvaluateResponse {
-  ts_code: String,
-  value: cdp::EvaluateResponse,
+#[derive(Debug)]
+pub struct TsEvaluateResponse {
+  pub ts_code: String,
+  pub value: cdp::EvaluateResponse,
 }
 
 pub struct ReplSession {
-  has_node_modules_dir: bool,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   resolver: Arc<CliGraphResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
   pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
-  has_initialized_node_runtime: bool,
   referrer: ModuleSpecifier,
+  main_module: ModuleSpecifier,
+  test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
+  test_event_sender: TestEventSender,
+  /// This is only optional because it's temporarily taken when evaluating.
+  test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
 }
 
 impl ReplSession {
   pub async fn initialize(
     cli_options: &CliOptions,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     resolver: Arc<CliGraphResolver>,
     mut worker: MainWorker,
+    main_module: ModuleSpecifier,
+    test_event_sender: TestEventSender,
+    test_event_receiver: tokio::sync::mpsc::UnboundedReceiver<TestEvent>,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
@@ -183,22 +197,33 @@ impl ReplSession {
         .unwrap();
 
     let mut repl_session = ReplSession {
-      has_node_modules_dir: cli_options.has_node_modules_dir(),
       npm_resolver,
       resolver,
       worker,
       session,
       context_id,
       language_server,
-      has_initialized_node_runtime: false,
       referrer,
       notifications: Rc::new(RefCell::new(notification_rx)),
+      test_reporter_factory: Box::new(|| {
+        Box::new(PrettyTestReporter::new(false, true, false, true))
+      }),
+      main_module,
+      test_event_sender,
+      test_event_receiver: Some(test_event_receiver),
     };
 
     // inject prelude
     repl_session.evaluate_expression(&get_prelude()).await?;
 
     Ok(repl_session)
+  }
+
+  pub fn set_test_reporter_factory(
+    &mut self,
+    f: Box<dyn Fn() -> Box<dyn TestReporter>>,
+  ) {
+    self.test_reporter_factory = f;
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
@@ -310,7 +335,7 @@ impl ReplSession {
     result_to_evaluation_output(result)
   }
 
-  async fn evaluate_line_with_object_wrapping(
+  pub async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
@@ -329,7 +354,7 @@ impl ReplSession {
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
-    if wrapped_line != line
+    let result = if wrapped_line != line
       && (evaluate_response.is_err()
         || evaluate_response
           .as_ref()
@@ -341,7 +366,29 @@ impl ReplSession {
       self.evaluate_ts_expression(line).await
     } else {
       evaluate_response
+    };
+
+    if worker_has_tests(&mut self.worker) {
+      let report_tests_handle = spawn(report_tests(
+        self.test_event_receiver.take().unwrap(),
+        (self.test_reporter_factory)(),
+      ));
+      run_tests_for_worker(
+        &mut self.worker,
+        &self.main_module,
+        &Default::default(),
+        &Default::default(),
+      )
+      .await
+      .unwrap();
+      self
+        .test_event_sender
+        .send(TestEvent::ForceEndReport)
+        .unwrap();
+      self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
+
+    result
   }
 
   async fn set_last_thrown_error(
@@ -400,29 +447,24 @@ impl ReplSession {
     Ok(())
   }
 
-  pub async fn get_eval_value(
+  pub async fn call_function_on_args(
     &mut self,
-    evaluate_result: &cdp::RemoteObject,
-  ) -> Result<String, AnyError> {
-    // TODO(caspervonb) we should investigate using previews here but to keep things
-    // consistent with the previous implementation we just get the preview result from
-    // Deno.inspectArgs.
+    function_declaration: String,
+    args: &[cdp::RemoteObject],
+  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
+    let arguments: Option<Vec<cdp::CallArgument>> = if args.is_empty() {
+      None
+    } else {
+      Some(args.iter().map(|a| a.into()).collect())
+    };
+
     let inspect_response = self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{
-          try {{
-            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-          }} catch (err) {{
-            return {0}.inspectArgs(["%o", err]);
-          }}
-        }}"#,
-            *REPL_INTERNALS_NAME
-          ),
+          function_declaration,
           object_id: None,
-          arguments: Some(vec![evaluate_result.into()]),
+          arguments,
           silent: None,
           return_by_value: None,
           generate_preview: None,
@@ -437,6 +479,31 @@ impl ReplSession {
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
+    Ok(response)
+  }
+
+  pub async fn get_eval_value(
+    &mut self,
+    evaluate_result: &cdp::RemoteObject,
+  ) -> Result<String, AnyError> {
+    // TODO(caspervonb) we should investigate using previews here but to keep things
+    // consistent with the previous implementation we just get the preview result from
+    // Deno.inspectArgs.
+    let response = self
+      .call_function_on_args(
+        format!(
+          r#"function (object) {{
+          try {{
+            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+          }} catch (err) {{
+            return {0}.inspectArgs(["%o", err]);
+          }}
+        }}"#,
+          *REPL_INTERNALS_NAME
+        ),
+        &[evaluate_result.clone()],
+      )
+      .await?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
 
@@ -492,6 +559,10 @@ impl ReplSession {
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
+    let Some(npm_resolver) = self.npm_resolver.as_managed() else {
+      return Ok(()); // don't auto-install for byonm
+    };
+
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
@@ -510,28 +581,16 @@ impl ReplSession {
     let npm_imports = resolved_imports
       .iter()
       .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
-      .map(|r| r.req)
+      .map(|r| r.into_inner().req)
       .collect::<Vec<_>>();
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      if !self.has_initialized_node_runtime {
-        deno_node::initialize_runtime(
-          &mut self.worker.js_runtime,
-          self.has_node_modules_dir,
-          None,
-        )?;
-        self.has_initialized_node_runtime = true;
-      }
-
-      self.npm_resolver.add_package_reqs(&npm_imports).await?;
+      npm_resolver.add_package_reqs(&npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
-        self
-          .npm_resolver
-          .inject_synthetic_types_node_package()
-          .await?;
+        npm_resolver.inject_synthetic_types_node_package().await?;
       }
     }
     Ok(())

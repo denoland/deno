@@ -2,7 +2,9 @@
 
 pub mod crypto;
 pub mod http;
+pub mod http2;
 pub mod idna;
+pub mod os;
 pub mod require;
 pub mod v8;
 pub mod winerror;

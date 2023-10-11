@@ -1,12 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_exe_path;
+use crate::new_deno_dir;
 use crate::npm_registry_url;
 use crate::PathRef;
 use crate::TestContext;
 use crate::TestContextBuilder;
 
-use super::new_deno_dir;
 use super::TempDir;
 
 use anyhow::Result;
@@ -37,6 +37,8 @@ use serde_json::to_value;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 use std::process::Child;
@@ -44,6 +46,7 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -217,6 +220,7 @@ impl InitializeParamsBuilder {
         }),
         root_uri: None,
         initialization_options: Some(json!({
+          "enableBuiltinCommands": true,
           "enable": true,
           "cache": null,
           "certificateStores": null,
@@ -385,6 +389,12 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_disable_paths(&mut self, value: Vec<String>) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("disablePaths".to_string(), value.into());
+    self
+  }
+
   pub fn set_enable_paths(&mut self, value: Vec<String>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("enablePaths".to_string(), value.into());
@@ -468,6 +478,7 @@ impl InitializeParamsBuilder {
 
 pub struct LspClientBuilder {
   print_stderr: bool,
+  capture_stderr: bool,
   deno_exe: PathRef,
   context: Option<TestContext>,
   use_diagnostic_sync: bool,
@@ -478,6 +489,7 @@ impl LspClientBuilder {
   pub fn new() -> Self {
     Self {
       print_stderr: false,
+      capture_stderr: false,
       deno_exe: deno_exe_path(),
       context: None,
       use_diagnostic_sync: true,
@@ -494,6 +506,11 @@ impl LspClientBuilder {
   #[deprecated]
   pub fn print_stderr(&mut self) -> &mut Self {
     self.print_stderr = true;
+    self
+  }
+
+  pub fn capture_stderr(&mut self) -> &mut Self {
+    self.capture_stderr = true;
     self
   }
 
@@ -514,7 +531,11 @@ impl LspClientBuilder {
   }
 
   pub fn build_result(&self) -> Result<LspClient> {
-    let deno_dir = new_deno_dir();
+    let deno_dir = self
+      .context
+      .as_ref()
+      .map(|c| c.deno_dir().clone())
+      .unwrap_or_else(new_deno_dir);
     let mut command = Command::new(&self.deno_exe);
     command
       .env("DENO_DIR", deno_dir.path())
@@ -527,7 +548,9 @@ impl LspClientBuilder {
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
-    if !self.print_stderr {
+    if self.capture_stderr {
+      command.stderr(Stdio::piped());
+    } else if !self.print_stderr {
       command.stderr(Stdio::null());
     }
     let mut child = command.spawn()?;
@@ -537,6 +560,31 @@ impl LspClientBuilder {
 
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
+
+    let stderr_lines_rx = if self.capture_stderr {
+      let stderr = child.stderr.take().unwrap();
+      let print_stderr = self.print_stderr;
+      let (tx, rx) = mpsc::channel::<String>();
+      std::thread::spawn(move || {
+        let stderr = BufReader::new(stderr);
+        for line in stderr.lines() {
+          match line {
+            Ok(line) => {
+              if print_stderr {
+                eprintln!("{}", line);
+              }
+              tx.send(line).unwrap();
+            }
+            Err(err) => {
+              panic!("failed to read line from stderr: {:#}", err);
+            }
+          }
+        }
+      });
+      Some(rx)
+    } else {
+      None
+    };
 
     Ok(LspClient {
       child,
@@ -549,6 +597,9 @@ impl LspClientBuilder {
         .unwrap_or_else(|| TestContextBuilder::new().build()),
       writer,
       deno_dir,
+      stderr_lines_rx,
+      config: json!("{}"),
+      supports_workspace_configuration: false,
     })
   }
 }
@@ -561,6 +612,9 @@ pub struct LspClient {
   writer: io::BufWriter<ChildStdin>,
   deno_dir: TempDir,
   context: TestContext,
+  stderr_lines_rx: Option<mpsc::Receiver<String>>,
+  config: serde_json::Value,
+  supports_workspace_configuration: bool,
 }
 
 impl Drop for LspClient {
@@ -594,6 +648,34 @@ impl LspClient {
     self.reader.pending_len()
   }
 
+  #[track_caller]
+  pub fn wait_until_stderr_line(&self, condition: impl Fn(&str) -> bool) {
+    let timeout_time =
+      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
+    let lines_rx = self
+      .stderr_lines_rx
+      .as_ref()
+      .expect("must setup with client_builder.capture_stderr()");
+    let mut found_lines = Vec::new();
+    while Instant::now() < timeout_time {
+      if let Ok(line) = lines_rx.try_recv() {
+        if condition(&line) {
+          return;
+        }
+        found_lines.push(line);
+      }
+      std::thread::sleep(Duration::from_millis(20));
+    }
+
+    eprintln!("==== STDERR OUTPUT ====");
+    for line in found_lines {
+      eprintln!("{}", line)
+    }
+    eprintln!("== END STDERR OUTPUT ==");
+
+    panic!("Timed out waiting on condition.")
+  }
+
   pub fn initialize_default(&mut self) {
     self.initialize(|_| {})
   }
@@ -604,9 +686,9 @@ impl LspClient {
   ) {
     self.initialize_with_config(
       do_build,
-      json!([{
+      json!({"deno":{
         "enable": true
-      }]),
+      }}),
     )
   }
 
@@ -618,30 +700,33 @@ impl LspClient {
     let mut builder = InitializeParamsBuilder::new();
     builder.set_root_uri(self.context.temp_dir().uri());
     do_build(&mut builder);
-    self.write_request("initialize", builder.build());
+    let params: InitializeParams = builder.build();
+    self.supports_workspace_configuration = match &params.capabilities.workspace
+    {
+      Some(workspace) => workspace.configuration == Some(true),
+      _ => false,
+    };
+    self.write_request("initialize", params);
     self.write_notification("initialized", json!({}));
-    self.handle_configuration_request(config);
+    self.config = config;
+    if self.supports_workspace_configuration {
+      self.handle_configuration_request(&self.config.clone());
+    }
   }
 
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
-    self.did_open_with_config(
-      params,
-      json!([{
-        "enable": true,
-        "codeLens": {
-          "test": true
-        }
-      }]),
-    )
+    self.did_open_with_config(params, &self.config.clone())
   }
 
   pub fn did_open_with_config(
     &mut self,
     params: Value,
-    config: Value,
+    config: &Value,
   ) -> CollectedDiagnostics {
     self.did_open_raw(params);
-    self.handle_configuration_request(config);
+    if self.supports_workspace_configuration {
+      self.handle_configuration_request(config);
+    }
     self.read_diagnostics()
   }
 
@@ -649,10 +734,23 @@ impl LspClient {
     self.write_notification("textDocument/didOpen", params);
   }
 
-  pub fn handle_configuration_request(&mut self, result: Value) {
-    let (id, method, _) = self.read_request::<Value>();
+  pub fn handle_configuration_request(&mut self, settings: &Value) {
+    let (id, method, args) = self.read_request::<Value>();
     assert_eq!(method, "workspace/configuration");
+    let params = args.as_ref().unwrap().as_object().unwrap();
+    let items = params.get("items").unwrap().as_array().unwrap();
+    let settings_object = settings.as_object().unwrap();
+    let mut result = vec![];
+    for item in items {
+      let item = item.as_object().unwrap();
+      let section = item.get("section").unwrap().as_str().unwrap();
+      result.push(settings_object.get(section).cloned().unwrap_or_default());
+    }
     self.write_response(id, result);
+  }
+
+  pub fn did_save(&mut self, params: Value) {
+    self.write_notification("textDocument/didSave", params);
   }
 
   pub fn did_change_watched_files(&mut self, params: Value) {
@@ -667,11 +765,7 @@ impl LspClient {
 
   /// Reads the latest diagnostics. It's assumed that
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
-    // ask the server what the latest diagnostic batch index is
-    let latest_diagnostic_batch_index =
-      self.get_latest_diagnostic_batch_index();
-
-    // now wait for three (deno, lint, and typescript diagnostics) batch
+    // wait for three (deno, lint, and typescript diagnostics) batch
     // notification messages for that index
     let mut read = 0;
     let mut total_messages_len = 0;
@@ -680,7 +774,7 @@ impl LspClient {
         self.read_notification::<DiagnosticBatchNotificationParams>();
       assert_eq!(method, "deno/internalTestDiagnosticBatch");
       let response = response.unwrap();
-      if response.batch_index == latest_diagnostic_batch_index {
+      if response.batch_index == self.get_latest_diagnostic_batch_index() {
         read += 1;
         total_messages_len += response.messages_len;
       }
@@ -927,6 +1021,7 @@ impl CollectedDiagnostics {
       .unwrap()
   }
 
+  #[track_caller]
   pub fn messages_with_file_and_source(
     &self,
     specifier: &str,

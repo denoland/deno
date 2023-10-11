@@ -58,7 +58,8 @@ delete Object.prototype.__proto__;
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
-    'or add a triple-slash directive to your entrypoint: /// <reference lib="deno.unstable" />';
+    "or add a triple-slash directive to the top of your entrypoint (main file): " +
+    '/// <reference lib="deno.unstable" />';
 
   /**
    * @param {unknown} value
@@ -344,7 +345,8 @@ delete Object.prototype.__proto__;
         if (msg === "Cannot find name 'Deno'.") {
           msg += " Do you need to change your target library? " +
             "Try changing the 'lib' compiler option to include 'deno.ns' " +
-            'or add a triple-slash directive to your entrypoint: /// <reference lib="deno.ns" />';
+            "or add a triple-slash directive to the top of your entrypoint " +
+            '(main file): /// <reference lib="deno.ns" />';
         }
         return msg;
       }
@@ -966,26 +968,23 @@ delete Object.prototype.__proto__;
     ops.op_respond({ id, data });
   }
 
-  /**
-   * @param {LanguageServerRequest} request
-   */
-  function serverRequest({ id, ...request }) {
+  function serverRequest(id, method, args) {
     if (logDebug) {
-      debug(`serverRequest()`, { id, ...request });
+      debug(`serverRequest()`, id, method, args);
     }
 
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
-    switch (request.method) {
-      case "restart": {
+    switch (method) {
+      case "$restart": {
         serverRestart();
         return respond(id, true);
       }
-      case "configure": {
+      case "$configure": {
         const { options, errors } = ts
-          .convertCompilerOptionsFromJson(request.compilerOptions, "");
+          .convertCompilerOptionsFromJson(args[0], "");
         Object.assign(options, {
           allowNonTsExtensions: true,
           allowImportingTsExtensions: true,
@@ -996,139 +995,20 @@ delete Object.prototype.__proto__;
         compilationSettings = options;
         return respond(id, true);
       }
-      case "findRenameLocations": {
+      case "$getSupportedCodeFixes": {
         return respond(
           id,
-          languageService.findRenameLocations(
-            request.specifier,
-            request.position,
-            request.findInStrings,
-            request.findInComments,
-            request.providePrefixAndSuffixTextForRename,
-          ),
+          ts.getSupportedCodeFixes(),
         );
       }
-      case "getAssets": {
+      case "$getAssets": {
         return respond(id, getAssets());
       }
-      case "getApplicableRefactors": {
-        return respond(
-          id,
-          languageService.getApplicableRefactors(
-            request.specifier,
-            request.range,
-            {
-              quotePreference: "double",
-              allowTextChangesInNewFiles: true,
-              provideRefactorNotApplicableReason: true,
-            },
-            undefined,
-            request.kind,
-          ),
-        );
-      }
-      case "getEditsForRefactor": {
-        return respond(
-          id,
-          languageService.getEditsForRefactor(
-            request.specifier,
-            {
-              indentSize: 2,
-              indentStyle: ts.IndentStyle.Smart,
-              semicolons: ts.SemicolonPreference.Insert,
-              convertTabsToSpaces: true,
-              insertSpaceBeforeAndAfterBinaryOperators: true,
-              insertSpaceAfterCommaDelimiter: true,
-            },
-            request.range,
-            request.refactorName,
-            request.actionName,
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCodeFixes": {
-        return respond(
-          id,
-          languageService.getCodeFixesAtPosition(
-            request.specifier,
-            request.startPosition,
-            request.endPosition,
-            request.errorCodes.map((v) => Number(v)),
-            {
-              indentSize: 2,
-              indentStyle: ts.IndentStyle.Block,
-              semicolons: ts.SemicolonPreference.Insert,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCombinedCodeFix": {
-        return respond(
-          id,
-          languageService.getCombinedCodeFix(
-            {
-              type: "file",
-              fileName: request.specifier,
-            },
-            request.fixId,
-            {
-              indentSize: 2,
-              indentStyle: ts.IndentStyle.Block,
-              semicolons: ts.SemicolonPreference.Insert,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCompletionDetails": {
-        if (logDebug) {
-          debug("request", request);
-        }
-        return respond(
-          id,
-          languageService.getCompletionEntryDetails(
-            request.args.specifier,
-            request.args.position,
-            request.args.name,
-            {},
-            request.args.source,
-            request.args.preferences,
-            request.args.data,
-          ),
-        );
-      }
-      case "getCompletions": {
-        return respond(
-          id,
-          languageService.getCompletionsAtPosition(
-            request.specifier,
-            request.position,
-            request.preferences,
-          ),
-        );
-      }
-      case "getDefinition": {
-        return respond(
-          id,
-          languageService.getDefinitionAndBoundSpan(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getDiagnostics": {
+      case "$getDiagnostics": {
         try {
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
-          for (const specifier of request.specifiers) {
+          for (const specifier of args[0]) {
             diagnosticMap[specifier] = fromTypeScriptDiagnostics([
               ...languageService.getSemanticDiagnostics(specifier),
               ...languageService.getSuggestionDiagnostics(specifier),
@@ -1150,151 +1030,18 @@ delete Object.prototype.__proto__;
           return respond(id, {});
         }
       }
-      case "getDocumentHighlights": {
-        return respond(
-          id,
-          languageService.getDocumentHighlights(
-            request.specifier,
-            request.position,
-            request.filesToSearch,
-          ),
-        );
-      }
-      case "getEncodedSemanticClassifications": {
-        return respond(
-          id,
-          languageService.getEncodedSemanticClassifications(
-            request.specifier,
-            request.span,
-            ts.SemanticClassificationFormat.TwentyTwenty,
-          ),
-        );
-      }
-      case "getImplementation": {
-        return respond(
-          id,
-          languageService.getImplementationAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getNavigateToItems": {
-        return respond(
-          id,
-          languageService.getNavigateToItems(
-            request.search,
-            request.maxResultCount,
-            request.fileName,
-          ),
-        );
-      }
-      case "getNavigationTree": {
-        return respond(
-          id,
-          languageService.getNavigationTree(request.specifier),
-        );
-      }
-      case "getOutliningSpans": {
-        return respond(
-          id,
-          languageService.getOutliningSpans(
-            request.specifier,
-          ),
-        );
-      }
-      case "getQuickInfo": {
-        return respond(
-          id,
-          languageService.getQuickInfoAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "findReferences": {
-        return respond(
-          id,
-          languageService.findReferences(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSignatureHelpItems": {
-        return respond(
-          id,
-          languageService.getSignatureHelpItems(
-            request.specifier,
-            request.position,
-            request.options,
-          ),
-        );
-      }
-      case "getSmartSelectionRange": {
-        return respond(
-          id,
-          languageService.getSmartSelectionRange(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSupportedCodeFixes": {
-        return respond(
-          id,
-          ts.getSupportedCodeFixes(),
-        );
-      }
-      case "getTypeDefinition": {
-        return respond(
-          id,
-          languageService.getTypeDefinitionAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "prepareCallHierarchy": {
-        return respond(
-          id,
-          languageService.prepareCallHierarchy(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideCallHierarchyIncomingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyIncomingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideCallHierarchyOutgoingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyOutgoingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideInlayHints":
-        return respond(
-          id,
-          languageService.provideInlayHints(
-            request.specifier,
-            request.span,
-            request.preferences,
-          ),
-        );
       default:
+        if (typeof languageService[method] === "function") {
+          // The `getCompletionEntryDetails()` method returns null if the
+          // `source` is `null` for whatever reason. It must be `undefined`.
+          if (method == "getCompletionEntryDetails") {
+            args[4] ??= undefined;
+          }
+          return respond(id, languageService[method](...args));
+        }
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
-          `Invalid request method for request: "${request.method}" (${id})`,
+          `Invalid request method for request: "${method}" (${id})`,
         );
     }
   }

@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -10,9 +8,10 @@ use deno_core::error::AnyError;
 use deno_npm::registry::parse_dep_entry_name_and_raw_version;
 use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_runtime::deno_node::PackageJson;
-use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmVersionReqSpecifierParseError;
+use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
+use deno_semver::VersionReqSpecifierParseError;
+use indexmap::IndexMap;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -20,13 +19,13 @@ pub enum PackageJsonDepValueParseError {
   #[error(transparent)]
   SchemeValue(#[from] PackageDepNpmSchemeValueParseError),
   #[error(transparent)]
-  Specifier(#[from] NpmVersionReqSpecifierParseError),
+  Specifier(#[from] VersionReqSpecifierParseError),
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
 }
 
 pub type PackageJsonDeps =
-  BTreeMap<String, Result<NpmPackageReq, PackageJsonDepValueParseError>>;
+  IndexMap<String, Result<PackageReq, PackageJsonDepValueParseError>>;
 
 #[derive(Debug, Default)]
 pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);
@@ -40,7 +39,7 @@ impl PackageJsonDepsProvider {
     self.0.as_ref()
   }
 
-  pub fn reqs(&self) -> Vec<&NpmPackageReq> {
+  pub fn reqs(&self) -> Vec<&PackageReq> {
     match &self.0 {
       Some(deps) => {
         let mut package_reqs = deps
@@ -67,7 +66,7 @@ pub fn get_local_package_json_version_reqs(
   fn parse_entry(
     key: &str,
     value: &str,
-  ) -> Result<NpmPackageReq, PackageJsonDepValueParseError> {
+  ) -> Result<PackageReq, PackageJsonDepValueParseError> {
     if value.starts_with("workspace:")
       || value.starts_with("file:")
       || value.starts_with("git:")
@@ -83,33 +82,34 @@ pub fn get_local_package_json_version_reqs(
 
     let result = VersionReq::parse_from_specifier(version_req);
     match result {
-      Ok(version_req) => Ok(NpmPackageReq {
+      Ok(version_req) => Ok(PackageReq {
         name: name.to_string(),
-        version_req: Some(version_req),
+        version_req,
       }),
       Err(err) => Err(PackageJsonDepValueParseError::Specifier(err)),
     }
   }
 
   fn insert_deps(
-    deps: Option<&HashMap<String, String>>,
+    deps: Option<&IndexMap<String, String>>,
     result: &mut PackageJsonDeps,
   ) {
     if let Some(deps) = deps {
       for (key, value) in deps {
-        result.insert(key.to_string(), parse_entry(key, value));
+        result
+          .entry(key.to_string())
+          .or_insert_with(|| parse_entry(key, value));
       }
     }
   }
 
   let deps = package_json.dependencies.as_ref();
   let dev_deps = package_json.dev_dependencies.as_ref();
-  let mut result = BTreeMap::new();
+  let mut result = IndexMap::new();
 
-  // insert the dev dependencies first so the dependencies will
-  // take priority and overwrite any collisions
-  insert_deps(dev_deps, &mut result);
+  // favors the deps over dev_deps
   insert_deps(deps, &mut result);
+  insert_deps(dev_deps, &mut result);
 
   result
 }
@@ -182,7 +182,7 @@ mod test {
 
   fn get_local_package_json_version_reqs_for_tests(
     package_json: &PackageJson,
-  ) -> BTreeMap<String, Result<NpmPackageReq, String>> {
+  ) -> IndexMap<String, Result<PackageReq, String>> {
     get_local_package_json_version_reqs(package_json)
       .into_iter()
       .map(|(k, v)| {
@@ -194,17 +194,17 @@ mod test {
           },
         )
       })
-      .collect::<BTreeMap<_, _>>()
+      .collect::<IndexMap<_, _>>()
   }
 
   #[test]
   fn test_get_local_package_json_version_reqs() {
     let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
-    package_json.dependencies = Some(HashMap::from([
+    package_json.dependencies = Some(IndexMap::from([
       ("test".to_string(), "^1.2".to_string()),
       ("other".to_string(), "npm:package@~1.3".to_string()),
     ]));
-    package_json.dev_dependencies = Some(HashMap::from([
+    package_json.dev_dependencies = Some(IndexMap::from([
       ("package_b".to_string(), "~2.2".to_string()),
       // should be ignored
       ("other".to_string(), "^3.2".to_string()),
@@ -212,18 +212,18 @@ mod test {
     let deps = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
       deps,
-      BTreeMap::from([
+      IndexMap::from([
         (
           "test".to_string(),
-          Ok(NpmPackageReq::from_str("test@^1.2").unwrap())
+          Ok(PackageReq::from_str("test@^1.2").unwrap())
         ),
         (
           "other".to_string(),
-          Ok(NpmPackageReq::from_str("package@~1.3").unwrap())
+          Ok(PackageReq::from_str("package@~1.3").unwrap())
         ),
         (
           "package_b".to_string(),
-          Ok(NpmPackageReq::from_str("package_b@~2.2").unwrap())
+          Ok(PackageReq::from_str("package_b@~2.2").unwrap())
         )
       ])
     );
@@ -232,18 +232,18 @@ mod test {
   #[test]
   fn test_get_local_package_json_version_reqs_errors_non_npm_specifier() {
     let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
-    package_json.dependencies = Some(HashMap::from([(
+    package_json.dependencies = Some(IndexMap::from([(
       "test".to_string(),
       "1.x - 1.3".to_string(),
     )]));
     let map = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
       map,
-      BTreeMap::from([(
+      IndexMap::from([(
         "test".to_string(),
         Err(
           concat!(
-            "Invalid npm specifier version requirement. Unexpected character.\n",
+            "Invalid specifier version requirement. Unexpected character.\n",
             "   - 1.3\n",
             "  ~"
           )
@@ -256,7 +256,7 @@ mod test {
   #[test]
   fn test_get_local_package_json_version_reqs_skips_certain_specifiers() {
     let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
-    package_json.dependencies = Some(HashMap::from([
+    package_json.dependencies = Some(IndexMap::from([
       ("test".to_string(), "1".to_string()),
       ("work-test".to_string(), "workspace:1.1.1".to_string()),
       ("file-test".to_string(), "file:something".to_string()),
@@ -267,7 +267,7 @@ mod test {
     let result = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
       result,
-      BTreeMap::from([
+      IndexMap::from([
         (
           "file-test".to_string(),
           Err("Not implemented scheme 'file'".to_string()),
@@ -286,7 +286,7 @@ mod test {
         ),
         (
           "test".to_string(),
-          Ok(NpmPackageReq::from_str("test@1").unwrap())
+          Ok(PackageReq::from_str("test@1").unwrap())
         ),
         (
           "work-test".to_string(),

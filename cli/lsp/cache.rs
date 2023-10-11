@@ -8,12 +8,11 @@ use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
 pub fn calculate_fs_version(
-  cache: &HttpCache,
+  cache: &Arc<dyn HttpCache>,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
   match specifier.scheme() {
@@ -40,10 +39,13 @@ pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
 }
 
 fn calculate_fs_version_in_cache(
-  cache: &HttpCache,
+  cache: &Arc<dyn HttpCache>,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
-  match cache.get_modified_time(specifier) {
+  let Ok(cache_key) = cache.cache_item_key(specifier) else {
+    return Some("1".to_string());
+  };
+  match cache.read_modified_time(&cache_key) {
     Ok(Some(modified)) => {
       match modified.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(n) => Some(n.as_millis().to_string()),
@@ -80,12 +82,12 @@ struct Metadata {
 
 #[derive(Debug, Clone)]
 pub struct CacheMetadata {
-  cache: HttpCache,
+  cache: Arc<dyn HttpCache>,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
 }
 
 impl CacheMetadata {
-  pub fn new(cache: HttpCache) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache,
       metadata: Default::default(),
@@ -120,8 +122,8 @@ impl CacheMetadata {
     ) {
       return None;
     }
-    let specifier_metadata =
-      self.cache.get(specifier).ok()?.read_metadata().ok()??;
+    let cache_key = self.cache.cache_item_key(specifier).ok()?;
+    let specifier_metadata = self.cache.read_metadata(&cache_key).ok()??;
     let values = Arc::new(parse_metadata(&specifier_metadata.headers));
     let version = calculate_fs_version_in_cache(&self.cache, specifier);
     let mut metadata_map = self.metadata.lock();
@@ -130,8 +132,8 @@ impl CacheMetadata {
     Some(metadata)
   }
 
-  pub fn set_location(&mut self, location: PathBuf) {
-    self.cache = HttpCache::new(location);
+  pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
+    self.cache = cache;
     self.metadata.lock().clear();
   }
 }

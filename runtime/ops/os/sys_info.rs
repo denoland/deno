@@ -57,7 +57,11 @@ pub fn os_release() -> String {
       _ => String::from(""),
     }
   }
-  #[cfg(target_vendor = "apple")]
+  #[cfg(any(
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
   {
     let mut s = [0u8; 256];
     let mut mib = [libc::CTL_KERN, libc::KERN_OSRELEASE];

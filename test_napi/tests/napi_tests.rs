@@ -2,6 +2,8 @@
 
 use std::process::Command;
 use test_util::deno_cmd;
+use test_util::env_vars_for_npm_tests;
+use test_util::http_server;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";
@@ -53,6 +55,7 @@ fn build() {
 fn napi_tests() {
   build();
 
+  let _http_guard = http_server();
   let output = deno_cmd()
     .current_dir(test_util::napi_tests_path())
     .env("RUST_BACKTRACE", "1")
@@ -61,6 +64,7 @@ fn napi_tests() {
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")
+    .envs(env_vars_for_npm_tests())
     .spawn()
     .unwrap()
     .wait_with_output()

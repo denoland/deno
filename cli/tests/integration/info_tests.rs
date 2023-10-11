@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
-use util::env_vars_for_npm_tests_no_sync_download;
+use util::env_vars_for_npm_tests;
 use util::TestContextBuilder;
 
 #[test]
@@ -141,9 +141,16 @@ itest!(with_config_override {
 itest!(package_json_basic {
   args: "info --quiet main.ts",
   output: "package_json/basic/main.info.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   cwd: Some("package_json/basic"),
   copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
+});
+
+itest!(info_import_map {
+  args: "info preact/debug",
+  output: "info/with_import_map/with_import_map.out",
+  cwd: Some("info/with_import_map"),
   exit_code: 0,
 });

@@ -54,7 +54,7 @@ export class DenoWorkspace {
 
   async runFormatter() {
     await this.#repo.command(
-      "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js",
+      "deno run --unstable --allow-write --allow-read --allow-net --allow-run ./tools/format.js",
     );
   }
 }

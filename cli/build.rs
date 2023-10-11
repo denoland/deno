@@ -2,28 +2,21 @@
 
 use std::env;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_core::snapshot_util::*;
-use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
-use deno_runtime::deno_cache::SqliteBackedCache;
-use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
-use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
 
 mod ts {
   use super::*;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
-  use deno_core::op;
+  use deno_core::op2;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Deserialize;
-  use serde_json::json;
-  use serde_json::Value;
+  use serde::Serialize;
   use std::collections::HashMap;
   use std::path::Path;
   use std::path::PathBuf;
@@ -34,36 +27,70 @@ mod ts {
     specifier: String,
   }
 
-  #[op]
-  fn op_build_info(state: &mut OpState) -> Value {
-    let build_specifier = "asset:///bootstrap.ts";
-
-    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES.to_vec();
-    let build_libs = state.borrow::<Vec<&str>>();
-    json!({
-      "buildSpecifier": build_specifier,
-      "libs": build_libs,
-      "nodeBuiltInModuleNames": node_built_in_module_names,
-    })
+  #[derive(Debug, Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct BuildInfoResponse {
+    build_specifier: String,
+    libs: Vec<String>,
+    node_built_in_module_names: Vec<String>,
   }
 
-  #[op]
+  #[op2]
+  #[serde]
+  fn op_build_info(state: &mut OpState) -> BuildInfoResponse {
+    let build_specifier = "asset:///bootstrap.ts".to_string();
+    let build_libs = state
+      .borrow::<Vec<&str>>()
+      .iter()
+      .map(|s| s.to_string())
+      .collect();
+    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|s| s.to_string())
+      .collect();
+    BuildInfoResponse {
+      build_specifier,
+      libs: build_libs,
+      node_built_in_module_names,
+    }
+  }
+
+  #[op2(fast)]
   fn op_is_node_file() -> bool {
     false
   }
 
-  #[op]
+  #[derive(Debug, Deserialize, Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct ScriptVersionArgs {
+    specifier: String,
+  }
+
+  #[op2]
+  #[string]
   fn op_script_version(
     _state: &mut OpState,
-    _args: Value,
+    #[serde] _args: ScriptVersionArgs,
   ) -> Result<Option<String>, AnyError> {
     Ok(Some("1".to_string()))
   }
 
-  #[op]
+  #[derive(Debug, Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct LoadResponse {
+    data: String,
+    version: String,
+    script_kind: i32,
+  }
+
+  #[op2]
+  #[serde]
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
-  fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
+  fn op_load(
+    state: &mut OpState,
+    #[serde] args: LoadArgs,
+  ) -> Result<LoadResponse, AnyError> {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
@@ -71,12 +98,12 @@ mod ts {
 
     // we need a basic file to send to tsc to warm it up.
     if args.specifier == build_specifier {
-      Ok(json!({
-        "data": r#"Deno.writeTextFile("hello.txt", "hello deno!");"#,
-        "version": "1",
+      Ok(LoadResponse {
+        data: r#"Deno.writeTextFile("hello.txt", "hello deno!");"#.to_string(),
+        version: "1".to_string(),
         // this corresponds to `ts.ScriptKind.TypeScript`
-        "scriptKind": 3
-      }))
+        script_kind: 3,
+      })
       // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
       // parse out just the name so we can lookup the asset.
     } else if let Some(caps) = re_asset.captures(&args.specifier) {
@@ -90,12 +117,12 @@ mod ts {
           path_dts.join(format!("lib.{lib}.d.ts"))
         };
         let data = std::fs::read_to_string(path)?;
-        Ok(json!({
-          "data": data,
-          "version": "1",
+        Ok(LoadResponse {
+          data,
+          version: "1".to_string(),
           // this corresponds to `ts.ScriptKind.TypeScript`
-          "scriptKind": 3
-        }))
+          script_kind: 3,
+        })
       } else {
         Err(custom_error(
           "InvalidSpecifier",
@@ -176,6 +203,7 @@ mod ts {
       "es2016.array.include",
       "es2016",
       "es2017",
+      "es2017.date",
       "es2017.intl",
       "es2017.object",
       "es2017.sharedmemory",
@@ -217,8 +245,11 @@ mod ts {
       "es2022.string",
       "es2023",
       "es2023.array",
+      "es2023.collection",
       "esnext",
       "esnext.array",
+      "esnext.decorators",
+      "esnext.disposable",
       "esnext.intl",
     ];
 
@@ -230,18 +261,6 @@ mod ts {
         path_dts.join(format!("lib.{name}.d.ts")).display()
       );
     }
-    println!(
-      "cargo:rerun-if-changed={}",
-      cwd.join("tsc").join("00_typescript.js").display()
-    );
-    println!(
-      "cargo:rerun-if-changed={}",
-      cwd.join("tsc").join("99_main_compiler.js").display()
-    );
-    println!(
-      "cargo:rerun-if-changed={}",
-      cwd.join("js").join("40_testing.js").display()
-    );
 
     // create a copy of the vector that includes any op crate libs to be passed
     // to the JavaScript compiler to build into the snapshot
@@ -284,7 +303,7 @@ mod ts {
             .expect("snapshot compression failed"),
         );
       })),
-      snapshot_module_load_cb: None,
+      with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
@@ -304,30 +323,37 @@ mod ts {
   }
 }
 
-// FIXME(bartlomieju): information about which extensions were
-// already snapshotted is not preserved in the snapshot. This should be
-// fixed, so we can reliably depend on that information.
-// deps = [runtime]
+// Duplicated in `ops/mod.rs`. Keep in sync!
 deno_core::extension!(
   cli,
+  deps = [runtime],
   esm_entry_point = "ext:cli/99_main.js",
   esm = [
     dir "js",
     "40_testing.js",
+    "40_jupyter.js",
     "99_main.js"
   ],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.esm(vec![ExtensionFileSource {
+  customizer = |ext: &mut deno_core::Extension| {
+    ext.esm_files.to_mut().push(ExtensionFileSource {
       specifier: "ext:cli/runtime/js/99_main.js",
       code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-        std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
+        deno_runtime::js::PATH_FOR_99_MAIN_JS,
       ),
-    }]);
+    });
   }
 );
 
+#[cfg(not(feature = "__runtime_js_sources"))]
 #[must_use = "The files listed by create_cli_snapshot should be printed as 'cargo:rerun-if-changed' lines"]
 fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
+  use deno_core::Extension;
+  use deno_runtime::deno_cache::SqliteBackedCache;
+  use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
+  use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
+  use deno_runtime::permissions::PermissionsContainer;
+  use std::sync::Arc;
+
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
   let fs = Arc::new(deno_fs::RealFs);
@@ -350,33 +376,29 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_crypto::deno_crypto::init_ops(None),
     deno_broadcast_channel::deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-      false, // No --unstable.
     ),
-    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(false),
-    deno_net::deno_net::init_ops::<PermissionsContainer>(
-      None, false, // No --unstable.
-      None,
-    ),
+    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(),
+    deno_net::deno_net::init_ops::<PermissionsContainer>(None, None),
     deno_tls::deno_tls::init_ops(),
-    deno_kv::deno_kv::init_ops(
-      SqliteDbHandler::<PermissionsContainer>::new(None),
-      false, // No --unstable.
-    ),
+    deno_kv::deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(
+      None,
+    )),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
+    deno_fs::deno_fs::init_ops::<PermissionsContainer>(fs.clone()),
     deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
+    deno_runtime::runtime::init_ops(),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
     snapshot_path,
-    startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
+    startup_snapshot: deno_runtime::js::deno_isolate_init(),
     extensions,
     compression_cb: None,
-    snapshot_module_load_cb: None,
+    with_runtime_cb: None,
   })
 }
 
@@ -411,7 +433,9 @@ fn main() {
   // Host snapshots won't work when cross compiling.
   let target = env::var("TARGET").unwrap();
   let host = env::var("HOST").unwrap();
-  if target != host {
+  let skip_cross_check =
+    env::var("DENO_SKIP_CROSS_BUILD_CHECK").map_or(false, |v| v == "1");
+  if !skip_cross_check && target != host {
     panic!("Cross compiling with snapshot is not supported.");
   }
 
@@ -437,11 +461,13 @@ fn main() {
 
   #[cfg(target_os = "linux")]
   {
-    let ver = glibc_version::get_version().unwrap();
-
     // If a custom compiler is set, the glibc version is not reliable.
     // Here, we assume that if a custom compiler is used, that it will be modern enough to support a dynamic symbol list.
-    if env::var("CC").is_err() && ver.major <= 2 && ver.minor < 35 {
+    if env::var("CC").is_err()
+      && glibc_version::get_version()
+        .map(|ver| ver.major <= 2 && ver.minor < 35)
+        .unwrap_or(false)
+    {
       println!("cargo:warning=Compiling with all symbols exported, this will result in a larger binary. Please use glibc 2.35 or later for an optimised build.");
       println!("cargo:rustc-link-arg-bin=deno=-rdynamic");
     } else {
@@ -468,7 +494,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.1.6"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.2.2"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
@@ -481,10 +507,13 @@ fn main() {
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
-  let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let output = create_cli_snapshot(cli_snapshot_path);
-  for path in output.files_loaded_during_snapshot {
-    println!("cargo:rerun-if-changed={}", path.display())
+  #[cfg(not(feature = "__runtime_js_sources"))]
+  {
+    let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
+    let output = create_cli_snapshot(cli_snapshot_path);
+    for path in output.files_loaded_during_snapshot {
+      println!("cargo:rerun-if-changed={}", path.display())
+    }
   }
 
   #[cfg(target_os = "windows")]

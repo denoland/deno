@@ -2,7 +2,6 @@
 
 use crate::args::resolve_no_prompt;
 use crate::args::CaData;
-use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
@@ -10,6 +9,7 @@ use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+use deno_config::ConfigFlag;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -140,6 +140,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   }
 
   if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url) {
+    let npm_ref = npm_ref.into_inner();
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
         return Some(sub_path);
@@ -490,8 +491,8 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
-  use crate::args::ConfigFlag;
   use crate::util::fs::canonicalize_path;
+  use deno_config::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;

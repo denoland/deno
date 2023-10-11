@@ -11,6 +11,7 @@ gclient_config.py_entries
 /target/
 /std/hash/_wasm/target
 /tools/wpt/manifest.json
+/third_party/
 /test_napi/node_modules
 /test_napi/build
 /test_napi/third_party_tests/node_modules
@@ -28,3 +29,10 @@ gclient_config.py_entries
 /tools/wpt/certs/serial*
 
 /ext/websocket/autobahn/reports
+
+# JUnit files produced by deno test --junit
+junit.xml
+
+# Jupyter files
+.ipynb_checkpoints/
+Untitled*.ipynb

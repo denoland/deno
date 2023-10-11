@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
@@ -87,10 +87,11 @@ pub enum ImportKeyResult {
   Hmac { raw_data: RustRawKeyData },
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_import_key(
-  opts: ImportKeyOptions,
-  key_data: KeyData,
+  #[serde] opts: ImportKeyOptions,
+  #[serde] key_data: KeyData,
 ) -> Result<ImportKeyResult, AnyError> {
   match opts {
     ImportKeyOptions::RsassaPkcs1v15 {} => import_key_rsassa(key_data),

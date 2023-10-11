@@ -50,7 +50,7 @@ pub async fn vendor(
   let cli_options = factory.cli_options();
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
-  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config();
+  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
   let module_graph_builder = factory.module_graph_builder().await?.clone();
   let output = build::build(build::BuildInput {
     entry_points,
@@ -107,11 +107,12 @@ pub async fn vendor(
         .map(|config_path| config_path.parent().unwrap().join("node_modules"))
     });
     if let Some(node_modules_path) = node_modules_path {
-      factory
-        .create_node_modules_npm_fs_resolver(node_modules_path)
-        .await?
-        .cache_packages()
-        .await?;
+      let cli_options =
+        cli_options.with_node_modules_dir_path(node_modules_path);
+      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      if let Some(managed) = factory.npm_resolver().await?.as_managed() {
+        managed.cache_packages().await?;
+      }
     }
     log::info!(
       concat!(

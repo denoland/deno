@@ -3,12 +3,13 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
+use std::fmt::Write as FmtWrite;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -26,19 +27,80 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::path::specifier_to_file_path;
 
+/// Writes the file to the file system at a temporary path, then
+/// renames it to the destination in a single sys call in order
+/// to never leave the file system in a corrupted state.
+///
+/// This also handles creating the directory if a NotFound error
+/// occurs.
 pub fn atomic_write_file<T: AsRef<[u8]>>(
-  filename: &Path,
+  file_path: &Path,
   data: T,
   mode: u32,
 ) -> std::io::Result<()> {
-  let rand: String = (0..4)
-    .map(|_| format!("{:02x}", rand::random::<u8>()))
-    .collect();
-  let extension = format!("{rand}.tmp");
-  let tmp_file = filename.with_extension(extension);
-  write_file(&tmp_file, data, mode)?;
-  std::fs::rename(tmp_file, filename)?;
-  Ok(())
+  fn atomic_write_file_raw(
+    temp_file_path: &Path,
+    file_path: &Path,
+    data: &[u8],
+    mode: u32,
+  ) -> std::io::Result<()> {
+    write_file(temp_file_path, data, mode)?;
+    std::fs::rename(temp_file_path, file_path)?;
+    Ok(())
+  }
+
+  fn add_file_context(file_path: &Path, err: Error) -> Error {
+    Error::new(
+      err.kind(),
+      format!("{:#} (for '{}')", err, file_path.display()),
+    )
+  }
+
+  fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
+    let temp_file_path = {
+      let rand: String = (0..4).fold(String::new(), |mut output, _| {
+        let _ = write!(output, "{:02x}", rand::random::<u8>());
+        output
+      });
+      let extension = format!("{rand}.tmp");
+      file_path.with_extension(extension)
+    };
+
+    if let Err(write_err) =
+      atomic_write_file_raw(&temp_file_path, file_path, data, mode)
+    {
+      if write_err.kind() == ErrorKind::NotFound {
+        let parent_dir_path = file_path.parent().unwrap();
+        match std::fs::create_dir_all(parent_dir_path) {
+          Ok(()) => {
+            return atomic_write_file_raw(
+              &temp_file_path,
+              file_path,
+              data,
+              mode,
+            )
+            .map_err(|err| add_file_context(file_path, err));
+          }
+          Err(create_err) => {
+            if !parent_dir_path.exists() {
+              return Err(Error::new(
+                create_err.kind(),
+                format!(
+                  "{:#} (for '{}')\nCheck the permission of the directory.",
+                  create_err,
+                  parent_dir_path.display()
+                ),
+              ));
+            }
+          }
+        }
+      }
+      return Err(add_file_context(file_path, write_err));
+    }
+    Ok(())
+  }
+
+  inner(file_path, data.as_ref(), mode)
 }
 
 pub fn write_file<T: AsRef<[u8]>>(
@@ -140,6 +202,7 @@ pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
+  ignore_vendor_folder: bool,
 }
 
 impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
@@ -149,6 +212,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
       file_filter,
       ignore_git_folder: false,
       ignore_node_modules: false,
+      ignore_vendor_folder: false,
     }
   }
 
@@ -165,6 +229,11 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     self
   }
 
+  pub fn ignore_vendor_folder(mut self) -> Self {
+    self.ignore_vendor_folder = true;
+    self
+  }
+
   pub fn ignore_git_folder(mut self) -> Self {
     self.ignore_git_folder = true;
     self
@@ -172,14 +241,13 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 
   pub fn collect_files(
     &self,
-    files: &[PathBuf],
+    files: Option<&[PathBuf]>,
   ) -> Result<Vec<PathBuf>, AnyError> {
     let mut target_files = Vec::new();
-    let files = if files.is_empty() {
-      // collect files in the current directory when empty
-      Cow::Owned(vec![PathBuf::from(".")])
-    } else {
+    let files = if let Some(files) = files {
       Cow::Borrowed(files)
+    } else {
+      Cow::Owned(vec![PathBuf::from(".")])
     };
     for file in files.iter() {
       if let Ok(file) = canonicalize_path(file) {
@@ -203,9 +271,12 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
                 .file_name()
                 .map(|dir_name| {
                   let dir_name = dir_name.to_string_lossy().to_lowercase();
-                  let is_ignored_file = self.ignore_node_modules
-                    && dir_name == "node_modules"
-                    || self.ignore_git_folder && dir_name == ".git";
+                  let is_ignored_file = match dir_name.as_str() {
+                    "node_modules" => self.ignore_node_modules,
+                    "vendor" => self.ignore_vendor_folder,
+                    ".git" => self.ignore_git_folder,
+                    _ => false,
+                  };
                   // allow the user to opt out of ignoring by explicitly specifying the dir
                   file != c && is_ignored_file
                 })
@@ -238,14 +309,14 @@ pub fn collect_specifiers(
   let file_collector = FileCollector::new(predicate)
     .add_ignore_paths(&files.exclude)
     .ignore_git_folder()
-    .ignore_node_modules();
+    .ignore_node_modules()
+    .ignore_vendor_folder();
 
   let root_path = current_dir()?;
-  let include_files = if files.include.is_empty() {
-    // collect files in the current directory when empty
-    Cow::Owned(vec![root_path.clone()])
+  let include_files = if let Some(include) = &files.include {
+    Cow::Borrowed(include)
   } else {
-    Cow::Borrowed(&files.include)
+    Cow::Owned(vec![root_path.clone()])
   };
   for path in include_files.iter() {
     let path = path.to_string_lossy();
@@ -265,7 +336,7 @@ pub fn collect_specifiers(
     };
     let p = normalize_path(p);
     if p.is_dir() {
-      let test_files = file_collector.collect_files(&[p])?;
+      let test_files = file_collector.collect_files(Some(&[p]))?;
       let mut test_files_as_urls = test_files
         .iter()
         .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
@@ -657,10 +728,12 @@ mod tests {
     // ├── a.ts
     // ├── b.js
     // ├── child
-    // |   ├── node_modules
-    // |   |   └── node_modules.js
     // |   ├── git
     // |   |   └── git.js
+    // |   ├── node_modules
+    // |   |   └── node_modules.js
+    // |   ├── vendor
+    // |   |   └── vendor.js
     // │   ├── e.mjs
     // │   ├── f.mjsx
     // │   ├── .foo.TS
@@ -685,6 +758,8 @@ mod tests {
     t.write("dir.ts/child/node_modules/node_modules.js", "");
     t.create_dir_all("dir.ts/child/.git");
     t.write("dir.ts/child/.git/git.js", "");
+    t.create_dir_all("dir.ts/child/vendor");
+    t.write("dir.ts/child/vendor/vendor.js", "");
 
     let ignore_dir_path = root_dir_path.join("ignore");
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
@@ -701,7 +776,7 @@ mod tests {
     .add_ignore_paths(&[ignore_dir_path.to_path_buf()]);
 
     let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
+      .collect_files(Some(&[root_dir_path.to_path_buf()]))
       .unwrap();
     let expected = [
       "README.md",
@@ -713,6 +788,7 @@ mod tests {
       "f.mjsx",
       "git.js",
       "node_modules.js",
+      "vendor.js",
     ];
     let mut file_names = result
       .into_iter()
@@ -722,10 +798,12 @@ mod tests {
     assert_eq!(file_names, expected);
 
     // test ignoring the .git and node_modules folder
-    let file_collector =
-      file_collector.ignore_git_folder().ignore_node_modules();
+    let file_collector = file_collector
+      .ignore_git_folder()
+      .ignore_node_modules()
+      .ignore_vendor_folder();
     let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
+      .collect_files(Some(&[root_dir_path.to_path_buf()]))
       .unwrap();
     let expected = [
       "README.md",
@@ -745,10 +823,10 @@ mod tests {
 
     // test opting out of ignoring by specifying the dir
     let result = file_collector
-      .collect_files(&[
+      .collect_files(Some(&[
         root_dir_path.to_path_buf(),
         root_dir_path.to_path_buf().join("child/node_modules/"),
-      ])
+      ]))
       .unwrap();
     let expected = [
       "README.md",
@@ -816,11 +894,11 @@ mod tests {
 
     let result = collect_specifiers(
       &FilesConfig {
-        include: vec![
+        include: Some(vec![
           PathBuf::from("http://localhost:8080"),
           root_dir_path.to_path_buf(),
           PathBuf::from("https://localhost:8080".to_string()),
-        ],
+        ]),
         exclude: vec![ignore_dir_path.to_path_buf()],
       },
       predicate,
@@ -855,11 +933,11 @@ mod tests {
     };
     let result = collect_specifiers(
       &FilesConfig {
-        include: vec![PathBuf::from(format!(
+        include: Some(vec![PathBuf::from(format!(
           "{}{}",
           scheme,
           root_dir_path.join("child").to_string().replace('\\', "/")
-        ))],
+        ))]),
         exclude: vec![],
       },
       predicate,

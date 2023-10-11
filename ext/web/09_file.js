@@ -366,7 +366,11 @@ class Blob {
           const { value, done } = await AsyncGeneratorPrototypeNext(
             partIterator,
           );
-          if (done) return controller.close();
+          if (done) {
+            controller.close();
+            controller.byobRequest?.respond(0);
+            return;
+          }
           if (TypedArrayPrototypeGetByteLength(value) > 0) {
             return controller.enqueue(value);
           }
@@ -424,7 +428,7 @@ class Blob {
   }
 }
 
-webidl.configurePrototype(Blob);
+webidl.configureInterface(Blob);
 const BlobPrototype = Blob.prototype;
 
 webidl.converters["Blob"] = webidl.createInterfaceConverter(
@@ -531,9 +535,21 @@ class File extends Blob {
     webidl.assertBranded(this, FilePrototype);
     return this[_LastModified];
   }
+
+  [SymbolFor("Deno.customInspect")](inspect) {
+    return inspect(createFilteredInspectProxy({
+      object: this,
+      evaluate: ObjectPrototypeIsPrototypeOf(FilePrototype, this),
+      keys: [
+        "name",
+        "size",
+        "type",
+      ],
+    }));
+  }
 }
 
-webidl.configurePrototype(File);
+webidl.configureInterface(File);
 const FilePrototype = File.prototype;
 
 webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(

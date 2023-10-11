@@ -212,6 +212,7 @@ mod test {
         output: Some(PathBuf::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
+        no_terminal: false,
         include: vec![],
       },
       &std::env::current_dir().unwrap(),
@@ -234,6 +235,7 @@ mod test {
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: vec![],
+        no_terminal: false,
       },
       &std::env::current_dir().unwrap(),
     )

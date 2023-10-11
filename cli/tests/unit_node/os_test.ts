@@ -5,6 +5,7 @@ import os from "node:os";
 import {
   assert,
   assertEquals,
+  assertNotEquals,
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 
@@ -252,28 +253,39 @@ Deno.test({
 });
 
 Deno.test({
-  name: "APIs not yet implemented",
+  name: "os.setPriority() & os.getPriority()",
+  // disabled because os.getPriority() doesn't work without sudo
+  ignore: true,
   fn() {
-    assertThrows(
-      () => {
-        os.getPriority();
-      },
-      Error,
-      "Not implemented",
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "while (true) { console.log('foo') }"],
+    }).spawn();
+    const originalPriority = os.getPriority(child.pid);
+    assertNotEquals(originalPriority, os.constants.priority.PRIORITY_HIGH);
+    os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH);
+    assertEquals(
+      os.getPriority(child.pid),
+      os.constants.priority.PRIORITY_HIGH,
     );
+    os.setPriority(child.pid, originalPriority);
+    assertEquals(os.getPriority(child.pid), originalPriority);
+    child.kill();
+  },
+});
+
+Deno.test({
+  name:
+    "os.setPriority() throw os permission denied error & os.getPriority() doesn't",
+  async fn() {
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "while (true) { console.log('foo') }"],
+    }).spawn();
     assertThrows(
-      () => {
-        os.setPriority(0);
-      },
-      Error,
-      "Not implemented",
+      () => os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH),
+      Deno.errors.PermissionDenied,
     );
-    assertThrows(
-      () => {
-        os.userInfo();
-      },
-      Error,
-      "Not implemented",
-    );
+    os.getPriority(child.pid);
+    child.kill();
+    await child.status;
   },
 });

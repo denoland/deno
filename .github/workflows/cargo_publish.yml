@@ -34,6 +34,12 @@ jobs:
           # the latest version ever has issues that breaks publishing
           deno-version: v1.31.3
 
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          version: '21.12'
+          repo-token: '${{ secrets.GITHUB_TOKEN }}'
+
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
