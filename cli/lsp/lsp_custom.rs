@@ -6,7 +6,7 @@ use tower_lsp::lsp_types as lsp;
 
 pub const CACHE_REQUEST: &str = "deno/cache";
 pub const PERFORMANCE_REQUEST: &str = "deno/performance";
-pub const TASK_REQUEST: &str = "deno/task";
+pub const TASK_REQUEST: &str = "deno/taskDefinitions";
 pub const RELOAD_IMPORT_REGISTRIES_REQUEST: &str =
   "deno/reloadImportRegistries";
 pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
@@ -22,6 +22,16 @@ pub struct CacheParams {
   /// Any documents that have been specifically asked to be cached via the
   /// command.
   pub uris: Vec<lsp::TextDocumentIdentifier>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskDefinition {
+  pub name: String,
+  // TODO(nayeemrmn): Rename this to `command` in vscode_deno.
+  #[serde(rename = "detail")]
+  pub command: String,
+  pub source_uri: lsp::Url,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -22,7 +22,6 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use import_map::ImportMap;
 use log::error;
 use serde_json::from_value;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -65,6 +64,7 @@ use super::documents::UpdateDocumentConfigOptions;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
+use super::lsp_custom::TaskDefinition;
 use super::npm::CliNpmSearchApi;
 use super::parent_process_checker;
 use super::performance::Performance;
@@ -344,8 +344,8 @@ impl LanguageServer {
     self.0.write().await.reload_import_registries().await
   }
 
-  pub async fn task_request(&self) -> LspResult<Option<Value>> {
-    self.0.read().await.get_tasks()
+  pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
+    self.0.read().await.task_definitions()
   }
 
   pub async fn test_run_request(
@@ -3616,24 +3616,35 @@ impl Inner {
     json!({ "averages": averages })
   }
 
-  fn get_tasks(&self) -> LspResult<Option<Value>> {
-    Ok(self.config.maybe_config_file().and_then(|cf| {
-      let value = cf.json.tasks.clone()?;
-      let tasks: BTreeMap<String, String> =
-        serde_json::from_value(value).ok()?;
-      Some(
-        tasks
-          .into_iter()
-          .map(|(key, value)| {
-            json!({
-              "name": key,
-              "detail": value,
-              "sourceUri": &cf.specifier,
-            })
-          })
-          .collect(),
-      )
-    }))
+  fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
+    let mut result = vec![];
+    if let Some(config_file) = self.config.maybe_config_file() {
+      if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
+        for (name, value) in tasks {
+          let Some(command) = value.as_str() else {
+            continue;
+          };
+          result.push(TaskDefinition {
+            name: name.clone(),
+            command: command.to_string(),
+            source_uri: config_file.specifier.clone(),
+          });
+        }
+      };
+    }
+    if let Some(package_json) = &self.maybe_package_json {
+      if let Some(scripts) = &package_json.scripts {
+        for (name, command) in scripts {
+          result.push(TaskDefinition {
+            name: name.clone(),
+            command: command.clone(),
+            source_uri: package_json.specifier(),
+          });
+        }
+      }
+    }
+    result.sort_by_key(|d| d.name.clone());
+    Ok(result)
   }
 
   async fn inlay_hint(
