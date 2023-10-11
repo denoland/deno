@@ -688,6 +688,74 @@ fn lsp_import_map_node_specifiers() {
   client.shutdown();
 }
 
+#[test]
+fn lsp_format_vendor_path() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({ "vendor": true }).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+  assert!(temp_dir
+    .path()
+    .join("vendor/http_localhost_4545/run/002_hello.ts")
+    .exists());
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"console.log("Hello World");"#,
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 27,
+        },
+        "end": {
+          "line": 0,
+          "character": 27,
+        },
+      },
+      "newText": "\n",
+    }]),
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/19802.
 // Disable the `workspace/configuration` capability. Ensure the LSP falls back
 // to using `enablePaths` from the `InitializationOptions`.
@@ -872,6 +940,18 @@ fn lsp_deno_task() {
       }
     ])
   );
+}
+
+#[test]
+fn lsp_reload_import_registries_command() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "workspace/executeCommand",
+    json!({ "command": "deno.reloadImportRegistries" }),
+  );
+  assert_eq!(res, json!(true));
 }
 
 #[test]

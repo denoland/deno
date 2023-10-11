@@ -497,7 +497,7 @@ class Request {
   }
 }
 
-webidl.configurePrototype(Request);
+webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
 mixinBody(RequestPrototype, _body, _mimeType);
 

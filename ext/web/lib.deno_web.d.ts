@@ -933,6 +933,7 @@ declare interface Transformer<I = any, O = any> {
   readableType?: undefined;
   start?: TransformStreamDefaultControllerCallback<O>;
   transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  cancel?: (reason: any) => Promise<void>;
   writableType?: undefined;
 }
 
