@@ -407,12 +407,6 @@ impl InitializeParamsBuilder {
     self
   }
 
-  pub fn unset_deno_enable(&mut self) -> &mut Self {
-    let options = self.initialization_options_mut();
-    options.insert("enable".to_string(), json!(null));
-    self
-  }
-
   pub fn set_import_map(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("importMap".to_string(), value.as_ref().to_string().into());

@@ -1518,7 +1518,12 @@ impl Inner {
 
     // if the current deno.json has changed, we need to reload it
     if has_config_changed(&self.config, &changes) {
+      // Check the 'current' config specifier from both before and after it's
+      // updated. Check canonicalized and uncanonicalized variants for each.
+      // If any are included in `changes`, send our custom notification for
+      // `deno.json` changes: `deno/didChangeDenoConfigurationNotification`.
       let mut files_to_check = HashSet::with_capacity(4);
+      // Collect previous config specifiers.
       if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
         files_to_check.insert(url.clone());
       }
@@ -1526,9 +1531,11 @@ impl Inner {
       {
         files_to_check.insert(url.clone());
       }
+      // Update config.
       if let Err(err) = self.update_config_file().await {
         self.client.show_message(MessageType::WARNING, err);
       }
+      // Collect new config specifiers.
       if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
         files_to_check.insert(url.clone());
       }
