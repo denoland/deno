@@ -77,10 +77,11 @@ const _count = Symbol("[[count]]");
 
 /**
  * @param {any} self
- * @param {{prefix: string, context: string}} opts
+ * @param {string} prefix
+ * @param {string} context
  * @returns {InnerGPUDevice & {rid: number}}
  */
-function assertDevice(self, { prefix, context }) {
+function assertDevice(self, prefix, context) {
   const device = self[_device];
   const deviceRid = device?.rid;
   if (deviceRid === undefined) {
@@ -103,10 +104,7 @@ function assertDeviceMatch(
   resource,
   { prefix, resourceContext, selfContext },
 ) {
-  const resourceDevice = assertDevice(resource, {
-    prefix,
-    context: resourceContext,
-  });
+  const resourceDevice = assertDevice(resource, prefix, resourceContext);
   if (resourceDevice.rid !== self.rid) {
     throw new DOMException(
       `${prefix}: ${resourceContext} belongs to a diffent device than ${selfContext}.`,
@@ -118,10 +116,11 @@ function assertDeviceMatch(
 
 /**
  * @param {any} self
- * @param {{prefix: string, context: string}} opts
+ * @param {string} prefix
+ * @param {string} context
  * @returns {number}
  */
-function assertResource(self, { prefix, context }) {
+function assertResource(self, prefix, context) {
   const rid = self[_rid];
   if (rid === undefined) {
     throw new DOMException(
@@ -207,11 +206,8 @@ class GPUValidationError extends GPUError {
   /** @param {string} message */
   constructor(message) {
     const prefix = "Failed to construct 'GPUValidationError'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    message = webidl.converters.DOMString(message, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    message = webidl.converters.DOMString(message, prefix, "Argument 1");
     super(illegalConstructorKey);
     this[webidl.brand] = webidl.brand;
     this[_message] = message;
@@ -223,11 +219,8 @@ class GPUOutOfMemoryError extends GPUError {
   name = "GPUOutOfMemoryError";
   constructor(message) {
     const prefix = "Failed to construct 'GPUOutOfMemoryError'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    message = webidl.converters.DOMString(message, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    message = webidl.converters.DOMString(message, prefix, "Argument 1");
     super(illegalConstructorKey);
     this[webidl.brand] = webidl.brand;
     this[_message] = message;
@@ -247,10 +240,11 @@ class GPU {
    */
   async requestAdapter(options = {}) {
     webidl.assertBranded(this, GPUPrototype);
-    options = webidl.converters.GPURequestAdapterOptions(options, {
-      prefix: "Failed to execute 'requestAdapter' on 'GPU'",
-      context: "Argument 1",
-    });
+    options = webidl.converters.GPURequestAdapterOptions(
+      options,
+      "Failed to execute 'requestAdapter' on 'GPU'",
+      "Argument 1",
+    );
 
     const { err, ...data } = await core.opAsync(
       "op_webgpu_request_adapter",
@@ -324,10 +318,11 @@ class GPUAdapter {
   async requestDevice(descriptor = {}) {
     webidl.assertBranded(this, GPUAdapterPrototype);
     const prefix = "Failed to execute 'requestDevice' on 'GPUAdapter'";
-    descriptor = webidl.converters.GPUDeviceDescriptor(descriptor, {
+    descriptor = webidl.converters.GPUDeviceDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     const requiredFeatures = descriptor.requiredFeatures ?? [];
     for (let i = 0; i < requiredFeatures.length; ++i) {
       const feature = requiredFeatures[i];
@@ -368,10 +363,11 @@ class GPUAdapter {
   async requestAdapterInfo(unmaskHints = []) {
     webidl.assertBranded(this, GPUAdapterPrototype);
     const prefix = "Failed to execute 'requestAdapterInfo' on 'GPUAdapter'";
-    unmaskHints = webidl.converters["sequence<DOMString>"](unmaskHints, {
+    unmaskHints = webidl.converters["sequence<DOMString>"](
+      unmaskHints,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
 
     const {
       vendor,
@@ -700,10 +696,11 @@ function GPUObjectBaseMixin(name, type) {
      */
     set(label) {
       webidl.assertBranded(this, type.prototype);
-      label = webidl.converters["UVString?"](label, {
-        prefix: `Failed to set 'label' on '${name}'`,
-        context: "Argument 1",
-      });
+      label = webidl.converters["UVString?"](
+        label,
+        `Failed to set 'label' on '${name}'`,
+        "Argument 1",
+      );
       this[_label] = label;
     },
   });
@@ -910,12 +907,13 @@ class GPUDevice extends EventTarget {
   createBuffer(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createBuffer' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPUBufferDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUBufferDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_buffer(
       device.rid,
       descriptor.label,
@@ -960,12 +958,13 @@ class GPUDevice extends EventTarget {
   createTexture(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createTexture' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPUTextureDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUTextureDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_texture({
       deviceRid: device.rid,
       ...descriptor,
@@ -989,11 +988,12 @@ class GPUDevice extends EventTarget {
   createSampler(descriptor = {}) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createSampler' on 'GPUDevice'";
-    descriptor = webidl.converters.GPUSamplerDescriptor(descriptor, {
+    descriptor = webidl.converters.GPUSamplerDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_sampler({
       deviceRid: device.rid,
       ...descriptor,
@@ -1016,12 +1016,13 @@ class GPUDevice extends EventTarget {
   createBindGroupLayout(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createBindGroupLayout' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPUBindGroupLayoutDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUBindGroupLayoutDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     for (let i = 0; i < descriptor.entries.length; ++i) {
       const entry = descriptor.entries[i];
 
@@ -1059,17 +1060,18 @@ class GPUDevice extends EventTarget {
   createPipelineLayout(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createPipelineLayout' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPUPipelineLayoutDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUPipelineLayoutDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     const bindGroupLayouts = ArrayPrototypeMap(
       descriptor.bindGroupLayouts,
       (layout, i) => {
         const context = `bind group layout ${i + 1}`;
-        const rid = assertResource(layout, { prefix, context });
+        const rid = assertResource(layout, prefix, context);
         assertDeviceMatch(device, layout, {
           prefix,
           selfContext: "this",
@@ -1101,16 +1103,14 @@ class GPUDevice extends EventTarget {
   createBindGroup(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createBindGroup' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPUBindGroupDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUBindGroupDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const layout = assertResource(descriptor.layout, {
-      prefix,
-      context: "layout",
-    });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const layout = assertResource(descriptor.layout, prefix, "layout");
     assertDeviceMatch(device, descriptor.layout, {
       prefix,
       resourceContext: "layout",
@@ -1120,10 +1120,7 @@ class GPUDevice extends EventTarget {
       const context = `entry ${i + 1}`;
       const resource = entry.resource;
       if (ObjectPrototypeIsPrototypeOf(GPUSamplerPrototype, resource)) {
-        const rid = assertResource(resource, {
-          prefix,
-          context,
-        });
+        const rid = assertResource(resource, prefix, context);
         assertDeviceMatch(device, resource, {
           prefix,
           resourceContext: context,
@@ -1137,14 +1134,8 @@ class GPUDevice extends EventTarget {
       } else if (
         ObjectPrototypeIsPrototypeOf(GPUTextureViewPrototype, resource)
       ) {
-        const rid = assertResource(resource, {
-          prefix,
-          context,
-        });
-        assertResource(resource[_texture], {
-          prefix,
-          context,
-        });
+        const rid = assertResource(resource, prefix, context);
+        assertResource(resource[_texture], prefix, context);
         assertDeviceMatch(device, resource[_texture], {
           prefix,
           resourceContext: context,
@@ -1156,7 +1147,7 @@ class GPUDevice extends EventTarget {
           resource: rid,
         };
       } else {
-        const rid = assertResource(resource.buffer, { prefix, context });
+        const rid = assertResource(resource.buffer, prefix, context);
         assertDeviceMatch(device, resource.buffer, {
           prefix,
           resourceContext: context,
@@ -1195,12 +1186,13 @@ class GPUDevice extends EventTarget {
   createShaderModule(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createShaderModule' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPUShaderModuleDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUShaderModuleDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_shader_module(
       device.rid,
       descriptor.label,
@@ -1224,26 +1216,28 @@ class GPUDevice extends EventTarget {
   createComputePipeline(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createComputePipeline' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPUComputePipelineDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPUComputePipelineDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     let layout = descriptor.layout;
     if (typeof descriptor.layout !== "string") {
       const context = "layout";
-      layout = assertResource(descriptor.layout, { prefix, context });
+      layout = assertResource(descriptor.layout, prefix, context);
       assertDeviceMatch(device, descriptor.layout, {
         prefix,
         resourceContext: context,
         selfContext: "this",
       });
     }
-    const module = assertResource(descriptor.compute.module, {
+    const module = assertResource(
+      descriptor.compute.module,
       prefix,
-      context: "compute shader module",
-    });
+      "compute shader module",
+    );
     assertDeviceMatch(device, descriptor.compute.module, {
       prefix,
       resourceContext: "compute shader module",
@@ -1278,26 +1272,28 @@ class GPUDevice extends EventTarget {
   createRenderPipeline(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createRenderPipeline' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPURenderPipelineDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPURenderPipelineDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     let layout = descriptor.layout;
     if (typeof descriptor.layout !== "string") {
       const context = "layout";
-      layout = assertResource(descriptor.layout, { prefix, context });
+      layout = assertResource(descriptor.layout, prefix, context);
       assertDeviceMatch(device, descriptor.layout, {
         prefix,
         resourceContext: context,
         selfContext: "this",
       });
     }
-    const module = assertResource(descriptor.vertex.module, {
+    const module = assertResource(
+      descriptor.vertex.module,
       prefix,
-      context: "vertex shader module",
-    });
+      "vertex shader module",
+    );
     assertDeviceMatch(device, descriptor.vertex.module, {
       prefix,
       resourceContext: "vertex shader module",
@@ -1305,10 +1301,11 @@ class GPUDevice extends EventTarget {
     });
     let fragment = undefined;
     if (descriptor.fragment) {
-      const module = assertResource(descriptor.fragment.module, {
+      const module = assertResource(
+        descriptor.fragment.module,
         prefix,
-        context: "fragment shader module",
-      });
+        "fragment shader module",
+      );
       assertDeviceMatch(device, descriptor.fragment.module, {
         prefix,
         resourceContext: "fragment shader module",
@@ -1363,11 +1360,12 @@ class GPUDevice extends EventTarget {
   createCommandEncoder(descriptor = {}) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createCommandEncoder' on 'GPUDevice'";
-    descriptor = webidl.converters.GPUCommandEncoderDescriptor(descriptor, {
+    descriptor = webidl.converters.GPUCommandEncoderDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_command_encoder(
       device.rid,
       descriptor.label,
@@ -1394,12 +1392,10 @@ class GPUDevice extends EventTarget {
     webidl.requiredArguments(arguments.length, 1, { prefix });
     descriptor = webidl.converters.GPURenderBundleEncoderDescriptor(
       descriptor,
-      {
-        prefix,
-        context: "Argument 1",
-      },
+      prefix,
+      "Argument 1",
     );
-    const device = assertDevice(this, { prefix, context: "this" });
+    const device = assertDevice(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_render_bundle_encoder({
       deviceRid: device.rid,
       ...descriptor,
@@ -1422,15 +1418,13 @@ class GPUDevice extends EventTarget {
   createQuerySet(descriptor) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createQuerySet' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     descriptor = webidl.converters.GPUQuerySetDescriptor(
       descriptor,
-      {
-        prefix,
-        context: "Argument 1",
-      },
+      prefix,
+      "Argument 1",
     );
-    const device = assertDevice(this, { prefix, context: "this" });
+    const device = assertDevice(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_query_set({
       deviceRid: device.rid,
       ...descriptor,
@@ -1465,12 +1459,9 @@ class GPUDevice extends EventTarget {
   pushErrorScope(filter) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'pushErrorScope' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    filter = webidl.converters.GPUErrorFilter(filter, {
-      prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    filter = webidl.converters.GPUErrorFilter(filter, prefix, "Argument 1");
+    const device = assertDevice(this, prefix, "this");
     ArrayPrototypePush(device.errorScopeStack, { filter, operations: [] });
   }
 
@@ -1481,7 +1472,7 @@ class GPUDevice extends EventTarget {
   async popErrorScope() {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'popErrorScope' on 'GPUDevice'";
-    const device = assertDevice(this, { prefix, context: "this" });
+    const device = assertDevice(this, prefix, "this");
     if (device.isLost) {
       throw new DOMException("Device has been lost.", "OperationError");
     }
@@ -1546,14 +1537,15 @@ class GPUQueue {
     });
     commandBuffers = webidl.converters["sequence<GPUCommandBuffer>"](
       commandBuffers,
-      { prefix, context: "Argument 1" },
+      prefix,
+      "Argument 1",
     );
-    const device = assertDevice(this, { prefix, context: "this" });
+    const device = assertDevice(this, prefix, "this");
     const commandBufferRids = ArrayPrototypeMap(
       commandBuffers,
       (buffer, i) => {
         const context = `command buffer ${i + 1}`;
-        const rid = assertResource(buffer, { prefix, context });
+        const rid = assertResource(buffer, prefix, context);
         assertDeviceMatch(device, buffer, {
           prefix,
           selfContext: "this",
@@ -1584,32 +1576,24 @@ class GPUQueue {
   writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {
     webidl.assertBranded(this, GPUQueuePrototype);
     const prefix = "Failed to execute 'writeBuffer' on 'GPUQueue'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    buffer = webidl.converters["GPUBuffer"](buffer, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    buffer = webidl.converters["GPUBuffer"](buffer, prefix, "Argument 1");
+    bufferOffset = webidl.converters["GPUSize64"](
+      bufferOffset,
       prefix,
-      context: "Argument 1",
-    });
-    bufferOffset = webidl.converters["GPUSize64"](bufferOffset, {
+      "Argument 2",
+    );
+    data = webidl.converters.BufferSource(data, prefix, "Argument 3");
+    dataOffset = webidl.converters["GPUSize64"](
+      dataOffset,
       prefix,
-      context: "Argument 2",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 3",
-    });
-    dataOffset = webidl.converters["GPUSize64"](dataOffset, {
-      prefix,
-      context: "Argument 4",
-    });
-    size = size === undefined ? undefined : webidl.converters.GPUSize64(size, {
-      prefix,
-      context: "Argument 5",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const bufferRid = assertResource(buffer, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 4",
+    );
+    size = size === undefined
+      ? undefined
+      : webidl.converters.GPUSize64(size, prefix, "Argument 5");
+    const device = assertDevice(this, prefix, "this");
+    const bufferRid = assertResource(buffer, prefix, "Argument 1");
     assertDeviceMatch(device, buffer, {
       prefix,
       selfContext: "this",
@@ -1635,28 +1619,21 @@ class GPUQueue {
   writeTexture(destination, data, dataLayout, size) {
     webidl.assertBranded(this, GPUQueuePrototype);
     const prefix = "Failed to execute 'writeTexture' on 'GPUQueue'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    destination = webidl.converters.GPUImageCopyTexture(destination, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    destination = webidl.converters.GPUImageCopyTexture(
+      destination,
       prefix,
-      context: "Argument 1",
-    });
-    data = webidl.converters.BufferSource(data, {
+      "Argument 1",
+    );
+    data = webidl.converters.BufferSource(data, prefix, "Argument 2");
+    dataLayout = webidl.converters.GPUImageDataLayout(
+      dataLayout,
       prefix,
-      context: "Argument 2",
-    });
-    dataLayout = webidl.converters.GPUImageDataLayout(dataLayout, {
-      prefix,
-      context: "Argument 3",
-    });
-    size = webidl.converters.GPUExtent3D(size, {
-      prefix,
-      context: "Argument 4",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const textureRid = assertResource(destination.texture, {
-      prefix,
-      context: "texture",
-    });
+      "Argument 3",
+    );
+    size = webidl.converters.GPUExtent3D(size, prefix, "Argument 4");
+    const device = assertDevice(this, prefix, "this");
+    const textureRid = assertResource(destination.texture, prefix, "texture");
     assertDeviceMatch(device, destination.texture, {
       prefix,
       selfContext: "this",
@@ -1790,21 +1767,14 @@ class GPUBuffer {
   async mapAsync(mode, offset = 0, size) {
     webidl.assertBranded(this, GPUBufferPrototype);
     const prefix = "Failed to execute 'mapAsync' on 'GPUBuffer'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    mode = webidl.converters.GPUMapModeFlags(mode, {
-      prefix,
-      context: "Argument 1",
-    });
-    offset = webidl.converters.GPUSize64(offset, {
-      prefix,
-      context: "Argument 2",
-    });
-    size = size === undefined ? undefined : webidl.converters.GPUSize64(size, {
-      prefix,
-      context: "Argument 3",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const bufferRid = assertResource(this, { prefix, context: "this" });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    mode = webidl.converters.GPUMapModeFlags(mode, prefix, "Argument 1");
+    offset = webidl.converters.GPUSize64(offset, prefix, "Argument 2");
+    size = size === undefined
+      ? undefined
+      : webidl.converters.GPUSize64(size, prefix, "Argument 3");
+    const device = assertDevice(this, prefix, "this");
+    const bufferRid = assertResource(this, prefix, "this");
     /** @type {number} */
     let rangeSize;
     if (size === undefined) {
@@ -1888,18 +1858,12 @@ class GPUBuffer {
   getMappedRange(offset = 0, size) {
     webidl.assertBranded(this, GPUBufferPrototype);
     const prefix = "Failed to execute 'getMappedRange' on 'GPUBuffer'";
-    offset = webidl.converters.GPUSize64(offset, {
-      prefix,
-      context: "Argument 1",
-    });
+    offset = webidl.converters.GPUSize64(offset, prefix, "Argument 1");
     if (size !== undefined) {
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 2",
-      });
+      size = webidl.converters.GPUSize64(size, prefix, "Argument 2");
     }
-    assertDevice(this, { prefix, context: "this" });
-    const bufferRid = assertResource(this, { prefix, context: "this" });
+    assertDevice(this, prefix, "this");
+    const bufferRid = assertResource(this, prefix, "this");
     /** @type {number} */
     let rangeSize;
     if (size === undefined) {
@@ -1943,8 +1907,8 @@ class GPUBuffer {
   unmap() {
     webidl.assertBranded(this, GPUBufferPrototype);
     const prefix = "Failed to execute 'unmap' on 'GPUBuffer'";
-    const device = assertDevice(this, { prefix, context: "this" });
-    const bufferRid = assertResource(this, { prefix, context: "this" });
+    const device = assertDevice(this, prefix, "this");
+    const bufferRid = assertResource(this, prefix, "this");
     if (this[_state] === "unmapped" || this[_state] === "destroyed") {
       throw new DOMException(
         `${prefix}: buffer is not ready to be unmapped.`,
@@ -2139,13 +2103,14 @@ class GPUTexture {
   createView(descriptor = {}) {
     webidl.assertBranded(this, GPUTexturePrototype);
     const prefix = "Failed to execute 'createView' on 'GPUTexture'";
-    webidl.requiredArguments(arguments.length, 0, { prefix });
-    descriptor = webidl.converters.GPUTextureViewDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 0, prefix);
+    descriptor = webidl.converters.GPUTextureViewDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const textureRid = assertResource(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const textureRid = assertResource(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_create_texture_view({
       textureRid,
       ...descriptor,
@@ -2557,15 +2522,9 @@ class GPUComputePipeline {
     const prefix =
       "Failed to execute 'getBindGroupLayout' on 'GPUComputePipeline'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
-    index = webidl.converters["unsigned long"](index, {
-      prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const computePipelineRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+    index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
+    const device = assertDevice(this, prefix, "this");
+    const computePipelineRid = assertResource(this, prefix, "this");
     const { rid, label, err } = ops
       .op_webgpu_compute_pipeline_get_bind_group_layout(
         computePipelineRid,
@@ -2633,16 +2592,10 @@ class GPURenderPipeline {
     webidl.assertBranded(this, GPURenderPipelinePrototype);
     const prefix =
       "Failed to execute 'getBindGroupLayout' on 'GPURenderPipeline'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    index = webidl.converters["unsigned long"](index, {
-      prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const renderPipelineRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
+    const device = assertDevice(this, prefix, "this");
+    const renderPipelineRid = assertResource(this, prefix, "this");
     const { rid, label, err } = ops
       .op_webgpu_render_pipeline_get_bind_group_layout(
         renderPipelineRid,
@@ -2742,16 +2695,14 @@ class GPUCommandEncoder {
   beginRenderPass(descriptor) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    descriptor = webidl.converters.GPURenderPassDescriptor(descriptor, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    descriptor = webidl.converters.GPURenderPassDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
 
     if (this[_rid] === undefined) {
       throw new DOMException(
@@ -2774,10 +2725,11 @@ class GPUCommandEncoder {
         );
       }
 
-      const view = assertResource(descriptor.depthStencilAttachment.view, {
+      const view = assertResource(
+        descriptor.depthStencilAttachment.view,
         prefix,
-        context: "texture view for depth stencil attachment",
-      });
+        "texture view for depth stencil attachment",
+      );
       assertDeviceMatch(
         device,
         descriptor.depthStencilAttachment.view[_texture],
@@ -2797,14 +2749,16 @@ class GPUCommandEncoder {
       descriptor.colorAttachments,
       (colorAttachment, i) => {
         const context = `color attachment ${i + 1}`;
-        const view = assertResource(colorAttachment.view, {
+        const view = assertResource(
+          colorAttachment.view,
           prefix,
-          context: `texture view for ${context}`,
-        });
-        assertResource(colorAttachment.view[_texture], {
+          `texture view for ${context}`,
+        );
+        assertResource(
+          colorAttachment.view[_texture],
           prefix,
-          context: `texture backing texture view for ${context}`,
-        });
+          `texture backing texture view for ${context}`,
+        );
         assertDeviceMatch(
           device,
           colorAttachment.view[_texture],
@@ -2818,16 +2772,10 @@ class GPUCommandEncoder {
         if (colorAttachment.resolveTarget) {
           resolveTarget = assertResource(
             colorAttachment.resolveTarget,
-            {
-              prefix,
-              context: `resolve target texture view for ${context}`,
-            },
-          );
-          assertResource(colorAttachment.resolveTarget[_texture], {
             prefix,
-            context:
-              `texture backing resolve target texture view for ${context}`,
-          });
+            `resolve target texture view for ${context}`,
+          );
+          assertResource(colorAttachment.resolveTarget[_texture], prefix, `texture backing resolve target texture view for ${context}`);
           assertDeviceMatch(
             device,
             colorAttachment.resolveTarget[_texture],
@@ -2848,25 +2796,24 @@ class GPUCommandEncoder {
       },
     );
 
-    const occlusionQuerySet = assertResource(
-      descriptor.occlusionQuerySet,
-      {
+    let occlusionQuerySet;
+
+    if (descriptor.occlusionQuerySet) {
+      occlusionQuerySet = assertResource(
+        descriptor.occlusionQuerySet,
         prefix,
-        context: "occlusionQuerySet",
-      },
-    );
+        "occlusionQuerySet",
+      );
+    }
 
     let timestampWrites = null;
     if (descriptor.timestampWrites) {
-      const querySet = assertResource(descriptor.querySet, {
-        prefix,
-        context: "querySet",
-      });
+      const querySet = assertResource(descriptor.timestampWrites.querySet, prefix, "querySet");
 
       timestampWrites = {
         querySet,
-        beginningOfPassWriteIndex: descriptor.beginningOfPassWriteIndex,
-        endOfPassWriteIndex: descriptor.endOfPassWriteIndex,
+        beginningOfPassWriteIndex: descriptor.timestampWrites.beginningOfPassWriteIndex,
+        endOfPassWriteIndex: descriptor.timestampWrites.endOfPassWriteIndex,
       };
     }
 
@@ -2895,28 +2842,23 @@ class GPUCommandEncoder {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix =
       "Failed to execute 'beginComputePass' on 'GPUCommandEncoder'";
-    descriptor = webidl.converters.GPUComputePassDescriptor(descriptor, {
+    descriptor = webidl.converters.GPUComputePassDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
 
-    assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+    assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
 
     let timestampWrites = null;
     if (descriptor.timestampWrites) {
-      const querySet = assertResource(descriptor.querySet, {
-        prefix,
-        context: "querySet",
-      });
+      const querySet = assertResource(descriptor.timestampWrites.querySet, prefix, "querySet");
 
       timestampWrites = {
         querySet,
-        beginningOfPassWriteIndex: descriptor.beginningOfPassWriteIndex,
-        endOfPassWriteIndex: descriptor.endOfPassWriteIndex,
+        beginningOfPassWriteIndex: descriptor.timestampWrites.beginningOfPassWriteIndex,
+        endOfPassWriteIndex: descriptor.timestampWrites.endOfPassWriteIndex,
       };
     }
 
@@ -2952,45 +2894,33 @@ class GPUCommandEncoder {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix =
       "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 5, { prefix });
-    source = webidl.converters.GPUBuffer(source, {
+    webidl.requiredArguments(arguments.length, 5, prefix);
+    source = webidl.converters.GPUBuffer(source, prefix, "Argument 1");
+    sourceOffset = webidl.converters.GPUSize64(
+      sourceOffset,
       prefix,
-      context: "Argument 1",
-    });
-    sourceOffset = webidl.converters.GPUSize64(sourceOffset, {
+      "Argument 2",
+    );
+    destination = webidl.converters.GPUBuffer(
+      destination,
       prefix,
-      context: "Argument 2",
-    });
-    destination = webidl.converters.GPUBuffer(destination, {
+      "Argument 3",
+    );
+    destinationOffset = webidl.converters.GPUSize64(
+      destinationOffset,
       prefix,
-      context: "Argument 3",
-    });
-    destinationOffset = webidl.converters.GPUSize64(destinationOffset, {
-      prefix,
-      context: "Argument 4",
-    });
-    size = webidl.converters.GPUSize64(size, {
-      prefix,
-      context: "Argument 5",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const sourceRid = assertResource(source, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 4",
+    );
+    size = webidl.converters.GPUSize64(size, prefix, "Argument 5");
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
+    const sourceRid = assertResource(source, prefix, "Argument 1");
     assertDeviceMatch(device, source, {
       prefix,
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    const destinationRid = assertResource(destination, {
-      prefix,
-      context: "Argument 3",
-    });
+    const destinationRid = assertResource(destination, prefix, "Argument 3");
     assertDeviceMatch(device, destination, {
       prefix,
       resourceContext: "Argument 3",
@@ -3017,37 +2947,31 @@ class GPUCommandEncoder {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix =
       "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    source = webidl.converters.GPUImageCopyBuffer(source, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    source = webidl.converters.GPUImageCopyBuffer(source, prefix, "Argument 1");
+    destination = webidl.converters.GPUImageCopyTexture(
+      destination,
       prefix,
-      context: "Argument 1",
-    });
-    destination = webidl.converters.GPUImageCopyTexture(destination, {
+      "Argument 2",
+    );
+    copySize = webidl.converters.GPUExtent3D(copySize, prefix, "Argument 3");
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
+    const sourceBufferRid = assertResource(
+      source.buffer,
       prefix,
-      context: "Argument 2",
-    });
-    copySize = webidl.converters.GPUExtent3D(copySize, {
-      prefix,
-      context: "Argument 3",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const sourceBufferRid = assertResource(source.buffer, {
-      prefix,
-      context: "source in Argument 1",
-    });
+      "source in Argument 1",
+    );
     assertDeviceMatch(device, source.buffer, {
       prefix,
       resourceContext: "source in Argument 1",
       selfContext: "this",
     });
-    const destinationTextureRid = assertResource(destination.texture, {
+    const destinationTextureRid = assertResource(
+      destination.texture,
       prefix,
-      context: "texture in Argument 2",
-    });
+      "texture in Argument 2",
+    );
     assertDeviceMatch(device, destination.texture, {
       prefix,
       resourceContext: "texture in Argument 2",
@@ -3082,37 +3006,35 @@ class GPUCommandEncoder {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix =
       "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    source = webidl.converters.GPUImageCopyTexture(source, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    source = webidl.converters.GPUImageCopyTexture(
+      source,
       prefix,
-      context: "Argument 1",
-    });
-    destination = webidl.converters.GPUImageCopyBuffer(destination, {
+      "Argument 1",
+    );
+    destination = webidl.converters.GPUImageCopyBuffer(
+      destination,
       prefix,
-      context: "Argument 2",
-    });
-    copySize = webidl.converters.GPUExtent3D(copySize, {
+      "Argument 2",
+    );
+    copySize = webidl.converters.GPUExtent3D(copySize, prefix, "Argument 3");
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
+    const sourceTextureRid = assertResource(
+      source.texture,
       prefix,
-      context: "Argument 3",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const sourceTextureRid = assertResource(source.texture, {
-      prefix,
-      context: "texture in Argument 1",
-    });
+      "texture in Argument 1",
+    );
     assertDeviceMatch(device, source.texture, {
       prefix,
       resourceContext: "texture in Argument 1",
       selfContext: "this",
     });
-    const destinationBufferRid = assertResource(destination.buffer, {
+    const destinationBufferRid = assertResource(
+      destination.buffer,
       prefix,
-      context: "buffer in Argument 2",
-    });
+      "buffer in Argument 2",
+    );
     assertDeviceMatch(device, destination.buffer, {
       prefix,
       resourceContext: "buffer in Argument 2",
@@ -3144,37 +3066,35 @@ class GPUCommandEncoder {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix =
       "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    source = webidl.converters.GPUImageCopyTexture(source, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    source = webidl.converters.GPUImageCopyTexture(
+      source,
       prefix,
-      context: "Argument 1",
-    });
-    destination = webidl.converters.GPUImageCopyTexture(destination, {
+      "Argument 1",
+    );
+    destination = webidl.converters.GPUImageCopyTexture(
+      destination,
       prefix,
-      context: "Argument 2",
-    });
-    copySize = webidl.converters.GPUExtent3D(copySize, {
+      "Argument 2",
+    );
+    copySize = webidl.converters.GPUExtent3D(copySize, prefix, "Argument 3");
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
+    const sourceTextureRid = assertResource(
+      source.texture,
       prefix,
-      context: "Argument 3",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const sourceTextureRid = assertResource(source.texture, {
-      prefix,
-      context: "texture in Argument 1",
-    });
+      "texture in Argument 1",
+    );
     assertDeviceMatch(device, source.texture, {
       prefix,
       resourceContext: "texture in Argument 1",
       selfContext: "this",
     });
-    const destinationTextureRid = assertResource(destination.texture, {
+    const destinationTextureRid = assertResource(
+      destination.texture,
       prefix,
-      context: "texture in Argument 2",
-    });
+      "texture in Argument 2",
+    );
     assertDeviceMatch(device, destination.texture, {
       prefix,
       resourceContext: "texture in Argument 2",
@@ -3209,28 +3129,13 @@ class GPUCommandEncoder {
   clearBuffer(buffer, offset = 0, size = undefined) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'clearBuffer' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    buffer = webidl.converters.GPUBuffer(buffer, {
-      prefix,
-      context: "Argument 1",
-    });
-    offset = webidl.converters.GPUSize64(offset, {
-      prefix,
-      context: "Argument 2",
-    });
-    size = webidl.converters.GPUSize64(size, {
-      prefix,
-      context: "Argument 3",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const bufferRid = assertResource(buffer, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    buffer = webidl.converters.GPUBuffer(buffer, prefix, "Argument 1");
+    offset = webidl.converters.GPUSize64(offset, prefix, "Argument 2");
+    size = webidl.converters.GPUSize64(size, prefix, "Argument 3");
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
+    const bufferRid = assertResource(buffer, prefix, "Argument 1");
     const { err } = ops.op_webgpu_command_encoder_clear_buffer(
       commandEncoderRid,
       bufferRid,
@@ -3246,16 +3151,10 @@ class GPUCommandEncoder {
   pushDebugGroup(groupLabel) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    groupLabel = webidl.converters.USVString(groupLabel, {
-      prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    groupLabel = webidl.converters.USVString(groupLabel, prefix, "Argument 1");
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
     const { err } = ops.op_webgpu_command_encoder_push_debug_group(
       commandEncoderRid,
       groupLabel,
@@ -3266,11 +3165,8 @@ class GPUCommandEncoder {
   popDebugGroup() {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder'";
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
     const { err } = ops.op_webgpu_command_encoder_pop_debug_group(
       commandEncoderRid,
     );
@@ -3284,16 +3180,14 @@ class GPUCommandEncoder {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix =
       "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    markerLabel = webidl.converters.USVString(markerLabel, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    markerLabel = webidl.converters.USVString(
+      markerLabel,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
     const { err } = ops.op_webgpu_command_encoder_insert_debug_marker(
       commandEncoderRid,
       markerLabel,
@@ -3308,24 +3202,12 @@ class GPUCommandEncoder {
   writeTimestamp(querySet, queryIndex) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    querySet = webidl.converters.GPUQuerySet(querySet, {
-      prefix,
-      context: "Argument 1",
-    });
-    queryIndex = webidl.converters.GPUSize32(queryIndex, {
-      prefix,
-      context: "Argument 2",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const querySetRid = assertResource(querySet, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    querySet = webidl.converters.GPUQuerySet(querySet, prefix, "Argument 1");
+    queryIndex = webidl.converters.GPUSize32(queryIndex, prefix, "Argument 2");
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
+    const querySetRid = assertResource(querySet, prefix, "Argument 1");
     assertDeviceMatch(device, querySet, {
       prefix,
       resourceContext: "Argument 1",
@@ -3356,44 +3238,28 @@ class GPUCommandEncoder {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
     webidl.requiredArguments(arguments.length, 5, { prefix });
-    querySet = webidl.converters.GPUQuerySet(querySet, {
+    querySet = webidl.converters.GPUQuerySet(querySet, prefix, "Argument 1");
+    firstQuery = webidl.converters.GPUSize32(firstQuery, prefix, "Argument 2");
+    queryCount = webidl.converters.GPUSize32(queryCount, prefix, "Argument 3");
+    destination = webidl.converters.GPUBuffer(
+      destination,
       prefix,
-      context: "Argument 1",
-    });
-    firstQuery = webidl.converters.GPUSize32(firstQuery, {
+      "Argument 4",
+    );
+    destinationOffset = webidl.converters.GPUSize64(
+      destinationOffset,
       prefix,
-      context: "Argument 2",
-    });
-    queryCount = webidl.converters.GPUSize32(queryCount, {
-      prefix,
-      context: "Argument 3",
-    });
-    destination = webidl.converters.GPUBuffer(destination, {
-      prefix,
-      context: "Argument 4",
-    });
-    destinationOffset = webidl.converters.GPUSize64(destinationOffset, {
-      prefix,
-      context: "Argument 5",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const querySetRid = assertResource(querySet, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 5",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
+    const querySetRid = assertResource(querySet, prefix, "Argument 1");
     assertDeviceMatch(device, querySet, {
       prefix,
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    const destinationRid = assertResource(destination, {
-      prefix,
-      context: "Argument 3",
-    });
+    const destinationRid = assertResource(destination, prefix, "Argument 3");
     assertDeviceMatch(device, destination, {
       prefix,
       resourceContext: "Argument 3",
@@ -3417,15 +3283,13 @@ class GPUCommandEncoder {
   finish(descriptor = {}) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'finish' on 'GPUCommandEncoder'";
-    descriptor = webidl.converters.GPUCommandBufferDescriptor(descriptor, {
+    descriptor = webidl.converters.GPUCommandBufferDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const commandEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const commandEncoderRid = assertResource(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_command_encoder_finish(
       commandEncoderRid,
       descriptor.label,
@@ -3500,30 +3364,15 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
     webidl.requiredArguments(arguments.length, 6, { prefix });
-    x = webidl.converters.float(x, { prefix, context: "Argument 1" });
-    y = webidl.converters.float(y, { prefix, context: "Argument 2" });
-    width = webidl.converters.float(width, { prefix, context: "Argument 3" });
-    height = webidl.converters.float(height, {
-      prefix,
-      context: "Argument 4",
-    });
-    minDepth = webidl.converters.float(minDepth, {
-      prefix,
-      context: "Argument 5",
-    });
-    maxDepth = webidl.converters.float(maxDepth, {
-      prefix,
-      context: "Argument 6",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+    x = webidl.converters.float(x, prefix, "Argument 1");
+    y = webidl.converters.float(y, prefix, "Argument 2");
+    width = webidl.converters.float(width, prefix, "Argument 3");
+    height = webidl.converters.float(height, prefix, "Argument 4");
+    minDepth = webidl.converters.float(minDepth, prefix, "Argument 5");
+    maxDepth = webidl.converters.float(maxDepth, prefix, "Argument 6");
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_set_viewport({
       renderPassRid,
       x,
@@ -3545,32 +3394,18 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'setScissorRect' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    x = webidl.converters.GPUIntegerCoordinate(x, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    x = webidl.converters.GPUIntegerCoordinate(x, prefix, "Argument 1");
+    y = webidl.converters.GPUIntegerCoordinate(y, prefix, "Argument 2");
+    width = webidl.converters.GPUIntegerCoordinate(width, prefix, "Argument 3");
+    height = webidl.converters.GPUIntegerCoordinate(
+      height,
       prefix,
-      context: "Argument 1",
-    });
-    y = webidl.converters.GPUIntegerCoordinate(y, {
-      prefix,
-      context: "Argument 2",
-    });
-    width = webidl.converters.GPUIntegerCoordinate(width, {
-      prefix,
-      context: "Argument 3",
-    });
-    height = webidl.converters.GPUIntegerCoordinate(height, {
-      prefix,
-      context: "Argument 4",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+      "Argument 4",
+    );
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_set_scissor_rect(
       renderPassRid,
       x,
@@ -3587,20 +3422,11 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'setBlendConstant' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    color = webidl.converters.GPUColor(color, {
-      prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    color = webidl.converters.GPUColor(color, prefix, "Argument 1");
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_set_blend_constant(
       renderPassRid,
       normalizeGPUColor(color),
@@ -3614,20 +3440,15 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'setStencilReference' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    reference = webidl.converters.GPUStencilValue(reference, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    reference = webidl.converters.GPUStencilValue(
+      reference,
       prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_set_stencil_reference(
       renderPassRid,
       reference,
@@ -3641,20 +3462,11 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'beginOcclusionQuery' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    queryIndex = webidl.converters.GPUSize32(queryIndex, {
-      prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    queryIndex = webidl.converters.GPUSize32(queryIndex, prefix, "Argument 1");
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_begin_occlusion_query(
       renderPassRid,
       queryIndex,
@@ -3665,15 +3477,9 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'endOcclusionQuery' on 'GPUComputePassEncoder'";
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_end_occlusion_query(renderPassRid);
   }
 
@@ -3684,23 +3490,22 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'executeBundles' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    bundles = webidl.converters["sequence<GPURenderBundle>"](bundles, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    bundles = webidl.converters["sequence<GPURenderBundle>"](
+      bundles,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this[_encoder], {
+      "Argument 1",
+    );
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     const bundleRids = ArrayPrototypeMap(bundles, (bundle, i) => {
       const context = `bundle ${i + 1}`;
-      const rid = assertResource(bundle, { prefix, context });
+      const rid = assertResource(bundle, prefix, context);
       assertDeviceMatch(device, bundle, {
         prefix,
         resourceContext: context,
@@ -3714,15 +3519,17 @@ class GPURenderPassEncoder {
   end() {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'end' on 'GPURenderPassEncoder'";
-    const device = assertDevice(this[_encoder], {
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    const commandEncoderRid = assertResource(this[_encoder], {
+      "encoder referenced by this",
+    );
+    const commandEncoderRid = assertResource(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+      "encoder referenced by this",
+    );
+    const renderPassRid = assertResource(this, prefix, "this");
     const { err } = ops.op_webgpu_render_pass_end(
       commandEncoderRid,
       renderPassRid,
@@ -3741,19 +3548,14 @@ class GPURenderPassEncoder {
   ) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'setBindGroup' on 'GPURenderPassEncoder'";
-    const device = assertDevice(this[_encoder], {
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
-    const bindGroupRid = assertResource(bindGroup, {
-      prefix,
-      context: "Argument 2",
-    });
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
+    const bindGroupRid = assertResource(bindGroup, prefix, "Argument 2");
     assertDeviceMatch(device, bindGroup, {
       prefix,
       resourceContext: "Argument 2",
@@ -3786,20 +3588,11 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    groupLabel = webidl.converters.USVString(groupLabel, {
-      prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    groupLabel = webidl.converters.USVString(groupLabel, prefix, "Argument 1");
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_push_debug_group(renderPassRid, groupLabel);
   }
 
@@ -3807,15 +3600,9 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'popDebugGroup' on 'GPURenderPassEncoder'";
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_pop_debug_group(renderPassRid);
   }
 
@@ -3826,20 +3613,15 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    markerLabel = webidl.converters.USVString(markerLabel, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    markerLabel = webidl.converters.USVString(
+      markerLabel,
       prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_insert_debug_marker(renderPassRid, markerLabel);
   }
 
@@ -3849,24 +3631,20 @@ class GPURenderPassEncoder {
   setPipeline(pipeline) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'setPipeline' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    pipeline = webidl.converters.GPURenderPipeline(pipeline, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    pipeline = webidl.converters.GPURenderPipeline(
+      pipeline,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this[_encoder], {
+      "Argument 1",
+    );
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
-    const pipelineRid = assertResource(pipeline, {
-      prefix,
-      context: "Argument 1",
-    });
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
+    const pipelineRid = assertResource(pipeline, prefix, "Argument 1");
     assertDeviceMatch(device, pipeline, {
       prefix,
       resourceContext: "Argument 1",
@@ -3885,38 +3663,25 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    buffer = webidl.converters.GPUBuffer(buffer, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    buffer = webidl.converters.GPUBuffer(buffer, prefix, "Argument 1");
+    indexFormat = webidl.converters.GPUIndexFormat(
+      indexFormat,
       prefix,
-      context: "Argument 1",
-    });
-    indexFormat = webidl.converters.GPUIndexFormat(indexFormat, {
-      prefix,
-      context: "Argument 2",
-    });
-    offset = webidl.converters.GPUSize64(offset, {
-      prefix,
-      context: "Argument 3",
-    });
+      "Argument 2",
+    );
+    offset = webidl.converters.GPUSize64(offset, prefix, "Argument 3");
     if (size !== undefined) {
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 4",
-      });
+      size = webidl.converters.GPUSize64(size, prefix, "Argument 4");
     }
-    const device = assertDevice(this[_encoder], {
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
-    const bufferRid = assertResource(buffer, {
-      prefix,
-      context: "Argument 1",
-    });
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
+    const bufferRid = assertResource(buffer, prefix, "Argument 1");
     assertDeviceMatch(device, buffer, {
       prefix,
       resourceContext: "Argument 1",
@@ -3941,38 +3706,21 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    slot = webidl.converters.GPUSize32(slot, {
-      prefix,
-      context: "Argument 2",
-    });
-    buffer = webidl.converters.GPUBuffer(buffer, {
-      prefix,
-      context: "Argument 2",
-    });
-    offset = webidl.converters.GPUSize64(offset, {
-      prefix,
-      context: "Argument 3",
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    slot = webidl.converters.GPUSize32(slot, prefix, "Argument 1");
+    buffer = webidl.converters.GPUBuffer(buffer, prefix, "Argument 2");
+    offset = webidl.converters.GPUSize64(offset, prefix, "Argument 3");
     if (size !== undefined) {
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 4",
-      });
+      size = webidl.converters.GPUSize64(size, prefix, "Argument 4");
     }
-    const device = assertDevice(this[_encoder], {
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
-    const bufferRid = assertResource(buffer, {
-      prefix,
-      context: "Argument 2",
-    });
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
+    const bufferRid = assertResource(buffer, prefix, "Argument 2");
     assertDeviceMatch(device, buffer, {
       prefix,
       resourceContext: "Argument 2",
@@ -3996,32 +3744,30 @@ class GPURenderPassEncoder {
   draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'draw' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    vertexCount = webidl.converters.GPUSize32(vertexCount, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    vertexCount = webidl.converters.GPUSize32(
+      vertexCount,
       prefix,
-      context: "Argument 1",
-    });
-    instanceCount = webidl.converters.GPUSize32(instanceCount, {
+      "Argument 1",
+    );
+    instanceCount = webidl.converters.GPUSize32(
+      instanceCount,
       prefix,
-      context: "Argument 2",
-    });
-    firstVertex = webidl.converters.GPUSize32(firstVertex, {
+      "Argument 2",
+    );
+    firstVertex = webidl.converters.GPUSize32(
+      firstVertex,
       prefix,
-      context: "Argument 3",
-    });
-    firstInstance = webidl.converters.GPUSize32(firstInstance, {
+      "Argument 3",
+    );
+    firstInstance = webidl.converters.GPUSize32(
+      firstInstance,
       prefix,
-      context: "Argument 4",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+      "Argument 4",
+    );
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_draw(
       renderPassRid,
       vertexCount,
@@ -4047,36 +3793,27 @@ class GPURenderPassEncoder {
   ) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    indexCount = webidl.converters.GPUSize32(indexCount, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    indexCount = webidl.converters.GPUSize32(indexCount, prefix, "Argument 1");
+    instanceCount = webidl.converters.GPUSize32(
+      instanceCount,
       prefix,
-      context: "Argument 1",
-    });
-    instanceCount = webidl.converters.GPUSize32(instanceCount, {
+      "Argument 2",
+    );
+    firstIndex = webidl.converters.GPUSize32(firstIndex, prefix, "Argument 3");
+    baseVertex = webidl.converters.GPUSignedOffset32(
+      baseVertex,
       prefix,
-      context: "Argument 2",
-    });
-    firstIndex = webidl.converters.GPUSize32(firstIndex, {
+      "Argument 4",
+    );
+    firstInstance = webidl.converters.GPUSize32(
+      firstInstance,
       prefix,
-      context: "Argument 3",
-    });
-    baseVertex = webidl.converters.GPUSignedOffset32(baseVertex, {
-      prefix,
-      context: "Argument 4",
-    });
-    firstInstance = webidl.converters.GPUSize32(firstInstance, {
-      prefix,
-      context: "Argument 5",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
+      "Argument 5",
+    );
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_pass_draw_indexed(
       renderPassRid,
       indexCount,
@@ -4094,28 +3831,29 @@ class GPURenderPassEncoder {
   drawIndirect(indirectBuffer, indirectOffset) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    indirectBuffer = webidl.converters.GPUBuffer(
+      indirectBuffer,
       prefix,
-      context: "Argument 1",
-    });
-    indirectOffset = webidl.converters.GPUSize64(indirectOffset, {
+      "Argument 1",
+    );
+    indirectOffset = webidl.converters.GPUSize64(
+      indirectOffset,
       prefix,
-      context: "Argument 2",
-    });
-    const device = assertDevice(this[_encoder], {
+      "Argument 2",
+    );
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
+    const indirectBufferRid = assertResource(
+      indirectBuffer,
       prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
-    const indirectBufferRid = assertResource(indirectBuffer, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     assertDeviceMatch(device, indirectBuffer, {
       prefix,
       resourceContext: "Argument 1",
@@ -4136,28 +3874,29 @@ class GPURenderPassEncoder {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix =
       "Failed to execute 'drawIndexedIndirect' on 'GPURenderPassEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    indirectBuffer = webidl.converters.GPUBuffer(
+      indirectBuffer,
       prefix,
-      context: "Argument 1",
-    });
-    indirectOffset = webidl.converters.GPUSize64(indirectOffset, {
+      "Argument 1",
+    );
+    indirectOffset = webidl.converters.GPUSize64(
+      indirectOffset,
       prefix,
-      context: "Argument 2",
-    });
-    const device = assertDevice(this[_encoder], {
+      "Argument 2",
+    );
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const renderPassRid = assertResource(this, prefix, "this");
+    const indirectBufferRid = assertResource(
+      indirectBuffer,
       prefix,
-      context: "encoder referenced by this",
-    });
-    const renderPassRid = assertResource(this, { prefix, context: "this" });
-    const indirectBufferRid = assertResource(indirectBuffer, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     assertDeviceMatch(device, indirectBuffer, {
       prefix,
       resourceContext: "Argument 1",
@@ -4222,24 +3961,20 @@ class GPUComputePassEncoder {
   setPipeline(pipeline) {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix = "Failed to execute 'setPipeline' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    pipeline = webidl.converters.GPUComputePipeline(pipeline, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    pipeline = webidl.converters.GPUComputePipeline(
+      pipeline,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this[_encoder], {
+      "Argument 1",
+    );
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
-    const pipelineRid = assertResource(pipeline, {
-      prefix,
-      context: "Argument 1",
-    });
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const computePassRid = assertResource(this, prefix, "this");
+    const pipelineRid = assertResource(pipeline, prefix, "Argument 1");
     assertDeviceMatch(device, pipeline, {
       prefix,
       resourceContext: "Argument 1",
@@ -4261,28 +3996,25 @@ class GPUComputePassEncoder {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix =
       "Failed to execute 'dispatchWorkgroups' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    workgroupCountX = webidl.converters.GPUSize32(workgroupCountX, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    workgroupCountX = webidl.converters.GPUSize32(
+      workgroupCountX,
       prefix,
-      context: "Argument 1",
-    });
-    workgroupCountY = webidl.converters.GPUSize32(workgroupCountY, {
+      "Argument 1",
+    );
+    workgroupCountY = webidl.converters.GPUSize32(
+      workgroupCountY,
       prefix,
-      context: "Argument 2",
-    });
-    workgroupCountZ = webidl.converters.GPUSize32(workgroupCountZ, {
+      "Argument 2",
+    );
+    workgroupCountZ = webidl.converters.GPUSize32(
+      workgroupCountZ,
       prefix,
-      context: "Argument 3",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
+      "Argument 3",
+    );
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const computePassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_compute_pass_dispatch_workgroups(
       computePassRid,
       workgroupCountX,
@@ -4299,28 +4031,29 @@ class GPUComputePassEncoder {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix =
       "Failed to execute 'dispatchWorkgroupsIndirect' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    indirectBuffer = webidl.converters.GPUBuffer(
+      indirectBuffer,
       prefix,
-      context: "Argument 1",
-    });
-    indirectOffset = webidl.converters.GPUSize64(indirectOffset, {
+      "Argument 1",
+    );
+    indirectOffset = webidl.converters.GPUSize64(
+      indirectOffset,
       prefix,
-      context: "Argument 2",
-    });
-    const device = assertDevice(this[_encoder], {
+      "Argument 2",
+    );
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const computePassRid = assertResource(this, prefix, "this");
+    const indirectBufferRid = assertResource(
+      indirectBuffer,
       prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
-    const indirectBufferRid = assertResource(indirectBuffer, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     assertDeviceMatch(device, indirectBuffer, {
       prefix,
       resourceContext: "Argument 1",
@@ -4336,15 +4069,17 @@ class GPUComputePassEncoder {
   end() {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix = "Failed to execute 'end' on 'GPUComputePassEncoder'";
-    const device = assertDevice(this[_encoder], {
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    const commandEncoderRid = assertResource(this[_encoder], {
+      "encoder referenced by this",
+    );
+    const commandEncoderRid = assertResource(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
+      "encoder referenced by this",
+    );
+    const computePassRid = assertResource(this, prefix, "this");
     const { err } = ops.op_webgpu_compute_pass_end(
       commandEncoderRid,
       computePassRid,
@@ -4364,19 +4099,14 @@ class GPUComputePassEncoder {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix =
       "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
-    const device = assertDevice(this[_encoder], {
+    const device = assertDevice(
+      this[_encoder],
       prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
-    const bindGroupRid = assertResource(bindGroup, {
-      prefix,
-      context: "Argument 2",
-    });
+      "encoder referenced by this",
+    );
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const computePassRid = assertResource(this, prefix, "this");
+    const bindGroupRid = assertResource(bindGroup, prefix, "Argument 2");
     assertDeviceMatch(device, bindGroup, {
       prefix,
       resourceContext: "Argument 2",
@@ -4409,20 +4139,11 @@ class GPUComputePassEncoder {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix =
       "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    groupLabel = webidl.converters.USVString(groupLabel, {
-      prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    groupLabel = webidl.converters.USVString(groupLabel, prefix, "Argument 1");
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const computePassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_compute_pass_push_debug_group(computePassRid, groupLabel);
   }
 
@@ -4430,15 +4151,9 @@ class GPUComputePassEncoder {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix =
       "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder'";
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const computePassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_compute_pass_pop_debug_group(computePassRid);
   }
 
@@ -4449,20 +4164,15 @@ class GPUComputePassEncoder {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
     const prefix =
       "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    markerLabel = webidl.converters.USVString(markerLabel, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    markerLabel = webidl.converters.USVString(
+      markerLabel,
       prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    assertResource(this[_encoder], {
-      prefix,
-      context: "encoder referenced by this",
-    });
-    const computePassRid = assertResource(this, { prefix, context: "this" });
+      "Argument 1",
+    );
+    assertDevice(this[_encoder], prefix, "encoder referenced by this");
+    assertResource(this[_encoder], prefix, "encoder referenced by this");
+    const computePassRid = assertResource(this, prefix, "this");
     ops.op_webgpu_compute_pass_insert_debug_marker(
       computePassRid,
       markerLabel,
@@ -4564,15 +4274,13 @@ class GPURenderBundleEncoder {
   finish(descriptor = {}) {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix = "Failed to execute 'finish' on 'GPURenderBundleEncoder'";
-    descriptor = webidl.converters.GPURenderBundleDescriptor(descriptor, {
+    descriptor = webidl.converters.GPURenderBundleDescriptor(
+      descriptor,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
     const { rid, err } = ops.op_webgpu_render_bundle_encoder_finish(
       renderBundleEncoderRid,
       descriptor.label,
@@ -4600,15 +4308,9 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'setBindGroup' on 'GPURenderBundleEncoder'";
-    const device = assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const bindGroupRid = assertResource(bindGroup, {
-      prefix,
-      context: "Argument 2",
-    });
+    const device = assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
+    const bindGroupRid = assertResource(bindGroup, prefix, "Argument 2");
     assertDeviceMatch(device, bindGroup, {
       prefix,
       resourceContext: "Argument 2",
@@ -4641,16 +4343,10 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'pushDebugGroup' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    groupLabel = webidl.converters.USVString(groupLabel, {
-      prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    groupLabel = webidl.converters.USVString(groupLabel, prefix, "Argument 1");
+    assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_bundle_encoder_push_debug_group(
       renderBundleEncoderRid,
       groupLabel,
@@ -4661,11 +4357,8 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'popDebugGroup' on 'GPURenderBundleEncoder'";
-    assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+    assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_bundle_encoder_pop_debug_group(
       renderBundleEncoderRid,
     );
@@ -4678,16 +4371,14 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'insertDebugMarker' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    markerLabel = webidl.converters.USVString(markerLabel, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    markerLabel = webidl.converters.USVString(
+      markerLabel,
       prefix,
-      context: "Argument 1",
-    });
-    assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+      "Argument 1",
+    );
+    assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_bundle_encoder_insert_debug_marker(
       renderBundleEncoderRid,
       markerLabel,
@@ -4701,20 +4392,15 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'setPipeline' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    pipeline = webidl.converters.GPURenderPipeline(pipeline, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    pipeline = webidl.converters.GPURenderPipeline(
+      pipeline,
       prefix,
-      context: "Argument 1",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const pipelineRid = assertResource(pipeline, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
+    const pipelineRid = assertResource(pipeline, prefix, "Argument 1");
     assertDeviceMatch(device, pipeline, {
       prefix,
       resourceContext: "Argument 1",
@@ -4736,32 +4422,18 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'setIndexBuffer' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    buffer = webidl.converters.GPUBuffer(buffer, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    buffer = webidl.converters.GPUBuffer(buffer, prefix, "Argument 1");
+    indexFormat = webidl.converters.GPUIndexFormat(
+      indexFormat,
       prefix,
-      context: "Argument 1",
-    });
-    indexFormat = webidl.converters.GPUIndexFormat(indexFormat, {
-      prefix,
-      context: "Argument 2",
-    });
-    offset = webidl.converters.GPUSize64(offset, {
-      prefix,
-      context: "Argument 3",
-    });
-    size = webidl.converters.GPUSize64(size, {
-      prefix,
-      context: "Argument 4",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const bufferRid = assertResource(buffer, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 2",
+    );
+    offset = webidl.converters.GPUSize64(offset, prefix, "Argument 3");
+    size = webidl.converters.GPUSize64(size, prefix, "Argument 4");
+    const device = assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
+    const bufferRid = assertResource(buffer, prefix, "Argument 1");
     assertDeviceMatch(device, buffer, {
       prefix,
       resourceContext: "Argument 1",
@@ -4786,34 +4458,16 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'setVertexBuffer' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    slot = webidl.converters.GPUSize32(slot, {
-      prefix,
-      context: "Argument 1",
-    });
-    buffer = webidl.converters.GPUBuffer(buffer, {
-      prefix,
-      context: "Argument 2",
-    });
-    offset = webidl.converters.GPUSize64(offset, {
-      prefix,
-      context: "Argument 3",
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    slot = webidl.converters.GPUSize32(slot, prefix, "Argument 1");
+    buffer = webidl.converters.GPUBuffer(buffer, prefix, "Argument 2");
+    offset = webidl.converters.GPUSize64(offset, prefix, "Argument 3");
     if (size !== undefined) {
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 4",
-      });
+      size = webidl.converters.GPUSize64(size, prefix, "Argument 4");
     }
-    const device = assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
-    const bufferRid = assertResource(buffer, {
-      prefix,
-      context: "Argument 2",
-    });
+    const device = assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
+    const bufferRid = assertResource(buffer, prefix, "Argument 2");
     assertDeviceMatch(device, buffer, {
       prefix,
       resourceContext: "Argument 2",
@@ -4837,28 +4491,29 @@ class GPURenderBundleEncoder {
   draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix = "Failed to execute 'draw' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    vertexCount = webidl.converters.GPUSize32(vertexCount, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    vertexCount = webidl.converters.GPUSize32(
+      vertexCount,
       prefix,
-      context: "Argument 1",
-    });
-    instanceCount = webidl.converters.GPUSize32(instanceCount, {
+      "Argument 1",
+    );
+    instanceCount = webidl.converters.GPUSize32(
+      instanceCount,
       prefix,
-      context: "Argument 2",
-    });
-    firstVertex = webidl.converters.GPUSize32(firstVertex, {
+      "Argument 2",
+    );
+    firstVertex = webidl.converters.GPUSize32(
+      firstVertex,
       prefix,
-      context: "Argument 3",
-    });
-    firstInstance = webidl.converters.GPUSize32(firstInstance, {
+      "Argument 3",
+    );
+    firstInstance = webidl.converters.GPUSize32(
+      firstInstance,
       prefix,
-      context: "Argument 4",
-    });
-    assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+      "Argument 4",
+    );
+    assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_bundle_encoder_draw(
       renderBundleEncoderRid,
       vertexCount,
@@ -4885,32 +4540,26 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'drawIndexed' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    indexCount = webidl.converters.GPUSize32(indexCount, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    indexCount = webidl.converters.GPUSize32(indexCount, prefix, "Argument 1");
+    instanceCount = webidl.converters.GPUSize32(
+      instanceCount,
       prefix,
-      context: "Argument 1",
-    });
-    instanceCount = webidl.converters.GPUSize32(instanceCount, {
+      "Argument 2",
+    );
+    firstIndex = webidl.converters.GPUSize32(firstIndex, prefix, "Argument 3");
+    baseVertex = webidl.converters.GPUSignedOffset32(
+      baseVertex,
       prefix,
-      context: "Argument 2",
-    });
-    firstIndex = webidl.converters.GPUSize32(firstIndex, {
+      "Argument 4",
+    );
+    firstInstance = webidl.converters.GPUSize32(
+      firstInstance,
       prefix,
-      context: "Argument 3",
-    });
-    baseVertex = webidl.converters.GPUSignedOffset32(baseVertex, {
-      prefix,
-      context: "Argument 4",
-    });
-    firstInstance = webidl.converters.GPUSize32(firstInstance, {
-      prefix,
-      context: "Argument 5",
-    });
-    assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
-      prefix,
-      context: "this",
-    });
+      "Argument 5",
+    );
+    assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
     ops.op_webgpu_render_bundle_encoder_draw_indexed(
       renderBundleEncoderRid,
       indexCount,
@@ -4929,24 +4578,24 @@ class GPURenderBundleEncoder {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix =
       "Failed to execute 'drawIndirect' on 'GPURenderBundleEncoder'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    indirectBuffer = webidl.converters.GPUBuffer(
+      indirectBuffer,
       prefix,
-      context: "Argument 1",
-    });
-    indirectOffset = webidl.converters.GPUSize64(indirectOffset, {
+      "Argument 1",
+    );
+    indirectOffset = webidl.converters.GPUSize64(
+      indirectOffset,
       prefix,
-      context: "Argument 2",
-    });
-    const device = assertDevice(this, { prefix, context: "this" });
-    const renderBundleEncoderRid = assertResource(this, {
+      "Argument 2",
+    );
+    const device = assertDevice(this, prefix, "this");
+    const renderBundleEncoderRid = assertResource(this, prefix, "this");
+    const indirectBufferRid = assertResource(
+      indirectBuffer,
       prefix,
-      context: "this",
-    });
-    const indirectBufferRid = assertResource(indirectBuffer, {
-      prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     assertDeviceMatch(device, indirectBuffer, {
       prefix,
       resourceContext: "Argument 1",
