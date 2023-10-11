@@ -352,6 +352,7 @@ const _controller = Symbol("[[controller]]");
 const _detached = Symbol("[[Detached]]");
 const _disturbed = Symbol("[[disturbed]]");
 const _errorSteps = Symbol("[[ErrorSteps]]");
+const _finishPromise = Symbol("[[finishPromise]]");
 const _flushAlgorithm = Symbol("[[flushAlgorithm]]");
 const _globalObject = Symbol("[[globalObject]]");
 const _highWaterMark = Symbol("[[highWaterMark]]");
@@ -650,8 +651,7 @@ function initializeTransformStream(
   }
 
   function cancelAlgorithm(reason) {
-    transformStreamErrorWritableAndUnblockWrite(stream, reason);
-    return PromiseResolve(undefined);
+    return transformStreamDefaultSourceCancelAlgorithm(stream, reason);
   }
 
   stream[_readable] = createReadableStream(
@@ -3713,12 +3713,14 @@ function setUpReadableStreamDefaultReader(reader, stream) {
  * @param {TransformStreamDefaultController<O>} controller
  * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm
  * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm
+ * @param {(reason: any) => Promise<void>} cancelAlgorithm
  */
 function setUpTransformStreamDefaultController(
   stream,
   controller,
   transformAlgorithm,
   flushAlgorithm,
+  cancelAlgorithm,
 ) {
   assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
   assert(stream[_controller] === undefined);
@@ -3726,6 +3728,7 @@ function setUpTransformStreamDefaultController(
   stream[_controller] = controller;
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
+  controller[_cancelAlgorithm] = cancelAlgorithm;
 }
 
 /**
@@ -3753,6 +3756,7 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   };
   /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
   let flushAlgorithm = _defaultFlushAlgorithm;
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
     transformAlgorithm = (chunk, controller) =>
       webidl.invokeCallbackFunction(
@@ -3775,11 +3779,23 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         true,
       );
   }
+  if (transformerDict.cancel !== undefined) {
+    cancelAlgorithm = (reason) =>
+      webidl.invokeCallbackFunction(
+        transformerDict.cancel,
+        [reason],
+        transformer,
+        webidl.converters["Promise<undefined>"],
+        "Failed to call 'cancelAlgorithm' on 'TransformStreamDefaultController'",
+        true,
+      );
+  }
   setUpTransformStreamDefaultController(
     stream,
     controller,
     transformAlgorithm,
     flushAlgorithm,
+    cancelAlgorithm,
   );
 }
 
@@ -3961,6 +3977,7 @@ function setUpWritableStreamDefaultWriter(writer, stream) {
 function transformStreamDefaultControllerClearAlgorithms(controller) {
   controller[_transformAlgorithm] = undefined;
   controller[_flushAlgorithm] = undefined;
+  controller[_cancelAlgorithm] = undefined;
 }
 
 /**
@@ -4030,13 +4047,33 @@ function transformStreamDefaultControllerTerminate(controller) {
 }
 
 /**
- * @param {TransformStream} stream
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
  * @param {any=} reason
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
-  transformStreamError(stream, reason);
-  return PromiseResolve(undefined);
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (readable[_state] === "errored") {
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerError(readable[_controller], reason);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4046,21 +4083,26 @@ function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkCloseAlgorithm(stream) {
-  const readable = stream[_readable];
   const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
   const flushPromise = controller[_flushAlgorithm](controller);
   transformStreamDefaultControllerClearAlgorithms(controller);
-  return transformPromiseWith(flushPromise, () => {
+  transformPromiseWith(flushPromise, () => {
     if (readable[_state] === "errored") {
-      throw readable[_storedError];
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerClose(readable[_controller]);
+      controller[_finishPromise].resolve(undefined);
     }
-    readableStreamDefaultControllerClose(
-      /** @type {ReadableStreamDefaultController} */ readable[_controller],
-    );
   }, (r) => {
-    transformStreamError(stream, r);
-    throw readable[_storedError];
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
   });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4090,6 +4132,41 @@ function transformStreamDefaultSinkWriteAlgorithm(stream, chunk) {
     });
   }
   return transformStreamDefaultControllerPerformTransform(controller, chunk);
+}
+
+/**
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
+ * @param {any=} reason
+ * @returns {Promise<void>}
+ */
+function transformStreamDefaultSourceCancelAlgorithm(stream, reason) {
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const writable = stream[_writable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (writable[_state] === "errored") {
+      controller[_finishPromise].reject(writable[_storedError]);
+    } else {
+      writableStreamDefaultControllerErrorIfNeeded(
+        writable[_controller],
+        reason,
+      );
+      transformStreamUnblockWrite(stream);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    writableStreamDefaultControllerErrorIfNeeded(writable[_controller], r);
+    transformStreamUnblockWrite(stream);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4127,9 +4204,7 @@ function transformStreamErrorWritableAndUnblockWrite(stream, e) {
     stream[_writable][_controller],
     e,
   );
-  if (stream[_backpressure] === true) {
-    transformStreamSetBackpressure(stream, false);
-  }
+  transformStreamUnblockWrite(stream);
 }
 
 /**
@@ -4143,6 +4218,15 @@ function transformStreamSetBackpressure(stream, backpressure) {
   }
   stream[_backpressureChangePromise] = new Deferred();
   stream[_backpressure] = backpressure;
+}
+
+/**
+ * @param {TransformStream} stream
+ */
+function transformStreamUnblockWrite(stream) {
+  if (stream[_backpressure] === true) {
+    transformStreamSetBackpressure(stream, false);
+  }
 }
 
 /**
@@ -4898,7 +4982,7 @@ class ByteLengthQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(ByteLengthQueuingStrategy);
+webidl.configureInterface(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
@@ -4952,7 +5036,7 @@ class CountQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(CountQueuingStrategy);
+webidl.configureInterface(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
@@ -5291,7 +5375,7 @@ ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
   configurable: true,
 });
 
-webidl.configurePrototype(ReadableStream);
+webidl.configureInterface(ReadableStream);
 const ReadableStreamPrototype = ReadableStream.prototype;
 
 function errorReadableStream(stream, e) {
@@ -5395,7 +5479,7 @@ class ReadableStreamDefaultReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultReader);
+webidl.configureInterface(ReadableStreamDefaultReader);
 const ReadableStreamDefaultReaderPrototype =
   ReadableStreamDefaultReader.prototype;
 
@@ -5532,7 +5616,7 @@ class ReadableStreamBYOBReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBReader);
+webidl.configureInterface(ReadableStreamBYOBReader);
 const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 
 class ReadableStreamBYOBRequest {
@@ -5615,7 +5699,7 @@ class ReadableStreamBYOBRequest {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBRequest);
+webidl.configureInterface(ReadableStreamBYOBRequest);
 const ReadableStreamBYOBRequestPrototype = ReadableStreamBYOBRequest.prototype;
 
 class ReadableByteStreamController {
@@ -5815,7 +5899,7 @@ class ReadableByteStreamController {
   }
 }
 
-webidl.configurePrototype(ReadableByteStreamController);
+webidl.configureInterface(ReadableByteStreamController);
 const ReadableByteStreamControllerPrototype =
   ReadableByteStreamController.prototype;
 
@@ -5941,7 +6025,7 @@ class ReadableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultController);
+webidl.configureInterface(ReadableStreamDefaultController);
 const ReadableStreamDefaultControllerPrototype =
   ReadableStreamDefaultController.prototype;
 
@@ -6059,11 +6143,15 @@ class TransformStream {
   }
 }
 
-webidl.configurePrototype(TransformStream);
+webidl.configureInterface(TransformStream);
 const TransformStreamPrototype = TransformStream.prototype;
 
 /** @template O */
 class TransformStreamDefaultController {
+  /** @type {(reason: any) => Promise<void>} */
+  [_cancelAlgorithm];
+  /** @type {Promise<void> | undefined} */
+  [_finishPromise];
   /** @type {(controller: this) => Promise<void>} */
   [_flushAlgorithm];
   /** @type {TransformStream<O>} */
@@ -6129,7 +6217,7 @@ class TransformStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(TransformStreamDefaultController);
+webidl.configureInterface(TransformStreamDefaultController);
 const TransformStreamDefaultControllerPrototype =
   TransformStreamDefaultController.prototype;
 
@@ -6270,7 +6358,7 @@ class WritableStream {
   }
 }
 
-webidl.configurePrototype(WritableStream);
+webidl.configureInterface(WritableStream);
 const WritableStreamPrototype = WritableStream.prototype;
 
 /** @template W */
@@ -6416,7 +6504,7 @@ class WritableStreamDefaultWriter {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultWriter);
+webidl.configureInterface(WritableStreamDefaultWriter);
 const WritableStreamDefaultWriterPrototype =
   WritableStreamDefaultWriter.prototype;
 
@@ -6497,7 +6585,7 @@ class WritableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultController);
+webidl.configureInterface(WritableStreamDefaultController);
 const WritableStreamDefaultControllerPrototype =
   WritableStreamDefaultController.prototype;
 

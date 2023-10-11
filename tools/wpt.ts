@@ -329,7 +329,10 @@ function assertAllExpectationsHaveTests(
     for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
       if (!filter.matches(path)) continue;
-      if (typeof expectation == "boolean" || Array.isArray(expectation)) {
+      if (
+        (typeof expectation == "boolean" || Array.isArray(expectation)) &&
+        key !== "ignore"
+      ) {
         if (!tests.has(path)) {
           missingTests.push(path);
         }

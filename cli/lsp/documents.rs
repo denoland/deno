@@ -47,7 +47,6 @@ use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -1183,9 +1182,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm));
+          results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm));
+          results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
         } else {
           results.push(None);
         }
@@ -1193,11 +1192,15 @@ impl Documents {
         .resolve_imports_dependency(&specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_npm));
+        results.push(self.resolve_dependency(specifier, maybe_npm, referrer));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(&specifier)
       {
-        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm));
+        results.push(node_resolve_npm_req_ref(
+          npm_req_ref,
+          maybe_npm,
+          referrer,
+        ));
       } else {
         results.push(None);
       }
@@ -1263,8 +1266,8 @@ impl Documents {
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
         // this in order to catch if the type of package_json_deps ever changes
-        // from a sorted/deterministic BTreeMap to something else.
-        let package_json_deps: &BTreeMap<_, _> = *package_json_deps;
+        // from a sorted/deterministic IndexMap to something else.
+        let package_json_deps: &IndexMap<_, _> = *package_json_deps;
         for (key, value) in package_json_deps {
           hasher.write_hashable(key);
           match value {
@@ -1528,6 +1531,7 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
     maybe_npm: Option<&StateNpmSnapshot>,
+    referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
       if deno_node::is_builtin_node_module(module_name) {
@@ -1539,7 +1543,7 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_npm);
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm, referrer);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1548,7 +1552,7 @@ impl Documents {
     if let Some(specifier) =
       maybe_types_dependency.and_then(|d| d.maybe_specifier())
     {
-      self.resolve_dependency(specifier, maybe_npm)
+      self.resolve_dependency(specifier, maybe_npm, referrer)
     } else {
       let media_type = doc.media_type();
       Some((doc.specifier().clone(), media_type))
@@ -1572,19 +1576,21 @@ impl Documents {
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
   maybe_npm: Option<&StateNpmSnapshot>,
+  referrer: &ModuleSpecifier,
 ) -> Option<(ModuleSpecifier, MediaType)> {
   maybe_npm.map(|npm| {
     NodeResolution::into_specifier_and_media_type(
       npm
         .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req())
+        .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)
         .ok()
         .and_then(|package_folder| {
           npm
             .node_resolver
-            .resolve_npm_reference(
+            .resolve_package_subpath_from_deno_module(
               &package_folder,
               npm_req_ref.sub_path(),
+              referrer,
               NodeResolutionMode::Types,
               &PermissionsContainer::allow_all(),
             )
