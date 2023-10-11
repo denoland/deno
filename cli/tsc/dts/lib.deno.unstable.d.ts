@@ -2198,7 +2198,7 @@ declare interface WebSocketCloseInfo {
  */
 declare interface WebSocketStream {
   url: string;
-  connection: Promise<WebSocketConnection>;
+  opened: Promise<WebSocketConnection>;
   closed: Promise<WebSocketCloseInfo>;
   close(closeInfo?: WebSocketCloseInfo): void;
 }
