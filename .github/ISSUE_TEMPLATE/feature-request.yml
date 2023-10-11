@@ -8,6 +8,7 @@ body:
         Thank you for submitting an idea. It helps make Deno better.
 
         This is only for the Deno CLI and the crates also found in this repository.
+
         For community projects, please use the Ideas forum in [Discord](https://discord.com/deno).
   - type: textarea
     attributes:
