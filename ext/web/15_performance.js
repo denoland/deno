@@ -212,7 +212,7 @@ class PerformanceEntry {
     }));
   }
 }
-webidl.configurePrototype(PerformanceEntry);
+webidl.configureInterface(PerformanceEntry);
 const PerformanceEntryPrototype = PerformanceEntry.prototype;
 
 const _detail = Symbol("[[detail]]");
@@ -279,7 +279,7 @@ class PerformanceMark extends PerformanceEntry {
     }));
   }
 }
-webidl.configurePrototype(PerformanceMark);
+webidl.configureInterface(PerformanceMark);
 const PerformanceMarkPrototype = PerformanceMark.prototype;
 class PerformanceMeasure extends PerformanceEntry {
   [_detail] = null;
@@ -338,7 +338,7 @@ class PerformanceMeasure extends PerformanceEntry {
     }));
   }
 }
-webidl.configurePrototype(PerformanceMeasure);
+webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
 class Performance extends EventTarget {
   constructor(key = null) {
@@ -577,7 +577,7 @@ class Performance extends EventTarget {
     }));
   }
 }
-webidl.configurePrototype(Performance);
+webidl.configureInterface(Performance);
 const PerformancePrototype = Performance.prototype;
 
 webidl.converters["Performance"] = webidl.createInterfaceConverter(

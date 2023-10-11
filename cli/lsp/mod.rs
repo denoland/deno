@@ -49,6 +49,9 @@ pub async fn start() -> Result<(), AnyError> {
     lsp_custom::PERFORMANCE_REQUEST,
     LanguageServer::performance_request,
   )
+  // TODO(nayeemrmn): The extension has replaced this with the
+  // `deno.reloadImportRegistries` command as of vscode_deno
+  // 3.26.0 / 2023.10.10. Remove this eventually.
   .custom_method(
     lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST,
     LanguageServer::reload_import_registries_request,

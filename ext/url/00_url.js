@@ -324,7 +324,7 @@ class URLSearchParams {
 
 webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 
-webidl.configurePrototype(URLSearchParams);
+webidl.configureInterface(URLSearchParams);
 const URLSearchParamsPrototype = URLSearchParams.prototype;
 
 webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
@@ -806,7 +806,7 @@ class URL {
   }
 }
 
-webidl.configurePrototype(URL);
+webidl.configureInterface(URL);
 const URLPrototype = URL.prototype;
 
 /**

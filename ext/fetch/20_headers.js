@@ -453,7 +453,7 @@ class Headers {
 
 webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 
-webidl.configurePrototype(Headers);
+webidl.configureInterface(Headers);
 const HeadersPrototype = Headers.prototype;
 
 webidl.converters["HeadersInit"] = (V, prefix, context, opts) => {
