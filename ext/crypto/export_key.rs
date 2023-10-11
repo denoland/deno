@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
@@ -111,11 +113,11 @@ pub fn op_crypto_export_key(
 }
 
 fn uint_to_b64(bytes: UIntRef) -> String {
-  base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
+  BASE64_URL_SAFE_NO_PAD.encode(bytes.as_bytes())
 }
 
 fn bytes_to_b64(bytes: &[u8]) -> String {
-  base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
+  BASE64_URL_SAFE_NO_PAD.encode(bytes)
 }
 
 fn export_key_rsa(
