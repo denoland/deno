@@ -6,6 +6,7 @@ use crate::lsp::logging::lsp_warn;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use deno_ast::MediaType;
+use deno_config::FmtOptionsConfig;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
@@ -356,6 +357,29 @@ impl Default for JsxAttributeCompletionStyle {
   }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum QuoteStyle {
+  Auto,
+  Double,
+  Single,
+}
+
+impl Default for QuoteStyle {
+  fn default() -> Self {
+    Self::Auto
+  }
+}
+
+impl From<&FmtOptionsConfig> for QuoteStyle {
+  fn from(config: &FmtOptionsConfig) -> Self {
+    match config.single_quote {
+      Some(true) => QuoteStyle::Single,
+      _ => QuoteStyle::Double,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguagePreferences {
@@ -367,6 +391,8 @@ pub struct LanguagePreferences {
   pub auto_import_file_exclude_patterns: Vec<String>,
   #[serde(default = "is_true")]
   pub use_aliases_for_renames: bool,
+  #[serde(default)]
+  pub quote_style: QuoteStyle,
 }
 
 impl Default for LanguagePreferences {
@@ -376,6 +402,7 @@ impl Default for LanguagePreferences {
       jsx_attribute_completion_style: Default::default(),
       auto_import_file_exclude_patterns: vec![],
       use_aliases_for_renames: true,
+      quote_style: Default::default(),
     }
   }
 }
@@ -1372,6 +1399,7 @@ mod tests {
             jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
+            quote_style: QuoteStyle::Auto,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
@@ -1416,6 +1444,7 @@ mod tests {
             jsx_attribute_completion_style: JsxAttributeCompletionStyle::Auto,
             auto_import_file_exclude_patterns: vec![],
             use_aliases_for_renames: true,
+            quote_style: QuoteStyle::Auto,
           },
           suggest: CompletionSettings {
             complete_function_calls: false,
