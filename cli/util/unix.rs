@@ -45,14 +45,14 @@ pub fn raise_fd_limit() {
 }
 
 pub fn prepare_stdio() {
-  use libc::atexit;
-  use libc::tcgetattr;
-  use libc::tcsetattr;
-  use libc::termios;
-
   #[cfg(unix)]
   // SAFETY: Save current state of stdio and restore it when we exit.
   unsafe {
+    use libc::atexit;
+    use libc::tcgetattr;
+    use libc::tcsetattr;
+    use libc::termios;
+
     let mut termios = std::mem::zeroed::<termios>();
     if tcgetattr(libc::STDIN_FILENO, &mut termios) == 0 {
       static mut ORIG_TERMIOS: Option<termios> = None;
