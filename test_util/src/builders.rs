@@ -527,6 +527,7 @@ impl Drop for TestCommandOutput {
 
     // now ensure the exit code was asserted
     if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
+      self.print_output();
       panic!(
         "The non-zero exit code of the command was not asserted: {:?}",
         self.exit_code,

@@ -1323,8 +1323,11 @@ async fn main_server(
       }
 
       // serve npm registry files
-      if let Some(suffix) =
-        req.uri().path().strip_prefix("/npm/registry/@denotest/")
+      if let Some(suffix) = req
+        .uri()
+        .path()
+        .strip_prefix("/npm/registry/@denotest/")
+        .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
       {
         // serve all requests to /npm/registry/@deno using the file system
         // at that path
