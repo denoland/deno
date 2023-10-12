@@ -6,6 +6,8 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.37.2 / 2023.10.12
+
 ### 1.37.1 / 2023.09.27
 
 - feat(ext/web): use readableStreamDefaultReaderRead in
