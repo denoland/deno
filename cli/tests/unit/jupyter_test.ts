@@ -3,6 +3,11 @@ import { assertThrows } from "./test_util.ts";
 
 import { assertSpyCall, spy } from "../../../test_util/std/testing/mock.ts";
 
+const {
+  enableJupyter,
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.internal];
+
 Deno.test("Deno.jupyter is not available", () => {
   assertThrows(
     () => Deno.jupyter,
@@ -23,7 +28,7 @@ export async function fakeBroadcast(
 }
 
 export async function assertDisplayedAs(obj: unknown, result: object) {
-  Deno[Deno.internal].enableJupyter();
+  enableJupyter();
 
   const { display } = Deno.jupyter;
 
