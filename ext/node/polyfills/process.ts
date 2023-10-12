@@ -857,49 +857,6 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
-  // Install special "unhandledrejection" handler, that will be called
-  // last.
-  internals.nodeProcessUnhandledRejectionCallback = (event) => {
-    if (process.listenerCount("unhandledRejection") === 0) {
-      // The Node.js default behavior is to raise an uncaught exception if
-      // an unhandled rejection occurs and there are no unhandledRejection
-      // listeners.
-      if (process.listenerCount("uncaughtException") === 0) {
-        throw event.reason;
-      }
-
-      event.preventDefault();
-      uncaughtExceptionHandler(event.reason, "unhandledRejection");
-      return;
-    }
-
-    event.preventDefault();
-    process.emit("unhandledRejection", event.reason, event.promise);
-  };
-
-  globalThis.addEventListener("error", (event) => {
-    if (process.listenerCount("uncaughtException") > 0) {
-      event.preventDefault();
-    }
-
-    uncaughtExceptionHandler(event.error, "uncaughtException");
-  });
-
-  globalThis.addEventListener("beforeunload", (e) => {
-    process.emit("beforeExit", process.exitCode || 0);
-    processTicksAndRejections();
-    if (core.eventLoopHasMoreWork()) {
-      e.preventDefault();
-    }
-  });
-
-  globalThis.addEventListener("unload", () => {
-    if (!process._exiting) {
-      process._exiting = true;
-      process.emit("exit", process.exitCode || 0);
-    }
-  });
-
   // Initializes stdin
   stdin = process.stdin = initStdin();
 
