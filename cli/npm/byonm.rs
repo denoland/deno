@@ -51,7 +51,7 @@ impl NpmResolver for ByonmCliNpmResolver {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let package_root_path =
-      self.resolve_package_folder_from_path(&referrer)?.unwrap(); // todo: don't unwrap
+      self.resolve_package_folder_from_path(referrer)?.unwrap(); // todo: don't unwrap
     let mut current_folder = package_root_path.as_path();
     loop {
       let node_modules_folder = if current_folder.ends_with("node_modules") {
@@ -129,7 +129,11 @@ impl NpmResolver for ByonmCliNpmResolver {
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    specifier.scheme() == "file" && specifier.path().contains("/node_modules/")
+    specifier.scheme() == "file"
+      && specifier
+        .path()
+        .to_ascii_lowercase()
+        .contains("/node_modules/")
   }
 
   fn ensure_read_permission(
@@ -189,7 +193,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
               .parent()
               .unwrap()
               .join("node_modules")
-              .join(&key);
+              .join(key);
             return Ok(package_path);
           }
         }

@@ -103,6 +103,7 @@ use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -1092,8 +1093,16 @@ async fn create_npm_resolver(
   maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
   maybe_node_modules_dir_path: Option<PathBuf>,
 ) -> Arc<dyn CliNpmResolver> {
-  create_cli_npm_resolver_for_lsp(CliNpmResolverCreateOptions::Managed(
-    CliNpmResolverManagedCreateOptions {
+  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1");
+  create_cli_npm_resolver_for_lsp(if is_byonm {
+    CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
+      fs: Arc::new(deno_fs::RealFs),
+      root_node_modules_dir: std::env::current_dir()
+        .unwrap()
+        .join("node_modules"),
+    })
+  } else {
+    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
       http_client: http_client.clone(),
       snapshot: match maybe_lockfile {
         Some(lockfile) => {
@@ -1120,8 +1129,8 @@ async fn create_npm_resolver(
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
       npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
-    },
-  ))
+    })
+  })
   .await
 }
 
