@@ -2297,3 +2297,90 @@ clearTimeout(timeout);
 "#);
   output.assert_exit_code(1);
 }
+
+#[test]
+pub fn boynm_npm_workspaces() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_UNSTABLE_BYONM", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+
+  dir.write(
+    "package.json",
+    r#"{
+  "name": "my-workspace",
+  "workspaces": [
+    "project-a",
+    "project-b"
+  ]
+}
+"#,
+  );
+
+  let project_a_dir = dir.path().join("project-a");
+  project_a_dir.create_dir_all();
+  project_a_dir.join("package.json").write_json(&json!({
+    "name": "project-a",
+    "version": "1.0.0",
+    "main": "./index.js",
+    "type": "module",
+    "dependencies": {
+      "chai": "^4.2",
+      "project-b": "^1"
+    }
+  }));
+  project_a_dir.join("index.js").write(
+    r#"
+import { expect } from "chai";
+
+const timeout = setTimeout(() => {}, 0);
+expect(timeout).to.be.a("number");
+clearTimeout(timeout);
+
+/**
+ * Adds.
+ * @param {number} a
+ * @param {number} b
+ */
+export function add(a, b) {
+  return a + b;
+}
+"#,
+  );
+
+  let project_b_dir = dir.path().join("project-b");
+  project_b_dir.create_dir_all();
+  project_b_dir.join("package.json").write_json(&json!({
+    "name": "project-b",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0",
+    }
+  }));
+  project_b_dir.join("main.ts").write(
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+
+import { add } from "project-a";
+console.log(add(1, 2));
+"#,
+  );
+
+  test_context
+    .new_command()
+    .command_name("npm")
+    .args("install")
+    .run()
+    .skip_output_check();
+
+  let output = test_context
+    .new_command()
+    .args("run ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("5\n3\n");
+}
