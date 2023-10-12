@@ -40,7 +40,7 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "0.29.3", features = ["transpiling"] }
 
-deno_core = { version = "0.221.0" }
+deno_core = { version = "0.222.0" }
 
 deno_runtime = { version = "0.128.0", path = "./runtime" }
 napi_sym = { version = "0.50.0", path = "./cli/napi/sym" }
@@ -331,6 +331,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
-
-[patch.crates-io]
-deno_core = { git = "https://github.com/denoland/deno_core.git" }
