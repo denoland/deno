@@ -2212,3 +2212,88 @@ itest!(require_resolve_url_paths {
   cwd: Some("npm/require_resolve_url/"),
   copy_temp_dir: Some("npm/require_resolve_url/"),
 });
+
+#[test]
+pub fn boynm_cjs_esm_packages() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_UNSTABLE_BYONM", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  let run_npm = |args: &str| {
+    test_context
+      .new_command()
+      .command_name("npm")
+      .args(args)
+      .run()
+      .skip_output_check();
+  };
+
+  run_npm("init -y");
+  run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
+
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(2);
+console.log(getValue());
+
+import cjsDefault from "@denotest/cjs-default-export";
+console.log(cjsDefault.default());
+console.log(cjsDefault.named());
+
+import { getKind } from "@denotest/dual-cjs-esm";
+console.log(getKind());
+
+import { expect } from "chai";
+
+const timeout = setTimeout(() => {}, 0);
+expect(timeout).to.be.a("number");
+clearTimeout(timeout);
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("2\n1\n2\nesm\n");
+
+  // should not have created the .deno directory
+  assert!(!dir.path().join("node_modules/.deno").exists());
+
+  // try chalk cjs
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try using an npm specifier for chalk that matches the version we installed
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@4'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try with one that doesn't match the package.json
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text(
+    r#"error: Could not find a matching package for 'npm:chalk@5' in '[WILDCARD]package.json'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    at file:///[WILDCARD]chalk.ts:1:19
+"#);
+  output.assert_exit_code(1);
+}
