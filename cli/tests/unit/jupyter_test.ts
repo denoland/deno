@@ -1,10 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertThrows } from "./test_util.ts";
 
-import {
-  assertSpyCall,
-  spy,
-} from "https://deno.land/std@0.202.0/testing/mock.ts";
+import { assertSpyCall, spy } from "../../../test_util/std/testing/mock.ts";
 
 Deno.test("Deno.jupyter is not available", () => {
   assertThrows(
@@ -51,6 +48,7 @@ Deno.test("display(canvas) creates a PNG", async () => {
       return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAAXNSR0IArs4c6QAAAARzQklUCAgICHwIZIgAAAAVSURBVAiZY/zPwPCfAQ0woQtQQRAAzqkCCB/D3o0AAAAASUVORK5CYII=";
     }
   }
+  const canvas = new FakeCanvas();
 
   await assertDisplayedAs(canvas, {
     "image/png":
