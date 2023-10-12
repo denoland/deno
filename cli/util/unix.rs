@@ -59,6 +59,7 @@ pub fn prepare_stdio() {
       ORIG_TERMIOS = Some(termios);
 
       extern "C" fn reset_stdio() {
+        // SAFETY: Reset the stdio state.
         unsafe { tcsetattr(libc::STDIN_FILENO, 0, &ORIG_TERMIOS.unwrap()) };
       }
 
