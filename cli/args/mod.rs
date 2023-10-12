@@ -76,19 +76,6 @@ use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
 
-fn has_unstable_env_feature(feature: &str) -> bool {
-  debug_assert_eq!(feature.to_lowercase(), feature);
-  static DENO_UNSTABLE: Lazy<Vec<String>> = Lazy::new(|| {
-    if let Ok(unstable) = env::var("DENO_UNSTABLE") {
-      unstable.split(',').map(|v| v.to_lowercase()).collect()
-    } else {
-      Vec::new()
-    }
-  });
-
-  DENO_UNSTABLE.iter().any(|f| f == feature)
-}
-
 pub fn npm_registry_default_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "NPM_CONFIG_REGISTRY";
@@ -950,13 +937,6 @@ impl CliOptions {
     })
   }
 
-  pub fn node_modules_dir_specifier(&self) -> Option<ModuleSpecifier> {
-    self
-      .maybe_node_modules_folder
-      .as_ref()
-      .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
-  }
-
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
     self.maybe_vendor_folder.as_ref()
   }
@@ -1242,7 +1222,7 @@ impl CliOptions {
   }
 
   pub fn unstable_byonm(&self) -> bool {
-    has_unstable_env_feature("byonm")
+    self.flags.unstable_byonm
       || NPM_PROCESS_STATE
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
