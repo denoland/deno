@@ -328,7 +328,7 @@ function isMediaBundle(obj) {
   return true;
 }
 
-async function displayInner(obj, raw) {
+async function formatInner(obj, raw) {
   if (raw && isMediaBundle(obj)) {
     return obj;
   } else {
@@ -336,7 +336,7 @@ async function displayInner(obj, raw) {
   }
 }
 
-internals.jupyter = { displayInner };
+internals.jupyter = { formatInner };
 
 function enableJupyter() {
   const {
@@ -399,7 +399,7 @@ function enableJupyter() {
    * @param options - Display options
    */
   async function display(obj, options = { raw: false, update: false }) {
-    const bundle = await displayInner(obj, options.raw);
+    const bundle = await formatInner(obj, options.raw);
     let messageType = "display_data";
     if (options.update) {
       messageType = "update_display_data";

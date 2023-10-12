@@ -3,7 +3,7 @@
 import { assertEquals, assertThrows } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
-const display = Deno[Deno.internal].jupyter.displayInner;
+const format = Deno[Deno.internal].jupyter.formatInner;
 
 Deno.test("Deno.jupyter is not available", () => {
   assertThrows(
@@ -12,8 +12,8 @@ Deno.test("Deno.jupyter is not available", () => {
   );
 });
 
-export async function assertDisplayedAs(obj: unknown, result: object) {
-  const formatted = await display(obj);
+export async function assertFormattedAs(obj: unknown, result: object) {
+  const formatted = await format(obj);
   assertEquals(formatted, result);
 }
 
@@ -26,7 +26,7 @@ Deno.test("display(canvas) creates a PNG", async () => {
   }
   const canvas = new FakeCanvas();
 
-  await assertDisplayedAs(canvas, {
+  await assertFormattedAs(canvas, {
     "image/png":
       "iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAAXNSR0IArs4c6QAAAARzQklUCAgICHwIZIgAAAAVSURBVAiZY/zPwPCfAQ0woQtQQRAAzqkCCB/D3o0AAAAASUVORK5CYII=",
   });
@@ -50,7 +50,7 @@ Deno.test(
     const example = new Example(5);
 
     // Now to check on the broadcast call being made
-    await assertDisplayedAs(example, { "application/json": { x: 5 } });
+    await assertFormattedAs(example, { "application/json": { x: 5 } });
   },
 );
 
@@ -74,6 +74,6 @@ Deno.test(
     const example = new Example(3);
 
     // Now to check on the broadcast call being made
-    await assertDisplayedAs(example, { "application/json": { x: 3 } });
+    await assertFormattedAs(example, { "application/json": { x: 3 } });
   },
 );
