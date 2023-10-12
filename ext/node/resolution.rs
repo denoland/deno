@@ -322,8 +322,7 @@ impl NodeResolver {
       ));
     }
 
-    let path = self.fs.realpath_sync(&path).unwrap_or(path);
-    Ok(ModuleSpecifier::from_file_path(path).unwrap())
+    Ok(resolved)
   }
 
   pub fn resolve_package_subpath_from_deno_module(

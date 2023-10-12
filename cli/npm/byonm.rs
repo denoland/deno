@@ -50,59 +50,71 @@ impl NpmResolver for ByonmCliNpmResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
-    let package_root_path =
-      self.resolve_package_folder_from_path(referrer)?.unwrap(); // todo: don't unwrap
-    let mut current_folder = package_root_path.as_path();
-    loop {
-      let node_modules_folder = if current_folder.ends_with("node_modules") {
-        Cow::Borrowed(current_folder)
-      } else {
-        Cow::Owned(current_folder.join("node_modules"))
-      };
-      let sub_dir = join_package_name(&node_modules_folder, name);
-      if self.fs.is_dir_sync(&sub_dir) {
-        // if doing types resolution, only resolve the package if it specifies a types property
-        if mode.is_types() && !name.starts_with("@types/") {
-          let package_json = PackageJson::load_skip_read_permission(
-            &*self.fs,
-            sub_dir.join("package.json"),
-          )?;
-          if package_json.types.is_some() {
+    fn inner(
+      fs: &dyn FileSystem,
+      name: &str,
+      package_root_path: &Path,
+      referrer: &ModuleSpecifier,
+      mode: NodeResolutionMode,
+    ) -> Result<PathBuf, AnyError> {
+      let mut current_folder = package_root_path;
+      loop {
+        let node_modules_folder = if current_folder.ends_with("node_modules") {
+          Cow::Borrowed(current_folder)
+        } else {
+          Cow::Owned(current_folder.join("node_modules"))
+        };
+        let sub_dir = join_package_name(&node_modules_folder, name);
+        if fs.is_dir_sync(&sub_dir) {
+          // if doing types resolution, only resolve the package if it specifies a types property
+          if mode.is_types() && !name.starts_with("@types/") {
+            let package_json = PackageJson::load_skip_read_permission(
+              fs,
+              sub_dir.join("package.json"),
+            )?;
+            if package_json.types.is_some() {
+              return Ok(sub_dir);
+            }
+          } else {
             return Ok(sub_dir);
           }
+        }
+
+        // if doing type resolution, check for the existence of a @types package
+        if mode.is_types() && !name.starts_with("@types/") {
+          let sub_dir =
+            join_package_name(&node_modules_folder, &types_package_name(name));
+          if fs.is_dir_sync(&sub_dir) {
+            return Ok(sub_dir);
+          }
+        }
+
+        if let Some(parent) = current_folder.parent() {
+          current_folder = parent;
         } else {
-          return Ok(sub_dir);
+          break;
         }
       }
 
-      // if doing type resolution, check for the existence of a @types package
-      if mode.is_types() && !name.starts_with("@types/") {
-        let sub_dir =
-          join_package_name(&node_modules_folder, &types_package_name(name));
-        if self.fs.is_dir_sync(&sub_dir) {
-          return Ok(sub_dir);
-        }
-      }
-
-      if let Some(parent) = current_folder.parent() {
-        current_folder = parent;
-      } else {
-        break;
-      }
+      bail!(
+        "could not find package '{}' from referrer '{}'.",
+        name,
+        referrer
+      );
     }
 
-    bail!(
-      "could not find package '{}' from referrer '{}'.",
-      name,
-      referrer
-    );
+    let package_root_path =
+      self.resolve_package_folder_from_path(referrer)?.unwrap(); // todo: don't unwrap
+    let path = inner(&*self.fs, name, &package_root_path, referrer, mode)?;
+    Ok(self.fs.realpath_sync(&path)?)
   }
 
   fn resolve_package_folder_from_path(
     &self,
     specifier: &deno_core::ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let path = specifier.to_file_path().unwrap();
+    let path = specifier.to_file_path().unwrap(); // todo: don't unwrap
+    let path = self.fs.realpath_sync(&path)?;
     if self.in_npm_package(specifier) {
       let mut path = path.as_path();
       while let Some(parent) = path.parent() {
