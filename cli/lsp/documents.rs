@@ -1012,10 +1012,11 @@ impl Documents {
   }
 
   pub fn save(&mut self, specifier: &ModuleSpecifier) {
-    let Some(doc) = self.open_docs.get(specifier).cloned().or_else(|| {
+    let doc = self.open_docs.get(specifier).cloned().or_else(|| {
       let mut file_system_docs = self.file_system_docs.lock();
       file_system_docs.docs.remove(specifier)
-    }) else {
+    });
+    let Some(doc) = doc else {
       return;
     };
     self.dirty = true;
