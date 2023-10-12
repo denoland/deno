@@ -190,6 +190,7 @@ impl TestReporter for DotTestReporter {
       &self.summary,
       elapsed,
     );
+    println!();
   }
 
   fn report_sigint(

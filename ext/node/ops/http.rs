@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -23,13 +23,14 @@ use reqwest::header::CONTENT_LENGTH;
 use reqwest::Body;
 use reqwest::Method;
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_http_request<P>(
   state: &mut OpState,
-  method: ByteString,
-  url: String,
-  headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
+  #[serde] method: ByteString,
+  #[string] url: String,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[smi] client_rid: Option<u32>,
   has_body: bool,
 ) -> Result<FetchReturn, AnyError>
 where

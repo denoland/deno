@@ -215,7 +215,7 @@ pub(super) fn report_summary(
 
   writeln!(
     writer,
-    "\n{} | {} {}\n",
+    "\n{} | {} {}",
     status,
     summary_result,
     colors::gray(format!("({})", display::human_elapsed(elapsed.as_millis()))),

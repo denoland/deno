@@ -9,7 +9,8 @@ use deno_bench_util::bench_js_sync};
 
 use deno_core::Extension;
 
-#[op]
+#[op2]
+#[number]
 fn op_nop() -> usize {
   9
 }

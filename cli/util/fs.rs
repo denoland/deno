@@ -9,6 +9,7 @@ use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
+use std::fmt::Write as FmtWrite;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -57,9 +58,10 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
 
   fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
     let temp_file_path = {
-      let rand: String = (0..4)
-        .map(|_| format!("{:02x}", rand::random::<u8>()))
-        .collect();
+      let rand: String = (0..4).fold(String::new(), |mut output, _| {
+        let _ = write!(output, "{:02x}", rand::random::<u8>());
+        output
+      });
       let extension = format!("{rand}.tmp");
       file_path.with_extension(extension)
     };
