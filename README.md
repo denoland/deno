@@ -77,7 +77,7 @@ and [releases](https://github.com/denoland/deno/releases) for other options.
 Try [running a simple program](https://examples.deno.land/hello-world):
 
 ```sh
-deno run https://deno.land/std/examples/welcome.ts
+deno run https://examples.deno.land/hello-world.ts
 ```
 
 Or [setup a simple HTTP server](https://examples.deno.land/http-server):
