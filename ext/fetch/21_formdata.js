@@ -266,7 +266,7 @@ class FormData {
 
 webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
-webidl.configurePrototype(FormData);
+webidl.configureInterface(FormData);
 const FormDataPrototype = FormData.prototype;
 
 const ESCAPE_FILENAME_PATTERN = new SafeRegExp(/\r?\n|\r/g);
