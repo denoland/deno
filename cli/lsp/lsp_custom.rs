@@ -60,9 +60,25 @@ pub struct DiagnosticBatchNotificationParams {
   pub messages_len: usize,
 }
 
+#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DenoConfigurationType {
+  DenoJson,
+  PackageJson,
+}
+
+#[derive(Debug, Eq, Hash, PartialEq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DenoConfigurationChangeEvent {
+  #[serde(flatten)]
+  pub file_event: lsp::FileEvent,
+  pub configuration_type: DenoConfigurationType,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DidChangeDenoConfigurationNotificationParams {
-  pub changes: Vec<lsp::FileEvent>,
+  pub changes: Vec<DenoConfigurationChangeEvent>,
 }
 
 pub enum DidChangeDenoConfigurationNotification {}

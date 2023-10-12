@@ -859,6 +859,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
         "type": 1,
+        "configurationType": "denoJson"
       }],
     }))
   );
@@ -881,6 +882,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
         "type": 2,
+        "configurationType": "denoJson"
       }],
     }))
   );
@@ -900,6 +902,67 @@ fn lsp_did_change_deno_configuration_notification() {
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
         "type": 3,
+        "configurationType": "denoJson"
+      }],
+    }))
+  );
+
+  temp_dir.write("package.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 1,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+
+  temp_dir.write("package.json", json!({ "type": "module" }).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 2,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 2,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+
+  temp_dir.remove_file("package.json");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 3,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 3,
+        "configurationType": "packageJson"
       }],
     }))
   );
