@@ -102,12 +102,17 @@ impl NpmResolver for ByonmCliNpmResolver {
     &self,
     specifier: &deno_core::ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    // todo: canonicalize?
     let path = specifier.to_file_path().unwrap();
     if self.in_npm_package(specifier) {
       let mut path = path.as_path();
       while let Some(parent) = path.parent() {
-        if parent.file_name().and_then(|f| f.to_str()) == Some("node_modules") {
+        if parent
+          .file_name()
+          .and_then(|f| f.to_str())
+          .map(|s| s.to_ascii_lowercase())
+          .as_deref()
+          == Some("node_modules")
+        {
           return Ok(Some(path.to_path_buf()));
         } else {
           path = parent;
