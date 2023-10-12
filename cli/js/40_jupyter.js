@@ -178,20 +178,24 @@ function extractDataFrame(df) {
 function isCanvasLike(obj) {
   return obj !== null && typeof obj === "object" && "toDataURL" in obj;
 }
+
 /** Possible HTML and SVG Elements */
 function isSVGElementLike(obj) {
   return obj !== null && typeof obj === "object" && "outerHTML" in obj &&
     typeof obj.outerHTML === "string" && obj.outerHTML.startsWith("<svg");
 }
+
 function isHTMLElementLike(obj) {
   return obj !== null && typeof obj === "object" && "outerHTML" in obj &&
     typeof obj.outerHTML === "string";
 }
+
 /** Check to see if an object already contains a `Symbol.for("Jupyter.display") */
 function hasDisplaySymbol(obj) {
   return obj !== null && typeof obj === "object" && $display in obj &&
     typeof obj[$display] === "function";
 }
+
 function makeDisplayable(obj) {
   return {
     [$display]: () => obj,
@@ -324,87 +328,96 @@ function isMediaBundle(obj) {
   return true;
 }
 
-/**
- * Display function for Jupyter Deno Kernel.
- * Mimics the behavior of IPython's `display(obj, raw=True)` function to allow
- * asynchronous displaying of objects in Jupyter.
- *
- * @param obj - The object to be displayed
- * @param options - Display options
- */
-async function display(obj, options = { raw: false, update: false }) {
-  let bundle;
-  if (options.raw && isMediaBundle(obj)) {
-    bundle = obj;
+async function displayInner(obj, raw) {
+  if (raw && isMediaBundle(obj)) {
+    return obj;
   } else {
-    bundle = await format(obj);
-  }
-  let messageType = "display_data";
-  if (options.update) {
-    messageType = "update_display_data";
-  }
-  let transient = {};
-  if (options.display_id) {
-    transient = { display_id: options.display_id };
-  }
-  await Deno.jupyter.broadcast(messageType, {
-    data: bundle,
-    metadata: {},
-    transient,
-  });
-  return;
-}
-
-async function broadcastResult(executionCount, result) {
-  try {
-    if (result === undefined) {
-      return;
-    }
-
-    const data = await format(result);
-    await Deno.jupyter.broadcast("execute_result", {
-      execution_count: executionCount,
-      data,
-      metadata: {},
-    });
-  } catch (err) {
-    if (err instanceof Error) {
-      const stack = err.stack || "";
-      await Deno.jupyter.broadcast("error", {
-        ename: err.name,
-        evalue: err.message,
-        traceback: stack.split("\n"),
-      });
-    } else if (typeof err == "string") {
-      await Deno.jupyter.broadcast("error", {
-        ename: "Error",
-        evalue: err,
-        traceback: [],
-      });
-    } else {
-      await Deno.jupyter.broadcast("error", {
-        ename: "Error",
-        evalue:
-          "An error occurred while formatting a result, but it could not be identified",
-        traceback: [],
-      });
-    }
+    return await format(obj);
   }
 }
+
+internals.jupyter = { displayInner };
 
 function enableJupyter() {
   const {
     op_jupyter_broadcast,
   } = core.ensureFastOps();
 
-  internals.jupyter = {
-    broadcastResult,
-  };
+  async function broadcast(
+    msgType,
+    content,
+    { metadata = {}, buffers = [] } = {},
+  ) {
+    await op_jupyter_broadcast(msgType, content, metadata, buffers);
+  }
+
+  async function broadcastResult(executionCount, result) {
+    try {
+      if (result === undefined) {
+        return;
+      }
+
+      const data = await format(result);
+      await broadcast("execute_result", {
+        execution_count: executionCount,
+        data,
+        metadata: {},
+      });
+    } catch (err) {
+      if (err instanceof Error) {
+        const stack = err.stack || "";
+        await broadcast("error", {
+          ename: err.name,
+          evalue: err.message,
+          traceback: stack.split("\n"),
+        });
+      } else if (typeof err == "string") {
+        await broadcast("error", {
+          ename: "Error",
+          evalue: err,
+          traceback: [],
+        });
+      } else {
+        await broadcast("error", {
+          ename: "Error",
+          evalue:
+            "An error occurred while formatting a result, but it could not be identified",
+          traceback: [],
+        });
+      }
+    }
+  }
+
+  internals.jupyter.broadcastResult = broadcastResult;
+
+  /**
+   * Display function for Jupyter Deno Kernel.
+   * Mimics the behavior of IPython's `display(obj, raw=True)` function to allow
+   * asynchronous displaying of objects in Jupyter.
+   *
+   * @param obj - The object to be displayed
+   * @param options - Display options
+   */
+  async function display(obj, options = { raw: false, update: false }) {
+    const bundle = await displayInner(obj, options.raw);
+    let messageType = "display_data";
+    if (options.update) {
+      messageType = "update_display_data";
+    }
+    let transient = {};
+    if (options.display_id) {
+      transient = { display_id: options.display_id };
+    }
+    await broadcast(messageType, {
+      data: bundle,
+      metadata: {},
+      transient,
+    });
+    return;
+  }
 
   globalThis.Deno.jupyter = {
-    async broadcast(msgType, content, { metadata = {}, buffers = [] } = {}) {
-      await op_jupyter_broadcast(msgType, content, metadata, buffers);
-    },
+    broadcast,
     display,
     format,
     md,

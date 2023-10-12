@@ -1,12 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertThrows } from "./test_util.ts";
 
-import { assertSpyCall, spy } from "../../../test_util/std/testing/mock.ts";
+import { assertEquals, assertThrows } from "./test_util.ts";
 
-const {
-  enableJupyter,
-  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
-} = Deno[Deno.internal];
+// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+const display = Deno[Deno.internal].jupyter.displayInner;
 
 Deno.test("Deno.jupyter is not available", () => {
   assertThrows(
@@ -15,35 +12,9 @@ Deno.test("Deno.jupyter is not available", () => {
   );
 });
 
-export async function fakeBroadcast(
-  _msgType: string,
-  _content: Record<string, unknown>,
-  _extras?: {
-    metadata?: Record<string, unknown>;
-    buffers?: ArrayBuffer[];
-    [key: string]: unknown;
-  },
-): Promise<void> {
-  await Promise.resolve();
-}
-
 export async function assertDisplayedAs(obj: unknown, result: object) {
-  enableJupyter();
-
-  const { display } = Deno.jupyter;
-
-  const originalBroadcast = Deno.jupyter.broadcast;
-  const mockedBroadcast = spy(fakeBroadcast);
-
-  Deno.jupyter.broadcast = mockedBroadcast;
-
-  await display(obj);
-
-  assertSpyCall(mockedBroadcast, 0, {
-    args: ["display_data", { data: result, metadata: {}, transient: {} }],
-  });
-
-  Deno.jupyter.broadcast = originalBroadcast;
+  const formatted = await display(obj);
+  assertEquals(formatted, result);
 }
 
 Deno.test("display(canvas) creates a PNG", async () => {
