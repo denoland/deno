@@ -259,6 +259,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 pub fn main() {
   setup_panic_hook();
 
+  util::unix::prepare_stdio();
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
