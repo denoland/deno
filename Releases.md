@@ -8,18 +8,16 @@ https://github.com/denoland/deno_install
 
 ### 1.37.2 / 2023.10.12
 
-- feat(WebSocketStream): rename connection to opened (#20878)
 - feat(ext/web): cancel support for TransformStream (#20815)
-- feat(jupyter): send Jupyter messaging metadata with `Deno.jupyter.broadcast`
-  (#20714)
-- feat(jupyter): send binary data with `Deno.jupyter.broadcast` (#20755)
-- feat(jupyter): support Deno.test() (#20778)
 - feat(lsp): jupyter notebook analysis (#20719)
 - feat(lsp): send "deno/didChangeDenoConfiguration" notifications (#20827)
-- feat(node/os): Add `availableParallelism` (#20745)
-- feat(unstable): Await return from `Jupyter.display` (#20807)
 - feat(unstable): add Deno.jupyter.display API (#20819)
 - feat(unstable): add unix domain socket support to Deno.serve (#20759)
+- feat(unstable): Await return from `Jupyter.display` (#20807)
+- feat(unstable): send binary data with `Deno.jupyter.broadcast` (#20755)
+- feat(unstable): send Jupyter messaging metadata with `Deno.jupyter.broadcast`
+  (#20714)
+- feat(unstable): support Deno.test() (#20778)
 - fix(bench): use total time when measuring wavg (#20862)
 - fix(cli): Support using both `--watch` and `--inspect` at the same time
   (#20660)
