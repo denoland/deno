@@ -33,8 +33,6 @@ export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
-  Readable,
-  Writable,
 } from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,

@@ -5,6 +5,8 @@ import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 
+const { Error } = globalThis.__bootstrap.primordials;
+
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
   if (typeof fd !== "number") {
