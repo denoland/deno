@@ -175,6 +175,11 @@ impl CliGraphResolver {
   }
 }
 
+struct CliDenoGraphResolver<'a> {
+  resolver: &'a CliGraphResolver,
+  mode: NodeResolutionMode,
+}
+
 impl Resolver for CliGraphResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.maybe_default_jsx_import_source.clone()
@@ -232,7 +237,7 @@ impl Resolver for CliGraphResolver {
                 npm_req_ref.req(),
                 referrer,
               )?;
-            let node_resoler = self.node_resolver.as_ref().unwrap();
+            let node_resolver = self.node_resolver.as_ref().unwrap();
             let package_json_path = package_folder.join("package.json");
             if !self.fs.exists_sync(&package_json_path) {
               bail!(
@@ -240,7 +245,7 @@ impl Resolver for CliGraphResolver {
                 package_json_path.display()
               );
             }
-            let maybe_resolution = node_resoler
+            let maybe_resolution = node_resolver
               .resolve_package_subpath_from_deno_module(
                 &package_folder,
                 npm_req_ref.sub_path(),

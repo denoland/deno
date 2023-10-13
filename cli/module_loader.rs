@@ -549,7 +549,11 @@ impl ModuleLoader for CliModuleLoader {
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
     // support in REPL. This should be fixed.
-    let resolution = self.shared.resolver.resolve(specifier, &referrer);
+    let resolution = self.shared.resolver.resolve(
+      specifier,
+      &referrer,
+      ResolutionMode::Execution,
+    );
 
     if self.shared.is_repl {
       let specifier = resolution
