@@ -838,6 +838,137 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 }
 
 #[test]
+fn lsp_did_change_deno_configuration_notification() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  temp_dir.write("deno.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "type": 1,
+        "configurationType": "denoJson"
+      }],
+    }))
+  );
+
+  temp_dir.write(
+    "deno.json",
+    json!({ "fmt": { "semiColons": false } }).to_string(),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "type": 2,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "type": 2,
+        "configurationType": "denoJson"
+      }],
+    }))
+  );
+
+  temp_dir.remove_file("deno.json");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "type": 3,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "type": 3,
+        "configurationType": "denoJson"
+      }],
+    }))
+  );
+
+  temp_dir.write("package.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 1,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+
+  temp_dir.write("package.json", json!({ "type": "module" }).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 2,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 2,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+
+  temp_dir.remove_file("package.json");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 3,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 3,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+}
+
+#[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -863,10 +994,12 @@ fn lsp_deno_task() {
     json!([
       {
         "name": "build",
-        "detail": "deno test"
+        "detail": "deno test",
+        "sourceUri": temp_dir.uri().join("deno.jsonc").unwrap(),
       }, {
         "name": "some:test",
-        "detail": "deno bundle mod.ts"
+        "detail": "deno bundle mod.ts",
+        "sourceUri": temp_dir.uri().join("deno.jsonc").unwrap(),
       }
     ])
   );
@@ -10047,6 +10180,95 @@ fn lsp_vendor_dir() {
         "message": "Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring."
       }
     ]),
+  );
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  let contents = r#"import path from "path";"#;
+  temp_dir.write("main.ts", contents);
+  temp_dir.write("deno.json", r#"{ "unstable": ["bare-node-builtins"] }"#);
+  let main_script = temp_dir.uri().join("main.ts").unwrap();
+
+  let mut client = context.new_lsp_command().capture_stderr().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": main_script,
+      "languageId": "typescript",
+      "version": 1,
+      "text": contents,
+    }
+  }));
+
+  let diagnostics = diagnostics
+    .messages_with_file_and_source(main_script.as_ref(), "deno")
+    .diagnostics
+    .into_iter()
+    .filter(|d| {
+      d.code
+        == Some(lsp::NumberOrString::String(
+          "import-node-prefix-missing".to_string(),
+        ))
+    })
+    .collect::<Vec<_>>();
+
+  // get the quick fixes
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": main_script
+      },
+      "range": {
+        "start": { "line": 0, "character": 16 },
+        "end": { "line": 0, "character": 18 },
+      },
+      "context": {
+        "diagnostics": json!(diagnostics),
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Update specifier to node:path",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 17 },
+            "end": { "line": 0, "character": 23 }
+          },
+          "severity": 2,
+          "code": "import-node-prefix-missing",
+          "source": "deno",
+          "message": "\"path\" is resolved to \"node:path\". If you want to use a built-in Node module, add a \"node:\" prefix.",
+          "data": {
+            "specifier": "path"
+          },
+        }
+      ],
+      "edit": {
+        "changes": {
+          main_script: [
+            {
+              "range": {
+                "start": { "line": 0, "character": 17 },
+                "end": { "line": 0, "character": 23 }
+              },
+              "newText": "\"node:path\""
+            }
+          ]
+        }
+      }
+    }])
   );
 
   client.shutdown();

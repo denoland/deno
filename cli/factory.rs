@@ -48,6 +48,7 @@ use crate::worker::CliMainWorkerOptions;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_core::FeatureChecker;
 
 use deno_graph::GraphKind;
 use deno_runtime::deno_fs;
@@ -162,6 +163,7 @@ struct CliFactoryServices {
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
   cli_node_resolver: Deferred<Arc<CliNodeResolver>>,
+  feature_checker: Deferred<Arc<FeatureChecker>>,
 }
 
 pub struct CliFactory {
@@ -384,6 +386,9 @@ impl CliFactory {
             .to_maybe_jsx_import_source_config()?,
           maybe_import_map: self.maybe_import_map().await?.clone(),
           maybe_vendor_dir: self.options.vendor_dir_path(),
+          bare_node_builtins_enabled: self
+            .options
+            .unstable_bare_node_builtlins(),
         })))
       })
       .await
@@ -566,6 +571,21 @@ impl CliFactory {
       .await
   }
 
+  pub fn feature_checker(&self) -> &Arc<FeatureChecker> {
+    self.services.feature_checker.get_or_init(|| {
+      let mut checker = FeatureChecker::default();
+      checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
+      // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
+      // of granular --unstable-* flags.
+      // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
+      if self.options.unstable() {
+        checker.enable_legacy_unstable();
+      }
+
+      Arc::new(checker)
+    })
+  }
+
   pub async fn create_compile_binary_writer(
     &self,
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
@@ -610,6 +630,7 @@ impl CliFactory {
       self.fs().clone(),
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
+      self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
     ))
   }

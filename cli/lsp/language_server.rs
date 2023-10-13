@@ -20,6 +20,7 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use import_map::ImportMap;
+use indexmap::IndexSet;
 use log::error;
 use serde_json::from_value;
 use std::collections::HashMap;
@@ -64,6 +65,7 @@ use super::documents::UpdateDocumentConfigOptions;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
+use super::lsp_custom::TaskDefinition;
 use super::npm::CliNpmSearchApi;
 use super::parent_process_checker;
 use super::performance::Performance;
@@ -346,8 +348,8 @@ impl LanguageServer {
     self.0.write().await.reload_import_registries().await
   }
 
-  pub async fn task_request(&self) -> LspResult<Option<Value>> {
-    self.0.read().await.get_tasks()
+  pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
+    self.0.read().await.task_definitions()
   }
 
   pub async fn test_run_request(
@@ -1389,17 +1391,16 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-
-    if let Err(err) = self.documents.close(&specifier) {
-      error!("{}", err);
-    }
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier);
+      specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
       self.send_diagnostics_update();
       self.send_testing_update();
+    }
+    if let Err(err) = self.documents.close(&specifier) {
+      error!("{}", err);
     }
     self.performance.measure(mark);
   }
@@ -1474,7 +1475,7 @@ impl Inner {
       }
     }
 
-    fn has_config_changed(config: &Config, changes: &HashSet<Url>) -> bool {
+    fn has_config_changed(config: &Config, changes: &IndexSet<Url>) -> bool {
       // Check the canonicalized specifier here because file watcher
       // changes will be for the canonicalized path in vscode, but also check the
       // non-canonicalized specifier in order to please the tests and handle
@@ -1525,31 +1526,91 @@ impl Inner {
       .performance
       .mark("did_change_watched_files", Some(&params));
     let mut touched = false;
-    let changes: HashSet<Url> = params
+    let changes: IndexSet<Url> = params
       .changes
       .iter()
       .map(|f| self.url_map.normalize_url(&f.uri, LspUrlKind::File))
       .collect();
 
+    let mut config_changes = IndexSet::with_capacity(changes.len());
+
     // if the current deno.json has changed, we need to reload it
     if has_config_changed(&self.config, &changes) {
+      // Check the 'current' config specifier from both before and after it's
+      // updated. Check canonicalized and uncanonicalized variants for each.
+      // If any are included in `changes`, send our custom notification for
+      // `deno.json` changes: `deno/didChangeDenoConfigurationNotification`.
+      let mut files_to_check = IndexSet::with_capacity(4);
+      // Collect previous config specifiers.
+      if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
+        files_to_check.insert(url.clone());
+      }
+      if let Some(url) = self.config.maybe_config_file_canonicalized_specifier()
+      {
+        files_to_check.insert(url.clone());
+      }
+      // Update config.
       if let Err(err) = self.update_config_file().await {
         self.client.show_message(MessageType::WARNING, err);
       }
+      // Collect new config specifiers.
+      if let Some(url) = self.config.maybe_config_file().map(|c| &c.specifier) {
+        files_to_check.insert(url.clone());
+      }
+      if let Some(url) = self.config.maybe_config_file_canonicalized_specifier()
+      {
+        files_to_check.insert(url.clone());
+      }
+      config_changes.extend(
+        params
+          .changes
+          .iter()
+          .filter(|e| files_to_check.contains(&e.uri))
+          .map(|e| lsp_custom::DenoConfigurationChangeEvent {
+            file_event: e.clone(),
+            configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+          }),
+      );
       if let Err(err) = self.update_tsconfig().await {
         self.client.show_message(MessageType::WARNING, err);
       }
       touched = true;
     }
 
-    if let Some(package_json) = &self.maybe_package_json {
-      // always update the package json if the deno config changes
-      if touched || changes.contains(&package_json.specifier()) {
-        if let Err(err) = self.update_package_json() {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        touched = true;
+    let has_package_json_changed = changes
+      .iter()
+      .any(|e| e.as_str().ends_with("/package.json"));
+
+    if has_package_json_changed {
+      let mut files_to_check = IndexSet::with_capacity(2);
+      if let Some(package_json) = &self.maybe_package_json {
+        files_to_check.insert(package_json.specifier());
       }
+      if let Err(err) = self.update_package_json() {
+        self.client.show_message(MessageType::WARNING, err);
+      }
+      if let Some(package_json) = &self.maybe_package_json {
+        files_to_check.insert(package_json.specifier());
+      }
+      config_changes.extend(
+        params
+          .changes
+          .iter()
+          .filter(|e| files_to_check.contains(&e.uri))
+          .map(|e| lsp_custom::DenoConfigurationChangeEvent {
+            file_event: e.clone(),
+            configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
+          }),
+      );
+      touched = true;
+    }
+
+    if !config_changes.is_empty() {
+      self.client.send_did_change_deno_configuration_notification(
+        lsp_custom::DidChangeDenoConfigurationNotificationParams {
+          changes: config_changes.into_iter().collect(),
+        },
+      );
     }
 
     // if the current import map, or config file has changed, we need to
@@ -3230,8 +3291,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     let uri = &params.text_document.uri;
     {
-      let inner = self.0.read().await;
+      let mut inner = self.0.write().await;
       let specifier = inner.url_map.normalize_url(uri, LspUrlKind::File);
+      inner.documents.save(&specifier);
       if !inner.config.workspace_settings().cache_on_save
         || !inner.config.specifier_enabled(&specifier)
         || !inner.diagnostics_state.has_no_cache_diagnostics(&specifier)
@@ -3596,13 +3658,35 @@ impl Inner {
     json!({ "averages": averages })
   }
 
-  fn get_tasks(&self) -> LspResult<Option<Value>> {
-    Ok(
-      self
-        .config
-        .maybe_config_file()
-        .and_then(|cf| cf.to_lsp_tasks()),
-    )
+  fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
+    let mut result = vec![];
+    if let Some(config_file) = self.config.maybe_config_file() {
+      if let Some(tasks) = json!(&config_file.json.tasks).as_object() {
+        for (name, value) in tasks {
+          let Some(command) = value.as_str() else {
+            continue;
+          };
+          result.push(TaskDefinition {
+            name: name.clone(),
+            command: command.to_string(),
+            source_uri: config_file.specifier.clone(),
+          });
+        }
+      };
+    }
+    if let Some(package_json) = &self.maybe_package_json {
+      if let Some(scripts) = &package_json.scripts {
+        for (name, command) in scripts {
+          result.push(TaskDefinition {
+            name: name.clone(),
+            command: command.clone(),
+            source_uri: package_json.specifier(),
+          });
+        }
+      }
+    }
+    result.sort_by_key(|d| d.name.clone());
+    Ok(result)
   }
 
   async fn inlay_hint(

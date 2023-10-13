@@ -90,11 +90,6 @@ pub async fn execute_script(
       npm_resolver.resolve_pending().await?;
     }
 
-    log::info!(
-      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in an upcoming release.",
-      colors::yellow("Warning"),
-    );
-
     let cwd = match task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => maybe_package_json
