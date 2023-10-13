@@ -6,8 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-<<<<<<< HEAD
-=======
 ### 1.37.2 / 2023.10.12
 
 - feat(ext/web): cancel support for TransformStream (#20815)
@@ -51,7 +49,6 @@ https://github.com/denoland/deno_install
 - perf(lsp): optimize formatting minified files (#20829)
 - perf(node): use faster utf8 byte length in Buffer#from (#20746)
 
->>>>>>> 7282994df (1.37.2 (#20896))
 ### 1.37.1 / 2023.09.27
 
 - feat(ext/web): use readableStreamDefaultReaderRead in

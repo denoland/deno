@@ -2,11 +2,7 @@
 
 [package]
 name = "deno_fs"
-<<<<<<< HEAD
-version = "0.30.0"
-=======
 version = "0.31.0"
->>>>>>> 7282994df (1.37.2 (#20896))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
