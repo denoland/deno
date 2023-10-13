@@ -2223,7 +2223,7 @@ pub fn boynm_cjs_esm_packages() {
   let run_npm = |args: &str| {
     test_context
       .new_command()
-      .command_name("npm")
+      .name("npm")
       .args(args)
       .run()
       .skip_output_check();
@@ -2307,12 +2307,66 @@ console.log(getKind());
 }
 
 #[test]
-pub fn boynm_npm_workspaces() {
+pub fn boynm_package_npm_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
     .build();
   let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'npm:chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not find '[WILDCARD]package.json'. Maybe run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import 'npm:@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context
+    .new_command()
+    .name("npm")
+    .args("install")
+    .run()
+    .skip_output_check();
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Failed resolving package subpath './test' for '[WILDCARD]package.json'
+    at file:///[WILDCARD]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
+pub fn boynm_npm_workspaces() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "unstable": [
+      "byonm"
+    ]
+  }"#,
+  );
 
   dir.write(
     "package.json",
@@ -2381,7 +2435,7 @@ console.log(add(1, 2));
 
   test_context
     .new_command()
-    .command_name("npm")
+    .name("npm")
     .args("install")
     .run()
     .skip_output_check();

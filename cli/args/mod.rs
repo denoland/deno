@@ -1236,6 +1236,11 @@ impl CliOptions {
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
         .unwrap_or(false)
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+        .unwrap_or(false)
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

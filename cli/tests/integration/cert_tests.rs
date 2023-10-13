@@ -118,7 +118,7 @@ fn cafile_compile() {
 
   context
     .new_command()
-    .command_name(output_exe)
+    .name(output_exe)
     .run()
     .assert_matches_text("[WILDCARD]\nHello\n");
 }

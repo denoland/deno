@@ -227,7 +227,7 @@ pub struct TestCommandBuilder {
 }
 
 impl TestCommandBuilder {
-  pub fn command_name(mut self, name: impl AsRef<OsStr>) -> Self {
+  pub fn name(mut self, name: impl AsRef<OsStr>) -> Self {
     self.command_name = name.as_ref().to_string_lossy().to_string();
     self
   }

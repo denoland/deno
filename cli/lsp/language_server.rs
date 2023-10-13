@@ -848,6 +848,7 @@ impl Inner {
     let npm_resolver = create_npm_resolver(
       &deno_dir,
       &self.http_client,
+      self.config.maybe_config_file(),
       self.config.maybe_lockfile(),
       self.config.maybe_node_modules_dir_path().cloned(),
     )
@@ -1092,10 +1093,15 @@ impl Inner {
 async fn create_npm_resolver(
   deno_dir: &DenoDir,
   http_client: &Arc<HttpClient>,
+  maybe_config_file: Option<&ConfigFile>,
   maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
   maybe_node_modules_dir_path: Option<PathBuf>,
 ) -> Arc<dyn CliNpmResolver> {
-  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1");
+  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
+    || maybe_config_file
+      .as_ref()
+      .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+      .unwrap_or(false);
   create_cli_npm_resolver_for_lsp(if is_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
