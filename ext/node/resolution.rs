@@ -325,15 +325,15 @@ impl NodeResolver {
     Ok(resolved)
   }
 
-  pub fn resolve_npm_reference(
+  pub fn resolve_package_subpath_from_deno_module(
     &self,
     package_dir: &Path,
     package_subpath: Option<&str>,
+    referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
     let package_json_path = package_dir.join("package.json");
-    let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
     let package_json =
       self.load_package_json(permissions, package_json_path.clone())?;
     let node_module_kind = NodeModuleKind::Esm;
@@ -344,7 +344,7 @@ impl NodeResolver {
       .resolve_package_subpath(
         &package_json,
         &package_subpath,
-        &referrer,
+        referrer,
         node_module_kind,
         DEFAULT_CONDITIONS,
         mode,
@@ -654,7 +654,7 @@ impl NodeResolver {
         if !is_url {
           let export_target = if pattern {
             pattern_re
-              .replace(&target, |_caps: &regex::Captures| subpath.clone())
+              .replace(&target, |_caps: &regex::Captures| subpath)
               .to_string()
           } else {
             format!("{target}{subpath}")
@@ -722,9 +722,7 @@ impl NodeResolver {
     if pattern {
       let resolved_path_str = resolved_path.to_string_lossy();
       let replaced = pattern_re
-        .replace(&resolved_path_str, |_caps: &regex::Captures| {
-          subpath.clone()
-        });
+        .replace(&resolved_path_str, |_caps: &regex::Captures| subpath);
       return Ok(PathBuf::from(replaced.to_string()));
     }
     Ok(resolved_path.join(subpath).clean())
@@ -777,8 +775,8 @@ impl NodeResolver {
         let resolved_result = self.resolve_package_target(
           package_json_path,
           target_item.to_owned(),
-          subpath.clone(),
-          package_subpath.clone(),
+          subpath,
+          package_subpath,
           referrer,
           referrer_kind,
           pattern,
@@ -826,8 +824,8 @@ impl NodeResolver {
           let resolved = self.resolve_package_target(
             package_json_path,
             condition_target,
-            subpath.clone(),
-            package_subpath.clone(),
+            subpath,
+            package_subpath,
             referrer,
             referrer_kind,
             pattern,

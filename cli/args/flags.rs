@@ -1843,12 +1843,7 @@ fn repl_subcommand() -> Command {
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
-    .arg(
-      watch_arg(true)
-        .conflicts_with("inspect")
-        .conflicts_with("inspect-wait")
-        .conflicts_with("inspect-brk"),
-    )
+    .arg(watch_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     .arg(

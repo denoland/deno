@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.37.1"
+version = "1.37.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -77,8 +77,8 @@ data-encoding.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.4"
-dprint-plugin-markdown = "=0.16.1"
-dprint-plugin-typescript = "=0.87.1"
+dprint-plugin-markdown = "=0.16.2"
+dprint-plugin-typescript = "=0.88.1"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"

@@ -1,9 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// TODO: allow everywhere because `#[allow(clippy::too_many_arguments)]` on
-// `#[op(fast)]` does not work. https://github.com/denoland/rusty_v8/issues/1332
-#![allow(clippy::too_many_arguments)]
-
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
@@ -117,6 +113,7 @@ struct TestRegisterResult {
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
+#[allow(clippy::too_many_arguments)]
 #[op2]
 #[string]
 fn op_register_test(
