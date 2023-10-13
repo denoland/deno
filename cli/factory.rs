@@ -378,17 +378,8 @@ impl CliFactory {
             maybe_import_map: self.maybe_import_map().await?.clone(),
             maybe_vendor_dir: self.options.vendor_dir_path(),
             bare_node_builtins_enabled: self
-              .options
-              .unstable_features()
-              .contains(&"bare-node-builtins")
-              || self
-                .options
-                .maybe_config_file()
-                .as_ref()
-                .map(|c| {
-                  c.json.unstable.contains(&"bare-node-builtins".to_string())
-                })
-                .unwrap_or(false),
+              .feature_checker()
+              .check("bare-node-builtins"),
           },
         )))
       })
@@ -575,6 +566,9 @@ impl CliFactory {
   pub fn feature_checker(&self) -> &Arc<FeatureChecker> {
     self.services.feature_checker.get_or_init(|| {
       let mut checker = FeatureChecker::default();
+      if self.options.unstable_bare_node_builtlins() {
+        checker.enable_feature("bare-node-builtins");
+      }
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
       // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
       // of granular --unstable-* flags.

@@ -406,7 +406,7 @@ pub struct Flags {
   pub reload: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
-  pub unstable_features: Vec<&'static str>,
+  pub unstable_bare_node_builtlins: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }
@@ -804,7 +804,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   }
 
   if matches.get_flag("unstable-bare-node-builtins") {
-    flags.unstable_features.push("bare-node-builtins");
+    flags.unstable_bare_node_builtlins = true;
   }
 
   if matches.get_flag("quiet") {
