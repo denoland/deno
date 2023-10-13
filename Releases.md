@@ -6,6 +6,52 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+<<<<<<< HEAD
+=======
+### 1.37.2 / 2023.10.12
+
+- feat(ext/web): cancel support for TransformStream (#20815)
+- feat(lsp): jupyter notebook analysis (#20719)
+- feat(lsp): send "deno/didChangeDenoConfiguration" notifications (#20827)
+- feat(unstable): add Deno.jupyter.display API (#20819)
+- feat(unstable): add unix domain socket support to Deno.serve (#20759)
+- feat(unstable): Await return from `Jupyter.display` (#20807)
+- feat(unstable): send binary data with `Deno.jupyter.broadcast` (#20755)
+- feat(unstable): send Jupyter messaging metadata with `Deno.jupyter.broadcast`
+  (#20714)
+- feat(unstable): support Deno.test() (#20778)
+- fix(bench): use total time when measuring wavg (#20862)
+- fix(cli): Support using both `--watch` and `--inspect` at the same time
+  (#20660)
+- fix(cli): panic with __runtime_js_sources (#20704)
+- fix(ext/ffi): use anybuffer for op_ffi_ptr_of (#20820)
+- fix(ext/formdata): support multiple headers in FormData (#20801)
+- fix(ext/http): Deno.Server should not be thenable (#20723)
+- fix(ext/kv): send queue wake messages accross different kv instances (#20465)
+- fix(ext/node): don't call undefined nextTick fn (#20724)
+- fix(ext/node): fix TypeError in Buffer.from with base64url encoding. (#20705)
+- fix(ext/node): implement uv.errname (#20785)
+- fix(ext/web): writability of `ReadableStream.from` (#20836)
+- fix(jupyter): Rename logo assets so they are discoverable (#20806)
+- fix(jupyter): keep `this` around (#20789)
+- fix(jupyter): more robust Deno.jupyter namespace (#20710)
+- fix(lsp): allow formatting vendor files (#20844)
+- fix(lsp): normalize "deno:" urls statelessly (#20867)
+- fix(lsp): percent-encode host in deno: specifiers (#20811)
+- fix(lsp): show diagnostics for type imports from untyped deps (#20780)
+- fix(node/buffer): utf8ToBytes should return a Uint8Array (#20769)
+- fix(node/http2): fixes to support grpc (#20712)
+- fix(npm): upgrade to deno_npm 0.15.2 (#20772)
+- fix(upgrade): use tar.exe to extract on Windows (#20711)
+- fix: define window.name (#20804)
+- fix: upgrade dprint-plugin-markdown 0.16.2 and typescript 0.88.1 (#20879)
+- perf(ext/web): optimize DOMException (#20715)
+- perf(ext/web): optimize structuredClone without transferables (#20730)
+- perf(lsp): fix redundant file reads (#20802)
+- perf(lsp): optimize formatting minified files (#20829)
+- perf(node): use faster utf8 byte length in Buffer#from (#20746)
+
+>>>>>>> 7282994df (1.37.2 (#20896))
 ### 1.37.1 / 2023.09.27
 
 - feat(ext/web): use readableStreamDefaultReaderRead in

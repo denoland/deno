@@ -48,7 +48,10 @@ message KvMutation {
   bytes key = 1;
   KvValue value = 2;
   KvMutationType mutation_type = 3;
+<<<<<<< HEAD
   int64 expire_at_ms = 4;
+=======
+>>>>>>> 7282994df (1.37.2 (#20896))
 }
 
 message KvValue {

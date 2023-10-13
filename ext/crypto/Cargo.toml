@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_crypto"
+<<<<<<< HEAD
 version = "0.134.0"
+=======
+version = "0.135.0"
+>>>>>>> 7282994df (1.37.2 (#20896))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
