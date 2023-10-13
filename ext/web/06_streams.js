@@ -143,6 +143,15 @@ class Deferred {
   }
 }
 
+/**
+ * @template T
+ * @param {T | PromiseLike<T>} value
+ * @returns {Promise<T>}
+ */
+function resolvePromiseWith(value) {
+  return new Promise((resolve) => resolve(value));
+}
+
 /** @param {any} e */
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
@@ -3837,7 +3846,7 @@ function setUpWritableStreamDefaultController(
   );
   writableStreamUpdateBackpressure(stream, backpressure);
   const startResult = startAlgorithm(controller);
-  const startPromise = PromiseResolve(startResult);
+  const startPromise = resolvePromiseWith(startResult);
   uponPromise(startPromise, () => {
     assert(stream[_state] === "writable" || stream[_state] === "erroring");
     controller[_started] = true;
