@@ -422,6 +422,7 @@ impl Document {
     version: i32,
     language_id: LanguageId,
     content: Arc<str>,
+    cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
   ) -> Self {
     let maybe_headers = language_id.as_headers();
@@ -441,7 +442,8 @@ impl Document {
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Self(Arc::new(DocumentInner {
       dependencies,
-      fs_version: "1".to_string(),
+      fs_version: calculate_fs_version(cache, &specifier)
+        .unwrap_or_else(|| "1".to_string()),
       line_index,
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
@@ -521,6 +523,23 @@ impl Document {
       maybe_lsp_version: Some(version),
       maybe_navigation_tree: Mutex::new(None),
     })))
+  }
+
+  pub fn saved(&self, cache: &Arc<dyn HttpCache>) -> Document {
+    Document(Arc::new(DocumentInner {
+      specifier: self.0.specifier.clone(),
+      fs_version: calculate_fs_version(cache, &self.0.specifier)
+        .unwrap_or_else(|| "1".to_string()),
+      maybe_language_id: self.0.maybe_language_id,
+      dependencies: self.0.dependencies.clone(),
+      text_info: self.0.text_info.clone(),
+      line_index: self.0.line_index.clone(),
+      maybe_headers: self.0.maybe_headers.clone(),
+      maybe_module: self.0.maybe_module.clone(),
+      maybe_parsed_source: self.0.maybe_parsed_source.clone(),
+      maybe_lsp_version: self.0.maybe_lsp_version,
+      maybe_navigation_tree: Mutex::new(None),
+    }))
   }
 
   pub fn specifier(&self) -> &ModuleSpecifier {
@@ -953,6 +972,7 @@ impl Documents {
       version,
       language_id,
       content,
+      &self.cache,
       resolver,
     );
     let mut file_system_docs = self.file_system_docs.lock();
@@ -991,24 +1011,28 @@ impl Documents {
     Ok(doc)
   }
 
+  pub fn save(&mut self, specifier: &ModuleSpecifier) {
+    let doc = self.open_docs.get(specifier).cloned().or_else(|| {
+      let mut file_system_docs = self.file_system_docs.lock();
+      file_system_docs.docs.remove(specifier)
+    });
+    let Some(doc) = doc else {
+      return;
+    };
+    self.dirty = true;
+    let doc = doc.saved(&self.cache);
+    self.open_docs.insert(doc.specifier().clone(), doc.clone());
+  }
+
   /// Close an open document, this essentially clears any editor state that is
   /// being held, and the document store will revert to the file system if
   /// information about the document is required.
   pub fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
-    if self.open_docs.remove(specifier).is_some() {
-      self.dirty = true;
-    } else {
+    if let Some(document) = self.open_docs.remove(specifier) {
       let mut file_system_docs = self.file_system_docs.lock();
-      if file_system_docs.docs.remove(specifier).is_some() {
-        file_system_docs.dirty = true;
-      } else {
-        return Err(custom_error(
-          "NotFound",
-          format!("The specifier \"{specifier}\" was not found."),
-        ));
-      }
+      file_system_docs.docs.insert(specifier.clone(), document);
+      self.dirty = true;
     }
-
     Ok(())
   }
 
@@ -1496,7 +1520,10 @@ impl Documents {
 
     let resolver = self.get_resolver();
     while let Some(specifier) = doc_analyzer.pending_specifiers.pop_front() {
-      if let Some(doc) = file_system_docs.get(&self.cache, resolver, &specifier)
+      if let Some(doc) = self.open_docs.get(&specifier) {
+        doc_analyzer.analyze_doc(&specifier, doc);
+      } else if let Some(doc) =
+        file_system_docs.get(&self.cache, resolver, &specifier)
       {
         doc_analyzer.analyze_doc(&specifier, &doc);
       }
@@ -1587,9 +1614,10 @@ fn node_resolve_npm_req_ref(
         .and_then(|package_folder| {
           npm
             .node_resolver
-            .resolve_npm_reference(
+            .resolve_package_subpath_from_deno_module(
               &package_folder,
               npm_req_ref.sub_path(),
+              referrer,
               NodeResolutionMode::Types,
               &PermissionsContainer::allow_all(),
             )

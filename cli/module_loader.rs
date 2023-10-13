@@ -512,6 +512,7 @@ impl ModuleLoader for CliModuleLoader {
                 .resolve_package_sub_path(
                   &package_folder,
                   module.nv_reference.sub_path(),
+                  referrer,
                   permissions,
                 )
                 .with_context(|| {
@@ -726,6 +727,7 @@ impl CliNodeResolver {
       .resolve_package_sub_path(
         &package_folder,
         req_ref.sub_path(),
+        referrer,
         permissions,
       )
       .with_context(|| format!("Could not resolve '{}'.", req_ref))
@@ -735,14 +737,18 @@ impl CliNodeResolver {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
+    referrer: &ModuleSpecifier,
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    self.handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-      package_folder,
-      sub_path,
-      NodeResolutionMode::Execution,
-      permissions,
-    ))
+    self.handle_node_resolve_result(
+      self.node_resolver.resolve_package_subpath_from_deno_module(
+        package_folder,
+        sub_path,
+        referrer,
+        NodeResolutionMode::Execution,
+        permissions,
+      ),
+    )
   }
 
   fn handle_node_resolve_result(

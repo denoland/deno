@@ -84,6 +84,19 @@ impl Client {
     });
   }
 
+  pub fn send_did_change_deno_configuration_notification(
+    &self,
+    params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client
+        .send_did_change_deno_configuration_notification(params)
+        .await;
+    });
+  }
+
   pub fn show_message(
     &self,
     message_type: lsp::MessageType,
@@ -184,6 +197,10 @@ trait ClientTrait: Send + Sync {
     params: lsp_custom::DiagnosticBatchNotificationParams,
   );
   async fn send_test_notification(&self, params: TestingNotification);
+  async fn send_did_change_deno_configuration_notification(
+    &self,
+    params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  );
   async fn specifier_configurations(
     &self,
     uris: Vec<lsp::Url>,
@@ -257,6 +274,18 @@ impl ClientTrait for TowerClient {
           .await
       }
     }
+  }
+
+  async fn send_did_change_deno_configuration_notification(
+    &self,
+    params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DidChangeDenoConfigurationNotification>(
+        params,
+      )
+      .await
   }
 
   async fn specifier_configurations(
@@ -370,6 +399,12 @@ impl ClientTrait for ReplClient {
   }
 
   async fn send_test_notification(&self, _params: TestingNotification) {}
+
+  async fn send_did_change_deno_configuration_notification(
+    &self,
+    _params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  ) {
+  }
 
   async fn specifier_configurations(
     &self,

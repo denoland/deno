@@ -238,7 +238,7 @@ class URLPattern {
   }
 }
 
-webidl.configurePrototype(URLPattern);
+webidl.configureInterface(URLPattern);
 const URLPatternPrototype = URLPattern.prototype;
 
 webidl.converters.URLPatternInit = webidl
