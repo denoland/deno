@@ -838,6 +838,137 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 }
 
 #[test]
+fn lsp_did_change_deno_configuration_notification() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  temp_dir.write("deno.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "type": 1,
+        "configurationType": "denoJson"
+      }],
+    }))
+  );
+
+  temp_dir.write(
+    "deno.json",
+    json!({ "fmt": { "semiColons": false } }).to_string(),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "type": 2,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "type": 2,
+        "configurationType": "denoJson"
+      }],
+    }))
+  );
+
+  temp_dir.remove_file("deno.json");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "type": 3,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "type": 3,
+        "configurationType": "denoJson"
+      }],
+    }))
+  );
+
+  temp_dir.write("package.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 1,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+
+  temp_dir.write("package.json", json!({ "type": "module" }).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 2,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 2,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+
+  temp_dir.remove_file("package.json");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("package.json").unwrap(),
+      "type": 3,
+    }],
+  }));
+  let res = client
+    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
+  assert_eq!(
+    res,
+    Some(json!({
+      "changes": [{
+        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "type": 3,
+        "configurationType": "packageJson"
+      }],
+    }))
+  );
+}
+
+#[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -863,10 +994,12 @@ fn lsp_deno_task() {
     json!([
       {
         "name": "build",
-        "detail": "deno test"
+        "detail": "deno test",
+        "sourceUri": temp_dir.uri().join("deno.jsonc").unwrap(),
       }, {
         "name": "some:test",
-        "detail": "deno bundle mod.ts"
+        "detail": "deno bundle mod.ts",
+        "sourceUri": temp_dir.uri().join("deno.jsonc").unwrap(),
       }
     ])
   );

@@ -34,6 +34,8 @@ use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "process";
+
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stdio {
@@ -503,7 +505,7 @@ mod deprecated {
     cwd.map(|d| c.current_dir(d));
 
     if run_args.clear_env {
-      super::check_unstable(state, "Deno.run.clearEnv");
+      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.clearEnv");
       c.env_clear();
     }
     for (key, value) in &env {
@@ -512,12 +514,12 @@ mod deprecated {
 
     #[cfg(unix)]
     if let Some(gid) = run_args.gid {
-      super::check_unstable(state, "Deno.run.gid");
+      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.gid");
       c.gid(gid);
     }
     #[cfg(unix)]
     if let Some(uid) = run_args.uid {
-      super::check_unstable(state, "Deno.run.uid");
+      super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.run.uid");
       c.uid(uid);
     }
     #[cfg(unix)]
