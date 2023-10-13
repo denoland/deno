@@ -7405,7 +7405,7 @@ fn lsp_completions_registry_empty() {
           },
           "newText": "http://localhost:4545"
         },
-        "commitCharacters": ["\"", "'", "/"]
+        "commitCharacters": ["\"", "'"]
       }]
     })
   );
