@@ -36,6 +36,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
+use deno_graph::source::ResolutionMode;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
@@ -1068,7 +1069,7 @@ impl Documents {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> bool {
-    let maybe_specifier = self.get_resolver().resolve(specifier, referrer).ok();
+    let maybe_specifier = self.get_resolver().resolve(specifier, referrer, ResolutionMode::Types).ok();
     if let Some(import_specifier) = maybe_specifier {
       self.exists(&import_specifier)
     } else {

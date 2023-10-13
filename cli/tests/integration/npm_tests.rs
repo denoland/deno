@@ -2247,18 +2247,26 @@ console.log(cjsDefault.named());
 import { getKind } from "@denotest/dual-cjs-esm";
 console.log(getKind());
 
-import { expect } from "chai";
 
-const timeout = setTimeout(() => {}, 0);
-expect(timeout).to.be.a("number");
-clearTimeout(timeout);
 "#,
   );
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text("2\n1\n2\nesm\n");
+  let output = test_context.new_command().args("run --check main.ts").run();
+  output
+    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\nesm\n");
 
   // should not have created the .deno directory
   assert!(!dir.path().join("node_modules/.deno").exists());
+
+  // try chai
+  dir.write(
+    "chai.ts",
+    r#"import { expect } from "chai";
+
+    const timeout = setTimeout(() => {}, 0);
+    expect(timeout).to.be.a("number");
+    clearTimeout(timeout);"#,
+  );
+  test_context.new_command().args("run chai.ts").run();
 
   // try chalk cjs
   dir.write(
@@ -2383,4 +2391,9 @@ console.log(add(1, 2));
     .args("run ./project-b/main.ts")
     .run();
   output.assert_matches_text("5\n3\n");
+  let output = test_context
+    .new_command()
+    .args("check ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
 }

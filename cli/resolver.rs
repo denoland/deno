@@ -8,6 +8,7 @@ use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
@@ -178,11 +179,6 @@ impl CliGraphResolver {
   }
 }
 
-struct CliDenoGraphResolver<'a> {
-  resolver: &'a CliGraphResolver,
-  mode: NodeResolutionMode,
-}
-
 impl Resolver for CliGraphResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.maybe_default_jsx_import_source.clone()
@@ -199,7 +195,15 @@ impl Resolver for CliGraphResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
+    mode: ResolutionMode,
   ) -> Result<ModuleSpecifier, ResolveError> {
+    fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
+      match mode {
+        ResolutionMode::Execution => NodeResolutionMode::Execution,
+        ResolutionMode::Types => NodeResolutionMode::Types,
+      }
+    }
+
     let result = match self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
@@ -243,17 +247,17 @@ impl Resolver for CliGraphResolver {
             let node_resolver = self.node_resolver.as_ref().unwrap();
             let package_json_path = package_folder.join("package.json");
             if !self.fs.exists_sync(&package_json_path) {
-              bail!(
+              return Err(ResolveError::Other(anyhow!(
                 "Could not find '{}'. Maybe run `npm install`?",
                 package_json_path.display()
-              );
+              )));
             }
             let maybe_resolution = node_resolver
               .resolve_package_subpath_from_deno_module(
                 &package_folder,
                 npm_req_ref.sub_path(),
                 referrer,
-                NodeResolutionMode::Execution, // todo: types for types
+                to_node_mode(mode),
                 &PermissionsContainer::allow_all(),
               )?;
             match maybe_resolution {
@@ -268,11 +272,11 @@ impl Resolver for CliGraphResolver {
                 return Ok(resolution.into_url());
               }
               None => {
-                bail!(
+                return Err(ResolveError::Other(anyhow!(
                   "Failed resolving package subpath for '{}' in '{}'.",
                   npm_req_ref,
                   package_folder.display()
-                );
+                )));
               }
             }
           }
@@ -283,7 +287,7 @@ impl Resolver for CliGraphResolver {
               let node_result = node_resolver.resolve(
                 specifier,
                 referrer,
-                NodeResolutionMode::Execution, // todo: types for types
+                to_node_mode(mode),
                 &PermissionsContainer::allow_all(),
               );
               if let Ok(Some(resolution)) = node_result {
