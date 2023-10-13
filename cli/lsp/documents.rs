@@ -1361,15 +1361,15 @@ impl Documents {
           .maybe_config_file
           .and_then(|c| c.vendor_dir_path())
           .as_ref(),
-        bare_node_builtins_enabled: options.maybe_config_file.map_or(
-          false,
-          |config| {
+        bare_node_builtins_enabled: options
+          .maybe_config_file
+          .map(|config| {
             config
               .json
               .unstable
               .contains(&"bare-node-builtins".to_string())
-          },
-        ),
+          })
+          .unwrap_or(false),
       },
     ));
     self.imports = Arc::new(
