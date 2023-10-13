@@ -152,7 +152,7 @@ class AbortSignal extends EventTarget {
 }
 defineEventHandler(AbortSignal.prototype, "abort");
 
-webidl.configurePrototype(AbortSignal);
+webidl.configureInterface(AbortSignal);
 const AbortSignalPrototype = AbortSignal.prototype;
 
 class AbortController {
@@ -173,7 +173,7 @@ class AbortController {
   }
 }
 
-webidl.configurePrototype(AbortController);
+webidl.configureInterface(AbortController);
 const AbortControllerPrototype = AbortController.prototype;
 
 webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(

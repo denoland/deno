@@ -26,6 +26,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "worker";
+
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
@@ -140,7 +142,11 @@ fn op_create_worker(
   }
 
   if args.permissions.is_some() {
-    super::check_unstable(state, "Worker.deno.permissions");
+    super::check_unstable(
+      state,
+      UNSTABLE_FEATURE_NAME,
+      "Worker.deno.permissions",
+    );
   }
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
