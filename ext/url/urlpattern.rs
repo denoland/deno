@@ -86,11 +86,34 @@ pub fn op_urlpattern_process_match_input(
 #[op2]
 #[serde]
 pub fn op_urlpattern_process_match_input_test(
-  #[serde] input: StringOrInit,
+  #[serde] input: UrlPatternInit,
   #[string] base_url: Option<String>,
 ) -> Result<Option<Vec<String>>, AnyError> {
-  let res = urlpattern::quirks::process_match_input(input, base_url.as_deref())
-    .map_err(|e| type_error(e.to_string()))?;
+  let res = urlpattern::quirks::process_match_input(
+    StringOrInit::Init(input),
+    base_url.as_deref(),
+  )
+  .map_err(|e| type_error(e.to_string()))?;
+
+  let (input, _inputs) = match res {
+    Some((input, inputs)) => (input, inputs),
+    None => return Ok(None),
+  };
+
+  Ok(urlpattern::quirks::parse_match_input(input).map(input_to_vec))
+}
+
+#[op2]
+#[serde]
+pub fn op_urlpattern_process_match_input_test_string(
+  #[string] input: String,
+  #[string] base_url: Option<String>,
+) -> Result<Option<Vec<String>>, AnyError> {
+  let res = urlpattern::quirks::process_match_input(
+    StringOrInit::String(input),
+    base_url.as_deref(),
+  )
+  .map_err(|e| type_error(e.to_string()))?;
 
   let (input, _inputs) = match res {
     Some((input, inputs)) => (input, inputs),

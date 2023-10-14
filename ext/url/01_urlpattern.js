@@ -155,10 +155,19 @@ class URLPattern {
       baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
-    const values = ops.op_urlpattern_process_match_input_test(
-      input,
-      baseURL,
-    );
+    let values;
+
+    if (typeof input === "string") {
+      values = ops.op_urlpattern_process_match_input_test_string(
+        input,
+        baseURL,
+      );
+    } else {
+      values = ops.op_urlpattern_process_match_input_test(
+        input,
+        baseURL,
+      );
+    }
     if (values === null) {
       return false;
     }
