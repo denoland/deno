@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FeatureChecker;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
@@ -114,6 +115,7 @@ struct SharedWorkerState {
     Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  feature_checker: Arc<FeatureChecker>,
 }
 
 impl SharedWorkerState {
@@ -363,6 +365,7 @@ impl CliMainWorkerFactory {
     >,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
   ) -> Self {
     Self {
@@ -381,6 +384,7 @@ impl CliMainWorkerFactory {
         maybe_changed_path_receiver,
         maybe_inspector_server,
         maybe_lockfile,
+        feature_checker,
       }),
     }
   }
@@ -561,6 +565,7 @@ impl CliMainWorkerFactory {
         shared.compiled_wasm_module_store.clone(),
       ),
       stdio,
+      feature_checker: shared.feature_checker.clone(),
     };
 
     let worker = MainWorker::bootstrap_from_options(
@@ -732,6 +737,7 @@ fn create_web_worker_callback(
       ),
       stdio: stdio.clone(),
       cache_storage_dir,
+      feature_checker: shared.feature_checker.clone(),
     };
 
     WebWorker::bootstrap_from_options(
