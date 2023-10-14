@@ -446,6 +446,7 @@ pub async fn run(
     fs,
     None,
     None,
+    None,
     feature_checker,
     CliMainWorkerOptions {
       argv: metadata.argv,
