@@ -2703,7 +2703,7 @@ fn seed_arg() -> Arg {
 fn hot_reload_arg() -> Arg {
   Arg::new("hot-reload")
     .requires("watch")
-    .long("hot-reload")
+    .long("hot")
     .help("UNSTABLE: Enable hot reload")
     .action(ArgAction::SetTrue)
 }
