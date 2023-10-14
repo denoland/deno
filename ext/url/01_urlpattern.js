@@ -197,13 +197,13 @@ class URLPattern {
       return null;
     }
 
-    const { 0: values, 1: inputs, 2: inputs_str } = res;
-    if (inputs_str === null) {
+    const { 0: values, 1: inputs, 2: inputsStr } = res;
+    if (inputsStr === null) {
       ArrayPrototypePop(inputsToObj(inputs));
     }
 
     /** @type {URLPatternResult} */
-    const result = { inputs: [inputsToObj(inputs), inputs_str] };
+    const result = { inputs: [inputsToObj(inputs), inputsStr] };
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
