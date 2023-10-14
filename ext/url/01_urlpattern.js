@@ -155,15 +155,13 @@ class URLPattern {
       baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
-    const res = ops.op_urlpattern_process_match_input_test(
+    const values = ops.op_urlpattern_process_match_input_test(
       input,
       baseURL,
     );
-    if (res === null) {
+    if (values === null) {
       return false;
     }
-
-    const values = res[0];
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
