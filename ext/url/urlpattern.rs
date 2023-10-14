@@ -8,6 +8,7 @@ use urlpattern::quirks;
 use urlpattern::quirks::MatchInput;
 use urlpattern::quirks::StringOrInit;
 use urlpattern::quirks::UrlPattern;
+use urlpattern::quirks::UrlPatternInit;
 
 #[op2]
 #[serde]
@@ -27,12 +28,40 @@ pub fn op_urlpattern_parse(
   Ok(pattern)
 }
 
+fn input_to_vec(input: MatchInput) -> Vec<String> {
+  vec![
+    input.protocol,
+    input.username,
+    input.password,
+    input.hostname,
+    input.port,
+    input.pathname,
+    input.search,
+    input.hash,
+  ]
+}
+
+fn url_pattern_init_to_vec(input: UrlPatternInit) -> Vec<Option<String>> {
+  vec![
+    input.protocol,
+    input.username,
+    input.password,
+    input.hostname,
+    input.port,
+    input.pathname,
+    input.search,
+    input.hash,
+    input.base_url,
+  ]
+}
+
 #[op2]
 #[serde]
 pub fn op_urlpattern_process_match_input(
   #[serde] input: StringOrInit,
   #[string] base_url: Option<String>,
-) -> Result<Option<(MatchInput, quirks::Inputs)>, AnyError> {
+) -> Result<Option<(Vec<String>, Vec<Option<String>>, Option<String>)>, AnyError>
+{
   let res = urlpattern::quirks::process_match_input(input, base_url.as_deref())
     .map_err(|e| type_error(e.to_string()))?;
 
@@ -41,5 +70,34 @@ pub fn op_urlpattern_process_match_input(
     None => return Ok(None),
   };
 
-  Ok(urlpattern::quirks::parse_match_input(input).map(|input| (input, inputs)))
+  let inputs_v = match inputs.0 {
+    StringOrInit::String(s) => vec![Some(s)],
+    StringOrInit::Init(init) => url_pattern_init_to_vec(init),
+  };
+  let inputs_maybe_s = inputs.1;
+
+  Ok(
+    urlpattern::quirks::parse_match_input(input)
+      .map(|input| (input_to_vec(input), inputs_v, inputs_maybe_s)),
+  )
+}
+
+#[op2]
+#[serde]
+pub fn op_urlpattern_process_match_input_test(
+  #[serde] input: StringOrInit,
+  #[string] base_url: Option<String>,
+) -> Result<Option<Vec<String>>, AnyError> {
+  let res = urlpattern::quirks::process_match_input(input, base_url.as_deref())
+    .map_err(|e| type_error(e.to_string()))?;
+
+  let (input, _inputs) = match res {
+    Some((input, inputs)) => (input, inputs),
+    None => return Ok(None),
+  };
+
+  Ok(
+    urlpattern::quirks::parse_match_input(input)
+      .map(|input| input_to_vec(input)),
+  )
 }

@@ -46,6 +46,18 @@ const COMPONENTS_KEYS = [
   "hash",
 ];
 
+function inputsToObj(inputs) {
+  return {
+    protocol: inputs[0],
+    username: inputs[1],
+    password: inputs[2],
+    hostname: inputs[3],
+    port: inputs[4],
+    pathname: inputs[5],
+    search: inputs[6],
+    hash: inputs[7],
+  };
+}
 /**
  * @typedef Component
  * @property {string} patternString
@@ -143,7 +155,7 @@ class URLPattern {
       baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
-    const res = ops.op_urlpattern_process_match_input(
+    const res = ops.op_urlpattern_process_match_input_test(
       input,
       baseURL,
     );
@@ -155,7 +167,7 @@ class URLPattern {
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
-      if (!RegExpPrototypeTest(this[_components][key].regexp, values[key])) {
+      if (!RegExpPrototypeTest(this[_components][key].regexp, values[i])) {
         return false;
       }
     }
@@ -185,19 +197,19 @@ class URLPattern {
       return null;
     }
 
-    const { 0: values, 1: inputs } = res;
-    if (inputs[1] === null) {
-      ArrayPrototypePop(inputs);
+    const { 0: values, 1: inputs, 2: inputs_str } = res;
+    if (inputs_str === null) {
+      ArrayPrototypePop(inputsToObj(inputs));
     }
 
     /** @type {URLPatternResult} */
-    const result = { inputs };
+    const result = { inputs: [inputsToObj(inputs), inputs_str] };
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
       /** @type {Component} */
       const component = this[_components][key];
-      const input = values[key];
+      const input = values[i];
 
       const match = component.matchOnEmptyInput && input === ""
         ? EMPTY_MATCH // fast path

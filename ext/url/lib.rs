@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
+use crate::urlpattern::op_urlpattern_process_match_input_test;
 
 deno_core::extension!(
   deno_url,
@@ -26,7 +27,8 @@ deno_core::extension!(
     op_url_parse_search_params,
     op_url_stringify_search_params,
     op_urlpattern_parse,
-    op_urlpattern_process_match_input
+    op_urlpattern_process_match_input,
+    op_urlpattern_process_match_input_test,
   ],
   esm = ["00_url.js", "01_urlpattern.js"],
 );
