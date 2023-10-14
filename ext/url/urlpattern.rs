@@ -4,7 +4,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 
-use urlpattern::quirks;
 use urlpattern::quirks::MatchInput;
 use urlpattern::quirks::StringOrInit;
 use urlpattern::quirks::UrlPattern;
@@ -55,13 +54,15 @@ fn url_pattern_init_to_vec(input: UrlPatternInit) -> Vec<Option<String>> {
   ]
 }
 
+type OpUrlPatternProcessMatchInputRet =
+  (Vec<String>, Vec<Option<String>>, Option<String>);
+
 #[op2]
 #[serde]
 pub fn op_urlpattern_process_match_input(
   #[serde] input: StringOrInit,
   #[string] base_url: Option<String>,
-) -> Result<Option<(Vec<String>, Vec<Option<String>>, Option<String>)>, AnyError>
-{
+) -> Result<Option<OpUrlPatternProcessMatchInputRet>, AnyError> {
   let res = urlpattern::quirks::process_match_input(input, base_url.as_deref())
     .map_err(|e| type_error(e.to_string()))?;
 
@@ -96,8 +97,5 @@ pub fn op_urlpattern_process_match_input_test(
     None => return Ok(None),
   };
 
-  Ok(
-    urlpattern::quirks::parse_match_input(input)
-      .map(|input| input_to_vec(input)),
-  )
+  Ok(urlpattern::quirks::parse_match_input(input).map(input_to_vec))
 }
