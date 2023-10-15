@@ -74,6 +74,7 @@ impl HotReloadManager {
               };
 
               // TODO(bartlomieju): this should use `FileFetcher` interface instead
+              // TODO(bartlomieju): we need to run the file through our transpile infrastructure as well
               let src = tokio::fs::read_to_string(path).await?;
 
               // TODO(bartlomieju): this loop seems fishy
