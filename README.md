@@ -118,3 +118,17 @@ To contribute, please read our
 [YouTube link]: https://www.youtube.com/@deno_land
 [Discord badge]: https://img.shields.io/discord/684898665143206084?logo=discord&style=social
 [Discord link]: https://discord.gg/deno
+
+### License
+
+<table>
+  <tr>
+     <td>
+       <p align="center"> <img src="https://github.com/malivinayak/malivinayak/blob/main/LICENSE-Logo/MIT.png?raw=true" width="80%"></img>
+    </td>
+    <td> 
+      <img src="https://img.shields.io/badge/License-MIT-yellow.svg"/> <br> 
+This project is licensed under <a href="./LICENSE">MIT</a>. <img width=2300/>
+    </td>
+  </tr>
+</table>
