@@ -565,7 +565,7 @@ impl Document {
   pub fn script_version(&self) -> String {
     self
       .maybe_lsp_version()
-      .map(|v| v.to_string())
+      .map(|v| format!("{}+{v}", self.fs_version()))
       .unwrap_or_else(|| self.fs_version().to_string())
   }
 

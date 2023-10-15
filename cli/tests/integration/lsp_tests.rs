@@ -7947,6 +7947,53 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(client.queue_len(), 0);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/10897.
+#[test]
+fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("file.ts", r#"Deno.readTextFileSync(1);"#);
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    },
+  }));
+  assert_eq!(diagnostics.all().len(), 1);
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
+      },
+    }),
+  );
+  temp_dir.remove_file("file.ts");
+  // VSCode opens with `version: 1` again because the file was deleted. Ensure
+  // diagnostics are still refreshed.
+  client.did_open_raw(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "",
+    },
+  }));
+  temp_dir.write("file.ts", r#""#);
+  client.did_save(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+    },
+  }));
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
 #[test]
 fn lsp_npm_missing_type_imports_diagnostics() {
   let context = TestContextBuilder::new()
