@@ -1,19 +1,20 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
-use deno_core::{
-  error::AnyError,
-  futures::StreamExt,
-  serde_json::{self, json},
-  LocalInspectorSession,
-};
+use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
+use deno_core::serde_json::json;
+use deno_core::serde_json::{self};
+use deno_core::LocalInspectorSession;
 use deno_runtime::colors;
 use tokio::select;
 
-use crate::tools::run::hot_reload::json_types::{
-  RpcNotification, ScriptParsed, SetScriptSourceReturnObject, Status,
-};
+use crate::tools::run::hot_reload::json_types::RpcNotification;
+use crate::tools::run::hot_reload::json_types::ScriptParsed;
+use crate::tools::run::hot_reload::json_types::SetScriptSourceReturnObject;
+use crate::tools::run::hot_reload::json_types::Status;
 
 mod json_types;
 
@@ -35,20 +36,17 @@ impl HotReloadManager {
     }
   }
 
-  // FIXME(SyrupThinker): Inspector code duplication
-
+  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   pub async fn start(&mut self) -> Result<(), AnyError> {
-    self.enable_debugger().await?;
-
-    Ok(())
+    self.enable_debugger().await
   }
 
+  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   pub async fn stop(&mut self) -> Result<(), AnyError> {
-    self.disable_debugger().await?;
-
-    Ok(())
+    self.disable_debugger().await
   }
 
+  // TODO(bartlomieju): Shouldn't use `tokio::select!` here, as futures are not cancel safe
   pub async fn run(&mut self) -> Result<(), AnyError> {
     let mut session_rx = self.session.take_notification_rx();
     loop {
@@ -65,22 +63,28 @@ impl HotReloadManager {
           }
         }
         changed_paths = self.path_change_receiver.recv() => {
+          // TODO(bartlomieju): check for other extensions
           for path in changed_paths?.iter().filter(|p| p.extension().map_or(false, |ext| ext == "js")) {
             if let Some(path_str) = path.to_str() {
               let module_url = "file://".to_owned() + path_str;
               log::info!("{} Reloading changed module {}", colors::intense_blue("Hot-reload"), module_url);
 
-              if let Some(id) = self.script_ids.get(&module_url).map(String::clone) {
-                let src = tokio::fs::read_to_string(path).await?;
+              let Some(id) = self.script_ids.get(&module_url).cloned() else {
+                continue;
+              };
 
-                loop {
-                  let result = self.set_script_source(&id, &src).await?;
-                  if !matches!(result.status, Status::Ok) {
-                    log::warn!("{} Failed to reload module {}: {}", colors::intense_blue("Hot-reload"), module_url, colors::red(result.status.explain()));
-                  }
-                  if !result.status.should_retry() {
-                    break;
-                  }
+              // TODO(bartlomieju): this should use `FileFetcher` interface instead
+              let src = tokio::fs::read_to_string(path).await?;
+
+              // TODO(bartlomieju): this loop seems fishy
+              loop {
+                let result = self.set_script_source(&id, &src).await?;
+                if !matches!(result.status, Status::Ok) {
+                  log::warn!("{} Failed to reload module {}: {}", colors::intense_blue("Hot-reload"), module_url, colors::red(result.status.explain()));
+                }
+                if !result.status.should_retry() {
+                  // TODO(bartlomieju): Force a reload by the file watcher.
+                  break;
                 }
               }
             }
@@ -91,6 +95,7 @@ impl HotReloadManager {
     }
   }
 
+  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
@@ -99,6 +104,7 @@ impl HotReloadManager {
     Ok(())
   }
 
+  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   async fn disable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
