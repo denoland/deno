@@ -102,12 +102,12 @@ impl HotReloadManager {
               let result = self.set_script_source(&id, source_code.as_str()).await?;
               if !matches!(result.status, Status::Ok) {
                 log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
-              }
-              if !result.status.should_retry() {
-                log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
-                // TODO(bartlomieju): Print into that sending failed?
-                let _ = self.file_watcher_restart_sender.send(());
-                break;
+                if !result.status.should_retry() {
+                  log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
+                  // TODO(bartlomieju): Print into that sending failed?
+                  let _ = self.file_watcher_restart_sender.send(());
+                  break;
+                }
               }
             }
           }

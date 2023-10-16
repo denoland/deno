@@ -1,5 +1,3 @@
-export function foobar() {
-  console.log("as123");
+export function getFoo() {
+  return "foo"; // change this line
 }
-
-foobar();
