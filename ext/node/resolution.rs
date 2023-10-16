@@ -1378,7 +1378,9 @@ fn is_relative_specifier(specifier: &str) -> bool {
 /// Alternate `PathBuf::with_extension` that will handle known extensions
 /// more intelligently.
 fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
-  const NON_DECL_EXTS: &[&str] = &["cjs", "js", "json", "jsx", "mjs", "tsx"];
+  const NON_DECL_EXTS: &[&str] = &[
+    "cjs", "js", "json", "jsx", "mjs", "tsx", /* ex. types.d */ "d",
+  ];
   const DECL_EXTS: &[&str] = &["cts", "mts", "ts"];
 
   let file_name = match path.file_name() {
