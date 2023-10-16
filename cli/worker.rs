@@ -47,6 +47,7 @@ use tokio::sync::broadcast::Receiver;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
+use crate::emit::Emitter;
 use crate::errors;
 use crate::npm::CliNpmResolver;
 use crate::ops;
@@ -111,6 +112,7 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  emitter: Option<Arc<Emitter>>,
   maybe_changed_path_receiver:
     Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
   maybe_file_watcher_restart_sender:
@@ -329,9 +331,10 @@ impl CliMainWorker {
         .maybe_file_watcher_restart_sender
         .clone()
         .unwrap();
+      let emitter = self.shared.emitter.clone().unwrap();
       let session = self.worker.create_inspector_session().await;
       let mut hot_reload_manager =
-        HotReloadManager::new(session, receiver, restart_sender);
+        HotReloadManager::new(emitter, session, receiver, restart_sender);
       self
         .worker
         .with_event_loop(hot_reload_manager.start().boxed_local())
@@ -368,6 +371,7 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    emitter: Option<Arc<Emitter>>,
     maybe_changed_path_receiver: Option<
       tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
     >,
@@ -391,6 +395,7 @@ impl CliMainWorkerFactory {
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
         root_cert_store_provider,
+        emitter,
         fs,
         maybe_changed_path_receiver,
         maybe_file_watcher_restart_sender,

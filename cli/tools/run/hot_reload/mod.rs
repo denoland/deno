@@ -1,38 +1,44 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-
+use crate::emit::Emitter;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
+use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_runtime::colors;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::select;
 
-use crate::tools::run::hot_reload::json_types::RpcNotification;
-use crate::tools::run::hot_reload::json_types::ScriptParsed;
-use crate::tools::run::hot_reload::json_types::SetScriptSourceReturnObject;
-use crate::tools::run::hot_reload::json_types::Status;
-
 mod json_types;
+
+use json_types::RpcNotification;
+use json_types::ScriptParsed;
+use json_types::SetScriptSourceReturnObject;
+use json_types::Status;
 
 pub struct HotReloadManager {
   session: LocalInspectorSession,
   path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
   file_watcher_restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
   script_ids: HashMap<String, String>,
+  emitter: Arc<Emitter>,
 }
 
 impl HotReloadManager {
   pub fn new(
+    emitter: Arc<Emitter>,
     session: LocalInspectorSession,
     path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
     file_watcher_restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
   ) -> Self {
     Self {
       session,
+      emitter,
       path_change_receiver,
       file_watcher_restart_sender,
       script_ids: HashMap::new(),
@@ -66,33 +72,42 @@ impl HotReloadManager {
           }
         }
         changed_paths = self.path_change_receiver.recv() => {
-          // eprintln!("changed paths {:#?}", changed_paths);
-          // TODO(bartlomieju): check for other extensions
-          for path in changed_paths?.iter().filter(|p| p.extension().map_or(false, |ext| ext == "js")) {
-            if let Some(path_str) = path.to_str() {
-              let module_url = "file://".to_owned() + path_str;
-              log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url);
+          let changed_paths = changed_paths?;
+          let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
+            let ext_str = ext.to_str().unwrap();
+            matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
+          })).collect();
 
-              let Some(id) = self.script_ids.get(&module_url).cloned() else {
-                continue;
-              };
+          for path in filtered_paths {
+            let Some(path_str) = path.to_str() else {
+              continue;
+            };
+            let Ok(module_url) = Url::from_file_path(path_str) else {
+              continue;
+            };
 
-              // TODO(bartlomieju): this should use `FileFetcher` interface instead
-              // TODO(bartlomieju): we need to run the file through our transpile infrastructure as well
-              let src = tokio::fs::read_to_string(path).await?;
+            log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url.as_str());
 
-              // TODO(bartlomieju): this loop seems fishy
-              loop {
-                let result = self.set_script_source(&id, &src).await?;
-                if !matches!(result.status, Status::Ok) {
-                  log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
-                }
-                if !result.status.should_retry() {
-                  log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
-                  // TODO(bartlomieju): Print into that sending failed?
-                  let _ = self.file_watcher_restart_sender.send(());
-                  break;
-                }
+            let Some(id) = self.script_ids.get(module_url.as_str()).cloned() else {
+              continue;
+            };
+
+            let media_type = MediaType::from_path(&path);
+            let source = tokio::fs::read_to_string(path).await?;
+            let source_arc: Arc<str> = Arc::from(source.as_str());
+            let source_code = self.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?;
+
+            // TODO(bartlomieju): this loop seems fishy
+            loop {
+              let result = self.set_script_source(&id, source_code.as_str()).await?;
+              if !matches!(result.status, Status::Ok) {
+                log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
+              }
+              if !result.status.should_retry() {
+                log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
+                // TODO(bartlomieju): Print into that sending failed?
+                let _ = self.file_watcher_restart_sender.send(());
+                break;
               }
             }
           }

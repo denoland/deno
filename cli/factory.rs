@@ -637,6 +637,7 @@ impl CliFactory {
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
+      Some(self.emitter()?.clone()),
       self
         .maybe_changed_path_receiver
         .as_ref()
