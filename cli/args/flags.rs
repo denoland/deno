@@ -1830,8 +1830,8 @@ fn repl_subcommand() -> Command {
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
-    .arg(hot_reload_arg())
     .arg(watch_arg(true))
+    .arg(hmr_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     .arg(
@@ -2700,12 +2700,31 @@ fn seed_arg() -> Arg {
     .value_parser(value_parser!(u64))
 }
 
-fn hot_reload_arg() -> Arg {
-  Arg::new("hot-reload")
-    .requires("watch")
-    .long("hot")
-    .help("UNSTABLE: Enable hot reload")
-    .action(ArgAction::SetTrue)
+fn hmr_arg(takes_files: bool) -> Arg {
+  let arg = Arg::new("hmr")
+    .long("hmr")
+    .help("UNSTABLE: Watch for file changes and hot replace modules")
+    .conflicts_with("watch");
+
+  if takes_files {
+    arg
+      .value_name("FILES")
+      .num_args(0..)
+      .value_parser(value_parser!(PathBuf))
+      .use_value_delimiter(true)
+      .require_equals(true)
+      .long_help(
+        "Watch for file changes and restart process automatically.
+Local files from entry point module graph are watched by default.
+Additional paths might be watched by passing them as arguments to this flag.",
+      )
+      .value_hint(ValueHint::AnyPath)
+  } else {
+    arg.action(ArgAction::SetTrue).long_help(
+      "Watch for file changes and restart process automatically.
+      Only local files from entry point module graph are watched.",
+    )
+  }
 }
 
 fn watch_arg(takes_files: bool) -> Arg {
@@ -3821,7 +3840,12 @@ fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
 fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
   if matches.get_flag("watch") {
     Some(WatchFlags {
-      hot_reload: matches.get_flag("hot-reload"),
+      hot_reload: false,
+      no_clear_screen: matches.get_flag("no-clear-screen"),
+    })
+  } else if matches.get_flag("hmr") {
+    Some(WatchFlags {
+      hot_reload: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
   } else {
@@ -3832,13 +3856,21 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
 fn watch_arg_parse_with_paths(
   matches: &mut ArgMatches,
 ) -> Option<WatchFlagsWithPaths> {
-  matches
-    .remove_many::<PathBuf>("watch")
-    .map(|f| WatchFlagsWithPaths {
-      paths: f.collect(),
-      hot_reload: matches.get_flag("hot-reload"),
+  if let Some(paths) = matches.remove_many::<PathBuf>("watch") {
+    Some(WatchFlagsWithPaths {
+      paths: paths.collect(),
+      hot_reload: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
+  } else if let Some(paths) = matches.remove_many::<PathBuf>("hmr") {
+    Some(WatchFlagsWithPaths {
+      paths: paths.collect(),
+      hot_reload: true,
+      no_clear_screen: matches.get_flag("no-clear-screen"),
+    })
+  } else {
+    None
+  }
 }
 
 // TODO(ry) move this to utility module and add test.

@@ -1,7 +1,7 @@
 globalThis.state = { i: 0 };
 
-// function bar() {
-// }
+function bar() {
+}
 
 function handler(req) {
   console.log("req", req);

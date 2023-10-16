@@ -66,7 +66,7 @@ impl HotReloadManager {
           }
         }
         changed_paths = self.path_change_receiver.recv() => {
-          eprintln!("changed paths {:#?}", changed_paths);
+          // eprintln!("changed paths {:#?}", changed_paths);
           // TODO(bartlomieju): check for other extensions
           for path in changed_paths?.iter().filter(|p| p.extension().map_or(false, |ext| ext == "js")) {
             if let Some(path_str) = path.to_str() {
