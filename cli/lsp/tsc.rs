@@ -3,7 +3,7 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
-use super::documents::cell_to_file_specifier;
+use super::documents::file_like_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -191,6 +191,7 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<String>>(),]),
     };
+    dbg!(&req);
     let diagnostics_map_ = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
     let mut diagnostics_map = HashMap::new();
     for (mut specifier, mut diagnostics) in diagnostics_map_ {
@@ -3664,11 +3665,12 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
-    let mut specifier = original.to_string();
+    let mut specifier = if let Some(s) = file_like_to_file_specifier(original) {
+      s.to_string()
+    } else {
+      original.to_string()
+    };
     let media_type = if original.scheme() == "deno-notebook-cell" {
-      if let Some(s) = cell_to_file_specifier(original) {
-        specifier = s.to_string();
-      }
       MediaType::TypeScript
     } else {
       MediaType::from_specifier(original)
