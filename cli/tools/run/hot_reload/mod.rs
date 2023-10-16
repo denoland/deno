@@ -92,14 +92,25 @@ impl HotReloadManager {
               continue;
             };
 
-            // TODO(bartlomieju): reenable transpilation; but the fact that
-            // #sourceMappingURL=data:... is present at the end of transpiled
-            // output, prohibits HMR updates for anything non-JS.
-            // let media_type = MediaType::from_path(&path);
+            // TODO(bartlomieju): I really don't like `self.emitter` etc here.
+            // Maybe use `deno_ast` directly?
+            let media_type = MediaType::from_path(&path);
             let source_code = tokio::fs::read_to_string(path).await?;
-            // let source_arc: Arc<str> = Arc::from(source_code.as_str());
-            // let source_code = self.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?;
+            let source_arc: Arc<str> = Arc::from(source_code.as_str());
+            let source_code = {
+              let parsed_source = self.emitter.parsed_source_cache.get_or_parse_module(
+                &module_url,
+                source_arc.clone(),
+                media_type,
+              )?;
+              let mut options = self.emitter.emit_options.clone();
+              options.inline_source_map = false;
+              let transpiled_source = parsed_source.transpile(&options)?;
+              transpiled_source.text.to_string()
+              // self.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?
+            };
 
+            // eprintln!("transpiled source code {:#?}", source_code);
             // TODO(bartlomieju): this loop seems fishy
             loop {
               let result = self.set_script_source(&id, source_code.as_str()).await?;

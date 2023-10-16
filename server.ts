@@ -4,8 +4,8 @@ function bar() {
 }
 
 function handler(req) {
-  console.log("req", req);
-  return new Response("hello");
+  // console.log("req123", req);
+  return new Response("hello124353");
 }
 
 Deno.serve(handler);

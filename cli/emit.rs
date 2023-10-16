@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 pub struct Emitter {
   emit_cache: EmitCache,
-  parsed_source_cache: Arc<ParsedSourceCache>,
-  emit_options: deno_ast::EmitOptions,
+  pub parsed_source_cache: Arc<ParsedSourceCache>,
+  pub emit_options: deno_ast::EmitOptions,
   // cached hash of the emit options
   emit_options_hash: u64,
 }
