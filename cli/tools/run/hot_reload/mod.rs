@@ -116,6 +116,7 @@ impl HotReloadManager {
               let result = self.set_script_source(&id, source_code.as_str()).await?;
 
               if matches!(result.status, Status::Ok) {
+                self.dispatch_hmr_event(module_url.as_str()).await?;
                 break;
               }
 
@@ -172,5 +173,28 @@ impl HotReloadManager {
     Ok(serde_json::from_value::<SetScriptSourceReturnObject>(
       result,
     )?)
+  }
+
+  async fn dispatch_hmr_event(
+    &mut self,
+    script_id: &str,
+  ) -> Result<(), AnyError> {
+    let expr = format!(
+      "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
+      script_id
+    );
+
+    let _result = self
+      .session
+      .post_message(
+        "Runtime.evaluate",
+        Some(json!({
+          "expression": expr,
+          "contextId": Some(1),
+        })),
+      )
+      .await?;
+
+    Ok(())
   }
 }

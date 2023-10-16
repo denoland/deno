@@ -5,7 +5,11 @@ function bar() {
 
 function handler(req) {
   // console.log("req123", req);
-  return new Response("hello124353");
+  return new Response("Hello world!123");
 }
 
 Deno.serve(handler);
+
+addEventListener("hmr", (ev) => {
+  console.log("event", ev.detail);
+});
