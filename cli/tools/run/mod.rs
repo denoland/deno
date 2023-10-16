@@ -108,16 +108,21 @@ async fn run_with_watch(
 ) -> Result<i32, AnyError> {
   if watch_flags.hot_reload {
     util::file_watcher::watch_recv(
+      flags,
       util::file_watcher::PrintConfig {
         job_name: "Process".to_string(),
         clear_screen: false,
       },
-      move |watch_path_sender, changed_path_receiver| {
+      move |flags,
+            watch_path_sender,
+            watcher_restart_sender,
+            changed_path_receiver| {
         Ok(async move {
           let factory = CliFactoryBuilder::new()
             .with_watcher(
               watch_path_sender.clone(),
               Some(changed_path_receiver),
+              Some(watcher_restart_sender),
             )
             .build_from_flags(flags)
             .await?;
@@ -152,7 +157,7 @@ async fn run_with_watch(
       move |flags, sender, _changed_paths| {
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(sender.clone(), None)
+            .with_watcher(sender.clone(), None, None)
             .build_from_flags(flags)
             .await?;
           let cli_options = factory.cli_options();

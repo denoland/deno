@@ -70,6 +70,8 @@ pub struct CliFactoryBuilder {
     Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   maybe_changed_path_receiver:
     Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
+  maybe_file_watcher_restart_sender:
+    Option<tokio::sync::mpsc::UnboundedSender<()>>,
 }
 
 impl CliFactoryBuilder {
@@ -77,6 +79,7 @@ impl CliFactoryBuilder {
     Self {
       maybe_watch_path_sender: None,
       maybe_changed_path_receiver: None,
+      maybe_file_watcher_restart_sender: None,
     }
   }
 
@@ -84,9 +87,11 @@ impl CliFactoryBuilder {
     mut self,
     sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
     receiver: Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
+    restart_sender: Option<tokio::sync::mpsc::UnboundedSender<()>>,
   ) -> Self {
     self.maybe_watch_path_sender = Some(sender);
     self.maybe_changed_path_receiver = receiver;
+    self.maybe_file_watcher_restart_sender = restart_sender;
     self
   }
 
@@ -101,6 +106,7 @@ impl CliFactoryBuilder {
     CliFactory {
       maybe_watch_path_sender: RefCell::new(self.maybe_watch_path_sender),
       maybe_changed_path_receiver: self.maybe_changed_path_receiver,
+      maybe_file_watcher_restart_sender: self.maybe_file_watcher_restart_sender,
       options,
       services: Default::default(),
     }
@@ -180,6 +186,8 @@ pub struct CliFactory {
     RefCell<Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>>,
   maybe_changed_path_receiver:
     Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
+  maybe_file_watcher_restart_sender:
+    Option<tokio::sync::mpsc::UnboundedSender<()>>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }
@@ -633,6 +641,7 @@ impl CliFactory {
         .maybe_changed_path_receiver
         .as_ref()
         .map(Receiver::resubscribe),
+      self.maybe_file_watcher_restart_sender.clone(),
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),

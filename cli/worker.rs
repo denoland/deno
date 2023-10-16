@@ -113,6 +113,8 @@ struct SharedWorkerState {
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_changed_path_receiver:
     Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
+  maybe_file_watcher_restart_sender:
+    Option<tokio::sync::mpsc::UnboundedSender<()>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
@@ -322,8 +324,14 @@ impl CliMainWorker {
       .as_ref()
       .map(Receiver::resubscribe)
     {
+      let restart_sender = self
+        .shared
+        .maybe_file_watcher_restart_sender
+        .clone()
+        .unwrap();
       let session = self.worker.create_inspector_session().await;
-      let mut hot_reload_manager = HotReloadManager::new(session, receiver);
+      let mut hot_reload_manager =
+        HotReloadManager::new(session, receiver, restart_sender);
       self
         .worker
         .with_event_loop(hot_reload_manager.start().boxed_local())
@@ -363,6 +371,9 @@ impl CliMainWorkerFactory {
     maybe_changed_path_receiver: Option<
       tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
     >,
+    maybe_file_watcher_restart_sender: Option<
+      tokio::sync::mpsc::UnboundedSender<()>,
+    >,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
@@ -382,6 +393,7 @@ impl CliMainWorkerFactory {
         root_cert_store_provider,
         fs,
         maybe_changed_path_receiver,
+        maybe_file_watcher_restart_sender,
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,

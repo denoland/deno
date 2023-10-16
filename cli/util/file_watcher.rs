@@ -233,26 +233,29 @@ where
 /// - `operation` is the actual operation we want to run and notify every time
 /// the watcher detects file changes.
 pub async fn watch_recv<O, F>(
+  flags: Flags,
   print_config: PrintConfig,
-  operation: O,
+  mut operation: O,
 ) -> Result<i32, AnyError>
 where
-  O: FnOnce(
+  O: FnMut(
+    Flags,
     UnboundedSender<Vec<PathBuf>>,
+    tokio::sync::mpsc::UnboundedSender<()>,
     tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<i32, AnyError>>,
 {
   let (paths_to_watch_sender, mut paths_to_watch_receiver) =
     tokio::sync::mpsc::unbounded_channel();
-  let (changed_paths_sender, changed_paths_receiver) =
-    tokio::sync::broadcast::channel(4);
+  let (watcher_restart_sender, mut watcher_restart_receiver) =
+    tokio::sync::mpsc::unbounded_channel();
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
 
   let PrintConfig { job_name, .. } = print_config;
 
-  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
+  info!("{} {} started.", colors::intense_blue("HMR"), job_name,);
 
   fn consume_paths_to_watch(
     watcher: &mut RecommendedWatcher,
@@ -261,6 +264,7 @@ where
     loop {
       match receiver.try_recv() {
         Ok(paths) => {
+          // eprintln!("add paths to watch {:#?}", paths);
           add_paths_to_watcher(watcher, &paths);
         }
         Err(e) => match e {
@@ -274,28 +278,51 @@ where
     }
   }
 
-  let mut watcher = new_watcher(watcher_sender.clone())?;
-  consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
-
-  let operation_future =
-    operation(paths_to_watch_sender, changed_paths_receiver)?;
-  tokio::pin!(operation_future);
-
   loop {
-    select! {
-      maybe_paths = paths_to_watch_receiver.recv() => {
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
-      },
-      received_changed_paths = watcher_receiver.recv() => {
-        if let Some(changed_paths) = received_changed_paths {
-          changed_paths_sender.send(changed_paths)?;
-        }
-      },
-      exit_code = &mut operation_future => {
-        // TODO(SyrupThinker) Exit code
-        return exit_code;
-      },
-    };
+    // We may need to give the runtime a tick to settle, as cancellations may need to propagate
+    // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
+    // start to fail, this may need to be increased.
+    for _ in 0..10 {
+      tokio::task::yield_now().await;
+    }
+
+    let mut watcher = new_watcher(watcher_sender.clone())?;
+    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
+
+    let (changed_paths_sender, changed_paths_receiver) =
+      tokio::sync::broadcast::channel(4);
+
+    // TODO(bartlomieju): wrap in error handler
+    let operation_future = operation(
+      flags.clone(),
+      paths_to_watch_sender.clone(),
+      watcher_restart_sender.clone(),
+      changed_paths_receiver,
+    )?;
+    tokio::pin!(operation_future);
+
+    loop {
+      select! {
+        maybe_paths = paths_to_watch_receiver.recv() => {
+          // eprintln!("add paths to watcher {:#?}", maybe_paths);
+          add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+        },
+        received_changed_paths = watcher_receiver.recv() => {
+          // eprintln!("changed paths for watcher {:#?}", received_changed_paths);
+          if let Some(changed_paths) = received_changed_paths {
+            changed_paths_sender.send(changed_paths)?;
+          }
+        },
+        _ = watcher_restart_receiver.recv() => {
+          drop(operation_future);
+          break;
+        },
+        exit_code = &mut operation_future => {
+          // TODO(SyrupThinker) Exit code
+          return exit_code;
+        },
+      };
+    }
   }
 }
 

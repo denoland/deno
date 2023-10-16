@@ -21,6 +21,7 @@ mod json_types;
 pub struct HotReloadManager {
   session: LocalInspectorSession,
   path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
+  file_watcher_restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
   script_ids: HashMap<String, String>,
 }
 
@@ -28,10 +29,12 @@ impl HotReloadManager {
   pub fn new(
     session: LocalInspectorSession,
     path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
+    file_watcher_restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
   ) -> Self {
     Self {
       session,
       path_change_receiver,
+      file_watcher_restart_sender,
       script_ids: HashMap::new(),
     }
   }
@@ -63,11 +66,12 @@ impl HotReloadManager {
           }
         }
         changed_paths = self.path_change_receiver.recv() => {
+          eprintln!("changed paths {:#?}", changed_paths);
           // TODO(bartlomieju): check for other extensions
           for path in changed_paths?.iter().filter(|p| p.extension().map_or(false, |ext| ext == "js")) {
             if let Some(path_str) = path.to_str() {
               let module_url = "file://".to_owned() + path_str;
-              log::info!("{} Reloading changed module {}", colors::intense_blue("Hot-reload"), module_url);
+              log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url);
 
               let Some(id) = self.script_ids.get(&module_url).cloned() else {
                 continue;
@@ -81,10 +85,12 @@ impl HotReloadManager {
               loop {
                 let result = self.set_script_source(&id, &src).await?;
                 if !matches!(result.status, Status::Ok) {
-                  log::warn!("{} Failed to reload module {}: {}", colors::intense_blue("Hot-reload"), module_url, colors::red(result.status.explain()));
+                  log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
                 }
                 if !result.status.should_retry() {
-                  // TODO(bartlomieju): Force a reload by the file watcher.
+                  log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
+                  // TODO(bartlomieju): Print into that sending failed?
+                  let _ = self.file_watcher_restart_sender.send(());
                   break;
                 }
               }
