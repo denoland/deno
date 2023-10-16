@@ -92,22 +92,28 @@ impl HotReloadManager {
               continue;
             };
 
-            let media_type = MediaType::from_path(&path);
-            let source = tokio::fs::read_to_string(path).await?;
-            let source_arc: Arc<str> = Arc::from(source.as_str());
-            let source_code = self.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?;
+            // TODO(bartlomieju): reenable transpilation; but the fact that
+            // #sourceMappingURL=data:... is present at the end of transpiled
+            // output, prohibits HMR updates for anything non-JS.
+            // let media_type = MediaType::from_path(&path);
+            let source_code = tokio::fs::read_to_string(path).await?;
+            // let source_arc: Arc<str> = Arc::from(source_code.as_str());
+            // let source_code = self.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?;
 
             // TODO(bartlomieju): this loop seems fishy
             loop {
               let result = self.set_script_source(&id, source_code.as_str()).await?;
-              if !matches!(result.status, Status::Ok) {
-                log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
-                if !result.status.should_retry() {
-                  log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
-                  // TODO(bartlomieju): Print into that sending failed?
-                  let _ = self.file_watcher_restart_sender.send(());
-                  break;
-                }
+
+              if matches!(result.status, Status::Ok) {
+                break;
+              }
+
+              log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
+              if !result.status.should_retry() {
+                log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
+                // TODO(bartlomieju): Print into that sending failed?
+                let _ = self.file_watcher_restart_sender.send(());
+                break;
               }
             }
           }

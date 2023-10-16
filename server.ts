@@ -5,7 +5,7 @@ function bar() {
 
 function handler(req) {
   console.log("req", req);
-  return new Response("hello1234");
+  return new Response("hello");
 }
 
 Deno.serve(handler);
