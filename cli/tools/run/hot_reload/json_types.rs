@@ -1,3 +1,9 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(bartlomieju): this code should be factored out to `cli/cdp.rs` along
+// with code in `cli/tools/repl/` and `cli/tools/coverage/`. These are all
+// Chrome Devtools Protocol message types.
+
 use deno_core::serde_json::Value;
 use serde::Deserialize;
 
