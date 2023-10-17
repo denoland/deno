@@ -120,7 +120,7 @@ impl HotReloadManager {
             };
 
             // eprintln!("transpiled source code {:#?}", source_code);
-            // TODO(bartlomieju): this loop seems fishy
+            // TODO(bartlomieju): this loop should do 2 retries at most
             loop {
               let result = self.set_script_source(&id, source_code.as_str()).await?;
 
