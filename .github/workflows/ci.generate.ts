@@ -682,6 +682,21 @@ const ci = {
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         },
         {
+          name: "Save PR candidate artifact",
+          if: [
+            "runner.os != 'Windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref != 'refs/heads/main'",
+          ].join("\n"),
+          uses: "actions/upload-artifact@v3",
+          with: {
+            name: "deno-x86_64-unknown-linux-gnu.zip",
+            path: "target/release/deno-x86_64-unknown-linux-gnu.zip",
+          },
+        },
+        {
           name: "Upload canary to dl.deno.land (windows)",
           if: [
             "runner.os == 'Windows' &&",
