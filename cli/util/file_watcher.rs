@@ -240,6 +240,8 @@ where
     tokio::sync::mpsc::unbounded_channel();
   let (watcher_restart_sender, mut watcher_restart_receiver) =
     tokio::sync::mpsc::unbounded_channel();
+  let (changed_paths_sender, changed_paths_receiver) =
+    tokio::sync::broadcast::channel(4);
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
 
@@ -258,9 +260,6 @@ where
     let mut watcher = new_watcher(watcher_sender.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
 
-    let (changed_paths_sender, changed_paths_receiver) =
-      tokio::sync::broadcast::channel(4);
-
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_receiver.recv().await;
@@ -271,7 +270,7 @@ where
       flags.clone(),
       WatcherInterface {
         paths_to_watch_sender: paths_to_watch_sender.clone(),
-        changed_paths_receiver: Some(changed_paths_receiver),
+        changed_paths_receiver: Some(changed_paths_receiver.resubscribe()),
         restart_sender: watcher_restart_sender.clone(),
       },
     )?);
