@@ -684,7 +684,7 @@ const ci = {
         {
           name: "Save PR candidate artifact",
           if: [
-            "runner.os != 'Windows' &&",
+            "startsWith(matrix.os, 'ubuntu') &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno' &&",

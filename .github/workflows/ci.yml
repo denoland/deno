@@ -417,7 +417,7 @@ jobs:
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
       - name: Save PR candidate artifact
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os != 'Windows' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'ubuntu') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
