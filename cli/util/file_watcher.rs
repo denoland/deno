@@ -111,10 +111,18 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
 // TODO(bartlomieju): this is a poor name; change it
 pub struct WatcherInterface {
   pub paths_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-  // TODO(bartlomieju): can we make it non-optional?
-  pub changed_paths_receiver:
-    Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
+  pub changed_paths_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
   pub restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
+}
+
+impl Clone for WatcherInterface {
+  fn clone(&self) -> Self {
+    Self {
+      paths_to_watch_sender: self.paths_to_watch_sender.clone(),
+      changed_paths_receiver: self.changed_paths_receiver.resubscribe(),
+      restart_sender: self.restart_sender.clone(),
+    }
+  }
 }
 
 /// Creates a file watcher.
@@ -136,6 +144,9 @@ where
     tokio::sync::mpsc::unbounded_channel();
   let (watcher_restart_sender, mut watcher_restart_receiver) =
     tokio::sync::mpsc::unbounded_channel();
+  // TODO(bartlomieju): currently unused, unify with `watch_recv`.
+  let (_changed_paths_sender, changed_paths_receiver) =
+    tokio::sync::broadcast::channel(4);
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
 
@@ -170,7 +181,7 @@ where
       flags.clone(),
       WatcherInterface {
         paths_to_watch_sender: paths_to_watch_sender.clone(),
-        changed_paths_receiver: None,
+        changed_paths_receiver: changed_paths_receiver.resubscribe(),
         restart_sender: watcher_restart_sender.clone(),
       },
       changed_paths.take(),
@@ -270,7 +281,7 @@ where
       flags.clone(),
       WatcherInterface {
         paths_to_watch_sender: paths_to_watch_sender.clone(),
-        changed_paths_receiver: Some(changed_paths_receiver.resubscribe()),
+        changed_paths_receiver: changed_paths_receiver.resubscribe(),
         restart_sender: watcher_restart_sender.clone(),
       },
     )?);

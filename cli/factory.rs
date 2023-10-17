@@ -603,20 +603,17 @@ impl CliFactory {
     let cli_node_resolver = self.cli_node_resolver().await?;
 
     // TODO(bartlomieju): can we just clone `WatcherInterface` here?
-    let maybe_hot_reload_interface = self
-      .watcher_interface
-      .as_ref()
-      .map(|i| {
-        if let Some(receiver) = i.changed_paths_receiver.as_ref() {
-          Some(HotReloadInterface {
-            path_change_receiver: receiver.resubscribe(),
-            file_watcher_restart_sender: i.restart_sender.clone(),
-          })
-        } else {
-          None
-        }
+    let maybe_hot_reload_interface = if self.options.has_hot_reload() {
+      let watcher_interface = self.watcher_interface.as_ref().unwrap();
+      Some(HotReloadInterface {
+        path_change_receiver: watcher_interface
+          .changed_paths_receiver
+          .resubscribe(),
+        file_watcher_restart_sender: watcher_interface.restart_sender.clone(),
       })
-      .flatten();
+    } else {
+      None
+    };
 
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
