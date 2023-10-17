@@ -148,26 +148,6 @@ where
 
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
-  fn consume_paths_to_watch(
-    watcher: &mut RecommendedWatcher,
-    receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
-  ) {
-    loop {
-      match receiver.try_recv() {
-        Ok(paths) => {
-          add_paths_to_watcher(watcher, &paths);
-        }
-        Err(e) => match e {
-          mpsc::error::TryRecvError::Empty => {
-            break;
-          }
-          // there must be at least one receiver alive
-          _ => unreachable!(),
-        },
-      }
-    }
-  }
-
   let mut changed_paths = None;
   loop {
     // We may need to give the runtime a tick to settle, as cancellations may need to propagate
@@ -267,27 +247,6 @@ where
 
   info!("{} {} started.", colors::intense_blue("HMR"), job_name,);
 
-  fn consume_paths_to_watch(
-    watcher: &mut RecommendedWatcher,
-    receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
-  ) {
-    loop {
-      match receiver.try_recv() {
-        Ok(paths) => {
-          // eprintln!("add paths to watch {:#?}", paths);
-          add_paths_to_watcher(watcher, &paths);
-        }
-        Err(e) => match e {
-          mpsc::error::TryRecvError::Empty => {
-            break;
-          }
-          // there must be at least one receiver alive
-          _ => unreachable!(),
-        },
-      }
-    }
-  }
-
   loop {
     // We may need to give the runtime a tick to settle, as cancellations may need to propagate
     // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
@@ -302,6 +261,12 @@ where
     let (changed_paths_sender, changed_paths_receiver) =
       tokio::sync::broadcast::channel(4);
 
+    let receiver_future = async {
+      loop {
+        let maybe_paths = paths_to_watch_receiver.recv().await;
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+      }
+    };
     let operation_future = error_handler(operation(
       flags.clone(),
       WatcherInterface {
@@ -310,67 +275,78 @@ where
         restart_sender: watcher_restart_sender.clone(),
       },
     )?);
-    tokio::pin!(operation_future);
 
-    loop {
-      select! {
-        maybe_paths = paths_to_watch_receiver.recv() => {
-          // eprintln!("add paths to watcher {:#?}", maybe_paths);
-          add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
-        },
-        received_changed_paths = watcher_receiver.recv() => {
-          // eprintln!("changed paths for watcher {:#?}", received_changed_paths);
-          if let Some(changed_paths) = received_changed_paths {
-            changed_paths_sender.send(changed_paths)?;
+    // TODO(bartlomieju): this is almost identical with `watch_func`, besides
+    // `received_changed_paths` arm - figure out how to remove it.
+    select! {
+      _ = receiver_future => {},
+      received_changed_paths = watcher_receiver.recv() => {
+        // eprintln!("changed paths for watcher {:#?}", received_changed_paths);
+        if let Some(changed_paths) = received_changed_paths {
+          changed_paths_sender.send(changed_paths)?;
+        }
+      },
+      _ = watcher_restart_receiver.recv() => {
+        continue;
+      },
+      success = operation_future => {
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
+        // TODO(bartlomieju): print exit code here?
+        info!(
+          "{} {} {}. Restarting on file change...",
+          colors::intense_blue("Watcher"),
+          job_name,
+          if success {
+            "finished"
+          } else {
+            "failed"
           }
-        },
-        _ = watcher_restart_receiver.recv() => {
-          // drop(operation_future);
-          break;
-        },
-        success = &mut operation_future => {
-          // TODO(bartlomieju): print exit code here?
-          info!(
-            "{} {} {}. Restarting on file change...",
-            colors::intense_blue("Watcher"),
-            job_name,
-            if success {
-              "finished"
-            } else {
-              "failed"
-            }
-          );
-          let _ = watcher_receiver.recv().await;
-          break;
-        },
-      };
-    }
+        );
+      },
+    };
+
+    let receiver_future = async {
+      loop {
+        let maybe_paths = paths_to_watch_receiver.recv().await;
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+      }
+    };
+    select! {
+      _ = receiver_future => {},
+      _received_changed_paths = watcher_receiver.recv() => {
+        // print_after_restart();
+        // changed_paths = received_changed_paths;
+        continue;
+      },
+    };
   }
 }
 
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, AnyError> {
-  let watcher = Watcher::new(
+  Ok(Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
-      if let Ok(event) = res {
-        if matches!(
-          event.kind,
-          EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-        ) {
-          let paths = event
-            .paths
-            .iter()
-            .filter_map(|path| canonicalize_path(path).ok())
-            .collect();
-          sender.send(paths).unwrap();
-        }
+      let Ok(event) = res else {
+        return;
+      };
+
+      if !matches!(
+        event.kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+      ) {
+        return;
       }
+
+      let paths = event
+        .paths
+        .iter()
+        .filter_map(|path| canonicalize_path(path).ok())
+        .collect();
+      sender.send(paths).unwrap();
     },
     Default::default(),
-  )?;
-
-  Ok(watcher)
+  )?)
 }
 
 fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
@@ -379,4 +355,24 @@ fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
   log::debug!("Watching paths: {:?}", paths);
+}
+
+fn consume_paths_to_watch(
+  watcher: &mut RecommendedWatcher,
+  receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
+) {
+  loop {
+    match receiver.try_recv() {
+      Ok(paths) => {
+        add_paths_to_watcher(watcher, &paths);
+      }
+      Err(e) => match e {
+        mpsc::error::TryRecvError::Empty => {
+          break;
+        }
+        // there must be at least one receiver alive
+        _ => unreachable!(),
+      },
+    }
+  }
 }
