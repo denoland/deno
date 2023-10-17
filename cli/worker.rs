@@ -322,29 +322,33 @@ impl CliMainWorker {
       return Ok(None);
     }
 
-    if let Some(receiver) = self
+    // TODO(bartlomieju): would be so much nicer if we could clone a
+    // `WatcherInterface` here
+    let receiver = self
       .shared
       .maybe_changed_path_receiver
       .as_ref()
       .map(Receiver::resubscribe)
-    {
-      let restart_sender = self
-        .shared
-        .maybe_file_watcher_restart_sender
-        .clone()
-        .unwrap();
-      let emitter = self.shared.emitter.clone().unwrap();
-      let session = self.worker.create_inspector_session().await;
-      let mut hot_reload_manager =
-        HotReloadManager::new(emitter, session, receiver, restart_sender);
-      self
-        .worker
-        .with_event_loop(hot_reload_manager.start().boxed_local())
-        .await?;
-      Ok(Some(hot_reload_manager))
-    } else {
-      Ok(None)
-    }
+      .unwrap();
+    let restart_sender = self
+      .shared
+      .maybe_file_watcher_restart_sender
+      .clone()
+      .unwrap();
+    // TODO(bartlomieju): this is a code smell, refactor so we don't have
+    // to pass `emitter` here
+    let emitter = self.shared.emitter.clone().unwrap();
+
+    let session = self.worker.create_inspector_session().await;
+    let mut hot_reload_manager =
+      HotReloadManager::new(emitter, session, receiver, restart_sender);
+
+    self
+      .worker
+      .with_event_loop(hot_reload_manager.start().boxed_local())
+      .await?;
+
+    Ok(Some(hot_reload_manager))
   }
 
   pub fn execute_script_static(
