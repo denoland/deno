@@ -40,7 +40,6 @@ use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
-use crate::tools::run::hot_reload::HotReloadInterface;
 use crate::util::file_watcher::WatcherInterface;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -601,16 +600,8 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
-
-    // TODO(bartlomieju): can we just clone `WatcherInterface` here?
-    let maybe_hot_reload_interface = if self.options.has_hot_reload() {
-      let watcher_interface = self.watcher_interface.as_ref().unwrap();
-      Some(HotReloadInterface {
-        path_change_receiver: watcher_interface
-          .changed_paths_receiver
-          .resubscribe(),
-        file_watcher_restart_sender: watcher_interface.restart_sender.clone(),
-      })
+    let maybe_file_watcher_interface = if self.options.has_hot_reload() {
+      Some(self.watcher_interface.clone().unwrap())
     } else {
       None
     };
@@ -638,7 +629,7 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
       Some(self.emitter()?.clone()),
-      maybe_hot_reload_interface,
+      maybe_file_watcher_interface,
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
