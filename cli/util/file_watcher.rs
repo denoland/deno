@@ -114,8 +114,7 @@ pub struct WatcherInterface {
   // TODO(bartlomieju): can we make it non-optional?
   pub changed_paths_receiver:
     Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
-  // TODO(bartlomieju): can we make it non-optional?
-  pub restart_sender: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+  pub restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
 /// Creates a file watcher.
@@ -134,6 +133,8 @@ where
   F: Future<Output = Result<(), AnyError>>,
 {
   let (paths_to_watch_sender, mut paths_to_watch_receiver) =
+    tokio::sync::mpsc::unbounded_channel();
+  let (watcher_restart_sender, mut watcher_restart_receiver) =
     tokio::sync::mpsc::unbounded_channel();
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
@@ -190,7 +191,7 @@ where
       WatcherInterface {
         paths_to_watch_sender: paths_to_watch_sender.clone(),
         changed_paths_receiver: None,
-        restart_sender: None,
+        restart_sender: watcher_restart_sender.clone(),
       },
       changed_paths.take(),
     )?);
@@ -200,6 +201,10 @@ where
 
     select! {
       _ = receiver_future => {},
+      _ = watcher_restart_receiver.recv() => {
+        print_after_restart();
+        continue;
+      },
       received_changed_paths = watcher_receiver.recv() => {
         print_after_restart();
         changed_paths = received_changed_paths;
@@ -302,7 +307,7 @@ where
       WatcherInterface {
         paths_to_watch_sender: paths_to_watch_sender.clone(),
         changed_paths_receiver: Some(changed_paths_receiver),
-        restart_sender: Some(watcher_restart_sender.clone()),
+        restart_sender: watcher_restart_sender.clone(),
       },
     )?);
     tokio::pin!(operation_future);

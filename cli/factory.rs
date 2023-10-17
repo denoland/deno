@@ -632,7 +632,7 @@ impl CliFactory {
       self
         .watcher_interface
         .as_ref()
-        .and_then(|i| i.restart_sender.clone()),
+        .and_then(|i| Some(i.restart_sender.clone())),
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
