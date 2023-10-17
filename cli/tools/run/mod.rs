@@ -117,8 +117,7 @@ async fn run_with_watch(
         let watch_path_sender = watcher_interface.paths_to_watch_sender.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(watcher_interface)
-            .build_from_flags(flags)
+            .build_from_flags_for_watcher(flags, watcher_interface)
             .await?;
           let cli_options = factory.cli_options();
           let main_module = cli_options.resolve_main_module()?;
@@ -156,8 +155,7 @@ async fn run_with_watch(
         let sender = watcher_interface.paths_to_watch_sender.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(watcher_interface)
-            .build_from_flags(flags)
+            .build_from_flags_for_watcher(flags, watcher_interface)
             .await?;
           let cli_options = factory.cli_options();
           let main_module = cli_options.resolve_main_module()?;

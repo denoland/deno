@@ -422,8 +422,7 @@ pub async fn run_benchmarks_with_watch(
       let sender = watcher_interface.paths_to_watch_sender.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .with_watcher(watcher_interface)
-          .build_from_flags(flags)
+          .build_from_flags_for_watcher(flags, watcher_interface)
           .await?;
         let cli_options = factory.cli_options();
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;

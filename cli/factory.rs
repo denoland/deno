@@ -76,17 +76,20 @@ impl CliFactoryBuilder {
     }
   }
 
-  // TODO(bartlomieju): change into `build_for_watcher` and accept flags.
-  pub fn with_watcher(mut self, watcher_interface: WatcherInterface) -> Self {
-    self.watcher_interface = Some(watcher_interface);
-    self
-  }
-
   pub async fn build_from_flags(
     self,
     flags: Flags,
   ) -> Result<CliFactory, AnyError> {
     Ok(self.build_from_cli_options(Arc::new(CliOptions::from_flags(flags)?)))
+  }
+
+  pub async fn build_from_flags_for_watcher(
+    mut self,
+    flags: Flags,
+    watcher_interface: WatcherInterface,
+  ) -> Result<CliFactory, AnyError> {
+    self.watcher_interface = Some(watcher_interface);
+    self.build_from_flags(flags).await
   }
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
@@ -384,15 +387,14 @@ impl CliFactory {
   }
 
   pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
-    // TODO(bartlomieju): clean this up
-    let maybe_sender = self
+    let maybe_file_watcher_reporter = self
       .watcher_interface
       .as_ref()
-      .map(|i| i.paths_to_watch_sender.clone());
+      .map(|i| FileWatcherReporter::new(i.paths_to_watch_sender.clone()));
     self
       .services
       .maybe_file_watcher_reporter
-      .get_or_init(|| maybe_sender.map(FileWatcherReporter::new))
+      .get_or_init(|| maybe_file_watcher_reporter)
   }
 
   pub fn emit_cache(&self) -> Result<&EmitCache, AnyError> {
