@@ -3014,7 +3014,6 @@ impl Inner {
             (&self.fmt_options.options).into(),
             tsc::UserPreferences {
               allow_text_changes_in_new_files: Some(true),
-              quote_preference: Some((&self.fmt_options.options).into()),
               ..Default::default()
             },
           )

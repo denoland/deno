@@ -5570,6 +5570,151 @@ fn lsp_code_actions_imports_respects_fmt_config() {
 }
 
 #[test]
+fn lsp_quote_style_from_workspace_settings() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "file00.ts",
+    r#"
+      export interface MallardDuckConfigOptions extends DuckConfigOptions {
+        kind: "mallard";
+      }
+    "#,
+  );
+  temp_dir.write(
+    "file01.ts",
+    r#"
+      export interface DuckConfigOptions {
+        kind: string;
+        quacks: boolean;
+      }
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_notification(
+    "workspace/didChangeConfiguration",
+    json!({
+      "settings": {}
+    }),
+  );
+  let settings = json!({
+    "typescript": {
+      "preferences": {
+        "quoteStyle": "single",
+      },
+    },
+  });
+  // one for the workspace
+  client.handle_configuration_request(&settings);
+  // one for the specifier
+  client.handle_configuration_request(&settings);
+
+  let code_action_params = json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file00.ts").unwrap(),
+    },
+    "range": {
+      "start": { "line": 0, "character": 0 },
+      "end": { "line": 4, "character": 0 },
+    },
+    "context": {
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 56 },
+          "end": { "line": 1, "character": 73 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'.",
+      }],
+      "only": ["quickfix"],
+    },
+  });
+
+  let res =
+    client.write_request("textDocument/codeAction", code_action_params.clone());
+  // Expect single quotes in the auto-import.
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"./file01.ts\"",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 56 },
+          "end": { "line": 1, "character": 73 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'.",
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "version": null,
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { DuckConfigOptions } from './file01.ts';\n",
+          }],
+        }],
+      },
+    }]),
+  );
+
+  // It should ignore the workspace setting if a `deno.json` is present.
+  temp_dir.write("./deno.json", json!({}).to_string());
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.json").unwrap(),
+      "type": 1,
+    }],
+  }));
+
+  let res = client.write_request("textDocument/codeAction", code_action_params);
+  // Expect double quotes in the auto-import.
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"./file01.ts\"",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 56 },
+          "end": { "line": 1, "character": 73 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'.",
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": temp_dir.uri().join("file00.ts").unwrap(),
+            "version": null,
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
+          }],
+        }],
+      },
+    }]),
+  );
+}
+
+#[test]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
