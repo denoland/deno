@@ -45,6 +45,9 @@ import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { Command } from "ext:runtime/40_process.js";
 
+let argv0Getter = () => "";
+export let argv0 = "deno";
+
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
 
@@ -407,6 +410,15 @@ class Process extends EventEmitter {
    * Read permissions are required in order to get the executable route
    */
   argv = argv;
+
+  get argv0() {
+    if (!argv0) {
+      argv0 = argv0Getter();
+    }
+    return argv0;
+  }
+
+  set argv0(_val) {}
 
   /** https://nodejs.org/api/process.html#process_process_chdir_directory */
   chdir = chdir;
@@ -851,23 +863,25 @@ function synchronizeListeners() {
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
-  argv0: string | undefined,
+  argv0Val: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
 ) {
   // Overwrites the 1st item with getter.
-  if (typeof argv0 === "string") {
+  if (typeof argv0Val === "string") {
     Object.defineProperty(argv, "0", {
       get: () => {
-        return argv0;
+        return argv0Val;
       },
     });
+    argv0Getter = () => argv0Val;
   } else {
     Object.defineProperty(argv, "0", {
       get: () => {
         return Deno.execPath();
       },
     });
+    argv0Getter = () => Deno.execPath();
   }
 
   // Overwrites the 2st item with getter.
