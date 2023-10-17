@@ -335,6 +335,8 @@ where
               "failed"
             }
           );
+          let _ = watcher_receiver.recv().await;
+          break;
         },
       };
     }

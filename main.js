@@ -1,5 +1,12 @@
-import { getFoo } from "./foo.js";
+import { getFoo } from "./foo.ts";
 
-//// asdf
 let i = 0;
-setInterval(() => console.log(i++, getFoo()), 1000);
+setInterval(() => {
+  if (i === 5) {
+    // Uncaught exception isn't shown in the terminal and
+    // it breaks watch + hmr
+    console.log("Before 123throw");
+    throw new Error("fail");
+  }
+  console.log(i++, getFoo());
+}, 250);

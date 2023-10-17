@@ -76,6 +76,7 @@ impl CliFactoryBuilder {
     }
   }
 
+  // TODO(bartlomieju): change into `build_for_watcher` and accept flags.
   pub fn with_watcher(mut self, watcher_interface: WatcherInterface) -> Self {
     self.watcher_interface = Some(watcher_interface);
     self

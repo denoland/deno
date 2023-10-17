@@ -168,7 +168,7 @@ impl CliMainWorker {
       if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
         self
           .worker
-          .with_event_loop(hot_reload_manager.run().boxed_local())
+          .with_event_loop_fallible(hot_reload_manager.run().boxed_local())
           .await?;
       } else {
         self
