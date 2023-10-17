@@ -64,6 +64,7 @@ impl HotReloadManager {
         // TODO(SyrupThinker): Deferred retry with timeout
         Some(notification) = session_rx.next() => {
           let notification = serde_json::from_value::<RpcNotification>(notification)?;
+          eprintln!("notification {:?}", notification.method);
           if notification.method == "Debugger.scriptParsed" {
             let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
             if params.url.starts_with("file://") {
@@ -130,7 +131,9 @@ impl HotReloadManager {
             }
           }
         }
-        _ = self.session.receive_from_v8_session() => {}
+        _ = self.session.receive_from_v8_session() => {
+          eprintln!("receive from v8 session");
+        }
       }
     }
   }

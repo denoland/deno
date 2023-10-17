@@ -136,7 +136,9 @@ async fn run_with_watch(
             .create_main_worker(main_module, permissions)
             .await?;
 
-          worker.run().await?;
+          let r = worker.run().await;
+          eprintln!("worker run result {:#?}", r);
+          r?;
 
           Ok(())
         })

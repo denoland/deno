@@ -1,12 +1,18 @@
 import { getFoo } from "./foo.ts";
 
-let i = 0;
-setInterval(() => {
+async function bar() {
+  throw new Error("fail2");
+}
+
+let i = 1;
+setInterval(async () => {
   if (i === 5) {
-    // Uncaught exception isn't shown in the terminal and
-    // it breaks watch + hmr
-    console.log("Before 123throw");
-    throw new Error("fail");
+    // unhandled promise rejection is not shown
+    await bar();
   }
   console.log(i++, getFoo());
-}, 250);
+}, 100);
+
+// addEventListener("unhandledrejection", (e) => {
+//   console.log("unhandledrejection", e.reason);
+// });
