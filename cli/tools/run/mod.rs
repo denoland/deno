@@ -114,7 +114,7 @@ async fn run_with_watch(
         clear_screen: false,
       },
       move |flags, watcher_interface| {
-        let watch_path_sender = watcher_interface.paths_to_watch_sender.clone();
+        let watch_path_sender = watcher_interface.paths_to_watch_tx.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
             .build_from_flags_for_watcher(flags, watcher_interface)
@@ -152,7 +152,7 @@ async fn run_with_watch(
         clear_screen: !watch_flags.no_clear_screen,
       },
       move |flags, watcher_interface, _changed_paths| {
-        let sender = watcher_interface.paths_to_watch_sender.clone();
+        let sender = watcher_interface.paths_to_watch_tx.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
             .build_from_flags_for_watcher(flags, watcher_interface)

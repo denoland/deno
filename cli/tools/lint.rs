@@ -77,7 +77,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
                 Ok(files)
               }
             })?;
-          _ = watcher_interface.paths_to_watch_sender.send(files.clone());
+          _ = watcher_interface.paths_to_watch_tx.send(files.clone());
 
           let lint_paths = if let Some(paths) = changed_paths {
             // lint all files on any changed (https://github.com/denoland/deno/issues/12446)

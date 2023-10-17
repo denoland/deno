@@ -70,7 +70,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       },
       move |flags, watcher_interface, changed_paths| {
         let fmt_flags = fmt_flags.clone();
-        let sender = watcher_interface.paths_to_watch_sender.clone();
+        let sender = watcher_interface.paths_to_watch_tx.clone();
         Ok(async move {
           let factory = CliFactory::from_flags(flags).await?;
           let cli_options = factory.cli_options();

@@ -25,8 +25,8 @@ use json_types::Status;
 
 pub struct HotReloadManager {
   session: LocalInspectorSession,
-  path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
-  file_watcher_restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
+  changed_paths_rx: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
+  restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
   script_ids: HashMap<String, String>,
   emitter: Arc<Emitter>,
 }
@@ -40,8 +40,8 @@ impl HotReloadManager {
     Self {
       session,
       emitter,
-      path_change_receiver: interface.changed_paths_receiver,
-      file_watcher_restart_sender: interface.restart_sender,
+      changed_paths_rx: interface.changed_paths_rx,
+      restart_tx: interface.restart_tx,
       script_ids: HashMap::new(),
     }
   }
@@ -80,7 +80,7 @@ impl HotReloadManager {
             break Err(generic_error(format!("{text} {description}")));
           }
         }
-        changed_paths = self.path_change_receiver.recv() => {
+        changed_paths = self.changed_paths_rx.recv() => {
           let changed_paths = changed_paths?;
           let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
             let ext_str = ext.to_str().unwrap();
@@ -133,7 +133,7 @@ impl HotReloadManager {
               if !result.status.should_retry() {
                 log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
                 // TODO(bartlomieju): Print into that sending failed?
-                let _ = self.file_watcher_restart_sender.send(());
+                let _ = self.restart_tx.send(());
                 break;
               }
             }

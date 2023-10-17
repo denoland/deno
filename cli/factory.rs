@@ -389,7 +389,7 @@ impl CliFactory {
     let maybe_file_watcher_reporter = self
       .watcher_interface
       .as_ref()
-      .map(|i| FileWatcherReporter::new(i.paths_to_watch_sender.clone()));
+      .map(|i| FileWatcherReporter::new(i.paths_to_watch_tx.clone()));
     self
       .services
       .maybe_file_watcher_reporter

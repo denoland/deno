@@ -36,7 +36,7 @@ pub async fn bundle(
         clear_screen: !watch_flags.no_clear_screen,
       },
       move |flags, watcher_interface, _changed_paths| {
-        let sender = watcher_interface.paths_to_watch_sender.clone();
+        let sender = watcher_interface.paths_to_watch_tx.clone();
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
