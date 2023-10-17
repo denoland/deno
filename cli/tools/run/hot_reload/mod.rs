@@ -2,6 +2,7 @@
 
 use crate::emit::Emitter;
 use deno_ast::MediaType;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
@@ -90,8 +91,7 @@ impl HotReloadManager {
             let text = exception_details.get("text").unwrap().as_str().unwrap();
             let exception = exception_details.get("exception").unwrap().as_object().unwrap();
             let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
-            println!("{text} {description}");
-            break Ok(());
+            break Err(generic_error(format!("{text} {description}")));
           }
         }
         changed_paths = self.path_change_receiver.recv() => {
