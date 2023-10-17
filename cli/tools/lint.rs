@@ -63,7 +63,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         job_name: "Lint".to_string(),
         clear_screen: !watch_flags.no_clear_screen,
       },
-      move |flags, sender, changed_paths| {
+      move |flags, watcher_interface, changed_paths| {
         let lint_flags = lint_flags.clone();
         Ok(async move {
           let factory = CliFactory::from_flags(flags).await?;
@@ -77,7 +77,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
                 Ok(files)
               }
             })?;
-          _ = sender.send(files.clone());
+          _ = watcher_interface.paths_to_watch_sender.send(files.clone());
 
           let lint_paths = if let Some(paths) = changed_paths {
             // lint all files on any changed (https://github.com/denoland/deno/issues/12446)

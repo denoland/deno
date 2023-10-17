@@ -417,11 +417,12 @@ pub async fn run_benchmarks_with_watch(
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
     },
-    move |flags, sender, changed_paths| {
+    move |flags, watcher_interface, changed_paths| {
       let bench_flags = bench_flags.clone();
+      let sender = watcher_interface.paths_to_watch_sender.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone(), None, None)
+          .with_watcher(watcher_interface)
           .build_from_flags(flags)
           .await?;
         let cli_options = factory.cli_options();

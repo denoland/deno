@@ -23,7 +23,6 @@ use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
 const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
@@ -109,6 +108,16 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
+// TODO(bartlomieju): this is a poor name; change it
+pub struct WatcherInterface {
+  pub paths_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  // TODO(bartlomieju): can we make it non-optional?
+  pub changed_paths_receiver:
+    Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
+  // TODO(bartlomieju): can we make it non-optional?
+  pub restart_sender: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+}
+
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
@@ -120,11 +129,8 @@ pub async fn watch_func<O, F>(
   mut operation: O,
 ) -> Result<(), AnyError>
 where
-  O: FnMut(
-    Flags,
-    UnboundedSender<Vec<PathBuf>>,
-    Option<Vec<PathBuf>>,
-  ) -> Result<F, AnyError>,
+  O:
+    FnMut(Flags, WatcherInterface, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
   let (paths_to_watch_sender, mut paths_to_watch_receiver) =
@@ -181,7 +187,11 @@ where
     };
     let operation_future = error_handler(operation(
       flags.clone(),
-      paths_to_watch_sender.clone(),
+      WatcherInterface {
+        paths_to_watch_sender: paths_to_watch_sender.clone(),
+        changed_paths_receiver: None,
+        restart_sender: None,
+      },
       changed_paths.take(),
     )?);
 
@@ -238,12 +248,7 @@ pub async fn watch_recv<O, F>(
   mut operation: O,
 ) -> Result<i32, AnyError>
 where
-  O: FnMut(
-    Flags,
-    UnboundedSender<Vec<PathBuf>>,
-    tokio::sync::mpsc::UnboundedSender<()>,
-    tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
-  ) -> Result<F, AnyError>,
+  O: FnMut(Flags, WatcherInterface) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
   let (paths_to_watch_sender, mut paths_to_watch_receiver) =
@@ -294,9 +299,11 @@ where
 
     let operation_future = error_handler(operation(
       flags.clone(),
-      paths_to_watch_sender.clone(),
-      watcher_restart_sender.clone(),
-      changed_paths_receiver,
+      WatcherInterface {
+        paths_to_watch_sender: paths_to_watch_sender.clone(),
+        changed_paths_receiver: Some(changed_paths_receiver),
+        restart_sender: Some(watcher_restart_sender.clone()),
+      },
     )?);
     tokio::pin!(operation_future);
 

@@ -40,6 +40,7 @@ use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
+use crate::util::file_watcher::WatcherInterface;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -59,39 +60,24 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
-use std::cell::RefCell;
 use std::future::Future;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 
 pub struct CliFactoryBuilder {
-  maybe_watch_path_sender:
-    Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
-  maybe_changed_path_receiver:
-    Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
-  maybe_file_watcher_restart_sender:
-    Option<tokio::sync::mpsc::UnboundedSender<()>>,
+  // TODO(bartlomieju): this is a bad name; change it
+  watcher_interface: Option<WatcherInterface>,
 }
 
 impl CliFactoryBuilder {
   pub fn new() -> Self {
     Self {
-      maybe_watch_path_sender: None,
-      maybe_changed_path_receiver: None,
-      maybe_file_watcher_restart_sender: None,
+      watcher_interface: None,
     }
   }
 
-  pub fn with_watcher(
-    mut self,
-    sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-    receiver: Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
-    restart_sender: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-  ) -> Self {
-    self.maybe_watch_path_sender = Some(sender);
-    self.maybe_changed_path_receiver = receiver;
-    self.maybe_file_watcher_restart_sender = restart_sender;
+  pub fn with_watcher(mut self, watcher_interface: WatcherInterface) -> Self {
+    self.watcher_interface = Some(watcher_interface);
     self
   }
 
@@ -104,9 +90,7 @@ impl CliFactoryBuilder {
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
     CliFactory {
-      maybe_watch_path_sender: RefCell::new(self.maybe_watch_path_sender),
-      maybe_changed_path_receiver: self.maybe_changed_path_receiver,
-      maybe_file_watcher_restart_sender: self.maybe_file_watcher_restart_sender,
+      watcher_interface: self.watcher_interface,
       options,
       services: Default::default(),
     }
@@ -182,12 +166,7 @@ struct CliFactoryServices {
 }
 
 pub struct CliFactory {
-  maybe_watch_path_sender:
-    RefCell<Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>>,
-  maybe_changed_path_receiver:
-    Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
-  maybe_file_watcher_restart_sender:
-    Option<tokio::sync::mpsc::UnboundedSender<()>>,
+  watcher_interface: Option<WatcherInterface>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }
@@ -404,7 +383,11 @@ impl CliFactory {
   }
 
   pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
-    let maybe_sender = self.maybe_watch_path_sender.borrow_mut().take();
+    // TODO(bartlomieju): clean this up
+    let maybe_sender = self
+      .watcher_interface
+      .as_ref()
+      .map(|i| i.paths_to_watch_sender.clone());
     self
       .services
       .maybe_file_watcher_reporter
@@ -639,10 +622,14 @@ impl CliFactory {
       self.fs().clone(),
       Some(self.emitter()?.clone()),
       self
-        .maybe_changed_path_receiver
+        .watcher_interface
         .as_ref()
+        .and_then(|i| i.changed_paths_receiver.as_ref())
         .map(Receiver::resubscribe),
-      self.maybe_file_watcher_restart_sender.clone(),
+      self
+        .watcher_interface
+        .as_ref()
+        .and_then(|i| i.restart_sender.clone()),
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),

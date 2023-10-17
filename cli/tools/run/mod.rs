@@ -113,17 +113,11 @@ async fn run_with_watch(
         job_name: "Process".to_string(),
         clear_screen: false,
       },
-      move |flags,
-            watch_path_sender,
-            watcher_restart_sender,
-            changed_path_receiver| {
+      move |flags, watcher_interface| {
+        let watch_path_sender = watcher_interface.paths_to_watch_sender.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(
-              watch_path_sender.clone(),
-              Some(changed_path_receiver),
-              Some(watcher_restart_sender),
-            )
+            .with_watcher(watcher_interface)
             .build_from_flags(flags)
             .await?;
           let cli_options = factory.cli_options();
@@ -156,10 +150,11 @@ async fn run_with_watch(
         job_name: "Process".to_string(),
         clear_screen: !watch_flags.no_clear_screen,
       },
-      move |flags, sender, _changed_paths| {
+      move |flags, watcher_interface, _changed_paths| {
+        let sender = watcher_interface.paths_to_watch_sender.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(sender.clone(), None, None)
+            .with_watcher(watcher_interface)
             .build_from_flags(flags)
             .await?;
           let cli_options = factory.cli_options();
