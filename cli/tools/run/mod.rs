@@ -142,7 +142,9 @@ async fn run_with_watch(
             .create_main_worker(main_module, permissions)
             .await?;
 
-          worker.run().await
+          worker.run().await?;
+
+          Ok(())
         })
       },
     )

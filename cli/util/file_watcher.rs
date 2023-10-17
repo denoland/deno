@@ -244,7 +244,7 @@ where
     tokio::sync::mpsc::UnboundedSender<()>,
     tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
-  F: Future<Output = Result<i32, AnyError>>,
+  F: Future<Output = Result<(), AnyError>>,
 {
   let (paths_to_watch_sender, mut paths_to_watch_receiver) =
     tokio::sync::mpsc::unbounded_channel();
@@ -292,13 +292,12 @@ where
     let (changed_paths_sender, changed_paths_receiver) =
       tokio::sync::broadcast::channel(4);
 
-    // TODO(bartlomieju): wrap in error handler
-    let operation_future = operation(
+    let operation_future = error_handler(operation(
       flags.clone(),
       paths_to_watch_sender.clone(),
       watcher_restart_sender.clone(),
       changed_paths_receiver,
-    )?;
+    )?);
     tokio::pin!(operation_future);
 
     loop {
@@ -314,12 +313,21 @@ where
           }
         },
         _ = watcher_restart_receiver.recv() => {
-          drop(operation_future);
+          // drop(operation_future);
           break;
         },
-        exit_code = &mut operation_future => {
-          // TODO(SyrupThinker) Exit code
-          return exit_code;
+        success = &mut operation_future => {
+          // TODO(bartlomieju): print exit code here?
+          info!(
+            "{} {} {}. Restarting on file change...",
+            colors::intense_blue("Watcher"),
+            job_name,
+            if success {
+              "finished"
+            } else {
+              "failed"
+            }
+          );
         },
       };
     }
