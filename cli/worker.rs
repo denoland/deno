@@ -323,18 +323,6 @@ impl CliMainWorker {
     // `WatcherInterface` here
     let interface = self.shared.maybe_hot_reload_interface.clone().unwrap();
 
-    // let receiver = self
-    //   .shared
-    //   .maybe_changed_path_receiver
-    //   .as_ref()
-    //   .map(Receiver::resubscribe)
-    //   .unwrap();
-    // let restart_sender = self
-    //   .shared
-    //   .maybe_file_watcher_restart_sender
-    //   .clone()
-    //   .unwrap();
-
     // TODO(bartlomieju): this is a code smell, refactor so we don't have
     // to pass `emitter` here
     let emitter = self.shared.emitter.clone().unwrap();

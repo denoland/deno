@@ -158,6 +158,10 @@ impl HotReloadManager {
       .session
       .post_message::<()>("Debugger.enable", None)
       .await?;
+    self
+      .session
+      .post_message::<()>("Runtime.enable", None)
+      .await?;
     Ok(())
   }
 
@@ -166,6 +170,10 @@ impl HotReloadManager {
     self
       .session
       .post_message::<()>("Debugger.disable", None)
+      .await?;
+    self
+      .session
+      .post_message::<()>("Runtime.disable", None)
       .await?;
     Ok(())
   }
