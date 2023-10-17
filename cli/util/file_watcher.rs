@@ -156,7 +156,11 @@ where
   } = print_config;
 
   let print_after_restart = create_print_after_restart_fn(clear_screen);
-
+  let watcher_interface = WatcherInterface {
+    paths_to_watch_sender: paths_to_watch_sender.clone(),
+    changed_paths_receiver: changed_paths_receiver.resubscribe(),
+    restart_sender: watcher_restart_sender.clone(),
+  };
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   let mut changed_paths = None;
@@ -179,11 +183,7 @@ where
     };
     let operation_future = error_handler(operation(
       flags.clone(),
-      WatcherInterface {
-        paths_to_watch_sender: paths_to_watch_sender.clone(),
-        changed_paths_receiver: changed_paths_receiver.resubscribe(),
-        restart_sender: watcher_restart_sender.clone(),
-      },
+      watcher_interface.clone(),
       changed_paths.take(),
     )?);
 
@@ -257,7 +257,11 @@ where
     DebouncedReceiver::new_with_sender();
 
   let PrintConfig { job_name, .. } = print_config;
-
+  let watcher_interface = WatcherInterface {
+    paths_to_watch_sender: paths_to_watch_sender.clone(),
+    changed_paths_receiver: changed_paths_receiver.resubscribe(),
+    restart_sender: watcher_restart_sender.clone(),
+  };
   info!("{} {} started.", colors::intense_blue("HMR"), job_name,);
 
   loop {
@@ -277,14 +281,8 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
-    let operation_future = error_handler(operation(
-      flags.clone(),
-      WatcherInterface {
-        paths_to_watch_sender: paths_to_watch_sender.clone(),
-        changed_paths_receiver: changed_paths_receiver.resubscribe(),
-        restart_sender: watcher_restart_sender.clone(),
-      },
-    )?);
+    let operation_future =
+      error_handler(operation(flags.clone(), watcher_interface.clone())?);
 
     // TODO(bartlomieju): this is almost identical with `watch_func`, besides
     // `received_changed_paths` arm - figure out how to remove it.
