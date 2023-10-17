@@ -21,6 +21,21 @@ use json_types::ScriptParsed;
 use json_types::SetScriptSourceReturnObject;
 use json_types::Status;
 
+// TODO(bartlomieju): this is a poor name; change it
+pub struct HotReloadInterface {
+  pub path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
+  pub file_watcher_restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
+}
+
+impl Clone for HotReloadInterface {
+  fn clone(&self) -> Self {
+    Self {
+      path_change_receiver: self.path_change_receiver.resubscribe(),
+      file_watcher_restart_sender: self.file_watcher_restart_sender.clone(),
+    }
+  }
+}
+
 pub struct HotReloadManager {
   session: LocalInspectorSession,
   path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
@@ -33,14 +48,13 @@ impl HotReloadManager {
   pub fn new(
     emitter: Arc<Emitter>,
     session: LocalInspectorSession,
-    path_change_receiver: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
-    file_watcher_restart_sender: tokio::sync::mpsc::UnboundedSender<()>,
+    interface: HotReloadInterface,
   ) -> Self {
     Self {
       session,
       emitter,
-      path_change_receiver,
-      file_watcher_restart_sender,
+      path_change_receiver: interface.path_change_receiver,
+      file_watcher_restart_sender: interface.file_watcher_restart_sender,
       script_ids: HashMap::new(),
     }
   }

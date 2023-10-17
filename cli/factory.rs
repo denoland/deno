@@ -40,6 +40,7 @@ use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
+use crate::tools::run::hot_reload::HotReloadInterface;
 use crate::util::file_watcher::WatcherInterface;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -62,7 +63,6 @@ use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
 use std::sync::Arc;
-use tokio::sync::broadcast::Receiver;
 
 pub struct CliFactoryBuilder {
   // TODO(bartlomieju): this is a bad name; change it
@@ -601,6 +601,23 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
+
+    // TODO(bartlomieju): can we just clone `WatcherInterface` here?
+    let maybe_hot_reload_interface = self
+      .watcher_interface
+      .as_ref()
+      .map(|i| {
+        if let Some(receiver) = i.changed_paths_receiver.as_ref() {
+          Some(HotReloadInterface {
+            path_change_receiver: receiver.resubscribe(),
+            file_watcher_restart_sender: i.restart_sender.clone(),
+          })
+        } else {
+          None
+        }
+      })
+      .flatten();
+
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       npm_resolver.clone(),
@@ -624,15 +641,7 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
       Some(self.emitter()?.clone()),
-      self
-        .watcher_interface
-        .as_ref()
-        .and_then(|i| i.changed_paths_receiver.as_ref())
-        .map(Receiver::resubscribe),
-      self
-        .watcher_interface
-        .as_ref()
-        .and_then(|i| Some(i.restart_sender.clone())),
+      maybe_hot_reload_interface,
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),

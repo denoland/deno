@@ -43,7 +43,6 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
-use tokio::sync::broadcast::Receiver;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
@@ -53,6 +52,7 @@ use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::run::hot_reload::HotReloadInterface;
 use crate::tools::run::hot_reload::HotReloadManager;
 use crate::util::checksum;
 use crate::version;
@@ -113,10 +113,7 @@ struct SharedWorkerState {
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
   emitter: Option<Arc<Emitter>>,
-  maybe_changed_path_receiver:
-    Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
-  maybe_file_watcher_restart_sender:
-    Option<tokio::sync::mpsc::UnboundedSender<()>>,
+  maybe_hot_reload_interface: Option<HotReloadInterface>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
@@ -324,24 +321,27 @@ impl CliMainWorker {
 
     // TODO(bartlomieju): would be so much nicer if we could clone a
     // `WatcherInterface` here
-    let receiver = self
-      .shared
-      .maybe_changed_path_receiver
-      .as_ref()
-      .map(Receiver::resubscribe)
-      .unwrap();
-    let restart_sender = self
-      .shared
-      .maybe_file_watcher_restart_sender
-      .clone()
-      .unwrap();
+    let interface = self.shared.maybe_hot_reload_interface.clone().unwrap();
+
+    // let receiver = self
+    //   .shared
+    //   .maybe_changed_path_receiver
+    //   .as_ref()
+    //   .map(Receiver::resubscribe)
+    //   .unwrap();
+    // let restart_sender = self
+    //   .shared
+    //   .maybe_file_watcher_restart_sender
+    //   .clone()
+    //   .unwrap();
+
     // TODO(bartlomieju): this is a code smell, refactor so we don't have
     // to pass `emitter` here
     let emitter = self.shared.emitter.clone().unwrap();
 
     let session = self.worker.create_inspector_session().await;
     let mut hot_reload_manager =
-      HotReloadManager::new(emitter, session, receiver, restart_sender);
+      HotReloadManager::new(emitter, session, interface);
 
     self
       .worker
@@ -378,12 +378,7 @@ impl CliMainWorkerFactory {
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
     emitter: Option<Arc<Emitter>>,
-    maybe_changed_path_receiver: Option<
-      tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
-    >,
-    maybe_file_watcher_restart_sender: Option<
-      tokio::sync::mpsc::UnboundedSender<()>,
-    >,
+    maybe_hot_reload_interface: Option<HotReloadInterface>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
@@ -403,8 +398,7 @@ impl CliMainWorkerFactory {
         root_cert_store_provider,
         emitter,
         fs,
-        maybe_changed_path_receiver,
-        maybe_file_watcher_restart_sender,
+        maybe_hot_reload_interface,
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
