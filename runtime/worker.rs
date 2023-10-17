@@ -531,11 +531,9 @@ impl MainWorker {
       tokio::select! {
         biased;
         result = &mut fut => {
-          eprintln!("result {:#?}", result);
           return result;
         }
         r = self.run_event_loop(false) => {
-          eprintln!("event loop result {:#?}", r);
           if r.is_err() {
             return r;
           }

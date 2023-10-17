@@ -78,12 +78,20 @@ impl HotReloadManager {
         // TODO(SyrupThinker): Deferred retry with timeout
         Some(notification) = session_rx.next() => {
           let notification = serde_json::from_value::<RpcNotification>(notification)?;
-          eprintln!("notification {:?}", notification.method);
           if notification.method == "Debugger.scriptParsed" {
             let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
             if params.url.starts_with("file://") {
               self.script_ids.insert(params.url, params.script_id);
             }
+          // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
+          } else if notification.method == "Runtime.exceptionThrown" {
+            let params = notification.params;
+            let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
+            let text = exception_details.get("text").unwrap().as_str().unwrap();
+            let exception = exception_details.get("exception").unwrap().as_object().unwrap();
+            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
+            println!("{text} {description}");
+            break Ok(());
           }
         }
         changed_paths = self.path_change_receiver.recv() => {
@@ -145,9 +153,7 @@ impl HotReloadManager {
             }
           }
         }
-        _ = self.session.receive_from_v8_session() => {
-          eprintln!("receive from v8 session");
-        }
+        _ = self.session.receive_from_v8_session() => {}
       }
     }
   }

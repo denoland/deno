@@ -136,7 +136,7 @@ async fn run_with_watch(
             .await?;
 
           let r = worker.run().await;
-          eprintln!("worker run result {:#?}", r);
+          // eprintln!("worker run result {:#?}", r);
           r?;
 
           Ok(())
