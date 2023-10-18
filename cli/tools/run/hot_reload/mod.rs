@@ -56,98 +56,6 @@ impl HotReloadManager {
     self.disable_debugger().await
   }
 
-  // TODO(bartlomieju): Shouldn't use `tokio::select!` here, as futures are not cancel safe
-  pub async fn run(&mut self) -> Result<(), AnyError> {
-    let mut session_rx = self.session.take_notification_rx();
-    loop {
-      select! {
-        biased;
-        // TODO(SyrupThinker): Deferred retry with timeout
-        Some(notification) = session_rx.next() => {
-          let notification = serde_json::from_value::<RpcNotification>(notification)?;
-          // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
-          if notification.method == "Runtime.exceptionThrown" {
-            let params = notification.params;
-            let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
-            let text = exception_details.get("text").unwrap().as_str().unwrap();
-            let exception = exception_details.get("exception").unwrap().as_object().unwrap();
-            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
-            break Err(generic_error(format!("{text} {description}")));
-          } else if notification.method == "Debugger.scriptParsed" {
-            let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
-            if params.url.starts_with("file://") {
-              self.script_ids.insert(params.url, params.script_id);
-            }
-          }
-        }
-        changed_paths = self.changed_paths_rx.recv() => {
-          eprintln!("changed patchs in hot {:#?}", changed_paths);
-          let changed_paths = changed_paths?;
-          let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
-            let ext_str = ext.to_str().unwrap();
-            matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
-          })).collect();
-
-          for path in filtered_paths {
-            let Some(path_str) = path.to_str() else {
-              let _ = self.restart_tx.send(());
-              continue;
-            };
-            let Ok(module_url) = Url::from_file_path(path_str) else {
-              let _ = self.restart_tx.send(());
-              continue;
-            };
-
-            log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url.as_str());
-
-            let Some(id) = self.script_ids.get(module_url.as_str()).cloned() else {
-              let _ = self.restart_tx.send(());
-              continue;
-            };
-
-            // TODO(bartlomieju): I really don't like `self.emitter` etc here.
-            // Maybe use `deno_ast` directly?
-            let media_type = MediaType::from_path(&path);
-            let source_code = tokio::fs::read_to_string(path).await?;
-            let source_arc: Arc<str> = Arc::from(source_code.as_str());
-            let source_code = {
-              let parsed_source = self.emitter.parsed_source_cache.get_or_parse_module(
-                &module_url,
-                source_arc.clone(),
-                media_type,
-              )?;
-              let mut options = self.emitter.emit_options.clone();
-              options.inline_source_map = false;
-              let transpiled_source = parsed_source.transpile(&options)?;
-              transpiled_source.text.to_string()
-              // self.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?
-            };
-
-            // eprintln!("transpiled source code {:#?}", source_code);
-            // TODO(bartlomieju): this loop should do 2 retries at most
-            loop {
-              let result = self.set_script_source(&id, source_code.as_str()).await?;
-
-              if matches!(result.status, Status::Ok) {
-                self.dispatch_hmr_event(module_url.as_str()).await?;
-                break;
-              }
-
-              log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
-              if !result.status.should_retry() {
-                log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
-                // TODO(bartlomieju): Print into that sending failed?
-                let _ = self.restart_tx.send(());
-                break;
-              }
-            }
-          }
-        }
-        _ = self.session.receive_from_v8_session() => {}
-      }
-    }
-  }
-
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
     self
@@ -217,5 +125,99 @@ impl HotReloadManager {
       .await?;
 
     Ok(())
+  }
+}
+
+// TODO(bartlomieju): Shouldn't use `tokio::select!` here, as futures are not cancel safe
+pub async fn run_hot_reload(
+  hmr_manager: &mut HotReloadManager,
+) -> Result<(), AnyError> {
+  let mut session_rx = hmr_manager.session.take_notification_rx();
+  loop {
+    select! {
+      biased;
+      // TODO(SyrupThinker): Deferred retry with timeout
+      Some(notification) = session_rx.next() => {
+        let notification = serde_json::from_value::<RpcNotification>(notification)?;
+        // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
+        if notification.method == "Runtime.exceptionThrown" {
+          let params = notification.params;
+          let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
+          let text = exception_details.get("text").unwrap().as_str().unwrap();
+          let exception = exception_details.get("exception").unwrap().as_object().unwrap();
+          let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
+          break Err(generic_error(format!("{text} {description}")));
+        } else if notification.method == "Debugger.scriptParsed" {
+          let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
+          if params.url.starts_with("file://") {
+            hmr_manager.script_ids.insert(params.url, params.script_id);
+          }
+        }
+      }
+      changed_paths = hmr_manager.changed_paths_rx.recv() => {
+        eprintln!("changed patchs in hot {:#?}", changed_paths);
+        let changed_paths = changed_paths?;
+        let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
+          let ext_str = ext.to_str().unwrap();
+          matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
+        })).collect();
+
+        for path in filtered_paths {
+          let Some(path_str) = path.to_str() else {
+            let _ = hmr_manager.restart_tx.send(());
+            continue;
+          };
+          let Ok(module_url) = Url::from_file_path(path_str) else {
+            let _ = hmr_manager.restart_tx.send(());
+            continue;
+          };
+
+          log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url.as_str());
+
+          let Some(id) = hmr_manager.script_ids.get(module_url.as_str()).cloned() else {
+            let _ = hmr_manager.restart_tx.send(());
+            continue;
+          };
+
+          // TODO(bartlomieju): I really don't like `hmr_manager.emitter` etc here.
+          // Maybe use `deno_ast` directly?
+          let media_type = MediaType::from_path(&path);
+          let source_code = tokio::fs::read_to_string(path).await?;
+          let source_arc: Arc<str> = Arc::from(source_code.as_str());
+          let source_code = {
+            let parsed_source = hmr_manager.emitter.parsed_source_cache.get_or_parse_module(
+              &module_url,
+              source_arc.clone(),
+              media_type,
+            )?;
+            let mut options = hmr_manager.emitter.emit_options.clone();
+            options.inline_source_map = false;
+            let transpiled_source = parsed_source.transpile(&options)?;
+            transpiled_source.text.to_string()
+            // hmr_manager.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?
+          };
+
+          // eprintln!("transpiled source code {:#?}", source_code);
+          // TODO(bartlomieju): this loop should do 2 retries at most
+          loop {
+            let result = hmr_manager.set_script_source(&id, source_code.as_str()).await?;
+
+            if matches!(result.status, Status::Ok) {
+              hmr_manager.dispatch_hmr_event(module_url.as_str()).await?;
+              break;
+            }
+
+            log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
+            if !result.status.should_retry() {
+              log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
+              // TODO(bartlomieju): Print into that sending failed?
+              let _ = hmr_manager.restart_tx.send(());
+              break;
+            }
+          }
+        }
+      }
+      _ = hmr_manager.session.receive_from_v8_session() => {}
+    }
   }
 }

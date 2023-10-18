@@ -52,6 +52,7 @@ use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::run::hot_reload;
 use crate::tools::run::hot_reload::HotReloadManager;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherInterface;
@@ -166,7 +167,9 @@ impl CliMainWorker {
         eprintln!("start hmr");
         self
           .worker
-          .with_event_loop_fallible(hot_reload_manager.run().boxed_local())
+          .with_event_loop_fallible(
+            hot_reload::run_hot_reload(hot_reload_manager).boxed_local(),
+          )
           .await?;
         eprintln!("stop hmr");
       } else {
