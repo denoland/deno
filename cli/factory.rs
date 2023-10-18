@@ -600,11 +600,6 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
-    let maybe_file_watcher_interface = if self.options.has_hot_reload() {
-      Some(self.watcher_interface.clone().unwrap())
-    } else {
-      None
-    };
 
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
@@ -628,8 +623,6 @@ impl CliFactory {
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
-      Some(self.emitter()?.clone()),
-      maybe_file_watcher_interface,
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
@@ -646,7 +639,6 @@ impl CliFactory {
       coverage_dir: self.options.coverage_dir(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
-      hot_reload: self.options.has_hot_reload(),
       inspect_brk: self.options.inspect_brk().is_some(),
       inspect_wait: self.options.inspect_wait().is_some(),
       is_inspecting: self.options.is_inspecting(),
