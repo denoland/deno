@@ -137,7 +137,6 @@ impl CliMainWorker {
   pub async fn run(&mut self) -> Result<i32, AnyError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
-
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
@@ -158,7 +157,6 @@ impl CliMainWorker {
         .worker
         .run_event_loop(maybe_coverage_collector.is_none())
         .await?;
-
       if !self
         .worker
         .dispatch_beforeunload_event(located_script_name!())?
