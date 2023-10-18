@@ -7,6 +7,7 @@ use crate::util::fs::canonicalize_path;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
@@ -146,13 +147,15 @@ where
     FnMut(Flags, WatcherInterface, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
-  watch_recv(
+  let fut = watch_recv(
     flags,
     print_config,
     WatcherRestartMode::Automatic,
     operation,
   )
-  .await
+  .boxed_local();
+
+  fut.await
 }
 
 #[derive(Clone, Copy, Debug)]
