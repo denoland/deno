@@ -246,7 +246,6 @@ where
           },
           WatcherRestartMode::Manual => {
             // TODO(bartlomieju): should we fail on sending changed paths?
-            // TODO(bartlomieju): change channel to accept Option<>
             let _ = changed_paths_tx.send(received_changed_paths);
           }
         }
