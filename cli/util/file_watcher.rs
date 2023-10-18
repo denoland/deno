@@ -115,7 +115,7 @@ pub struct WatcherInterface {
   pub paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
 
   /// Listen for a list of paths that were changed.
-  pub changed_paths_rx: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
+  pub changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
 
   /// Send a message to force a restart.
   pub restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
@@ -247,9 +247,7 @@ where
           WatcherRestartMode::Manual => {
             // TODO(bartlomieju): should we fail on sending changed paths?
             // TODO(bartlomieju): change channel to accept Option<>
-            if let Some(received_changed_paths) = received_changed_paths {
-              let _ = changed_paths_tx.send(received_changed_paths);
-            }
+            let _ = changed_paths_tx.send(received_changed_paths);
           }
         }
       },
