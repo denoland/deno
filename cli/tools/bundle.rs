@@ -40,7 +40,8 @@ pub async fn bundle(
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .build_from_flags_for_watcher(flags, watcher_interface)
+            .with_watcher(watcher_interface)
+            .build_from_flags(flags)
             .await?;
           let cli_options = factory.cli_options();
           let _ = sender.send(cli_options.watch_paths());

@@ -113,7 +113,8 @@ async fn run_with_watch(
     move |flags, watcher_interface, _changed_paths| {
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_interface.clone())
+          .with_watcher(watcher_interface.clone())
+          .build_from_flags(flags)
           .await?;
         let cli_options = factory.cli_options();
         let main_module = cli_options.resolve_main_module()?;
