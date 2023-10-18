@@ -241,6 +241,119 @@ where
 
 /// Creates a file watcher.
 ///
+/// - `operation` is the actual operation we want to run every time the watcher detects file
+/// changes. For example, in the case where we would like to bundle, then `operation` would
+/// have the logic for it like bundling the code.
+pub async fn watch_func2<O, F>(
+  mut flags: Flags,
+  print_config: PrintConfig,
+  mut operation: O,
+) -> Result<(), AnyError>
+where
+  O:
+    FnMut(Flags, WatcherInterface, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
+  F: Future<Output = Result<(), AnyError>>,
+{
+  let (paths_to_watch_tx, mut paths_to_watch_rx) =
+    tokio::sync::mpsc::unbounded_channel();
+  let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
+  let (changed_paths_tx, changed_paths_rx) = tokio::sync::broadcast::channel(4);
+  let (watcher_sender, mut watcher_receiver) =
+    DebouncedReceiver::new_with_sender();
+
+  let PrintConfig {
+    job_name,
+    clear_screen,
+  } = print_config;
+
+  let print_after_restart = create_print_after_restart_fn(clear_screen);
+  let watcher_interface = WatcherInterface {
+    paths_to_watch_tx: paths_to_watch_tx.clone(),
+    changed_paths_rx: changed_paths_rx.resubscribe(),
+    restart_tx: restart_tx.clone(),
+  };
+  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
+
+  let mut changed_paths = None;
+  loop {
+    // We may need to give the runtime a tick to settle, as cancellations may need to propagate
+    // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
+    // start to fail, this may need to be increased.
+    for _ in 0..10 {
+      tokio::task::yield_now().await;
+    }
+
+    let mut watcher = new_watcher(watcher_sender.clone())?;
+    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+
+    let receiver_future = async {
+      loop {
+        let maybe_paths = paths_to_watch_rx.recv().await;
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+      }
+    };
+    let operation_future = error_handler(operation(
+      flags.clone(),
+      watcher_interface.clone(),
+      changed_paths.take(),
+    )?);
+
+    // don't reload dependencies after the first run
+    flags.reload = false;
+
+    select! {
+      _ = receiver_future => {},
+      _ = restart_rx.recv() => {
+        print_after_restart();
+        continue;
+      },
+      received_changed_paths = watcher_receiver.recv() => {
+        changed_paths = received_changed_paths.clone();
+        // TODO(bartlomieju): should we fail on sending changed paths?
+        // TODO(bartlomieju): change channel to accept Option<>
+        if let Some(received_changed_paths) = received_changed_paths {
+          let _ = changed_paths_tx.send(received_changed_paths);
+        }
+      },
+      success = operation_future => {
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+        // TODO(bartlomieju): print exit code here?
+        info!(
+          "{} {} {}. Restarting on file change...",
+          colors::intense_blue("Watcher"),
+          job_name,
+          if success {
+            "finished"
+          } else {
+            "failed"
+          }
+        );
+      },
+    };
+
+    let receiver_future = async {
+      loop {
+        let maybe_paths = paths_to_watch_rx.recv().await;
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+      }
+    };
+
+    // If we got this far, it means that the `operation` has finished; let's wait
+    // and see if there are any new paths to watch received or any of the already
+    // watched paths has changed.
+    select! {
+      _ = receiver_future => {},
+      received_changed_paths = watcher_receiver.recv() => {
+        print_after_restart();
+        changed_paths = received_changed_paths;
+        continue;
+      },
+    };
+  }
+}
+
+/// Creates a file watcher.
+///
 /// - `operation` is the actual operation we want to run and notify every time
 /// the watcher detects file changes.
 pub async fn watch_recv<O, F>(
