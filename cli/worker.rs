@@ -163,10 +163,12 @@ impl CliMainWorker {
 
     loop {
       if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
+        eprintln!("start hmr");
         self
           .worker
           .with_event_loop_fallible(hot_reload_manager.run().boxed_local())
           .await?;
+        eprintln!("stop hmr");
       } else {
         self
           .worker
@@ -182,6 +184,8 @@ impl CliMainWorker {
       }
     }
 
+    eprintln!("hot reload finished");
+
     self.worker.dispatch_unload_event(located_script_name!())?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
@@ -196,6 +200,8 @@ impl CliMainWorker {
         .with_event_loop(hot_reload_manager.stop().boxed_local())
         .await?;
     }
+
+    eprintln!("hot reload finished2");
 
     Ok(self.worker.exit_code())
   }

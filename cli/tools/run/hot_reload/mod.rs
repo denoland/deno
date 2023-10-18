@@ -81,6 +81,7 @@ impl HotReloadManager {
           }
         }
         changed_paths = self.changed_paths_rx.recv() => {
+          eprintln!("changed patchs in hot {:#?}", changed_paths);
           let changed_paths = changed_paths?;
           let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
             let ext_str = ext.to_str().unwrap();

@@ -216,6 +216,7 @@ where
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
+        eprintln!("paths to watch paths {:?}", maybe_paths);
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
@@ -235,6 +236,7 @@ where
         continue;
       },
       received_changed_paths = watcher_receiver.recv() => {
+        eprintln!("received paths {:?}", received_changed_paths);
         changed_paths = received_changed_paths.clone();
 
         match restart_mode {
@@ -269,6 +271,7 @@ where
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
+        eprintln!("paths to watch paths {:?}", maybe_paths);
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
@@ -279,6 +282,7 @@ where
     select! {
       _ = receiver_future => {},
       received_changed_paths = watcher_receiver.recv() => {
+        eprintln!("received paths {:?}", received_changed_paths);
         print_after_restart();
         changed_paths = received_changed_paths;
         continue;
