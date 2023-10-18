@@ -408,7 +408,7 @@ fn collect_test(
   config: &Config,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   if config.specifier_enabled_for_test(specifier)
-    && config.specifier_code_lens_test(specifier)
+    && config.enabled_code_lens_test_for_specifier(specifier)
   {
     if let Some(parsed_source) = parsed_source {
       let mut collector =
