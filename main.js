@@ -1,7 +1,7 @@
 import { getFoo } from "./foo.ts";
 
 async function bar() {
-  throw new Error("fail");
+  throw new Error("fail1");
 }
 
 let i = 1;

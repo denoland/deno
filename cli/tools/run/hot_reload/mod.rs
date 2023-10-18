@@ -65,19 +65,19 @@ impl HotReloadManager {
         // TODO(SyrupThinker): Deferred retry with timeout
         Some(notification) = session_rx.next() => {
           let notification = serde_json::from_value::<RpcNotification>(notification)?;
-          if notification.method == "Debugger.scriptParsed" {
-            let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
-            if params.url.starts_with("file://") {
-              self.script_ids.insert(params.url, params.script_id);
-            }
           // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
-          } else if notification.method == "Runtime.exceptionThrown" {
+          if notification.method == "Runtime.exceptionThrown" {
             let params = notification.params;
             let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
             let text = exception_details.get("text").unwrap().as_str().unwrap();
             let exception = exception_details.get("exception").unwrap().as_object().unwrap();
             let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
             break Err(generic_error(format!("{text} {description}")));
+          } else if notification.method == "Debugger.scriptParsed" {
+            let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
+            if params.url.starts_with("file://") {
+              self.script_ids.insert(params.url, params.script_id);
+            }
           }
         }
         changed_paths = self.changed_paths_rx.recv() => {
@@ -89,15 +89,18 @@ impl HotReloadManager {
 
           for path in filtered_paths {
             let Some(path_str) = path.to_str() else {
+              let _ = self.restart_tx.send(());
               continue;
             };
             let Ok(module_url) = Url::from_file_path(path_str) else {
+              let _ = self.restart_tx.send(());
               continue;
             };
 
             log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url.as_str());
 
             let Some(id) = self.script_ids.get(module_url.as_str()).cloned() else {
+              let _ = self.restart_tx.send(());
               continue;
             };
 

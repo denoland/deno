@@ -15,6 +15,7 @@ use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::util;
+use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hot_reload;
 
@@ -113,7 +114,8 @@ async fn run_with_watch(
         job_name: "Process".to_string(),
         clear_screen: false,
       },
-      move |flags, watcher_interface| {
+      WatcherRestartMode::Manual,
+      move |flags, watcher_interface, _changed_paths| {
         let watch_path_sender = watcher_interface.paths_to_watch_tx.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
@@ -143,7 +145,9 @@ async fn run_with_watch(
         })
       },
     )
-    .await
+    .await?;
+
+    Ok(0)
   } else {
     util::file_watcher::watch_func(
       flags,
