@@ -110,7 +110,7 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
 }
 
 // TODO(bartlomieju): this is a poor name; change it
-/// And interface to interact with Deno's CLI file watcher.
+/// An interface to interact with Deno's CLI file watcher.
 pub struct WatcherInterface {
   /// Send a list of paths that should be watched for changes.
   pub paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
