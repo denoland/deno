@@ -75,16 +75,20 @@ impl CliFactoryBuilder {
     }
   }
 
-  pub fn with_watcher(mut self, interface: WatcherInterface) -> Self {
-    self.watcher_interface = Some(interface);
-    self
-  }
-
   pub async fn build_from_flags(
     self,
     flags: Flags,
   ) -> Result<CliFactory, AnyError> {
     Ok(self.build_from_cli_options(Arc::new(CliOptions::from_flags(flags)?)))
+  }
+
+  pub async fn build_from_flags_for_watcher(
+    mut self,
+    flags: Flags,
+    watcher_interface: WatcherInterface,
+  ) -> Result<CliFactory, AnyError> {
+    self.watcher_interface = Some(watcher_interface);
+    self.build_from_flags(flags).await
   }
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
