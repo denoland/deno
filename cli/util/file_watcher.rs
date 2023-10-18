@@ -241,6 +241,7 @@ where
 
         match restart_mode {
           WatcherRestartMode::Automatic => {
+            print_after_restart();
             continue;
           },
           WatcherRestartMode::Manual => {
