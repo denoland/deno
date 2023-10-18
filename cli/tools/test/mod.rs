@@ -1213,12 +1213,12 @@ pub async fn run_tests_with_watch(
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
     },
-    move |flags, sender, changed_paths| {
+    move |flags, watcher_interface, changed_paths| {
       let test_flags = test_flags.clone();
+      let sender = watcher_interface.paths_to_watch_tx.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone())
-          .build_from_flags(flags)
+          .build_from_flags_for_watcher(flags, watcher_interface)
           .await?;
         let cli_options = factory.cli_options();
         let test_options = cli_options.resolve_test_options(test_flags)?;

@@ -46,12 +46,16 @@ use deno_semver::package::PackageReqReference;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
+use crate::emit::Emitter;
 use crate::errors;
 use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::run::hot_reload;
+use crate::tools::run::hot_reload::HotReloadManager;
 use crate::util::checksum;
+use crate::util::file_watcher::WatcherInterface;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -83,6 +87,7 @@ pub struct CliMainWorkerOptions {
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
+  pub hot_reload: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
   pub is_inspecting: bool,
@@ -108,6 +113,8 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  emitter: Option<Arc<Emitter>>,
+  maybe_file_watcher_interface: Option<WatcherInterface>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
@@ -137,6 +144,9 @@ impl CliMainWorker {
   pub async fn run(&mut self) -> Result<i32, AnyError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
+    let mut maybe_hot_reload_manager =
+      self.maybe_setup_hot_reload_manager().await?;
+
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
@@ -153,10 +163,22 @@ impl CliMainWorker {
     self.worker.dispatch_load_event(located_script_name!())?;
 
     loop {
-      self
-        .worker
-        .run_event_loop(maybe_coverage_collector.is_none())
-        .await?;
+      if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
+        eprintln!("start hmr");
+        self
+          .worker
+          .with_event_loop_fallible(
+            hot_reload::run_hot_reload(hot_reload_manager).boxed_local(),
+          )
+          .await?;
+        eprintln!("stop hmr");
+      } else {
+        self
+          .worker
+          .run_event_loop(maybe_coverage_collector.is_none())
+          .await?;
+      }
+
       if !self
         .worker
         .dispatch_beforeunload_event(located_script_name!())?
@@ -164,6 +186,8 @@ impl CliMainWorker {
         break;
       }
     }
+
+    eprintln!("hot reload finished");
 
     self.worker.dispatch_unload_event(located_script_name!())?;
 
@@ -173,6 +197,14 @@ impl CliMainWorker {
         .with_event_loop(coverage_collector.stop_collecting().boxed_local())
         .await?;
     }
+    if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
+      self
+        .worker
+        .with_event_loop(hot_reload_manager.stop().boxed_local())
+        .await?;
+    }
+
+    eprintln!("hot reload finished2");
 
     Ok(self.worker.exit_code())
   }
@@ -287,6 +319,31 @@ impl CliMainWorker {
     }
   }
 
+  pub async fn maybe_setup_hot_reload_manager(
+    &mut self,
+  ) -> Result<Option<HotReloadManager>, AnyError> {
+    if !self.shared.options.hot_reload {
+      return Ok(None);
+    }
+
+    let interface = self.shared.maybe_file_watcher_interface.clone().unwrap();
+
+    // TODO(bartlomieju): this is a code smell, refactor so we don't have
+    // to pass `emitter` here
+    let emitter = self.shared.emitter.clone().unwrap();
+
+    let session = self.worker.create_inspector_session().await;
+    let mut hot_reload_manager =
+      HotReloadManager::new(emitter, session, interface);
+
+    self
+      .worker
+      .with_event_loop(hot_reload_manager.start().boxed_local())
+      .await?;
+
+    Ok(Some(hot_reload_manager))
+  }
+
   pub fn execute_script_static(
     &mut self,
     name: &'static str,
@@ -313,6 +370,8 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    emitter: Option<Arc<Emitter>>,
+    maybe_file_watcher_interface: Option<WatcherInterface>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
@@ -330,7 +389,9 @@ impl CliMainWorkerFactory {
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
         root_cert_store_provider,
+        emitter,
         fs,
+        maybe_file_watcher_interface,
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,

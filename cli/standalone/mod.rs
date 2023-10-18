@@ -446,6 +446,8 @@ pub async fn run(
     fs,
     None,
     None,
+    None,
+    None,
     feature_checker,
     CliMainWorkerOptions {
       argv: metadata.argv,
@@ -453,6 +455,7 @@ pub async fn run(
       coverage_dir: None,
       enable_testing_features: false,
       has_node_modules_dir,
+      hot_reload: false,
       inspect_brk: false,
       inspect_wait: false,
       is_inspecting: false,

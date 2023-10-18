@@ -35,12 +35,12 @@ pub async fn bundle(
         job_name: "Bundle".to_string(),
         clear_screen: !watch_flags.no_clear_screen,
       },
-      move |flags, sender, _changed_paths| {
+      move |flags, watcher_interface, _changed_paths| {
+        let sender = watcher_interface.paths_to_watch_tx.clone();
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(sender.clone())
-            .build_from_flags(flags)
+            .build_from_flags_for_watcher(flags, watcher_interface)
             .await?;
           let cli_options = factory.cli_options();
           let _ = sender.send(cli_options.watch_paths());
