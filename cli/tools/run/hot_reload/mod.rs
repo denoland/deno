@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::emit::Emitter;
-use crate::util::file_watcher::WatcherInterface;
+use crate::util::file_watcher::WatcherCommunicator;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -25,8 +25,7 @@ use json_types::Status;
 
 pub struct HotReloadManager {
   session: LocalInspectorSession,
-  changed_paths_rx: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
-  restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+  watcher_communicator: WatcherCommunicator,
   script_ids: HashMap<String, String>,
   emitter: Arc<Emitter>,
 }
@@ -35,13 +34,12 @@ impl HotReloadManager {
   pub fn new(
     emitter: Arc<Emitter>,
     session: LocalInspectorSession,
-    interface: WatcherInterface,
+    watcher_communicator: WatcherCommunicator,
   ) -> Self {
     Self {
       session,
       emitter,
-      changed_paths_rx: interface.changed_paths_rx,
-      restart_tx: interface.restart_tx,
+      watcher_communicator,
       script_ids: HashMap::new(),
     }
   }
@@ -154,9 +152,15 @@ pub async fn run_hot_reload(
           }
         }
       }
-      changed_paths = hmr_manager.changed_paths_rx.recv() => {
+      changed_paths = hmr_manager.watcher_communicator.watch_for_changed_paths() => {
         eprintln!("changed patchs in hot {:#?}", changed_paths);
         let changed_paths = changed_paths?;
+
+        let Some(changed_paths) = changed_paths else {
+          let _ = hmr_manager.watcher_communicator.force_restart();
+          continue;
+        };
+
         let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
           let ext_str = ext.to_str().unwrap();
           matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
@@ -164,18 +168,18 @@ pub async fn run_hot_reload(
 
         for path in filtered_paths {
           let Some(path_str) = path.to_str() else {
-            let _ = hmr_manager.restart_tx.send(());
+            let _ = hmr_manager.watcher_communicator.force_restart();
             continue;
           };
           let Ok(module_url) = Url::from_file_path(path_str) else {
-            let _ = hmr_manager.restart_tx.send(());
+            let _ = hmr_manager.watcher_communicator.force_restart();
             continue;
           };
 
           log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url.as_str());
 
           let Some(id) = hmr_manager.script_ids.get(module_url.as_str()).cloned() else {
-            let _ = hmr_manager.restart_tx.send(());
+            let _ = hmr_manager.watcher_communicator.force_restart();
             continue;
           };
 
@@ -211,7 +215,7 @@ pub async fn run_hot_reload(
             if !result.status.should_retry() {
               log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
               // TODO(bartlomieju): Print into that sending failed?
-              let _ = hmr_manager.restart_tx.send(());
+              let _ = hmr_manager.watcher_communicator.force_restart();
               break;
             }
           }

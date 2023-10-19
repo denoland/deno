@@ -55,7 +55,7 @@ use crate::tools::coverage::CoverageCollector;
 use crate::tools::run::hot_reload;
 use crate::tools::run::hot_reload::HotReloadManager;
 use crate::util::checksum;
-use crate::util::file_watcher::WatcherInterface;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -114,7 +114,7 @@ struct SharedWorkerState {
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
   emitter: Option<Arc<Emitter>>,
-  maybe_file_watcher_interface: Option<WatcherInterface>,
+  maybe_file_watcher_communicator: Option<WatcherCommunicator>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
@@ -326,7 +326,8 @@ impl CliMainWorker {
       return Ok(None);
     }
 
-    let interface = self.shared.maybe_file_watcher_interface.clone().unwrap();
+    let interface =
+      self.shared.maybe_file_watcher_communicator.clone().unwrap();
 
     // TODO(bartlomieju): this is a code smell, refactor so we don't have
     // to pass `emitter` here
@@ -371,7 +372,7 @@ impl CliMainWorkerFactory {
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
     emitter: Option<Arc<Emitter>>,
-    maybe_file_watcher_interface: Option<WatcherInterface>,
+    maybe_file_watcher_communicator: Option<WatcherCommunicator>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
@@ -391,7 +392,7 @@ impl CliMainWorkerFactory {
         root_cert_store_provider,
         emitter,
         fs,
-        maybe_file_watcher_interface,
+        maybe_file_watcher_communicator,
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,

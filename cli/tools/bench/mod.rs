@@ -419,7 +419,6 @@ pub async fn run_benchmarks_with_watch(
     },
     move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
-      let sender = watcher_interface.paths_to_watch_tx.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
           .build_from_flags_for_watcher(flags, watcher_communicator.clone())

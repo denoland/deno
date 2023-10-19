@@ -70,7 +70,6 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       },
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
-        let sender = watcher_interface.paths_to_watch_tx.clone();
         Ok(async move {
           let factory = CliFactory::from_flags(flags).await?;
           let cli_options = factory.cli_options();
@@ -83,7 +82,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
                 Ok(files)
               }
             })?;
-          _ = watcher_communicator.watch_paths(files.clone());
+          let _ = watcher_communicator.watch_paths(files.clone());
           let refmt_files = if let Some(paths) = changed_paths {
             if fmt_options.check {
               // check all files on any changed (https://github.com/denoland/deno/issues/12446)

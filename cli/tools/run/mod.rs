@@ -107,24 +107,25 @@ async fn run_with_watch(
   flags: Flags,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
-  util::file_watcher::watch_func(
-    flags,
-    util::file_watcher::PrintConfig {
-      job_name: "Process".to_string(),
-      clear_screen: !watch_flags.no_clear_screen,
-    },
-    WatcherRestartMode::Manual,
-    move |flags, watcher_communicator, _changed_paths| {
-      Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
-          .await?;
-        let cli_options = factory.cli_options();
-        let main_module = cli_options.resolve_main_module()?;
+  if watch_flags.hot_reload {
+    util::file_watcher::watch_recv(
+      flags,
+      util::file_watcher::PrintConfig {
+        job_name: "Process".to_string(),
+        clear_screen: !watch_flags.no_clear_screen,
+      },
+      WatcherRestartMode::Manual,
+      move |flags, watcher_communicator, _changed_paths| {
+        Ok(async move {
+          let factory = CliFactoryBuilder::new()
+            .build_from_flags_for_watcher(flags, watcher_communicator.clone())
+            .await?;
+          let cli_options = factory.cli_options();
+          let main_module = cli_options.resolve_main_module()?;
 
           maybe_npm_install(&factory).await?;
 
-        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+          let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
           let permissions = PermissionsContainer::new(
             Permissions::from_options(&cli_options.permissions_options())?,
@@ -153,18 +154,17 @@ async fn run_with_watch(
         job_name: "Process".to_string(),
         clear_screen: !watch_flags.no_clear_screen,
       },
-      move |flags, watcher_interface, _changed_paths| {
-        let sender = watcher_interface.paths_to_watch_tx.clone();
+      move |flags, watcher_communicator, _changed_paths| {
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .build_from_flags_for_watcher(flags, watcher_interface)
+            .build_from_flags_for_watcher(flags, watcher_communicator.clone())
             .await?;
           let cli_options = factory.cli_options();
           let main_module = cli_options.resolve_main_module()?;
 
           maybe_npm_install(&factory).await?;
 
-          let _ = sender.send(cli_options.watch_paths());
+          let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
           let permissions = PermissionsContainer::new(
             Permissions::from_options(&cli_options.permissions_options())?,

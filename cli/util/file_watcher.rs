@@ -136,6 +136,17 @@ impl WatcherCommunicator {
   pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
     self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
   }
+
+  pub fn force_restart(&self) -> Result<(), AnyError> {
+    self.restart_tx.send(()).map_err(AnyError::from)
+  }
+
+  pub async fn watch_for_changed_paths(
+    &self,
+  ) -> Result<Option<Vec<PathBuf>>, AnyError> {
+    let mut rx = self.changed_paths_rx.resubscribe();
+    rx.recv().await.map_err(AnyError::from)
+  }
 }
 
 /// Creates a file watcher.
