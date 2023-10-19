@@ -13,6 +13,7 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
@@ -635,14 +636,14 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
 
 #[derive(Clone, Debug)]
 pub struct FileWatcherReporter {
-  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  watcher_communicator: WatcherCommunicator,
   file_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl FileWatcherReporter {
-  pub fn new(sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>) -> Self {
+  pub fn new(watcher_communicator: WatcherCommunicator) -> Self {
     Self {
-      sender,
+      watcher_communicator,
       file_paths: Default::default(),
     }
   }
@@ -665,7 +666,10 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
     }
 
     if modules_done == modules_total {
-      self.sender.send(file_paths.drain(..).collect()).unwrap();
+      self
+        .watcher_communicator
+        .watch_paths(file_paths.drain(..).collect())
+        .unwrap();
     }
   }
 }

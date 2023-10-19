@@ -7,6 +7,7 @@ use crate::util::fs::canonicalize_path;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
@@ -108,26 +109,32 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
-// TODO(bartlomieju): this is a poor name; change it
-/// And interface to interact with Deno's CLI file watcher.
-pub struct WatcherInterface {
+/// An interface to interact with Deno's CLI file watcher.
+#[derive(Debug)]
+pub struct WatcherCommunicator {
   /// Send a list of paths that should be watched for changes.
-  pub paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
 
   /// Listen for a list of paths that were changed.
-  pub changed_paths_rx: tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
+  changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
 
   /// Send a message to force a restart.
-  pub restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+  restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
-impl Clone for WatcherInterface {
+impl Clone for WatcherCommunicator {
   fn clone(&self) -> Self {
     Self {
       paths_to_watch_tx: self.paths_to_watch_tx.clone(),
       changed_paths_rx: self.changed_paths_rx.resubscribe(),
       restart_tx: self.restart_tx.clone(),
     }
+  }
+}
+
+impl WatcherCommunicator {
+  pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
+    self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
   }
 }
 
@@ -142,17 +149,22 @@ pub async fn watch_func<O, F>(
   operation: O,
 ) -> Result<(), AnyError>
 where
-  O:
-    FnMut(Flags, WatcherInterface, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
+  O: FnMut(
+    Flags,
+    WatcherCommunicator,
+    Option<Vec<PathBuf>>,
+  ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
-  watch_recv(
+  let fut = watch_recv(
     flags,
     print_config,
     WatcherRestartMode::Automatic,
     operation,
   )
-  .await
+  .boxed_local();
+
+  fut.await
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -177,8 +189,11 @@ pub async fn watch_recv<O, F>(
   mut operation: O,
 ) -> Result<(), AnyError>
 where
-  O:
-    FnMut(Flags, WatcherInterface, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
+  O: FnMut(
+    Flags,
+    WatcherCommunicator,
+    Option<Vec<PathBuf>>,
+  ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
@@ -194,7 +209,7 @@ where
   } = print_config;
 
   let print_after_restart = create_print_after_restart_fn(clear_screen);
-  let watcher_interface = WatcherInterface {
+  let watcher_communicator = WatcherCommunicator {
     paths_to_watch_tx: paths_to_watch_tx.clone(),
     changed_paths_rx: changed_paths_rx.resubscribe(),
     restart_tx: restart_tx.clone(),
@@ -216,13 +231,12 @@ where
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        eprintln!("paths to watch paths {:?}", maybe_paths);
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
     let operation_future = error_handler(operation(
       flags.clone(),
-      watcher_interface.clone(),
+      watcher_communicator.clone(),
       changed_paths.take(),
     )?);
 
@@ -236,19 +250,16 @@ where
         continue;
       },
       received_changed_paths = watcher_receiver.recv() => {
-        eprintln!("received paths {:?}", received_changed_paths);
         changed_paths = received_changed_paths.clone();
 
         match restart_mode {
           WatcherRestartMode::Automatic => {
+            print_after_restart();
             continue;
           },
           WatcherRestartMode::Manual => {
             // TODO(bartlomieju): should we fail on sending changed paths?
-            // TODO(bartlomieju): change channel to accept Option<>
-            if let Some(received_changed_paths) = received_changed_paths {
-              let _ = changed_paths_tx.send(received_changed_paths);
-            }
+            let _ = changed_paths_tx.send(received_changed_paths);
           }
         }
       },
@@ -271,7 +282,6 @@ where
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        eprintln!("paths to watch paths {:?}", maybe_paths);
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };

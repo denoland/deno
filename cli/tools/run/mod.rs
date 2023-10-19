@@ -107,26 +107,24 @@ async fn run_with_watch(
   flags: Flags,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
-  if watch_flags.hot_reload {
-    util::file_watcher::watch_recv(
-      flags,
-      util::file_watcher::PrintConfig {
-        job_name: "Process".to_string(),
-        clear_screen: false,
-      },
-      WatcherRestartMode::Manual,
-      move |flags, watcher_interface, _changed_paths| {
-        let watch_path_sender = watcher_interface.paths_to_watch_tx.clone();
-        Ok(async move {
-          let factory = CliFactoryBuilder::new()
-            .build_from_flags_for_watcher(flags, watcher_interface)
-            .await?;
-          let cli_options = factory.cli_options();
-          let main_module = cli_options.resolve_main_module()?;
+  util::file_watcher::watch_func(
+    flags,
+    util::file_watcher::PrintConfig {
+      job_name: "Process".to_string(),
+      clear_screen: !watch_flags.no_clear_screen,
+    },
+    WatcherRestartMode::Manual,
+    move |flags, watcher_communicator, _changed_paths| {
+      Ok(async move {
+        let factory = CliFactoryBuilder::new()
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
+          .await?;
+        let cli_options = factory.cli_options();
+        let main_module = cli_options.resolve_main_module()?;
 
           maybe_npm_install(&factory).await?;
 
-          let _ = watch_path_sender.send(cli_options.watch_paths());
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
           let permissions = PermissionsContainer::new(
             Permissions::from_options(&cli_options.permissions_options())?,
