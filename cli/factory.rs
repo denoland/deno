@@ -40,7 +40,7 @@ use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
-use crate::util::file_watcher::WatcherInterface;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -64,14 +64,13 @@ use std::future::Future;
 use std::sync::Arc;
 
 pub struct CliFactoryBuilder {
-  // TODO(bartlomieju): this is a bad name; change it
-  watcher_interface: Option<WatcherInterface>,
+  watcher_communicator: Option<WatcherCommunicator>,
 }
 
 impl CliFactoryBuilder {
   pub fn new() -> Self {
     Self {
-      watcher_interface: None,
+      watcher_communicator: None,
     }
   }
 
@@ -85,15 +84,15 @@ impl CliFactoryBuilder {
   pub async fn build_from_flags_for_watcher(
     mut self,
     flags: Flags,
-    watcher_interface: WatcherInterface,
+    watcher_communicator: WatcherCommunicator,
   ) -> Result<CliFactory, AnyError> {
-    self.watcher_interface = Some(watcher_interface);
+    self.watcher_communicator = Some(watcher_communicator);
     self.build_from_flags(flags).await
   }
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
     CliFactory {
-      watcher_interface: self.watcher_interface,
+      watcher_communicator: self.watcher_communicator,
       options,
       services: Default::default(),
     }
@@ -169,7 +168,7 @@ struct CliFactoryServices {
 }
 
 pub struct CliFactory {
-  watcher_interface: Option<WatcherInterface>,
+  watcher_communicator: Option<WatcherCommunicator>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }
@@ -387,9 +386,9 @@ impl CliFactory {
 
   pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
     let maybe_file_watcher_reporter = self
-      .watcher_interface
+      .watcher_communicator
       .as_ref()
-      .map(|i| FileWatcherReporter::new(i.paths_to_watch_tx.clone()));
+      .map(|i| FileWatcherReporter::new(i.clone()));
     self
       .services
       .maybe_file_watcher_reporter

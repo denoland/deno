@@ -109,26 +109,32 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
-// TODO(bartlomieju): this is a poor name; change it
 /// An interface to interact with Deno's CLI file watcher.
-pub struct WatcherInterface {
+#[derive(Debug)]
+pub struct WatcherCommunicator {
   /// Send a list of paths that should be watched for changes.
-  pub paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
 
   /// Listen for a list of paths that were changed.
-  pub changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
+  changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
 
   /// Send a message to force a restart.
-  pub restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+  restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
-impl Clone for WatcherInterface {
+impl Clone for WatcherCommunicator {
   fn clone(&self) -> Self {
     Self {
       paths_to_watch_tx: self.paths_to_watch_tx.clone(),
       changed_paths_rx: self.changed_paths_rx.resubscribe(),
       restart_tx: self.restart_tx.clone(),
     }
+  }
+}
+
+impl WatcherCommunicator {
+  pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
+    self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
   }
 }
 
@@ -143,8 +149,11 @@ pub async fn watch_func<O, F>(
   operation: O,
 ) -> Result<(), AnyError>
 where
-  O:
-    FnMut(Flags, WatcherInterface, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
+  O: FnMut(
+    Flags,
+    WatcherCommunicator,
+    Option<Vec<PathBuf>>,
+  ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
   let fut = watch_recv(
@@ -164,7 +173,7 @@ pub enum WatcherRestartMode {
   Automatic,
 
   /// When a file path changes the caller will trigger a restart, using
-  /// `WatcherInterface.restart_tx`.
+  /// `WatcherCommunicator.restart_tx`.
   // TODO(bartlomieju): this mode will be used in a follow up PR
   #[allow(dead_code)]
   Manual,
@@ -182,8 +191,11 @@ pub async fn watch_recv<O, F>(
   mut operation: O,
 ) -> Result<(), AnyError>
 where
-  O:
-    FnMut(Flags, WatcherInterface, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
+  O: FnMut(
+    Flags,
+    WatcherCommunicator,
+    Option<Vec<PathBuf>>,
+  ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
@@ -199,7 +211,7 @@ where
   } = print_config;
 
   let print_after_restart = create_print_after_restart_fn(clear_screen);
-  let watcher_interface = WatcherInterface {
+  let watcher_communicator = WatcherCommunicator {
     paths_to_watch_tx: paths_to_watch_tx.clone(),
     changed_paths_rx: changed_paths_rx.resubscribe(),
     restart_tx: restart_tx.clone(),
@@ -226,7 +238,7 @@ where
     };
     let operation_future = error_handler(operation(
       flags.clone(),
-      watcher_interface.clone(),
+      watcher_communicator.clone(),
       changed_paths.take(),
     )?);
 
