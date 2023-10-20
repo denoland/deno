@@ -523,25 +523,6 @@ impl MainWorker {
     }
   }
 
-  pub async fn with_event_loop_fallible<'a>(
-    &mut self,
-    mut fut: Pin<Box<dyn Future<Output = Result<(), AnyError>> + 'a>>,
-  ) -> Result<(), AnyError> {
-    loop {
-      tokio::select! {
-        biased;
-        result = &mut fut => {
-          return result;
-        }
-        r = self.run_event_loop(false) => {
-          if r.is_err() {
-            return r;
-          }
-        }
-      };
-    }
-  }
-
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
   pub fn exit_code(&self) -> i32 {

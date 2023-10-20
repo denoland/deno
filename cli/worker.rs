@@ -167,7 +167,7 @@ impl CliMainWorker {
         eprintln!("start hmr");
         self
           .worker
-          .with_event_loop_fallible(
+          .with_event_loop(
             hot_reload::run_hot_reload(hot_reload_manager).boxed_local(),
           )
           .await?;
