@@ -303,7 +303,7 @@ where
     select! {
       _ = receiver_future => {},
       received_changed_paths = watcher_receiver.recv() => {
-        eprintln!("received paths {:?}", received_changed_paths);
+        // eprintln!("received paths {:?}", received_changed_paths);
         print_after_restart();
         changed_paths = received_changed_paths;
         continue;
