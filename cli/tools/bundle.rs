@@ -31,10 +31,10 @@ pub async fn bundle(
   if let Some(watch_flags) = &bundle_flags.watch {
     util::file_watcher::watch_func(
       flags,
-      util::file_watcher::PrintConfig {
-        job_name: "Bundle".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
+      util::file_watcher::PrintConfig::new(
+        "Bundle",
+        !watch_flags.no_clear_screen,
+      ),
       move |flags, watcher_communicator, _changed_paths| {
         let bundle_flags = bundle_flags.clone();
         Ok(async move {

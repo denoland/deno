@@ -109,10 +109,10 @@ async fn run_with_watch(
 ) -> Result<i32, AnyError> {
   util::file_watcher::watch_recv(
     flags,
-    util::file_watcher::PrintConfig {
-      job_name: "Process".to_string(),
-      clear_screen: !watch_flags.no_clear_screen,
-    },
+    util::file_watcher::PrintConfig::new(
+      "Process",
+      !watch_flags.no_clear_screen,
+    ),
     if watch_flags.hot_reload {
       WatcherRestartMode::Manual
     } else {

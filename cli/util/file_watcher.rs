@@ -92,9 +92,18 @@ where
 
 pub struct PrintConfig {
   /// printing watcher status to terminal.
-  pub job_name: String,
+  job_name: &'static str,
   /// determine whether to clear the terminal screen; applicable to TTY environments only.
-  pub clear_screen: bool,
+  clear_screen: bool,
+}
+
+impl PrintConfig {
+  pub fn new(job_name: &'static str, clear_screen: bool) -> Self {
+    Self {
+      job_name,
+      clear_screen,
+    }
+  }
 }
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {

@@ -1205,14 +1205,14 @@ pub async fn run_tests_with_watch(
 
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig {
-      job_name: "Test".to_string(),
-      clear_screen: test_flags
+    file_watcher::PrintConfig::new(
+      "Test",
+      test_flags
         .watch
         .as_ref()
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
-    },
+    ),
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       Ok(async move {

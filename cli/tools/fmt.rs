@@ -64,10 +64,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   if let Some(watch_flags) = &fmt_flags.watch {
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig {
-        job_name: "Fmt".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
+      file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
