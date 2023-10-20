@@ -91,29 +91,47 @@ where
 }
 
 pub struct PrintConfig {
-  /// printing watcher status to terminal.
+  /// Defaults to 'Watcher'
+  banner: &'static str,
+  /// Printing watcher status to terminal.
   job_name: &'static str,
-  /// determine whether to clear the terminal screen; applicable to TTY environments only.
+  /// Determine whether to clear the terminal screen; applicable to TTY environments only.
   clear_screen: bool,
 }
 
 impl PrintConfig {
   pub fn new(job_name: &'static str, clear_screen: bool) -> Self {
     Self {
+      banner: "Watcher",
+      job_name,
+      clear_screen,
+    }
+  }
+
+  pub fn new_with_banner(
+    banner: &'static str,
+    job_name: &'static str,
+    clear_screen: bool,
+  ) -> Self {
+    Self {
+      banner,
       job_name,
       clear_screen,
     }
   }
 }
 
-fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
+fn create_print_after_restart_fn(
+  banner: &'static str,
+  clear_screen: bool,
+) -> impl Fn() {
   move || {
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{CLEAR_SCREEN}");
     }
     info!(
       "{} File change detected! Restarting!",
-      colors::intense_blue("Watcher"),
+      colors::intense_blue(banner),
     );
   }
 }
@@ -224,17 +242,18 @@ where
     DebouncedReceiver::new_with_sender();
 
   let PrintConfig {
+    banner,
     job_name,
     clear_screen,
   } = print_config;
 
-  let print_after_restart = create_print_after_restart_fn(clear_screen);
+  let print_after_restart = create_print_after_restart_fn(banner, clear_screen);
   let watcher_communicator = WatcherCommunicator {
     paths_to_watch_tx: paths_to_watch_tx.clone(),
     changed_paths_rx: changed_paths_rx.resubscribe(),
     restart_tx: restart_tx.clone(),
   };
-  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
+  info!("{} {} started.", colors::intense_blue(banner), job_name);
 
   let mut changed_paths = None;
   loop {

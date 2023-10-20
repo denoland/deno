@@ -109,7 +109,12 @@ async fn run_with_watch(
 ) -> Result<i32, AnyError> {
   util::file_watcher::watch_recv(
     flags,
-    util::file_watcher::PrintConfig::new(
+    util::file_watcher::PrintConfig::new_with_banner(
+      if watch_flags.hot_reload {
+        "HMR"
+      } else {
+        "Watcher"
+      },
       "Process",
       !watch_flags.no_clear_screen,
     ),
