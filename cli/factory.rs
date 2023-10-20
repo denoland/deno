@@ -40,6 +40,7 @@ use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -59,26 +60,18 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
-use std::cell::RefCell;
 use std::future::Future;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct CliFactoryBuilder {
-  maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
+  watcher_communicator: Option<WatcherCommunicator>,
 }
 
 impl CliFactoryBuilder {
   pub fn new() -> Self {
-    Self { maybe_sender: None }
-  }
-
-  pub fn with_watcher(
-    mut self,
-    sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-  ) -> Self {
-    self.maybe_sender = Some(sender);
-    self
+    Self {
+      watcher_communicator: None,
+    }
   }
 
   pub async fn build_from_flags(
@@ -88,9 +81,18 @@ impl CliFactoryBuilder {
     Ok(self.build_from_cli_options(Arc::new(CliOptions::from_flags(flags)?)))
   }
 
+  pub async fn build_from_flags_for_watcher(
+    mut self,
+    flags: Flags,
+    watcher_communicator: WatcherCommunicator,
+  ) -> Result<CliFactory, AnyError> {
+    self.watcher_communicator = Some(watcher_communicator);
+    self.build_from_flags(flags).await
+  }
+
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
     CliFactory {
-      maybe_sender: RefCell::new(self.maybe_sender),
+      watcher_communicator: self.watcher_communicator,
       options,
       services: Default::default(),
     }
@@ -166,8 +168,7 @@ struct CliFactoryServices {
 }
 
 pub struct CliFactory {
-  maybe_sender:
-    RefCell<Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>>,
+  watcher_communicator: Option<WatcherCommunicator>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }
@@ -384,11 +385,14 @@ impl CliFactory {
   }
 
   pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
-    let maybe_sender = self.maybe_sender.borrow_mut().take();
+    let maybe_file_watcher_reporter = self
+      .watcher_communicator
+      .as_ref()
+      .map(|i| FileWatcherReporter::new(i.clone()));
     self
       .services
       .maybe_file_watcher_reporter
-      .get_or_init(|| maybe_sender.map(FileWatcherReporter::new))
+      .get_or_init(|| maybe_file_watcher_reporter)
   }
 
   pub fn emit_cache(&self) -> Result<&EmitCache, AnyError> {
@@ -595,6 +599,7 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
+
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       npm_resolver.clone(),
