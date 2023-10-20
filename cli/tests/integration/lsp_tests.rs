@@ -10419,3 +10419,92 @@ fn lsp_vendor_dir() {
 
   client.shutdown();
 }
+
+#[test]
+fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  let contents = r#"import path from "path";"#;
+  temp_dir.write("main.ts", contents);
+  temp_dir.write("deno.json", r#"{ "unstable": ["bare-node-builtins"] }"#);
+  let main_script = temp_dir.uri().join("main.ts").unwrap();
+
+  let mut client = context.new_lsp_command().capture_stderr().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": main_script,
+      "languageId": "typescript",
+      "version": 1,
+      "text": contents,
+    }
+  }));
+
+  let diagnostics = diagnostics
+    .messages_with_file_and_source(main_script.as_ref(), "deno")
+    .diagnostics
+    .into_iter()
+    .filter(|d| {
+      d.code
+        == Some(lsp::NumberOrString::String(
+          "import-node-prefix-missing".to_string(),
+        ))
+    })
+    .collect::<Vec<_>>();
+
+  // get the quick fixes
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": main_script
+      },
+      "range": {
+        "start": { "line": 0, "character": 16 },
+        "end": { "line": 0, "character": 18 },
+      },
+      "context": {
+        "diagnostics": json!(diagnostics),
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Update specifier to node:path",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 17 },
+            "end": { "line": 0, "character": 23 }
+          },
+          "severity": 2,
+          "code": "import-node-prefix-missing",
+          "source": "deno",
+          "message": "\"path\" is resolved to \"node:path\". If you want to use a built-in Node module, add a \"node:\" prefix.",
+          "data": {
+            "specifier": "path"
+          },
+        }
+      ],
+      "edit": {
+        "changes": {
+          main_script: [
+            {
+              "range": {
+                "start": { "line": 0, "character": 17 },
+                "end": { "line": 0, "character": 23 }
+              },
+              "newText": "\"node:path\""
+            }
+          ]
+        }
+      }
+    }])
+  );
+
+  client.shutdown();
+}
