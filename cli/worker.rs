@@ -43,6 +43,7 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
+use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
@@ -165,12 +166,16 @@ impl CliMainWorker {
     loop {
       if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
         eprintln!("start hmr");
-        self
-          .worker
-          .with_event_loop(
-            hot_reload::run_hot_reload(hot_reload_manager).boxed_local(),
-          )
-          .await?;
+        let hmr_future =
+          hot_reload::run_hot_reload(hot_reload_manager).boxed_local();
+        let event_loop_future = self.worker.run_event_loop(false).boxed_local();
+
+        select! {
+          _ = hmr_future => {},
+          result = event_loop_future => {
+            result?;
+          }
+        }
         eprintln!("stop hmr");
       } else {
         self

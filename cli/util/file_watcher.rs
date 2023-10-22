@@ -279,6 +279,7 @@ where
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
 
     let receiver_future = async {
+      eprintln!("receiver future");
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
         eprintln!("add paths1");
@@ -294,6 +295,7 @@ where
     // don't reload dependencies after the first run
     flags.reload = false;
 
+    eprintln!("before select");
     select! {
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
@@ -331,8 +333,9 @@ where
         );
       },
     };
-
+    eprintln!("after select");
     let receiver_future = async {
+      eprintln!("receiver future2");
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
         eprintln!("add paths2");
