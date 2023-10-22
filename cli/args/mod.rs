@@ -1228,6 +1228,15 @@ impl CliOptions {
     self.flags.unstable
   }
 
+  pub fn unstable_bare_node_builtlins(&self) -> bool {
+    self.flags.unstable_bare_node_builtlins
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.json.unstable.contains(&"bare-node-builtins".to_string()))
+        .unwrap_or(false)
+  }
+
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
   }
