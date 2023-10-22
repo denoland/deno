@@ -166,23 +166,19 @@ impl CliMainWorker {
 
     loop {
       if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
-        eprintln!("start hmr");
         let hmr_future =
           hot_reload::run_hot_reload(hot_reload_manager).boxed_local();
         let event_loop_future = self.worker.run_event_loop(false).boxed_local();
 
         select! {
           result = hmr_future => {
-            eprintln!("hmr future ended");
             hot_reload_manager.watcher_communicator.change_restart_mode(WatcherRestartMode::Automatic);
             result?;
           },
           result = event_loop_future => {
-            eprintln!("event loop future ended");
             result?;
           }
         }
-        eprintln!("stop hmr");
       } else {
         self
           .worker
@@ -198,8 +194,6 @@ impl CliMainWorker {
       }
     }
 
-    eprintln!("hot reload finished");
-
     self.worker.dispatch_unload_event(located_script_name!())?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
@@ -214,8 +208,6 @@ impl CliMainWorker {
         .with_event_loop(hot_reload_manager.stop().boxed_local())
         .await?;
     }
-
-    eprintln!("hot reload finished2");
 
     Ok(self.worker.exit_code())
   }

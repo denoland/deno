@@ -155,18 +155,11 @@ pub async fn run_hot_reload(
         } else if notification.method == "Debugger.scriptParsed" {
           let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
           if params.url.starts_with("file://") {
-            // if let Ok(path_url) = Url::parse(&params.url) {
-            //   eprintln!("path url {:#?}", path_url.as_str());
-            //   let _ = hmr_manager.watcher_communicator.watch_paths(vec![path_url.to_file_path().unwrap()]);
-            //   eprintln!("started watching path");
-            //   tokio::task::yield_now().await;
-            // }
             hmr_manager.script_ids.insert(params.url, params.script_id);
           }
         }
       }
       changed_paths = hmr_manager.watcher_communicator.watch_for_changed_paths() => {
-        eprintln!("changed patchs in hot {:#?}", changed_paths);
         let changed_paths = changed_paths?;
 
         let Some(changed_paths) = changed_paths else {

@@ -273,7 +273,6 @@ where
       create_print_after_restart_fn(banner, clear_screen);
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
-      eprintln!("received changed paths in file watcher");
       *changed_paths_.lock() = received_changed_paths.clone();
       match *restart_mode.lock() {
         WatcherRestartMode::Automatic => {
@@ -281,7 +280,6 @@ where
           let _ = restart_tx.send(());
         }
         WatcherRestartMode::Manual => {
-          eprintln!("manual dispatching event");
           // TODO(bartlomieju): should we fail on sending changed paths?
           let _ = changed_paths_tx.send(received_changed_paths);
         }
@@ -298,14 +296,11 @@ where
     }
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
-    eprintln!("consume paths1");
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
 
     let receiver_future = async {
-      eprintln!("receiver future");
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        eprintln!("add paths1");
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
@@ -318,7 +313,6 @@ where
     // don't reload dependencies after the first run
     flags.reload = false;
 
-    eprintln!("before select");
     select! {
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
@@ -326,7 +320,6 @@ where
         continue;
       },
       success = operation_future => {
-        eprintln!("consume paths2");
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
         // TODO(bartlomieju): print exit code here?
         info!(
@@ -341,12 +334,9 @@ where
         );
       },
     };
-    eprintln!("after select");
     let receiver_future = async {
-      eprintln!("receiver future2");
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        eprintln!("add paths2");
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
@@ -392,7 +382,6 @@ fn new_watcher(
 }
 
 fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
-  eprintln!("add patchs to watcher {:#?}", paths);
   // Ignore any error e.g. `PathNotFound`
   for path in paths {
     let _ = watcher.watch(path, RecursiveMode::Recursive);
@@ -407,7 +396,6 @@ fn consume_paths_to_watch(
   loop {
     match receiver.try_recv() {
       Ok(paths) => {
-        eprintln!("add paths3");
         add_paths_to_watcher(watcher, &paths);
       }
       Err(e) => match e {
