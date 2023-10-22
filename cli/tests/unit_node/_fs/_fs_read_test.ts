@@ -316,7 +316,7 @@ Deno.test({
     const fd = openSync(testData, "r");
     const _bytesRead = readSync(
       fd,
-      buffer
+      buffer,
     );
     closeSync(fd);
   },
