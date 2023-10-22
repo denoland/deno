@@ -133,7 +133,6 @@ export function open(
       }
       return;
     }
-
     Deno.open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
