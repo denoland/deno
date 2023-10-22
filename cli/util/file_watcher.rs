@@ -269,14 +269,11 @@ where
   let changed_paths_ = changed_paths.clone();
 
   tokio::task::spawn(async move {
-    let print_after_restart =
-      create_print_after_restart_fn(banner, clear_screen);
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
       *changed_paths_.lock() = received_changed_paths.clone();
       match *restart_mode.lock() {
         WatcherRestartMode::Automatic => {
-          print_after_restart();
           let _ = restart_tx.send(());
         }
         WatcherRestartMode::Manual => {
