@@ -57,8 +57,8 @@ function convertFlagAndModeToOptions(
   flag?: openFlags,
   mode?: number,
 ): Deno.OpenOptions | undefined {
-  if (!flag && !mode) return undefined;
-  if (!flag && mode) return { mode };
+  if (flag === undefined && mode === undefined) return undefined;
+  if (flag === undefined && mode) return { mode };
   return { ...getOpenOptions(flag), mode };
 }
 
@@ -133,6 +133,7 @@ export function open(
       }
       return;
     }
+
     Deno.open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
