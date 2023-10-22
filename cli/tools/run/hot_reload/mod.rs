@@ -130,7 +130,6 @@ impl HotReloadManager {
   }
 }
 
-// TODO(bartlomieju): Shouldn't use `tokio::select!` here, as futures are not cancel safe
 pub async fn run_hot_reload(
   hmr_manager: &mut HotReloadManager,
 ) -> Result<(), AnyError> {
@@ -141,7 +140,6 @@ pub async fn run_hot_reload(
   loop {
     select! {
       biased;
-      // TODO(SyrupThinker): Deferred retry with timeout
       Some(notification) = session_rx.next() => {
         let notification = serde_json::from_value::<RpcNotification>(notification)?;
         // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
@@ -207,8 +205,7 @@ pub async fn run_hot_reload(
             // hmr_manager.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?
           };
 
-          // eprintln!("transpiled source code {:#?}", source_code);
-          // TODO(bartlomieju): this loop should do 2 retries at most
+          let mut tries = 1;
           loop {
             let result = hmr_manager.set_script_source(&id, source_code.as_str()).await?;
 
@@ -218,12 +215,15 @@ pub async fn run_hot_reload(
             }
 
             hmr_manager.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(result.status.explain())));
-            if !result.status.should_retry() {
-              hmr_manager.watcher_communicator.print("Restarting the process...".to_string());
-              // TODO(bartlomieju): Print into that sending failed?
-              let _ = hmr_manager.watcher_communicator.force_restart();
-              break;
+            if result.status.should_retry() && tries <= 2 {
+              tries += 1;
+              tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+              continue;
             }
+
+            hmr_manager.watcher_communicator.print("Restarting the process...".to_string());
+            let _ = hmr_manager.watcher_communicator.force_restart();
+            break;
           }
         }
       }

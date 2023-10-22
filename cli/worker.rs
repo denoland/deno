@@ -170,15 +170,21 @@ impl CliMainWorker {
           hot_reload::run_hot_reload(hot_reload_manager).boxed_local();
         let event_loop_future = self.worker.run_event_loop(false).boxed_local();
 
+        let result;
+
         select! {
-          result = hmr_future => {
-            hot_reload_manager.watcher_communicator.change_restart_mode(WatcherRestartMode::Automatic);
-            result?;
+          hmr_result = hmr_future => {
+            result = hmr_result;
           },
-          result = event_loop_future => {
-            hot_reload_manager.watcher_communicator.change_restart_mode(WatcherRestartMode::Automatic);
-            result?;
+          event_loop_result = event_loop_future => {
+            result = event_loop_result;
           }
+        }
+        if let Err(e) = result {
+          hot_reload_manager
+            .watcher_communicator
+            .change_restart_mode(WatcherRestartMode::Automatic);
+          return Err(e);
         }
       } else {
         self
