@@ -1,3 +1,3 @@
 export function getFoo() {
-  return "foo12asdfasf434"; // change this line
+  return "foo1234"; // change this line
 }

@@ -265,7 +265,30 @@ where
   };
   info!("{} {} started.", colors::intense_blue(banner), job_name);
 
-  let mut changed_paths = None;
+  let changed_paths = Arc::new(Mutex::new(None));
+  let changed_paths_ = changed_paths.clone();
+
+  tokio::task::spawn(async move {
+    let print_after_restart =
+      create_print_after_restart_fn(banner, clear_screen);
+    loop {
+      let received_changed_paths = watcher_receiver.recv().await;
+      eprintln!("received changed paths in file watcher");
+      *changed_paths_.lock() = received_changed_paths.clone();
+      match *restart_mode.lock() {
+        WatcherRestartMode::Automatic => {
+          print_after_restart();
+          let _ = restart_tx.send(());
+        }
+        WatcherRestartMode::Manual => {
+          eprintln!("manual dispatching event");
+          // TODO(bartlomieju): should we fail on sending changed paths?
+          let _ = changed_paths_tx.send(received_changed_paths);
+        }
+      }
+    }
+  });
+
   loop {
     // We may need to give the runtime a tick to settle, as cancellations may need to propagate
     // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
@@ -289,7 +312,7 @@ where
     let operation_future = error_handler(operation(
       flags.clone(),
       watcher_communicator.clone(),
-      changed_paths.take(),
+      changed_paths.lock().take(),
     )?);
 
     // don't reload dependencies after the first run
@@ -301,21 +324,6 @@ where
       _ = restart_rx.recv() => {
         print_after_restart();
         continue;
-      },
-      received_changed_paths = watcher_receiver.recv() => {
-        eprintln!("received changed paths in file watcher");
-        changed_paths = received_changed_paths.clone();
-
-        match *restart_mode.lock() {
-          WatcherRestartMode::Automatic => {
-            print_after_restart();
-            continue;
-          },
-          WatcherRestartMode::Manual => {
-            // TODO(bartlomieju): should we fail on sending changed paths?
-            let _ = changed_paths_tx.send(received_changed_paths);
-          }
-        }
       },
       success = operation_future => {
         eprintln!("consume paths2");
@@ -348,10 +356,8 @@ where
     // watched paths has changed.
     select! {
       _ = receiver_future => {},
-      received_changed_paths = watcher_receiver.recv() => {
-        // eprintln!("received paths {:?}", received_changed_paths);
+      _ = restart_rx.recv() => {
         print_after_restart();
-        changed_paths = received_changed_paths;
         continue;
       },
     };

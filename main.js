@@ -1,12 +1,12 @@
 import { getFoo } from "./foo.ts";
 
 async function bar() {
-  throw new Error("fail1");
+  throw new Error("fail12123");
 }
 
 let i = 1;
 setInterval(async () => {
-  if (i === 5) {
+  if (i % 5 === 0) {
     // unhandled promise rejection is not shown
     await bar();
   }

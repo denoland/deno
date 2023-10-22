@@ -26,7 +26,7 @@ use json_types::Status;
 
 pub struct HotReloadManager {
   session: LocalInspectorSession,
-  watcher_communicator: WatcherCommunicator,
+  pub watcher_communicator: WatcherCommunicator,
   script_ids: HashMap<String, String>,
   emitter: Arc<Emitter>,
 }

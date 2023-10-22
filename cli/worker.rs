@@ -57,6 +57,7 @@ use crate::tools::run::hot_reload;
 use crate::tools::run::hot_reload::HotReloadManager;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -171,8 +172,13 @@ impl CliMainWorker {
         let event_loop_future = self.worker.run_event_loop(false).boxed_local();
 
         select! {
-          _ = hmr_future => {},
+          result = hmr_future => {
+            eprintln!("hmr future ended");
+            hot_reload_manager.watcher_communicator.change_restart_mode(WatcherRestartMode::Automatic);
+            result?;
+          },
           result = event_loop_future => {
+            eprintln!("event loop future ended");
             result?;
           }
         }
