@@ -176,6 +176,7 @@ impl CliMainWorker {
             result?;
           },
           result = event_loop_future => {
+            hot_reload_manager.watcher_communicator.change_restart_mode(WatcherRestartMode::Automatic);
             result?;
           }
         }

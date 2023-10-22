@@ -321,7 +321,7 @@ where
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} {}. Restarting on file change...",
-          colors::intense_blue("Watcher"),
+          colors::intense_blue(banner),
           job_name,
           if success {
             "finished"
