@@ -995,7 +995,7 @@ dependencies = [
  "deno_lockfile",
  "deno_npm",
  "deno_runtime",
- "deno_semver 0.5.1",
+ "deno_semver",
  "deno_task_shell",
  "dissimilar",
  "dprint-plugin-json",
@@ -1180,12 +1180,11 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5999e360fec39bbfee5d85bac82c5f557ed93a58660bc255026a90796138c6"
+checksum = "fed704bc09eb4f88b26b16c75f87795d1ea1e658e26867fe684cef91c55543f1"
 dependencies = [
  "anyhow",
- "deno_semver 0.4.0",
  "indexmap 2.0.0",
  "jsonc-parser",
  "log",
@@ -1266,9 +1265,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.67.0"
+version = "0.68.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2480971d683babc07eea6cdb37d1214675c25d084b0c819e2e52898634b044ce"
+checksum = "b7f5649a3e8c8da3e73d27eff6306c522f1bb0c54e75fad5530f3a4746eea81f"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -1284,9 +1283,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.28.0"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc68365e2e5ce6dd11506a1a17aac6a10ea7787e084c45690f70c46a6662fd8"
+checksum = "ac5e585450dbafc39a2161bc9c8f861409cec08c014c4f82c62fdbce5ae335c2"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1351,16 +1350,17 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.55.0"
+version = "0.56.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f09c93dac12402a37be3ee24e0b6a691ddc5fdef13831b375b6c0950efc89e40"
+checksum = "f02ddb53a0d3201895566ef3c1c5861c62d06df3b0fac6a7dcf826dd081eec27"
 dependencies = [
  "anyhow",
  "async-trait",
  "data-url",
  "deno_ast",
- "deno_semver 0.5.1",
+ "deno_semver",
  "futures",
+ "import_map",
  "indexmap 2.0.0",
  "monch",
  "once_cell",
@@ -1584,7 +1584,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "deno_lockfile",
- "deno_semver 0.5.1",
+ "deno_semver",
  "futures",
  "log",
  "monch",
@@ -1665,19 +1665,6 @@ dependencies = [
  "which",
  "winapi",
  "winres",
-]
-
-[[package]]
-name = "deno_semver"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f739a9d90c47e2af7e2fcbae0976360f3fb5292f7288a084d035ed44d12a288"
-dependencies = [
- "monch",
- "once_cell",
- "serde",
- "thiserror",
- "url",
 ]
 
 [[package]]
@@ -2242,16 +2229,16 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.53.0"
+version = "0.54.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf1763e61b99be49c961817d2211fbcef23b04159a60895b208e4608beb20ee0"
+checksum = "4032916b1567b2588723ea4d1aa47537ae0f580f64a0aba5dedc8bf13e20c6e0"
 dependencies = [
  "anyhow",
  "base64 0.21.4",
  "deno_ast",
  "deno_graph",
  "deno_npm",
- "deno_semver 0.5.1",
+ "deno_semver",
  "futures",
  "hashlink",
  "serde",

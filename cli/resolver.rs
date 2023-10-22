@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
@@ -9,6 +8,7 @@ use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
+use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
@@ -104,12 +104,14 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
+  bare_node_builtins_enabled: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
+  pub bare_node_builtins_enabled: bool,
 }
 
 impl CliGraphResolver {
@@ -135,6 +137,7 @@ impl CliGraphResolver {
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
       npm_resolver,
       found_package_json_dep_flag: Default::default(),
+      bare_node_builtins_enabled: options.bare_node_builtins_enabled,
     }
   }
 
@@ -167,7 +170,7 @@ impl Resolver for CliGraphResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ResolveError> {
     let result = match self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
@@ -190,7 +193,7 @@ impl Resolver for CliGraphResolver {
     if let Some(vendor_specifier) = &self.maybe_vendor_specifier {
       if let Ok(specifier) = &result {
         if specifier.as_str().starts_with(vendor_specifier.as_str()) {
-          bail!("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.");
+          return Err(ResolveError::Other(anyhow!("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")));
         }
       }
     }
@@ -238,6 +241,19 @@ impl NpmResolver for CliGraphResolver {
     }
   }
 
+  fn on_resolve_bare_builtin_node_module(
+    &self,
+    module_name: &str,
+    range: &deno_graph::Range,
+  ) {
+    let deno_graph::Range {
+      start, specifier, ..
+    } = range;
+    let line = start.line + 1;
+    let column = start.character + 1;
+    log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
+  }
+
   fn load_and_cache_npm_package_info(
     &self,
     package_name: &str,
@@ -275,6 +291,10 @@ impl NpmResolver for CliGraphResolver {
         "npm specifiers were requested; but --no-npm is specified"
       )),
     }
+  }
+
+  fn enables_bare_builtin_node_module(&self) -> bool {
+    self.bare_node_builtins_enabled
   }
 }
 
