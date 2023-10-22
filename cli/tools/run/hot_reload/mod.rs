@@ -2,6 +2,7 @@
 
 use crate::emit::Emitter;
 use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -51,6 +52,9 @@ impl HotReloadManager {
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   pub async fn stop(&mut self) -> Result<(), AnyError> {
+    self
+      .watcher_communicator
+      .change_restart_mode(WatcherRestartMode::Automatic);
     self.disable_debugger().await
   }
 
@@ -130,6 +134,9 @@ impl HotReloadManager {
 pub async fn run_hot_reload(
   hmr_manager: &mut HotReloadManager,
 ) -> Result<(), AnyError> {
+  hmr_manager
+    .watcher_communicator
+    .change_restart_mode(WatcherRestartMode::Manual);
   let mut session_rx = hmr_manager.session.take_notification_rx();
   loop {
     select! {

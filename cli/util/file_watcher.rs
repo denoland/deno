@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
@@ -147,6 +148,8 @@ pub struct WatcherCommunicator {
 
   /// Send a message to force a restart.
   restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+
+  restart_mode: Arc<Mutex<WatcherRestartMode>>,
 }
 
 impl Clone for WatcherCommunicator {
@@ -155,6 +158,7 @@ impl Clone for WatcherCommunicator {
       paths_to_watch_tx: self.paths_to_watch_tx.clone(),
       changed_paths_rx: self.changed_paths_rx.resubscribe(),
       restart_tx: self.restart_tx.clone(),
+      restart_mode: self.restart_mode.clone(),
     }
   }
 }
@@ -173,6 +177,10 @@ impl WatcherCommunicator {
   ) -> Result<Option<Vec<PathBuf>>, AnyError> {
     let mut rx = self.changed_paths_rx.resubscribe();
     rx.recv().await.map_err(AnyError::from)
+  }
+
+  pub fn change_restart_mode(&self, restart_mode: WatcherRestartMode) {
+    *self.restart_mode.lock() = restart_mode;
   }
 }
 
@@ -247,11 +255,13 @@ where
     clear_screen,
   } = print_config;
 
+  let restart_mode = Arc::new(Mutex::new(restart_mode));
   let print_after_restart = create_print_after_restart_fn(banner, clear_screen);
   let watcher_communicator = WatcherCommunicator {
     paths_to_watch_tx: paths_to_watch_tx.clone(),
     changed_paths_rx: changed_paths_rx.resubscribe(),
     restart_tx: restart_tx.clone(),
+    restart_mode: restart_mode.clone(),
   };
   info!("{} {} started.", colors::intense_blue(banner), job_name);
 
@@ -265,11 +275,13 @@ where
     }
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
+    eprintln!("consume paths1");
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
 
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
+        eprintln!("add paths1");
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
@@ -289,9 +301,10 @@ where
         continue;
       },
       received_changed_paths = watcher_receiver.recv() => {
+        eprintln!("received changed paths in file watcher");
         changed_paths = received_changed_paths.clone();
 
-        match restart_mode {
+        match *restart_mode.lock() {
           WatcherRestartMode::Automatic => {
             print_after_restart();
             continue;
@@ -303,6 +316,7 @@ where
         }
       },
       success = operation_future => {
+        eprintln!("consume paths2");
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
         // TODO(bartlomieju): print exit code here?
         info!(
@@ -321,6 +335,7 @@ where
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
+        eprintln!("add paths2");
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
@@ -368,6 +383,7 @@ fn new_watcher(
 }
 
 fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
+  eprintln!("add patchs to watcher {:#?}", paths);
   // Ignore any error e.g. `PathNotFound`
   for path in paths {
     let _ = watcher.watch(path, RecursiveMode::Recursive);
@@ -382,6 +398,7 @@ fn consume_paths_to_watch(
   loop {
     match receiver.try_recv() {
       Ok(paths) => {
+        eprintln!("add paths3");
         add_paths_to_watcher(watcher, &paths);
       }
       Err(e) => match e {

@@ -118,11 +118,7 @@ async fn run_with_watch(
       "Process",
       !watch_flags.no_clear_screen,
     ),
-    if watch_flags.hot_reload {
-      WatcherRestartMode::Manual
-    } else {
-      WatcherRestartMode::Automatic
-    },
+    WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, _changed_paths| {
       Ok(async move {
         let factory = CliFactoryBuilder::new()
