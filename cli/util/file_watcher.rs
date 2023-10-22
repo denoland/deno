@@ -150,6 +150,8 @@ pub struct WatcherCommunicator {
   restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
 
   restart_mode: Arc<Mutex<WatcherRestartMode>>,
+
+  banner: String,
 }
 
 impl Clone for WatcherCommunicator {
@@ -159,6 +161,7 @@ impl Clone for WatcherCommunicator {
       changed_paths_rx: self.changed_paths_rx.resubscribe(),
       restart_tx: self.restart_tx.clone(),
       restart_mode: self.restart_mode.clone(),
+      banner: self.banner.clone(),
     }
   }
 }
@@ -181,6 +184,10 @@ impl WatcherCommunicator {
 
   pub fn change_restart_mode(&self, restart_mode: WatcherRestartMode) {
     *self.restart_mode.lock() = restart_mode;
+  }
+
+  pub fn print(&self, msg: String) {
+    log::info!("{} {}", self.banner, msg);
   }
 }
 
@@ -262,6 +269,7 @@ where
     changed_paths_rx: changed_paths_rx.resubscribe(),
     restart_tx: restart_tx.clone(),
     restart_mode: restart_mode.clone(),
+    banner: colors::intense_blue(banner).to_string(),
   };
   info!("{} {} started.", colors::intense_blue(banner), job_name);
 

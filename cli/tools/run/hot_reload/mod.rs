@@ -182,7 +182,7 @@ pub async fn run_hot_reload(
             continue;
           };
 
-          log::info!("{} Reloading changed module {}", colors::intense_blue("HMR"), module_url.as_str());
+          hmr_manager.watcher_communicator.print(format!("Reloading changed module {}", module_url.as_str()));
 
           let Some(id) = hmr_manager.script_ids.get(module_url.as_str()).cloned() else {
             let _ = hmr_manager.watcher_communicator.force_restart();
@@ -217,9 +217,9 @@ pub async fn run_hot_reload(
               break;
             }
 
-            log::info!("{} Failed to reload module {}: {}.", colors::intense_blue("HMR"), module_url, colors::gray(result.status.explain()));
+            hmr_manager.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(result.status.explain())));
             if !result.status.should_retry() {
-              log::info!("{} Restarting the process...", colors::intense_blue("HMR"));
+              hmr_manager.watcher_communicator.print("Restarting the process...".to_string());
               // TODO(bartlomieju): Print into that sending failed?
               let _ = hmr_manager.watcher_communicator.force_restart();
               break;
