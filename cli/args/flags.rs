@@ -3867,20 +3867,20 @@ fn watch_arg_parse_with_paths(
   matches: &mut ArgMatches,
 ) -> Option<WatchFlagsWithPaths> {
   if let Some(paths) = matches.remove_many::<PathBuf>("watch") {
-    Some(WatchFlagsWithPaths {
+    return Some(WatchFlagsWithPaths {
       paths: paths.collect(),
       hot_reload: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
-    })
-  } else if let Some(paths) = matches.remove_many::<PathBuf>("hmr") {
-    Some(WatchFlagsWithPaths {
+    });
+  }
+
+  matches
+    .remove_many::<PathBuf>("hmr")
+    .map(|paths| WatchFlagsWithPaths {
       paths: paths.collect(),
       hot_reload: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
-  } else {
-    None
-  }
 }
 
 // TODO(ry) move this to utility module and add test.
