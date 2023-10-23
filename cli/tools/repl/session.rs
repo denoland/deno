@@ -32,6 +32,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::LocalInspectorSession;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -572,7 +573,7 @@ impl ReplSession {
       .flat_map(|i| {
         self
           .resolver
-          .resolve(i, &self.referrer)
+          .resolve(i, &self.referrer, ResolutionMode::Execution)
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })

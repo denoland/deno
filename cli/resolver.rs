@@ -8,6 +8,7 @@ use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
@@ -170,6 +171,7 @@ impl Resolver for CliGraphResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
+    _mode: ResolutionMode,
   ) -> Result<ModuleSpecifier, ResolveError> {
     let result = match self
       .mapped_specifier_resolver
