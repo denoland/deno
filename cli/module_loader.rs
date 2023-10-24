@@ -39,6 +39,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::EsmModule;
 use deno_graph::JsonModule;
@@ -549,7 +550,11 @@ impl ModuleLoader for CliModuleLoader {
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
     // support in REPL. This should be fixed.
-    let resolution = self.shared.resolver.resolve(specifier, &referrer);
+    let resolution = self.shared.resolver.resolve(
+      specifier,
+      &referrer,
+      ResolutionMode::Execution,
+    );
 
     if self.shared.is_repl {
       let specifier = resolution
