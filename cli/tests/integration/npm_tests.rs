@@ -433,6 +433,13 @@ itest!(types_no_types_entry {
   exit_code: 1,
 });
 
+itest!(types_d_ext {
+  args: "check --all npm/d_ext/main.ts",
+  output: "npm/d_ext/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(typescript_file_in_package {
   args: "run npm/typescript_file_in_package/main.ts",
   output: "npm/typescript_file_in_package/main.out",

@@ -11,6 +11,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
+use deno_graph::source::ResolutionMode;
 use deno_graph::EsmModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;

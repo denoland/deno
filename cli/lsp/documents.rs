@@ -34,6 +34,7 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_graph::source::ResolutionMode;
@@ -92,12 +93,13 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .collect()
 });
 
-pub const DOCUMENT_SCHEMES: [&str; 6] = [
+pub const DOCUMENT_SCHEMES: [&str; 7] = [
   "data",
   "blob",
   "file",
   "http",
   "https",
+  "untitled",
   "deno-notebook-cell",
 ];
 
@@ -262,22 +264,24 @@ impl AssetOrDocument {
   }
 }
 
-/// Convert a `deno-notebook-cell:` specifier to a `file:` specifier.
+/// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
 /// ```rust
 /// assert_eq!(
-///   cell_to_file_specifier(
+///   file_like_to_file_specifier(
 ///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
 ///   ),
 ///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
 /// );
-pub fn cell_to_file_specifier(specifier: &Url) -> Option<Url> {
-  if specifier.scheme() == "deno-notebook-cell" {
-    if let Ok(specifier) = ModuleSpecifier::parse(&format!(
+pub fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
+  if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
+    if let Ok(mut s) = ModuleSpecifier::parse(&format!(
       "file://{}",
       &specifier.as_str()
         [url::quirks::internal_components(specifier).host_end as usize..],
     )) {
-      return Some(specifier);
+      s.query_pairs_mut()
+        .append_pair("scheme", specifier.scheme());
+      return Some(s);
     }
   }
   None
@@ -303,22 +307,28 @@ impl DocumentDependencies {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
     };
-    if module.specifier.scheme() == "deno-notebook-cell" {
+    if file_like_to_file_specifier(&module.specifier).is_some() {
       for (_, dep) in &mut deps.deps {
         if let Resolution::Ok(resolved) = &mut dep.maybe_code {
-          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+          if let Some(specifier) =
+            file_like_to_file_specifier(&resolved.specifier)
+          {
             resolved.specifier = specifier;
           }
         }
         if let Resolution::Ok(resolved) = &mut dep.maybe_type {
-          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+          if let Some(specifier) =
+            file_like_to_file_specifier(&resolved.specifier)
+          {
             resolved.specifier = specifier;
           }
         }
       }
       if let Some(dep) = &mut deps.maybe_types_dependency {
         if let Resolution::Ok(resolved) = &mut dep.dependency {
-          if let Some(specifier) = cell_to_file_specifier(&resolved.specifier) {
+          if let Some(specifier) =
+            file_like_to_file_specifier(&resolved.specifier)
+          {
             resolved.specifier = specifier;
           }
         }
@@ -576,7 +586,7 @@ impl Document {
   pub fn script_version(&self) -> String {
     self
       .maybe_lsp_version()
-      .map(|v| v.to_string())
+      .map(|v| format!("{}+{v}", self.fs_version()))
       .unwrap_or_else(|| self.fs_version().to_string())
   }
 
@@ -1069,7 +1079,10 @@ impl Documents {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> bool {
-    let maybe_specifier = self.get_resolver().resolve(specifier, referrer, ResolutionMode::Types).ok();
+    let maybe_specifier = self
+      .get_resolver()
+      .resolve(specifier, referrer, ResolutionMode::Types)
+      .ok();
     if let Some(import_specifier) = maybe_specifier {
       self.exists(&import_specifier)
     } else {
