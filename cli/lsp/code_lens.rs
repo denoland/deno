@@ -153,9 +153,9 @@ impl Visit for DenoTestCollector {
         }
         ast::Expr::Member(member_expr) => {
           if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
-            if ns_prop_ident.sym.to_string() == "test" {
+            if ns_prop_ident.sym == "test" {
               if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
-                if ident.sym.to_string() == "Deno" {
+                if ident.sym == "Deno" {
                   self.check_call_expr(node, &ns_prop_ident.range());
                 }
               }
@@ -173,7 +173,7 @@ impl Visit for DenoTestCollector {
         match init.as_ref() {
           // Identify destructured assignments of `test` from `Deno`
           ast::Expr::Ident(ident) => {
-            if ident.sym.to_string() == "Deno" {
+            if ident.sym == "Deno" {
               if let ast::Pat::Object(object_pat) = &decl.name {
                 for prop in &object_pat.props {
                   match prop {
@@ -185,7 +185,7 @@ impl Visit for DenoTestCollector {
                     }
                     ast::ObjectPatProp::KeyValue(prop) => {
                       if let ast::PropName::Ident(key_ident) = &prop.key {
-                        if key_ident.sym.to_string() == "test" {
+                        if key_ident.sym == "test" {
                           if let ast::Pat::Ident(value_ident) =
                             &prop.value.as_ref()
                           {
@@ -205,9 +205,9 @@ impl Visit for DenoTestCollector {
           // Identify variable assignments where the init is `Deno.test`
           ast::Expr::Member(member_expr) => {
             if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() {
-              if obj_ident.sym.to_string() == "Deno" {
+              if obj_ident.sym == "Deno" {
                 if let ast::MemberProp::Ident(prop_ident) = &member_expr.prop {
-                  if prop_ident.sym.to_string() == "test" {
+                  if prop_ident.sym == "test" {
                     if let ast::Pat::Ident(binding_ident) = &decl.name {
                       self.test_vars.insert(binding_ident.id.sym.to_string());
                     }

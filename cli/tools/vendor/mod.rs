@@ -355,7 +355,7 @@ fn update_config_text(
 
   let new_text = deno_ast::apply_text_changes(text, text_changes);
   modified_result.new_text = if should_format {
-    format_json(&new_text, fmt_options)
+    format_json(&PathBuf::from("deno.json"), &new_text, fmt_options)
       .ok()
       .map(|formatted_text| formatted_text.unwrap_or(new_text))
   } else {

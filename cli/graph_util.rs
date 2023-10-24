@@ -24,6 +24,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
@@ -487,10 +488,14 @@ fn get_resolution_error_bare_specifier(
   {
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
-      error.downcast_ref::<ImportMapError>()
-    {
-      Some(specifier.as_str())
+    if let ResolveError::Other(error) = (*error).as_ref() {
+      if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
+        error.downcast_ref::<ImportMapError>()
+      {
+        Some(specifier.as_str())
+      } else {
+        None
+      }
     } else {
       None
     }
@@ -679,6 +684,7 @@ mod test {
   use std::sync::Arc;
 
   use deno_ast::ModuleSpecifier;
+  use deno_graph::source::ResolveError;
   use deno_graph::Position;
   use deno_graph::Range;
   use deno_graph::ResolutionError;
@@ -696,7 +702,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(err.into()),
+        error: Arc::new(ResolveError::Other(err.into())),
         specifier: input.to_string(),
         range: Range {
           specifier,
