@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    "jsx": "precompile"
+    // "jsxImportSource": "https://esm.sh/preact"
+  }
+}

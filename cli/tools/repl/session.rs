@@ -537,6 +537,7 @@ impl ReplSession {
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         // JSX is not supported in the REPL
         transform_jsx: false,
+        precompile_jsx: false,
         jsx_automatic: false,
         jsx_development: false,
         jsx_factory: "React.createElement".into(),

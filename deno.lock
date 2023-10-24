@@ -1,0 +1,11 @@
+{
+  "version": "3",
+  "redirects": {
+    "https://esm.sh/preact/jsx-runtime": "https://esm.sh/preact@10.17.1/jsx-runtime"
+  },
+  "remote": {
+    "https://esm.sh/preact@10.17.1/jsx-runtime": "bd703f2946a838f2921f6a170bd00fe7589b469ee94d8250ee92ee8ac2a5b11c",
+    "https://esm.sh/stable/preact@10.17.1/denonext/jsx-runtime.js": "0fa1261fdb2c1e2d75a528d82117726ac532e87b88f2b83e5a1cc50d9f9540c7",
+    "https://esm.sh/stable/preact@10.17.1/denonext/preact.mjs": "0f2f159289b4502eea839f4b57cef910ad03d63213ac5301e6767326b060d8f6"
+  }
+}
