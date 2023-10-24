@@ -2,6 +2,7 @@
 
 use super::client::Client;
 use super::config::ConfigSnapshot;
+use super::config::WorkspaceSettings;
 use super::documents::file_like_to_file_specifier;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
@@ -52,12 +53,12 @@ pub struct CompletionItemData {
 /// a notification to the client.
 async fn check_auto_config_registry(
   url_str: &str,
-  config: &ConfigSnapshot,
+  workspace_settings: &WorkspaceSettings,
   client: &Client,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if config.settings.workspace.suggest.imports.auto_discover {
+  if workspace_settings.suggest.imports.auto_discover {
     if let Ok(specifier) = resolve_url(url_str) {
       let scheme = specifier.scheme();
       let path = &specifier[Position::BeforePath..];
@@ -67,11 +68,14 @@ async fn check_auto_config_registry(
       {
         // check to see if this origin is already explicitly set
         let in_config =
-          config.settings.workspace.suggest.imports.hosts.iter().any(
-            |(h, _)| {
+          workspace_settings
+            .suggest
+            .imports
+            .hosts
+            .iter()
+            .any(|(h, _)| {
               resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
-            },
-          );
+            });
         // if it isn't in the configuration, we will check to see if it supports
         // suggestions and send a notification to the client.
         if !in_config {
@@ -176,7 +180,13 @@ pub async fn get_import_completions(
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
-    check_auto_config_registry(&text, config, client, module_registries).await;
+    check_auto_config_registry(
+      &text,
+      config.workspace_settings_for_specifier(specifier),
+      client,
+      module_registries,
+    )
+    .await;
     let offset = if position.character > range.start.character {
       (position.character - range.start.character) as usize
     } else {
