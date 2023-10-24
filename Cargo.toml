@@ -333,4 +333,4 @@ opt-level = 3
 
 [patch.crates-io]
 deno_ast = { git = "https://github.com/denoland/deno_ast" }
-deno_config = { path = "../deno_config" }
+deno_config = { git = "https://github.com/denoland/deno_config", branch = "precompile_jsx" }

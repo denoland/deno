@@ -1180,6 +1180,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.4.0"
+source = "git+https://github.com/denoland/deno_config?branch=precompile_jsx#5019863018deb65cacfdd495b512e32910698ddd"
 dependencies = [
  "anyhow",
  "indexmap 2.0.0",
