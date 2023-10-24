@@ -37,7 +37,9 @@ use std::env;
 use std::io;
 use std::io::Write;
 use std::mem::replace;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::net::SocketAddrV6;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::Path;
@@ -1574,10 +1576,21 @@ async fn wrap_abs_redirect_server() {
 }
 
 async fn wrap_main_server() {
+  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+async fn wrap_main_ipv6_server() {
+  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
+  let main_server_addr =
+    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, PORT, 0, 0));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
   let main_server_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
-  let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
+  let main_server = Server::bind(main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
     eprintln!("HTTP server error: {e:?}");
   }
@@ -1925,6 +1938,7 @@ pub async fn run_all_servers() {
   let tls_client_auth_server_fut = run_tls_client_auth_server();
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
+  let main_server_ipv6_fut = wrap_main_ipv6_server();
   let main_server_https_fut = wrap_main_https_server();
   let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
@@ -1948,6 +1962,7 @@ pub async fn run_all_servers() {
       double_redirects_server_fut,
       abs_redirect_server_fut,
       main_server_fut,
+      main_server_ipv6_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
       h1_only_server_tls_fut,

@@ -306,7 +306,11 @@ impl TestCommandBuilder {
   }
 
   fn build_command_path(&self) -> PathRef {
-    let command_name = &self.command_name;
+    let command_name = if cfg!(windows) && self.command_name == "npm" {
+      "npm.cmd"
+    } else {
+      &self.command_name
+    };
     if command_name == "deno" {
       deno_exe_path()
     } else {
@@ -407,11 +411,11 @@ impl TestCommandBuilder {
       command.env_clear();
     }
     command.env("DENO_DIR", self.context.deno_dir.path());
-    let envs = self.build_envs();
+    let mut envs = self.build_envs();
     if !envs.contains_key("NPM_CONFIG_REGISTRY") {
-      command.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
+      envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
     }
-    command.envs(self.build_envs());
+    command.envs(envs);
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
 

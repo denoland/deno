@@ -15,7 +15,6 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::EsmModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_graph::source::ResolutionMode;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
