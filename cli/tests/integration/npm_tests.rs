@@ -2221,7 +2221,7 @@ itest!(require_resolve_url_paths {
 });
 
 #[test]
-pub fn boynm_cjs_esm_packages() {
+pub fn byonm_cjs_esm_packages() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2314,7 +2314,7 @@ console.log(getKind());
 }
 
 #[test]
-pub fn boynm_package_npm_specifier_not_installed_and_invalid_subpath() {
+pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2363,7 +2363,7 @@ pub fn boynm_package_npm_specifier_not_installed_and_invalid_subpath() {
 }
 
 #[test]
-pub fn boynm_npm_workspaces() {
+pub fn byonm_npm_workspaces() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write(
@@ -2407,16 +2407,14 @@ const timeout = setTimeout(() => {}, 0);
 expect(timeout).to.be.a("number");
 clearTimeout(timeout);
 
-/**
- * Adds.
- * @param {number} a
- * @param {number} b
- */
 export function add(a, b) {
   return a + b;
 }
 "#,
   );
+  project_a_dir
+    .join("index.d.ts")
+    .write("export function add(a: number, b: number): number;");
 
   let project_b_dir = dir.path().join("project-b");
   project_b_dir.create_dir_all();

@@ -804,10 +804,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     flags.unstable = true;
   }
 
-  if matches.get_flag("unstable-bare-node-builtins") {
-    flags.unstable_bare_node_builtlins = true;
-  }
-
+  flags.unstable_bare_node_builtlins =
+    matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
 
   if matches.get_flag("quiet") {
