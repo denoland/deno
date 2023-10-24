@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
-    "jsx": "precompile"
-    // "jsxImportSource": "https://esm.sh/preact"
+    "jsx": "precompile",
+    "jsxImportSource": "precompiled_jsx"
+  },
+  "imports": {
+    "precompiled_jsx/jsx-runtime": "https://deno.land/x/precompiled_jsx@0.1.0/mod.ts"
   }
 }
