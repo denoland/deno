@@ -94,7 +94,7 @@ impl NpmResolver for ByonmCliNpmResolver {
     }
 
     let package_root_path =
-      self.resolve_package_folder_from_path(referrer)?.unwrap(); // todo: don't unwrap
+      self.resolve_package_folder_from_path(referrer)?.unwrap(); // todo(byonm): don't unwrap
     let path = inner(&*self.fs, name, &package_root_path, referrer, mode)?;
     Ok(self.fs.realpath_sync(&path)?)
   }
@@ -103,7 +103,7 @@ impl NpmResolver for ByonmCliNpmResolver {
     &self,
     specifier: &deno_core::ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let path = specifier.to_file_path().unwrap(); // todo: don't unwrap
+    let path = specifier.to_file_path().unwrap(); // todo(byonm): don't unwrap
     let path = self.fs.realpath_sync(&path)?;
     if self.in_npm_package(specifier) {
       let mut path = path.as_path();
