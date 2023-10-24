@@ -407,6 +407,7 @@ pub struct Flags {
   pub seed: Option<u64>,
   pub unstable: bool,
   pub unstable_bare_node_builtlins: bool,
+  pub unstable_features: Vec<&'static str>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }
@@ -802,6 +803,41 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   if matches.get_flag("unstable") {
     flags.unstable = true;
   }
+  if matches.get_flag("unstable-broadcast-channel") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME);
+  }
+  if matches.get_flag("unstable-ffi") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME);
+  }
+  if matches.get_flag("unstable-fs") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME);
+  }
+  if matches.get_flag("unstable-http") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::http::UNSTABLE_FEATURE_NAME);
+  }
+  if matches.get_flag("unstable-kv") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME);
+  }
+  if matches.get_flag("unstable-net") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_net::UNSTABLE_FEATURE_NAME);
+  }
+  if matches.get_flag("unstable-worker") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME);
+  }
 
   if matches.get_flag("unstable-bare-node-builtins") {
     flags.unstable_bare_node_builtlins = true;
@@ -908,6 +944,55 @@ fn clap_root() -> Command {
         .help("Enable unstable bare node builtins feature")
         .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
         .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-broadcast-channel")
+        .long("unstable-broadcast-channel")
+        .help("Enable unstable `BroadcastChannel` API")
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-ffi")
+        .long("unstable-fii")
+        .help("Enable unstable FFI APIs")
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-fs")
+        .long("unstable-fs")
+        .help("Enable unstable file system APIs")
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-http")
+        .long("unstable-http")
+        .help("Enable unstable HTTP APIs")
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-kv")
+        .long("unstable-kv")
+        .help("Enable unstable Key-Value store APIs")
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-net")
+        .long("unstable-net")
+        .help("Enable unstable net APIs")
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-worker")
+        .long("unstable-worker")
+        .help("Enable unstable Web Worker APIs")
         .action(ArgAction::SetTrue)
         .global(true),
     )
