@@ -131,6 +131,7 @@ pub fn ts_config_to_emit_options(
     jsx_factory: options.jsx_factory,
     jsx_fragment_factory: options.jsx_fragment_factory,
     jsx_import_source: options.jsx_import_source,
+    precompile_jsx: false,
     transform_jsx,
     var_decl_imports: false,
   }
