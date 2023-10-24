@@ -715,7 +715,7 @@ impl LspClient {
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
-    // TODO(nayeemrmn): Maybe remove builder.
+    // TODO(nayeemrmn): Remove config-related methods from builder.
     if let Some(options) = &params.initialization_options {
       if let Some(options) = options.as_object() {
         if let Some(config) = config.as_object_mut() {
