@@ -4,7 +4,6 @@
 
 use crate::hr_timer_lock::hr_timer_lock;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -80,11 +79,11 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 /// [`TimerHandle`] resource given by `rid` has been canceled.
 ///
 /// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
-#[op(deferred)]
+#[op2(async(deferred), fast)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
-  millis: u64,
-  rid: ResourceId,
+  #[number] millis: u64,
+  #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
   let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
 

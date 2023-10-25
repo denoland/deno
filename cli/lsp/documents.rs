@@ -1796,6 +1796,7 @@ fn analyze_module(
 ) -> ModuleResult {
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
+      deno_graph::GraphKind::All,
       specifier,
       maybe_headers,
       parsed_source,
