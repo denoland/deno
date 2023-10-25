@@ -304,7 +304,8 @@ impl CliFactory {
         create_cli_npm_resolver(if self.options.unstable_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
-            // todo(byonm): actually resolve this properly
+            // todo(byonm): actually resolve this properly because the package.json
+            // might be in an ancestor directory
             root_node_modules_dir: self.options.initial_cwd().join("node_modules"),
           })
         } else {
