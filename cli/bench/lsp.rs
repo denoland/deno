@@ -101,7 +101,14 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
-  client.change_configuration(json!({ "deno": { "enable": true } }));
+  client.change_configuration(json!({ "deno": {
+    "enable": true,
+    "codeLens": {
+      "implementations": true,
+      "references": true,
+      "test": true,
+    },
+  } }));
 
   client.write_notification(
     "textDocument/didOpen",
