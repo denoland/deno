@@ -427,6 +427,11 @@ async fn collect_tsc(
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
+  if !workspace_settings.code_lens.implementations
+    && !workspace_settings.code_lens.references
+  {
+    return Ok(vec![]);
+  }
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
   navigation_tree.walk(&|i, mp| {
     let mut code_lenses = code_lenses.borrow_mut();
