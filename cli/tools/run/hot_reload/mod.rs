@@ -3,7 +3,6 @@
 use crate::emit::Emitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
-use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -187,23 +186,9 @@ pub async fn run_hot_reload(
             continue;
           };
 
-          // TODO(bartlomieju): I really don't like `hmr_manager.emitter` etc here.
-          // Maybe use `deno_ast` directly?
-          let media_type = MediaType::from_path(&path);
-          let source_code = tokio::fs::read_to_string(path).await?;
-          let source_arc: Arc<str> = Arc::from(source_code.as_str());
-          let source_code = {
-            let parsed_source = hmr_manager.emitter.parsed_source_cache.get_or_parse_module(
-              &module_url,
-              source_arc.clone(),
-              media_type,
-            )?;
-            let mut options = hmr_manager.emitter.emit_options.clone();
-            options.inline_source_map = false;
-            let transpiled_source = parsed_source.transpile(&options)?;
-            transpiled_source.text.to_string()
-            // hmr_manager.emitter.emit_parsed_source(&module_url, media_type, &source_arc)?
-          };
+          let source_code = hmr_manager.emitter.load_and_emit_for_hmr(
+            &module_url
+          ).await?;
 
           let mut tries = 1;
           loop {

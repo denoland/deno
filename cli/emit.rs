@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 pub struct Emitter {
   emit_cache: EmitCache,
-  pub parsed_source_cache: Arc<ParsedSourceCache>,
-  pub emit_options: deno_ast::EmitOptions,
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  emit_options: deno_ast::EmitOptions,
   // cached hash of the emit options
   emit_options_hash: u64,
 }
@@ -99,6 +99,28 @@ impl Emitter {
       );
       Ok(transpiled_source.text.into())
     }
+  }
+
+  /// Expects a file URL, panics otherwise.
+  pub async fn load_and_emit_for_hmr(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<String, AnyError> {
+    let media_type = MediaType::from_specifier(specifier);
+    let source_code = tokio::fs::read_to_string(
+      ModuleSpecifier::to_file_path(specifier).unwrap(),
+    )
+    .await?;
+    let source_arc: Arc<str> = Arc::from(source_code.as_str());
+    let parsed_source = self.parsed_source_cache.get_or_parse_module(
+      specifier,
+      source_arc.clone(),
+      media_type,
+    )?;
+    let mut options = self.emit_options.clone();
+    options.inline_source_map = false;
+    let transpiled_source = parsed_source.transpile(&options)?;
+    Ok(transpiled_source.text.to_string())
   }
 
   /// A hashing function that takes the source code and uses the global emit
