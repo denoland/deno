@@ -17,6 +17,7 @@ use deno_semver::package::PackageReq;
 use crate::args::package_json::get_local_package_json_version_reqs;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 
 use super::common::types_package_name;
@@ -201,7 +202,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
               .unwrap()
               .join("node_modules")
               .join(key);
-            return Ok(package_path);
+            return Ok(canonicalize_path_maybe_not_exists(&package_path)?);
           }
         }
       }

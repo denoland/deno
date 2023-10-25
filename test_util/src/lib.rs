@@ -1580,6 +1580,7 @@ async fn wrap_main_server() {
   wrap_main_server_for_addr(&main_server_addr).await
 }
 
+// necessary because on Windows the npm binary will resolve localhost to ::1
 async fn wrap_main_ipv6_server() {
   let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
   let main_server_addr =
