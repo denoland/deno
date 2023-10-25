@@ -12,8 +12,8 @@ use crate::Database;
 use crate::DatabaseHandler;
 use crate::QueueMessageHandle;
 use crate::ReadRange;
-use crate::ReadRangeOutput;
 use crate::SnapshotReadOptions;
+use crate::SnapshotReadStream;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -121,7 +121,7 @@ pub trait DynamicDb {
     state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError>;
+  ) -> Result<SnapshotReadStream, AnyError>;
 
   async fn dyn_atomic_write(
     &self,
@@ -146,7 +146,7 @@ impl Database for Box<dyn DynamicDb> {
     state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError> {
+  ) -> Result<SnapshotReadStream, AnyError> {
     (**self).dyn_snapshot_read(state, requests, options).await
   }
 
@@ -181,7 +181,7 @@ where
     state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError> {
+  ) -> Result<SnapshotReadStream, AnyError> {
     Ok(self.snapshot_read(state, requests, options).await?)
   }
 

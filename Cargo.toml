@@ -71,6 +71,7 @@ deno_napi = { version = "0.51.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
+async-stream = "0.3.5"
 async-trait = "0.1.73"
 # TODO(mmastrac): Requires code changes to bump
 base64 = "=0.13.1"

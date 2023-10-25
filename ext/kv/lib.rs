@@ -10,6 +10,7 @@ pub mod sqlite;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
+use std::pin::Pin;
 use std::rc::Rc;
 
 use chrono::Utc;
@@ -19,6 +20,11 @@ use deno_core::anyhow::Context;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::select;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::futures::TryStreamExt;
 use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
@@ -30,6 +36,7 @@ use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::sync::watch;
 
 pub use crate::interface::*;
 
@@ -56,6 +63,8 @@ deno_core::extension!(deno_kv,
     op_kv_encode_cursor,
     op_kv_dequeue_next_message<DBH>,
     op_kv_finish_dequeued_message<DBH>,
+    op_kv_snapshot_read_open_stream<DBH>,
+    op_kv_snapshot_read_stream_next<DBH>,
   ],
   esm = [ "01_db.ts" ],
   options = {
@@ -279,10 +288,14 @@ where
 
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
+    watch: false,
   };
-  let output_ranges =
+  let mut output_ranges =
     db.snapshot_read(state.clone(), read_ranges, opts).await?;
   let output_ranges = output_ranges
+    .next()
+    .await
+    .ok_or_else(|| anyhow::anyhow!("empty stream"))??
     .into_iter()
     .map(|x| {
       x.entries
@@ -292,6 +305,165 @@ where
     })
     .collect::<Result<Vec<_>, AnyError>>()?;
   Ok(output_ranges)
+}
+
+struct SnapshotReadStreamResource {
+  stream: RefCell<
+    Pin<Box<dyn Stream<Item = Result<Vec<Vec<ToV8KvEntry>>, AnyError>>>>,
+  >,
+  abort: watch::Sender<bool>,
+}
+
+impl Resource for SnapshotReadStreamResource {
+  fn name(&self) -> Cow<str> {
+    "snapshot_read_stream".into()
+  }
+}
+
+#[op2(async)]
+#[serde]
+async fn op_kv_snapshot_read_open_stream<DBH>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[serde] ranges: Vec<SnapshotReadRange>,
+  #[serde] consistency: V8Consistency,
+  #[smi] watch: u8, // bool
+) -> Result<ResourceId, AnyError>
+where
+  DBH: DatabaseHandler + 'static,
+{
+  let db = {
+    let state = state.borrow();
+    let resource =
+      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
+    resource.db.clone()
+  };
+
+  if ranges.len() > MAX_READ_RANGES {
+    return Err(type_error(format!(
+      "too many ranges (max {})",
+      MAX_READ_RANGES
+    )));
+  }
+
+  let mut total_entries = 0usize;
+
+  let read_ranges = ranges
+    .into_iter()
+    .map(|(prefix, start, end, limit, reverse, cursor)| {
+      let selector = RawSelector::from_tuple(prefix, start, end)?;
+
+      let (start, end) =
+        decode_selector_and_cursor(&selector, reverse, cursor.as_ref())?;
+      check_read_key_size(&start)?;
+      check_read_key_size(&end)?;
+
+      total_entries += limit as usize;
+      Ok(ReadRange {
+        start,
+        end,
+        limit: NonZeroU32::new(limit)
+          .with_context(|| "limit must be greater than 0")?,
+        reverse,
+      })
+    })
+    .collect::<Result<Vec<_>, AnyError>>()?;
+
+  if total_entries > MAX_READ_ENTRIES {
+    return Err(type_error(format!(
+      "too many entries (max {})",
+      MAX_READ_ENTRIES
+    )));
+  }
+
+  let watch = watch == 1;
+
+  let opts = SnapshotReadOptions {
+    consistency: consistency.into(),
+    watch,
+  };
+  let stream = db
+    .snapshot_read(state.clone(), read_ranges, opts)
+    .await?
+    .and_then(|x| async move {
+      x.into_iter()
+        .map(|x| {
+          x.entries
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, AnyError>>()
+        })
+        .collect::<Result<Vec<_>, AnyError>>()
+    })
+    .boxed_local();
+  let handle_rid = {
+    let mut state = state.borrow_mut();
+    state.resource_table.add(SnapshotReadStreamResource {
+      stream: RefCell::new(stream),
+      abort: watch::channel(false).0,
+    })
+  };
+  Ok(handle_rid)
+}
+
+#[op2(fast)]
+fn op_kv_snapshot_read_stream_abort<DBH>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] handle_rid: ResourceId,
+) -> Result<(), AnyError>
+where
+  DBH: DatabaseHandler + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<SnapshotReadStreamResource>(handle_rid)?;
+
+  resource.abort.send_replace(true);
+
+  Ok(())
+}
+
+#[op2(async)]
+#[serde]
+async fn op_kv_snapshot_read_stream_next<DBH>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] handle_rid: ResourceId,
+) -> Result<Option<Vec<Vec<ToV8KvEntry>>>, AnyError>
+where
+  DBH: DatabaseHandler + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<SnapshotReadStreamResource>(handle_rid)?;
+  let Ok(mut stream) = resource.stream.try_borrow_mut() else {
+    return Err(type_error("stream already in use"));
+  };
+  let mut abort = resource.abort.subscribe();
+
+  let next = loop {
+    if *abort.borrow() {
+      return Ok(None);
+    }
+
+    select! {
+      _ = abort.changed().fuse() => {}
+      next = stream.next().fuse() => break next,
+    }
+  };
+
+  let Some(next) = next else {
+    return Ok(None);
+  };
+
+  match next {
+    Ok(x) => Ok(Some(x)),
+    Err(e) => {
+      eprintln!("error in snapshot read stream: {}", e);
+      Ok(None)
+    }
+  }
 }
 
 struct QueueMessageResource<QPH: QueueMessageHandle + 'static> {

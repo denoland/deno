@@ -1466,6 +1466,16 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category KV
+   */
+  export class KvWatchIterator<T>
+    implements AsyncIterableIterator<KvEntry<T>[]> {
+    next(): Promise<IteratorResult<KvEntry<T>[], undefined>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry<T>[]>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A versioned pair of key and value in a {@linkcode Deno.Kv}.
    *
    * The `versionstamp` is a string that represents the current version of the
@@ -1547,6 +1557,20 @@ declare namespace Deno {
      * clamped.
      */
     batchSize?: number;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options for watching key-value pairs in a {@linkcode Deno.Kv}.
+   *
+   * @category KV
+   */
+  export interface KvWatchOptions {
+    /** An abort signal to allow cancellation of the watch operation.
+     *
+     * If the signal becomes aborted the iterator will be stopped.
+     */
+    signal?: AbortSignal;
   }
 
   /** @category KV */
@@ -1853,6 +1877,11 @@ declare namespace Deno {
       selector: KvListSelector,
       options?: KvListOptions,
     ): KvListIterator<T>;
+
+    watch<T = unknown>(
+      keys: Deno.KvKey[],
+      options?: KvWatchOptions,
+    ): KvWatchIterator<T>;
 
     /**
      * Add a value into the database queue to be delivered to the queue

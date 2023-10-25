@@ -163,6 +163,17 @@ class Kv {
     if (!result) throw new TypeError("Failed to set value");
   }
 
+  watch(
+    keys: Deno.KvKey[],
+    options: { signal?: AbortSignal } = {},
+  ): KvWatchIterator {
+    return new KvWatchIterator({
+      dbRid: this.#rid,
+      keys,
+      signal: options.signal,
+    });
+  }
+
   list(
     selector: Deno.KvListSelector,
     options: {
@@ -658,4 +669,92 @@ class KvListIterator extends AsyncIterator
   }
 }
 
-export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };
+class KvWatchIterator extends AsyncIterator
+  implements AsyncIterator<Deno.KvEntryMaybe<unknown>[]> {
+  #dbRid: number;
+  #rid: number;
+  #keys: Deno.KvKey[];
+  #signal: AbortSignal | undefined;
+  #abortHandler: () => void;
+
+  constructor(
+    { dbRid, keys, signal }: {
+      dbRid: number;
+      keys: Deno.KvKey[];
+      signal?: AbortSignal;
+    },
+  ) {
+    super();
+    this.#dbRid = dbRid;
+    this.#rid = -1;
+    this.#keys = keys;
+    this.#signal = signal;
+    this.#abortHandler = () => {
+      if (this.#rid !== -1) {
+        ops.op_kv_snapshot_read_stream_abort(this.#rid);
+      }
+    };
+    this.#signal?.addEventListener("abort", this.#abortHandler);
+  }
+
+  async next(): Promise<IteratorResult<Deno.KvEntryMaybe<unknown>[]>> {
+    if (this.#rid === -1) {
+      this.#signal?.throwIfAborted();
+
+      this.#rid = await core.opAsync(
+        "op_kv_snapshot_read_open_stream",
+        this.#dbRid,
+        this.#keys.map((key) => [
+          null,
+          key,
+          null,
+          1,
+          false,
+          null,
+        ]),
+        "eventual",
+        1,
+      );
+    }
+
+    const ranges: RawKvEntry[][] | null = await core.opAsync(
+      "op_kv_snapshot_read_stream_next",
+      this.#rid,
+    );
+    if (!ranges) {
+      // stream aborted, retry
+      core.close(this.#rid);
+      this.#rid = -1;
+      return this.next();
+    }
+
+    const entries: Deno.KvEntryMaybe<unknown>[] = ranges.map((entries, i) => {
+      if (!entries.length) {
+        return {
+          key: this.#keys[i],
+          value: null,
+          versionstamp: null,
+        };
+      }
+      return deserializeValue(entries[0]);
+    });
+    return {
+      done: false,
+      value: entries,
+    };
+  }
+
+  close() {
+    if (this.#rid !== -1) {
+      core.close(this.#rid);
+      this.#rid = -1;
+    }
+    this.#signal?.removeEventListener("abort", this.#abortHandler);
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntryMaybe<unknown>[]> {
+    return this;
+  }
+}
+
+export { AtomicOperation, Kv, KvListIterator, KvU64, KvWatchIterator, openKv };

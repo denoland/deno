@@ -21,7 +21,10 @@ use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::futures::future;
+use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
@@ -51,6 +54,7 @@ use crate::QueueMessageHandle;
 use crate::ReadRange;
 use crate::ReadRangeOutput;
 use crate::SnapshotReadOptions;
+use crate::SnapshotReadStream;
 use crate::Value;
 
 const STATEMENT_INC_AND_GET_DATA_VERSION: &str =
@@ -743,9 +747,9 @@ impl Database for SqliteDb {
     _state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     _options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError> {
+  ) -> Result<SnapshotReadStream, AnyError> {
     let requests = Arc::new(requests);
-    Self::run_tx(self.conn.clone(), move |tx| {
+    let out = Self::run_tx(self.conn.clone(), move |tx| {
       let mut responses = Vec::with_capacity(requests.len());
       for request in &*requests {
         let mut stmt = tx.prepare_cached(if request.reverse {
@@ -781,7 +785,9 @@ impl Database for SqliteDb {
 
       Ok(responses)
     })
-    .await
+    .await?;
+
+    Ok(stream::once(future::ready(Ok(out))).boxed_local())
   }
 
   async fn atomic_write(

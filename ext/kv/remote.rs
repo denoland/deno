@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::io::Write;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,13 +20,19 @@ use crate::QueueMessageHandle;
 use crate::ReadRange;
 use crate::ReadRangeOutput;
 use crate::SnapshotReadOptions;
+use crate::SnapshotReadStream;
 use anyhow::Context;
 use async_trait::async_trait;
 use chrono::DateTime;
 use chrono::Utc;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
+use deno_core::futures::stream;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
+use deno_core::futures::TryStreamExt;
 use deno_core::unsync::JoinHandle;
 use deno_core::OpState;
 use prost::Message;
@@ -36,6 +43,9 @@ use termcolor::Color;
 use termcolor::ColorSpec;
 use termcolor::WriteColor;
 use tokio::sync::watch;
+use tokio_util::codec::FramedRead;
+use tokio_util::codec::LengthDelimitedCodec;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 use url::Url;
 use uuid::Uuid;
 
@@ -125,7 +135,7 @@ impl<P: RemoteDbHandlerPermissions> DatabaseHandler for RemoteDbHandler<P> {
     let refresher = MetadataRefresher::new(url, access_token);
 
     let db = RemoteDb {
-      client: reqwest::Client::new(),
+      client: reqwest::Client::builder().build().unwrap(),
       refresher,
       _p: PhantomData,
     };
@@ -160,8 +170,8 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
     &self,
     state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
-    _options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError> {
+    options: SnapshotReadOptions,
+  ) -> Result<SnapshotReadStream, AnyError> {
     let req = pb::SnapshotRead {
       ranges: requests
         .into_iter()
@@ -174,40 +184,46 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
         .collect(),
     };
 
-    let res: pb::SnapshotReadOutput = call_remote::<P, _, _>(
+    let res = call_remote_maybe_streaming::<P, _, pb::SnapshotReadOutput>(
       &state,
       &self.refresher,
       &self.client,
+      options.watch,
       "snapshot_read",
       &req,
     )
     .await?;
 
-    if res.read_disabled {
-      return Err(type_error("Reads are disabled for this database."));
-    }
-
-    let out = res
-      .ranges
-      .into_iter()
-      .map(|r| {
-        Ok(ReadRangeOutput {
-          entries: r
-            .values
-            .into_iter()
-            .map(|e| {
-              let encoding = e.encoding();
-              Ok(KvEntry {
-                key: e.key,
-                value: decode_value(e.value, encoding)?,
-                versionstamp: <[u8; 10]>::try_from(&e.versionstamp[..])?,
-              })
+    let ret = res
+      .and_then(|res| async move {
+        if res.read_disabled {
+          return Err(type_error("Reads are disabled for this database."));
+        }
+        let out = res
+          .ranges
+          .into_iter()
+          .map(|r| {
+            Ok(ReadRangeOutput {
+              entries: r
+                .values
+                .into_iter()
+                .map(|e| {
+                  let encoding = e.encoding();
+                  Ok(KvEntry {
+                    key: e.key,
+                    value: decode_value(e.value, encoding)?,
+                    versionstamp: <[u8; 10]>::try_from(&e.versionstamp[..])?,
+                  })
+                })
+                .collect::<Result<_, AnyError>>()?,
             })
-            .collect::<Result<_, AnyError>>()?,
-        })
+          })
+          .collect::<Result<Vec<_>, AnyError>>()?;
+        Ok(out)
       })
-      .collect::<Result<Vec<_>, AnyError>>()?;
-    Ok(out)
+      .boxed();
+
+    Ok(ret)
   }
 
   async fn atomic_write(
@@ -403,7 +419,7 @@ async fn metadata_refresh_task(
   access_token: String,
   tx: watch::Sender<MetadataState>,
 ) {
-  let client = reqwest::Client::new();
+  let client = reqwest::Client::builder().build().unwrap();
   loop {
     let mut attempt = 0u64;
     let metadata = loop {
@@ -507,6 +523,27 @@ async fn call_remote<
   method: &str,
   req: &T,
 ) -> anyhow::Result<R> {
+  let mut stream = call_remote_maybe_streaming::<P, T, R>(
+    state, refresher, client, false, method, req,
+  )
+  .await?;
+  stream.next().await.unwrap()
+}
+
+async fn call_remote_maybe_streaming<
+  P: RemoteDbHandlerPermissions + 'static,
+  T: Message,
+  R: Message + Default,
+>(
+  state: &RefCell<OpState>,
+  refresher: &MetadataRefresher,
+  client: &reqwest::Client,
+  streaming: bool,
+  method: &str,
+  req: &T,
+) -> anyhow::Result<
+  Pin<Box<dyn Stream<Item = anyhow::Result<R>> + Send + 'static>>,
+> {
   let mut attempt = 0u64;
   let res = loop {
     let mut metadata_rx = refresher.metadata_rx.clone();
@@ -543,12 +580,37 @@ async fn call_remote<
       .post(&full_url)
       .header("x-transaction-domain-id", metadata.database_id.to_string())
       .header("authorization", format!("Bearer {}", metadata.token))
+      .header("x-watch", if streaming { "1" } else { "0" })
       .body(req.encode_to_vec())
       .send()
       .map_err(anyhow::Error::from)
       .and_then(|x| async move {
         if x.status().is_success() {
-          Ok(Ok(x.bytes().await?))
+          if streaming {
+            // Decode 32-bit little-endian length-prefixed frames as Bytes from response
+            let stream = x
+              .bytes_stream()
+              .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+              .into_async_read();
+            let codec = LengthDelimitedCodec::builder()
+              .little_endian()
+              .length_field_length(4)
+              .max_frame_length(16 * 1048576)
+              .new_codec();
+            let stream = FramedRead::new(stream.compat(), codec);
+            Ok(Ok(
+              stream
+                .map_ok(|x| x.freeze())
+                .map_err(anyhow::Error::from)
+                .try_filter(|x| future::ready(!x.is_empty())) // filter out keepalive frames
+                .boxed(),
+            ))
+          } else {
+            let all = x.bytes().await?;
+            Ok(Ok(
+              stream::once(future::ready(Ok::<_, anyhow::Error>(all))).boxed(),
+            ))
+          }
         } else if x.status().is_client_error() {
           Ok(Err((x.status(), x.text().await?)))
         } else {
@@ -581,11 +643,19 @@ async fn call_remote<
     }
   };
 
-  match R::decode(&*res) {
-    Ok(x) => Ok(x),
-    Err(e) => Err(type_error(format!(
-      "failed to decode response from {}: {}",
-      method, e
-    ))),
-  }
+  let method = method.to_string();
+
+  Ok(
+    res
+      .map(move |x| {
+        x.and_then(|x| match R::decode(&*x) {
+          Ok(x) => Ok(x),
+          Err(e) => Err(type_error(format!(
+            "failed to decode response from {}: {}",
+            method, e
+          ))),
+        })
+      })
+      .boxed(),
+  )
 }

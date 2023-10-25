@@ -1427,6 +1427,7 @@ name = "deno_kv"
 version = "0.29.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "base64 0.13.1",
  "chrono",
@@ -1445,6 +1446,7 @@ dependencies = [
  "serde_json",
  "termcolor",
  "tokio",
+ "tokio-util 0.7.9",
  "url",
  "uuid 1.4.1",
 ]
@@ -5868,6 +5870,7 @@ checksum = "1d68074620f57a0b21594d9735eb2e98ab38b17f80d3fcb189fca266771ca60d"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",

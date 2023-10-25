@@ -3,14 +3,19 @@
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::num::NonZeroU32;
+use std::pin::Pin;
 use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
+use deno_core::futures::Stream;
 use deno_core::OpState;
 use num_bigint::BigInt;
 
 use crate::codec::canonicalize_f64;
+
+pub type SnapshotReadStream =
+  Pin<Box<dyn Stream<Item = Result<Vec<ReadRangeOutput>, AnyError>> + 'static>>;
 
 #[async_trait(?Send)]
 pub trait DatabaseHandler {
@@ -32,7 +37,7 @@ pub trait Database {
     state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError>;
+  ) -> Result<SnapshotReadStream, AnyError>;
 
   async fn atomic_write(
     &self,
@@ -57,6 +62,7 @@ pub trait QueueMessageHandle {
 /// Options for a snapshot read.
 pub struct SnapshotReadOptions {
   pub consistency: Consistency,
+  pub watch: bool,
 }
 
 /// The consistency of a read.
