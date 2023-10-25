@@ -19,6 +19,7 @@ use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
+use deno_runtime::deno_fs::RealFs;
 use import_map::ImportMap;
 
 use crate::args::JsxImportSourceConfig;
@@ -293,16 +294,17 @@ fn build_resolver(
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
-  CliGraphResolver::new(
-    None,
-    Default::default(),
-    CliGraphResolverOptions {
-      maybe_jsx_import_source_config,
-      maybe_import_map: original_import_map.map(Arc::new),
-      maybe_vendor_dir: None,
-      bare_node_builtins_enabled: false,
-    },
-  )
+  CliGraphResolver::new(CliGraphResolverOptions {
+    fs: Arc::new(RealFs),
+    node_resolver: None,
+    npm_resolver: None,
+    cjs_resolutions: None,
+    package_json_deps_provider: Default::default(),
+    maybe_jsx_import_source_config,
+    maybe_import_map: original_import_map.map(Arc::new),
+    maybe_vendor_dir: None,
+    bare_node_builtins_enabled: false,
+  })
 }
 
 async fn build_test_graph(

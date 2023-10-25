@@ -407,6 +407,7 @@ pub struct Flags {
   pub seed: Option<u64>,
   pub unstable: bool,
   pub unstable_bare_node_builtlins: bool,
+  pub unstable_byonm: bool,
   pub unstable_features: Vec<&'static str>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
@@ -839,9 +840,9 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME);
   }
 
-  if matches.get_flag("unstable-bare-node-builtins") {
-    flags.unstable_bare_node_builtlins = true;
-  }
+  flags.unstable_bare_node_builtlins =
+    matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_byonm = matches.get_flag("unstable-byonm");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -943,6 +944,15 @@ fn clap_root() -> Command {
         .long("unstable-bare-node-builtins")
         .help("Enable unstable bare node builtins feature")
         .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-byonm")
+        .long("unstable-byonm")
+        .help("Enable unstable 'bring your own node_modules' feature")
+        .env("DENO_UNSTABLE_BYONM")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),

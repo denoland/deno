@@ -253,7 +253,7 @@ impl<'a> TsResponseImportMapper<'a> {
     let root_folder = self
       .npm_resolver
       .as_ref()
-      .and_then(|r| r.resolve_pkg_folder_from_specifier(specifier).ok())
+      .and_then(|r| r.resolve_package_folder_from_path(specifier).ok())
       .flatten()?;
     let package_json_path = root_folder.join("package.json");
     let package_json_text = std::fs::read_to_string(&package_json_path).ok()?;
