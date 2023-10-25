@@ -50,11 +50,8 @@ pub struct ModuleInfoCache {
 
 impl ModuleInfoCache {
   #[cfg(test)]
-  pub fn new_in_memory() -> Self {
-    Self::new(CacheDB::in_memory(
-      &MODULE_INFO_CACHE_DB,
-      crate::version::deno(),
-    ))
+  pub fn new_in_memory(version: &'static str) -> Self {
+    Self::new(CacheDB::in_memory(&MODULE_INFO_CACHE_DB, version))
   }
 
   pub fn new(conn: CacheDB) -> Self {
@@ -213,7 +210,7 @@ mod test {
 
   #[test]
   pub fn module_info_cache_general_use() {
-    let cache = ModuleInfoCache::new_in_memory().recreate_with_version("1.0.0");
+    let cache = ModuleInfoCache::new_in_memory("1.0.0");
     let specifier1 =
       ModuleSpecifier::parse("https://localhost/mod.ts").unwrap();
     let specifier2 =
