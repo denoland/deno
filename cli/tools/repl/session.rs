@@ -543,6 +543,7 @@ impl ReplSession {
         jsx_factory: "React.createElement".into(),
         jsx_fragment_factory: "React.Fragment".into(),
         jsx_import_source: None,
+        precompile_jsx: false,
         var_decl_imports: true,
       })?
       .text;

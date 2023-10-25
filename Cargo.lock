@@ -1089,8 +1089,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.30.2"
-source = "git+https://github.com/denoland/deno_ast#648f35dcfc7a8d4c4a32ca13571ffc94948e7e9c"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e2cfd8ef0fe8a32192505c480e19456df1a2a057857243e1e65b8a877a26fb7"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1202,9 +1203,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.222.0"
+version = "0.223.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b13c81b9ea8462680e7b77088a44fc36390bab3dbfa5a205a285e11b64e0919c"
+checksum = "68c55228461e414205ff6eeabe4058dfe37d41663883d70e1809a84c1814288c"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1263,9 +1264,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.69.1"
+version = "0.69.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e756efaa9a9c6c0a952281f6f94bbab4ce0acb5641fd9aa4a49f491b7a049c"
+checksum = "6932fbb8bcd9154b8b3b6453dadd812999808aeaa5bfe01a2c63d075b8ad3866"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -1281,9 +1282,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd52f6f700236a5a9e653538969210016f8ff5563f93dfd053e97640acc7a2f4"
+checksum = "0bad504e08884056bc559364364db9bc7308bd8cfda3679819656821eb7a5ce8"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1348,9 +1349,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.58.0"
+version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95542a83b6c071b2966f7b35a5ec90d56353ced1c2aaba4831377745db40935b"
+checksum = "8863c48f0d7c03beef9a64173557d5ba8e32a4a3f1b8830420c6ec47668fa4c6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1449,9 +1450,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.52.1"
+version = "0.52.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5f6e83a85385555c43884f18a25a6b7d73ad491155e0efd8c1cee73036bbde2"
+checksum = "d3f51b48abcf1d7946d1a099ac8d58fe3e84023c37820fbb409eccfd30406f56"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1592,9 +1593,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.98.0"
+version = "0.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf89da1a3e50ff7c89956495b53d9bcad29e1f1b3f3d2bc54cad7155f55419c4"
+checksum = "a755d96f9ccd44e4779d859ac1fc823be2b9c975821ac8b05b3e318bc5301aa8"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -1958,9 +1959,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.88.2"
+version = "0.88.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "726e373a4d4af8a42544206d8585f464f31b2f9837d6b4c8a04b07d51b8e0e2d"
+checksum = "1c51dda57191fcc97f1da77927a29ecb6f5ec7133f705dcc7134533f3090681c"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2227,9 +2228,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.55.1"
+version = "0.55.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ba11bdb068e55f2e0830b1d5c7d4829c98ab8fc1ce3513bf32d976852743069"
+checksum = "1039ee8563878c6578b7595b6020590e66fecc69c66150535f83dede4ce96d5e"
 dependencies = [
  "anyhow",
  "base64 0.21.4",
@@ -4812,9 +4813,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.131.0"
+version = "0.132.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38cafa16d0a4288d75925351bb54d06d2e830118ad3fad393947bb11f91b18f3"
+checksum = "9378f2bc5e649f1cbc703ac75d90abe386f924d729215d95950f08c55dad4a8d"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6750,3 +6751,8 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "deno_ast"
+version = "0.31.1"
+source = "git+https://github.com/denoland/deno_ast#95116f51de86090f6cf162ab6d40b4de81053263"

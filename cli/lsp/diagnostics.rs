@@ -788,37 +788,37 @@ fn generate_lint_diagnostics(
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let workspace_settings = config.settings.workspace.clone();
   let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
-  if workspace_settings.lint {
-    for document in documents {
-      // exit early if cancelled
-      if token.is_cancelled() {
-        break;
-      }
-
-      // ignore any npm package files
-      if let Some(npm) = &snapshot.npm {
-        if npm.node_resolver.in_npm_package(document.specifier()) {
-          continue;
-        }
-      }
-
-      let version = document.maybe_lsp_version();
-      diagnostics_vec.push(DiagnosticRecord {
-        specifier: document.specifier().clone(),
-        versioned: VersionedDiagnostics {
-          version,
-          diagnostics: generate_document_lint_diagnostics(
-            config,
-            lint_options,
-            lint_rules.clone(),
-            &document,
-          ),
-        },
-      });
+  for document in documents {
+    let settings =
+      config.workspace_settings_for_specifier(document.specifier());
+    if !settings.lint {
+      continue;
     }
+    // exit early if cancelled
+    if token.is_cancelled() {
+      break;
+    }
+    // ignore any npm package files
+    if let Some(npm) = &snapshot.npm {
+      if npm.node_resolver.in_npm_package(document.specifier()) {
+        continue;
+      }
+    }
+    let version = document.maybe_lsp_version();
+    diagnostics_vec.push(DiagnosticRecord {
+      specifier: document.specifier().clone(),
+      versioned: VersionedDiagnostics {
+        version,
+        diagnostics: generate_document_lint_diagnostics(
+          config,
+          lint_options,
+          lint_rules.clone(),
+          &document,
+        ),
+      },
+    });
   }
   diagnostics_vec
 }
@@ -1442,7 +1442,6 @@ mod tests {
   use crate::cache::RealDenoCacheEnv;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
-  use crate::lsp::config::SpecifierSettings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -1497,7 +1496,7 @@ mod tests {
     let root_uri = resolve_url("file:///").unwrap();
     ConfigSnapshot {
       settings: Settings {
-        workspace: WorkspaceSettings {
+        unscoped: WorkspaceSettings {
           enable: Some(true),
           lint: true,
           ..Default::default()
@@ -1529,7 +1528,6 @@ mod tests {
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
     let temp_dir = TempDir::new();
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let (snapshot, cache_location) = setup(
       &temp_dir,
       &[(
@@ -1578,15 +1576,10 @@ let c: number = "a";
     // now test disabled specifier
     {
       let mut disabled_config = mock_config();
-      disabled_config.settings.specifiers.insert(
-        specifier.clone(),
-        SpecifierSettings {
-          enable: Some(false),
-          disable_paths: vec![],
-          enable_paths: None,
-          code_lens: Default::default(),
-        },
-      );
+      disabled_config.settings.unscoped = WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      };
 
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
