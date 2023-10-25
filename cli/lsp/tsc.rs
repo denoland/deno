@@ -4215,9 +4215,8 @@ impl UserPreferences {
       use_label_details_in_completion_entries: Some(true),
       ..Default::default()
     };
-    let Some(language_settings) = config
-      .workspace_settings()
-      .language_settings_for_specifier(specifier)
+    let Some(language_settings) =
+      config.language_settings_for_specifier(specifier)
     else {
       return base_preferences;
     };
@@ -5312,7 +5311,7 @@ mod tests {
       .variable_types
       .suppress_when_type_matches_name = true;
     let mut config = config::Config::new();
-    config.set_workspace_settings(settings);
+    config.set_workspace_settings(settings, None);
     let user_preferences = UserPreferences::from_config_for_specifier(
       &config,
       &Default::default(),

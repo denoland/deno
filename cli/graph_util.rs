@@ -92,15 +92,23 @@ pub fn graph_valid(
     .errors()
     .flat_map(|error| {
       let is_root = match &error {
-        ModuleGraphError::ResolutionError(_) => false,
+        ModuleGraphError::ResolutionError(_)
+        | ModuleGraphError::TypesResolutionError(_) => false,
         ModuleGraphError::ModuleError(error) => {
           roots.contains(error.specifier())
         }
       };
-      let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
-        enhanced_resolution_error_message(err)
-      } else {
-        format!("{error}")
+      let mut message = match &error {
+        ModuleGraphError::ResolutionError(resolution_error) => {
+          enhanced_resolution_error_message(resolution_error)
+        }
+        ModuleGraphError::TypesResolutionError(resolution_error) => {
+          format!(
+            "Failed resolving types. {}",
+            enhanced_resolution_error_message(resolution_error,)
+          )
+        }
+        ModuleGraphError::ModuleError(_) => format!("{error}"),
       };
 
       if let Some(range) = error.maybe_range() {
@@ -125,14 +133,18 @@ pub fn graph_valid(
         }
 
         // ignore invalid downgrades and invalid local imports when vendoring
-        if let ModuleGraphError::ResolutionError(err) = &error {
-          if matches!(
-            err,
-            ResolutionError::InvalidDowngrade { .. }
-              | ResolutionError::InvalidLocalImport { .. }
-          ) {
-            return None;
+        match &error {
+          ModuleGraphError::ResolutionError(err)
+          | ModuleGraphError::TypesResolutionError(err) => {
+            if matches!(
+              err,
+              ResolutionError::InvalidDowngrade { .. }
+                | ResolutionError::InvalidLocalImport { .. }
+            ) {
+              return None;
+            }
           }
+          ModuleGraphError::ModuleError(_) => {}
         }
       }
 
@@ -423,9 +435,9 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
+      self.npm_resolver.clone(),
       self.parsed_source_cache.clone(),
       permissions,
-      self.options.node_modules_dir_specifier(),
     )
   }
 

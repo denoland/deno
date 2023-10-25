@@ -39,7 +39,10 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
       | ModuleError::UnknownPackage { .. }
       | ModuleError::UnknownPackageReq { .. } => "NotFound",
     },
-    ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
+    ModuleGraphError::ResolutionError(err)
+    | ModuleGraphError::TypesResolutionError(err) => {
+      get_resolution_error_class(err)
+    }
   }
 }
 

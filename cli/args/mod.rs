@@ -76,25 +76,29 @@ use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
 
-static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
-  let env_var_name = "NPM_CONFIG_REGISTRY";
-  if let Ok(registry_url) = std::env::var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+pub fn npm_registry_default_url() -> &'static Url {
+  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "NPM_CONFIG_REGISTRY";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
       }
     }
-  }
 
-  Url::parse("https://registry.npmjs.org").unwrap()
-});
+    Url::parse("https://registry.npmjs.org").unwrap()
+  });
 
-pub fn npm_registry_default_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
@@ -127,6 +131,7 @@ pub fn ts_config_to_emit_options(
     jsx_factory: options.jsx_factory,
     jsx_fragment_factory: options.jsx_fragment_factory,
     jsx_import_source: options.jsx_import_source,
+    precompile_jsx: false,
     transform_jsx,
     var_decl_imports: false,
   }
@@ -569,8 +574,14 @@ pub fn get_root_cert_store(
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NpmProcessState {
-  pub snapshot: deno_npm::resolution::SerializedNpmResolutionSnapshot,
+  pub kind: NpmProcessStateKind,
   pub local_node_modules_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NpmProcessStateKind {
+  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
+  Byonm,
 }
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
@@ -874,9 +885,11 @@ impl CliOptions {
   pub fn resolve_npm_resolution_snapshot(
     &self,
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
-    if let Some(state) = &*NPM_PROCESS_STATE {
+    if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
+      NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+    {
       // TODO(bartlomieju): remove this clone
-      Ok(Some(state.snapshot.clone().into_valid()?))
+      Ok(Some(snapshot.clone().into_valid()?))
     } else {
       Ok(None)
     }
@@ -923,13 +936,6 @@ impl CliOptions {
         .as_ref()
         .and_then(|c| c.node_modules_dir_flag())
     })
-  }
-
-  pub fn node_modules_dir_specifier(&self) -> Option<ModuleSpecifier> {
-    self
-      .maybe_node_modules_folder
-      .as_ref()
-      .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1234,6 +1240,19 @@ impl CliOptions {
         .maybe_config_file()
         .as_ref()
         .map(|c| c.json.unstable.contains(&"bare-node-builtins".to_string()))
+        .unwrap_or(false)
+  }
+
+  pub fn unstable_byonm(&self) -> bool {
+    self.flags.unstable_byonm
+      || NPM_PROCESS_STATE
+        .as_ref()
+        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
+        .unwrap_or(false)
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
         .unwrap_or(false)
   }
 
