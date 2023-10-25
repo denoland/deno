@@ -104,7 +104,7 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     let mut hash_ctx = Context::new(&SHA512);
     hash_ctx.update(&tarball_bytes);
     let digest = hash_ctx.finish();
-    let tarball_checksum = base64::encode(digest.as_ref()).to_lowercase();
+    let tarball_checksum = base64::encode(digest.as_ref());
 
     // create the registry file JSON for this version
     let mut dist = serde_json::Map::new();

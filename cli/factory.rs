@@ -32,6 +32,7 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -300,7 +301,14 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(
+        create_cli_npm_resolver(if self.options.unstable_byonm() {
+          CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
+            fs: fs.clone(),
+            // todo(byonm): actually resolve this properly because the package.json
+            // might be in an ancestor directory
+            root_node_modules_dir: self.options.initial_cwd().join("node_modules"),
+          })
+        } else {
           CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
             snapshot: match self.options.resolve_npm_resolution_snapshot()? {
               Some(snapshot) => {
@@ -329,7 +337,7 @@ impl CliFactory {
             npm_system_info: self.options.npm_system_info(),
             npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
           })
-        ).await
+        }).await
       })
       .await
   }
@@ -365,24 +373,25 @@ impl CliFactory {
       .services
       .resolver
       .get_or_try_init_async(async {
-        Ok(Arc::new(CliGraphResolver::new(
-          if self.options.no_npm() {
+        Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+          fs: self.fs().clone(),
+          cjs_resolutions: Some(self.cjs_resolutions().clone()),
+          node_resolver: Some(self.node_resolver().await?.clone()),
+          npm_resolver: if self.options.no_npm() {
             None
           } else {
             Some(self.npm_resolver().await?.clone())
           },
-          self.package_json_deps_provider().clone(),
-          CliGraphResolverOptions {
-            maybe_jsx_import_source_config: self
-              .options
-              .to_maybe_jsx_import_source_config()?,
-            maybe_import_map: self.maybe_import_map().await?.clone(),
-            maybe_vendor_dir: self.options.vendor_dir_path(),
-            bare_node_builtins_enabled: self
-              .options
-              .unstable_bare_node_builtlins(),
-          },
-        )))
+          package_json_deps_provider: self.package_json_deps_provider().clone(),
+          maybe_jsx_import_source_config: self
+            .options
+            .to_maybe_jsx_import_source_config()?,
+          maybe_import_map: self.maybe_import_map().await?.clone(),
+          maybe_vendor_dir: self.options.vendor_dir_path(),
+          bare_node_builtins_enabled: self
+            .options
+            .unstable_bare_node_builtlins(),
+        })))
       })
       .await
   }

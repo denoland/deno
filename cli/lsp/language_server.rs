@@ -105,6 +105,7 @@ use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -131,6 +132,8 @@ struct LspNpmServices {
   config_hash: LspNpmConfigHash,
   /// Npm's search api.
   search_api: CliNpmSearchApi,
+  /// Node resolver.
+  node_resolver: Option<Arc<NodeResolver>>,
   /// Resolver for npm packages.
   resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -495,6 +498,7 @@ impl Inner {
       npm: LspNpmServices {
         config_hash: LspNpmConfigHash(0), // this will be updated in initialize
         search_api: npm_search_api,
+        node_resolver: None,
         resolver: None,
       },
       performance,
@@ -815,15 +819,19 @@ impl Inner {
       return; // no need to do anything
     }
 
-    self.npm.resolver = Some(
-      create_npm_resolver(
-        &deno_dir,
-        &self.http_client,
-        self.config.maybe_lockfile(),
-        self.config.maybe_node_modules_dir_path().cloned(),
-      )
-      .await,
-    );
+    let npm_resolver = create_npm_resolver(
+      &deno_dir,
+      &self.http_client,
+      self.config.maybe_config_file(),
+      self.config.maybe_lockfile(),
+      self.config.maybe_node_modules_dir_path().cloned(),
+    )
+    .await;
+    self.npm.node_resolver = Some(Arc::new(NodeResolver::new(
+      Arc::new(deno_fs::RealFs),
+      npm_resolver.clone().into_npm_resolver(),
+    )));
+    self.npm.resolver = Some(npm_resolver);
 
     // update the hash
     self.npm.config_hash = config_hash;
@@ -1059,11 +1067,24 @@ impl Inner {
 async fn create_npm_resolver(
   deno_dir: &DenoDir,
   http_client: &Arc<HttpClient>,
+  maybe_config_file: Option<&ConfigFile>,
   maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
   maybe_node_modules_dir_path: Option<PathBuf>,
 ) -> Arc<dyn CliNpmResolver> {
-  create_cli_npm_resolver_for_lsp(CliNpmResolverCreateOptions::Managed(
-    CliNpmResolverManagedCreateOptions {
+  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
+    || maybe_config_file
+      .as_ref()
+      .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+      .unwrap_or(false);
+  create_cli_npm_resolver_for_lsp(if is_byonm {
+    CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
+      fs: Arc::new(deno_fs::RealFs),
+      root_node_modules_dir: std::env::current_dir()
+        .unwrap()
+        .join("node_modules"),
+    })
+  } else {
+    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
       http_client: http_client.clone(),
       snapshot: match maybe_lockfile {
         Some(lockfile) => {
@@ -1090,8 +1111,8 @@ async fn create_npm_resolver(
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
       npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
-    },
-  ))
+    })
+  })
   .await
 }
 
@@ -1250,6 +1271,7 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
+      node_resolver: self.npm.node_resolver.clone(),
       npm_resolver: self.npm.resolver.clone(),
     });
 
