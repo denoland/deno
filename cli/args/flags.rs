@@ -956,7 +956,7 @@ fn clap_root() -> Command {
     )
     .arg(
       Arg::new("unstable-ffi")
-        .long("unstable-fii")
+        .long("unstable-ffi")
         .help("Enable unstable FFI APIs")
         .action(ArgAction::SetTrue)
         .global(true),
