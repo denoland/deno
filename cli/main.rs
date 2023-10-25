@@ -1,29 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
-mod args;
-mod auth_tokens;
-mod cache;
-mod deno_std;
-mod emit;
-mod errors;
-mod factory;
-mod file_fetcher;
-mod graph_util;
-mod http_util;
-mod js;
-mod lsp;
-mod module_loader;
-mod napi;
-mod node;
-mod npm;
-mod ops;
-mod resolver;
-mod standalone;
-mod tools;
-mod tsc;
-mod util;
-mod version;
-mod worker;
+use deno::*;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -254,19 +230,6 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       std::process::exit(error_code);
     }
   }
-}
-
-pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
-  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
-  eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
-  std::process::exit(70);
-}
-
-#[allow(dead_code)]
-pub(crate) fn unstable_warn_cb(feature: &str) {
-  eprintln!(
-    "The `--unstable` flag is deprecated, use --unstable-{feature} instead."
-  );
 }
 
 pub fn main() {
