@@ -586,6 +586,12 @@ impl CliFactory {
       if self.options.unstable() {
         checker.enable_legacy_unstable();
       }
+      for (flag_name, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+        if self.options.unstable_features().contains(flag_name) {
+          // TODO: check if it's in a config file
+          checker.enable_feature(flag_name);
+        }
+      }
 
       Arc::new(checker)
     })

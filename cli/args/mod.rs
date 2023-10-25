@@ -1244,6 +1244,10 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
+  pub fn unstable_features(&self) -> &[&'static str] {
+    &self.flags.unstable_features
+  }
+
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
   }

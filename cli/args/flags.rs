@@ -926,7 +926,7 @@ fn clap_root() -> Command {
     crate::version::TYPESCRIPT
   );
 
-  Command::new("deno")
+  let mut cmd = Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
     .max_term_width(80)
@@ -956,56 +956,19 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
-    )
-    .arg(
-      Arg::new("unstable-broadcast-channel")
-        .long("unstable-broadcast-channel")
-        .help("Enable unstable `BroadcastChannel` API")
+    );
+
+  for (flag_name, help) in crate::UNSTABLE_GRANULAR_FLAGS {
+    cmd = cmd.arg(
+      Arg::new(format!("unstable-{}", flag_name))
+        .long(format!("unstable-{}", flag_name))
+        .help(help)
         .action(ArgAction::SetTrue)
         .global(true),
-    )
-    .arg(
-      Arg::new("unstable-ffi")
-        .long("unstable-ffi")
-        .help("Enable unstable FFI APIs")
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-fs")
-        .long("unstable-fs")
-        .help("Enable unstable file system APIs")
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-http")
-        .long("unstable-http")
-        .help("Enable unstable HTTP APIs")
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-kv")
-        .long("unstable-kv")
-        .help("Enable unstable Key-Value store APIs")
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-net")
-        .long("unstable-net")
-        .help("Enable unstable net APIs")
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-worker")
-        .long("unstable-worker")
-        .help("Enable unstable Web Worker APIs")
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
+    );
+  }
+
+  cmd
     .arg(
       Arg::new("log-level")
         .short('L')

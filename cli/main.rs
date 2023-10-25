@@ -256,6 +256,40 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+pub(crate) static UNSTABLE_GRANULAR_FLAGS: &'static [(
+  &'static str,
+  &'static str,
+)] = &[
+  (
+    deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
+    "Enable unstable `BroadcastChannel` API",
+  ),
+  (
+    deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
+    "Enable unstable FFI APIs",
+  ),
+  (
+    deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
+    "Enable unstable file system APIs",
+  ),
+  (
+    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Key-Value store APIs",
+  ),
+  (
+    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
+    "Enable unstable net APIs",
+  ),
+  (
+    deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
+    "Enable unstable HTTP APIs",
+  ),
+  (
+    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Web Worker APIs",
+  ),
+];
+
 pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
   // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
   eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
