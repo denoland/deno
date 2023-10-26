@@ -202,7 +202,11 @@ impl CliGraphResolver {
             .is_some()
           {
             return Err(anyhow!(
-              "Could not resolve \"{}\", but found it in a package.json. Maybe run `npm install`?",
+              concat!(
+                "Could not resolve \"{}\", but found it in a package.json. ",
+                "Deno expects the node_modules/ directory to be up to date. ",
+                "Did you forget to run `npm install`?"
+              ),
               specifier
             ));
           }
@@ -282,7 +286,7 @@ impl Resolver for CliGraphResolver {
             let package_json_path = package_folder.join("package.json");
             if !self.fs.exists_sync(&package_json_path) {
               return Err(ResolveError::Other(anyhow!(
-                "Could not find '{}'. Maybe run `npm install`?",
+                "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?",
                 package_json_path.display()
               )));
             }
