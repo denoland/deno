@@ -788,37 +788,37 @@ fn generate_lint_diagnostics(
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let workspace_settings = config.settings.workspace.clone();
   let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
-  if workspace_settings.lint {
-    for document in documents {
-      // exit early if cancelled
-      if token.is_cancelled() {
-        break;
-      }
-
-      // ignore any npm package files
-      if let Some(npm) = &snapshot.npm {
-        if npm.node_resolver.in_npm_package(document.specifier()) {
-          continue;
-        }
-      }
-
-      let version = document.maybe_lsp_version();
-      diagnostics_vec.push(DiagnosticRecord {
-        specifier: document.specifier().clone(),
-        versioned: VersionedDiagnostics {
-          version,
-          diagnostics: generate_document_lint_diagnostics(
-            config,
-            lint_options,
-            lint_rules.clone(),
-            &document,
-          ),
-        },
-      });
+  for document in documents {
+    let settings =
+      config.workspace_settings_for_specifier(document.specifier());
+    if !settings.lint {
+      continue;
     }
+    // exit early if cancelled
+    if token.is_cancelled() {
+      break;
+    }
+    // ignore any npm package files
+    if let Some(npm) = &snapshot.npm {
+      if npm.node_resolver.in_npm_package(document.specifier()) {
+        continue;
+      }
+    }
+    let version = document.maybe_lsp_version();
+    diagnostics_vec.push(DiagnosticRecord {
+      specifier: document.specifier().clone(),
+      versioned: VersionedDiagnostics {
+        version,
+        diagnostics: generate_document_lint_diagnostics(
+          config,
+          lint_options,
+          lint_rules.clone(),
+          &document,
+        ),
+      },
+    });
   }
   diagnostics_vec
 }
@@ -970,6 +970,8 @@ pub enum DenoDiagnostic {
   ResolutionError(deno_graph::ResolutionError),
   /// Invalid `node:` specifier.
   InvalidNodeSpecifier(ModuleSpecifier),
+  /// Bare specifier is used for `node:` specifier
+  BareNodeSpecifier(String),
 }
 
 impl DenoDiagnostic {
@@ -1003,6 +1005,7 @@ impl DenoDiagnostic {
         }
       }
       Self::InvalidNodeSpecifier(_) => "resolver-error",
+      Self::BareNodeSpecifier(_) => "import-node-prefix-missing",
     }
   }
 
@@ -1174,6 +1177,7 @@ impl DenoDiagnostic {
           .map(|specifier| json!({ "specifier": specifier }))
       ),
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
+      Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
     };
     lsp::Diagnostic {
       range: *range,
@@ -1189,6 +1193,7 @@ impl DenoDiagnostic {
 
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
+  dependency_key: &str,
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
@@ -1253,6 +1258,20 @@ fn diagnose_resolution(
         if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
+        } else if module_name == dependency_key {
+          let mut is_mapped = false;
+          if let Some(import_map) = &snapshot.maybe_import_map {
+            if let Resolution::Ok(resolved) = &resolution {
+              if import_map.resolve(module_name, &resolved.specifier).is_ok() {
+                is_mapped = true;
+              }
+            }
+          }
+          // show diagnostics for bare node specifiers that aren't mapped by import map
+          if !is_mapped {
+            diagnostics
+              .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
+          }
         } else if let Some(npm_resolver) = snapshot
           .npm
           .as_ref()
@@ -1329,6 +1348,7 @@ fn diagnose_dependency(
   diagnostics.extend(
     diagnose_resolution(
       snapshot,
+      dependency_key,
       if dependency.maybe_code.is_none() {
         &dependency.maybe_type
       } else {
@@ -1362,6 +1382,7 @@ fn diagnose_dependency(
     diagnostics.extend(
       diagnose_resolution(
         snapshot,
+        dependency_key,
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
@@ -1421,7 +1442,6 @@ mod tests {
   use crate::cache::RealDenoCacheEnv;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
-  use crate::lsp::config::SpecifierSettings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -1476,7 +1496,7 @@ mod tests {
     let root_uri = resolve_url("file:///").unwrap();
     ConfigSnapshot {
       settings: Settings {
-        workspace: WorkspaceSettings {
+        unscoped: WorkspaceSettings {
           enable: Some(true),
           lint: true,
           ..Default::default()
@@ -1508,7 +1528,6 @@ mod tests {
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
     let temp_dir = TempDir::new();
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let (snapshot, cache_location) = setup(
       &temp_dir,
       &[(
@@ -1557,15 +1576,10 @@ let c: number = "a";
     // now test disabled specifier
     {
       let mut disabled_config = mock_config();
-      disabled_config.settings.specifiers.insert(
-        specifier.clone(),
-        SpecifierSettings {
-          enable: Some(false),
-          disable_paths: vec![],
-          enable_paths: None,
-          code_lens: Default::default(),
-        },
-      );
+      disabled_config.settings.unscoped = WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      };
 
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
