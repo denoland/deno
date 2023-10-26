@@ -491,7 +491,7 @@ pub fn op_readable_stream_resource_write_buf(
 
 /// Write to the channel synchronously, returning 0 if the channel was closed, 1 if we wrote
 /// successfully, 2 if the channel was full and we need to block.
-#[op2]
+#[op2(fast)]
 pub fn op_readable_stream_resource_write_sync(
   sender: *const c_void,
   #[buffer] buffer: JsBuffer,

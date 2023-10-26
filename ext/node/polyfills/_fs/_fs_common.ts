@@ -108,7 +108,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
 export function getOpenOptions(
   flag: string | number | undefined,
 ): Deno.OpenOptions {
-  if (!flag) {
+  if (flag === undefined) {
     return { create: true, append: true };
   }
 

@@ -4,7 +4,6 @@ use bytes::Bytes;
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::url;
 use deno_core::AsyncMutFuture;
@@ -472,11 +471,11 @@ pub fn op_ws_send_text(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[buffer] data: JsBuffer,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -490,11 +489,11 @@ pub async fn op_ws_send_binary_async(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: String,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -609,10 +608,10 @@ pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   resource.error.take().unwrap_or_default()
 }
 
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> u16 {
   let Ok(resource) = state
     .borrow_mut()

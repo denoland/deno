@@ -52,15 +52,15 @@ fn verify_tarball_integrity(
       let mut hash_ctx = Context::new(algo);
       hash_ctx.update(data);
       let digest = hash_ctx.finish();
-      let tarball_checksum = base64::encode(digest.as_ref()).to_lowercase();
-      (tarball_checksum, base64_hash.to_lowercase())
+      let tarball_checksum = base64::encode(digest.as_ref());
+      (tarball_checksum, base64_hash)
     }
     NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => {
       let mut hash_ctx = Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
       hash_ctx.update(data);
       let digest = hash_ctx.finish();
-      let tarball_checksum = hex::encode(digest.as_ref()).to_lowercase();
-      (tarball_checksum, hex.to_lowercase())
+      let tarball_checksum = hex::encode(digest.as_ref());
+      (tarball_checksum, hex)
     }
     NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {
       bail!(
@@ -71,7 +71,7 @@ fn verify_tarball_integrity(
     }
   };
 
-  if tarball_checksum != expected_checksum {
+  if tarball_checksum != *expected_checksum {
     bail!(
       "Tarball checksum did not match what was provided by npm registry for {}.\n\nExpected: {}\nActual: {}",
       package,
@@ -158,7 +158,7 @@ mod test {
       version: Version::parse_from_npm("1.0.0").unwrap(),
     };
     let actual_checksum =
-      "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";
+      "z4PhNX7vuL3xVChQ1m2AB9Yg5AULVxXcg/SpIdNs6c5H0NE8XYXysP+DGNKHfuwvY7kxvUdBeoGlODJ6+SfaPg==";
     assert_eq!(
       verify_tarball_integrity(
         &package,
@@ -195,7 +195,7 @@ mod test {
       .to_string(),
       concat!(
         "Tarball checksum did not match what was provided by npm ",
-        "registry for package@1.0.0.\n\nExpected: test\nActual: 2jmj7l5rsw0yvb/vlwaykk/ybwk=",
+        "registry for package@1.0.0.\n\nExpected: test\nActual: 2jmj7l5rSw0yVb/vlWAYkK/YBwk=",
       ),
     );
     assert_eq!(

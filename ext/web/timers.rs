@@ -79,7 +79,7 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 /// [`TimerHandle`] resource given by `rid` has been canceled.
 ///
 /// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
-#[op2(async(lazy))]
+#[op2(async(lazy), fast)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   #[smi] millis: u64,

@@ -10,9 +10,7 @@ mod timers;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
@@ -366,14 +364,14 @@ impl Resource for TextDecoderResource {
   }
 }
 
-#[op(v8)]
-fn op_encoding_encode_into_fallback(
+#[op2(fast(op_encoding_encode_into_fast))]
+fn op_encoding_encode_into(
   scope: &mut v8::HandleScope,
-  input: serde_v8::Value,
-  buffer: &mut [u8],
-  out_buf: &mut [u32],
+  input: v8::Local<v8::Value>,
+  #[buffer] buffer: &mut [u8],
+  #[buffer] out_buf: &mut [u32],
 ) -> Result<(), AnyError> {
-  let s = v8::Local::<v8::String>::try_from(input.v8_value)?;
+  let s = v8::Local::<v8::String>::try_from(input)?;
 
   let mut nchars = 0;
   out_buf[1] = s.write_utf8(
@@ -387,11 +385,11 @@ fn op_encoding_encode_into_fallback(
   Ok(())
 }
 
-#[op(fast, slow = op_encoding_encode_into_fallback)]
-fn op_encoding_encode_into(
-  input: Cow<'_, str>,
-  buffer: &mut [u8],
-  out_buf: &mut [u32],
+#[op2(fast)]
+fn op_encoding_encode_into_fast(
+  #[string] input: Cow<'_, str>,
+  #[buffer] buffer: &mut [u8],
+  #[buffer] out_buf: &mut [u32],
 ) {
   // Since `input` is already UTF-8, we can simply find the last UTF-8 code
   // point boundary from input that fits in `buffer`, and copy the bytes up to
