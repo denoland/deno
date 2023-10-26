@@ -15,9 +15,11 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
+use deno_runtime::deno_node::parse_npm_pkg_name;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -29,6 +31,7 @@ use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
 use crate::module_loader::CjsResolutionStore;
+use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
@@ -177,6 +180,37 @@ impl CliGraphResolver {
   pub fn found_package_json_dep(&self) -> bool {
     self.found_package_json_dep_flag.is_raised()
   }
+
+  fn check_surface_byonm_node_error(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+    original_err: AnyError,
+    resolver: &ByonmCliNpmResolver,
+  ) -> Result<(), AnyError> {
+    if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
+      match resolver
+        .resolve_package_folder_from_package(&pkg_name, referrer, mode)
+      {
+        Ok(_) => {
+          return Err(original_err);
+        }
+        Err(_) => {
+          if resolver
+            .find_ancestor_package_json_with_dep(&pkg_name, referrer)
+            .is_some()
+          {
+            return Err(anyhow!(
+              "Could not resolve \"{}\", but found it in a package.json. Maybe run `npm install`?",
+              specifier
+            ));
+          }
+        }
+      }
+    }
+    Ok(())
+  }
 }
 
 impl Resolver for CliGraphResolver {
@@ -290,14 +324,38 @@ impl Resolver for CliGraphResolver {
                 to_node_mode(mode),
                 &PermissionsContainer::allow_all(),
               );
-              if let Ok(Some(resolution)) = node_result {
-                if let Some(cjs_resolutions) = &self.cjs_resolutions {
-                  if let NodeResolution::CommonJs(specifier) = &resolution {
-                    // remember that this was a common js resolution
-                    cjs_resolutions.insert(specifier.clone());
+              match node_result {
+                Ok(Some(resolution)) => {
+                  if let Some(cjs_resolutions) = &self.cjs_resolutions {
+                    if let NodeResolution::CommonJs(specifier) = &resolution {
+                      // remember that this was a common js resolution
+                      cjs_resolutions.insert(specifier.clone());
+                    }
                   }
+                  return Ok(resolution.into_url());
                 }
-                return Ok(resolution.into_url());
+                Ok(None) => {
+                  self
+                    .check_surface_byonm_node_error(
+                      specifier,
+                      referrer,
+                      to_node_mode(mode),
+                      anyhow!("Cannot find \"{}\"", specifier),
+                      resolver,
+                    )
+                    .map_err(ResolveError::Other)?;
+                }
+                Err(err) => {
+                  self
+                    .check_surface_byonm_node_error(
+                      specifier,
+                      referrer,
+                      to_node_mode(mode),
+                      err,
+                      resolver,
+                    )
+                    .map_err(ResolveError::Other)?;
+                }
               }
             }
           }
