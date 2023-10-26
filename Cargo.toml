@@ -174,8 +174,6 @@ windows-sys = { version = "0.48.0", features = ["Win32_Media"] }
 [profile.release]
 codegen-units = 1
 incremental = true
-lto = true
-opt-level = 'z' # Optimize for size
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
@@ -186,8 +184,6 @@ debug = true
 [profile.bench]
 codegen-units = 1
 incremental = true
-lto = true
-opt-level = 'z' # Optimize for size
 
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
