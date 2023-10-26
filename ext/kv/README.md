@@ -8,7 +8,8 @@ please read the [manual](https://deno.land/manual/runtime/kv).
 Deno KV has a pluggable storage interface that supports multiple backends:
 
 - SQLite - backed by a local SQLite database. This backend is suitable for
-  development and is the default when running locally.
+  development and is the default when running locally. It is implemented in the
+  [denokv_sqlite crate](https://github.com/denoland/denokv_sqlite).
 - Remote - backed by a remote service that implements the
   [KV Connect](#kv-connect) protocol, for example
   [Deno Deploy](https://deno.com/deploy).
@@ -35,11 +36,12 @@ variable `DENO_KV_ACCESS_TOKEN`.
 
 Request body is currently unused. The response is a JSON message that satisfies
 the [JSON Schema](https://json-schema.org/) definition in
-`cli/schemas/kv-metadata-exchange-response.v1.json`.
+`cli/schemas/kv-metadata-exchange-response.v1.json` or
+`cli/schemas/kv-metadata-exchange-response.v2.json`.
 
 Semantics of the response fields:
 
-- `version`: Protocol version. The only supported value is `1`.
+- `version`: Protocol version. The supported values are `1` and `2`.
 - `databaseId`: UUID of the database.
 - `endpoints`: Data plane endpoints that can serve requests to the database,
   along with their consistency levels.
@@ -70,6 +72,10 @@ Two sub-endpoints are available under a data plane endpoint URL:
 An HTTP `Authorization` header in the format `Bearer <ephemeral-token>` must be
 included in all requests to the data plane. The value of `<ephemeral-token>` is
 the `token` field from the metadata exchange response.
+
+An HTTP header `x-deno-database-id` (or `x-transaction-domain-id` in v1) must be
+included in all requests to the data plane. The value of this header is the
+`databaseId` field from the metadata exchange response.
 
 ### Error handling
 

@@ -8,17 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::proto::datapath as pb;
-use crate::AtomicWrite;
-use crate::CommitResult;
-use crate::Database;
 use crate::DatabaseHandler;
-use crate::KvEntry;
-use crate::MutationKind;
-use crate::QueueMessageHandle;
-use crate::ReadRange;
-use crate::ReadRangeOutput;
-use crate::SnapshotReadOptions;
 use anyhow::Context;
 use async_trait::async_trait;
 use chrono::DateTime;
@@ -28,6 +18,18 @@ use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_core::OpState;
+use denokv_proto::datapath as pb;
+use denokv_proto::AtomicWrite;
+use denokv_proto::CommitResult;
+use denokv_proto::Database;
+use denokv_proto::KvEntry;
+use denokv_proto::KvMutation;
+use denokv_proto::MutationKind;
+use denokv_proto::QueueMessageHandle;
+use denokv_proto::ReadRange;
+use denokv_proto::ReadRangeOutput;
+use denokv_proto::SnapshotReadOptions;
+use denokv_proto::Value;
 use prost::Message;
 use rand::Rng;
 use serde::Deserialize;
@@ -127,6 +129,7 @@ impl<P: RemoteDbHandlerPermissions> DatabaseHandler for RemoteDbHandler<P> {
     let db = RemoteDb {
       client: reqwest::Client::new(),
       refresher,
+      state,
       _p: PhantomData,
     };
     Ok(db)
@@ -136,6 +139,7 @@ impl<P: RemoteDbHandlerPermissions> DatabaseHandler for RemoteDbHandler<P> {
 pub struct RemoteDb<P: RemoteDbHandlerPermissions + 'static> {
   client: reqwest::Client,
   refresher: MetadataRefresher,
+  state: Rc<RefCell<OpState>>,
   _p: std::marker::PhantomData<P>,
 }
 
@@ -158,7 +162,6 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
 
   async fn snapshot_read(
     &self,
-    state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     _options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError> {
@@ -175,7 +178,7 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
     };
 
     let res: pb::SnapshotReadOutput = call_remote::<P, _, _>(
-      &state,
+      &self.state,
       &self.refresher,
       &self.client,
       "snapshot_read",
@@ -212,7 +215,6 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
 
   async fn atomic_write(
     &self,
-    state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError> {
     if !write.enqueues.is_empty() {
@@ -235,7 +237,7 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
     };
 
     let res: pb::AtomicWriteOutput = call_remote::<P, _, _>(
-      &state,
+      &self.state,
       &self.refresher,
       &self.client,
       "atomic_write",
@@ -270,10 +272,7 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
     }
   }
 
-  async fn dequeue_next_message(
-    &self,
-    _state: Rc<RefCell<OpState>>,
-  ) -> Result<Option<Self::QMH>, AnyError> {
+  async fn dequeue_next_message(&self) -> Result<Option<Self::QMH>, AnyError> {
     let msg = "Deno.Kv.listenQueue is not supported for remote KV databases";
     eprintln!("{}", yellow(msg));
     deno_core::futures::future::pending().await
@@ -299,11 +298,11 @@ fn yellow<S: AsRef<str>>(s: S) -> impl fmt::Display {
 fn decode_value(
   value: Vec<u8>,
   encoding: pb::KvValueEncoding,
-) -> anyhow::Result<crate::Value> {
+) -> anyhow::Result<Value> {
   match encoding {
-    pb::KvValueEncoding::VeV8 => Ok(crate::Value::V8(value)),
-    pb::KvValueEncoding::VeBytes => Ok(crate::Value::Bytes(value)),
-    pb::KvValueEncoding::VeLe64 => Ok(crate::Value::U64(u64::from_le_bytes(
+    pb::KvValueEncoding::VeV8 => Ok(Value::V8(value)),
+    pb::KvValueEncoding::VeBytes => Ok(Value::Bytes(value)),
+    pb::KvValueEncoding::VeLe64 => Ok(Value::U64(u64::from_le_bytes(
       <[u8; 8]>::try_from(&value[..])?,
     ))),
     pb::KvValueEncoding::VeUnspecified => {
@@ -312,27 +311,26 @@ fn decode_value(
   }
 }
 
-fn encode_value(value: crate::Value) -> pb::KvValue {
+fn encode_value(value: Value) -> pb::KvValue {
   match value {
-    crate::Value::V8(data) => pb::KvValue {
+    Value::V8(data) => pb::KvValue {
       data,
       encoding: pb::KvValueEncoding::VeV8 as _,
     },
-    crate::Value::Bytes(data) => pb::KvValue {
+    Value::Bytes(data) => pb::KvValue {
       data,
       encoding: pb::KvValueEncoding::VeBytes as _,
     },
-    crate::Value::U64(x) => pb::KvValue {
+    Value::U64(x) => pb::KvValue {
       data: x.to_le_bytes().to_vec(),
       encoding: pb::KvValueEncoding::VeLe64 as _,
     },
   }
 }
 
-fn encode_mutation(m: crate::KvMutation) -> pb::KvMutation {
+fn encode_mutation(m: KvMutation) -> pb::KvMutation {
   let key = m.key;
-  let expire_at_ms =
-    m.expire_at.and_then(|x| i64::try_from(x).ok()).unwrap_or(0);
+  let expire_at_ms = m.expire_at.map(|dt| dt.timestamp_millis()).unwrap_or(0);
 
   match m.kind {
     MutationKind::Set(x) => pb::KvMutation {
@@ -343,7 +341,7 @@ fn encode_mutation(m: crate::KvMutation) -> pb::KvMutation {
     },
     MutationKind::Delete => pb::KvMutation {
       key,
-      value: Some(encode_value(crate::Value::Bytes(vec![]))),
+      value: Some(encode_value(Value::Bytes(vec![]))),
       mutation_type: pb::KvMutationType::MClear as _,
       expire_at_ms,
     },
@@ -483,10 +481,12 @@ async fn fetch_metadata(
     )));
   }
 
-  Ok(
-    serde_json::from_slice(&res)
-      .map_err(|e| format!("Failed to decode metadata: {}", e)),
-  )
+  let metadata: DatabaseMetadata = match serde_json::from_slice(&res) {
+    Ok(x) => x,
+    Err(e) => return Ok(Err(format!("Failed to decode metadata: {}", e))),
+  };
+
+  Ok(Ok(metadata))
 }
 
 async fn randomized_exponential_backoff(base: Duration, attempt: u64) {

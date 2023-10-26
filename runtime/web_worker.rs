@@ -436,7 +436,10 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(None),
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+          None,
+          options.seed,
+        ),
       ),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),

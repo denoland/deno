@@ -261,6 +261,7 @@ impl MainWorker {
       deno_kv::deno_kv::init_ops_and_esm(
         MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           options.origin_storage_dir.clone(),
+          options.seed,
         ),
       ),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
