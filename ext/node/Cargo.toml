@@ -46,6 +46,7 @@ num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
 num-traits = "0.2.14"
 once_cell.workspace = true
+const-oid = "*"
 p224.workspace = true
 p256.workspace = true
 p384.workspace = true

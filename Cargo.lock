@@ -1522,6 +1522,7 @@ dependencies = [
  "brotli",
  "bytes",
  "cbc",
+ "const-oid",
  "data-encoding",
  "deno_core",
  "deno_fetch",

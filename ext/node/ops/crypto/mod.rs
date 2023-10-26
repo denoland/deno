@@ -1188,7 +1188,7 @@ pub async fn op_node_gen_prime_async(
 pub enum AsymmetricKeyDetails {
   Rsa {
     modulus_length: usize,
-    public_exponent: usize,
+    public_exponent: BigInt,
   },
   RsaPss {
     modulus_length: usize,
@@ -1206,14 +1206,34 @@ pub enum AsymmetricKeyDetails {
   }
 }
 
+
+use rsa::pkcs1::der::DecodePem;
+
+use rsa::pkcs8;
+
+pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+
 #[op2]
 #[serde]
 pub fn op_node_create_private_key(
-  #[buffer] privkey: &[u8]
+  #[buffer] privkey: &[u8],
 ) -> Result<AsymmetricKeyDetails, AnyError> {
   // We only support PEM for now.
-  let pkey = pkcs8::PrivateKeyInfo::from_pkcs8_pem(std::str::from_utf8(privkey).unwrap())?;
+  let pk_info = pkcs8::PrivateKeyInfo::from_pem(privkey.to_vec())?;
 
+  let alg = pk_info.algorithm.oid;
 
-  Ok(())
+  if alg == RSA_ENCRYPTION_OID {
+    use rsa::pkcs1::der::Decode;
+    let private_key = rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key)?;
+
+    let modulus_length = private_key.modulus.as_bytes().len() * 8;
+    return Ok(AsymmetricKeyDetails::Rsa {
+      modulus_length,
+      public_exponent: BigInt::from_bytes_be(num_bigint::Sign::Plus, private_key.public_exponent.as_bytes()),
+    });
+  }
+
+  todo!()
 }
