@@ -75,11 +75,9 @@ impl ByonmCliNpmResolver {
       if let Some(parent) = current_folder.parent() {
         current_folder = parent;
       } else {
-        break;
+        return None;
       }
     }
-
-    None
   }
 }
 
