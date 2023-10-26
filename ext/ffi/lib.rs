@@ -45,10 +45,14 @@ const _: () = {
 pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
 pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
+
 fn check_unstable(state: &OpState, api_name: &str) {
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
   state
     .feature_checker
-    .check_legacy_unstable_or_exit(api_name);
+    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name)
 }
 
 pub trait FfiPermissions {
@@ -74,6 +78,7 @@ deno_core::extension!(deno_ffi,
     op_ffi_ptr_create<P>,
     op_ffi_ptr_equals<P>,
     op_ffi_ptr_of<P>,
+    op_ffi_ptr_of_exact<P>,
     op_ffi_ptr_offset<P>,
     op_ffi_ptr_value<P>,
     op_ffi_get_buf<P>,

@@ -3,7 +3,7 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
-use super::documents::cell_to_file_specifier;
+use super::documents::file_like_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -99,24 +99,90 @@ type Request = (
   CancellationToken,
 );
 
-/// Relevant subset of https://github.com/denoland/deno/blob/80331d1fe5b85b829ac009fdc201c128b3427e11/cli/tsc/dts/typescript.d.ts#L6658.
+#[derive(Debug, Clone, Copy, Serialize_repr)]
+#[repr(u8)]
+pub enum IndentStyle {
+  #[allow(dead_code)]
+  None = 0,
+  Block = 1,
+  #[allow(dead_code)]
+  Smart = 2,
+}
+
+/// Relevant subset of https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6658.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FormatCodeSettings {
-  convert_tabs_to_spaces: Option<bool>,
+  base_indent_size: Option<u8>,
   indent_size: Option<u8>,
+  tab_size: Option<u8>,
+  new_line_character: Option<String>,
+  convert_tabs_to_spaces: Option<bool>,
+  indent_style: Option<IndentStyle>,
+  trim_trailing_whitespace: Option<bool>,
+  insert_space_after_comma_delimiter: Option<bool>,
+  insert_space_after_semicolon_in_for_statements: Option<bool>,
+  insert_space_before_and_after_binary_operators: Option<bool>,
+  insert_space_after_constructor: Option<bool>,
+  insert_space_after_keywords_in_control_flow_statements: Option<bool>,
+  insert_space_after_function_keyword_for_anonymous_functions: Option<bool>,
+  insert_space_after_opening_and_before_closing_nonempty_parenthesis:
+    Option<bool>,
+  insert_space_after_opening_and_before_closing_nonempty_brackets: Option<bool>,
+  insert_space_after_opening_and_before_closing_nonempty_braces: Option<bool>,
+  insert_space_after_opening_and_before_closing_template_string_braces:
+    Option<bool>,
+  insert_space_after_opening_and_before_closing_jsx_expression_braces:
+    Option<bool>,
+  insert_space_after_type_assertion: Option<bool>,
+  insert_space_before_function_parenthesis: Option<bool>,
+  place_open_brace_on_new_line_for_functions: Option<bool>,
+  place_open_brace_on_new_line_for_control_blocks: Option<bool>,
+  insert_space_before_type_annotation: Option<bool>,
+  indent_multi_line_object_literal_beginning_on_blank_line: Option<bool>,
   semicolons: Option<SemicolonPreference>,
+  indent_switch_case: Option<bool>,
 }
 
 impl From<&FmtOptionsConfig> for FormatCodeSettings {
   fn from(config: &FmtOptionsConfig) -> Self {
     FormatCodeSettings {
-      convert_tabs_to_spaces: Some(!config.use_tabs.unwrap_or(false)),
+      base_indent_size: Some(0),
       indent_size: Some(config.indent_width.unwrap_or(2)),
+      tab_size: Some(config.indent_width.unwrap_or(2)),
+      new_line_character: Some("\n".to_string()),
+      convert_tabs_to_spaces: Some(!config.use_tabs.unwrap_or(false)),
+      indent_style: Some(IndentStyle::Block),
+      trim_trailing_whitespace: Some(false),
+      insert_space_after_comma_delimiter: Some(true),
+      insert_space_after_semicolon_in_for_statements: Some(true),
+      insert_space_before_and_after_binary_operators: Some(true),
+      insert_space_after_constructor: Some(false),
+      insert_space_after_keywords_in_control_flow_statements: Some(true),
+      insert_space_after_function_keyword_for_anonymous_functions: Some(true),
+      insert_space_after_opening_and_before_closing_nonempty_parenthesis: Some(
+        false,
+      ),
+      insert_space_after_opening_and_before_closing_nonempty_brackets: Some(
+        false,
+      ),
+      insert_space_after_opening_and_before_closing_nonempty_braces: Some(true),
+      insert_space_after_opening_and_before_closing_template_string_braces:
+        Some(false),
+      insert_space_after_opening_and_before_closing_jsx_expression_braces: Some(
+        false,
+      ),
+      insert_space_after_type_assertion: Some(false),
+      insert_space_before_function_parenthesis: Some(false),
+      place_open_brace_on_new_line_for_functions: Some(false),
+      place_open_brace_on_new_line_for_control_blocks: Some(false),
+      insert_space_before_type_annotation: Some(false),
+      indent_multi_line_object_literal_beginning_on_blank_line: Some(false),
       semicolons: match config.semi_colons {
         Some(false) => Some(SemicolonPreference::Remove),
         _ => Some(SemicolonPreference::Insert),
       },
+      indent_switch_case: Some(true),
     }
   }
 }
@@ -294,9 +360,6 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Vec<CodeFixAction> {
-    let mut format_code_settings = json!(format_code_settings);
-    let format_object = format_code_settings.as_object_mut().unwrap();
-    format_object.insert("indentStyle".to_string(), json!(1));
     let req = TscRequest {
       method: "getCodeFixesAtPosition",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6257
@@ -363,9 +426,6 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
   ) -> Result<CombinedCodeActions, LspError> {
-    let mut format_code_settings = json!(format_code_settings);
-    let format_object = format_code_settings.as_object_mut().unwrap();
-    format_object.insert("indentStyle".to_string(), json!(1));
     let req = TscRequest {
       method: "getCombinedCodeFix",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6258
@@ -403,15 +463,6 @@ impl TsServer {
     action_name: String,
     preferences: Option<UserPreferences>,
   ) -> Result<RefactorEditInfo, LspError> {
-    let mut format_code_settings = json!(format_code_settings);
-    let format_object = format_code_settings.as_object_mut().unwrap();
-    format_object.insert("indentStyle".to_string(), json!(2));
-    format_object.insert(
-      "insertSpaceBeforeAndAfterBinaryOperators".to_string(),
-      json!(true),
-    );
-    format_object
-      .insert("insertSpaceAfterCommaDelimiter".to_string(), json!(true));
     let req = TscRequest {
       method: "getEditsForRefactor",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6275
@@ -3664,11 +3715,12 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
-    let mut specifier = original.to_string();
+    let mut specifier = if let Some(s) = file_like_to_file_specifier(original) {
+      s.to_string()
+    } else {
+      original.to_string()
+    };
     let media_type = if original.scheme() == "deno-notebook-cell" {
-      if let Some(s) = cell_to_file_specifier(original) {
-        specifier = s.to_string();
-      }
       MediaType::TypeScript
     } else {
       MediaType::from_specifier(original)
@@ -3810,6 +3862,13 @@ fn op_load(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.specifier_map.normalize(args.specifier)?;
+  if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+    return Ok(Some(LoadResponse {
+      data: Arc::from("declare const __: any;\nexport = __;\n"),
+      script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
+      version: Some("1".to_string()),
+    }));
+  }
   let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
   Ok(asset_or_document.map(|doc| LoadResponse {
@@ -4016,23 +4075,7 @@ impl From<lsp::CompletionTriggerKind> for CompletionTriggerKind {
   }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
-pub enum QuotePreference {
-  Auto,
-  Double,
-  Single,
-}
-
-impl From<&FmtOptionsConfig> for QuotePreference {
-  fn from(config: &FmtOptionsConfig) -> Self {
-    match config.single_quote {
-      Some(true) => QuotePreference::Single,
-      _ => QuotePreference::Double,
-    }
-  }
-}
+pub type QuotePreference = config::QuoteStyle;
 
 pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
@@ -4172,9 +4215,8 @@ impl UserPreferences {
       use_label_details_in_completion_entries: Some(true),
       ..Default::default()
     };
-    let Some(language_settings) = config
-      .workspace_settings()
-      .language_settings_for_specifier(specifier)
+    let Some(language_settings) =
+      config.language_settings_for_specifier(specifier)
     else {
       return base_preferences;
     };
@@ -4262,6 +4304,12 @@ impl UserPreferences {
       provide_prefix_and_suffix_text_for_rename: Some(
         language_settings.preferences.use_aliases_for_renames,
       ),
+      // Only use workspace settings for quote style if there's no `deno.json`.
+      quote_preference: if config.has_config_file() {
+        base_preferences.quote_preference
+      } else {
+        Some(language_settings.preferences.quote_style)
+      },
       ..base_preferences
     }
   }
@@ -5263,7 +5311,7 @@ mod tests {
       .variable_types
       .suppress_when_type_matches_name = true;
     let mut config = config::Config::new();
-    config.set_workspace_settings(settings);
+    config.set_workspace_settings(settings, None);
     let user_preferences = UserPreferences::from_config_for_specifier(
       &config,
       &Default::default(),

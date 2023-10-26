@@ -5,6 +5,8 @@ use std::fs;
 
 use anyhow::Context;
 use anyhow::Result;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use once_cell::sync::Lazy;
@@ -104,7 +106,7 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     let mut hash_ctx = Context::new(&SHA512);
     hash_ctx.update(&tarball_bytes);
     let digest = hash_ctx.finish();
-    let tarball_checksum = base64::encode(digest.as_ref()).to_lowercase();
+    let tarball_checksum = BASE64_STANDARD.encode(digest.as_ref());
 
     // create the registry file JSON for this version
     let mut dist = serde_json::Map::new();

@@ -25,6 +25,7 @@ use deno_core::v8;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleCode;
@@ -349,6 +350,7 @@ pub struct WebWorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
+  pub feature_checker: Arc<FeatureChecker>,
 }
 
 impl WebWorker {
@@ -385,7 +387,6 @@ impl WebWorker {
     );
 
     // Permissions: many ops depend on this
-    let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
@@ -509,16 +510,9 @@ impl WebWorker {
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
       preserve_snapshotted_modules,
+      feature_checker: Some(options.feature_checker.clone()),
       ..Default::default()
     });
-
-    if unstable {
-      let op_state = js_runtime.op_state();
-      op_state
-        .borrow_mut()
-        .feature_checker
-        .enable_legacy_unstable();
-    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

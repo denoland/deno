@@ -126,9 +126,7 @@ function emptyChunkStream() {
   });
 }
 
-// Try to blow up any recursive reads. Note that because of the use of Array.shift in
-// ReadableStream, this might not actually be able to complete with larger values of
-// length.
+// Try to blow up any recursive reads.
 function veryLongTinyPacketStream(length: number) {
   return new ReadableStream({
     start(controller) {
@@ -249,9 +247,9 @@ Deno.test(async function readableStreamLongAsyncReadAll() {
 });
 
 Deno.test(async function readableStreamVeryLongReadAll() {
-  const rid = resourceForReadableStream(veryLongTinyPacketStream(10000));
+  const rid = resourceForReadableStream(veryLongTinyPacketStream(1_000_000));
   const buffer = await core.ops.op_read_all(rid);
-  assertEquals(buffer.length, 10000);
+  assertEquals(buffer.length, 1_000_000);
   core.ops.op_close(rid);
 });
 

@@ -4,6 +4,7 @@ use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
+use deno_graph::source::ResolutionMode;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
@@ -213,9 +214,11 @@ pub fn build_import_map(
   // add the jsx import source to the destination import map, if mapped in the original import map
   if let Some(jsx_import_source) = jsx_import_source {
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
-      if let Ok(resolved_url) =
-        resolver.resolve(&specifier_text, &jsx_import_source.base_url)
-      {
+      if let Ok(resolved_url) = resolver.resolve(
+        &specifier_text,
+        &jsx_import_source.base_url,
+        ResolutionMode::Execution,
+      ) {
         builder.imports.add(specifier_text, &resolved_url);
       }
     }
