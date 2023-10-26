@@ -79,13 +79,17 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 /// [`TimerHandle`] resource given by `rid` has been canceled.
 ///
 /// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
-#[op2(async(deferred), fast)]
+#[op2(async(lazy), fast)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
-  #[number] millis: u64,
+  #[smi] millis: u64,
   #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
-  let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
+  // If the timer is not present in the resource table it was cancelled before
+  // this op was polled.
+  let Ok(handle) = state.borrow().resource_table.get::<TimerHandle>(rid) else {
+    return Ok(false);
+  };
 
   // If a timer is requested with <=100ms resolution, request the high-res timer. Since the default
   // Windows timer period is 15ms, this means a 100ms timer could fire at 115ms (15% late). We assume that
