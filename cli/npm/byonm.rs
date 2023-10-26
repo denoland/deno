@@ -47,7 +47,7 @@ pub struct ByonmCliNpmResolver {
 }
 
 impl ByonmCliNpmResolver {
-  /// Find the ancestor package.json file that contains the dependency.
+  /// Finds the ancestor package.json that contains the specified dependency.
   pub fn find_ancestor_package_json_with_dep(
     &self,
     dep_name: &str,
