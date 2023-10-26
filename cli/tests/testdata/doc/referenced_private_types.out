@@ -1,0 +1,12 @@
+Defined in file:///V:/deno/cli/tests/testdata/doc/referenced_private_types.ts:5:0
+
+class MyClass
+
+  prop: MyInterface
+
+Defined in file:///V:/deno/cli/tests/testdata/doc/referenced_private_types.ts:1:0
+
+private interface MyInterface
+
+  prop?: string
+
