@@ -456,7 +456,7 @@ export function publicEncrypt(
   return ops.op_node_public_encrypt(data, buffer, padding);
 }
 
-function prepareKey(key) {
+export function prepareKey(key) {
   // TODO(@littledivy): handle these cases
   // - node KeyObject
   // - web CryptoKey
@@ -485,5 +485,6 @@ export default {
   publicEncrypt,
   Cipheriv,
   Decipheriv,
+  prepareKey,
   getCipherInfo,
 };

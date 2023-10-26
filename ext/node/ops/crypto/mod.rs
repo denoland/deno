@@ -1182,3 +1182,38 @@ pub async fn op_node_gen_prime_async(
 ) -> Result<ToJsBuffer, AnyError> {
   Ok(spawn_blocking(move || gen_prime(size)).await?)
 }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AsymmetricKeyDetails {
+  Rsa {
+    modulus_length: usize,
+    public_exponent: usize,
+  },
+  RsaPss {
+    modulus_length: usize,
+    public_exponent: usize,
+    hash_algorithm: String,
+    mgf1_hash_algorithm: String,
+    salt_length: usize,  
+  },
+  Dsa {
+    divisor_length: usize,
+    modulus_length: usize,
+  },
+  Ec {
+    named_curve: String,
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_node_create_private_key(
+  #[buffer] privkey: &[u8]
+) -> Result<AsymmetricKeyDetails, AnyError> {
+  // We only support PEM for now.
+  let pkey = pkcs8::PrivateKeyInfo::from_pkcs8_pem(std::str::from_utf8(privkey).unwrap())?;
+
+
+  Ok(())
+}

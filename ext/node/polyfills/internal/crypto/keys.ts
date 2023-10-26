@@ -8,6 +8,7 @@ import {
   kHandle,
   kKeyObject,
 } from "ext:deno_node/internal/crypto/constants.ts";
+import { prepareKey } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
@@ -38,6 +39,9 @@ import {
 import {
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "ext:deno_web/00_infra.js";
+
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 export const getArrayBufferOrView = hideStackFrames(
   (
@@ -168,18 +172,6 @@ export class KeyObject {
     return this[kKeyType];
   }
 
-  get asymmetricKeyDetails(): AsymmetricKeyDetails | undefined {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyDetails");
-
-    return undefined;
-  }
-
-  get asymmetricKeyType(): KeyType | undefined {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyType");
-
-    return undefined;
-  }
-
   get symmetricKeySize(): number | undefined {
     notImplemented("crypto.KeyObject.prototype.symmetricKeySize");
 
@@ -220,9 +212,14 @@ export interface JsonWebKeyInput {
 }
 
 export function createPrivateKey(
-  _key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
+  key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
 ): KeyObject {
-  notImplemented("crypto.createPrivateKey");
+  const { data } = prepareKey(key);
+  const details = ops.op_node_create_private_key(data);
+  
+  const handle = setOwnedKey(copyBuffer(data));
+
+  return new PrivateKeyObject(handle);
 }
 
 export function createPublicKey(
@@ -313,6 +310,44 @@ export class SecretKeyObject extends KeyObject {
       }
     }
     return key.slice();
+  }
+}
+
+const kAsymmetricKeyType = Symbol('kAsymmetricKeyType');
+const kAsymmetricKeyDetails = Symbol('kAsymmetricKeyDetails');
+
+class AsymmetricKeyObject extends KeyObject {
+  constructor(type: KeyObjectType, handle: unknown) {
+    super(type, handle);
+  }
+
+  get asymmetricKeyType() {
+    return this[kAsymmetricKeyType] ||
+           (this[kAsymmetricKeyType] = this[kHandle].getAsymmetricKeyType());
+  }
+
+  get asymmetricKeyDetails() {
+    switch (this.asymmetricKeyType) {
+      case 'rsa':
+      case 'rsa-pss':
+      case 'dsa':
+      case 'ec':
+        return this[kAsymmetricKeyDetails] ||
+           (this[kAsymmetricKeyDetails] = normalizeKeyDetails(
+             this[kHandle].keyDetail({}),
+           ));
+      default:
+        return {};
+    }
+}
+
+class PrivateKeyObject extends AsymmetricKeyObject {
+  constructor(handle: unknown) {
+    super("private", handle);
+  }
+
+  export(_options: unknown) {
+    notImplemented("crypto.KeyObject.prototype.asymmetricKeyDetails");
   }
 }
 
