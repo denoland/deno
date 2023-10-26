@@ -1161,9 +1161,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "026d622a8251c427bdb506798b003926b059640a247d524e1f773751cce9f0bf"
+checksum = "2bbb245d9a3719b5eb2b5195aaaa25108c3c93d1762b181a20fb1af1c7703eaf"
 dependencies = [
  "anyhow",
  "deno_media_type",
@@ -1171,7 +1171,7 @@ dependencies = [
  "log",
  "once_cell",
  "parking_lot 0.12.1",
- "ring 0.16.20",
+ "ring 0.17.2",
  "serde",
  "serde_json",
  "thiserror",
@@ -1468,11 +1468,11 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7673d66847223bd4115075a96b0699da71b1755524aeb3956f0a3edf3af3217"
+checksum = "8cd29f62e6dec60e585f579df3e9c2fc562aadf881319152974bc442a9042077"
 dependencies = [
- "ring 0.16.20",
+ "ring 0.17.2",
  "serde",
  "serde_json",
  "thiserror",
@@ -4521,12 +4521,12 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.21.7"
+version = "0.21.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd8d6c9f025a446bc4d18ad9632e69aec8f287aa84499ee335599fabd20c3fd8"
+checksum = "446e14c5cda4f3f30fe71863c34ec70f5ac79d6087097ad0bb433e1be5edf04c"
 dependencies = [
  "log",
- "ring 0.16.20",
+ "ring 0.17.2",
  "rustls-webpki",
  "sct",
 ]
@@ -4554,12 +4554,12 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.101.6"
+version = "0.101.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c7d5dece342910d9ba34d259310cae3e0154b873b35408b787b59bce53d34fe"
+checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
- "ring 0.16.20",
- "untrusted 0.7.1",
+ "ring 0.17.2",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
