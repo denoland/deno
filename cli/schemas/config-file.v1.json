@@ -529,6 +529,13 @@
       "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
       "type": ["string", "boolean"],
       "default": true
+    },
+    "unstable": {
+      "type": "array",
+      "description": "List of unstable features to enable.",
+      "items": {
+        "type": "string"
+      }
     }
   }
 }

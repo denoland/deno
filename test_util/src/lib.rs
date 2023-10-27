@@ -2,6 +2,8 @@
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
@@ -317,7 +319,7 @@ async fn basic_auth_redirect(
   {
     let credentials =
       format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
-    if auth == format!("Basic {}", base64::encode(credentials)) {
+    if auth == format!("Basic {}", BASE64_STANDARD.encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");

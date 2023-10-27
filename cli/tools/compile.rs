@@ -25,7 +25,7 @@ pub async fn compile(
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let module_graph_builder = factory.module_graph_builder().await?;
-  let parsed_source_cache = factory.parsed_source_cache()?;
+  let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
