@@ -171,7 +171,6 @@ impl CliMainWorker {
         let event_loop_future = self.worker.run_event_loop(false).boxed_local();
 
         let result;
-
         select! {
           hmr_result = hmr_future => {
             result = hmr_result;

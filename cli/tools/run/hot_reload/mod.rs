@@ -214,7 +214,6 @@ pub async fn run_hot_reload(
               continue;
             }
 
-            hmr_manager.watcher_communicator.print("Restarting the process...".to_string());
             let _ = hmr_manager.watcher_communicator.force_restart();
             break;
           }

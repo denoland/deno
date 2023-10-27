@@ -172,6 +172,9 @@ impl WatcherCommunicator {
   }
 
   pub fn force_restart(&self) -> Result<(), AnyError> {
+    // Change back to automatic mode, so that HMR can set up watching
+    // from scratch.
+    *self.restart_mode.lock() = WatcherRestartMode::Automatic;
     self.restart_tx.send(()).map_err(AnyError::from)
   }
 
