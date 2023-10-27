@@ -4,7 +4,7 @@ import {
   assertFalse,
   assertMatch,
   assertStrictEquals,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { read, readSync } from "node:fs";
 import { open, openSync } from "node:fs";
 import { Buffer } from "node:buffer";
@@ -304,5 +304,20 @@ Deno.test({
     });
 
     await Deno.remove(file);
+  },
+});
+
+Deno.test({
+  name: "SYNC: read with no offsetOropts argument",
+  fn() {
+    const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+    const testData = path.resolve(moduleDir, "testdata", "hello.txt");
+    const buffer = Buffer.alloc(1024);
+    const fd = openSync(testData, "r");
+    const _bytesRead = readSync(
+      fd,
+      buffer,
+    );
+    closeSync(fd);
   },
 });

@@ -1,9 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assert,
-  assertEquals,
-} from "../../../test_util/std/testing/asserts.ts";
+import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
 import {

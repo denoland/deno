@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertThrows,
   unreachable,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 
 Deno.test("fragment", () => {
   assertThrows(() => new WebSocketStream("ws://localhost:4242/#"));
@@ -24,14 +24,14 @@ Deno.test("duplicate protocols", () => {
 
 Deno.test("connect & close custom valid code", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
-  await ws.connection;
+  await ws.opened;
   ws.close({ code: 1000 });
   await ws.closed;
 });
 
 Deno.test("connect & close custom invalid reason", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
-  await ws.connection;
+  await ws.opened;
   assertThrows(() => ws.close({ code: 1000, reason: "".padEnd(124, "o") }));
   ws.close();
   await ws.closed;
@@ -39,7 +39,7 @@ Deno.test("connect & close custom invalid reason", async () => {
 
 Deno.test("echo string", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
-  const { readable, writable } = await ws.connection;
+  const { readable, writable } = await ws.opened;
   await writable.getWriter().write("foo");
   const res = await readable.getReader().read();
   assertEquals(res.value, "foo");
@@ -49,7 +49,7 @@ Deno.test("echo string", async () => {
 
 Deno.test("echo string tls", async () => {
   const ws = new WebSocketStream("wss://localhost:4243");
-  const { readable, writable } = await ws.connection;
+  const { readable, writable } = await ws.opened;
   await writable.getWriter().write("foo");
   const res = await readable.getReader().read();
   assertEquals(res.value, "foo");
@@ -61,7 +61,7 @@ Deno.test("websocket error", async () => {
   const ws = new WebSocketStream("wss://localhost:4242");
   await Promise.all([
     assertRejects(
-      () => ws.connection,
+      () => ws.opened,
       Deno.errors.UnexpectedEof,
       "tls handshake eof",
     ),
@@ -75,7 +75,7 @@ Deno.test("websocket error", async () => {
 
 Deno.test("echo uint8array", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
-  const { readable, writable } = await ws.connection;
+  const { readable, writable } = await ws.opened;
   const uint = new Uint8Array([102, 111, 111]);
   await writable.getWriter().write(uint);
   const res = await readable.getReader().read();
@@ -91,7 +91,7 @@ Deno.test("aborting immediately throws an AbortError", async () => {
   });
   controller.abort();
   await assertRejects(
-    () => wss.connection,
+    () => wss.opened,
     (error: Error) => {
       assert(error instanceof DOMException);
       assertEquals(error.name, "AbortError");
@@ -114,7 +114,7 @@ Deno.test("aborting immediately with a reason throws that reason", async () => {
   const abortReason = new Error();
   controller.abort(abortReason);
   await assertRejects(
-    () => wss.connection,
+    () => wss.opened,
     (error: Error) => assertEquals(error, abortReason),
   );
   await assertRejects(
@@ -129,7 +129,7 @@ Deno.test("aborting immediately with a primitive as reason throws that primitive
     signal: controller.signal,
   });
   controller.abort("Some string");
-  await wss.connection.then(
+  await wss.opened.then(
     () => unreachable(),
     (e) => assertEquals(e, "Some string"),
   );
@@ -159,7 +159,7 @@ Deno.test("headers", async () => {
   const ws = new WebSocketStream("ws://localhost:4512", {
     headers: [["x-some-header", "foo"]],
   });
-  await ws.connection;
+  await ws.opened;
   await promise;
   await ws.closed;
   listener.close();
@@ -196,7 +196,7 @@ Deno.test("forbidden headers", async () => {
   const ws = new WebSocketStream("ws://localhost:4512", {
     headers: forbiddenHeaders.map((header) => [header, "foo"]),
   });
-  await ws.connection;
+  await ws.opened;
   await promise;
   await ws.closed;
   listener.close();
@@ -221,7 +221,7 @@ Deno.test("sync close with empty stream", async () => {
   })();
 
   const ws = new WebSocketStream("ws://localhost:4512");
-  const { readable } = await ws.connection;
+  const { readable } = await ws.opened;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
   assertEquals(firstMessage.value, "first message");
@@ -254,7 +254,7 @@ Deno.test("sync close with unread messages in stream", async () => {
   })();
 
   const ws = new WebSocketStream("ws://localhost:4512");
-  const { readable } = await ws.connection;
+  const { readable } = await ws.opened;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
   assertEquals(firstMessage.value, "first message");
@@ -285,7 +285,7 @@ Deno.test("async close with empty stream", async () => {
   })();
 
   const ws = new WebSocketStream("ws://localhost:4512");
-  const { readable } = await ws.connection;
+  const { readable } = await ws.opened;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
   assertEquals(firstMessage.value, "first message");
@@ -320,7 +320,7 @@ Deno.test("async close with unread messages in stream", async () => {
   })();
 
   const ws = new WebSocketStream("ws://localhost:4512");
-  const { readable } = await ws.connection;
+  const { readable } = await ws.opened;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
   assertEquals(firstMessage.value, "first message");

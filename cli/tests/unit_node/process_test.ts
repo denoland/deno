@@ -11,7 +11,7 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
@@ -255,6 +255,23 @@ Deno.test({
     assert(Array.isArray(process.argv.slice(2)));
     assertEquals(process.argv.indexOf(Deno.execPath()), 0);
     assertEquals(process.argv.indexOf(path.fromFileUrl(Deno.mainModule)), 1);
+  },
+});
+
+Deno.test({
+  name: "process.argv0",
+  fn() {
+    assertEquals(typeof process.argv0, "string");
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+    // Setting should be a noop
+    process.argv0 = "foobar";
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
   },
 });
 

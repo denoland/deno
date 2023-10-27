@@ -3,7 +3,7 @@
 import {
   assertMatch,
   assertRejects,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
@@ -3716,6 +3716,17 @@ async function curlRequestWithStdErr(args: string[]) {
   assert(success);
   return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
 }
+
+Deno.test("Deno.Server is not thenable", async () => {
+  // deno-lint-ignore require-await
+  async function serveTest() {
+    const server = Deno.serve({ port: servePort }, (_) => new Response(""));
+    assert(!("then" in server));
+    return server;
+  }
+  const server = await serveTest();
+  await server.shutdown();
+});
 
 Deno.test(
   {

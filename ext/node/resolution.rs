@@ -448,7 +448,7 @@ impl NodeResolver {
   }
 
   /// Checks if the resolved file has a corresponding declaration file.
-  pub(super) fn path_to_declaration_path(
+  fn path_to_declaration_path(
     &self,
     path: PathBuf,
     referrer_kind: NodeModuleKind,
@@ -975,7 +975,7 @@ impl NodeResolver {
     permissions: &dyn NodePermissions,
   ) -> Result<Option<PathBuf>, AnyError> {
     let (package_name, package_subpath, _is_scoped) =
-      parse_package_name(specifier, referrer)?;
+      parse_npm_pkg_name(specifier, referrer)?;
 
     // ResolveSelf
     let Some(package_config) =
@@ -1378,7 +1378,9 @@ fn is_relative_specifier(specifier: &str) -> bool {
 /// Alternate `PathBuf::with_extension` that will handle known extensions
 /// more intelligently.
 fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
-  const NON_DECL_EXTS: &[&str] = &["cjs", "js", "json", "jsx", "mjs", "tsx"];
+  const NON_DECL_EXTS: &[&str] = &[
+    "cjs", "js", "json", "jsx", "mjs", "tsx", /* ex. types.d */ "d",
+  ];
   const DECL_EXTS: &[&str] = &["cts", "mts", "ts"];
 
   let file_name = match path.file_name() {
@@ -1483,7 +1485,7 @@ fn throw_exports_not_found(
   )
 }
 
-fn parse_package_name(
+pub fn parse_npm_pkg_name(
   specifier: &str,
   referrer: &ModuleSpecifier,
 ) -> Result<(String, String, bool), AnyError> {
@@ -1725,15 +1727,15 @@ mod tests {
     let dummy_referrer = Url::parse("http://example.com").unwrap();
 
     assert_eq!(
-      parse_package_name("fetch-blob", &dummy_referrer).unwrap(),
+      parse_npm_pkg_name("fetch-blob", &dummy_referrer).unwrap(),
       ("fetch-blob".to_string(), ".".to_string(), false)
     );
     assert_eq!(
-      parse_package_name("@vue/plugin-vue", &dummy_referrer).unwrap(),
+      parse_npm_pkg_name("@vue/plugin-vue", &dummy_referrer).unwrap(),
       ("@vue/plugin-vue".to_string(), ".".to_string(), true)
     );
     assert_eq!(
-      parse_package_name("@astrojs/prism/dist/highlighter", &dummy_referrer)
+      parse_npm_pkg_name("@astrojs/prism/dist/highlighter", &dummy_referrer)
         .unwrap(),
       (
         "@astrojs/prism".to_string(),

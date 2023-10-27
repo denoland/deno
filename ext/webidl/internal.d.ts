@@ -543,7 +543,7 @@ declare module "ext:deno_webidl/00_webidl.js" {
   /**
    * Configure prototype properties enumerability / writability / configurability.
    */
-  function configurePrototype(prototype: any);
+  function configureInterface(prototype: any);
 
   /**
    * Get the WebIDL / ES type of a value.

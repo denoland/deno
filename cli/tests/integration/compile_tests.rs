@@ -20,16 +20,17 @@ fn compile_basic() {
   for _ in 0..2 {
     let output = context
       .new_command()
+      .cwd(util::testdata_path())
       .args_vec([
         "compile",
         "--output",
         &exe.to_string_lossy(),
-        "../../../test_util/std/examples/welcome.ts",
+        "./compile/welcome.ts",
       ])
       .run();
     output.assert_exit_code(0);
     output.skip_output_check();
-    let output = context.new_command().command_name(&exe).run();
+    let output = context.new_command().name(&exe).run();
     output.assert_matches_text("Welcome to Deno!\n");
   }
 
@@ -42,7 +43,7 @@ fn compile_basic() {
     .new_command()
     // it should fail creating this, but still work
     .env("DENO_DIR", readonly_sub_dir)
-    .command_name(exe)
+    .name(exe)
     .run();
   output.assert_matches_text("Welcome to Deno!\n");
 }
@@ -688,11 +689,7 @@ fn workers_not_in_module_map() {
   output.assert_exit_code(0);
   output.skip_output_check();
 
-  let output = context
-    .new_command()
-    .command_name(exe)
-    .env("NO_COLOR", "")
-    .run();
+  let output = context.new_command().name(exe).env("NO_COLOR", "").run();
   output.assert_exit_code(1);
   output.assert_matches_text(concat!(
     "error: Uncaught (in worker \"\") Module not found: [WILDCARD]",
@@ -825,7 +822,7 @@ fn compile_npm_specifiers() {
     output.assert_exit_code(0);
     output.skip_output_check();
 
-    let output = context.new_command().command_name(&binary_path).run();
+    let output = context.new_command().name(&binary_path).run();
     output.assert_matches_text(
       r#"Node esm importing node cjs
 ===========================
@@ -881,7 +878,7 @@ testing[WILDCARD]this
   output.assert_exit_code(0);
   output.skip_output_check();
 
-  let output = context.new_command().command_name(binary_path).run();
+  let output = context.new_command().name(binary_path).run();
   output.assert_matches_text("2\n");
 }
 
@@ -1050,7 +1047,7 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   };
   let output = context
     .new_command()
-    .command_name(binary_path)
+    .name(binary_path)
     .args_vec(opts.run_args)
     .run();
   output.assert_matches_file(opts.output_file);
@@ -1114,6 +1111,6 @@ fn compile_node_modules_symlink_outside() {
   // run
   let binary_path =
     project_dir.join(if cfg!(windows) { "bin.exe" } else { "bin" });
-  let output = context.new_command().command_name(binary_path).run();
+  let output = context.new_command().name(binary_path).run();
   output.assert_matches_file("compile/node_modules_symlink_outside/main.out");
 }
