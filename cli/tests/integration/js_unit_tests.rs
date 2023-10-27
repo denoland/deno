@@ -118,6 +118,7 @@ fn js_unit_test(test: String) {
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("--no-prompt")
+    .arg("--unsafely-ignore-certificate-errors")
     .arg("-A")
     .arg(util::tests_path().join("unit").join(format!("{test}.ts")))
     .stderr(Stdio::piped())

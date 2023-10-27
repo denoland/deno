@@ -70,7 +70,7 @@ Deno.test(async function websocketSendLargeBlobPacket() {
   assertEquals(ws.url, "wss://localhost:4243/");
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
-    ws.send(new Blob(["a".repeat(10)]));
+    ws.send(new Blob(["a".repeat(65000)]));
   };
   ws.onmessage = (msg) => {
     console.log(msg);
@@ -197,7 +197,9 @@ Deno.test({
   const ws = new WebSocket(serveUrl);
   assertEquals(ws.url, serveUrl);
   ws.onerror = () => fail();
-  ws.onmessage = () => ws.send("bye");
+  ws.onmessage = (m: MessageEvent) => {
+    if (m.data == "Hello") ws.send("bye");
+  };
   ws.onclose = () => {
     promise.resolve();
   };
