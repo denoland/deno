@@ -277,8 +277,8 @@ class Cache {
   }
 }
 
-webidl.configurePrototype(CacheStorage);
-webidl.configurePrototype(Cache);
+webidl.configureInterface(CacheStorage);
+webidl.configureInterface(Cache);
 const CacheStoragePrototype = CacheStorage.prototype;
 const CachePrototype = Cache.prototype;
 

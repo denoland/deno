@@ -1044,7 +1044,7 @@ class EventTarget {
   }
 }
 
-webidl.configurePrototype(EventTarget);
+webidl.configureInterface(EventTarget);
 const EventTargetPrototype = EventTarget.prototype;
 
 defineEnumerableProps(EventTarget, [

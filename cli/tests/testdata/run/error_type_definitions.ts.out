@@ -1,2 +1,2 @@
-[WILDCARD]error: Relative import path "baz" not prefixed with / or ./ or ../
+[WILDCARD]error: Failed resolving types. Relative import path "baz" not prefixed with / or ./ or ../
     at [WILDCARD]/type_definitions/bar.d.ts:[WILDCARD]

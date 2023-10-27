@@ -65,7 +65,7 @@ pub async fn print_docs(
       let file_fetcher = factory.file_fetcher()?;
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
-      let parsed_source_cache = factory.parsed_source_cache()?;
+      let parsed_source_cache = factory.parsed_source_cache();
 
       let module_specifier =
         resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
