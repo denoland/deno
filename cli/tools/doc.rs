@@ -7,15 +7,15 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
-use crate::file_fetcher::File;
 use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
-use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_path;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
+use deno_graph::CapturingModuleParser;
+use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
 
@@ -25,6 +25,13 @@ pub async fn print_docs(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
+  let module_info_cache = factory.module_info_cache()?;
+  let source_parser = deno_graph::DefaultModuleParser::new_for_analysis();
+  let store = DefaultParsedSourceStore::default();
+  let analyzer =
+    module_info_cache.as_module_analyzer(Some(&source_parser), &store);
+  let capturing_parser =
+    CapturingModuleParser::new(Some(&source_parser), &store);
 
   let mut doc_nodes = match doc_flags.source_file {
     DocSourceFileFlag::Builtin => {
@@ -42,7 +49,6 @@ pub async fn print_docs(
         )],
         Vec::new(),
       );
-      let analyzer = deno_graph::CapturingModuleAnalyzer::default();
       let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
       graph
         .build(
@@ -54,51 +60,33 @@ pub async fn print_docs(
           },
         )
         .await;
-      let doc_parser = doc::DocParser::new(
-        graph,
-        doc_flags.private,
-        analyzer.as_capturing_parser(),
-      );
+      let doc_parser =
+        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
       doc_parser.parse_module(&source_file_specifier)?.definitions
     }
     DocSourceFileFlag::Path(source_file) => {
-      let file_fetcher = factory.file_fetcher()?;
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
-      let parsed_source_cache = factory.parsed_source_cache()?;
 
       let module_specifier =
         resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
 
-      // If the root module has external types, the module graph won't redirect it,
-      // so instead create a dummy file which exports everything from the actual file being documented.
-      let root_specifier =
-        resolve_path("./$deno$doc.ts", cli_options.initial_cwd()).unwrap();
-      let root = File {
-        maybe_types: None,
-        media_type: MediaType::TypeScript,
-        source: format!("export * from \"{module_specifier}\";").into(),
-        specifier: root_specifier.clone(),
-        maybe_headers: None,
-      };
-
-      // Save our fake file into file fetcher cache.
-      file_fetcher.insert_cached(root);
-
+      let mut loader = module_graph_builder.create_graph_loader();
       let graph = module_graph_builder
-        .create_graph(GraphKind::TypesOnly, vec![root_specifier.clone()])
+        .create_graph_with_options(CreateGraphOptions {
+          graph_kind: GraphKind::TypesOnly,
+          roots: vec![module_specifier.clone()],
+          loader: &mut loader,
+          analyzer: &analyzer,
+        })
         .await?;
 
       if let Some(lockfile) = maybe_lockfile {
         graph_lock_or_exit(&graph, &mut lockfile.lock());
       }
 
-      let doc_parser = doc::DocParser::new(
-        graph,
-        doc_flags.private,
-        parsed_source_cache.as_capturing_parser(),
-      );
-      doc_parser.parse_with_reexports(&root_specifier)?
+      doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?
+        .parse_with_reexports(&module_specifier)?
     }
   };
 

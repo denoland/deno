@@ -6,14 +6,13 @@ use async_trait::async_trait;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
 use crate::lsp::repl::get_repl_workspace_settings;
 
-use super::config::SpecifierSettings;
 use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
@@ -125,46 +124,11 @@ impl OutsideLockClient {
     self.0.register_capability(registrations).await
   }
 
-  pub async fn specifier_configurations(
-    &self,
-    specifiers: Vec<LspClientUrl>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
-    self
-      .0
-      .specifier_configurations(
-        specifiers.into_iter().map(|s| s.into_url()).collect(),
-      )
-      .await
-  }
-
-  pub async fn specifier_configuration(
-    &self,
-    specifier: &LspClientUrl,
-  ) -> Result<SpecifierSettings, AnyError> {
-    let values = self
-      .0
-      .specifier_configurations(vec![specifier.as_url().clone()])
-      .await?;
-    if let Some(value) = values.into_iter().next() {
-      value.map_err(|err| {
-        anyhow!(
-          "Error converting specifier settings ({}): {}",
-          specifier,
-          err
-        )
-      })
-    } else {
-      bail!(
-        "Expected the client to return a configuration item for specifier: {}",
-        specifier
-      );
-    }
-  }
-
   pub async fn workspace_configuration(
     &self,
-  ) -> Result<WorkspaceSettings, AnyError> {
-    self.0.workspace_configuration().await
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError> {
+    self.0.workspace_configuration(scopes).await
   }
 
   pub async fn publish_diagnostics(
@@ -201,13 +165,10 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
   );
-  async fn specifier_configurations(
-    &self,
-    uris: Vec<lsp::Url>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>;
   async fn workspace_configuration(
     &self,
-  ) -> Result<WorkspaceSettings, AnyError>;
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError>;
   async fn show_message(&self, message_type: lsp::MessageType, text: String);
   async fn register_capability(
     &self,
@@ -288,67 +249,50 @@ impl ClientTrait for TowerClient {
       .await
   }
 
-  async fn specifier_configurations(
+  async fn workspace_configuration(
     &self,
-    uris: Vec<lsp::Url>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     let config_response = self
       .0
       .configuration(
-        uris
-          .into_iter()
-          .map(|uri| ConfigurationItem {
-            scope_uri: Some(uri),
-            section: Some(SETTINGS_SECTION.to_string()),
+        scopes
+          .iter()
+          .flat_map(|scope_uri| {
+            vec![
+              ConfigurationItem {
+                scope_uri: scope_uri.clone(),
+                section: Some(SETTINGS_SECTION.to_string()),
+              },
+              ConfigurationItem {
+                scope_uri: scope_uri.clone(),
+                section: Some("javascript".to_string()),
+              },
+              ConfigurationItem {
+                scope_uri: scope_uri.clone(),
+                section: Some("typescript".to_string()),
+              },
+            ]
           })
           .collect(),
       )
-      .await?;
-
-    Ok(
-      config_response
-        .into_iter()
-        .map(|value| {
-          serde_json::from_value::<SpecifierSettings>(value).map_err(|err| {
-            anyhow!("Error converting specifier settings: {}", err)
-          })
-        })
-        .collect(),
-    )
-  }
-
-  async fn workspace_configuration(
-    &self,
-  ) -> Result<WorkspaceSettings, AnyError> {
-    let config_response = self
-      .0
-      .configuration(vec![
-        ConfigurationItem {
-          scope_uri: None,
-          section: Some(SETTINGS_SECTION.to_string()),
-        },
-        ConfigurationItem {
-          scope_uri: None,
-          section: Some("javascript".to_string()),
-        },
-        ConfigurationItem {
-          scope_uri: None,
-          section: Some("typescript".to_string()),
-        },
-      ])
       .await;
     match config_response {
       Ok(configs) => {
         let mut configs = configs.into_iter();
-        let deno = serde_json::to_value(configs.next()).unwrap();
-        let javascript = serde_json::to_value(configs.next()).unwrap();
-        let typescript = serde_json::to_value(configs.next()).unwrap();
-        Ok(WorkspaceSettings::from_raw_settings(
-          deno, javascript, typescript,
-        ))
+        let mut result = Vec::with_capacity(scopes.len());
+        for _ in 0..scopes.len() {
+          let deno = json!(configs.next());
+          let javascript = json!(configs.next());
+          let typescript = json!(configs.next());
+          result.push(WorkspaceSettings::from_raw_settings(
+            deno, javascript, typescript,
+          ));
+        }
+        Ok(result)
       }
       Err(err) => {
-        bail!("Error getting workspace configuration: {}", err)
+        bail!("Error getting workspace configurations: {}", err)
       }
     }
   }
@@ -406,27 +350,11 @@ impl ClientTrait for ReplClient {
   ) {
   }
 
-  async fn specifier_configurations(
-    &self,
-    uris: Vec<lsp::Url>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
-    // all specifiers are enabled for the REPL
-    let settings = uris
-      .into_iter()
-      .map(|_| {
-        Ok(SpecifierSettings {
-          enable: Some(true),
-          ..Default::default()
-        })
-      })
-      .collect();
-    Ok(settings)
-  }
-
   async fn workspace_configuration(
     &self,
-  ) -> Result<WorkspaceSettings, AnyError> {
-    Ok(get_repl_workspace_settings())
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError> {
+    Ok(vec![get_repl_workspace_settings(); scopes.len()])
   }
 
   async fn show_message(

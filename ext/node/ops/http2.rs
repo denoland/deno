@@ -9,7 +9,6 @@ use std::task::Poll;
 use bytes::Bytes;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
@@ -157,10 +156,11 @@ pub async fn op_http2_listen(
   )
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_http2_accept(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<
   Option<(Vec<(ByteString, ByteString)>, ResourceId, ResourceId)>,
   AnyError,

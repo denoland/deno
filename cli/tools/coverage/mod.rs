@@ -138,12 +138,13 @@ impl CoverageCollector {
       let filename = format!("{}.json", Uuid::new_v4());
       let filepath = self.dir.join(filename);
 
-      let mut out = BufWriter::new(File::create(filepath)?);
+      let mut out = BufWriter::new(File::create(&filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formatted_coverage = format_json(&coverage, &Default::default())
-        .ok()
-        .flatten()
-        .unwrap_or(coverage);
+      let formatted_coverage =
+        format_json(&filepath, &coverage, &Default::default())
+          .ok()
+          .flatten()
+          .unwrap_or(coverage);
 
       out.write_all(formatted_coverage.as_bytes())?;
       out.flush()?;
