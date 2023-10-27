@@ -12,7 +12,8 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use chrono::Utc;
+include!("../../cli/util/time.rs");
+
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
@@ -611,7 +612,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let current_timestamp = Utc::now().timestamp_millis() as u64;
+  let current_timestamp = utc_now().timestamp_millis() as u64;
   let db = {
     let state = state.borrow();
     let resource =
