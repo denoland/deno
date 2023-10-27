@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { scrypt, scryptSync } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
+import { assertEquals } from "../../../../test_util/std/assert/mod.ts";
 import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 Deno.test("scrypt works correctly", async () => {

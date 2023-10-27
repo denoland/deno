@@ -1,4 +1,4 @@
-import { assertThrows } from "../../../../../test_util/std/testing/asserts.ts";
+import { assertThrows } from "../../../../../test_util/std/assert/mod.ts";
 
 console.log("main", import.meta.url, import.meta.main);
 

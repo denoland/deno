@@ -11,7 +11,7 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
