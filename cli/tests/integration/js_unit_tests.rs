@@ -117,8 +117,16 @@ fn js_unit_test(test: String) {
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
-    .arg("--no-prompt")
-    .arg("--unsafely-ignore-certificate-errors")
+    .arg("--no-prompt");
+
+  // TODO(mmastrac): it would be better to just load a test CA for all tests
+  let deno = if test == "websocket_test" {
+    deno.arg("--unsafely-ignore-certificate-errors")
+  } else {
+    deno
+  };
+
+  deno
     .arg("-A")
     .arg(util::tests_path().join("unit").join(format!("{test}.ts")))
     .stderr(Stdio::piped())
