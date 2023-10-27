@@ -55,16 +55,16 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
-export let stdin = initStdin();
+export const stdin = initStdin();
 
 /** https://nodejs.org/api/process.html#process_process_stdout */
-export let stdout = createWritableStdioStream(
+export const stdout = createWritableStdioStream(
   io.stdout,
   "stdout",
 );
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
-export let stderr = createWritableStdioStream(
+export const stderr = createWritableStdioStream(
   io.stderr,
   "stderr",
 );
