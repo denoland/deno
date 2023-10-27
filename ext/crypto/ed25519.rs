@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -151,8 +153,5 @@ pub fn op_crypto_jwk_x_ed25519(
   #[buffer] pkey: &[u8],
 ) -> Result<String, AnyError> {
   let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
-  Ok(base64::encode_config(
-    pair.public_key().as_ref(),
-    base64::URL_SAFE_NO_PAD,
-  ))
+  Ok(BASE64_URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()))
 }
