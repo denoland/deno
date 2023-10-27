@@ -14,6 +14,8 @@ use std::rc::Rc;
 
 include!("../../cli/util/time.rs");
 
+use base64::prelude::BASE64_URL_SAFE;
+use base64::Engine;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
@@ -544,11 +546,7 @@ fn encode_cursor(
   if !boundary_key.starts_with(common_prefix) {
     return Err(type_error("invalid boundary key"));
   }
-
-  Ok(base64::encode_config(
-    &boundary_key[common_prefix.len()..],
-    base64::URL_SAFE,
-  ))
+  Ok(BASE64_URL_SAFE.encode(&boundary_key[common_prefix.len()..]))
 }
 
 fn decode_selector_and_cursor(
@@ -561,7 +559,8 @@ fn decode_selector_and_cursor(
   };
 
   let common_prefix = selector.common_prefix();
-  let cursor = base64::decode_config(cursor, base64::URL_SAFE)
+  let cursor = BASE64_URL_SAFE
+    .decode(cursor)
     .map_err(|_| type_error("invalid cursor"))?;
 
   let first_key: Vec<u8>;

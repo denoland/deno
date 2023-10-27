@@ -971,7 +971,7 @@ version = "1.37.2"
 dependencies = [
  "async-trait",
  "base32",
- "base64 0.13.1",
+ "base64 0.21.4",
  "bincode",
  "bytes",
  "cache_control",
@@ -1236,7 +1236,7 @@ dependencies = [
  "aes",
  "aes-gcm",
  "aes-kw",
- "base64 0.13.1",
+ "base64 0.21.4",
  "cbc",
  "const-oid",
  "ctr",
@@ -1265,10 +1265,11 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.69.2"
+version = "0.70.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6932fbb8bcd9154b8b3b6453dadd812999808aeaa5bfe01a2c63d075b8ad3866"
+checksum = "1dd0a46bf024da1e3a1caa7fbb6309bd2abd5395c738b73efe34276a6d9b9838"
 dependencies = [
+ "anyhow",
  "cfg-if 1.0.0",
  "deno_ast",
  "deno_graph",
@@ -1350,9 +1351,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.59.0"
+version = "0.59.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8863c48f0d7c03beef9a64173557d5ba8e32a4a3f1b8830420c6ec47668fa4c6"
+checksum = "ede5d554aca4ac11a25f70b59e80cc1f1fe2cb134664fa33972cf9527f0582bc"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1378,7 +1379,7 @@ version = "0.116.0"
 dependencies = [
  "async-compression",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.21.4",
  "bencher",
  "brotli",
  "bytes",
@@ -1428,7 +1429,7 @@ version = "0.29.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.21.4",
  "chrono",
  "deno_core",
  "deno_node",
@@ -3204,9 +3205,9 @@ checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.4.7"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a9bad9f94746442c783ca431b22403b519cd7fbeed0533fdd6328b2f2212128"
+checksum = "da2479e8c062e40bf0066ffa0bc823de0a9368974af99c9f6df941d2c231e03f"
 
 [[package]]
 name = "lock_api"
@@ -4481,9 +4482,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.38.14"
+version = "0.38.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "747c788e9ce8e92b12cd485c49ddf90723550b654b32508f979b71a7b1ecda4f"
+checksum = "745ecfa778e66b2b63c88a61cb36e0eea109e803b0b86bf9879fbc77c70e86ed"
 dependencies = [
  "bitflags 2.4.0",
  "errno 0.3.3",
@@ -5647,7 +5648,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "base64 0.13.1",
+ "base64 0.21.4",
  "bytes",
  "console_static_text",
  "fastwebsockets",

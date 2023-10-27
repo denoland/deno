@@ -46,6 +46,41 @@ pub struct ByonmCliNpmResolver {
   root_node_modules_dir: PathBuf,
 }
 
+impl ByonmCliNpmResolver {
+  /// Finds the ancestor package.json that contains the specified dependency.
+  pub fn find_ancestor_package_json_with_dep(
+    &self,
+    dep_name: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Option<PackageJson> {
+    let referrer_path = referrer.to_file_path().ok()?;
+    let mut current_folder = referrer_path.parent()?;
+    loop {
+      let pkg_json_path = current_folder.join("package.json");
+      if let Ok(pkg_json) =
+        PackageJson::load_skip_read_permission(self.fs.as_ref(), pkg_json_path)
+      {
+        if let Some(deps) = &pkg_json.dependencies {
+          if deps.contains_key(dep_name) {
+            return Some(pkg_json);
+          }
+        }
+        if let Some(deps) = &pkg_json.dev_dependencies {
+          if deps.contains_key(dep_name) {
+            return Some(pkg_json);
+          }
+        }
+      }
+
+      if let Some(parent) = current_folder.parent() {
+        current_folder = parent;
+      } else {
+        return None;
+      }
+    }
+  }
+}
+
 impl NpmResolver for ByonmCliNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
@@ -60,6 +95,11 @@ impl NpmResolver for ByonmCliNpmResolver {
       referrer: &ModuleSpecifier,
       mode: NodeResolutionMode,
     ) -> Result<PathBuf, AnyError> {
+      let types_pkg_name = if mode.is_types() && !name.starts_with("@types/") {
+        Some(types_package_name(name))
+      } else {
+        None
+      };
       let mut current_folder = package_root_path;
       loop {
         let node_modules_folder = if current_folder.ends_with("node_modules") {
@@ -69,9 +109,8 @@ impl NpmResolver for ByonmCliNpmResolver {
         };
 
         // attempt to resolve the types package first, then fallback to the regular package
-        if mode.is_types() && !name.starts_with("@types/") {
-          let sub_dir =
-            join_package_name(&node_modules_folder, &types_package_name(name));
+        if let Some(types_pkg_name) = &types_pkg_name {
+          let sub_dir = join_package_name(&node_modules_folder, types_pkg_name);
           if fs.is_dir_sync(&sub_dir) {
             return Ok(sub_dir);
           }
@@ -128,7 +167,7 @@ impl NpmResolver for ByonmCliNpmResolver {
       // todo(dsherret): not exactly correct, but good enough for a first pass
       let mut path = path.as_path();
       while let Some(parent) = path.parent() {
-        if parent.join("package.json").exists() {
+        if self.fs.exists_sync(&parent.join("package.json")) {
           return Ok(Some(parent.to_path_buf()));
         } else {
           path = parent;
