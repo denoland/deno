@@ -715,7 +715,7 @@ fn ec_generate(
   let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
     .map_err(|_| type_error("Failed to generate EC key"))?;
 
-  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref())
+  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref(), &rng)
     .map_err(|_| type_error("Failed to generate EC key"))?
     .public_key()
     .as_ref()

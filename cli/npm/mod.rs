@@ -13,14 +13,13 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageReq;
 
+pub use self::byonm::ByonmCliNpmResolver;
 pub use self::byonm::CliNpmResolverByonmCreateOptions;
 pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
-
-use self::byonm::ByonmCliNpmResolver;
 
 pub enum CliNpmResolverCreateOptions {
   Managed(CliNpmResolverManagedCreateOptions),
