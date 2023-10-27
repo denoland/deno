@@ -169,6 +169,14 @@ pub async fn run_hot_reload(
           matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
         })).collect();
 
+        // If after filtering there are no paths it means it's either a file
+        // we can't HMR or an external file that was passed explicitly to
+        // `--unstable-hmr=<file>` path.
+        if filtered_paths.is_empty() {
+          let _ = hmr_manager.watcher_communicator.force_restart();
+          continue;
+        }
+
         for path in filtered_paths {
           let Some(path_str) = path.to_str() else {
             let _ = hmr_manager.watcher_communicator.force_restart();
@@ -179,12 +187,12 @@ pub async fn run_hot_reload(
             continue;
           };
 
-          hmr_manager.watcher_communicator.print(format!("Reloading changed module {}", module_url.as_str()));
-
           let Some(id) = hmr_manager.script_ids.get(module_url.as_str()).cloned() else {
             let _ = hmr_manager.watcher_communicator.force_restart();
             continue;
           };
+
+          hmr_manager.watcher_communicator.print(format!("Reloading changed module {}", module_url.as_str()));
 
           let source_code = hmr_manager.emitter.load_and_emit_for_hmr(
             &module_url
