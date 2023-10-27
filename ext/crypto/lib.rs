@@ -4,6 +4,8 @@ use aes_kw::KekAes128;
 use aes_kw::KekAes192;
 use aes_kw::KekAes256;
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
@@ -120,14 +122,14 @@ deno_core::extension!(deno_crypto,
 pub fn op_crypto_base64url_decode(
   #[string] data: String,
 ) -> Result<ToJsBuffer, AnyError> {
-  let data: Vec<u8> = base64::decode_config(data, base64::URL_SAFE_NO_PAD)?;
+  let data: Vec<u8> = BASE64_URL_SAFE_NO_PAD.decode(data)?;
   Ok(data.into())
 }
 
 #[op2]
 #[string]
 pub fn op_crypto_base64url_encode(#[buffer] data: JsBuffer) -> String {
-  let data: String = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
+  let data: String = BASE64_URL_SAFE_NO_PAD.encode(data);
   data
 }
 

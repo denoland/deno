@@ -13,6 +13,7 @@ use test_util::lsp::LspClientBuilder;
 fn incremental_change_wait(bench: &mut Bencher) {
   let mut client = LspClientBuilder::new().use_diagnostic_sync(false).build();
   client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true } }));
 
   client.write_notification(
     "textDocument/didOpen",
@@ -23,15 +24,6 @@ fn incremental_change_wait(bench: &mut Bencher) {
         "version": 0,
         "text": include_str!("testdata/express-router.js")
       }
-    }),
-  );
-
-  let (id, method, _): (u64, String, Option<Value>) = client.read_request();
-  assert_eq!(method, "workspace/configuration");
-  client.write_response(
-    id,
-    json!({
-      "enable": true
     }),
   );
 

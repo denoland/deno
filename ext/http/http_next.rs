@@ -661,8 +661,7 @@ pub fn op_http_set_response_body_text(
   }
 }
 
-// Skipping `fast` because we prefer an owned buffer here.
-#[op2]
+#[op2(fast)]
 pub fn op_http_set_response_body_bytes(
   #[smi] slab_id: SlabId,
   #[buffer] buffer: JsBuffer,
