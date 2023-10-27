@@ -556,10 +556,12 @@ fn import_key_ec_jwk(
         }
       };
 
+      let rng = ring::rand::SystemRandom::new();
       let _key_pair = EcdsaKeyPair::from_private_key_and_public_key(
         key_alg,
         private_d.as_bytes(),
         point_bytes.as_ref(),
+        &rng,
       );
 
       Ok(ImportKeyResult::Ec {
@@ -658,8 +660,9 @@ fn import_key_ec(
           }
         };
 
+        let rng = ring::rand::SystemRandom::new();
         // deserialize pkcs8 using ring crate, to VALIDATE public key
-        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data)?;
+        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data, &rng)?;
 
         // 11.
         if named_curve != pk_named_curve {
