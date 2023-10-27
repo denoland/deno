@@ -1,5 +1,6 @@
 import { foo } from "./foo.jsx";
 
+// deno-lint-ignore require-await
 async function rejection() {
   throw new Error("boom!");
 }
