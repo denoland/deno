@@ -55,19 +55,9 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
-export const stdin = initStdin();
+let stdin, stdout, stderr;
 
-/** https://nodejs.org/api/process.html#process_process_stdout */
-export const stdout = createWritableStdioStream(
-  io.stdout,
-  "stdout",
-);
-
-/** https://nodejs.org/api/process.html#process_process_stderr */
-export const stderr = createWritableStdioStream(
-  io.stderr,
-  "stderr",
-);
+export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
@@ -877,6 +867,21 @@ internals.__bootstrapNodeProcess = function (
   enableNextTick();
 
   process.setStartTime(Date.now());
+
+  stdin = process.stdin = initStdin();
+
+  /** https://nodejs.org/api/process.html#process_process_stdout */
+  stdout = process.stdout = createWritableStdioStream(
+    io.stdout,
+    "stdout",
+  );
+
+  /** https://nodejs.org/api/process.html#process_process_stderr */
+  stderr = process.stderr = createWritableStdioStream(
+    io.stderr,
+    "stderr",
+  );
+
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
