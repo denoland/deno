@@ -2280,7 +2280,7 @@ checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
 [[package]]
 name = "fastwebsockets"
 version = "0.4.4"
-source = "git+https://github.com/mmastrac/fastwebsockets.git?branch=split#06a0264c85b2f798728e91643b209b7c79502b60"
+source = "git+https://github.com/mmastrac/fastwebsockets.git?branch=split#f0e9bb750271f6f7dbb91c29ab07633f259ded13"
 dependencies = [
  "base64 0.21.4",
  "hyper 0.14.27",
