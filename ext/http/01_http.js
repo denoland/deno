@@ -421,7 +421,7 @@ function h2WsUpgrade(request) {
       "Invalid Method: ws over h2 should use :method = CONNECT",
     );
   }
-  // TODO(somebody): validate :protocol, pseudo-header
+  // TODO(@aapoalas): validate :protocol, pseudo-header
   return newInnerResponse(200);
 }
 
@@ -453,30 +453,26 @@ function h1WsUpgrade(request) {
 
   const accept = ops.op_http_websocket_accept_header(websocketKey);
 
-  const r = newInnerResponse(101);
-  r.headerList = [
+  const innerResp = newInnerResponse(101);
+  innerResp.headerList = [
     ["upgrade", "websocket"],
     ["connection", "Upgrade"],
     ["sec-websocket-accept", accept],
   ];
-  return r;
-}
-
-function isH2Request(request) {
-  return toInnerRequest(request).httpVersion === 2;
+  return innerResp;
 }
 
 function upgradeWebSocket(request, options = {}) {
-  const innerResp = isH2Request(request)
-    ? h2WsUpgrade(request)
-    : h1WsUpgrade(request);
-  const ownsConn = !isH2Request(request); // conn ownership is only transferred on h1
+  const innerReq = toInnerRequest(request);
+  const isH2 = innerReq.httpVersion === 2;
+  const innerResp = isH2 ? h2WsUpgrade(request) : h1WsUpgrade(request);
+  const ownsConn = !isH2; // conn ownership is only transferred on h1
 
   const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
   const protocols = StringPrototypeSplit(protocolsStr, ", ");
   if (protocols && options.protocol) {
     if (ArrayPrototypeIncludes(protocols, options.protocol)) {
-      ArrayPrototypePush(r.headerList, [
+      ArrayPrototypePush(innerResp.headerList, [
         "sec-websocket-protocol",
         options.protocol,
       ]);
@@ -494,9 +490,8 @@ function upgradeWebSocket(request, options = {}) {
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
   socket[_idleTimeoutTimeout] = null;
 
-  const inner = toInnerRequest(request);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeWebSocket", r, socket);
+  if (innerReq._wantsUpgrade) {
+    return innerReq._wantsUpgrade("upgradeWebSocket", innerResp, socket);
   }
 
   const response = fromInnerResponse(innerResp, "immutable");

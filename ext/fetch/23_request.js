@@ -87,8 +87,8 @@ function processUrlList(urlList, urlListProcessed) {
  * @param {string | () => string} url
  * @param {() => [string, string][]} headerList
  * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
- * @param {boolean} maybeBlob
- * @param {number} httpVersion
+ * @param {boolean} [maybeBlob]
+ * @param {number} [httpVersion]
  * @returns {InnerRequest}
  */
 function newInnerRequest(
