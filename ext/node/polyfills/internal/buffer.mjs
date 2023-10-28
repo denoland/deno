@@ -46,6 +46,8 @@ const kMaxLength = 2147483647;
 const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
+const STATIC_EMPTY_BUFFER = new ArrayBuffer();
+
 const customInspectSymbol =
   typeof Symbol === "function" && typeof Symbol["for"] === "function"
     ? Symbol["for"]("nodejs.util.inspect.custom")
@@ -86,11 +88,15 @@ function createBuffer(length) {
   }
   const buf = new Uint8Array(length);
   Object.setPrototypeOf(buf, Buffer.prototype);
-  buf[VIEW_SYMBOL] = new DataView(
-    buf.buffer,
-    buf.byteOffset,
-    buf.byteLength,
-  );
+  // Avoid touching the internal ArrayBuffer if we'll never read
+  // from the internal DataView. V8 avoids creating it if its empty.
+  buf[VIEW_SYMBOL] = length === 0
+    ? new DataView(STATIC_EMPTY_BUFFER)
+    : new DataView(
+      buf.buffer,
+      buf.byteOffset,
+      buf.byteLength,
+    );
   return buf;
 }
 
@@ -831,11 +837,21 @@ function fromArrayBuffer(obj, byteOffset, length) {
 
   const buf = new Uint8Array(obj, byteOffset, length);
   Object.setPrototypeOf(buf, Buffer.prototype);
-  buf[VIEW_SYMBOL] = new DataView(
-    buf.buffer,
-    buf.byteOffset,
-    buf.byteLength,
-  );
+  // Avoid touching the internal ArrayBuffer if we'll never read
+  // from the internal DataView. V8 avoids creating it if its empty.
+  // Note that the byteOffset and byteLength of a Uint8Array cannot
+  // be reassigned and thus there is risk of confusion with that.
+  // The empty DataView created here will not share a pointer with
+  // the Buffer if the Buffer was created from an external pointer
+  // (eg. with FFI). This is not an issue as we never expose the
+  // DataView itself outside of this module.
+  buf[VIEW_SYMBOL] = length === 0
+    ? new DataView(STATIC_EMPTY_BUFFER)
+    : new DataView(
+      buf.buffer,
+      buf.byteOffset,
+      buf.byteLength,
+    );
   return buf;
 }
 
