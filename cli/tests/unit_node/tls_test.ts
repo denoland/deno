@@ -56,6 +56,38 @@ Connection: close
   await serve;
 });
 
+// https://github.com/denoland/deno/pull/20120
+Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
+  const ctl = new AbortController();
+  const serve = serveTls(() => new Response("hello"), {
+    port: 8443,
+    key,
+    cert,
+    signal: ctl.signal,
+  });
+
+  await delay(200);
+
+  const conn = tls.connect({
+    host: "localhost",
+    port: 8443,
+    secureContext: {
+      ca: rootCaCert,
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  });
+
+  conn.setEncoding("utf8");
+  conn.write(`GET / HTTP/1.1\nHost: www.google.com\n\n`);
+
+  conn.on("data", (_) => {
+    conn.destroy();
+    ctl.abort();
+  });
+
+  await serve;
+});
+
 Deno.test("tls.createServer creates a TLS server", async () => {
   const p = deferred();
   const server = tls.createServer(

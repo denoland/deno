@@ -15,11 +15,12 @@ use os_pipe::pipe;
 
 use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
-use crate::env_vars_for_npm_tests_no_sync_download;
+use crate::env_vars_for_jsr_tests;
+use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
-use crate::new_deno_dir;
+use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -30,12 +31,12 @@ use crate::TempDir;
 pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
-  use_separate_deno_dir: bool,
   use_symlinked_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   copy_temp_dir: Option<String>,
+  temp_dir_path: Option<PathBuf>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
   deno_exe: Option<PathRef>,
@@ -48,6 +49,15 @@ impl TestContextBuilder {
 
   pub fn for_npm() -> Self {
     Self::new().use_http_server().add_npm_env_vars()
+  }
+
+  pub fn for_jsr() -> Self {
+    Self::new().use_http_server().add_jsr_env_vars()
+  }
+
+  pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
+    self.temp_dir_path = Some(path.as_ref().to_path_buf());
+    self
   }
 
   pub fn use_http_server(mut self) -> Self {
@@ -72,15 +82,6 @@ impl TestContextBuilder {
     self
   }
 
-  /// By default, the temp_dir and the deno_dir will be shared.
-  /// In some cases, that might cause an issue though, so calling
-  /// this will use a separate directory for the deno dir and the
-  /// temp directory.
-  pub fn use_separate_deno_dir(mut self) -> Self {
-    self.use_separate_deno_dir = true;
-    self
-  }
-
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -102,41 +103,38 @@ impl TestContextBuilder {
   }
 
   pub fn add_npm_env_vars(mut self) -> Self {
-    for (key, value) in env_vars_for_npm_tests_no_sync_download() {
+    for (key, value) in env_vars_for_npm_tests() {
       self = self.env(key, value);
     }
     self
   }
 
-  pub fn use_sync_npm_download(self) -> Self {
-    self.env(
-      // make downloads deterministic
-      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
-      "1",
-    )
+  pub fn add_jsr_env_vars(mut self) -> Self {
+    for (key, value) in env_vars_for_jsr_tests() {
+      self = self.env(key, value);
+    }
+    self
   }
 
   pub fn build(&self) -> TestContext {
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let temp_dir = if self.use_separate_deno_dir {
-      TempDir::new()
-    } else {
-      deno_dir.clone()
-    };
+    let temp_dir_path = self
+      .temp_dir_path
+      .clone()
+      .unwrap_or_else(std::env::temp_dir);
+    let deno_dir = TempDir::new_in(&temp_dir_path);
+    let temp_dir = TempDir::new_in(&temp_dir_path);
     let temp_dir = if self.use_symlinked_temp_dir {
       TempDir::new_symlinked(temp_dir)
     } else {
       temp_dir
     };
-    let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
-      let test_data_path = PathRef::new(testdata_path()).join(temp_copy_dir);
+    let testdata_dir = testdata_path();
+    if let Some(temp_copy_dir) = &self.copy_temp_dir {
+      let test_data_path = testdata_dir.join(temp_copy_dir);
       let temp_copy_dir = temp_dir.path().join(temp_copy_dir);
       temp_copy_dir.create_dir_all();
       test_data_path.copy_to_recursive(&temp_copy_dir);
-      temp_dir.path().clone()
-    } else {
-      PathRef::new(testdata_path())
-    };
+    }
 
     let deno_exe = self.deno_exe.clone().unwrap_or_else(deno_exe_path);
     println!("deno_exe path {}", deno_exe);
@@ -151,7 +149,7 @@ impl TestContextBuilder {
       cwd: self.cwd.clone(),
       deno_exe,
       envs: self.envs.clone(),
-      use_temp_cwd: self.use_temp_cwd,
+      use_temp_cwd: self.use_temp_cwd || self.copy_temp_dir.is_some(),
       _http_server_guard: http_server_guard,
       deno_dir,
       temp_dir,
@@ -229,7 +227,7 @@ pub struct TestCommandBuilder {
 }
 
 impl TestCommandBuilder {
-  pub fn command_name(mut self, name: impl AsRef<OsStr>) -> Self {
+  pub fn name(mut self, name: impl AsRef<OsStr>) -> Self {
     self.command_name = name.as_ref().to_string_lossy().to_string();
     self
   }
@@ -273,6 +271,17 @@ impl TestCommandBuilder {
     self
   }
 
+  pub fn envs<S: AsRef<OsStr>>(
+    self,
+    envs: impl IntoIterator<Item = (S, S)>,
+  ) -> Self {
+    let mut this = self;
+    for (k, v) in envs {
+      this = this.env(k, v);
+    }
+    this
+  }
+
   pub fn env_clear(mut self) -> Self {
     self.env_clear = true;
     self
@@ -284,19 +293,24 @@ impl TestCommandBuilder {
   }
 
   fn build_cwd(&self) -> PathRef {
-    let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
-    if self.context.use_temp_cwd {
-      assert!(cwd.is_none());
+    let root_dir = if self.context.use_temp_cwd {
       self.context.temp_dir.path().to_owned()
-    } else if let Some(cwd_) = cwd {
-      self.context.testdata_dir.join(cwd_)
     } else {
       self.context.testdata_dir.clone()
+    };
+    let specified_cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
+    match specified_cwd {
+      Some(cwd) => root_dir.join(cwd),
+      None => root_dir,
     }
   }
 
   fn build_command_path(&self) -> PathRef {
-    let command_name = &self.command_name;
+    let command_name = if cfg!(windows) && self.command_name == "npm" {
+      "npm.cmd"
+    } else {
+      &self.command_name
+    };
     if command_name == "deno" {
       deno_exe_path()
     } else {
@@ -397,7 +411,11 @@ impl TestCommandBuilder {
       command.env_clear();
     }
     command.env("DENO_DIR", self.context.deno_dir.path());
-    command.envs(self.build_envs());
+    let mut envs = self.build_envs();
+    if !envs.contains_key("NPM_CONFIG_REGISTRY") {
+      envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
+    }
+    command.envs(envs);
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
 
@@ -513,6 +531,7 @@ impl Drop for TestCommandOutput {
 
     // now ensure the exit code was asserted
     if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
+      self.print_output();
       panic!(
         "The non-zero exit code of the command was not asserted: {:?}",
         self.exit_code,
@@ -526,10 +545,11 @@ impl TestCommandOutput {
     &self.testdata_dir
   }
 
-  pub fn skip_output_check(&self) {
+  pub fn skip_output_check(&self) -> &Self {
     *self.asserted_combined.borrow_mut() = true;
     *self.asserted_stdout.borrow_mut() = true;
     *self.asserted_stderr.borrow_mut() = true;
+    self
   }
 
   pub fn skip_exit_code_check(&self) {

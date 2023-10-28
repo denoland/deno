@@ -7,13 +7,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+
 mod sqlite;
 pub use sqlite::SqliteBackedCache;
 
@@ -28,6 +29,7 @@ deno_core::extension!(deno_cache,
     op_cache_storage_has<CA>,
     op_cache_storage_delete<CA>,
     op_cache_put<CA>,
+    op_cache_put_finish<CA>,
     op_cache_match<CA>,
     op_cache_delete<CA>,
   ],
@@ -86,16 +88,24 @@ pub struct CacheDeleteRequest {
   pub request_url: String,
 }
 
-#[async_trait]
-pub trait Cache: Clone {
+#[async_trait(?Send)]
+pub trait Cache: Clone + 'static {
+  type CachePutResourceType: Resource;
+
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError>;
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError>;
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError>;
 
-  async fn put(
+  /// Create a put request.
+  async fn put_create(
     &self,
     request_response: CachePutRequest,
-  ) -> Result<Option<Rc<dyn Resource>>, AnyError>;
+  ) -> Result<Option<Rc<Self::CachePutResourceType>>, AnyError>;
+  /// Complete a put request.
+  async fn put_finish(
+    &self,
+    resource: Rc<Self::CachePutResourceType>,
+  ) -> Result<(), AnyError>;
   async fn r#match(
     &self,
     request: CacheMatchRequest,
@@ -107,52 +117,54 @@ pub trait Cache: Clone {
     -> Result<bool, AnyError>;
 }
 
-#[op]
+#[op2(async)]
+#[number]
 pub async fn op_cache_storage_open<CA>(
   state: Rc<RefCell<OpState>>,
-  cache_name: String,
+  #[string] cache_name: String,
 ) -> Result<i64, AnyError>
 where
-  CA: Cache + 'static,
+  CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
   cache.storage_open(cache_name).await
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_cache_storage_has<CA>(
   state: Rc<RefCell<OpState>>,
-  cache_name: String,
+  #[string] cache_name: String,
 ) -> Result<bool, AnyError>
 where
-  CA: Cache + 'static,
+  CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
   cache.storage_has(cache_name).await
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_cache_storage_delete<CA>(
   state: Rc<RefCell<OpState>>,
-  cache_name: String,
+  #[string] cache_name: String,
 ) -> Result<bool, AnyError>
 where
-  CA: Cache + 'static,
+  CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
   cache.storage_delete(cache_name).await
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 pub async fn op_cache_put<CA>(
   state: Rc<RefCell<OpState>>,
-  request_response: CachePutRequest,
+  #[serde] request_response: CachePutRequest,
 ) -> Result<Option<ResourceId>, AnyError>
 where
-  CA: Cache + 'static,
+  CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
-  match cache.put(request_response).await? {
+  match cache.put_create(request_response).await? {
     Some(resource) => {
       let rid = state.borrow_mut().resource_table.add_rc_dyn(resource);
       Ok(Some(rid))
@@ -161,13 +173,30 @@ where
   }
 }
 
-#[op]
+#[op2(async)]
+pub async fn op_cache_put_finish<CA>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError>
+where
+  CA: Cache,
+{
+  let cache = get_cache::<CA>(&state)?;
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<CA::CachePutResourceType>(rid)?;
+  cache.put_finish(resource).await
+}
+
+#[op2(async)]
+#[serde]
 pub async fn op_cache_match<CA>(
   state: Rc<RefCell<OpState>>,
-  request: CacheMatchRequest,
+  #[serde] request: CacheMatchRequest,
 ) -> Result<Option<CacheMatchResponse>, AnyError>
 where
-  CA: Cache + 'static,
+  CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
   match cache.r#match(request).await? {
@@ -180,13 +209,13 @@ where
   }
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_cache_delete<CA>(
   state: Rc<RefCell<OpState>>,
-  request: CacheDeleteRequest,
+  #[serde] request: CacheDeleteRequest,
 ) -> Result<bool, AnyError>
 where
-  CA: Cache + 'static,
+  CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
   cache.delete(request).await
@@ -194,7 +223,7 @@ where
 
 pub fn get_cache<CA>(state: &Rc<RefCell<OpState>>) -> Result<CA, AnyError>
 where
-  CA: Cache + 'static,
+  CA: Cache,
 {
   let mut state = state.borrow_mut();
   if let Some(cache) = state.try_borrow::<CA>() {

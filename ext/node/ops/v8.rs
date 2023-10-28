@@ -1,14 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use deno_core::op;
+use deno_core::op2;
 use deno_core::v8;
 
-#[op]
-fn op_v8_cached_data_version_tag() -> u32 {
+#[op2(fast)]
+pub fn op_v8_cached_data_version_tag() -> u32 {
   v8::script_compiler::cached_data_version_tag()
 }
 
-#[op(v8)]
-fn op_v8_get_heap_statistics(scope: &mut v8::HandleScope, buffer: &mut [f64]) {
+#[op2]
+pub fn op_v8_get_heap_statistics(
+  scope: &mut v8::HandleScope,
+  #[buffer] buffer: &mut [f64],
+) {
   let mut stats = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut stats);
 

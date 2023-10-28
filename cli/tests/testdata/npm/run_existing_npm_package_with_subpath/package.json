@@ -1,0 +1,6 @@
+{
+  "name": "run-existing-npm-package",
+  "dependencies": {
+    "@denotest/bin": "1.0.0"
+  }
+}

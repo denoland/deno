@@ -26,9 +26,7 @@ impl Emitter {
     parsed_source_cache: Arc<ParsedSourceCache>,
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
-    let emit_options_hash = FastInsecureHasher::new()
-      .write_hashable(&emit_options)
-      .finish();
+    let emit_options_hash = FastInsecureHasher::hash(&emit_options);
     Self {
       emit_cache,
       parsed_source_cache,

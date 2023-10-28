@@ -50,6 +50,8 @@ export class Server extends HttpServer {
         : this._opts.key,
     };
   }
+
+  _encrypted = true;
 }
 export function createServer(opts, requestListener?: ServerHandler) {
   return new Server(opts, requestListener);
@@ -110,6 +112,7 @@ const globalAgent = new Agent({
 
 /** HttpsClientRequest class loosely follows http.ClientRequest class API. */
 class HttpsClientRequest extends ClientRequest {
+  override _encrypted: true;
   override defaultProtocol = "https:";
   override _getClient(): Deno.HttpClient | undefined {
     if (caCerts === null) {

@@ -5,12 +5,12 @@
   "modules": [
     {
       "kind": "npm",
-      "specifier": "npm:chalk@4.1.2",
+      "specifier": "npm:/chalk@4.1.2",
       "npmPackage": "chalk@4.1.2"
     }
   ],
   "redirects": {
-    "npm:chalk@4": "npm:chalk@4.1.2"
+    "npm:chalk@4": "npm:/chalk@4.1.2"
   },
   "npmPackages": {
     "ansi-styles@4.3.0": {

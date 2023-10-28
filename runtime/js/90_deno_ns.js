@@ -2,6 +2,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
+
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
 import * as console from "ext:deno_console/01_console.js";
@@ -152,6 +153,7 @@ const denoNs = {
   ChildProcess: process.ChildProcess,
 };
 
+// when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
   listenDatagram: net.createListenDatagram(
     ops.op_net_listen_udp,

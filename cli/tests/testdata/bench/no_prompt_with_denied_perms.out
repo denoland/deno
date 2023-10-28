@@ -2,8 +2,8 @@
 runtime: deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/bench/no_prompt_with_denied_perms.ts
-benchmark      time (avg)             (min … max)       p75       p99      p995
-------------------------------------------------- -----------------------------
+benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
+--------------------------------------------------------------- -----------------------------
 no prompt  error: PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
 [WILDCARD]
 error: Bench failed

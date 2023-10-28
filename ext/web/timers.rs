@@ -4,7 +4,7 @@
 
 use crate::hr_timer_lock::hr_timer_lock;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -18,7 +18,6 @@ use std::time::Instant;
 
 pub trait TimersPermission {
   fn allow_hrtime(&mut self) -> bool;
-  fn check_unstable(&self, state: &OpState, api_name: &'static str);
 }
 
 pub type StartTime = Instant;
@@ -27,8 +26,8 @@ pub type StartTime = Instant;
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-#[op(fast)]
-pub fn op_now<TP>(state: &mut OpState, buf: &mut [u8])
+#[op2(fast)]
+pub fn op_now<TP>(state: &mut OpState, #[buffer] buf: &mut [u8])
 where
   TP: TimersPermission + 'static,
 {
@@ -68,7 +67,8 @@ impl Resource for TimerHandle {
 
 /// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
 /// [`op_sleep`].
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
   state
     .resource_table
@@ -79,13 +79,17 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 /// [`TimerHandle`] resource given by `rid` has been canceled.
 ///
 /// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
-#[op(deferred)]
+#[op2(async(lazy), fast)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
-  millis: u64,
-  rid: ResourceId,
+  #[smi] millis: u64,
+  #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
-  let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
+  // If the timer is not present in the resource table it was cancelled before
+  // this op was polled.
+  let Ok(handle) = state.borrow().resource_table.get::<TimerHandle>(rid) else {
+    return Ok(false);
+  };
 
   // If a timer is requested with <=100ms resolution, request the high-res timer. Since the default
   // Windows timer period is 15ms, this means a 100ms timer could fire at 115ms (15% late). We assume that

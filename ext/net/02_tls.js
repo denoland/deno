@@ -4,7 +4,7 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import { Conn, Listener } from "ext:deno_net/01_net.js";
 const primordials = globalThis.__bootstrap.primordials;
-const { TypeError } = primordials;
+const { Number, TypeError } = primordials;
 
 function opStartTls(args) {
   return core.opAsync("op_tls_start", args);
@@ -70,7 +70,7 @@ function listenTls({
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
   const { 0: rid, 1: localAddr } = ops.op_net_listen_tls(
-    { hostname, port },
+    { hostname, port: Number(port) },
     { cert, certFile, key, keyFile, alpnProtocols, reusePort },
   );
   return new TlsListener(rid, localAddr);

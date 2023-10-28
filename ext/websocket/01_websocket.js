@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
@@ -9,7 +8,6 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
-  _skipInternalInit,
   CloseEvent,
   defineEventHandler,
   dispatch,
@@ -17,8 +15,10 @@ import {
   Event,
   EventTarget,
   MessageEvent,
+  setIsTrusted,
 } from "ext:deno_web/02_event.js";
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
@@ -26,7 +26,6 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
-  DataView,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -45,12 +44,12 @@ const {
   SymbolFor,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
-const op_ws_check_permission_and_cancel_handle =
-  core.ops.op_ws_check_permission_and_cancel_handle;
+const { op_ws_check_permission_and_cancel_handle } = core.ops;
 const {
   op_ws_create,
   op_ws_close,
   op_ws_send_binary,
+  op_ws_send_binary_ab,
   op_ws_send_text,
   op_ws_next_event,
   op_ws_get_buffer,
@@ -145,9 +144,15 @@ class WebSocket extends EventTarget {
     let wsURL;
 
     try {
-      wsURL = new URL(url);
+      wsURL = new URL(url, getLocationHref());
     } catch (e) {
       throw new DOMException(e.message, "SyntaxError");
+    }
+
+    if (wsURL.protocol === "http:") {
+      wsURL.protocol = "ws:";
+    } else if (wsURL.protocol === "https:") {
+      wsURL.protocol = "wss:";
     }
 
     if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
@@ -333,11 +338,7 @@ class WebSocket extends EventTarget {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
-        (ab) =>
-          op_ws_send_binary(
-            this[_rid],
-            new DataView(ab),
-          ),
+        (ab) => op_ws_send_binary_ab(this[_rid], ab),
       );
     } else {
       const string = String(data);
@@ -425,6 +426,7 @@ class WebSocket extends EventTarget {
             data: op_ws_get_buffer_as_string(rid),
             origin: this[_url],
           });
+          setIsTrusted(event, true);
           dispatch(this, event);
           break;
         }
@@ -443,8 +445,8 @@ class WebSocket extends EventTarget {
           const event = new MessageEvent("message", {
             data,
             origin: this[_url],
-            [_skipInternalInit]: true,
           });
+          setIsTrusted(event, true);
           dispatch(this, event);
           break;
         }
@@ -570,7 +572,7 @@ defineEventHandler(WebSocket.prototype, "error");
 defineEventHandler(WebSocket.prototype, "close");
 defineEventHandler(WebSocket.prototype, "open");
 
-webidl.configurePrototype(WebSocket);
+webidl.configureInterface(WebSocket);
 const WebSocketPrototype = WebSocket.prototype;
 
 export {
