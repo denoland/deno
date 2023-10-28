@@ -3,7 +3,7 @@ import {
   assert,
   assertThrows,
   fail,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 import { symlink, symlinkSync } from "node:fs";
 
 Deno.test({
