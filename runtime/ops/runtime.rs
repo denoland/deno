@@ -95,11 +95,12 @@ pub fn op_ppid() -> i64 {
   }
 }
 
-#[op]
+#[op2(fast)]
 fn op_check_unstable(
   state: &mut OpState,
-  api_name: String,
+  #[string] feature: &str,
+  #[string] api_name: &str,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, &api_name);
+  super::check_unstable(state, feature, api_name);
   Ok(())
 }

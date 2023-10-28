@@ -522,7 +522,7 @@ function upgradeWebSocket(request, options = {}) {
       return socket;
     },
     get stream() {
-      ops.op_check_unstable("WebSocketStream");
+      ops.op_check_unstable("http", "WebSocketStream");
       if (webSocketSelector.kind === "socket") {
         throw new TypeError("Websocket already taken as WebSocket");
       }
