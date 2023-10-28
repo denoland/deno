@@ -866,10 +866,7 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
-  process.setStartTime(Date.now());
-
   stdin = process.stdin = initStdin();
-
   /** https://nodejs.org/api/process.html#process_process_stdout */
   stdout = process.stdout = createWritableStdioStream(
     io.stdout,
@@ -882,9 +879,12 @@ internals.__bootstrapNodeProcess = function (
     "stderr",
   );
 
+  process.setStartTime(Date.now());
+
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
+
 
 export default process;

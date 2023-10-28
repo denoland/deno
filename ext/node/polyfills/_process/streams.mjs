@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
+import { isatty } from "ext:runtime/40_tty.js";
 import {
   clearLine,
   clearScreenDown,
@@ -15,6 +16,7 @@ import { Duplex, Readable, Writable } from "node:stream";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
 import * as io from "ext:deno_io/12_io.js";
+import * as tty from "node:tty";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name) {
@@ -23,7 +25,7 @@ export function createWritableStdioStream(writer, name) {
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
-          new Error(`Deno.${name} is not available in this environment`),
+          new Error(`Deno.${name} is not available in this environment`)
         );
         return;
       }
@@ -100,7 +102,8 @@ export function createWritableStdioStream(writer, name) {
 // https://github.com/nodejs/node/blob/v18.12.1/src/node_util.cc#L257
 function _guessStdinType(fd) {
   if (typeof fd !== "number" || fd < 0) return "UNKNOWN";
-  if (Deno.isatty?.(fd)) return "TTY";
+  // TODO: workaround on windows for non-TTY stdin
+  if (isWindows || isatty(fd)) return "TTY";
 
   try {
     const fileInfo = Deno.fstatSync?.(fd);
@@ -144,11 +147,14 @@ function _guessStdinType(fd) {
 
 const _read = function (size) {
   const p = Buffer.alloc(size || 16 * 1024);
-  io.stdin?.read(p).then((length) => {
-    this.push(length === null ? null : p.slice(0, length));
-  }, (error) => {
-    this.destroy(error);
-  });
+  io.stdin?.read(p).then(
+    (length) => {
+      this.push(length === null ? null : p.slice(0, length));
+    },
+    (error) => {
+      this.destroy(error);
+    }
+  );
 };
 
 /** https://nodejs.org/api/process.html#process_process_stdin */
@@ -172,17 +178,12 @@ export const initStdin = () => {
       });
       break;
     }
-    case "TTY":
+    case "TTY": {
+      stdin = new tty.ReadStream(fd);
+      break;
+    }
     case "PIPE":
     case "TCP": {
-      // TODO(PolarETech):
-      // For TTY, `new Duplex()` should be replaced `new tty.ReadStream()` if possible.
-      // There are two problems that need to be resolved.
-      // 1. Using them here introduces a circular dependency.
-      // 2. Creating a tty.ReadStream() is not currently supported.
-      // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L194
-      // https://github.com/nodejs/node/blob/v18.12.1/lib/tty.js#L47
-
       // For PIPE and TCP, `new Duplex()` should be replaced `new net.Socket()` if possible.
       // There are two problems that need to be resolved.
       // 1. Using them here introduces a circular dependency.
