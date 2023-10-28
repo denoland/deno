@@ -38,8 +38,8 @@ import {
 import {
   _closed,
   _closeSent,
-  _connection,
   _createWebSocketStreams,
+  _opened,
   WebSocketStream,
 } from "ext:deno_websocket/02_websocketstream.js";
 import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
@@ -424,7 +424,7 @@ async function handleWS(resp, getWSRid, httpConn) {
     } else {
       console.log(ws);
       const { readable, writable } = ws[_createWebSocketStreams]();
-      ws[_connection].resolve({
+      ws[_opened].resolve({
         readable,
         writable,
         extensions: "",
@@ -505,7 +505,7 @@ function upgradeWebSocket(request, options = {}) {
   stream[_server] = true;
   stream[_idleTimeoutDuration] = options.idleTimeout ?? 120;
   stream[_idleTimeoutTimeout] = null;
-  stream[_connection] = new Deferred();
+  stream[_opened] = new Deferred();
   stream[_closeSent] = new Deferred();
   stream[_closed] = new Deferred();
 

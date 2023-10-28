@@ -292,6 +292,7 @@ class WebSocketStream {
         case 3: {
           /* error */
           const err = new Error(op_ws_get_error(this[_rid]));
+          this[_opened].reject(err);
           this[_closed].reject(err);
           controller.error(err);
           core.tryClose(this[_rid]);
@@ -299,17 +300,21 @@ class WebSocketStream {
         }
         case 1005: {
           /* closed */
-          this[_closed].resolve({ code: 1005, reason: "" });
+          const status = { code: 1005, reason: "" };
+          this[_opened].resolve(status);
+          this[_closed].resolve(status);
           core.tryClose(this[_rid]);
           break;
         }
         default: {
           /* close */
           const reason = op_ws_get_error(this[_rid]);
-          this[_closed].resolve({
+          const status = {
             code: kind,
             reason,
-          });
+          };
+          this[_opened].resolve(reason);
+          this[_closed].resolve(reason);
           core.tryClose(this[_rid]);
           break;
         }
@@ -326,8 +331,9 @@ class WebSocketStream {
           return pull(controller);
         }
 
-        const error = op_ws_get_error(this[_rid]);
-        this[_closed].reject(new Error(error));
+        const error = new Error(op_ws_get_error(this[_rid]));
+        this[_opened].reject(error);
+        this[_closed].reject(error);
         core.tryClose(this[_rid]);
       }
     };
@@ -471,7 +477,7 @@ const WebSocketStreamPrototype = WebSocketStream.prototype;
 export {
   _closed,
   _closeSent,
-  _connection,
   _createWebSocketStreams,
+  _opened,
   WebSocketStream,
 };

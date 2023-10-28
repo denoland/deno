@@ -15,6 +15,7 @@
     "ext:deno_fs/30_fs.js": "../ext/fs/30_fs.js",
     "ext:deno_http/00_serve.js": "../ext/http/00_serve.js",
     "ext:deno_http/01_http.js": "../ext/http/01_http.js",
+    "ext:deno_http/01_websocketstream.js": "../ext/http/01_websocketstream.js",
     "ext:deno_io/12_io.js": "../ext/io/12_io.js",
     "ext:deno_kv/01_db.ts": "../ext/kv/01_db.ts",
     "ext:deno_net/01_net.js": "../ext/net/01_net.js",
