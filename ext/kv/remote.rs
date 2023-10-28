@@ -39,8 +39,6 @@ use tokio::sync::watch;
 use url::Url;
 use uuid::Uuid;
 
-include!("../../cli/util/time.rs");
-
 pub trait RemoteDbHandlerPermissions {
   fn check_env(&mut self, var: &str) -> Result<(), AnyError>;
   fn check_net_url(
@@ -428,7 +426,7 @@ async fn metadata_refresh_task(
       metadata
         .expires_at
         .timestamp_millis()
-        .saturating_sub(utc_now().timestamp_millis()),
+        .saturating_sub(crate::time::utc_now().timestamp_millis()),
     )
     .unwrap_or_default();
 
