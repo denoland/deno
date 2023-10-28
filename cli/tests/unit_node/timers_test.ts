@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assert, fail } from "../../../test_util/std/assert/mod.ts";
+import { assert, fail } from "../../../test_util/std/testing/asserts.ts";
 import * as timers from "node:timers";
 import * as timersPromises from "node:timers/promises";
 

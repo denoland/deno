@@ -1,5 +1,8 @@
 import { deferred } from "../../../../test_util/std/async/deferred.ts";
-import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "../../../../test_util/std/testing/asserts.ts";
 import { BufReader, BufWriter } from "../../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "./textproto.ts";
 

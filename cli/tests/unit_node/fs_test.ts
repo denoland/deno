@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertThrows } from "../../../test_util/std/assert/mod.ts";
+import {
+  assert,
+  assertThrows,
+} from "../../../test_util/std/testing/asserts.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
