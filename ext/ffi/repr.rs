@@ -177,7 +177,7 @@ pub fn op_ffi_buf_copy_into<FP>(
   state: &mut OpState,
   src: *mut c_void,
   #[number] offset: isize,
-  #[buffer] dst: &mut [u8],
+  #[anybuffer] dst: &mut [u8],
   #[number] len: usize,
 ) -> Result<(), AnyError>
 where
