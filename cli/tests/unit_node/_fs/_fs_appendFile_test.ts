@@ -3,7 +3,7 @@ import {
   assertEquals,
   assertThrows,
   fail,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 import { appendFile, appendFileSync } from "node:fs";
 import { fromFileUrl } from "../../../../test_util/std/path/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
