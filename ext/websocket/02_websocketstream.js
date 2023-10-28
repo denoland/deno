@@ -300,21 +300,17 @@ class WebSocketStream {
         }
         case 1005: {
           /* closed */
-          const status = { code: 1005, reason: "" };
-          this[_opened].resolve(status);
-          this[_closed].resolve(status);
+          this[_closed].resolve({ code: 1005, reason: "" });
           core.tryClose(this[_rid]);
           break;
         }
         default: {
           /* close */
           const reason = op_ws_get_error(this[_rid]);
-          const status = {
+          this[_closed].resolve({
             code: kind,
             reason,
-          };
-          this[_opened].resolve(status);
-          this[_closed].resolve(status);
+          });
           core.tryClose(this[_rid]);
           break;
         }
