@@ -422,7 +422,6 @@ async function handleWS(resp, getWSRid, httpConn) {
       }
       ws[_serverHandleIdleTimeout]();
     } else {
-      console.log(ws);
       const { readable, writable } = ws[_createWebSocketStreams]();
       ws[_opened].resolve({
         readable,
