@@ -462,6 +462,10 @@ function h1WsUpgrade(request) {
   return r;
 }
 
+function isH2Request(request) {
+  return toInnerRequest(request).httpVersion === 2;
+}
+
 function upgradeWebSocket(request, options = {}) {
   const innerResp = isH2Request(request)
     ? h2WsUpgrade(request)
