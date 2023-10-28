@@ -494,7 +494,7 @@ function upgradeWebSocket(request, options = {}) {
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
   socket[_idleTimeoutTimeout] = null;
 
-  const inner = toInnerRequest(req);
+  const inner = toInnerRequest(request);
   if (inner._wantsUpgrade) {
     return inner._wantsUpgrade("upgradeWebSocket", r, socket);
   }
