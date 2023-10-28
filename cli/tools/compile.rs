@@ -25,7 +25,7 @@ pub async fn compile(
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let module_graph_builder = factory.module_graph_builder().await?;
-  let parsed_source_cache = factory.parsed_source_cache()?;
+  let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
@@ -212,6 +212,7 @@ mod test {
         output: Some(PathBuf::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
+        no_terminal: false,
         include: vec![],
       },
       &std::env::current_dir().unwrap(),
@@ -234,6 +235,7 @@ mod test {
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: vec![],
+        no_terminal: false,
       },
       &std::env::current_dir().unwrap(),
     )

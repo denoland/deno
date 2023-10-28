@@ -86,7 +86,7 @@ impl<'rt> RangeTree<'rt> {
           };
         if is_chain_end {
           let mut chain_iter = chain.drain(..);
-          let mut head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
+          let head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
           for tree in chain_iter {
             head.end = tree.end;
             for sub_child in tree.children.drain(..) {
@@ -100,7 +100,7 @@ impl<'rt> RangeTree<'rt> {
       }
       if !chain.is_empty() {
         let mut chain_iter = chain.drain(..);
-        let mut head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
+        let head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
         for tree in chain_iter {
           head.end = tree.end;
           for sub_child in tree.children.drain(..) {

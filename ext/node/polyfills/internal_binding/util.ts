@@ -85,7 +85,6 @@ export function isArrayIndex(value: unknown): value is number | string {
 }
 
 export function getOwnNonIndexProperties(
-  // deno-lint-ignore ban-types
   obj: object,
   filter: number,
 ): (string | symbol)[] {

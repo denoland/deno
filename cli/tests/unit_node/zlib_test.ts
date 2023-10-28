@@ -11,6 +11,7 @@ import {
   brotliDecompressSync,
   createBrotliCompress,
   createBrotliDecompress,
+  createDeflate,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -60,3 +61,27 @@ Deno.test("brotli compression", async () => {
     // pass
   }
 });
+
+Deno.test("brotli end-to-end with 4097 bytes", () => {
+  const a = "a".repeat(4097);
+  const compressed = brotliCompressSync(a);
+  const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), a);
+});
+
+Deno.test(
+  "zlib create deflate with dictionary",
+  { sanitizeResources: false },
+  async () => {
+    const promise = deferred();
+    const handle = createDeflate({
+      dictionary: Buffer.alloc(0),
+    });
+
+    handle.on("close", () => promise.resolve());
+    handle.end();
+    handle.destroy();
+
+    await promise;
+  },
+);

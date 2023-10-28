@@ -10,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::io::AllowStdIo;
@@ -20,8 +21,8 @@ use deno_core::url::Url;
 use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::permissions::PermissionsOptions;
-use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmVersionReqSpecifierParseError;
+use deno_semver::package::PackageReq;
+use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -35,10 +36,8 @@ use crate::args::PackageJsonDepsProvider;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
-use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
-use crate::npm::NpmCache;
-use crate::npm::NpmResolution;
+use crate::npm::InnerCliNpmResolverRef;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -80,7 +79,7 @@ impl SerializablePackageJsonDepValueParseError {
       }
       SerializablePackageJsonDepValueParseError::Specifier(source) => {
         PackageJsonDepValueParseError::Specifier(
-          NpmVersionReqSpecifierParseError {
+          VersionReqSpecifierParseError {
             source: monch::ParseErrorFailureError::new(source),
           },
         )
@@ -96,7 +95,7 @@ impl SerializablePackageJsonDepValueParseError {
 pub struct SerializablePackageJsonDeps(
   BTreeMap<
     String,
-    Result<NpmPackageReq, SerializablePackageJsonDepValueParseError>,
+    Result<PackageReq, SerializablePackageJsonDepValueParseError>,
   >,
 );
 
@@ -340,10 +339,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   client: &'a HttpClient,
   deno_dir: &'a DenoDir,
-  npm_api: &'a CliNpmRegistryApi,
-  npm_cache: &'a NpmCache,
-  npm_resolution: &'a NpmResolution,
-  npm_resolver: &'a CliNpmResolver,
+  npm_resolver: &'a dyn CliNpmResolver,
   npm_system_info: NpmSystemInfo,
   package_json_deps_provider: &'a PackageJsonDepsProvider,
 }
@@ -354,10 +350,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     file_fetcher: &'a FileFetcher,
     client: &'a HttpClient,
     deno_dir: &'a DenoDir,
-    npm_api: &'a CliNpmRegistryApi,
-    npm_cache: &'a NpmCache,
-    npm_resolution: &'a NpmResolution,
-    npm_resolver: &'a CliNpmResolver,
+    npm_resolver: &'a dyn CliNpmResolver,
     npm_system_info: NpmSystemInfo,
     package_json_deps_provider: &'a PackageJsonDepsProvider,
   ) -> Self {
@@ -365,11 +358,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       file_fetcher,
       client,
       deno_dir,
-      npm_api,
-      npm_cache,
       npm_resolver,
       npm_system_info,
-      npm_resolution,
       package_json_deps_provider,
     }
   }
@@ -383,8 +373,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cli_options: &CliOptions,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
-    let original_binary =
-      self.get_base_binary(compile_flags.target.clone()).await?;
+    let mut original_binary = self.get_base_binary(compile_flags).await?;
+
+    if compile_flags.no_terminal {
+      let target = compile_flags.resolve_target();
+      if !target.contains("windows") {
+        bail!(
+          "The `--no-terminal` flag is only available when targeting Windows (current: {})",
+          target,
+        )
+      }
+      set_windows_binary_to_gui(&mut original_binary)?;
+    }
 
     self
       .write_standalone_binary(
@@ -400,14 +400,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   async fn get_base_binary(
     &self,
-    target: Option<String>,
+    compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
-    if target.is_none() {
+    if compile_flags.target.is_none() {
       let path = std::env::current_exe()?;
       return Ok(std::fs::read(path)?);
     }
 
-    let target = target.unwrap_or_else(|| env!("TARGET").to_string());
+    let target = compile_flags.resolve_target();
     let binary_name = format!("deno-{target}.zip");
 
     let binary_path_suffix = if crate::version::is_canary() {
@@ -490,15 +490,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .resolve_import_map(self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
-    let (npm_vfs, npm_files) = if self.npm_resolution.has_packages() {
-      let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-      let snapshot = self
-        .npm_resolution
-        .serialized_valid_snapshot_for_system(&self.npm_system_info);
-      eszip.add_npm_snapshot(snapshot);
-      (Some(root_dir), files)
-    } else {
-      (None, Vec::new())
+    let (npm_vfs, npm_files) = match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(managed) => {
+        let snapshot =
+          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+        if !snapshot.as_serialized().packages.is_empty() {
+          let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+          eszip.add_npm_snapshot(snapshot);
+          (Some(root_dir), files)
+        } else {
+          (None, Vec::new())
+        }
+      }
+      InnerCliNpmResolverRef::Byonm(_) => {
+        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+        (Some(root_dir), files)
+      }
     };
 
     let metadata = Metadata {
@@ -516,7 +523,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       entrypoint: entrypoint.clone(),
       maybe_import_map,
-      node_modules_dir: self.npm_resolver.node_modules_path().is_some(),
+      node_modules_dir: self.npm_resolver.root_node_modules_path().is_some(),
       package_json_deps: self
         .package_json_deps_provider
         .deps()
@@ -534,28 +541,73 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
-    if let Some(node_modules_path) = self.npm_resolver.node_modules_path() {
-      let mut builder = VfsBuilder::new(node_modules_path.clone())?;
-      builder.add_dir_recursive(&node_modules_path)?;
-      Ok(builder)
-    } else {
-      // DO NOT include the user's registry url as it may contain credentials,
-      // but also don't make this dependent on the registry url
-      let registry_url = self.npm_api.base_url();
-      let root_path = self.npm_cache.registry_folder(registry_url);
-      let mut builder = VfsBuilder::new(root_path)?;
-      for package in self
-        .npm_resolution
-        .all_system_packages(&self.npm_system_info)
-      {
-        let folder = self
-          .npm_resolver
-          .resolve_pkg_folder_from_pkg_id(&package.id)?;
-        builder.add_dir_recursive(&folder)?;
+    match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+        if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
+          let mut builder = VfsBuilder::new(node_modules_path.clone())?;
+          builder.add_dir_recursive(&node_modules_path)?;
+          Ok(builder)
+        } else {
+          // DO NOT include the user's registry url as it may contain credentials,
+          // but also don't make this dependent on the registry url
+          let registry_url = npm_resolver.registry_base_url();
+          let root_path =
+            npm_resolver.registry_folder_in_global_cache(registry_url);
+          let mut builder = VfsBuilder::new(root_path)?;
+          for package in npm_resolver.all_system_packages(&self.npm_system_info)
+          {
+            let folder =
+              npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
+            builder.add_dir_recursive(&folder)?;
+          }
+          // overwrite the root directory's name to obscure the user's registry url
+          builder.set_root_dir_name("node_modules".to_string());
+          Ok(builder)
+        }
       }
-      // overwrite the root directory's name to obscure the user's registry url
-      builder.set_root_dir_name("node_modules".to_string());
-      Ok(builder)
+      InnerCliNpmResolverRef::Byonm(_) => {
+        // todo(#18967): should use the node_modules directory
+        todo!()
+      }
     }
   }
+}
+
+/// This function sets the subsystem field in the PE header to 2 (GUI subsystem)
+/// For more information about the PE header: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
+  // Get the PE header offset located in an i32 found at offset 60
+  // See: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#ms-dos-stub-image-only
+  let start_pe = u32::from_le_bytes((bin[60..64]).try_into()?);
+
+  // Get image type (PE32 or PE32+) indicates whether the binary is 32 or 64 bit
+  // The used offset and size values can be found here:
+  // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-image-only
+  let start_32 = start_pe as usize + 28;
+  let magic_32 =
+    u16::from_le_bytes(bin[(start_32)..(start_32 + 2)].try_into()?);
+
+  let start_64 = start_pe as usize + 24;
+  let magic_64 =
+    u16::from_le_bytes(bin[(start_64)..(start_64 + 2)].try_into()?);
+
+  // Take the standard fields size for the current architecture (32 or 64 bit)
+  // This is the ofset for the Windows-Specific fields
+  let standard_fields_size = if magic_32 == 0x10b {
+    28
+  } else if magic_64 == 0x20b {
+    24
+  } else {
+    bail!("Could not find a matching magic field in the PE header")
+  };
+
+  // Set the subsystem field (offset 68) to 2 (GUI subsystem)
+  // For all possible options, see: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-windows-specific-fields-image-only
+  let subsystem_offset = 68;
+  let subsystem_start =
+    start_pe as usize + standard_fields_size + subsystem_offset;
+  let subsystem: u16 = 2;
+  bin[(subsystem_start)..(subsystem_start + 2)]
+    .copy_from_slice(&subsystem.to_le_bytes());
+  Ok(())
 }

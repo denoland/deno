@@ -6,7 +6,5 @@ const env = loadTestLibrary();
 
 Deno.test("napi get global", function () {
   const g = env.testNodeGlobal();
-  // Note: global is a mock object in the tests.
-  // See common.js
-  assert(g.Buffer);
+  assert(g === globalThis);
 });

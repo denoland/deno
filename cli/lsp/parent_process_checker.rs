@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use tokio::time::sleep;
 use tokio::time::Duration;
 

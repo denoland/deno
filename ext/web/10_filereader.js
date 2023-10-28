@@ -432,7 +432,7 @@ class FileReader extends EventTarget {
   }
 }
 
-webidl.configurePrototype(FileReader);
+webidl.configureInterface(FileReader);
 const FileReaderPrototype = FileReader.prototype;
 
 ObjectDefineProperty(FileReader, "EMPTY", {

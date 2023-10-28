@@ -84,7 +84,8 @@ const cleanupCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback being called");
-    queueMicrotask(() => cleanup());
+    // Defer the cleanup to give the spawned thread all the time it needs to properly shut down
+    setTimeout(() => cleanup(), 100);
   },
 );
 

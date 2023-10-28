@@ -17,12 +17,13 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
+use std::io::IsTerminal;
 use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
@@ -210,7 +211,7 @@ pub fn check_for_upgrades(
 
   // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
-    if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
+    if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
       if version::is_canary() {
         eprint!(
           "{} ",
@@ -270,25 +271,31 @@ pub async fn upgrade(
   let factory = CliFactory::from_flags(flags).await?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
-  let metadata = fs::metadata(&current_exe_path)?;
-  let permissions = metadata.permissions();
+  let output_exe_path =
+    upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
 
-  if permissions.readonly() {
-    bail!(
-      "You do not have write permission to {}",
-      current_exe_path.display()
-    );
-  }
-  #[cfg(unix)]
-  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
-    && !nix::unistd::Uid::effective().is_root()
-  {
-    bail!(concat!(
-      "You don't have write permission to {} because it's owned by root.\n",
-      "Consider updating deno through your package manager if its installed from it.\n",
-      "Otherwise run `deno upgrade` as root.",
-    ), current_exe_path.display());
-  }
+  let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
+    let permissions = metadata.permissions();
+    if permissions.readonly() {
+      bail!(
+        "You do not have write permission to {}",
+        output_exe_path.display()
+      );
+    }
+    #[cfg(unix)]
+    if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+      && !nix::unistd::Uid::effective().is_root()
+    {
+      bail!(concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ), output_exe_path.display());
+    }
+    permissions
+  } else {
+    fs::metadata(&current_exe_path)?.permissions()
+  };
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -365,6 +372,8 @@ pub async fn upgrade(
   };
 
   let download_url = if upgrade_flags.canary {
+    // NOTE(bartlomieju): to keep clippy happy on M1 macs.
+    #[allow(clippy::eq_op)]
     if env!("TARGET") == "aarch64-apple-darwin" {
       bail!("Canary builds are not available for M1/M2");
     }
@@ -474,7 +483,7 @@ async fn download_package(
   match maybe_bytes {
     Some(bytes) => Ok(bytes),
     None => {
-      log::info!("Download could not be found, aborting");
+      log::error!("Download could not be found, aborting");
       std::process::exit(1)
     }
   }
@@ -484,7 +493,7 @@ pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
   temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, std::io::Error> {
+) -> Result<PathBuf, AnyError> {
   const EXE_NAME: &str = "deno";
   let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
@@ -499,32 +508,17 @@ pub fn unpack_into_dir(
   let unpack_status = match archive_ext {
     "zip" if cfg!(windows) => {
       fs::write(&archive_path, &archive_data)?;
-      Command::new("powershell.exe")
-        .arg("-NoLogo")
-        .arg("-NoProfile")
-        .arg("-NonInteractive")
-        .arg("-Command")
-        .arg(
-          "& {
-            param($Path, $DestinationPath)
-            trap { $host.ui.WriteErrorLine($_.Exception); exit 1 }
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::ExtractToDirectory(
-              $Path,
-              $DestinationPath
-            );
-          }",
-        )
-        .arg("-Path")
-        .arg(format!("'{}'", &archive_path.to_str().unwrap()))
-        .arg("-DestinationPath")
-        .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
+      Command::new("tar.exe")
+        .arg("xf")
+        .arg(&archive_path)
+        .arg("-C")
+        .arg(temp_dir_path)
         .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              "`powershell.exe` was not found in your PATH",
+              "`tar.exe` was not found in your PATH",
             )
           } else {
             err
@@ -550,9 +544,11 @@ pub fn unpack_into_dir(
         })?
         .wait()?
     }
-    ext => panic!("Unsupported archive type: '{ext}'"),
+    ext => bail!("Unsupported archive type: '{ext}'"),
   };
-  assert!(unpack_status.success());
+  if !unpack_status.success() {
+    bail!("Failed to unpack archive.");
+  }
   assert!(exe_path.exists());
   fs::remove_file(&archive_path)?;
   Ok(exe_path)

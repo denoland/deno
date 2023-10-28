@@ -47,6 +47,11 @@ itest!(deno_doc_types_header {
   http_server: true,
 });
 
+itest!(deno_doc_referenced_private_types {
+  args: "doc doc/referenced_private_types.ts",
+  output: "doc/referenced_private_types.out",
+});
+
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args:
     "doc doc/060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",

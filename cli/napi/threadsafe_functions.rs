@@ -123,7 +123,7 @@ impl TsFn {
     }
 
     if is_blocking {
-      rx.recv().unwrap();
+      let _ = rx.recv();
     }
   }
 }

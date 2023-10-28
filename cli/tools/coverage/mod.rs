@@ -5,6 +5,7 @@ use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
@@ -127,15 +128,23 @@ impl CoverageCollector {
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
+      // Filter out internal JS files from being included in coverage reports
+      if script_coverage.url.starts_with("ext:")
+        || script_coverage.url.starts_with("[ext:")
+      {
+        continue;
+      }
+
       let filename = format!("{}.json", Uuid::new_v4());
       let filepath = self.dir.join(filename);
 
-      let mut out = BufWriter::new(File::create(filepath)?);
+      let mut out = BufWriter::new(File::create(&filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formatted_coverage = format_json(&coverage, &Default::default())
-        .ok()
-        .flatten()
-        .unwrap_or(coverage);
+      let formatted_coverage =
+        format_json(&filepath, &coverage, &Default::default())
+          .ok()
+          .flatten()
+          .unwrap_or(coverage);
 
       out.write_all(formatted_coverage.as_bytes())?;
       out.flush()?;
@@ -571,8 +580,13 @@ fn collect_coverages(
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .ignore_vendor_folder()
   .add_ignore_paths(&files.ignore)
-  .collect_files(&files.include)?;
+  .collect_files(if files.include.is_empty() {
+    None
+  } else {
+    Some(&files.include)
+  })?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
@@ -589,7 +603,7 @@ fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
-  npm_root_dir: &str,
+  npm_resolver: &dyn CliNpmResolver,
 ) -> Vec<ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -601,11 +615,14 @@ fn filter_coverages(
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
-        || e.url.starts_with(npm_root_dir)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap")
-        || is_supported_test_path(Path::new(e.url.as_str()));
+        || is_supported_test_path(Path::new(e.url.as_str()))
+        || Url::parse(&e.url)
+          .ok()
+          .map(|url| npm_resolver.in_npm_package(&url))
+          .unwrap_or(false);
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
@@ -624,7 +641,7 @@ pub async fn cover_files(
   }
 
   let factory = CliFactory::from_flags(flags).await?;
-  let root_dir_url = factory.npm_resolver().await?.root_dir_url();
+  let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
   let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
@@ -634,7 +651,7 @@ pub async fn cover_files(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
-    root_dir_url.as_str(),
+    npm_resolver.as_ref(),
   );
 
   let proc_coverages: Vec<_> = script_coverages

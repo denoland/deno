@@ -2,6 +2,6 @@ cpu: [WILDCARD]
 runtime: deno [WILDCARD]
 
 [WILDCARD]/before_unload_prevent_default.ts
-benchmark      time (avg)             (min … max)       p75       p99      p995
-------------------------------------------------- -----------------------------
+benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
+--------------------------------------------------------------- -----------------------------
 foo [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]

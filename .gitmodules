@@ -1,7 +1,3 @@
-[submodule "deno_third_party"]
-	path = third_party
-	url = https://github.com/denoland/deno_third_party.git
-	shallow = true
 [submodule "test_util/std"]
 	path = test_util/std
 	url = https://github.com/denoland/deno_std

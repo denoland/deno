@@ -1,4 +1,3 @@
-[WILDCARD]
-error: Expected a JavaScript or TypeScript module, but identified a Json module. Consider importing Json modules with an import assertion with the type of "json".
+error: Expected a JavaScript or TypeScript module, but identified a Json module. Consider importing Json modules with an import attribute with the type of "json".
   Specifier: [WILDCARD]/subdir/config.json
 [WILDCARD]

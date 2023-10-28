@@ -13,8 +13,9 @@ use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
 
@@ -63,7 +64,7 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'+')
   .add(b',');
 
-const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
+const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 static REPLACEMENT_VARIABLE_RE: Lazy<regex::Regex> =
   lazy_regex::lazy_regex!(r"\$\{\{?(\w+)\}?\}");
@@ -415,26 +416,19 @@ enum VariableItems {
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
-  file_fetcher: FileFetcher,
-}
-
-impl Default for ModuleRegistry {
-  fn default() -> Self {
-    // This only gets used when creating the tsc runtime and for testing, and so
-    // it shouldn't ever actually access the DenoDir, so it doesn't support a
-    // custom root.
-    let dir = DenoDir::new(None).unwrap();
-    let location = dir.registries_folder_path();
-    let http_client = Arc::new(HttpClient::new(None, None));
-    Self::new(location, http_client)
-  }
+  pub file_fetcher: FileFetcher,
+  http_cache: Arc<GlobalHttpCache>,
 }
 
 impl ModuleRegistry {
   pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
-    let http_cache = HttpCache::new(location);
+    // the http cache should always be the global one for registry completions
+    let http_cache = Arc::new(GlobalHttpCache::new(
+      location,
+      crate::cache::RealDenoCacheEnv,
+    ));
     let mut file_fetcher = FileFetcher::new(
-      http_cache,
+      http_cache.clone(),
       CacheSetting::RespectHeaders,
       true,
       http_client,
@@ -446,6 +440,7 @@ impl ModuleRegistry {
     Self {
       origins: HashMap::new(),
       file_fetcher,
+      http_cache,
     }
   }
 
@@ -515,11 +510,12 @@ impl ModuleRegistry {
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
     let fetch_result = self
       .file_fetcher
-      .fetch_with_accept(
+      .fetch_with_options(FetchOptions {
         specifier,
-        PermissionsContainer::allow_all(),
-        Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-      )
+        permissions: PermissionsContainer::allow_all(),
+        maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+        maybe_cache_setting: None,
+      })
       .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
@@ -530,10 +526,7 @@ impl ModuleRegistry {
         "cache-control".to_string(),
         "max-age=604800, immutable".to_string(),
       );
-      self
-        .file_fetcher
-        .http_cache
-        .set(specifier, headers_map, &[])?;
+      self.http_cache.set(specifier, headers_map, &[])?;
     }
     let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
@@ -762,7 +755,10 @@ impl ModuleRegistry {
                             Some(lsp::Command {
                               title: "".to_string(),
                               command: "deno.cache".to_string(),
-                              arguments: Some(vec![json!([item_specifier])]),
+                              arguments: Some(vec![
+                                json!([item_specifier]),
+                                json!(&specifier),
+                              ]),
                             })
                           } else {
                             None
@@ -896,7 +892,10 @@ impl ModuleRegistry {
                               Some(lsp::Command {
                                 title: "".to_string(),
                                 command: "deno.cache".to_string(),
-                                arguments: Some(vec![json!([item_specifier])]),
+                                arguments: Some(vec![
+                                  json!([item_specifier]),
+                                  json!(&specifier),
+                                ]),
                               })
                             } else {
                               None

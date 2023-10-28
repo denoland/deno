@@ -1,10 +1,10 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
+#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { getPrebuiltToolPath, join, ROOT_PATH } from "./util.js";
+import { getPrebuilt, join, ROOT_PATH } from "./util.js";
 
 const subcommand = Deno.args.includes("--check") ? "check" : "fmt";
 const configFile = join(ROOT_PATH, ".dprint.json");
-const execPath = getPrebuiltToolPath("dprint");
+const execPath = await getPrebuilt("dprint");
 const cmd = new Deno.Command(execPath, {
   args: [subcommand, "--config=" + configFile],
   cwd: ROOT_PATH,

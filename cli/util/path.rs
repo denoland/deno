@@ -9,12 +9,24 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 
-/// Checks if the path has extension Deno supports.
-pub fn is_supported_ext(path: &Path) -> bool {
+/// Checks if the path has an extension Deno supports for script execution.
+pub fn is_script_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
       "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts"
+    )
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has an extension Deno supports for importing.
+pub fn is_importable_ext(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(
+      ext.as_str(),
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts" | "json"
     )
   } else {
     false
@@ -108,25 +120,6 @@ pub fn specifier_to_file_path(
       "Invalid file path.\n  Specifier: {specifier}"
     ))),
   }
-}
-
-/// Gets the parent of this module specifier.
-pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
-  let mut specifier = specifier.clone();
-  // don't use specifier.segments() because it will strip the leading slash
-  let mut segments = specifier.path().split('/').collect::<Vec<_>>();
-  if segments.iter().all(|s| s.is_empty()) {
-    return specifier;
-  }
-  if let Some(last) = segments.last() {
-    if last.is_empty() {
-      segments.pop();
-    }
-    segments.pop();
-    let new_path = format!("{}/", segments.join("/"));
-    specifier.set_path(&new_path);
-  }
-  specifier
 }
 
 /// `from.make_relative(to)` but with fixes.
@@ -256,23 +249,45 @@ mod test {
   use super::*;
 
   #[test]
-  fn test_is_supported_ext() {
-    assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
-    assert!(!is_supported_ext(Path::new("README.md")));
-    assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext(Path::new("testdata/run/001_hello.js")));
-    assert!(is_supported_ext(Path::new("testdata/run/002_hello.ts")));
-    assert!(is_supported_ext(Path::new("foo.jsx")));
-    assert!(is_supported_ext(Path::new("foo.tsx")));
-    assert!(is_supported_ext(Path::new("foo.TS")));
-    assert!(is_supported_ext(Path::new("foo.TSX")));
-    assert!(is_supported_ext(Path::new("foo.JS")));
-    assert!(is_supported_ext(Path::new("foo.JSX")));
-    assert!(is_supported_ext(Path::new("foo.mjs")));
-    assert!(is_supported_ext(Path::new("foo.mts")));
-    assert!(is_supported_ext(Path::new("foo.cjs")));
-    assert!(is_supported_ext(Path::new("foo.cts")));
-    assert!(!is_supported_ext(Path::new("foo.mjsx")));
+  fn test_is_script_ext() {
+    assert!(!is_script_ext(Path::new("tests/subdir/redirects")));
+    assert!(!is_script_ext(Path::new("README.md")));
+    assert!(is_script_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_script_ext(Path::new("testdata/run/001_hello.js")));
+    assert!(is_script_ext(Path::new("testdata/run/002_hello.ts")));
+    assert!(is_script_ext(Path::new("foo.jsx")));
+    assert!(is_script_ext(Path::new("foo.tsx")));
+    assert!(is_script_ext(Path::new("foo.TS")));
+    assert!(is_script_ext(Path::new("foo.TSX")));
+    assert!(is_script_ext(Path::new("foo.JS")));
+    assert!(is_script_ext(Path::new("foo.JSX")));
+    assert!(is_script_ext(Path::new("foo.mjs")));
+    assert!(is_script_ext(Path::new("foo.mts")));
+    assert!(is_script_ext(Path::new("foo.cjs")));
+    assert!(is_script_ext(Path::new("foo.cts")));
+    assert!(!is_script_ext(Path::new("foo.json")));
+    assert!(!is_script_ext(Path::new("foo.mjsx")));
+  }
+
+  #[test]
+  fn test_is_importable_ext() {
+    assert!(!is_importable_ext(Path::new("tests/subdir/redirects")));
+    assert!(!is_importable_ext(Path::new("README.md")));
+    assert!(is_importable_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_importable_ext(Path::new("testdata/run/001_hello.js")));
+    assert!(is_importable_ext(Path::new("testdata/run/002_hello.ts")));
+    assert!(is_importable_ext(Path::new("foo.jsx")));
+    assert!(is_importable_ext(Path::new("foo.tsx")));
+    assert!(is_importable_ext(Path::new("foo.TS")));
+    assert!(is_importable_ext(Path::new("foo.TSX")));
+    assert!(is_importable_ext(Path::new("foo.JS")));
+    assert!(is_importable_ext(Path::new("foo.JSX")));
+    assert!(is_importable_ext(Path::new("foo.mjs")));
+    assert!(is_importable_ext(Path::new("foo.mts")));
+    assert!(is_importable_ext(Path::new("foo.cjs")));
+    assert!(is_importable_ext(Path::new("foo.cts")));
+    assert!(is_importable_ext(Path::new("foo.json")));
+    assert!(!is_importable_ext(Path::new("foo.mjsx")));
   }
 
   #[test]
@@ -290,22 +305,6 @@ mod test {
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
           .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
-    }
-  }
-
-  #[test]
-  fn test_specifier_parent() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///");
-    run_test("file:///test/", "file:///");
-    run_test("file:///test/other", "file:///test/");
-    run_test("file:///test/other.txt", "file:///test/");
-    run_test("file:///test/other/", "file:///test/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
     }
   }
 

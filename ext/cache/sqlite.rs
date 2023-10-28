@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -92,8 +92,10 @@ impl SqliteBackedCache {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Cache for SqliteBackedCache {
+  type CachePutResourceType = CachePutResource;
+
   /// Open a cache storage. Internally, this creates a row in the
   /// sqlite db if the cache doesn't exist and returns the internal id
   /// of the cache.
@@ -167,10 +169,10 @@ impl Cache for SqliteBackedCache {
     .await?
   }
 
-  async fn put(
+  async fn put_create(
     &self,
     request_response: CachePutRequest,
-  ) -> Result<Option<Rc<dyn Resource>>, AnyError> {
+  ) -> Result<Option<Rc<CachePutResource>>, AnyError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
@@ -200,6 +202,13 @@ impl Cache for SqliteBackedCache {
       insert_cache_asset(db, request_response, None).await?;
       Ok(None)
     }
+  }
+
+  async fn put_finish(
+    &self,
+    resource: Rc<CachePutResource>,
+  ) -> Result<(), AnyError> {
+    resource.write_to_cache().await
   }
 
   async fn r#match(
@@ -346,7 +355,7 @@ impl CachePutResource {
     Ok(data.len())
   }
 
-  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  async fn write_to_cache(self: Rc<Self>) -> Result<(), AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
     file.flush().await?;
@@ -377,10 +386,6 @@ impl Resource for CachePutResource {
   }
 
   deno_core::impl_writable!();
-
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown())
-  }
 }
 
 pub struct CacheResponseResource {

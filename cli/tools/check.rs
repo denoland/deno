@@ -41,7 +41,7 @@ pub struct TypeChecker {
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
   node_resolver: Arc<NodeResolver>,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl TypeChecker {
@@ -49,7 +49,7 @@ impl TypeChecker {
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
     node_resolver: Arc<NodeResolver>,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       caches,
@@ -71,11 +71,10 @@ impl TypeChecker {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
-    if graph.has_node_specifier {
-      self
-        .npm_resolver
-        .inject_synthetic_types_node_package()
-        .await?;
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+      if graph.has_node_specifier {
+        npm_resolver.inject_synthetic_types_node_package().await?;
+      }
     }
 
     log::debug!("Type checking.");
@@ -93,14 +92,28 @@ impl TypeChecker {
     let debug = self.cli_options.log_level() == Some(log::Level::Debug);
     let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
     let check_js = ts_config.get_check_js();
-    let check_hash = match get_check_hash(&graph, type_check_mode, &ts_config) {
-      CheckHashResult::NoFiles => return Ok(()),
-      CheckHashResult::Hash(hash) => hash,
+    let maybe_check_hash = match self.npm_resolver.check_state_hash() {
+      Some(npm_check_hash) => {
+        match get_check_hash(
+          &graph,
+          npm_check_hash,
+          type_check_mode,
+          &ts_config,
+        ) {
+          CheckHashResult::NoFiles => return Ok(()),
+          CheckHashResult::Hash(hash) => Some(hash),
+        }
+      }
+      None => None, // we can't determine a check hash
     };
 
     // do not type check if we know this is type checked
-    if !options.reload && cache.has_check_hash(check_hash) {
-      return Ok(());
+    if !options.reload {
+      if let Some(check_hash) = maybe_check_hash {
+        if cache.has_check_hash(check_hash) {
+          return Ok(());
+        }
+      }
     }
 
     for root in &graph.roots {
@@ -120,19 +133,20 @@ impl TypeChecker {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
-    let hash_data = {
-      let mut hasher = FastInsecureHasher::new();
-      hasher.write(&ts_config.as_bytes());
-      hasher.write_str(version::deno());
-      hasher.finish()
-    };
+    let hash_data = FastInsecureHasher::new()
+      .write(&ts_config.as_bytes())
+      .write_str(version::deno())
+      .finish();
 
     let response = tsc::exec(tsc::Request {
       config: ts_config,
       debug,
       graph: graph.clone(),
       hash_data,
-      maybe_node_resolver: Some(self.node_resolver.clone()),
+      maybe_npm: Some(tsc::RequestNpmState {
+        node_resolver: self.node_resolver.clone(),
+        npm_resolver: self.npm_resolver.clone(),
+      }),
       maybe_tsbuildinfo,
       root_names,
       check_mode: type_check_mode,
@@ -166,7 +180,9 @@ impl TypeChecker {
     }
 
     if diagnostics.is_empty() {
-      cache.add_check_hash(check_hash);
+      if let Some(check_hash) = maybe_check_hash {
+        cache.add_check_hash(check_hash);
+      }
     }
 
     log::debug!("{}", response.stats);
@@ -188,6 +204,7 @@ enum CheckHashResult {
 /// be used to tell
 fn get_check_hash(
   graph: &ModuleGraph,
+  package_reqs_hash: u64,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
@@ -200,11 +217,10 @@ fn get_check_hash(
   hasher.write(&ts_config.as_bytes());
 
   let check_js = ts_config.get_check_js();
-  let mut sorted_modules = graph.modules().collect::<Vec<_>>();
-  sorted_modules.sort_by_key(|m| m.specifier().as_str()); // make it deterministic
   let mut has_file = false;
   let mut has_file_to_type_check = false;
-  for module in sorted_modules {
+  // this iterator of modules is already deterministic, so no need to sort it
+  for module in graph.modules() {
     match module {
       Module::Esm(module) => {
         let ts_check = has_ts_check(module.media_type, &module.source);
@@ -242,14 +258,27 @@ fn get_check_hash(
         hasher.write_str(module.specifier.as_str());
         hasher.write_str(&module.source);
       }
-      Module::Json(_)
-      | Module::External(_)
-      | Module::Node(_)
-      | Module::Npm(_) => {
-        // ignore
+      Module::Node(_) => {
+        // the @types/node package will be in the resolved
+        // snapshot below so don't bother including it here
+      }
+      Module::Npm(_) => {
+        // don't bother adding this specifier to the hash
+        // because what matters is the resolved npm snapshot,
+        // which is hashed below
+      }
+      Module::Json(module) => {
+        has_file_to_type_check = true;
+        hasher.write_str(module.specifier.as_str());
+        hasher.write_str(&module.source);
+      }
+      Module::External(module) => {
+        hasher.write_str(module.specifier.as_str());
       }
     }
   }
+
+  hasher.write_hashable(package_reqs_hash);
 
   if !has_file || !check_js && !has_file_to_type_check {
     // no files to type check
@@ -281,9 +310,13 @@ fn get_tsc_roots(
         | MediaType::Cts
         | MediaType::Dts
         | MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Jsx => Some((module.specifier.clone(), module.media_type)),
-        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+        | MediaType::Dcts => {
+          Some((module.specifier.clone(), module.media_type))
+        }
+        MediaType::JavaScript
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::Jsx => {
           if check_js || has_ts_check(module.media_type, &module.source) {
             Some((module.specifier.clone(), module.media_type))
           } else {
