@@ -313,8 +313,8 @@ class WebSocketStream {
             code: kind,
             reason,
           };
-          this[_opened].resolve(reason);
-          this[_closed].resolve(reason);
+          this[_opened].resolve(status);
+          this[_closed].resolve(status);
           core.tryClose(this[_rid]);
           break;
         }
