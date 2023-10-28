@@ -34,11 +34,11 @@ import {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
-import { listen, TcpConn } from "ext:deno_net/01_net.js";
+import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
   ArrayPrototypePush,
-  Error,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   Symbol,
@@ -272,6 +272,13 @@ class InnerRequest {
   }
 
   get remoteAddr() {
+    const transport = this.#context.listener?.addr.transport;
+    if (transport === "unix" || transport === "unixpacket") {
+      return {
+        transport,
+        path: this.#context.listener.addr.path,
+      };
+    }
     if (this.#methodAndUri === undefined) {
       if (this.#slabId === undefined) {
         throw new TypeError("request closed");
@@ -337,8 +344,9 @@ class CallbackContext {
   serverRid;
   closed;
   closing;
+  listener;
 
-  constructor(signal, args) {
+  constructor(signal, args, listener) {
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -352,6 +360,7 @@ class CallbackContext {
     this.scheme = args[1];
     this.fallbackHost = args[2];
     this.closed = false;
+    this.listener = listener;
   }
 
   close() {
@@ -426,8 +435,6 @@ function fastSyncResponseOrStream(req, respBody, status) {
  */
 function mapToCallback(context, callback, onError) {
   const signal = context.abortController.signal;
-  const hasCallback = callback.length > 0;
-  const hasOneCallback = callback.length === 1;
 
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
@@ -435,20 +442,11 @@ function mapToCallback(context, callback, onError) {
     let innerRequest;
     let response;
     try {
-      if (hasCallback) {
-        innerRequest = new InnerRequest(req, context);
-        const request = fromInnerRequest(innerRequest, signal, "immutable");
-        if (hasOneCallback) {
-          response = await callback(request);
-        } else {
-          response = await callback(
-            request,
-            new ServeHandlerInfo(innerRequest),
-          );
-        }
-      } else {
-        response = await callback();
-      }
+      innerRequest = new InnerRequest(req, context);
+      response = await callback(
+        fromInnerRequest(innerRequest, signal, "immutable"),
+        new ServeHandlerInfo(innerRequest),
+      );
     } catch (error) {
       try {
         response = await onError(error);
@@ -519,11 +517,29 @@ function serve(arg1, arg2) {
   }
 
   const wantsHttps = options.cert || options.key;
+  const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
     console.error(error);
     return internalServerError();
   };
+
+  if (wantsUnix) {
+    const listener = listen({
+      transport: "unix",
+      path: options.path,
+      [listenOptionApiName]: "Deno.serve",
+    });
+    const path = listener.addr.path;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen({ path });
+      } else {
+        console.log(`Listening on ${path}`);
+      }
+    });
+  }
+
   const listenOpts = {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
@@ -581,7 +597,11 @@ function serve(arg1, arg2) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
 function serveHttpOnListener(listener, signal, handler, onError, onListen) {
-  const context = new CallbackContext(signal, op_http_serve(listener.rid));
+  const context = new CallbackContext(
+    signal,
+    op_http_serve(listener.rid),
+    listener,
+  );
   const callback = mapToCallback(context, handler, onError);
 
   onListen(context.scheme);
@@ -593,7 +613,11 @@ function serveHttpOnListener(listener, signal, handler, onError, onListen) {
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary connection.
  */
 function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
-  const context = new CallbackContext(signal, op_http_serve_on(connection.rid));
+  const context = new CallbackContext(
+    signal,
+    op_http_serve_on(connection.rid),
+    null,
+  );
   const callback = mapToCallback(context, handler, onError);
 
   onListen(context.scheme);
@@ -663,11 +687,6 @@ function serveHttpOn(context, callback) {
         await op_http_close(context.serverRid, true);
         context.closed = true;
       }
-    },
-    then() {
-      throw new Error(
-        "Deno.serve no longer returns a promise. await server.finished instead of server.",
-      );
     },
     ref() {
       ref = true;

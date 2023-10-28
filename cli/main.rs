@@ -76,7 +76,10 @@ impl SubcommandOutput for Result<(), std::io::Error> {
 fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {
-  deno_core::unsync::spawn(f.map(|r| r.output()))
+  // the boxed_local() is important in order to get windows to not blow the stack in debug
+  deno_core::unsync::spawn(
+    async move { f.map(|r| r.output()).await }.boxed_local(),
+  )
 }
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
@@ -251,6 +254,19 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       std::process::exit(error_code);
     }
   }
+}
+
+pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
+  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
+  eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
+  std::process::exit(70);
+}
+
+#[allow(dead_code)]
+pub(crate) fn unstable_warn_cb(feature: &str) {
+  eprintln!(
+    "The `--unstable` flag is deprecated, use --unstable-{feature} instead."
+  );
 }
 
 pub fn main() {

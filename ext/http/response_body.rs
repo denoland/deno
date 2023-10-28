@@ -125,6 +125,16 @@ pub enum ResponseStream {
   TestChannel(tokio::sync::mpsc::Receiver<BufView>),
 }
 
+impl ResponseStream {
+  pub fn abort(self) {
+    match self {
+      ResponseStream::Resource(resource) => resource.stm.close(),
+      #[cfg(test)]
+      ResponseStream::TestChannel(..) => {}
+    }
+  }
+}
+
 #[derive(Default)]
 pub enum ResponseBytesInner {
   /// An empty stream.
@@ -192,11 +202,25 @@ impl ResponseBytes {
 
     let current = std::mem::replace(&mut self.inner, ResponseBytesInner::Done);
     self.completion_handle.complete(success);
-    current
+    if success {
+      current
+    } else {
+      current.abort();
+      ResponseBytesInner::Done
+    }
   }
 }
 
 impl ResponseBytesInner {
+  pub fn abort(self) {
+    match self {
+      Self::Done | Self::Empty | Self::Bytes(..) => {}
+      Self::BrotliStream(stm) => stm.abort(),
+      Self::GZipStream(stm) => stm.abort(),
+      Self::UncompressedStream(stm) => stm.abort(),
+    }
+  }
+
   pub fn size_hint(&self) -> SizeHint {
     match self {
       Self::Done => SizeHint::with_exact(0),
@@ -463,6 +487,10 @@ impl GZipResponseStream {
       underlying,
     }
   }
+
+  pub fn abort(self) {
+    self.underlying.abort()
+  }
 }
 
 /// This is a minimal GZip header suitable for serving data from a webserver. We don't need to provide
@@ -644,6 +672,10 @@ impl BrotliResponseStream {
       state: BrotliState::Streaming,
       underlying,
     }
+  }
+
+  pub fn abort(self) {
+    self.underlying.abort()
   }
 }
 

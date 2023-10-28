@@ -12,10 +12,13 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use base64::prelude::BASE64_URL_SAFE;
+use base64::Engine;
 use chrono::Utc;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
+use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -32,6 +35,8 @@ use serde::Serialize;
 
 pub use crate::interface::*;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "kv";
+
 const MAX_WRITE_KEY_SIZE_BYTES: usize = 2048;
 // range selectors can contain 0x00 or 0xff suffixes
 const MAX_READ_KEY_SIZE_BYTES: usize = MAX_WRITE_KEY_SIZE_BYTES + 1;
@@ -42,22 +47,6 @@ const MAX_CHECKS: usize = 10;
 const MAX_MUTATIONS: usize = 1000;
 const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
 const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
-
-struct UnstableChecker {
-  pub unstable: bool,
-}
-
-impl UnstableChecker {
-  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.unstable {
-      eprintln!(
-        "Unstable API '{api_name}'. The --unstable flag must be provided."
-      );
-      std::process::exit(70);
-    }
-  }
-}
 
 deno_core::extension!(deno_kv,
   deps = [ deno_console ],
@@ -73,11 +62,9 @@ deno_core::extension!(deno_kv,
   esm = [ "01_db.ts" ],
   options = {
     handler: DBH,
-    unstable: bool,
   },
   state = |state, options| {
     state.put(Rc::new(options.handler));
-    state.put(UnstableChecker { unstable: options.unstable })
   }
 );
 
@@ -106,9 +93,11 @@ where
 {
   let handler = {
     let state = state.borrow();
+    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+    // once we phase out `check_or_exit_with_legacy_fallback`
     state
-      .borrow::<UnstableChecker>()
-      .check_unstable("Deno.openKv");
+      .feature_checker
+      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;
@@ -322,24 +311,35 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ToJsBuffer, ResourceId), AnyError>
+) -> Result<Option<(ToJsBuffer, ResourceId)>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
   let db = {
     let state = state.borrow();
     let resource =
-      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
+      match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
+        Ok(resource) => resource,
+        Err(err) => {
+          if get_custom_error_class(&err) == Some("BadResource") {
+            return Ok(None);
+          } else {
+            return Err(err);
+          }
+        }
+      };
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message(state.clone()).await?;
+  let Some(mut handle) = db.dequeue_next_message(state.clone()).await? else {
+    return Ok(None);
+  };
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
     state.resource_table.add(QueueMessageResource { handle })
   };
-  Ok((payload, handle_rid))
+  Ok(Some((payload, handle_rid)))
 }
 
 #[op2(async)]
@@ -545,11 +545,7 @@ fn encode_cursor(
   if !boundary_key.starts_with(common_prefix) {
     return Err(type_error("invalid boundary key"));
   }
-
-  Ok(base64::encode_config(
-    &boundary_key[common_prefix.len()..],
-    base64::URL_SAFE,
-  ))
+  Ok(BASE64_URL_SAFE.encode(&boundary_key[common_prefix.len()..]))
 }
 
 fn decode_selector_and_cursor(
@@ -562,7 +558,8 @@ fn decode_selector_and_cursor(
   };
 
   let common_prefix = selector.common_prefix();
-  let cursor = base64::decode_config(cursor, base64::URL_SAFE)
+  let cursor = BASE64_URL_SAFE
+    .decode(cursor)
     .map_err(|_| type_error("invalid cursor"))?;
 
   let first_key: Vec<u8>;

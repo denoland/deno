@@ -237,7 +237,7 @@ impl BenchReporter for ConsoleReporter {
         );
 
         if !stats.high_precision && stats.used_explicit_timers {
-          println!("{}", colors::yellow(format!("Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 0.01s per iteration. Remove them for better results.", &desc.name)));
+          println!("{}", colors::yellow(format!("Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.", &desc.name)));
         }
 
         self.group_measurements.push((desc, stats.clone()));

@@ -210,7 +210,22 @@ pub struct InitializeParamsBuilder {
 
 impl InitializeParamsBuilder {
   #[allow(clippy::new_without_default)]
-  pub fn new() -> Self {
+  pub fn new(config: Value) -> Self {
+    let mut config_as_options = json!({});
+    if let Some(object) = config.as_object() {
+      if let Some(deno) = object.get("deno") {
+        if let Some(deno) = deno.as_object() {
+          config_as_options = json!(deno.clone());
+        }
+      }
+      let config_as_options = config_as_options.as_object_mut().unwrap();
+      if let Some(typescript) = object.get("typescript") {
+        config_as_options.insert("typescript".to_string(), typescript.clone());
+      }
+      if let Some(javascript) = object.get("javascript") {
+        config_as_options.insert("javascript".to_string(), javascript.clone());
+      }
+    }
     Self {
       params: InitializeParams {
         process_id: None,
@@ -219,37 +234,7 @@ impl InitializeParamsBuilder {
           version: Some("1.0.0".to_string()),
         }),
         root_uri: None,
-        initialization_options: Some(json!({
-          "enable": true,
-          "cache": null,
-          "certificateStores": null,
-          "codeLens": {
-            "implementations": true,
-            "references": true,
-            "test": true
-          },
-          "config": null,
-          "importMap": null,
-          "lint": true,
-          "suggest": {
-            "autoImports": true,
-            "completeFunctionCalls": false,
-            "names": true,
-            "paths": true,
-            "imports": {
-              "hosts": {}
-            }
-          },
-          "testing": {
-            "args": [
-              "--allow-all"
-            ],
-            "enable": true
-          },
-          "tlsCertificate": null,
-          "unsafelyIgnoreCertificateErrors": null,
-          "unstable": false
-        })),
+        initialization_options: Some(config_as_options),
         capabilities: ClientCapabilities {
           text_document: Some(TextDocumentClientCapabilities {
             code_action: Some(CodeActionClientCapabilities {
@@ -685,21 +670,70 @@ impl LspClient {
   ) {
     self.initialize_with_config(
       do_build,
-      json!([{
-        "enable": true
-      }]),
+      json!({ "deno": {
+        "enableBuiltinCommands": true,
+        "enable": true,
+        "cache": null,
+        "certificateStores": null,
+        "codeLens": {
+          "implementations": true,
+          "references": true,
+          "test": true,
+        },
+        "config": null,
+        "importMap": null,
+        "lint": true,
+        "suggest": {
+          "autoImports": true,
+          "completeFunctionCalls": false,
+          "names": true,
+          "paths": true,
+          "imports": {
+            "hosts": {},
+          },
+        },
+        "testing": {
+          "args": [
+            "--allow-all"
+          ],
+          "enable": true,
+        },
+        "tlsCertificate": null,
+        "unsafelyIgnoreCertificateErrors": null,
+        "unstable": false,
+      } }),
     )
   }
 
   pub fn initialize_with_config(
     &mut self,
     do_build: impl Fn(&mut InitializeParamsBuilder),
-    config: Value,
+    mut config: Value,
   ) {
-    let mut builder = InitializeParamsBuilder::new();
+    let mut builder = InitializeParamsBuilder::new(config.clone());
     builder.set_root_uri(self.context.temp_dir().uri());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
+    // `config` must be updated to account for the builder changes.
+    // TODO(nayeemrmn): Remove config-related methods from builder.
+    if let Some(options) = &params.initialization_options {
+      if let Some(options) = options.as_object() {
+        if let Some(config) = config.as_object_mut() {
+          let mut deno = options.clone();
+          let typescript = options.get("typescript");
+          let javascript = options.get("javascript");
+          deno.remove("typescript");
+          deno.remove("javascript");
+          config.insert("deno".to_string(), json!(deno));
+          if let Some(typescript) = typescript {
+            config.insert("typescript".to_string(), typescript.clone());
+          }
+          if let Some(javascript) = javascript {
+            config.insert("javascript".to_string(), javascript.clone());
+          }
+        }
+      }
+    }
     self.supports_workspace_configuration = match &params.capabilities.workspace
     {
       Some(workspace) => workspace.configuration == Some(true),
@@ -709,23 +743,12 @@ impl LspClient {
     self.write_notification("initialized", json!({}));
     self.config = config;
     if self.supports_workspace_configuration {
-      self.handle_configuration_request(self.config.clone());
+      self.handle_configuration_request();
     }
   }
 
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
-    self.did_open_with_config(params, self.config.clone())
-  }
-
-  pub fn did_open_with_config(
-    &mut self,
-    params: Value,
-    config: Value,
-  ) -> CollectedDiagnostics {
     self.did_open_raw(params);
-    if self.supports_workspace_configuration {
-      self.handle_configuration_request(config);
-    }
     self.read_diagnostics()
   }
 
@@ -733,10 +756,39 @@ impl LspClient {
     self.write_notification("textDocument/didOpen", params);
   }
 
-  pub fn handle_configuration_request(&mut self, result: Value) {
-    let (id, method, _) = self.read_request::<Value>();
+  pub fn change_configuration(&mut self, config: Value) {
+    self.config = config;
+    if self.supports_workspace_configuration {
+      self.write_notification(
+        "workspace/didChangeConfiguration",
+        json!({ "settings": {} }),
+      );
+      self.handle_configuration_request();
+    } else {
+      self.write_notification(
+        "workspace/didChangeConfiguration",
+        json!({ "settings": &self.config }),
+      );
+    }
+  }
+
+  pub fn handle_configuration_request(&mut self) {
+    let (id, method, args) = self.read_request::<Value>();
     assert_eq!(method, "workspace/configuration");
+    let params = args.as_ref().unwrap().as_object().unwrap();
+    let items = params.get("items").unwrap().as_array().unwrap();
+    let config_object = self.config.as_object().unwrap();
+    let mut result = vec![];
+    for item in items {
+      let item = item.as_object().unwrap();
+      let section = item.get("section").unwrap().as_str().unwrap();
+      result.push(config_object.get(section).cloned().unwrap_or_default());
+    }
     self.write_response(id, result);
+  }
+
+  pub fn did_save(&mut self, params: Value) {
+    self.write_notification("textDocument/didSave", params);
   }
 
   pub fn did_change_watched_files(&mut self, params: Value) {
@@ -751,11 +803,7 @@ impl LspClient {
 
   /// Reads the latest diagnostics. It's assumed that
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
-    // ask the server what the latest diagnostic batch index is
-    let latest_diagnostic_batch_index =
-      self.get_latest_diagnostic_batch_index();
-
-    // now wait for three (deno, lint, and typescript diagnostics) batch
+    // wait for three (deno, lint, and typescript diagnostics) batch
     // notification messages for that index
     let mut read = 0;
     let mut total_messages_len = 0;
@@ -764,7 +812,7 @@ impl LspClient {
         self.read_notification::<DiagnosticBatchNotificationParams>();
       assert_eq!(method, "deno/internalTestDiagnosticBatch");
       let response = response.unwrap();
-      if response.batch_index == latest_diagnostic_batch_index {
+      if response.batch_index == self.get_latest_diagnostic_batch_index() {
         read += 1;
         total_messages_len += response.messages_len;
       }

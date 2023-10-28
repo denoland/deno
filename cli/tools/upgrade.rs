@@ -372,6 +372,8 @@ pub async fn upgrade(
   };
 
   let download_url = if upgrade_flags.canary {
+    // NOTE(bartlomieju): to keep clippy happy on M1 macs.
+    #[allow(clippy::eq_op)]
     if env!("TARGET") == "aarch64-apple-darwin" {
       bail!("Canary builds are not available for M1/M2");
     }
@@ -481,7 +483,7 @@ async fn download_package(
   match maybe_bytes {
     Some(bytes) => Ok(bytes),
     None => {
-      log::info!("Download could not be found, aborting");
+      log::error!("Download could not be found, aborting");
       std::process::exit(1)
     }
   }
@@ -491,7 +493,7 @@ pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
   temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, std::io::Error> {
+) -> Result<PathBuf, AnyError> {
   const EXE_NAME: &str = "deno";
   let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
@@ -506,32 +508,17 @@ pub fn unpack_into_dir(
   let unpack_status = match archive_ext {
     "zip" if cfg!(windows) => {
       fs::write(&archive_path, &archive_data)?;
-      Command::new("powershell.exe")
-        .arg("-NoLogo")
-        .arg("-NoProfile")
-        .arg("-NonInteractive")
-        .arg("-Command")
-        .arg(
-          "& {
-            param($Path, $DestinationPath)
-            trap { $host.ui.WriteErrorLine($_.Exception); exit 1 }
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::ExtractToDirectory(
-              $Path,
-              $DestinationPath
-            );
-          }",
-        )
-        .arg("-Path")
-        .arg(format!("'{}'", &archive_path.to_str().unwrap()))
-        .arg("-DestinationPath")
-        .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
+      Command::new("tar.exe")
+        .arg("xf")
+        .arg(&archive_path)
+        .arg("-C")
+        .arg(temp_dir_path)
         .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              "`powershell.exe` was not found in your PATH",
+              "`tar.exe` was not found in your PATH",
             )
           } else {
             err
@@ -557,9 +544,11 @@ pub fn unpack_into_dir(
         })?
         .wait()?
     }
-    ext => panic!("Unsupported archive type: '{ext}'"),
+    ext => bail!("Unsupported archive type: '{ext}'"),
   };
-  assert!(unpack_status.success());
+  if !unpack_status.success() {
+    bail!("Failed to unpack archive.");
+  }
   assert!(exe_path.exists());
   fs::remove_file(&archive_path)?;
   Ok(exe_path)

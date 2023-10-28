@@ -4,6 +4,7 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
+use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -13,16 +14,13 @@ use deno_core::anyhow::Context;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -293,6 +291,12 @@ pub struct EmittedFile {
   pub media_type: MediaType,
 }
 
+#[derive(Debug)]
+pub struct RequestNpmState {
+  pub node_resolver: Arc<NodeResolver>,
+  pub npm_resolver: Arc<dyn CliNpmResolver>,
+}
+
 /// A structure representing a request to be sent to the tsc runtime.
 #[derive(Debug)]
 pub struct Request {
@@ -303,7 +307,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: u64,
-  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
+  pub maybe_npm: Option<RequestNpmState>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -327,7 +331,7 @@ struct State {
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
-  maybe_node_resolver: Option<Arc<NodeResolver>>,
+  maybe_npm: Option<RequestNpmState>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
@@ -340,7 +344,7 @@ impl Default for State {
       graph: Arc::new(ModuleGraph::new(GraphKind::All)),
       maybe_tsbuildinfo: Default::default(),
       maybe_response: Default::default(),
-      maybe_node_resolver: Default::default(),
+      maybe_npm: Default::default(),
       remapped_specifiers: Default::default(),
       root_map: Default::default(),
       current_dir: Default::default(),
@@ -352,7 +356,7 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: u64,
-    maybe_node_resolver: Option<Arc<NodeResolver>>,
+    maybe_npm: Option<RequestNpmState>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
@@ -361,7 +365,7 @@ impl State {
     State {
       hash_data,
       graph,
-      maybe_node_resolver,
+      maybe_npm,
       maybe_tsbuildinfo,
       maybe_response: None,
       remapped_specifiers,
@@ -437,17 +441,29 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   }
 }
 
-// TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
-#[op]
-fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadResponse {
+  data: Option<String>,
+  version: Option<String>,
+  script_kind: i32,
+}
+
+#[op2]
+#[serde]
+fn op_load(
+  state: &mut OpState,
+  #[serde] v: LoadArgs,
+) -> Result<LoadResponse, AnyError> {
   let state = state.borrow_mut::<State>();
-  let v: LoadArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_load\".")?;
+
   let specifier = normalize_specifier(&v.specifier, &state.current_dir)
     .context("Error converting a string module specifier for \"op_load\".")?;
+
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
   let graph = &state.graph;
+
   let data = if &v.specifier == "internal:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
@@ -496,9 +512,9 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
         }
       }
     } else if state
-      .maybe_node_resolver
+      .maybe_npm
       .as_ref()
-      .map(|resolver| resolver.in_npm_package(specifier))
+      .map(|npm| npm.node_resolver.in_npm_package(specifier))
       .unwrap_or(false)
     {
       media_type = MediaType::from_specifier(specifier);
@@ -514,11 +530,11 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     maybe_source
   };
 
-  Ok(json!({
-    "data": data,
-    "version": hash,
-    "scriptKind": as_ts_script_kind(media_type),
-  }))
+  Ok(LoadResponse {
+    data: data.map(String::from),
+    version: hash,
+    script_kind: as_ts_script_kind(media_type),
+  })
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -579,7 +595,7 @@ fn op_resolve(
 
     let maybe_result = match resolved_dep {
       Some(ResolutionResolved { specifier, .. }) => {
-        resolve_graph_specifier_types(specifier, state)?
+        resolve_graph_specifier_types(specifier, &referrer, state)?
       }
       _ => resolve_non_graph_specifier_types(&specifier, &referrer, state)?,
     };
@@ -622,6 +638,7 @@ fn op_resolve(
 
 fn resolve_graph_specifier_types(
   specifier: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
@@ -650,12 +667,20 @@ fn resolve_graph_specifier_types(
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
     Some(Module::Npm(module)) => {
-      if let Some(node_resolver) = &state.maybe_node_resolver {
-        let maybe_resolution = node_resolver.resolve_npm_reference(
-          &module.nv_reference,
-          NodeResolutionMode::Types,
-          &PermissionsContainer::allow_all(),
-        )?;
+      if let Some(npm) = &state.maybe_npm.as_ref() {
+        let package_folder = npm
+          .npm_resolver
+          .as_managed()
+          .unwrap() // should never be byonm because it won't create Module::Npm
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+        let maybe_resolution =
+          npm.node_resolver.resolve_package_subpath_from_deno_module(
+            &package_folder,
+            module.nv_reference.sub_path(),
+            referrer,
+            NodeResolutionMode::Types,
+            &PermissionsContainer::allow_all(),
+          )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
         )))
@@ -665,11 +690,11 @@ fn resolve_graph_specifier_types(
     }
     Some(Module::External(module)) => {
       // we currently only use "External" for when the module is in an npm package
-      Ok(state.maybe_node_resolver.as_ref().map(|node_resolver| {
+      Ok(state.maybe_npm.as_ref().map(|npm| {
         let specifier =
           node::resolve_specifier_into_node_modules(&module.specifier);
         NodeResolution::into_specifier_and_media_type(
-          node_resolver.url_to_node_resolution(specifier).ok(),
+          npm.node_resolver.url_to_node_resolution(specifier).ok(),
         )
       }))
     }
@@ -682,10 +707,11 @@ fn resolve_non_graph_specifier_types(
   referrer: &ModuleSpecifier,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
-  let node_resolver = match state.maybe_node_resolver.as_ref() {
-    Some(node_resolver) => node_resolver,
+  let npm = match state.maybe_npm.as_ref() {
+    Some(npm) => npm,
     None => return Ok(None), // we only support non-graph types for npm packages
   };
+  let node_resolver = &npm.node_resolver;
   if node_resolver.in_npm_package(referrer) {
     // we're in an npm package, so use node resolution
     Ok(Some(NodeResolution::into_specifier_and_media_type(
@@ -699,16 +725,22 @@ fn resolve_non_graph_specifier_types(
         .ok()
         .flatten(),
     )))
-  } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+  } else if let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier) {
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let maybe_resolution = node_resolver.resolve_npm_req_reference(
-      &npm_ref,
-      NodeResolutionMode::Types,
-      &PermissionsContainer::allow_all(),
-    )?;
+    let package_folder = npm
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
+    let maybe_resolution = node_resolver
+      .resolve_package_subpath_from_deno_module(
+        &package_folder,
+        npm_req_ref.sub_path(),
+        referrer,
+        NodeResolutionMode::Types,
+        &PermissionsContainer::allow_all(),
+      )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,
     )))
@@ -722,9 +754,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
   let state = state.borrow::<State>();
   match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
-      .maybe_node_resolver
+      .maybe_npm
       .as_ref()
-      .map(|r| r.in_npm_package(&specifier))
+      .map(|n| n.node_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
   }
@@ -736,9 +768,8 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
-// TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
-#[op]
-fn op_respond(state: &mut OpState, args: RespondArgs) {
+#[op2]
+fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   let state = state.borrow_mut::<State>();
   state.maybe_response = Some(args);
 }
@@ -784,7 +815,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       state.put(State::new(
         options.request.graph,
         options.request.hash_data,
-        options.request.maybe_node_resolver,
+        options.request.maybe_npm,
         options.request.maybe_tsbuildinfo,
         options.root_map,
         options.remapped_specifiers,
@@ -857,6 +888,7 @@ mod tests {
   use super::*;
   use crate::args::TsConfig;
   use deno_core::futures::future;
+  use deno_core::serde_json;
   use deno_core::OpState;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
@@ -916,7 +948,7 @@ mod tests {
         .context("Unable to get CWD")
         .unwrap(),
     );
-    let mut op_state = OpState::new(1);
+    let mut op_state = OpState::new(1, None);
     op_state.put(state);
     op_state
   }
@@ -953,7 +985,7 @@ mod tests {
       debug: false,
       graph: Arc::new(graph),
       hash_data,
-      maybe_node_resolver: None,
+      maybe_npm: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,
@@ -1032,25 +1064,19 @@ mod tests {
     .await;
     let actual = op_load::call(
       &mut state,
-      json!({ "specifier": "https://deno.land/x/mod.ts"}),
+      LoadArgs {
+        specifier: "https://deno.land/x/mod.ts".to_string(),
+      },
     )
     .unwrap();
     assert_eq!(
-      actual,
+      serde_json::to_value(actual).unwrap(),
       json!({
         "data": "console.log(\"hello deno\");\n",
         "version": "7821807483407828376",
         "scriptKind": 3,
       })
     );
-  }
-
-  #[derive(Debug, Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct LoadResponse {
-    data: String,
-    version: Option<String>,
-    script_kind: i64,
   }
 
   #[tokio::test]
@@ -1061,15 +1087,15 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let value = op_load::call(
+    let actual = op_load::call(
       &mut state,
-      json!({ "specifier": "asset:///lib.dom.d.ts" }),
+      LoadArgs {
+        specifier: "asset:///lib.dom.d.ts".to_string(),
+      },
     )
     .expect("should have invoked op");
-    let actual: LoadResponse =
-      serde_json::from_value(value).expect("failed to deserialize");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
-    assert_eq!(actual.data, expected);
+    assert_eq!(actual.data.unwrap(), expected);
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
@@ -1084,11 +1110,13 @@ mod tests {
     .await;
     let actual = op_load::call(
       &mut state,
-      json!({ "specifier": "internal:///.tsbuildinfo"}),
+      LoadArgs {
+        specifier: "internal:///.tsbuildinfo".to_string(),
+      },
     )
     .expect("should have invoked op");
     assert_eq!(
-      actual,
+      serde_json::to_value(actual).unwrap(),
       json!({
         "data": "some content",
         "version": null,
@@ -1102,11 +1130,13 @@ mod tests {
     let mut state = setup(None, None, None).await;
     let actual = op_load::call(
       &mut state,
-      json!({ "specifier": "https://deno.land/x/mod.ts"}),
+      LoadArgs {
+        specifier: "https://deno.land/x/mod.ts".to_string(),
+      },
     )
     .expect("should have invoked op");
     assert_eq!(
-      actual,
+      serde_json::to_value(actual).unwrap(),
       json!({
         "data": null,
         "version": null,

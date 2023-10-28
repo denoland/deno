@@ -878,10 +878,10 @@ where
     .and_then(|it| it.0.clone());
 
   if args.cert_chain.is_some() {
-    super::check_unstable2(&state, "ConnectTlsOptions.certChain");
+    super::check_unstable(&state.borrow(), "ConnectTlsOptions.certChain");
   }
   if args.private_key.is_some() {
-    super::check_unstable2(&state, "ConnectTlsOptions.privateKey");
+    super::check_unstable(&state.borrow(), "ConnectTlsOptions.privateKey");
   }
 
   {

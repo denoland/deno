@@ -35,6 +35,8 @@ import {
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob } from "ext:deno_web/09_file.js";
 
+const { core } = globalThis.__bootstrap;
+
 export { atob, Blob, btoa };
 
 const utf8Encoder = new TextEncoder();
@@ -742,12 +744,12 @@ Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
-  return blitBuffer(
-    utf8ToBytes(string, this.length - offset),
-    this,
-    offset,
-    length,
-  );
+  offset = offset || 0;
+  const maxLength = Math.min(length || Infinity, this.length - offset);
+  const buf = offset || maxLength < this.length
+    ? this.subarray(offset, maxLength + offset)
+    : this;
+  return utf8Encoder.encodeInto(string, buf).written;
 };
 
 Buffer.prototype.write = function write(string, offset, length, encoding) {
@@ -1685,97 +1687,31 @@ function checkIntBI(value, min, max, buf, offset, byteLength2) {
   checkBounds(buf, offset, byteLength2);
 }
 
-function utf8ToBytes(string, units) {
-  units = units || Infinity;
-  let codePoint;
-  const length = string.length;
-  let leadSurrogate = null;
-  const bytes = [];
-  for (let i = 0; i < length; ++i) {
-    codePoint = string.charCodeAt(i);
-    if (codePoint > 55295 && codePoint < 57344) {
-      if (!leadSurrogate) {
-        if (codePoint > 56319) {
-          if ((units -= 3) > -1) {
-            bytes.push(239, 191, 189);
-          }
-          continue;
-        } else if (i + 1 === length) {
-          if ((units -= 3) > -1) {
-            bytes.push(239, 191, 189);
-          }
-          continue;
-        }
-        leadSurrogate = codePoint;
-        continue;
-      }
-      if (codePoint < 56320) {
-        if ((units -= 3) > -1) {
-          bytes.push(239, 191, 189);
-        }
-        leadSurrogate = codePoint;
-        continue;
-      }
-      codePoint = (leadSurrogate - 55296 << 10 | codePoint - 56320) + 65536;
-    } else if (leadSurrogate) {
-      if ((units -= 3) > -1) {
-        bytes.push(239, 191, 189);
-      }
-    }
-    leadSurrogate = null;
-    if (codePoint < 128) {
-      if ((units -= 1) < 0) {
-        break;
-      }
-      bytes.push(codePoint);
-    } else if (codePoint < 2048) {
-      if ((units -= 2) < 0) {
-        break;
-      }
-      bytes.push(codePoint >> 6 | 192, codePoint & 63 | 128);
-    } else if (codePoint < 65536) {
-      if ((units -= 3) < 0) {
-        break;
-      }
-      bytes.push(
-        codePoint >> 12 | 224,
-        codePoint >> 6 & 63 | 128,
-        codePoint & 63 | 128,
-      );
-    } else if (codePoint < 1114112) {
-      if ((units -= 4) < 0) {
-        break;
-      }
-      bytes.push(
-        codePoint >> 18 | 240,
-        codePoint >> 12 & 63 | 128,
-        codePoint >> 6 & 63 | 128,
-        codePoint & 63 | 128,
-      );
-    } else {
-      throw new Error("Invalid code point");
-    }
-  }
-  return bytes;
-}
-
+/**
+ * @param {Uint8Array} src Source buffer to read from
+ * @param {Buffer} dst Destination buffer to write to
+ * @param {number} [offset] Byte offset to write at in the destination buffer
+ * @param {number} [byteLength] Optional number of bytes to, at most, write into destination buffer.
+ * @returns {number} Number of bytes written to destination buffer
+ */
 function blitBuffer(src, dst, offset, byteLength = Infinity) {
+  const srcLength = src.length;
   // Establish the number of bytes to be written
   const bytesToWrite = Math.min(
     // If byte length is defined in the call, then it sets an upper bound,
     // otherwise it is Infinity and is never chosen.
     byteLength,
     // The length of the source sets an upper bound being the source of data.
-    src.length,
+    srcLength,
     // The length of the destination minus any offset into it sets an upper bound.
-    dst.length - offset,
+    dst.length - (offset || 0),
   );
-  if (bytesToWrite < src.length) {
+  if (bytesToWrite < srcLength) {
     // Resize the source buffer to the number of bytes we're about to write.
     // This both makes sure that we're actually only writing what we're told to
     // write but also prevents `Uint8Array#set` from throwing an error if the
     // source is longer than the target.
-    src = src.subarray(0, length);
+    src = src.subarray(0, bytesToWrite);
   }
   dst.set(src, offset);
   return bytesToWrite;
@@ -2125,7 +2061,7 @@ export function readInt40BE(buf, offset = 0) {
 }
 
 export function byteLengthUtf8(str) {
-  return utf8Encoder.encode(str).length;
+  return core.byteLength(str);
 }
 
 function base64ByteLength(str, bytes) {

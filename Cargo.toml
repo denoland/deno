@@ -38,45 +38,41 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.29.3", features = ["transpiling"] }
+deno_ast = { version = "0.31.0", features = ["transpiling"] }
+deno_core = { version = "0.223.0" }
 
-deno_core = { version = "0.213.0" }
-
-deno_runtime = { version = "0.126.0", path = "./runtime" }
-napi_sym = { version = "0.48.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.112.0", path = "./bench_util" }
+deno_runtime = { version = "0.129.0", path = "./runtime" }
+napi_sym = { version = "0.51.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.115.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
-deno_lockfile = "0.17.1"
+deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
-deno_npm = "0.15.0"
-deno_semver = "0.5.0"
 
 # exts
-deno_broadcast_channel = { version = "0.112.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.50.0", path = "./ext/cache" }
-deno_console = { version = "0.118.0", path = "./ext/console" }
-deno_crypto = { version = "0.132.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.142.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.105.0", path = "./ext/ffi" }
-deno_fs = { version = "0.28.0", path = "./ext/fs" }
-deno_http = { version = "0.113.0", path = "./ext/http" }
-deno_io = { version = "0.28.0", path = "./ext/io" }
-deno_net = { version = "0.110.0", path = "./ext/net" }
-deno_node = { version = "0.55.0", path = "./ext/node" }
-deno_kv = { version = "0.26.0", path = "./ext/kv" }
-deno_tls = { version = "0.105.0", path = "./ext/tls" }
-deno_url = { version = "0.118.0", path = "./ext/url" }
-deno_web = { version = "0.149.0", path = "./ext/web" }
-deno_webidl = { version = "0.118.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.123.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.113.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.48.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.115.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.53.0", path = "./ext/cache" }
+deno_console = { version = "0.121.0", path = "./ext/console" }
+deno_crypto = { version = "0.135.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.145.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.108.0", path = "./ext/ffi" }
+deno_fs = { version = "0.31.0", path = "./ext/fs" }
+deno_http = { version = "0.116.0", path = "./ext/http" }
+deno_io = { version = "0.31.0", path = "./ext/io" }
+deno_net = { version = "0.113.0", path = "./ext/net" }
+deno_node = { version = "0.58.0", path = "./ext/node" }
+deno_kv = { version = "0.29.0", path = "./ext/kv" }
+deno_tls = { version = "0.108.0", path = "./ext/tls" }
+deno_url = { version = "0.121.0", path = "./ext/url" }
+deno_web = { version = "0.152.0", path = "./ext/web" }
+deno_webidl = { version = "0.121.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.126.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.116.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.51.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
 async-trait = "0.1.73"
-# TODO(mmastrac): Requires code changes to bump
-base64 = "=0.13.1"
+base64 = "0.21.4"
 bencher = "0.1"
 brotli = "3.3.4"
 bytes = "1.4.0"
@@ -105,7 +101,7 @@ indexmap1 = { package = "indexmap", version = "1", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.20"
-lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.4.3"
 notify = "=5.0.0"
@@ -122,13 +118,14 @@ rand = "=0.8.5"
 regex = "^1.7.0"
 lazy-regex = "3"
 reqwest = { version = "0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
-ring = "=0.16.20"
+ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.21.0"
+rustls = "0.21.8"
 rustls-pemfile = "1.0.0"
 rustls-webpki = "0.101.4"
 rustls-native-certs = "0.6.2"
 webpki-roots = "0.25.2"
+scopeguard = "1.2.0"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"
@@ -146,7 +143,7 @@ tokio = { version = "1.28.1", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = "0.24.0"
 tokio-util = "0.7.4"
-tower-lsp = { version = "=0.17.0", features = ["proposed"] }
+tower-lsp = { version = "=0.20.0", features = ["proposed"] }
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 zstd = "=0.12.4"

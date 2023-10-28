@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::Engine;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::JsBuffer;
@@ -106,12 +107,19 @@ pub fn op_crypto_import_key(
   }
 }
 
-const URL_SAFE_FORGIVING: base64::Config =
-  base64::URL_SAFE_NO_PAD.decode_allow_trailing_bits(true);
+const BASE64_URL_SAFE_FORGIVING:
+  base64::engine::general_purpose::GeneralPurpose =
+  base64::engine::general_purpose::GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    base64::engine::general_purpose::GeneralPurposeConfig::new()
+      .with_decode_allow_trailing_bits(true)
+      .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+  );
 
 macro_rules! jwt_b64_int_or_err {
   ($name:ident, $b64:expr, $err:expr) => {
-    let bytes = base64::decode_config($b64, URL_SAFE_FORGIVING)
+    let bytes = BASE64_URL_SAFE_FORGIVING
+      .decode($b64)
       .map_err(|_| data_error($err))?;
     let $name = UIntRef::new(&bytes).map_err(|_| data_error($err))?;
   };
@@ -548,10 +556,12 @@ fn import_key_ec_jwk(
         }
       };
 
+      let rng = ring::rand::SystemRandom::new();
       let _key_pair = EcdsaKeyPair::from_private_key_and_public_key(
         key_alg,
         private_d.as_bytes(),
         point_bytes.as_ref(),
+        &rng,
       );
 
       Ok(ImportKeyResult::Ec {
@@ -650,8 +660,9 @@ fn import_key_ec(
           }
         };
 
+        let rng = ring::rand::SystemRandom::new();
         // deserialize pkcs8 using ring crate, to VALIDATE public key
-        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data)?;
+        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data, &rng)?;
 
         // 11.
         if named_curve != pk_named_curve {
@@ -759,7 +770,8 @@ fn import_key_ec(
 fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
+      let data = BASE64_URL_SAFE_FORGIVING
+        .decode(k)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RustRawKeyData::Secret(data.into()),
@@ -772,7 +784,8 @@ fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
 fn import_key_hmac(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
+      let data = BASE64_URL_SAFE_FORGIVING
+        .decode(k)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RustRawKeyData::Secret(data.into()),

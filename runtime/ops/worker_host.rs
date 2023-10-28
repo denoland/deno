@@ -26,6 +26,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "worker";
+
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
@@ -140,7 +142,11 @@ fn op_create_worker(
   }
 
   if args.permissions.is_some() {
-    super::check_unstable(state, "Worker.deno.permissions");
+    super::check_unstable(
+      state,
+      UNSTABLE_FEATURE_NAME,
+      "Worker.deno.permissions",
+    );
   }
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
@@ -154,10 +160,8 @@ fn op_create_worker(
   };
   let parent_permissions = parent_permissions.clone();
   let worker_id = state.take::<WorkerId>();
-  let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
-  state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
-  let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
-  state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
+  let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
+  let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
