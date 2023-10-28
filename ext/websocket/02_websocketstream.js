@@ -292,7 +292,6 @@ class WebSocketStream {
         case 3: {
           /* error */
           const err = new Error(op_ws_get_error(this[_rid]));
-          this[_opened].reject(err);
           this[_closed].reject(err);
           controller.error(err);
           core.tryClose(this[_rid]);
@@ -328,7 +327,6 @@ class WebSocketStream {
         }
 
         const error = new Error(op_ws_get_error(this[_rid]));
-        this[_opened].reject(error);
         this[_closed].reject(error);
         core.tryClose(this[_rid]);
       }
