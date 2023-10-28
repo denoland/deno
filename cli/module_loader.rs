@@ -3,6 +3,7 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
+use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -39,6 +40,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::EsmModule;
 use deno_graph::JsonModule;
@@ -65,6 +67,7 @@ pub struct ModuleLoadPreparer {
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
+  module_info_cache: Arc<ModuleInfoCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   progress_bar: ProgressBar,
   resolver: Arc<CliGraphResolver>,
@@ -79,6 +82,7 @@ impl ModuleLoadPreparer {
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
+    module_info_cache: Arc<ModuleInfoCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     progress_bar: ProgressBar,
     resolver: Arc<CliGraphResolver>,
@@ -90,6 +94,7 @@ impl ModuleLoadPreparer {
       lockfile,
       maybe_file_watcher_reporter,
       module_graph_builder,
+      module_info_cache,
       parsed_source_cache,
       progress_bar,
       resolver,
@@ -121,7 +126,8 @@ impl ModuleLoadPreparer {
       .as_ref()
       .map(|r| r.as_reporter());
 
-    let analyzer = self.parsed_source_cache.as_analyzer();
+    let store = self.parsed_source_cache.as_store();
+    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
 
     log::debug!("Creating module graph.");
     let mut graph_update_permit =
@@ -144,7 +150,7 @@ impl ModuleLoadPreparer {
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&*analyzer),
+          module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
           // todo(dsherret): workspace support
           workspace_members: vec![],
@@ -549,7 +555,11 @@ impl ModuleLoader for CliModuleLoader {
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
     // support in REPL. This should be fixed.
-    let resolution = self.shared.resolver.resolve(specifier, &referrer);
+    let resolution = self.shared.resolver.resolve(
+      specifier,
+      &referrer,
+      ResolutionMode::Execution,
+    );
 
     if self.shared.is_repl {
       let specifier = resolution
@@ -570,7 +580,7 @@ impl ModuleLoader for CliModuleLoader {
       }
     }
 
-    resolution
+    resolution.map_err(|err| err.into())
   }
 
   fn load(
@@ -733,7 +743,7 @@ impl CliNodeResolver {
       .with_context(|| format!("Could not resolve '{}'.", req_ref))
   }
 
-  fn resolve_package_sub_path(
+  pub fn resolve_package_sub_path(
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
@@ -876,7 +886,7 @@ impl NpmModuleLoader {
 }
 
 /// Keeps track of what module specifiers were resolved as CJS.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
 
 impl CjsResolutionStore {

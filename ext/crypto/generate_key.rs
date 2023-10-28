@@ -136,7 +136,7 @@ fn generate_key_hmac(
 
     length
   } else {
-    hash.digest_algorithm().block_len
+    hash.digest_algorithm().block_len()
   };
 
   let rng = ring::rand::SystemRandom::new();

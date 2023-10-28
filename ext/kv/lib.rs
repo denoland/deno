@@ -12,6 +12,8 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use base64::prelude::BASE64_URL_SAFE;
+use base64::Engine;
 use chrono::Utc;
 use codec::decode_key;
 use codec::encode_key;
@@ -32,6 +34,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub use crate::interface::*;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "kv";
 
 const MAX_WRITE_KEY_SIZE_BYTES: usize = 2048;
 // range selectors can contain 0x00 or 0xff suffixes
@@ -89,9 +93,11 @@ where
 {
   let handler = {
     let state = state.borrow();
+    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+    // once we phase out `check_or_exit_with_legacy_fallback`
     state
       .feature_checker
-      .check_legacy_unstable_or_exit("Deno.openKv");
+      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;
@@ -539,11 +545,7 @@ fn encode_cursor(
   if !boundary_key.starts_with(common_prefix) {
     return Err(type_error("invalid boundary key"));
   }
-
-  Ok(base64::encode_config(
-    &boundary_key[common_prefix.len()..],
-    base64::URL_SAFE,
-  ))
+  Ok(BASE64_URL_SAFE.encode(&boundary_key[common_prefix.len()..]))
 }
 
 fn decode_selector_and_cursor(
@@ -556,7 +558,8 @@ fn decode_selector_and_cursor(
   };
 
   let common_prefix = selector.common_prefix();
-  let cursor = base64::decode_config(cursor, base64::URL_SAFE)
+  let cursor = BASE64_URL_SAFE
+    .decode(cursor)
     .map_err(|_| type_error("invalid cursor"))?;
 
   let first_key: Vec<u8>;

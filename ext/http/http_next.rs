@@ -83,6 +83,8 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
+pub const UNSTABLE_FEATURE_NAME: &str = "http";
+
 /// All HTTP/2 connections start with this byte string.
 ///
 /// In HTTP/2, each endpoint is required to send a connection preface as a final confirmation
@@ -659,8 +661,7 @@ pub fn op_http_set_response_body_text(
   }
 }
 
-// Skipping `fast` because we prefer an owned buffer here.
-#[op2]
+#[op2(fast)]
 pub fn op_http_set_response_body_bytes(
   #[smi] slab_id: SlabId,
   #[buffer] buffer: JsBuffer,
@@ -1105,10 +1106,16 @@ pub async fn op_http_close(
     .take::<HttpJoinHandle>(rid)?;
 
   if graceful {
+    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+    // once we phase out `check_or_exit_with_legacy_fallback`
     state
       .borrow()
       .feature_checker
-      .check_legacy_unstable_or_exit("Deno.Server.shutdown");
+      .check_or_exit_with_legacy_fallback(
+        UNSTABLE_FEATURE_NAME,
+        "Deno.Server.shutdown",
+      );
+
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
   } else {

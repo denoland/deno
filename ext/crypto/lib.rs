@@ -4,6 +4,8 @@ use aes_kw::KekAes128;
 use aes_kw::KekAes192;
 use aes_kw::KekAes256;
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
@@ -120,14 +122,14 @@ deno_core::extension!(deno_crypto,
 pub fn op_crypto_base64url_decode(
   #[string] data: String,
 ) -> Result<ToJsBuffer, AnyError> {
-  let data: Vec<u8> = base64::decode_config(data, base64::URL_SAFE_NO_PAD)?;
+  let data: Vec<u8> = BASE64_URL_SAFE_NO_PAD.decode(data)?;
   Ok(data.into())
 }
 
 #[op2]
 #[string]
 pub fn op_crypto_base64url_encode(#[buffer] data: JsBuffer) -> String {
-  let data: String = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
+  let data: String = BASE64_URL_SAFE_NO_PAD.encode(data);
   data
 }
 
@@ -264,7 +266,8 @@ pub async fn op_crypto_sign_key(
       let curve: &EcdsaSigningAlgorithm =
         args.named_curve.ok_or_else(not_supported)?.try_into()?;
 
-      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data)?;
+      let rng = RingRand::SystemRandom::new();
+      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
       if let Some(hash) = args.hash {
@@ -274,7 +277,6 @@ pub async fn op_crypto_sign_key(
         }
       };
 
-      let rng = RingRand::SystemRandom::new();
       let signature = key_pair.sign(&rng, data)?;
 
       // Signature data as buffer.
@@ -386,7 +388,9 @@ pub async fn op_crypto_verify_key(
 
       let public_key_bytes = match args.key.r#type {
         KeyType::Private => {
-          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data)?;
+          let rng = RingRand::SystemRandom::new();
+          private_key =
+            EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
 
           private_key.public_key().as_ref()
         }

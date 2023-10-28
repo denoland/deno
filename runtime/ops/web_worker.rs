@@ -37,7 +37,7 @@ fn op_worker_post_message(
   Ok(())
 }
 
-#[op2(async(lazy))]
+#[op2(async(lazy), fast)]
 #[serde]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,

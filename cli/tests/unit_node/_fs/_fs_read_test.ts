@@ -306,3 +306,18 @@ Deno.test({
     await Deno.remove(file);
   },
 });
+
+Deno.test({
+  name: "SYNC: read with no offsetOropts argument",
+  fn() {
+    const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+    const testData = path.resolve(moduleDir, "testdata", "hello.txt");
+    const buffer = Buffer.alloc(1024);
+    const fd = openSync(testData, "r");
+    const _bytesRead = readSync(
+      fd,
+      buffer,
+    );
+    closeSync(fd);
+  },
+});
