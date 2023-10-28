@@ -25,7 +25,7 @@ export function createWritableStdioStream(writer, name) {
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
-          new Error(`Deno.${name} is not available in this environment`)
+          new Error(`Deno.${name} is not available in this environment`),
         );
         return;
       }
@@ -153,7 +153,7 @@ const _read = function (size) {
     },
     (error) => {
       this.destroy(error);
-    }
+    },
   );
 };
 

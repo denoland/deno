@@ -64,7 +64,7 @@ export class WriteStream extends Duplex {
     if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
 
     const tty = new TTY(
-      fd === 0 ? Deno.stdin : fd === 1 ? Deno.stdout : Deno.stderr
+      fd === 0 ? Deno.stdin : fd === 1 ? Deno.stdout : Deno.stderr,
     );
 
     super({
