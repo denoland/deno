@@ -36,9 +36,7 @@ const {
   Number,
   NumberIsFinite,
   NumberIsNaN,
-  // deno-lint-ignore camelcase
   NumberMAX_SAFE_INTEGER,
-  // deno-lint-ignore camelcase
   NumberMIN_SAFE_INTEGER,
   ObjectCreate,
   ObjectDefineProperties,
@@ -1139,36 +1137,42 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   return ObjectDefineProperties(prototype.prototype, properties);
 }
 
-function configurePrototype(prototype) {
-  const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
+function configureInterface(interface_) {
+  configureProperties(interface_);
+  configureProperties(interface_.prototype);
+  ObjectDefineProperty(interface_.prototype, SymbolToStringTag, {
+    value: interface_.name,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+}
+
+function configureProperties(obj) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(obj);
   for (const key in descriptors) {
     if (!ObjectHasOwn(descriptors, key)) {
       continue;
     }
     if (key === "constructor") continue;
+    if (key === "prototype") continue;
     const descriptor = descriptors[key];
     if (
       ReflectHas(descriptor, "value") &&
       typeof descriptor.value === "function"
     ) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
         enumerable: true,
         writable: true,
         configurable: true,
       });
     } else if (ReflectHas(descriptor, "get")) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
         enumerable: true,
         configurable: true,
       });
     }
   }
-  ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
-    value: prototype.name,
-    enumerable: false,
-    configurable: true,
-    writable: false,
-  });
 }
 
 const setlikeInner = Symbol("[[set]]");
@@ -1276,7 +1280,7 @@ function setlike(obj, objPrototype, readonly) {
 export {
   assertBranded,
   brand,
-  configurePrototype,
+  configureInterface,
   converters,
   createBranded,
   createDictionaryConverter,

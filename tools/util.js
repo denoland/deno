@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+import { deferred } from "../test_util/std/async/deferred.ts";
 import {
   dirname,
   fromFileUrl,
@@ -6,10 +7,17 @@ import {
   resolve,
   toFileUrl,
 } from "../test_util/std/path/mod.ts";
+import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
 export { existsSync, walk } from "../test_util/std/fs/mod.ts";
 export { TextLineStream } from "../test_util/std/streams/text_line_stream.ts";
 export { delay } from "../test_util/std/async/delay.ts";
+
+// [toolName] --version output
+const versions = {
+  "dprint": "dprint 0.40.0",
+  "dlint": "dlint 0.51.0",
+};
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
@@ -100,14 +108,136 @@ export function buildPath() {
   return join(ROOT_PATH, "target", buildMode());
 }
 
-export function getPrebuiltToolPath(toolName) {
-  const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
+const platformDirName = {
+  "windows": "win",
+  "darwin": "mac",
+  "linux": "linux64",
+}[Deno.build.os];
 
-  const platformDirName = {
-    "windows": "win",
-    "darwin": "mac",
-    "linux": "linux64",
-  }[Deno.build.os];
-  const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
-  return join(PREBUILT_PATH, platformDirName, toolName + executableSuffix);
+const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
+
+async function sanityCheckPrebuiltFile(toolPath) {
+  const stat = await Deno.stat(toolPath);
+  if (stat.size < PREBUILT_MINIMUM_SIZE) {
+    throw new Error(
+      `File size ${stat.size} is less than expected minimum file size ${PREBUILT_MINIMUM_SIZE}`,
+    );
+  }
+  const file = await Deno.open(toolPath, { read: true });
+  const buffer = new Uint8Array(1024);
+  let n = 0;
+  while (n < 1024) {
+    n += await file.read(buffer.subarray(n));
+  }
+
+  // Mac: OK
+  if (buffer[0] == 0xcf && buffer[1] == 0xfa) {
+    return;
+  }
+
+  // Windows OK
+  if (buffer[0] == "M".charCodeAt(0) && buffer[1] == "Z".charCodeAt(0)) {
+    return;
+  }
+
+  // Linux OK
+  if (
+    buffer[0] == 0x7f && buffer[1] == "E".charCodeAt(0) &&
+    buffer[2] == "L".charCodeAt(0) && buffer[3] == "F".charCodeAt(0)
+  ) {
+    return;
+  }
+
+  throw new Error(`Invalid executable (header was ${buffer.subarray(0, 16)}`);
+}
+
+export async function getPrebuilt(toolName) {
+  const toolPath = getPrebuiltToolPath(toolName);
+  try {
+    await sanityCheckPrebuiltFile(toolPath);
+    const versionOk = await verifyVersion(toolName);
+    if (!versionOk) {
+      throw new Error("Version mismatch");
+    }
+  } catch {
+    await downloadPrebuilt(toolName);
+  }
+
+  return toolPath;
+}
+
+const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
+const PREBUILT_TOOL_DIR = join(PREBUILT_PATH, platformDirName);
+const PREBUILT_MINIMUM_SIZE = 16 * 1024;
+const DOWNLOAD_TASKS = {};
+
+export function getPrebuiltToolPath(toolName) {
+  return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
+}
+
+const downloadUrl =
+  `https://raw.githubusercontent.com/denoland/deno_third_party/69ffd968c0c435f5f9dbba713a92b4fb6a3e2301/prebuilt/${platformDirName}`;
+
+export async function downloadPrebuilt(toolName) {
+  // Ensure only one download per tool happens at a time
+  if (DOWNLOAD_TASKS[toolName]) {
+    return await DOWNLOAD_TASKS[toolName];
+  }
+
+  const downloadPromise = DOWNLOAD_TASKS[toolName] = deferred();
+  const spinner = wait("Downloading prebuilt tool: " + toolName).start();
+  const toolPath = getPrebuiltToolPath(toolName);
+  const tempFile = `${toolPath}.temp`;
+
+  try {
+    await Deno.mkdir(PREBUILT_TOOL_DIR, { recursive: true });
+
+    const url = `${downloadUrl}/${toolName}${executableSuffix}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      throw new Error(`Non-successful response from ${url}: ${resp.status}`);
+    }
+
+    const file = await Deno.open(tempFile, {
+      create: true,
+      write: true,
+      mode: 0o755,
+    });
+
+    await resp.body.pipeTo(file.writable);
+    spinner.text = `Checking prebuilt tool: ${toolName}`;
+    await sanityCheckPrebuiltFile(tempFile);
+    spinner.text = `Successfully downloaded: ${toolName}`;
+    await Deno.rename(tempFile, toolPath);
+  } catch (e) {
+    spinner.fail();
+    downloadPromise.reject(e);
+    throw e;
+  }
+
+  spinner.succeed();
+  downloadPromise.resolve(null);
+}
+
+export async function verifyVersion(toolName) {
+  const requiredVersion = versions[toolName];
+  if (!requiredVersion) {
+    return true;
+  }
+
+  try {
+    const toolPath = getPrebuiltToolPath(toolName);
+    const cmd = new Deno.Command(toolPath, {
+      args: ["--version"],
+      stdout: "piped",
+      stderr: "inherit",
+    });
+    const output = await cmd.output();
+    const version = new TextDecoder().decode(output.stdout).trim();
+    return version == requiredVersion;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }

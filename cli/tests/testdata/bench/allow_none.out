@@ -3,8 +3,8 @@ cpu: [WILDCARD]
 runtime: deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/bench/allow_none.ts
-benchmark      time (avg)             (min … max)       p75       p99      p995
-------------------------------------------------- -----------------------------
+benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
+--------------------------------------------------------------- -----------------------------
 read       error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 write      error: PermissionDenied: Can't escalate parent thread permissions

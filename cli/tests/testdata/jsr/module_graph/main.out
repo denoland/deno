@@ -1,0 +1,7 @@
+Download http://localhost:4545/jsr/registry/@denotest/module_graph/meta.json
+Download http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0_meta.json
+[UNORDERED_START]
+Download http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts
+Download http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/mod.ts
+[UNORDERED_END]
+Test { other: Other {} }

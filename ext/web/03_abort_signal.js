@@ -86,15 +86,17 @@ class AbortSignal extends EventTarget {
       return;
     }
     this[abortReason] = reason;
-    if (this[abortAlgos] !== null) {
-      for (const algorithm of new SafeSetIterator(this[abortAlgos])) {
-        algorithm();
-      }
-      this[abortAlgos] = null;
-    }
+    const algos = this[abortAlgos];
+    this[abortAlgos] = null;
+
     const event = new Event("abort");
     setIsTrusted(event, true);
     this.dispatchEvent(event);
+    if (algos !== null) {
+      for (const algorithm of new SafeSetIterator(algos)) {
+        algorithm();
+      }
+    }
   }
 
   [remove](algorithm) {
@@ -150,7 +152,7 @@ class AbortSignal extends EventTarget {
 }
 defineEventHandler(AbortSignal.prototype, "abort");
 
-webidl.configurePrototype(AbortSignal);
+webidl.configureInterface(AbortSignal);
 const AbortSignalPrototype = AbortSignal.prototype;
 
 class AbortController {
@@ -171,7 +173,7 @@ class AbortController {
   }
 }
 
-webidl.configurePrototype(AbortController);
+webidl.configureInterface(AbortController);
 const AbortControllerPrototype = AbortController.prototype;
 
 webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(

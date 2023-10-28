@@ -25,7 +25,10 @@
 
 "use strict";
 
-import { ERR_INVALID_ARG_VALUE, ERR_INVALID_CURSOR_POS } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_CURSOR_POS,
+} from "ext:deno_node/internal/errors.ts";
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 

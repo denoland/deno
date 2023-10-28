@@ -8,14 +8,16 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   EventTarget,
+  setIsTrusted,
   setTarget,
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIndexOf,
-  ArrayPrototypeSplice,
   ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  PromisePrototypeThen,
   Symbol,
   Uint8Array,
 } = primordials;
@@ -56,6 +58,7 @@ function dispatch(source, name, data) {
         data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
         origin: "http://127.0.0.1",
       });
+      setIsTrusted(event, true);
       setTarget(event, channel);
       channel.dispatchEvent(event);
     };
@@ -68,7 +71,7 @@ function dispatch(source, name, data) {
 // for that reason: it lets promises make forward progress but can
 // still starve other parts of the event loop.
 function defer(go) {
-  setTimeout(go, 1);
+  PromisePrototypeThen(core.ops.op_void_async_deferred(), () => go());
 }
 
 class BroadcastChannel extends EventTarget {

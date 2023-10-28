@@ -38,7 +38,6 @@ pub fn benchmark(
     if path.ends_with(".lua") {
       continue;
     }
-    let name = entry.file_name().into_string().unwrap();
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
     let lua_script = http_dir.join(format!("{file_stem}.lua"));
@@ -48,65 +47,25 @@ pub fn benchmark(
     }
 
     let port = get_port();
-    if name.starts_with("node") {
-      // node <path> <port>
-      res.insert(
-        file_stem.to_string(),
-        run(
-          &["node", path, &port.to_string()],
-          port,
-          None,
-          None,
-          maybe_lua,
-        )?,
-      );
-    } else if name.starts_with("bun") && !cfg!(target_os = "windows") {
-      // Bun does not support Windows.
-      #[cfg(target_arch = "x86_64")]
-      #[cfg(not(target_vendor = "apple"))]
-      let bun_exe = test_util::prebuilt_tool_path("bun");
-      #[cfg(target_vendor = "apple")]
-      #[cfg(target_arch = "x86_64")]
-      let bun_exe = test_util::prebuilt_tool_path("bun-x64");
-      #[cfg(target_vendor = "apple")]
-      #[cfg(target_arch = "aarch64")]
-      let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
-      #[cfg(target_os = "linux")]
-      #[cfg(target_arch = "aarch64")]
-      let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
-
-      // bun <path> <port>
-      res.insert(
-        file_stem.to_string(),
-        run(
-          &[&bun_exe.to_string(), path, &port.to_string()],
-          port,
-          None,
-          None,
-          maybe_lua,
-        )?,
-      );
-    } else {
-      // deno run -A --unstable <path> <addr>
-      res.insert(
-        file_stem.to_string(),
-        run(
-          &[
-            deno_exe.as_str(),
-            "run",
-            "--allow-all",
-            "--unstable",
-            "--enable-testing-features-do-not-use",
-            path,
-            &server_addr(port),
-          ],
-          port,
-          None,
-          None,
-          maybe_lua,
-        )?,
-      );
-    }
+    // deno run -A --unstable <path> <addr>
+    res.insert(
+      file_stem.to_string(),
+      run(
+        &[
+          deno_exe.as_str(),
+          "run",
+          "--allow-all",
+          "--unstable",
+          "--enable-testing-features-do-not-use",
+          path,
+          &server_addr(port),
+        ],
+        port,
+        None,
+        None,
+        maybe_lua,
+      )?,
+    );
   }
 
   res.insert("hyper".to_string(), hyper_http(hyper_hello_exe)?);

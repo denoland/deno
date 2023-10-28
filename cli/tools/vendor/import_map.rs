@@ -4,6 +4,7 @@ use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
+use deno_graph::source::ResolutionMode;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
@@ -177,15 +178,30 @@ impl<'a> ImportsBuilder<'a> {
   }
 }
 
+pub struct BuildImportMapInput<'a> {
+  pub base_dir: &'a ModuleSpecifier,
+  pub modules: &'a [&'a Module],
+  pub graph: &'a ModuleGraph,
+  pub mappings: &'a Mappings,
+  pub original_import_map: Option<&'a ImportMap>,
+  pub jsx_import_source: Option<&'a JsxImportSourceConfig>,
+  pub resolver: &'a dyn deno_graph::source::Resolver,
+  pub parsed_source_cache: &'a ParsedSourceCache,
+}
+
 pub fn build_import_map(
-  base_dir: &ModuleSpecifier,
-  graph: &ModuleGraph,
-  modules: &[&Module],
-  mappings: &Mappings,
-  original_import_map: Option<&ImportMap>,
-  jsx_import_source: Option<&JsxImportSourceConfig>,
-  parsed_source_cache: &ParsedSourceCache,
+  input: BuildImportMapInput<'_>,
 ) -> Result<String, AnyError> {
+  let BuildImportMapInput {
+    base_dir,
+    modules,
+    graph,
+    mappings,
+    original_import_map,
+    jsx_import_source,
+    resolver,
+    parsed_source_cache,
+  } = input;
   let mut builder = ImportMapBuilder::new(base_dir, mappings);
   visit_modules(graph, modules, mappings, &mut builder, parsed_source_cache)?;
 
@@ -196,15 +212,13 @@ pub fn build_import_map(
   }
 
   // add the jsx import source to the destination import map, if mapped in the original import map
-  if let (Some(import_map), Some(jsx_import_source)) =
-    (original_import_map, jsx_import_source)
-  {
-    if let Some(default_specifier) = &jsx_import_source.default_specifier {
-      let specifier_text =
-        format!("{}/{}", default_specifier, jsx_import_source.module);
-      if let Ok(resolved_url) =
-        import_map.resolve(&specifier_text, import_map.base_url())
-      {
+  if let Some(jsx_import_source) = jsx_import_source {
+    if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
+      if let Ok(resolved_url) = resolver.resolve(
+        &specifier_text,
+        &jsx_import_source.base_url,
+        ResolutionMode::Execution,
+      ) {
         builder.imports.add(specifier_text, &resolved_url);
       }
     }

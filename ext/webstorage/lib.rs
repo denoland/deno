@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
@@ -102,7 +102,7 @@ fn get_webstorage(
   Ok(conn)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_webstorage_length(
   state: &mut OpState,
   persistent: bool,
@@ -115,10 +115,11 @@ pub fn op_webstorage_length(
   Ok(length)
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_webstorage_key(
   state: &mut OpState,
-  index: u32,
+  #[smi] index: u32,
   persistent: bool,
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -147,11 +148,11 @@ fn size_check(input: usize) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_webstorage_set(
   state: &mut OpState,
-  key: &str,
-  value: &str,
+  #[string] key: &str,
+  #[string] value: &str,
   persistent: bool,
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -171,10 +172,11 @@ pub fn op_webstorage_set(
   Ok(())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_webstorage_get(
   state: &mut OpState,
-  key_name: String,
+  #[string] key_name: String,
   persistent: bool,
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -187,10 +189,10 @@ pub fn op_webstorage_get(
   Ok(val)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_webstorage_remove(
   state: &mut OpState,
-  key_name: &str,
+  #[string] key_name: &str,
   persistent: bool,
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -201,7 +203,7 @@ pub fn op_webstorage_remove(
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_webstorage_clear(
   state: &mut OpState,
   persistent: bool,
@@ -214,7 +216,8 @@ pub fn op_webstorage_clear(
   Ok(())
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
   persistent: bool,

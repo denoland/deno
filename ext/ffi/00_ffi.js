@@ -5,6 +5,7 @@ const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferIsView,
+  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
@@ -221,7 +222,24 @@ class UnsafePointer {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       return value.pointer;
     }
-    const pointer = ops.op_ffi_ptr_of(value);
+    let pointer;
+    if (ArrayBufferIsView(value)) {
+      if (value.length === 0) {
+        pointer = ops.op_ffi_ptr_of_exact(value);
+      } else {
+        pointer = ops.op_ffi_ptr_of(value);
+      }
+    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
+      if (value.length === 0) {
+        pointer = ops.op_ffi_ptr_of_exact(new Uint8Array(value));
+      } else {
+        pointer = ops.op_ffi_ptr_of(new Uint8Array(value));
+      }
+    } else {
+      throw new TypeError(
+        "Expected ArrayBuffer, ArrayBufferView or UnsafeCallbackPrototype",
+      );
+    }
     if (pointer) {
       POINTER_TO_BUFFER_WEAK_MAP.set(pointer, value);
     }

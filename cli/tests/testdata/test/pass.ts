@@ -12,3 +12,26 @@ Deno.test("test 8", () => {
 Deno.test("test 9", () => {
   console.error("console.error");
 });
+
+Deno.test("test\b", () => {
+  console.error("console.error");
+});
+Deno.test("test\f", () => {
+  console.error("console.error");
+});
+
+Deno.test("test\t", () => {
+  console.error("console.error");
+});
+
+Deno.test("test\n", () => {
+  console.error("console.error");
+});
+
+Deno.test("test\r", () => {
+  console.error("console.error");
+});
+
+Deno.test("test\v", () => {
+  console.error("console.error");
+});

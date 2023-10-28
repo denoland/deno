@@ -7,6 +7,8 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 
+use crate::NodeResolutionMode;
+
 pub fn err_invalid_module_specifier(
   request: &str,
   reason: &str,
@@ -51,8 +53,8 @@ pub fn err_module_not_found(path: &str, base: &str, typ: &str) -> AnyError {
 }
 
 pub fn err_invalid_package_target(
-  pkg_path: String,
-  key: String,
+  pkg_path: &str,
+  key: &str,
   target: String,
   is_import: bool,
   maybe_referrer: Option<String>,
@@ -93,8 +95,9 @@ pub fn err_invalid_package_target(
 
 pub fn err_package_path_not_exported(
   mut pkg_path: String,
-  subpath: String,
+  subpath: &str,
   maybe_referrer: Option<String>,
+  mode: NodeResolutionMode,
 ) -> AnyError {
   let mut msg = "[ERR_PACKAGE_PATH_NOT_EXPORTED]".to_string();
 
@@ -111,11 +114,15 @@ pub fn err_package_path_not_exported(
     }
   }
 
+  let types_msg = match mode {
+    NodeResolutionMode::Execution => String::new(),
+    NodeResolutionMode::Types => " for types".to_string(),
+  };
   if subpath == "." {
     msg =
-      format!("{msg} No \"exports\" main defined in '{pkg_path}package.json'");
+      format!("{msg} No \"exports\" main defined{types_msg} in '{pkg_path}package.json'");
   } else {
-    msg = format!("{msg} Package subpath '{subpath}' is not defined by \"exports\" in '{pkg_path}package.json'");
+    msg = format!("{msg} Package subpath '{subpath}' is not defined{types_msg} by \"exports\" in '{pkg_path}package.json'");
   };
 
   if let Some(referrer) = maybe_referrer {
@@ -159,4 +166,34 @@ pub fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
 
   msg = format!("{}. Received protocol '{}'", msg, url.scheme());
   generic_error(msg)
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn types_resolution_package_path_not_exported() {
+    let separator_char = if cfg!(windows) { '\\' } else { '/' };
+    assert_eq!(
+      err_package_path_not_exported(
+        "test_path".to_string(),
+        "./jsx-runtime",
+        None,
+        NodeResolutionMode::Types,
+      )
+      .to_string(),
+      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'")
+    );
+    assert_eq!(
+      err_package_path_not_exported(
+        "test_path".to_string(),
+        ".",
+        None,
+        NodeResolutionMode::Types,
+      )
+      .to_string(),
+      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] No \"exports\" main defined for types in 'test_path{separator_char}package.json'")
+    );
+  }
 }

@@ -4,10 +4,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { ERR_INVALID_ARG_TYPE, ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
+} from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { deprecate } from "node:util";
-import { validateFunction, validateInteger } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateFunction,
+  validateInteger,
+} from "ext:deno_node/internal/validators.mjs";
 import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.mjs";
 import { open as fsOpen } from "ext:deno_node/_fs/_fs_open.ts";
 import { read as fsRead } from "ext:deno_node/_fs/_fs_read.ts";

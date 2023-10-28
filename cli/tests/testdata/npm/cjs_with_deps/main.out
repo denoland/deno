@@ -1,3 +1,4 @@
+[UNORDERED_START]
 Download http://localhost:4545/npm/registry/chalk
 Download http://localhost:4545/npm/registry/chai
 Download http://localhost:4545/npm/registry/ansi-styles
@@ -12,6 +13,8 @@ Download http://localhost:4545/npm/registry/type-detect
 Download http://localhost:4545/npm/registry/color-convert
 Download http://localhost:4545/npm/registry/has-flag
 Download http://localhost:4545/npm/registry/color-name
+[UNORDERED_END]
+[UNORDERED_START]
 Download http://localhost:4545/npm/registry/ansi-styles/ansi-styles-4.3.0.tgz
 Download http://localhost:4545/npm/registry/assertion-error/assertion-error-1.1.0.tgz
 Download http://localhost:4545/npm/registry/chai/chai-4.3.6.tgz
@@ -26,4 +29,5 @@ Download http://localhost:4545/npm/registry/loupe/loupe-2.3.4.tgz
 Download http://localhost:4545/npm/registry/pathval/pathval-1.1.1.tgz
 Download http://localhost:4545/npm/registry/supports-color/supports-color-7.2.0.tgz
 Download http://localhost:4545/npm/registry/type-detect/type-detect-4.0.8.tgz
+[UNORDERED_END]
 chalk cjs loads

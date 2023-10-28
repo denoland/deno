@@ -46,6 +46,7 @@ let knownGlobals = [
   global.setTimeout,
   localStorage,
   location,
+  name,
   navigator,
   onload,
   onunload,

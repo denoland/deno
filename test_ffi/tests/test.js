@@ -327,6 +327,8 @@ const into2 = new Uint8Array(3);
 const into2ptr = Deno.UnsafePointer.of(into2);
 const into2ptrView = new Deno.UnsafePointerView(into2ptr);
 const into3 = new Uint8Array(3);
+const into4 = new Uint16Array(3);
+ptrView.copyInto(into4);
 ptrView.copyInto(into);
 console.log([...into]);
 ptrView.copyInto(into2, 3);
@@ -341,13 +343,13 @@ const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
 console.log(stringPtrview.getCString(11));
-console.log(dylib.symbols.is_null_ptr(ptr0));
-console.log(dylib.symbols.is_null_ptr(null));
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
+console.log("false", dylib.symbols.is_null_ptr(ptr0));
+console.log("true", dylib.symbols.is_null_ptr(null));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
 const emptyBuffer = new Uint8Array(0);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
+console.log("true", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
 const emptySlice = into.subarray(6);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
 
 const { is_null_buf } = symbols;
 function isNullBuffer(buffer) { return is_null_buf(buffer); };
@@ -386,10 +388,9 @@ const externalOneBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(p
 assertEquals(isNullBuffer(externalOneBuffer), false, "isNullBuffer(externalOneBuffer) !== false");
 assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(externalOneBuffer) !== false");
 
-// Due to ops macro using `Local<ArrayBuffer>->Data()` to get the pointer for the slice that is then used to get
-// the pointer of an ArrayBuffer / TypedArray, the same effect can be seen where a zero byte length buffer returns
-// a null pointer as its pointer value.
-assertEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) !== null");
+// UnsafePointer.of uses an exact-pointer fallback for zero-length buffers and slices to ensure that it always gets
+// the underlying pointer right.
+assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
@@ -726,7 +727,9 @@ assertEquals(view.getUint32(), 55);
   assertThrows(() => Deno.UnsafePointer.offset(null, 5));
   const offsetPointer = Deno.UnsafePointer.offset(createdPointer, 5);
   assertEquals(Deno.UnsafePointer.value(offsetPointer), 6);
-  assertEquals(Deno.UnsafePointer.offset(offsetPointer, -6), null);
+  const zeroPointer = Deno.UnsafePointer.offset(offsetPointer, -6);
+  assertEquals(Deno.UnsafePointer.value(zeroPointer), 0);
+  assertEquals(zeroPointer, null);
 }
 
 // Test non-UTF-8 characters

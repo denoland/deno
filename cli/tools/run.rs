@@ -110,18 +110,17 @@ async fn run_with_watch(
       job_name: "Process".to_string(),
       clear_screen: !watch_flags.no_clear_screen,
     },
-    move |flags, sender, _changed_paths| {
+    move |flags, watcher_communicator, _changed_paths| {
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone())
-          .build_from_flags(flags)
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
           .await?;
         let cli_options = factory.cli_options();
         let main_module = cli_options.resolve_main_module()?;
 
         maybe_npm_install(&factory).await?;
 
-        let _ = sender.send(cli_options.watch_paths());
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
         let permissions = PermissionsContainer::new(Permissions::from_options(
           &cli_options.permissions_options(),
@@ -186,13 +185,11 @@ pub async fn eval_command(
 
 async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
-  // opted into using a node_modules directory
+  // opted into using a managed node_modules directory
   if factory.cli_options().node_modules_dir_enablement() == Some(true) {
-    factory
-      .package_json_deps_installer()
-      .await?
-      .ensure_top_level_install()
-      .await?;
+    if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
+      npm_resolver.ensure_top_level_package_json_install().await?;
+    }
   }
   Ok(())
 }

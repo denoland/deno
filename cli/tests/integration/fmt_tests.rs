@@ -266,15 +266,15 @@ fn fmt_with_glob_config() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
-    assert_contains!(output, r#"glob\pages\[id].ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\bar.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.js"#);
-    assert_contains!(output, r#"glob\nested\foo\bar.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.ts"#);
+    assert_contains!(output, r"glob\nested\fizz\fizz.ts");
+    assert_contains!(output, r"glob\pages\[id].ts");
+    assert_contains!(output, r"glob\nested\fizz\bar.ts");
+    assert_contains!(output, r"glob\nested\foo\foo.ts");
+    assert_contains!(output, r"glob\data\test1.js");
+    assert_contains!(output, r"glob\nested\foo\bar.ts");
+    assert_contains!(output, r"glob\nested\foo\fizz.ts");
+    assert_contains!(output, r"glob\nested\fizz\foo.ts");
+    assert_contains!(output, r"glob\data\test1.ts");
   } else {
     assert_contains!(output, "glob/nested/fizz/fizz.ts");
     assert_contains!(output, "glob/pages/[id].ts");
@@ -303,15 +303,15 @@ fn fmt_with_glob_config_and_flags() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
-    assert_contains!(output, r#"glob\pages\[id].ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\bazz.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.js"#);
-    assert_contains!(output, r#"glob\nested\foo\bazz.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.ts"#);
+    assert_contains!(output, r"glob\nested\fizz\fizz.ts");
+    assert_contains!(output, r"glob\pages\[id].ts");
+    assert_contains!(output, r"glob\nested\fizz\bazz.ts");
+    assert_contains!(output, r"glob\nested\foo\foo.ts");
+    assert_contains!(output, r"glob\data\test1.js");
+    assert_contains!(output, r"glob\nested\foo\bazz.ts");
+    assert_contains!(output, r"glob\nested\foo\fizz.ts");
+    assert_contains!(output, r"glob\nested\fizz\foo.ts");
+    assert_contains!(output, r"glob\data\test1.ts");
   } else {
     assert_contains!(output, "glob/nested/fizz/fizz.ts");
     assert_contains!(output, "glob/pages/[id].ts");
@@ -333,8 +333,8 @@ fn fmt_with_glob_config_and_flags() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\data\test1.js"#);
-    assert_contains!(output, r#"glob\data\test1.ts"#);
+    assert_contains!(output, r"glob\data\test1.js");
+    assert_contains!(output, r"glob\data\test1.ts");
   } else {
     assert_contains!(output, "glob/data/test1.js");
     assert_contains!(output, "glob/data/test1.ts");

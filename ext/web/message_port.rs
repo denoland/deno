@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -51,11 +51,11 @@ impl MessagePort {
     Ok(())
   }
 
+  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn recv(
     &self,
     state: Rc<RefCell<OpState>>,
   ) -> Result<Option<JsMessageData>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut rx = self
       .rx
       .try_borrow_mut()
@@ -111,7 +111,8 @@ impl Resource for MessagePortResource {
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
 ) -> (ResourceId, ResourceId) {
@@ -191,11 +192,11 @@ pub struct JsMessageData {
   transferables: Vec<JsTransferable>,
 }
 
-#[op]
+#[op2]
 pub fn op_message_port_post_message(
   state: &mut OpState,
-  rid: ResourceId,
-  data: JsMessageData,
+  #[smi] rid: ResourceId,
+  #[serde] data: JsMessageData,
 ) -> Result<(), AnyError> {
   for js_transferable in &data.transferables {
     if let JsTransferable::MessagePort(id) = js_transferable {
@@ -210,10 +211,11 @@ pub fn op_message_port_post_message(
   resource.port.send(state, data)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = {
     let state = state.borrow();

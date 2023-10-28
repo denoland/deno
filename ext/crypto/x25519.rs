@@ -2,7 +2,7 @@
 
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
@@ -11,8 +11,11 @@ use rand::RngCore;
 use spki::der::Decode;
 use spki::der::Encode;
 
-#[op(fast)]
-pub fn op_crypto_generate_x25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) {
+#[op2(fast)]
+pub fn op_crypto_generate_x25519_keypair(
+  #[buffer] pkey: &mut [u8],
+  #[buffer] pubkey: &mut [u8],
+) {
   // u-coordinate of the base point.
   const X25519_BASEPOINT_BYTES: [u8; 32] = [
     9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -31,11 +34,11 @@ pub fn op_crypto_generate_x25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) {
 
 const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 32]);
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_crypto_derive_bits_x25519(
-  k: &[u8],
-  u: &[u8],
-  secret: &mut [u8],
+  #[buffer] k: &[u8],
+  #[buffer] u: &[u8],
+  #[buffer] secret: &mut [u8],
 ) -> bool {
   let k: [u8; 32] = k.try_into().expect("Expected byteLength 32");
   let u: [u8; 32] = u.try_into().expect("Expected byteLength 32");
@@ -52,8 +55,11 @@ pub fn op_crypto_derive_bits_x25519(
 pub const X25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.110");
 
-#[op(fast)]
-pub fn op_crypto_import_spki_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
+#[op2(fast)]
+pub fn op_crypto_import_spki_x25519(
+  #[buffer] key_data: &[u8],
+  #[buffer] out: &mut [u8],
+) -> bool {
   // 2-3.
   let pk_info = match spki::SubjectPublicKeyInfo::from_der(key_data) {
     Ok(pk_info) => pk_info,
@@ -72,8 +78,11 @@ pub fn op_crypto_import_spki_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
   true
 }
 
-#[op(fast)]
-pub fn op_crypto_import_pkcs8_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
+#[op2(fast)]
+pub fn op_crypto_import_pkcs8_x25519(
+  #[buffer] key_data: &[u8],
+  #[buffer] out: &mut [u8],
+) -> bool {
   // 2-3.
   // This should probably use OneAsymmetricKey instead
   let pk_info = match PrivateKeyInfo::from_der(key_data) {
@@ -98,9 +107,10 @@ pub fn op_crypto_import_pkcs8_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
   true
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_export_spki_x25519(
-  pubkey: &[u8],
+  #[buffer] pubkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifier {
@@ -113,9 +123,10 @@ pub fn op_crypto_export_spki_x25519(
   Ok(key_info.to_vec()?.into())
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_export_pkcs8_x25519(
-  pkey: &[u8],
+  #[buffer] pkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   // This should probably use OneAsymmetricKey instead
   let pk_info = rsa::pkcs8::PrivateKeyInfo {

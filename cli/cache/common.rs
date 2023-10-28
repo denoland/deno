@@ -11,6 +11,10 @@ impl FastInsecureHasher {
     Self::default()
   }
 
+  pub fn hash(hashable: impl std::hash::Hash) -> u64 {
+    Self::new().write_hashable(hashable).finish()
+  }
+
   pub fn write_str(&mut self, text: &str) -> &mut Self {
     self.write(text.as_bytes());
     self
@@ -33,7 +37,7 @@ impl FastInsecureHasher {
 
   pub fn write_hashable(
     &mut self,
-    hashable: &impl std::hash::Hash,
+    hashable: impl std::hash::Hash,
   ) -> &mut Self {
     hashable.hash(&mut self.0);
     self

@@ -12,13 +12,16 @@ const {
 } = primordials;
 
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { validateFunction, validateNumber } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateFunction,
+  validateNumber,
+} from "ext:deno_node/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
 import {
-  setTimeout as setTimeout_,
   clearTimeout as clearTimeout_,
   setInterval as setInterval_,
+  setTimeout as setTimeout_,
 } from "ext:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
@@ -55,10 +58,10 @@ Timeout.prototype[createTimer] = function () {
   const callback = this._onTimeout;
   const cb = (...args) => {
     if (!this._isRepeat) {
-      MapPrototypeDelete(activeTimers, this[kTimerId])
+      MapPrototypeDelete(activeTimers, this[kTimerId]);
     }
     return callback.bind(this)(...args);
-  }
+  };
   const id = this._isRepeat
     ? setInterval_(cb, this._idleTimeout, ...this._timerArgs)
     : setTimeout_(cb, this._idleTimeout, ...this._timerArgs);

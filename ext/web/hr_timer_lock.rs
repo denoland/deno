@@ -63,5 +63,5 @@ pub(crate) fn hr_timer_lock() -> windows::HrTimerLock {
 /// No-op on other platforms.
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn hr_timer_lock() -> (std::marker::PhantomData<()>,) {
-  (std::marker::PhantomData::default(),)
+  Default::default()
 }

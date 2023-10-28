@@ -12,15 +12,17 @@ use deno_core::ExtensionFileSourceCode;
 fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
-    Extension::builder("deno_webidl_bench")
-      .esm(vec![ExtensionFileSource {
+    Extension {
+      name: "deno_webidl_bench",
+      esm_files: std::borrow::Cow::Borrowed(&[ExtensionFileSource {
         specifier: "ext:deno_webidl_bench/setup.js",
         code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
           "dict.js"
         )),
-      }])
-      .esm_entry_point("ext:deno_webidl_bench/setup.js")
-      .build(),
+      }]),
+      esm_entry_point: Some("ext:deno_webidl_bench/setup.js"),
+      ..Default::default()
+    },
   ]
 }
 

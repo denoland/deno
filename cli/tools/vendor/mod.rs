@@ -9,6 +9,7 @@ use deno_ast::TextChange;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use log::warn;
@@ -19,7 +20,6 @@ use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
 use crate::factory::CliFactory;
-use crate::graph_util::ModuleGraphBuilder;
 use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
@@ -48,25 +48,35 @@ pub async fn vendor(
   validate_options(&mut cli_options, &output_dir)?;
   let factory = CliFactory::from_cli_options(Arc::new(cli_options));
   let cli_options = factory.cli_options();
-  let graph = create_graph(
-    factory.module_graph_builder().await?,
-    &vendor_flags,
-    cli_options.initial_cwd(),
-  )
+  let entry_points =
+    resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
+  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
+  let module_graph_builder = factory.module_graph_builder().await?.clone();
+  let output = build::build(build::BuildInput {
+    entry_points,
+    build_graph: move |entry_points| {
+      async move {
+        module_graph_builder
+          .create_graph(GraphKind::All, entry_points)
+          .await
+      }
+      .boxed_local()
+    },
+    parsed_source_cache: factory.parsed_source_cache(),
+    output_dir: &output_dir,
+    maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
+    maybe_lockfile: factory.maybe_lockfile().clone(),
+    maybe_jsx_import_source: jsx_import_source.as_ref(),
+    resolver: factory.resolver().await?.as_graph_resolver(),
+    environment: &build::RealVendorEnvironment,
+  })
   .await?;
+
+  let vendored_count = output.vendored_count;
+  let graph = output.graph;
   let npm_package_count = graph.npm_packages.len();
   let try_add_node_modules_dir = npm_package_count > 0
     && cli_options.node_modules_dir_enablement().unwrap_or(true);
-  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config();
-  let vendored_count = build::build(
-    graph,
-    factory.parsed_source_cache()?,
-    &output_dir,
-    factory.maybe_import_map().await?.as_deref(),
-    factory.maybe_lockfile().clone(),
-    jsx_import_source.as_ref(),
-    &build::RealVendorEnvironment,
-  )?;
 
   log::info!(
     concat!("Vendored {} {} into {} directory.",),
@@ -97,11 +107,12 @@ pub async fn vendor(
         .map(|config_path| config_path.parent().unwrap().join("node_modules"))
     });
     if let Some(node_modules_path) = node_modules_path {
-      factory
-        .create_node_modules_npm_fs_resolver(node_modules_path)
-        .await?
-        .cache_packages()
-        .await?;
+      let cli_options =
+        cli_options.with_node_modules_dir_path(node_modules_path);
+      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      if let Some(managed) = factory.npm_resolver().await?.as_managed() {
+        managed.cache_packages().await?;
+      }
     }
     log::info!(
       concat!(
@@ -344,7 +355,7 @@ fn update_config_text(
 
   let new_text = deno_ast::apply_text_changes(text, text_changes);
   modified_result.new_text = if should_format {
-    format_json(&new_text, fmt_options)
+    format_json(&PathBuf::from("deno.json"), &new_text, fmt_options)
       .ok()
       .map(|formatted_text| formatted_text.unwrap_or(new_text))
   } else {
@@ -363,20 +374,15 @@ fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
   }
 }
 
-async fn create_graph(
-  module_graph_builder: &ModuleGraphBuilder,
+fn resolve_entry_points(
   flags: &VendorFlags,
   initial_cwd: &Path,
-) -> Result<deno_graph::ModuleGraph, AnyError> {
-  let entry_points = flags
+) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  flags
     .specifiers
     .iter()
-    .map(|p| resolve_url_or_path(p, initial_cwd))
-    .collect::<Result<Vec<_>, _>>()?;
-
-  module_graph_builder
-    .create_graph(GraphKind::All, entry_points)
-    .await
+    .map(|p| resolve_url_or_path(p, initial_cwd).map_err(|e| e.into()))
+    .collect::<Result<Vec<_>, _>>()
 }
 
 #[cfg(test)]
