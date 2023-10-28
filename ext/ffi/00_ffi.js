@@ -447,22 +447,455 @@ class UnsafeCallback {
 
 const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 
-class FfiToken {
-  #rid;
-  #ptr;
+let TOKEN_FINALIZATION_REGISTRY = null;
+const TOKEN_REGISTRY_CALLBACK = (heldValue) => core.close(heldValue);
 
-  constructor(path) {
-    ({ 0: this.#rid, 1: this.#ptr } = ops.op_ffi_create_token(path));
+const createFfiApi = (path) => {
+  if (!TOKEN_FINALIZATION_REGISTRY) {
+    TOKEN_FINALIZATION_REGISTRY = new FinalizationRegistry(
+      TOKEN_REGISTRY_CALLBACK,
+    );
+  }
+  const { 0: rid, 1: ptr } = ops.op_ffi_create_token(path);
+  TOKEN_FINALIZATION_REGISTRY.register(ptr, rid);
+  const TokenizedPointer = {
+    equals(pointer, other) {
+      if (pointer === other) {
+        return true;
+      } else if (pointer === null || other === null) {
+        return false;
+      }
+      return ops.op_ffi_token_ptr_equals(rid, ptr, pointer);
+    },
+
+    create(value) {
+      return ops.op_ffi_token_ptr_create(rid, ptr, value);
+    },
+
+    of(buffer) {
+      const pointer = ops.op_ffi_token_ptr_of(rid, ptr, buffer);
+      if (pointer) {
+        POINTER_TO_BUFFER_WEAK_MAP.set(pointer, buffer);
+      }
+      return pointer;
+    },
+
+    offset(pointer, offset) {
+      return ops.op_ffi_token_ptr_offset(rid, ptr, value, offset);
+    },
+
+    value(pointer) {
+      ops.op_ffi_ptr_value(pointer, OUT_BUFFER);
+      return OUT_BUFFER_64[0];
+    },
+  };
+
+  class TokenizedPointerView extends UnsafePointerView {
+    getBool(offset = 0) {
+      return ops.op_ffi_token_read_bool(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getUint8(offset = 0) {
+      return ops.op_ffi_token_read_u8(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getInt8(offset = 0) {
+      return ops.op_ffi_token_read_i8(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getUint16(offset = 0) {
+      return ops.op_ffi_token_read_u16(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getInt16(offset = 0) {
+      return ops.op_ffi_token_read_i16(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getUint32(offset = 0) {
+      return ops.op_ffi_token_read_u32(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getInt32(offset = 0) {
+      return ops.op_ffi_token_read_i32(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getBigUint64(offset = 0) {
+      ops.op_ffi_token_read_u64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
+      );
+      return U64_BUFFER[0];
+    }
+
+    getBigInt64(offset = 0) {
+      ops.op_ffi_token_read_i64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
+      );
+      return I64_BUFFER[0];
+    }
+
+    getFloat32(offset = 0) {
+      return ops.op_ffi_token_read_f32(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getFloat64(offset = 0) {
+      return ops.op_ffi_token_read_f64(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getPointer(offset = 0) {
+      return ops.op_ffi_token_read_ptr(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setBool(offset = 0) {
+      return ops.op_ffi_token_write_bool(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setUint8(offset = 0) {
+      return ops.op_ffi_token_write_u8(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setInt8(offset = 0) {
+      return ops.op_ffi_token_write_i8(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setUint16(offset = 0) {
+      return ops.op_ffi_token_write_u16(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setInt16(offset = 0) {
+      return ops.op_ffi_token_write_i16(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setUint32(offset = 0) {
+      return ops.op_ffi_token_write_u32(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setInt32(offset = 0) {
+      return ops.op_ffi_token_write_i32(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setBigUint64(offset = 0) {
+      ops.op_ffi_write_u64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
+      );
+      return U64_BUFFER[0];
+    }
+
+    setBigInt64(offset = 0) {
+      ops.op_ffi_write_i64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
+      );
+      return I64_BUFFER[0];
+    }
+
+    setFloat32(offset = 0) {
+      return ops.op_ffi_token_write_f32(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setFloat64(offset = 0) {
+      return ops.op_ffi_token_write_f64(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    setPointer(offset = 0) {
+      return ops.op_ffi_token_write_ptr(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    getCString(offset = 0) {
+      return ops.op_ffi_token_cstr_read(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+      );
+    }
+
+    static getCString(pointer, offset = 0) {
+      return ops.op_ffi_token_cstr_read(
+        rid,
+        ptr,
+        pointer,
+        offset,
+      );
+    }
+
+    getArrayBuffer(byteLength, offset = 0) {
+      return ops.op_ffi_token_get_buf(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+        byteLength,
+      );
+    }
+
+    static getArrayBuffer(pointer, byteLength, offset = 0) {
+      return ops.op_ffi_token_get_buf(
+        rid,
+        ptr,
+        pointer,
+        offset,
+        byteLength,
+      );
+    }
+
+    copyInto(destination, offset = 0) {
+      ops.op_ffi_token_buf_copy_into(
+        rid,
+        ptr,
+        this.pointer,
+        offset,
+        destination,
+        getBufferSourceByteLength(destination),
+      );
+    }
+
+    static copyInto(pointer, destination, offset = 0) {
+      ops.op_ffi_token_buf_copy_into(
+        rid,
+        ptr,
+        pointer,
+        offset,
+        destination,
+        getBufferSourceByteLength(destination),
+      );
+    }
   }
 
-  createPointer(value) {
-    return ops.op_ffi_token_ptr_create(this.#rid, this.#ptr, value);
+  class TokenizedCallback {
+    #refcount;
+    // Internal promise only meant to keep Deno from exiting
+    #refpromise;
+    #rid;
+    definition;
+    callback;
+    pointer;
+
+    constructor(definition, callback) {
+      if (definition.nonblocking) {
+        throw new TypeError(
+          "Invalid UnsafeCallback, cannot be nonblocking",
+        );
+      }
+      const { 0: cbRid, 1: cbPointer } = ops
+        .op_ffi_token_unsafe_callback_create(
+          rid,
+          ptr,
+          definition,
+          callback,
+        );
+      this.#refcount = 0;
+      this.#rid = cbRid;
+      this.pointer = cbPointer;
+      this.definition = definition;
+      this.callback = callback;
+    }
+
+    static threadSafe(definition, callback) {
+      const unsafeCallback = new UnsafeCallback(definition, callback);
+      unsafeCallback.ref();
+      return unsafeCallback;
+    }
+
+    ref() {
+      if (this.#refcount++ === 0) {
+        if (this.#refpromise) {
+          // Re-refing
+          core.refOp(this.#refpromise[promiseIdSymbol]);
+        } else {
+          this.#refpromise = core.opAsync(
+            "op_ffi_unsafe_callback_ref",
+            this.#rid,
+          );
+        }
+      }
+      return this.#refcount;
+    }
+
+    unref() {
+      // Only decrement refcount if it is positive, and only
+      // unref the callback if refcount reaches zero.
+      if (this.#refcount > 0 && --this.#refcount === 0) {
+        core.unrefOp(this.#refpromise[promiseIdSymbol]);
+      }
+      return this.#refcount;
+    }
+
+    close() {
+      this.#refcount = 0;
+      ops.op_ffi_token_unsafe_callback_close(this.#rid);
+    }
   }
 
-  readU8(pointer, offset = 0) {
-    return ops.op_ffi_token_read_u8(this.#rid, this.#ptr, pointer, offset);
+  class TokenizedFnPointer {
+    pointer;
+    definition;
+    #structSize;
+
+    constructor(pointer, definition) {
+      this.pointer = pointer;
+      this.definition = definition;
+      this.#structSize = isStruct(definition.result)
+        ? getTypeSizeAndAlignment(definition.result)[0]
+        : null;
+    }
+
+    call(...parameters) {
+      if (this.definition.nonblocking) {
+        if (this.#structSize === null) {
+          return core.opAsync(
+            "op_ffi_token_call_ptr_nonblocking",
+            this.pointer,
+            this.definition,
+            parameters,
+          );
+        } else {
+          const buffer = new Uint8Array(this.#structSize);
+          return PromisePrototypeThen(
+            core.opAsync(
+              "op_ffi_token_call_ptr_nonblocking",
+              this.pointer,
+              this.definition,
+              parameters,
+              buffer,
+            ),
+            () => buffer,
+          );
+        }
+      } else {
+        if (this.#structSize === null) {
+          return ops.op_ffi_token_call_ptr(
+            this.pointer,
+            this.definition,
+            parameters,
+          );
+        } else {
+          const buffer = new Uint8Array(this.#structSize);
+          ops.op_ffi_token_call_ptr(
+            this.pointer,
+            this.definition,
+            parameters,
+            buffer,
+          );
+          return buffer;
+        }
+      }
+    }
   }
-}
+
+  return {
+    UnsafeCallback: TokenizedCallback,
+    UnsafeFnPointer: TokenizedFnPointer,
+    UnsafePointer: TokenizedPointer,
+    UnsafePointerView: TokenizedPointerView,
+  };
+};
 
 class DynamicLibrary {
   #rid;
