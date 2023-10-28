@@ -103,7 +103,7 @@ once_cell.workspace = true
 os_pipe.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
-quick-junit = "^0.3.3"
+quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
