@@ -127,7 +127,7 @@ class HttpConn {
       0: streamRid,
       1: method,
       2: url,
-      3: httpVersion
+      3: httpVersion,
     } = nextRequest;
     SetPrototypeAdd(this.managedResources, streamRid);
 
