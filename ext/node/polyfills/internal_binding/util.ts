@@ -31,7 +31,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 
-const handleTypes = ['TCP', 'TTY', 'UDP', 'FILE', 'PIPE', 'UNKNOWN'];
+const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
 export function guessHandleType(fd: number): string {
   const type = ops.op_node_guess_handle_type(fd);
   return handleTypes[type];
