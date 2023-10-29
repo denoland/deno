@@ -270,6 +270,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_read_package_scope<P>,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
+    ops::util::op_node_guess_handle_type,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
