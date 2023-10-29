@@ -129,7 +129,7 @@ Deno.test({
   name: "[util] isError",
   fn() {
     const java = new Error();
-    const nodejs = new TypeError();
+    const nodejs = Reflect.construct(Error, [], Object);
     const deno = "Future";
     assert(util.isError(java));
     assert(util.isError(nodejs));

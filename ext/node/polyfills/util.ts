@@ -32,6 +32,7 @@ const {
   ObjectDefineProperty,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ObjectPrototypeToString,
   ObjectSetPrototypeOf,
   ReflectApply,
   ReflectConstruct,
@@ -97,7 +98,7 @@ export function isObject(value: unknown): boolean {
 
 /** @deprecated - use `e instanceof Error` instead. */
 export function isError(e: unknown): boolean {
-  return ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
+  return ObjectPrototypeToString(e) === "[object Error]" || ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
 }
 
 /** @deprecated - use `typeof value === "function"` instead. */
