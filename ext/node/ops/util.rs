@@ -39,13 +39,11 @@ pub fn op_node_guess_handle_type(
 
 #[cfg(windows)]
 fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
-  use winapi::um::consoleapi::GetConsoleMode;
   use winapi::um::fileapi::GetFileType;
   use winapi::um::winbase::FILE_TYPE_CHAR;
   use winapi::um::winbase::FILE_TYPE_DISK;
   use winapi::um::winbase::FILE_TYPE_PIPE;
 
-  let mut mode = 0;
   // SAFETY: Call to win32 fileapi. `handle` is a valid fd.
   match unsafe { GetFileType(handle) } {
     FILE_TYPE_DISK | FILE_TYPE_CHAR => HandleType::File,
