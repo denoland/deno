@@ -886,5 +886,4 @@ internals.__bootstrapNodeProcess = function (
   delete internals.__bootstrapNodeProcess;
 };
 
-
 export default process;
