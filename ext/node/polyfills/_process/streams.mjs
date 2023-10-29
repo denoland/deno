@@ -5,7 +5,6 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { isatty } from "ext:runtime/40_tty.js";
 import {
   clearLine,
   clearScreenDown,
@@ -24,7 +23,7 @@ export function createWritableStdioStream(writer, name) {
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
-          new Error(`Deno.${name} is not available in this environment`),
+          new Error(`Deno.${name} is not available in this environment`)
         );
         return;
       }
@@ -109,7 +108,7 @@ const _read = function (size) {
     },
     (error) => {
       this.destroy(error);
-    },
+    }
   );
 };
 
