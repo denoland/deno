@@ -26,6 +26,7 @@ const {
   DatePrototypeGetMonth,
   DatePrototypeGetSeconds,
   ErrorPrototype,
+  NumberPrototypeToString,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -187,8 +188,7 @@ export type TextEncoder = import("./_utils.ts")._TextEncoder;
 export const TextEncoder = _TextEncoder;
 
 function pad(n: number) {
-  // deno-lint-ignore prefer-primordials
-  return StringPrototypePadStart(n.toString(), 2, "0");
+  return StringPrototypePadStart(NumberPrototypeToString(n), 2, "0");
 }
 
 const months = [
