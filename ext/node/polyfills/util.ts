@@ -22,7 +22,7 @@ const {
   Date,
   DatePrototypeGetDate,
   DatePrototypeGetHours,
-  DatePrototypeGetMiuntes,
+  DatePrototypeGetMinutes,
   DatePrototypeGetMonth,
   DatePrototypeGetSeconds,
   ErrorPrototype,
@@ -213,7 +213,7 @@ function timestamp(): string {
   const d = new Date();
   const t = ArrayPrototypeJoin([
     pad(DatePrototypeGetHours(d)),
-    pad(DatePrototypeGetMiuntes(d)),
+    pad(DatePrototypeGetMinutes(d)),
     pad(DatePrototypeGetSeconds(d)),
   ], ":");
   return `${DatePrototypeGetDate(d)} ${months[DatePrototypeGetMonth(d)]} ${t}`;
