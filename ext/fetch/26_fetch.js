@@ -594,4 +594,32 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-export { fetch, handleWasmStreaming };
+/**
+ * @param {string} url
+ * @param {BodyInit | null} data
+ */
+async function sendBeacon(url, data = null) {
+  const contentType = data === null ? null : extractBody(data).contentType;
+  try {
+    const ret = await mainFetch(
+      toInnerRequest(
+        new Request(url, {
+          method: "POST",
+          body: data,
+          signal: abortSignal.newSignal(),
+          headers: typeof contentType == "string"
+            ? [["content-type", contentType]]
+            : undefined,
+        }),
+      ),
+      true,
+      abortSignal.newSignal(),
+    );
+    await ret.body.stream.cancel();
+  } catch (_e) {
+    return false;
+  }
+  return true;
+}
+
+export { fetch, handleWasmStreaming, sendBeacon };

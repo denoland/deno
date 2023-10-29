@@ -170,6 +170,29 @@ function setLanguage(val) {
 }
 
 ObjectDefineProperties(Navigator.prototype, {
+  sendBeacon: {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: function sendBeacon(url, data = null) {
+      webidl.assertBranded(this, NavigatorPrototype);
+
+      const prefix = "Failed to execute 'sendBeacon'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      url = webidl.converters["USVString"](
+        url,
+        prefix,
+        "Argument 1",
+      );
+      data = webidl.converters["BodyInit_DOMString?"](
+        data,
+        prefix,
+        "Argument 2",
+      );
+
+      return fetch.sendBeacon(url, data);
+    },
+  },
   hardwareConcurrency: {
     configurable: true,
     enumerable: true,
