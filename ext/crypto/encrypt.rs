@@ -117,23 +117,23 @@ fn encrypt_rsa_oaep(
   let mut rng = OsRng;
   let padding = match hash {
     ShaHash::Sha1 => rsa::Oaep {
-      digest: Box::new(Sha1::default()),
-      mgf_digest: Box::new(Sha1::default()),
+      digest: Box::<Sha1>::default(),
+      mgf_digest: Box::<Sha1>::default(),
       label: Some(label),
     },
     ShaHash::Sha256 => rsa::Oaep {
-      digest: Box::new(Sha256::default()),
-      mgf_digest: Box::new(Sha256::default()),
+      digest: Box::<Sha256>::default(),
+      mgf_digest: Box::<Sha256>::default(),
       label: Some(label),
     },
     ShaHash::Sha384 => rsa::Oaep {
-      digest: Box::new(Sha384::default()),
-      mgf_digest: Box::new(Sha384::default()),
+      digest: Box::<Sha384>::default(),
+      mgf_digest: Box::<Sha384>::default(),
       label: Some(label),
     },
     ShaHash::Sha512 => rsa::Oaep {
-      digest: Box::new(Sha512::default()),
-      mgf_digest: Box::new(Sha512::default()),
+      digest: Box::<Sha512>::default(),
+      mgf_digest: Box::<Sha512>::default(),
       label: Some(label),
     },
   };
