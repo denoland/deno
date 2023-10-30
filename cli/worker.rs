@@ -166,6 +166,9 @@ impl CliMainWorker {
 
     loop {
       if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
+        let watcher_communicator =
+          self.shared.maybe_file_watcher_communicator.clone().unwrap();
+
         let hmr_future =
           hot_reload::run_hot_reload(hot_reload_manager).boxed_local();
         let event_loop_future = self.worker.run_event_loop(false).boxed_local();
@@ -180,8 +183,7 @@ impl CliMainWorker {
           }
         }
         if let Err(e) = result {
-          hot_reload_manager
-            .watcher_communicator
+          watcher_communicator
             .change_restart_mode(WatcherRestartMode::Automatic);
           return Err(e);
         }
@@ -337,9 +339,6 @@ impl CliMainWorker {
 
     let watcher_communicator =
       self.shared.maybe_file_watcher_communicator.clone().unwrap();
-
-    // TODO(bartlomieju): this is a code smell, refactor so we don't have
-    // to pass `emitter` here
     let emitter = self.shared.emitter.clone().unwrap();
 
     let session = self.worker.create_inspector_session().await;

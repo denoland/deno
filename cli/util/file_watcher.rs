@@ -92,7 +92,6 @@ where
 }
 
 pub struct PrintConfig {
-  /// Defaults to 'Watcher'
   banner: &'static str,
   /// Printing watcher status to terminal.
   job_name: &'static str,
@@ -101,6 +100,9 @@ pub struct PrintConfig {
 }
 
 impl PrintConfig {
+  /// By default `PrintConfig` uses "Watcher" as a banner name that will
+  /// be printed in color. If you need to customize it, use
+  /// `PrintConfig::new_with_banner` instead.
   pub fn new(job_name: &'static str, clear_screen: bool) -> Self {
     Self {
       banner: "Watcher",
@@ -279,7 +281,7 @@ where
   let changed_paths = Arc::new(Mutex::new(None));
   let changed_paths_ = changed_paths.clone();
 
-  tokio::task::spawn(async move {
+  deno_core::unsync::spawn(async move {
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
       *changed_paths_.lock() = received_changed_paths.clone();
