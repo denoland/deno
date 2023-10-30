@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::DocFlags;
+use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
 use crate::colors;
@@ -19,10 +20,115 @@ use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
 
-pub async fn print_docs(
-  flags: Flags,
-  doc_flags: DocFlags,
+pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let module_info_cache = factory.module_info_cache()?;
+  let source_parser = deno_graph::DefaultModuleParser::new_for_analysis();
+  let store = DefaultParsedSourceStore::default();
+  let analyzer =
+    module_info_cache.as_module_analyzer(Some(&source_parser), &store);
+  let capturing_parser =
+    CapturingModuleParser::new(Some(&source_parser), &store);
+
+  let mut doc_nodes = match doc_flags.source_file {
+    DocSourceFileFlag::Builtin => {
+      let source_file_specifier =
+        ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
+      let content = get_types_declaration_file_text(cli_options.unstable());
+      let mut loader = deno_graph::source::MemoryLoader::new(
+        vec![(
+          source_file_specifier.to_string(),
+          deno_graph::source::Source::Module {
+            specifier: source_file_specifier.to_string(),
+            content,
+            maybe_headers: None,
+          },
+        )],
+        Vec::new(),
+      );
+      let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
+      graph
+        .build(
+          vec![source_file_specifier.clone()],
+          &mut loader,
+          deno_graph::BuildOptions {
+            module_analyzer: Some(&analyzer),
+            ..Default::default()
+          },
+        )
+        .await;
+      let doc_parser =
+        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      doc_parser.parse_module(&source_file_specifier)?.definitions
+    }
+    DocSourceFileFlag::Path(source_file) => {
+      let module_graph_builder = factory.module_graph_builder().await?;
+      let maybe_lockfile = factory.maybe_lockfile();
+
+      let module_specifier =
+        resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
+
+      let mut loader = module_graph_builder.create_graph_loader();
+      let graph = module_graph_builder
+        .create_graph_with_options(CreateGraphOptions {
+          graph_kind: GraphKind::TypesOnly,
+          roots: vec![module_specifier.clone()],
+          loader: &mut loader,
+          analyzer: &analyzer,
+        })
+        .await?;
+
+      if let Some(lockfile) = maybe_lockfile {
+        graph_lock_or_exit(&graph, &mut lockfile.lock());
+      }
+
+      doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?
+        .parse_with_reexports(&module_specifier)?
+    }
+  };
+
+  if let Some(html_options) = doc_flags.html {
+    generate_docs_directory(doc_nodes, html_options)
+      .boxed_local()
+      .await
+  } else if doc_flags.json {
+    write_json_to_stdout(&doc_nodes)
+  } else {
+    doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
+    let details = if let Some(filter) = doc_flags.filter {
+      let nodes =
+        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+      if nodes.is_empty() {
+        bail!("Node {} was not found!", filter);
+      }
+      format!(
+        "{}",
+        doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
+      )
+    } else {
+      format!(
+        "{}",
+        doc::DocPrinter::new(
+          &doc_nodes,
+          colors::use_color(),
+          doc_flags.private
+        )
+      )
+    };
+
+    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
+  }
+}
+
+async fn generate_docs_directory(
+  doc_nodes: Vec<deno_doc::DocNode>,
+  html_options: DocHtmlFlag,
 ) -> Result<(), AnyError> {
+  todo!()
+}
+
+async fn print_docs(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let module_info_cache = factory.module_info_cache()?;
