@@ -164,7 +164,12 @@ impl HmrRunner {
           } else if notification.method == "Debugger.scriptParsed" {
             let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
             if params.url.starts_with("file://") {
-              self.script_ids.insert(params.url, params.script_id);
+              let file_url = Url::parse(&params.url).unwrap();
+              let file_path = file_url.to_file_path().unwrap();
+              if let Some(canonicalized_file_path) = file_path.canonicalize().ok() {
+                let canonicalized_file_url = Url::from_file_path(canonicalized_file_path).unwrap();
+                self.script_ids.insert(canonicalized_file_url.to_string(), params.script_id);
+              }
             }
           }
         }
@@ -204,8 +209,6 @@ impl HmrRunner {
               continue;
             };
 
-            self.watcher_communicator.print(format!("Reloading changed module {}", module_url.as_str()));
-
             let source_code = self.emitter.load_and_emit_for_hmr(
               &module_url
             ).await?;
@@ -216,6 +219,7 @@ impl HmrRunner {
 
               if matches!(result.status, Status::Ok) {
                 self.dispatch_hmr_event(module_url.as_str()).await?;
+                self.watcher_communicator.print(format!("Replaced changed module {}", module_url.as_str()));
                 break;
               }
 
