@@ -625,6 +625,8 @@
       "test-timers-unref-throw-then-ref.js",
       "test-timers-user-call.js",
       "test-timers-zero-timeout.js",
+      "test-tty-stdin-end.js",
+      "test-ttywrap-invalid-fd.js",
       "test-url-domain-ascii-unicode.js",
       "test-url-fileurltopath.js",
       "test-url-format-invalid-input.js",
