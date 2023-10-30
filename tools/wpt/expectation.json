@@ -2249,26 +2249,8 @@
       "hmac.https.any.worker.html": true,
       "rsa_pkcs.https.any.html": true,
       "rsa_pkcs.https.any.worker.html": true,
-      "rsa_pss.https.any.html": [
-        "RSA-PSS with SHA-1 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-1, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512, salted verification failure with wrong saltLength"
-      ],
-      "rsa_pss.https.any.worker.html": [
-        "RSA-PSS with SHA-1 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-1, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512, salted verification failure with wrong saltLength"
-      ],
+      "rsa_pss.https.any.html": true,
+      "rsa_pss.https.any.worker.html": true,
       "eddsa.https.any.html": [
         "Sign and verify using generated Ed448 keys.",
         "importVectorKeys step: EdDSA Ed448 verification",
