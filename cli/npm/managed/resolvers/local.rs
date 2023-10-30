@@ -37,7 +37,6 @@ use deno_runtime::deno_core::futures;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
@@ -182,29 +181,19 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       } else {
         Cow::Owned(current_folder.join("node_modules"))
       };
-      let sub_dir = join_package_name(&node_modules_folder, name);
-      if self.fs.is_dir_sync(&sub_dir) {
-        // if doing types resolution, only resolve the package if it specifies a types property
-        if mode.is_types() && !name.starts_with("@types/") {
-          let package_json = PackageJson::load_skip_read_permission(
-            &*self.fs,
-            sub_dir.join("package.json"),
-          )?;
-          if package_json.types.is_some() {
-            return Ok(sub_dir);
-          }
-        } else {
-          return Ok(sub_dir);
-        }
-      }
 
-      // if doing type resolution, check for the existence of a @types package
+      // attempt to resolve the types package first, then fallback to the regular package
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(&node_modules_folder, &types_package_name(name));
         if self.fs.is_dir_sync(&sub_dir) {
           return Ok(sub_dir);
         }
+      }
+
+      let sub_dir = join_package_name(&node_modules_folder, name);
+      if self.fs.is_dir_sync(&sub_dir) {
+        return Ok(sub_dir);
       }
 
       if current_folder == self.root_node_modules_path {

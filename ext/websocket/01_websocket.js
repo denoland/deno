@@ -570,7 +570,7 @@ defineEventHandler(WebSocket.prototype, "error");
 defineEventHandler(WebSocket.prototype, "close");
 defineEventHandler(WebSocket.prototype, "open");
 
-webidl.configurePrototype(WebSocket);
+webidl.configureInterface(WebSocket);
 const WebSocketPrototype = WebSocket.prototype;
 
 export {

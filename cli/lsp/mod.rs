@@ -49,11 +49,17 @@ pub async fn start() -> Result<(), AnyError> {
     lsp_custom::PERFORMANCE_REQUEST,
     LanguageServer::performance_request,
   )
+  // TODO(nayeemrmn): The extension has replaced this with the
+  // `deno.reloadImportRegistries` command as of vscode_deno
+  // 3.26.0 / 2023.10.10. Remove this eventually.
   .custom_method(
     lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST,
     LanguageServer::reload_import_registries_request,
   )
-  .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_request)
+  .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_definitions)
+  // TODO(nayeemrmn): Rename this to `deno/taskDefinitions` in vscode_deno and
+  // remove this alias.
+  .custom_method("deno/task", LanguageServer::task_definitions)
   .custom_method(testing::TEST_RUN_REQUEST, LanguageServer::test_run_request)
   .custom_method(
     testing::TEST_RUN_CANCEL_REQUEST,

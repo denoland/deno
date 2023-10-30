@@ -21,7 +21,7 @@ if (rs) {
   promises.push(clippy());
 }
 
-if (!js && !rs) {
+if (js && rs) {
   promises.push(checkCopyright());
 }
 

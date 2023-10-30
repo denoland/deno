@@ -3,7 +3,6 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::OpState;
 use libz_sys::*;
@@ -285,21 +284,20 @@ pub fn op_zlib_close(
   Ok(())
 }
 
-#[op]
+#[allow(clippy::too_many_arguments)]
+#[op2(async)]
+#[serde]
 pub fn op_zlib_write_async(
   state: Rc<RefCell<OpState>>,
-  handle: u32,
-  flush: i32,
-  input: &[u8],
-  in_off: u32,
-  in_len: u32,
-  out: &mut [u8],
-  out_off: u32,
-  out_len: u32,
-) -> Result<
-  impl Future<Output = Result<(i32, u32, u32), AnyError>> + 'static,
-  AnyError,
-> {
+  #[smi] handle: u32,
+  #[smi] flush: i32,
+  #[buffer] input: &[u8],
+  #[smi] in_off: u32,
+  #[smi] in_len: u32,
+  #[buffer] out: &mut [u8],
+  #[smi] out_off: u32,
+  #[smi] out_len: u32,
+) -> Result<impl Future<Output = Result<(i32, u32, u32), AnyError>>, AnyError> {
   let mut state_mut = state.borrow_mut();
   let resource = zlib(&mut state_mut, handle)?;
 
@@ -318,19 +316,20 @@ pub fn op_zlib_write_async(
   })
 }
 
-// TODO(bartlomieju): op2 can't seem to handle clippy ignore here
-#[op]
+#[allow(clippy::too_many_arguments)]
+#[op2(fast)]
+#[smi]
 pub fn op_zlib_write(
   state: &mut OpState,
-  handle: u32,
-  flush: i32,
-  input: &[u8],
-  in_off: u32,
-  in_len: u32,
-  out: &mut [u8],
-  out_off: u32,
-  out_len: u32,
-  result: &mut [u32],
+  #[smi] handle: u32,
+  #[smi] flush: i32,
+  #[buffer] input: &[u8],
+  #[smi] in_off: u32,
+  #[smi] in_len: u32,
+  #[buffer] out: &mut [u8],
+  #[smi] out_off: u32,
+  #[smi] out_len: u32,
+  #[buffer] result: &mut [u32],
 ) -> Result<i32, AnyError> {
   let resource = zlib(state, handle)?;
 
@@ -345,16 +344,16 @@ pub fn op_zlib_write(
   Ok(zlib.err)
 }
 
-// TODO(bartlomieju): op2 can't seem to handle clippy ignore here
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_zlib_init(
   state: &mut OpState,
-  handle: u32,
-  level: i32,
-  window_bits: i32,
-  mem_level: i32,
-  strategy: i32,
-  dictionary: &[u8],
+  #[smi] handle: u32,
+  #[smi] level: i32,
+  #[smi] window_bits: i32,
+  #[smi] mem_level: i32,
+  #[smi] strategy: i32,
+  #[buffer] dictionary: &[u8],
 ) -> Result<i32, AnyError> {
   let resource = zlib(state, handle)?;
   let mut zlib = resource.inner.borrow_mut();

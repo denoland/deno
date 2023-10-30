@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use clap::builder::FalseyValueParser;
 use clap::value_parser;
 use clap::Arg;
 use clap::ArgAction;
@@ -405,6 +406,8 @@ pub struct Flags {
   pub reload: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
+  pub unstable_bare_node_builtlins: bool,
+  pub unstable_byonm: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }
@@ -801,6 +804,10 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     flags.unstable = true;
   }
 
+  flags.unstable_bare_node_builtlins =
+    matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_byonm = matches.get_flag("unstable-byonm");
+
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -893,6 +900,24 @@ fn clap_root() -> Command {
       Arg::new("unstable")
         .long("unstable")
         .help("Enable unstable features and APIs")
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-bare-node-builtins")
+        .long("unstable-bare-node-builtins")
+        .help("Enable unstable bare node builtins feature")
+        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-byonm")
+        .long("unstable-byonm")
+        .help("Enable unstable 'bring your own node_modules' feature")
+        .env("DENO_UNSTABLE_BYONM")
+        .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
     )
@@ -1098,9 +1123,9 @@ Unless --reload is specified, this command will not re-download already cached d
 
 fn compile_subcommand() -> Command {
   Command::new("compile")
-    .about("UNSTABLE: Compile the script into a self contained executable")
+    .about("Compile the script into a self contained executable")
     .long_about(
-      "UNSTABLE: Compiles the given script into a self contained executable.
+      "Compiles the given script into a self contained executable.
 
   deno compile -A https://deno.land/std/http/file_server.ts
   deno compile --output color_util https://deno.land/std/examples/colors.ts
@@ -1127,7 +1152,7 @@ supported in canary.
       .arg(
         Arg::new("include")
           .long("include")
-          .help("UNSTABLE: Additional module to include in the module graph")
+          .help("Additional module to include in the module graph")
           .long_help(
             "Includes an additional module in the compiled executable's module
     graph. Use this flag if a dynamically imported module or a web worker main
@@ -1828,12 +1853,7 @@ fn repl_subcommand() -> Command {
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
-    .arg(
-      watch_arg(true)
-        .conflicts_with("inspect")
-        .conflicts_with("inspect-wait")
-        .conflicts_with("inspect-brk"),
-    )
+    .arg(watch_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     .arg(

@@ -982,20 +982,17 @@ async function benchMeasure(timeBudget, fn, async, context) {
       fn(context);
       const t2 = benchNow();
       const totalTime = t2 - t1;
-      let measuredTime = totalTime;
       if (currentBenchUserExplicitStart !== null) {
-        measuredTime -= currentBenchUserExplicitStart - t1;
         currentBenchUserExplicitStart = null;
         usedExplicitTimers = true;
       }
       if (currentBenchUserExplicitEnd !== null) {
-        measuredTime -= t2 - currentBenchUserExplicitEnd;
         currentBenchUserExplicitEnd = null;
         usedExplicitTimers = true;
       }
 
       c++;
-      wavg += measuredTime;
+      wavg += totalTime;
       budget -= totalTime;
     }
   } else {
@@ -1004,20 +1001,17 @@ async function benchMeasure(timeBudget, fn, async, context) {
       await fn(context);
       const t2 = benchNow();
       const totalTime = t2 - t1;
-      let measuredTime = totalTime;
       if (currentBenchUserExplicitStart !== null) {
-        measuredTime -= currentBenchUserExplicitStart - t1;
         currentBenchUserExplicitStart = null;
         usedExplicitTimers = true;
       }
       if (currentBenchUserExplicitEnd !== null) {
-        measuredTime -= t2 - currentBenchUserExplicitEnd;
         currentBenchUserExplicitEnd = null;
         usedExplicitTimers = true;
       }
 
       c++;
-      wavg += measuredTime;
+      wavg += totalTime;
       budget -= totalTime;
     }
   }
