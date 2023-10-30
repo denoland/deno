@@ -44,9 +44,10 @@ use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
-use signature::RandomizedSigner;
-use signature::Signer;
-use signature::Verifier;
+use rsa::signature::RandomizedSigner;
+use rsa::signature::SignatureEncoding;
+use rsa::signature::Signer;
+use rsa::signature::Verifier;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
@@ -207,19 +208,19 @@ pub async fn op_crypto_sign_key(
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let signing_key = SigningKey::<Sha1>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha1>::new(private_key);
           signing_key.sign(data)
         }
         CryptoHash::Sha256 => {
-          let signing_key = SigningKey::<Sha256>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha256>::new(private_key);
           signing_key.sign(data)
         }
         CryptoHash::Sha384 => {
-          let signing_key = SigningKey::<Sha384>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha384>::new(private_key);
           signing_key.sign(data)
         }
         CryptoHash::Sha512 => {
-          let signing_key = SigningKey::<Sha512>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha512>::new(private_key);
           signing_key.sign(data)
         }
       }
@@ -234,7 +235,7 @@ pub async fn op_crypto_sign_key(
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
 
-      let rng = OsRng;
+      let mut rng = OsRng;
       match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -242,22 +243,22 @@ pub async fn op_crypto_sign_key(
         CryptoHash::Sha1 => {
           let signing_key =
             SigningKey::<Sha1>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          signing_key.sign_with_rng(&mut rng, data)
         }
         CryptoHash::Sha256 => {
           let signing_key =
             SigningKey::<Sha256>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          signing_key.sign_with_rng(&mut rng, data)
         }
         CryptoHash::Sha384 => {
           let signing_key =
             SigningKey::<Sha384>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          signing_key.sign_with_rng(&mut rng, data)
         }
         CryptoHash::Sha512 => {
           let signing_key =
             SigningKey::<Sha512>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          signing_key.sign_with_rng(&mut rng, data)
         }
       }
       .to_vec()
@@ -319,28 +320,28 @@ pub async fn op_crypto_verify_key(
       use rsa::pkcs1v15::Signature;
       use rsa::pkcs1v15::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
-      let signature: Signature = args.signature.to_vec().into();
+      let signature: Signature = args.signature.as_ref().try_into()?;
       match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let verifying_key = VerifyingKey::<Sha1>::new_with_prefix(public_key);
+          let verifying_key = VerifyingKey::<Sha1>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha256 => {
           let verifying_key =
-            VerifyingKey::<Sha256>::new_with_prefix(public_key);
+            VerifyingKey::<Sha256>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha384 => {
           let verifying_key =
-            VerifyingKey::<Sha384>::new_with_prefix(public_key);
+            VerifyingKey::<Sha384>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha512 => {
           let verifying_key =
-            VerifyingKey::<Sha512>::new_with_prefix(public_key);
+            VerifyingKey::<Sha512>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
       }
@@ -349,7 +350,7 @@ pub async fn op_crypto_verify_key(
       use rsa::pss::Signature;
       use rsa::pss::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
-      let signature: Signature = args.signature.to_vec().into();
+      let signature: Signature = args.signature.as_ref().try_into()?;
 
       match args
         .hash
