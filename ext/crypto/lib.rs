@@ -38,13 +38,15 @@ use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use rsa::signature::RandomizedSigner;
 use rsa::signature::SignatureEncoding;
 use rsa::signature::Signer;
 use rsa::signature::Verifier;
+use rsa::traits::SignatureScheme;
+use rsa::Pss;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 use sha1::Sha1;
+use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
@@ -227,7 +229,6 @@ pub async fn op_crypto_sign_key(
       .to_vec()
     }
     Algorithm::RsaPss => {
-      use rsa::pss::SigningKey;
       let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
 
       let salt_len = args
@@ -241,24 +242,24 @@ pub async fn op_crypto_sign_key(
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let signing_key =
-            SigningKey::<Sha1>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(&mut rng, data)
+          let signing_key = Pss::new_with_salt::<Sha1>(salt_len);
+          let hashed = Sha1::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
         CryptoHash::Sha256 => {
-          let signing_key =
-            SigningKey::<Sha256>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(&mut rng, data)
+          let signing_key = Pss::new_with_salt::<Sha256>(salt_len);
+          let hashed = Sha256::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
         CryptoHash::Sha384 => {
-          let signing_key =
-            SigningKey::<Sha384>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(&mut rng, data)
+          let signing_key = Pss::new_with_salt::<Sha384>(salt_len);
+          let hashed = Sha384::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
         CryptoHash::Sha512 => {
-          let signing_key =
-            SigningKey::<Sha512>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(&mut rng, data)
+          let signing_key = Pss::new_with_salt::<Sha512>(salt_len);
+          let hashed = Sha512::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
       }
       .to_vec()
@@ -302,6 +303,7 @@ pub async fn op_crypto_sign_key(
 pub struct VerifyArg {
   key: KeyData,
   algorithm: Algorithm,
+  salt_length: Option<u32>,
   hash: Option<CryptoHash>,
   signature: JsBuffer,
   named_curve: Option<CryptoNamedCurve>,
@@ -344,30 +346,37 @@ pub async fn op_crypto_verify_key(
       }
     }
     Algorithm::RsaPss => {
-      use rsa::pss::Signature;
-      use rsa::pss::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
-      let signature: Signature = args.signature.as_ref().try_into()?;
+      let signature = args.signature.as_ref();
+
+      let salt_len = args
+        .salt_length
+        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
+        as usize;
 
       match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let verifying_key: VerifyingKey<Sha1> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha1>(salt_len);
+          let hashed = Sha1::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let verifying_key: VerifyingKey<Sha256> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha256>(salt_len);
+          let hashed = Sha256::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let verifying_key: VerifyingKey<Sha384> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha384>(salt_len);
+          let hashed = Sha384::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let verifying_key: VerifyingKey<Sha512> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha512>(salt_len);
+          let hashed = Sha512::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
       }
     }
