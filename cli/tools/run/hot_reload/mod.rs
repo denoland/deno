@@ -23,14 +23,29 @@ use json_types::ScriptParsed;
 use json_types::SetScriptSourceReturnObject;
 use json_types::Status;
 
-pub struct HotReloadManager {
+/// This structure is responsible for providing Hot Module Replacement
+/// functionality.
+///
+/// It communicates with V8 inspector over a local session and waits for
+/// notifications about changed files from the `FileWatcher`.
+///
+/// Upon receiving such notification, the runner decides if the changed
+/// path should be handled the `FileWatcher` itself (as if we were running
+/// in `--watch` mode), or if the path is eligible to be hot replaced in the
+/// current program.
+///
+/// Even if the runner decides that a path will be hot-replaced, the V8 isolate
+/// can refuse to perform hot replacement, eg. a top-level variable/function
+/// of an ES module cannot be hot-replaced. In such situation the runner will
+/// force a full restart of a program by notifying the `FileWatcher`.
+pub struct HmrRunner {
   session: LocalInspectorSession,
   watcher_communicator: WatcherCommunicator,
   script_ids: HashMap<String, String>,
   emitter: Arc<Emitter>,
 }
 
-impl HotReloadManager {
+impl HmrRunner {
   pub fn new(
     emitter: Arc<Emitter>,
     session: LocalInspectorSession,
@@ -130,7 +145,7 @@ impl HotReloadManager {
 }
 
 pub async fn run_hot_reload(
-  hmr_manager: &mut HotReloadManager,
+  hmr_manager: &mut HmrRunner,
 ) -> Result<(), AnyError> {
   hmr_manager
     .watcher_communicator

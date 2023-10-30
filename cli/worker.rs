@@ -54,7 +54,7 @@ use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::run::hot_reload;
-use crate::tools::run::hot_reload::HotReloadManager;
+use crate::tools::run::hot_reload::HmrRunner;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -332,7 +332,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_hot_reload_manager(
     &mut self,
-  ) -> Result<Option<HotReloadManager>, AnyError> {
+  ) -> Result<Option<HmrRunner>, AnyError> {
     if !self.shared.options.hot_reload {
       return Ok(None);
     }
@@ -343,7 +343,7 @@ impl CliMainWorker {
 
     let session = self.worker.create_inspector_session().await;
     let mut hot_reload_manager =
-      HotReloadManager::new(emitter, session, watcher_communicator);
+      HmrRunner::new(emitter, session, watcher_communicator);
 
     self
       .worker
