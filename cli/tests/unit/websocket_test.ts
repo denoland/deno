@@ -35,7 +35,7 @@ Deno.test(async function websocketSendLargePacket() {
   assertEquals(ws.url, "wss://localhost:4243/");
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
-    ws.send("a".repeat(65000)); 
+    ws.send("a".repeat(65000));
   };
   ws.onmessage = () => {
     ws.close();
@@ -288,7 +288,7 @@ Deno.test(async function websocketTlsSocketWorks() {
     const server = Deno.serve({
       handler: (req) => {
         const { response, socket } = Deno.upgradeWebSocket(req);
-        socket.onopen = () => socket.send('ping');
+        socket.onopen = () => socket.send("ping");
         socket.onmessage = (e) => {
           messages.push(e.data);
           socket.close();
@@ -298,7 +298,7 @@ Deno.test(async function websocketTlsSocketWorks() {
         return response;
       },
       signal: ac.signal,
-      hostname: 'localhost',
+      hostname: "localhost",
       port: servePort,
       cert,
       key,
@@ -306,8 +306,8 @@ Deno.test(async function websocketTlsSocketWorks() {
     setTimeout(() => {
       const ws = new WebSocket(`wss://localhost:${servePort}`);
       ws.onmessage = (e) => {
-        messages.push(e.data)
-        ws.send('pong');
+        messages.push(e.data);
+        ws.send("pong");
       };
       ws.onerror = (e) => errors.push(nope({ client: e }));
       ws.onclose = () => okay(server.finished);
@@ -317,7 +317,7 @@ Deno.test(async function websocketTlsSocketWorks() {
   const finished = await promise;
 
   assertEquals(errors, []);
-  assertEquals(messages, ['ping', 'pong']);
+  assertEquals(messages, ["ping", "pong"]);
 
   await finished;
 });
