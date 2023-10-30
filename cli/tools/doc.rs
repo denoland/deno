@@ -12,13 +12,16 @@ use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
+use indexmap::IndexMap;
 
 pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
@@ -31,7 +34,8 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let capturing_parser =
     CapturingModuleParser::new(Some(&source_parser), &store);
 
-  let mut doc_nodes = match doc_flags.source_file {
+  // TODO(bartlomieju): update to handle multiple files
+  let (doc_nodes, specifier) = match doc_flags.source_file {
     DocSourceFileFlag::Builtin => {
       let source_file_specifier =
         ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
@@ -60,9 +64,11 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         .await;
       let doc_parser =
         doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
-      doc_parser.parse_module(&source_file_specifier)?.definitions
+      let nodes = doc_parser.parse_module(&source_file_specifier)?.definitions;
+
+      (nodes, source_file_specifier)
     }
-    DocSourceFileFlag::Path(source_file) => {
+    DocSourceFileFlag::Path(ref source_file) => {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
@@ -83,144 +89,106 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         graph_lock_or_exit(&graph, &mut lockfile.lock());
       }
 
-      doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?
-        .parse_with_reexports(&module_specifier)?
+      let nodes =
+        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?
+          .parse_with_reexports(&module_specifier)?;
+
+      (nodes, module_specifier)
     }
   };
 
   if let Some(html_options) = doc_flags.html {
-    generate_docs_directory(doc_nodes, html_options)
+    generate_docs_directory(specifier, doc_nodes, html_options)
       .boxed_local()
       .await
-  } else if doc_flags.json {
-    write_json_to_stdout(&doc_nodes)
   } else {
-    doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
-    let details = if let Some(filter) = doc_flags.filter {
-      let nodes =
-        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
-      if nodes.is_empty() {
-        bail!("Node {} was not found!", filter);
-      }
-      format!(
-        "{}",
-        doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
-      )
-    } else {
-      format!(
-        "{}",
-        doc::DocPrinter::new(
-          &doc_nodes,
-          colors::use_color(),
-          doc_flags.private
-        )
-      )
-    };
-
-    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
+    print_docs(doc_flags, doc_nodes)
   }
 }
 
 async fn generate_docs_directory(
+  specifier: ModuleSpecifier,
   doc_nodes: Vec<deno_doc::DocNode>,
   html_options: DocHtmlFlag,
 ) -> Result<(), AnyError> {
-  todo!()
-}
+  let cwd = std::env::current_dir().context("Failed to get CWD")?;
+  let output_dir_resolved = cwd.join(&html_options.output);
+  let output_dir_relative = output_dir_resolved.strip_prefix(&cwd).unwrap();
+  let mut output_dir_relative_str =
+    output_dir_relative.to_string_lossy().to_string();
+  output_dir_relative_str = output_dir_relative_str
+    .strip_prefix('/')
+    .unwrap_or(&output_dir_relative_str)
+    .to_string();
+  output_dir_relative_str = output_dir_relative_str
+    .strip_suffix('/')
+    .unwrap_or(&output_dir_relative_str)
+    .to_string();
+  // TODO: make `base_url` configurable?
+  let base_url = format!("/{}/", output_dir_relative_str);
 
-async fn print_docs(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
-  let cli_options = factory.cli_options();
-  let module_info_cache = factory.module_info_cache()?;
-  let source_parser = deno_graph::DefaultModuleParser::new_for_analysis();
-  let store = DefaultParsedSourceStore::default();
-  let analyzer =
-    module_info_cache.as_module_analyzer(Some(&source_parser), &store);
-  let capturing_parser =
-    CapturingModuleParser::new(Some(&source_parser), &store);
-
-  let mut doc_nodes = match doc_flags.source_file {
-    DocSourceFileFlag::Builtin => {
-      let source_file_specifier =
-        ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
-      let content = get_types_declaration_file_text(cli_options.unstable());
-      let mut loader = deno_graph::source::MemoryLoader::new(
-        vec![(
-          source_file_specifier.to_string(),
-          deno_graph::source::Source::Module {
-            specifier: source_file_specifier.to_string(),
-            content,
-            maybe_headers: None,
-          },
-        )],
-        Vec::new(),
-      );
-      let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
-      graph
-        .build(
-          vec![source_file_specifier.clone()],
-          &mut loader,
-          deno_graph::BuildOptions {
-            module_analyzer: Some(&analyzer),
-            ..Default::default()
-          },
-        )
-        .await;
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
-      doc_parser.parse_module(&source_file_specifier)?.definitions
-    }
-    DocSourceFileFlag::Path(source_file) => {
-      let module_graph_builder = factory.module_graph_builder().await?;
-      let maybe_lockfile = factory.maybe_lockfile();
-
-      let module_specifier =
-        resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
-
-      let mut loader = module_graph_builder.create_graph_loader();
-      let graph = module_graph_builder
-        .create_graph_with_options(CreateGraphOptions {
-          graph_kind: GraphKind::TypesOnly,
-          roots: vec![module_specifier.clone()],
-          loader: &mut loader,
-          analyzer: &analyzer,
-        })
-        .await?;
-
-      if let Some(lockfile) = maybe_lockfile {
-        graph_lock_or_exit(&graph, &mut lockfile.lock());
-      }
-
-      doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?
-        .parse_with_reexports(&module_specifier)?
-    }
+  let options = deno_doc::html::GenerateOptions {
+    package_name: html_options.name,
+    base_url,
   };
 
-  if doc_flags.json {
-    write_json_to_stdout(&doc_nodes)
-  } else {
-    doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
-    let details = if let Some(filter) = doc_flags.filter {
-      let nodes =
-        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
-      if nodes.is_empty() {
-        bail!("Node {} was not found!", filter);
-      }
-      format!(
-        "{}",
-        doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
-      )
-    } else {
-      format!(
-        "{}",
-        doc::DocPrinter::new(
-          &doc_nodes,
-          colors::use_color(),
-          doc_flags.private
-        )
-      )
-    };
+  // TODO(bartlomieju): parse all files here
+  let doc_nodes_by_url = IndexMap::from([(specifier, doc_nodes)]);
+  let html = deno_doc::html::generate(options.clone(), &doc_nodes_by_url)?;
 
-    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
+  let path = &output_dir_resolved;
+  let _ = std::fs::remove_dir_all(path);
+  std::fs::create_dir(path)?;
+
+  std::fs::write(
+    path.join(deno_doc::html::STYLESHEET_FILENAME),
+    deno_doc::html::STYLESHEET,
+  )
+  .unwrap();
+  std::fs::write(
+    path.join(deno_doc::html::SEARCH_INDEX_FILENAME),
+    deno_doc::html::generate_search_index(&doc_nodes_by_url)?,
+  )
+  .unwrap();
+  std::fs::write(
+    path.join(deno_doc::html::SEARCH_FILENAME),
+    deno_doc::html::SEARCH_JS,
+  )
+  .unwrap();
+  for (name, content) in html {
+    let this_path = path.join(name);
+    let prefix = this_path.parent().unwrap();
+    std::fs::create_dir_all(prefix).unwrap();
+    std::fs::write(this_path, content).unwrap();
   }
+
+  Ok(())
+}
+
+fn print_docs(
+  doc_flags: DocFlags,
+  mut doc_nodes: Vec<deno_doc::DocNode>,
+) -> Result<(), AnyError> {
+  if doc_flags.json {
+    return write_json_to_stdout(&doc_nodes);
+  }
+
+  doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
+  let details = if let Some(filter) = doc_flags.filter {
+    let nodes = doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+    if nodes.is_empty() {
+      bail!("Node {} was not found!", filter);
+    }
+    format!(
+      "{}",
+      doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
+    )
+  } else {
+    format!(
+      "{}",
+      doc::DocPrinter::new(&doc_nodes, colors::use_color(), doc_flags.private)
+    )
+  };
+
+  write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
 }
