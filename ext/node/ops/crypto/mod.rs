@@ -23,10 +23,13 @@ use std::rc::Rc;
 use p224::NistP224;
 use p256::NistP256;
 use p384::NistP384;
-use rsa::padding::PaddingScheme;
+use rsa::Oaep;
+use rsa::Pkcs1v15Encrypt;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::PublicKey;
+use rsa::signature::hazmat::PrehashSigner;
+use rsa::signature::hazmat::PrehashVerifier;
+use rsa::signature::SignatureEncoding;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 use secp256k1::ecdh::SharedSecret;
@@ -181,12 +184,14 @@ pub fn op_node_private_encrypt(
   match padding {
     1 => Ok(
       key
-        .encrypt(&mut rng, PaddingScheme::new_pkcs1v15_encrypt(), &msg)?
+        .as_ref()
+        .encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?
         .into(),
     ),
     4 => Ok(
       key
-        .encrypt(&mut rng, PaddingScheme::new_oaep::<sha1::Sha1>(), &msg)?
+        .as_ref()
+        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
     _ => Err(type_error("Unknown padding")),
@@ -205,12 +210,12 @@ pub fn op_node_private_decrypt(
   match padding {
     1 => Ok(
       key
-        .decrypt(PaddingScheme::new_pkcs1v15_encrypt(), &msg)?
+        .decrypt(Pkcs1v15Encrypt, &msg)?
         .into(),
     ),
     4 => Ok(
       key
-        .decrypt(PaddingScheme::new_oaep::<sha1::Sha1>(), &msg)?
+        .decrypt(Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
     _ => Err(type_error("Unknown padding")),
@@ -230,12 +235,12 @@ pub fn op_node_public_encrypt(
   match padding {
     1 => Ok(
       key
-        .encrypt(&mut rng, PaddingScheme::new_pkcs1v15_encrypt(), &msg)?
+        .encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?
         .into(),
     ),
     4 => Ok(
       key
-        .encrypt(&mut rng, PaddingScheme::new_oaep::<sha1::Sha1>(), &msg)?
+        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
     _ => Err(type_error("Unknown padding")),
@@ -372,7 +377,6 @@ pub fn op_node_sign(
   match key_type {
     "rsa" => {
       use rsa::pkcs1v15::SigningKey;
-      use signature::hazmat::PrehashSigner;
       let key = match key_format {
         "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
           .map_err(|_| type_error("Invalid RSA private key"))?,
@@ -387,19 +391,19 @@ pub fn op_node_sign(
       Ok(
         match digest_type {
           "sha224" => {
-            let signing_key = SigningKey::<sha2::Sha224>::new_with_prefix(key);
+            let signing_key = SigningKey::<sha2::Sha224>::new(key);
             signing_key.sign_prehash(digest)?.to_vec()
           }
           "sha256" => {
-            let signing_key = SigningKey::<sha2::Sha256>::new_with_prefix(key);
+            let signing_key = SigningKey::<sha2::Sha256>::new(key);
             signing_key.sign_prehash(digest)?.to_vec()
           }
           "sha384" => {
-            let signing_key = SigningKey::<sha2::Sha384>::new_with_prefix(key);
+            let signing_key = SigningKey::<sha2::Sha384>::new(key);
             signing_key.sign_prehash(digest)?.to_vec()
           }
           "sha512" => {
-            let signing_key = SigningKey::<sha2::Sha512>::new_with_prefix(key);
+            let signing_key = SigningKey::<sha2::Sha512>::new(key);
             signing_key.sign_prehash(digest)?.to_vec()
           }
           _ => {
@@ -431,7 +435,6 @@ pub fn op_node_verify(
   match key_type {
     "rsa" => {
       use rsa::pkcs1v15::VerifyingKey;
-      use signature::hazmat::PrehashVerifier;
       let key = match key_format {
         "pem" => RsaPublicKey::from_public_key_pem((&key).try_into()?)
           .map_err(|_| type_error("Invalid RSA public key"))?,
@@ -444,17 +447,17 @@ pub fn op_node_verify(
         }
       };
       Ok(match digest_type {
-        "sha224" => VerifyingKey::<sha2::Sha224>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
+        "sha224" => VerifyingKey::<sha2::Sha224>::new(key)
+          .verify_prehash(digest, &signature.try_into()?)
           .is_ok(),
-        "sha256" => VerifyingKey::<sha2::Sha256>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
+        "sha256" => VerifyingKey::<sha2::Sha256>::new(key)
+          .verify_prehash(digest, &signature.try_into()?)
           .is_ok(),
-        "sha384" => VerifyingKey::<sha2::Sha384>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
+        "sha384" => VerifyingKey::<sha2::Sha384>::new(key)
+          .verify_prehash(digest, &signature.try_into()?)
           .is_ok(),
-        "sha512" => VerifyingKey::<sha2::Sha512>::new_with_prefix(key)
-          .verify_prehash(digest, &signature.to_vec().try_into()?)
+        "sha512" => VerifyingKey::<sha2::Sha512>::new(key)
+          .verify_prehash(digest, &signature.try_into()?)
           .is_ok(),
         _ => {
           return Err(type_error(format!(
