@@ -17,12 +17,13 @@ fn deno_doc() {
     let output = context
       .new_command()
       .env("NO_COLOR", "1")
-      .args("doc doc/deno_doc.ts")
+      .args("doc doc/deno_doc.ts doc/deno_doc2.ts")
       .split_output()
       .run();
 
     output.assert_exit_code(0);
     assert_contains!(output.stdout(), "function foo");
+    assert_contains!(output.stdout(), "function bar");
   }
 }
 
@@ -54,7 +55,7 @@ itest!(deno_doc_referenced_private_types {
 
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args:
-    "doc doc/060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+    "doc --filter NS.test doc/060_deno_doc_displays_all_overloads_in_details_view.ts",
   output: "doc/060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 

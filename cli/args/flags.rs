@@ -96,7 +96,7 @@ pub struct CoverageFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DocSourceFileFlag {
   Builtin,
-  Path(String),
+  Paths(Vec<String>),
 }
 
 impl Default for DocSourceFileFlag {
@@ -109,7 +109,7 @@ impl Default for DocSourceFileFlag {
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
-  pub source_file: DocSourceFileFlag,
+  pub source_files: DocSourceFileFlag,
   pub filter: Option<String>,
 }
 
@@ -1356,17 +1356,23 @@ Show documentation for runtime built-ins:
             .help("Output private documentation")
             .action(ArgAction::SetTrue),
         )
+        .arg(
+          Arg::new("filter")
+            .long("filter")
+            .help("Dot separated path to symbol")
+            .required(false)
+            .conflicts_with("json"),
+        )
         // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
         // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
         // just a possible value of `source_file` so leading hyphens must be
         // enabled.
         .allow_hyphen_values(true)
-        .arg(Arg::new("source_file").value_hint(ValueHint::FilePath))
         .arg(
-          Arg::new("filter")
-            .help("Dot separated path to symbol")
-            .required(false)
-            .conflicts_with("json"),
+          Arg::new("source_file")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .value_hint(ValueHint::FilePath),
         )
     })
 }
@@ -3090,21 +3096,29 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
 
-  let source_file = matches
-    .remove_one::<String>("source_file")
-    .map(|value| {
-      if value == "--builtin" {
+  let source_files_val = matches.remove_many::<String>("source_file");
+  let source_files = if let Some(val) = source_files_val {
+    let vals: Vec<String> = val.collect();
+
+    if vals.len() == 1 {
+      if vals[0] == "--builtin" {
         DocSourceFileFlag::Builtin
       } else {
-        DocSourceFileFlag::Path(value)
+        DocSourceFileFlag::Paths(vec![vals[0].to_string()])
       }
-    })
-    .unwrap_or_default();
+    } else {
+      DocSourceFileFlag::Paths(
+        vals.into_iter().filter(|v| v != "--builtin").collect(),
+      )
+    }
+  } else {
+    DocSourceFileFlag::Builtin
+  };
   let private = matches.get_flag("private");
   let json = matches.get_flag("json");
   let filter = matches.remove_one::<String>("filter");
   flags.subcommand = DenoSubcommand::Doc(DocFlags {
-    source_file,
+    source_files,
     json,
     filter,
     private,
@@ -5918,7 +5932,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
-          source_file: DocSourceFileFlag::Path("script.ts".to_owned()),
+          source_files: DocSourceFileFlag::Paths(vec!["script.ts".to_owned()]),
           private: false,
           json: false,
           filter: None,
@@ -7178,7 +7192,9 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: true,
-          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.ts".to_string()
+          ]),
           filter: None,
         }),
         ..Flags::default()
@@ -7188,8 +7204,9 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "doc",
+      "--filter",
+      "SomeClass.someField",
       "path/to/module.ts",
-      "SomeClass.someField"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -7197,7 +7214,9 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.ts".to_string()
+          ]),
           filter: Some("SomeClass.someField".to_string()),
         }),
         ..Flags::default()
@@ -7211,21 +7230,27 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: Default::default(),
+          source_files: Default::default(),
           filter: None,
         }),
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "doc", "--builtin", "Deno.Listener"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--filter",
+      "Deno.Listener",
+      "--builtin"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: DocSourceFileFlag::Builtin,
+          source_files: DocSourceFileFlag::Builtin,
           filter: Some("Deno.Listener".to_string()),
         }),
         ..Flags::default()
@@ -7246,11 +7271,58 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: true,
           json: false,
-          source_file: DocSourceFileFlag::Path("path/to/module.js".to_string()),
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.js".to_string()
+          ]),
           filter: None,
         }),
         no_npm: true,
         no_remote: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "path/to/module.js",
+      "path/to/module2.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc(DocFlags {
+          private: false,
+          json: false,
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.js".to_string(),
+            "path/to/module2.js".to_string()
+          ]),
+          filter: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "path/to/module.js",
+      "--builtin",
+      "path/to/module2.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc(DocFlags {
+          private: false,
+          json: false,
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.js".to_string(),
+            "path/to/module2.js".to_string()
+          ]),
+          filter: None,
+        }),
         ..Flags::default()
       }
     );
