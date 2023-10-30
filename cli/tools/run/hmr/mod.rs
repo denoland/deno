@@ -166,7 +166,7 @@ impl HmrRunner {
             if params.url.starts_with("file://") {
               let file_url = Url::parse(&params.url).unwrap();
               let file_path = file_url.to_file_path().unwrap();
-              if let Some(canonicalized_file_path) = file_path.canonicalize().ok() {
+              if let Ok(canonicalized_file_path) = file_path.canonicalize() {
                 let canonicalized_file_url = Url::from_file_path(canonicalized_file_path).unwrap();
                 self.script_ids.insert(canonicalized_file_url.to_string(), params.script_id);
               }
