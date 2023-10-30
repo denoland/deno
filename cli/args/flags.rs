@@ -1123,9 +1123,9 @@ Unless --reload is specified, this command will not re-download already cached d
 
 fn compile_subcommand() -> Command {
   Command::new("compile")
-    .about("UNSTABLE: Compile the script into a self contained executable")
+    .about("Compile the script into a self contained executable")
     .long_about(
-      "UNSTABLE: Compiles the given script into a self contained executable.
+      "Compiles the given script into a self contained executable.
 
   deno compile -A https://deno.land/std/http/file_server.ts
   deno compile --output color_util https://deno.land/std/examples/colors.ts
@@ -1152,7 +1152,7 @@ supported in canary.
       .arg(
         Arg::new("include")
           .long("include")
-          .help("UNSTABLE: Additional module to include in the module graph")
+          .help("Additional module to include in the module graph")
           .long_help(
             "Includes an additional module in the compiled executable's module
     graph. Use this flag if a dynamically imported module or a web worker main

@@ -20,12 +20,11 @@ fn compile_basic() {
   for _ in 0..2 {
     let output = context
       .new_command()
-      .cwd(util::testdata_path())
       .args_vec([
         "compile",
         "--output",
         &exe.to_string_lossy(),
-        "./compile/welcome.ts",
+        "../../../test_util/std/examples/welcome.ts",
       ])
       .run();
     output.assert_exit_code(0);

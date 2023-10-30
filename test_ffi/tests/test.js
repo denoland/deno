@@ -10,7 +10,7 @@ import {
   assertInstanceOf,
   assertEquals,
   assertFalse,
-} from "../../test_util/std/assert/mod.ts";
+} from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
@@ -327,6 +327,8 @@ const into2 = new Uint8Array(3);
 const into2ptr = Deno.UnsafePointer.of(into2);
 const into2ptrView = new Deno.UnsafePointerView(into2ptr);
 const into3 = new Uint8Array(3);
+const into4 = new Uint16Array(3);
+ptrView.copyInto(into4);
 ptrView.copyInto(into);
 console.log([...into]);
 ptrView.copyInto(into2, 3);

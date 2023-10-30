@@ -2,6 +2,7 @@
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -123,7 +124,14 @@ pub fn op_crypto_export_spki_ed25519(
     },
     subject_public_key: pubkey,
   };
-  Ok(key_info.to_vec()?.into())
+  Ok(
+    key_info
+      .to_vec()
+      .map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Failed to export key")
+      })?
+      .into(),
+  )
 }
 
 #[op2]
@@ -131,10 +139,12 @@ pub fn op_crypto_export_spki_ed25519(
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
+  use rsa::pkcs1::der::Encode;
+
   // This should probably use OneAsymmetricKey instead
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
     public_key: None,
-    algorithm: rsa::pkcs8::AlgorithmIdentifier {
+    algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
       // id-Ed25519
       oid: ED25519_OID,
       parameters: None,
@@ -142,7 +152,9 @@ pub fn op_crypto_export_pkcs8_ed25519(
     private_key: pkey, // OCTET STRING
   };
 
-  Ok(pk_info.to_vec()?.into())
+  let mut buf = Vec::new();
+  pk_info.encode_to_vec(&mut buf)?;
+  Ok(buf.into())
 }
 
 // 'x' from Section 2 of RFC 8037

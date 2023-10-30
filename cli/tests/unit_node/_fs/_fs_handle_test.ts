@@ -2,7 +2,10 @@
 import * as path from "../../../../test_util/std/path/mod.ts";
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
-import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "../../../../test_util/std/testing/asserts.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
