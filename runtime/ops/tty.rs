@@ -1,12 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Error;
-use std::io::IsTerminal;
 
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
-use deno_core::ResourceHandle;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -167,24 +165,7 @@ fn op_stdin_set_raw(
 #[op2(fast)]
 fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
   let handle = state.resource_table.get_handle(rid)?;
-  // TODO(mmastrac): this can migrate to the deno_core implementation when it lands
-  Ok(match handle {
-    ResourceHandle::Fd(fd) if handle.is_valid() => {
-      #[cfg(windows)]
-      {
-        // SAFETY: The resource remains open for the for the duration of borrow_raw
-        unsafe {
-          std::os::windows::io::BorrowedHandle::borrow_raw(fd).is_terminal()
-        }
-      }
-      #[cfg(unix)]
-      {
-        // SAFETY: The resource remains open for the for the duration of borrow_raw
-        unsafe { std::os::fd::BorrowedFd::borrow_raw(fd).is_terminal() }
-      }
-    }
-    _ => false,
-  })
+  Ok(handle.is_terminal())
 }
 
 #[op2(fast)]
