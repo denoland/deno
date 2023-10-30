@@ -57,7 +57,7 @@ deno_lockfile.workspace = true
 deno_npm = "0.15.2"
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
 deno_semver = "0.5.1"
-deno_task_shell = "=0.13.2"
+deno_task_shell = "=0.14.0"
 eszip = "=0.55.2"
 napi_sym.workspace = true
 
@@ -103,7 +103,7 @@ once_cell.workspace = true
 os_pipe.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
-quick-junit = "^0.3.3"
+quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true

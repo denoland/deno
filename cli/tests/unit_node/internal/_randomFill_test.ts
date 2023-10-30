@@ -5,7 +5,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 const validateNonZero = (buf: Buffer) => {
