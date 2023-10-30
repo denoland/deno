@@ -78,6 +78,8 @@ brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
+# Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
+#       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"

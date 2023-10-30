@@ -14,7 +14,7 @@ use ring::hmac;
 use std::fmt;
 use uuid::Uuid;
 
-include!("../../util/time.rs");
+use crate::util::time::utc_now;
 
 pub(crate) struct Connection<S> {
   pub(crate) socket: S,
