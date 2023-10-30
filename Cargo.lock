@@ -1819,9 +1819,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_remote"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "628c02b90e3877ef4757696885224d4f08117574b95830db4458d1e32a6c2701"
+checksum = "2ed34003477383f6af6ef518ead2916173630dc4ff1295327deefe61c0dd16d4"
 dependencies = [
  "anyhow",
  "async-trait",
