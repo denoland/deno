@@ -142,99 +142,97 @@ impl HmrRunner {
 
     Ok(())
   }
-}
 
-pub async fn run_hot_module_replacement(
-  hmr_manager: &mut HmrRunner,
-) -> Result<(), AnyError> {
-  hmr_manager
-    .watcher_communicator
-    .change_restart_mode(WatcherRestartMode::Manual);
-  let mut session_rx = hmr_manager.session.take_notification_rx();
-  loop {
-    select! {
-      biased;
-      Some(notification) = session_rx.next() => {
-        let notification = serde_json::from_value::<RpcNotification>(notification)?;
-        // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
-        if notification.method == "Runtime.exceptionThrown" {
-          let params = notification.params;
-          let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
-          let text = exception_details.get("text").unwrap().as_str().unwrap();
-          let exception = exception_details.get("exception").unwrap().as_object().unwrap();
-          let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
-          break Err(generic_error(format!("{text} {description}")));
-        } else if notification.method == "Debugger.scriptParsed" {
-          let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
-          if params.url.starts_with("file://") {
-            hmr_manager.script_ids.insert(params.url, params.script_id);
+  pub async fn run(&mut self) -> Result<(), AnyError> {
+    self
+      .watcher_communicator
+      .change_restart_mode(WatcherRestartMode::Manual);
+    let mut session_rx = self.session.take_notification_rx();
+    loop {
+      select! {
+        biased;
+        Some(notification) = session_rx.next() => {
+          let notification = serde_json::from_value::<RpcNotification>(notification)?;
+          // TODO(bartlomieju): this is not great... and the code is duplicated with the REPL.
+          if notification.method == "Runtime.exceptionThrown" {
+            let params = notification.params;
+            let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
+            let text = exception_details.get("text").unwrap().as_str().unwrap();
+            let exception = exception_details.get("exception").unwrap().as_object().unwrap();
+            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
+            break Err(generic_error(format!("{text} {description}")));
+          } else if notification.method == "Debugger.scriptParsed" {
+            let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
+            if params.url.starts_with("file://") {
+              self.script_ids.insert(params.url, params.script_id);
+            }
           }
         }
-      }
-      changed_paths = hmr_manager.watcher_communicator.watch_for_changed_paths() => {
-        let changed_paths = changed_paths?;
+        changed_paths = self.watcher_communicator.watch_for_changed_paths() => {
+          let changed_paths = changed_paths?;
 
-        let Some(changed_paths) = changed_paths else {
-          let _ = hmr_manager.watcher_communicator.force_restart();
-          continue;
-        };
-
-        let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
-          let ext_str = ext.to_str().unwrap();
-          matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
-        })).collect();
-
-        // If after filtering there are no paths it means it's either a file
-        // we can't HMR or an external file that was passed explicitly to
-        // `--unstable-hmr=<file>` path.
-        if filtered_paths.is_empty() {
-          let _ = hmr_manager.watcher_communicator.force_restart();
-          continue;
-        }
-
-        for path in filtered_paths {
-          let Some(path_str) = path.to_str() else {
-            let _ = hmr_manager.watcher_communicator.force_restart();
-            continue;
-          };
-          let Ok(module_url) = Url::from_file_path(path_str) else {
-            let _ = hmr_manager.watcher_communicator.force_restart();
+          let Some(changed_paths) = changed_paths else {
+            let _ = self.watcher_communicator.force_restart();
             continue;
           };
 
-          let Some(id) = hmr_manager.script_ids.get(module_url.as_str()).cloned() else {
-            let _ = hmr_manager.watcher_communicator.force_restart();
+          let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
+            let ext_str = ext.to_str().unwrap();
+            matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
+          })).collect();
+
+          // If after filtering there are no paths it means it's either a file
+          // we can't HMR or an external file that was passed explicitly to
+          // `--unstable-hmr=<file>` path.
+          if filtered_paths.is_empty() {
+            let _ = self.watcher_communicator.force_restart();
             continue;
-          };
+          }
 
-          hmr_manager.watcher_communicator.print(format!("Reloading changed module {}", module_url.as_str()));
+          for path in filtered_paths {
+            let Some(path_str) = path.to_str() else {
+              let _ = self.watcher_communicator.force_restart();
+              continue;
+            };
+            let Ok(module_url) = Url::from_file_path(path_str) else {
+              let _ = self.watcher_communicator.force_restart();
+              continue;
+            };
 
-          let source_code = hmr_manager.emitter.load_and_emit_for_hmr(
-            &module_url
-          ).await?;
+            let Some(id) = self.script_ids.get(module_url.as_str()).cloned() else {
+              let _ = self.watcher_communicator.force_restart();
+              continue;
+            };
 
-          let mut tries = 1;
-          loop {
-            let result = hmr_manager.set_script_source(&id, source_code.as_str()).await?;
+            self.watcher_communicator.print(format!("Reloading changed module {}", module_url.as_str()));
 
-            if matches!(result.status, Status::Ok) {
-              hmr_manager.dispatch_hmr_event(module_url.as_str()).await?;
+            let source_code = self.emitter.load_and_emit_for_hmr(
+              &module_url
+            ).await?;
+
+            let mut tries = 1;
+            loop {
+              let result = self.set_script_source(&id, source_code.as_str()).await?;
+
+              if matches!(result.status, Status::Ok) {
+                self.dispatch_hmr_event(module_url.as_str()).await?;
+                break;
+              }
+
+              self.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(result.status.explain())));
+              if result.status.should_retry() && tries <= 2 {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                continue;
+              }
+
+              let _ = self.watcher_communicator.force_restart();
               break;
             }
-
-            hmr_manager.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(result.status.explain())));
-            if result.status.should_retry() && tries <= 2 {
-              tries += 1;
-              tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-              continue;
-            }
-
-            let _ = hmr_manager.watcher_communicator.force_restart();
-            break;
           }
         }
+        _ = self.session.receive_from_v8_session() => {}
       }
-      _ = hmr_manager.session.receive_from_v8_session() => {}
     }
   }
 }

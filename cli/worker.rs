@@ -53,7 +53,6 @@ use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::run::hmr;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -168,8 +167,7 @@ impl CliMainWorker {
         let watcher_communicator =
           self.shared.maybe_file_watcher_communicator.clone().unwrap();
 
-        let hmr_future =
-          hmr::run_hot_module_replacement(hmr_runner).boxed_local();
+        let hmr_future = hmr_runner.run().boxed_local();
         let event_loop_future = self.worker.run_event_loop(false).boxed_local();
 
         let result;
