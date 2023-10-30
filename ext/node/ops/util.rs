@@ -25,10 +25,6 @@ pub fn op_node_guess_handle_type(
 ) -> Result<u32, AnyError> {
   let handle = state.resource_table.get_handle(rid)?;
 
-  if handle.is_terminal() {
-    return Ok(HandleType::Tty as u32);
-  }
-
   let handle_type = match handle {
     ResourceHandle::Fd(handle) => guess_handle_type(handle),
     _ => HandleType::Unknown,
@@ -39,6 +35,7 @@ pub fn op_node_guess_handle_type(
 
 #[cfg(windows)]
 fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
+  use winapi::um::consoleapi::GetConsoleMode;
   use winapi::um::fileapi::GetFileType;
   use winapi::um::winbase::FILE_TYPE_CHAR;
   use winapi::um::winbase::FILE_TYPE_DISK;
@@ -46,7 +43,17 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
 
   // SAFETY: Call to win32 fileapi. `handle` is a valid fd.
   match unsafe { GetFileType(handle) } {
-    FILE_TYPE_DISK | FILE_TYPE_CHAR => HandleType::File,
+    FILE_TYPE_DISK => HandleType::File,
+    FILE_TYPE_CHAR => {
+      let mut mode = 0;
+      // SAFETY: Call to win32 consoleapi. `handle` is a valid fd.
+      //         `mode` is a valid pointer.
+      if unsafe { GetConsoleMode(handle, &mut mode) } == 1 {
+        HandleType::Tty
+      } else {
+        HandleType::File
+      }
+    }
     FILE_TYPE_PIPE => HandleType::Pipe,
     _ => HandleType::Unknown,
   }
@@ -54,6 +61,12 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
 
 #[cfg(unix)]
 fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
+  use std::io::IsTerminal;
+  // SAFETY: The resource remains open for the duration of borrow_raw.
+  if unsafe { std::os::fs::BorrowedFd::borrow_raw(handle).is_terminal() } {
+    return HandleType::Tty;
+  }
+
   // SAFETY: It is safe to zero-initialize a `libc::stat` struct.
   let mut s = unsafe { std::mem::zeroed() };
   // SAFETY: Call to libc
