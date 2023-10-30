@@ -25,7 +25,6 @@ use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use serde::Deserialize;
-use sha1::Digest;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
