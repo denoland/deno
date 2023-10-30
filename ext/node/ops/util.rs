@@ -63,7 +63,7 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
 fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
   use std::io::IsTerminal;
   // SAFETY: The resource remains open for the duration of borrow_raw.
-  if unsafe { std::os::fs::BorrowedFd::borrow_raw(handle).is_terminal() } {
+  if unsafe { std::os::fd::BorrowedFd::borrow_raw(handle).is_terminal() } {
     return HandleType::Tty;
   }
 
