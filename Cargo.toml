@@ -87,7 +87,7 @@ data-encoding = "2.3.3"
 dlopen = "0.1.8"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
-fastwebsockets = "=0.4.4"
+fastwebsockets = "=0.5.0"
 filetime = "0.2.16"
 flate2 = { version = "1.0.26", features = ["zlib-ng"], default-features = false }
 fs3 = "0.5.0"
