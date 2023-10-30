@@ -1366,7 +1366,7 @@ Show documentation for runtime built-ins:
         .arg(
           Arg::new("html")
             .long("html")
-            .help("Output documentation in HTML format")
+            .help("UNSTABLE: Output documentation in HTML format")
             .action(ArgAction::SetTrue)
             .conflicts_with("json")
         )
