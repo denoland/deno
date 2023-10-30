@@ -1130,13 +1130,13 @@ impl CliOptions {
     &self.flags.ext
   }
 
-  pub fn has_hot_reload(&self) -> bool {
+  pub fn has_hmr(&self) -> bool {
     if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { hot_reload, .. }),
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
       ..
     }) = &self.flags.subcommand
     {
-      *hot_reload
+      *hmr
     } else {
       false
     }

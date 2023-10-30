@@ -17,7 +17,7 @@ use crate::file_fetcher::File;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
-pub mod hot_reload;
+pub mod hmr;
 
 pub async fn run_script(
   flags: Flags,
@@ -110,11 +110,7 @@ async fn run_with_watch(
   util::file_watcher::watch_recv(
     flags,
     util::file_watcher::PrintConfig::new_with_banner(
-      if watch_flags.hot_reload {
-        "HMR"
-      } else {
-        "Watcher"
-      },
+      if watch_flags.hmr { "HMR" } else { "Watcher" },
       "Process",
       !watch_flags.no_clear_screen,
     ),
@@ -140,7 +136,7 @@ async fn run_with_watch(
           .create_main_worker(main_module, permissions)
           .await?;
 
-        if watch_flags.hot_reload {
+        if watch_flags.hmr {
           worker.run().await?;
         } else {
           worker.run_for_watcher().await?;

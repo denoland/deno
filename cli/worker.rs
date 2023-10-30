@@ -53,8 +53,8 @@ use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::run::hot_reload;
-use crate::tools::run::hot_reload::HmrRunner;
+use crate::tools::run::hmr;
+use crate::tools::run::hmr::HmrRunner;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -89,7 +89,7 @@ pub struct CliMainWorkerOptions {
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
-  pub hot_reload: bool,
+  pub hmr: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
   pub is_inspecting: bool,
@@ -146,8 +146,7 @@ impl CliMainWorker {
   pub async fn run(&mut self) -> Result<i32, AnyError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
-    let mut maybe_hot_reload_manager =
-      self.maybe_setup_hot_reload_manager().await?;
+    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
 
     log::debug!("main_module {}", self.main_module);
 
@@ -165,12 +164,12 @@ impl CliMainWorker {
     self.worker.dispatch_load_event(located_script_name!())?;
 
     loop {
-      if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
+      if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
         let watcher_communicator =
           self.shared.maybe_file_watcher_communicator.clone().unwrap();
 
         let hmr_future =
-          hot_reload::run_hot_reload(hot_reload_manager).boxed_local();
+          hmr::run_hot_module_replacement(hmr_runner).boxed_local();
         let event_loop_future = self.worker.run_event_loop(false).boxed_local();
 
         let result;
@@ -210,10 +209,10 @@ impl CliMainWorker {
         .with_event_loop(coverage_collector.stop_collecting().boxed_local())
         .await?;
     }
-    if let Some(hot_reload_manager) = maybe_hot_reload_manager.as_mut() {
+    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       self
         .worker
-        .with_event_loop(hot_reload_manager.stop().boxed_local())
+        .with_event_loop(hmr_runner.stop().boxed_local())
         .await?;
     }
 
@@ -330,10 +329,10 @@ impl CliMainWorker {
     }
   }
 
-  pub async fn maybe_setup_hot_reload_manager(
+  pub async fn maybe_setup_hmr_runner(
     &mut self,
   ) -> Result<Option<HmrRunner>, AnyError> {
-    if !self.shared.options.hot_reload {
+    if !self.shared.options.hmr {
       return Ok(None);
     }
 
@@ -342,15 +341,14 @@ impl CliMainWorker {
     let emitter = self.shared.emitter.clone().unwrap();
 
     let session = self.worker.create_inspector_session().await;
-    let mut hot_reload_manager =
-      HmrRunner::new(emitter, session, watcher_communicator);
+    let mut hmr_runner = HmrRunner::new(emitter, session, watcher_communicator);
 
     self
       .worker
-      .with_event_loop(hot_reload_manager.start().boxed_local())
+      .with_event_loop(hmr_runner.start().boxed_local())
       .await?;
 
-    Ok(Some(hot_reload_manager))
+    Ok(Some(hmr_runner))
   }
 
   pub fn execute_script_static(

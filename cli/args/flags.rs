@@ -212,13 +212,13 @@ impl RunFlags {
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlags {
-  pub hot_reload: bool,
+  pub hmr: bool,
   pub no_clear_screen: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlagsWithPaths {
-  pub hot_reload: bool,
+  pub hmr: bool,
   pub paths: Vec<PathBuf>,
   pub no_clear_screen: bool,
 }
@@ -3865,7 +3865,7 @@ fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
 fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
   if matches.get_flag("watch") {
     Some(WatchFlags {
-      hot_reload: false,
+      hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
   } else {
@@ -3879,7 +3879,7 @@ fn watch_arg_parse_with_paths(
   if let Some(paths) = matches.remove_many::<PathBuf>("watch") {
     return Some(WatchFlagsWithPaths {
       paths: paths.collect(),
-      hot_reload: false,
+      hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     });
   }
@@ -3888,7 +3888,7 @@ fn watch_arg_parse_with_paths(
     .remove_many::<PathBuf>("hmr")
     .map(|paths| WatchFlagsWithPaths {
       paths: paths.collect(),
-      hot_reload: true,
+      hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
 }
@@ -4006,7 +4006,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
-            hot_reload: false,
+            hmr: false,
             paths: vec![],
             no_clear_screen: false,
           }),
@@ -4029,7 +4029,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
-            hot_reload: false,
+            hmr: false,
             paths: vec![],
             no_clear_screen: true,
           }),
@@ -4052,7 +4052,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
-            hot_reload: true,
+            hmr: true,
             paths: vec![],
             no_clear_screen: true,
           }),
@@ -4075,7 +4075,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
-            hot_reload: true,
+            hmr: true,
             paths: vec![PathBuf::from("foo.txt")],
             no_clear_screen: true,
           }),
@@ -4100,7 +4100,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
-            hot_reload: false,
+            hmr: false,
             paths: vec![PathBuf::from("file1"), PathBuf::from("file2")],
             no_clear_screen: false,
           }),
@@ -4127,7 +4127,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
-            hot_reload: false,
+            hmr: false,
             paths: vec![],
             no_clear_screen: true,
           })
@@ -4474,7 +4474,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           watch: Some(WatchFlags {
-            hot_reload: false,
+            hmr: false,
             no_clear_screen: true,
           })
         }),
@@ -4716,7 +4716,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(WatchFlags {
-            hot_reload: false,
+            hmr: false,
             no_clear_screen: true,
           })
         }),
@@ -5943,7 +5943,7 @@ mod tests {
           source_file: "source.ts".to_string(),
           out_file: None,
           watch: Some(WatchFlags {
-            hot_reload: false,
+            hmr: false,
             no_clear_screen: true,
           }),
         }),
@@ -7175,7 +7175,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Some(WatchFlags {
-            hot_reload: false,
+            hmr: false,
             no_clear_screen: true,
           }),
           reporter: Default::default(),

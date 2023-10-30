@@ -144,7 +144,7 @@ impl HmrRunner {
   }
 }
 
-pub async fn run_hot_reload(
+pub async fn run_hot_module_replacement(
   hmr_manager: &mut HmrRunner,
 ) -> Result<(), AnyError> {
   hmr_manager

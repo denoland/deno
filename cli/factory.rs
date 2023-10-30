@@ -620,7 +620,7 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
-    let maybe_file_watcher_communicator = if self.options.has_hot_reload() {
+    let maybe_file_watcher_communicator = if self.options.has_hmr() {
       Some(self.watcher_communicator.clone().unwrap())
     } else {
       None
@@ -666,7 +666,7 @@ impl CliFactory {
       coverage_dir: self.options.coverage_dir(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
-      hot_reload: self.options.has_hot_reload(),
+      hmr: self.options.has_hmr(),
       inspect_brk: self.options.inspect_brk().is_some(),
       inspect_wait: self.options.inspect_wait().is_some(),
       is_inspecting: self.options.is_inspecting(),
