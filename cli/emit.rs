@@ -112,15 +112,13 @@ impl Emitter {
     )
     .await?;
     let source_arc: Arc<str> = Arc::from(source_code.as_str());
-    let parsed_source = self.parsed_source_cache.get_or_parse_module(
-      specifier,
-      source_arc.clone(),
-      media_type,
-    )?;
+    let parsed_source = self
+      .parsed_source_cache
+      .get_or_parse_module(specifier, source_arc, media_type)?;
     let mut options = self.emit_options.clone();
     options.inline_source_map = false;
     let transpiled_source = parsed_source.transpile(&options)?;
-    Ok(transpiled_source.text.to_string())
+    Ok(transpiled_source.text)
   }
 
   /// A hashing function that takes the source code and uses the global emit

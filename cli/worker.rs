@@ -335,7 +335,7 @@ impl CliMainWorker {
       return Ok(None);
     }
 
-    let interface =
+    let watcher_communicator =
       self.shared.maybe_file_watcher_communicator.clone().unwrap();
 
     // TODO(bartlomieju): this is a code smell, refactor so we don't have
@@ -344,7 +344,7 @@ impl CliMainWorker {
 
     let session = self.worker.create_inspector_session().await;
     let mut hot_reload_manager =
-      HotReloadManager::new(emitter, session, interface);
+      HotReloadManager::new(emitter, session, watcher_communicator);
 
     self
       .worker
