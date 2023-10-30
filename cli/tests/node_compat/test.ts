@@ -16,7 +16,7 @@
 import { magenta } from "../../../test_util/std/fmt/colors.ts";
 import { pooledMap } from "../../../test_util/std/async/pool.ts";
 import { dirname, fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
-import { fail } from "../../../test_util/std/assert/mod.ts";
+import { fail } from "../../../test_util/std/testing/asserts.ts";
 import {
   config,
   getPathsFromTestSuites,

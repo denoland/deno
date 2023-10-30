@@ -9,7 +9,7 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
-} from "../../../test_util/std/assert/mod.ts";
+} from "../../../test_util/std/testing/asserts.ts";
 import { Deferred, deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 
