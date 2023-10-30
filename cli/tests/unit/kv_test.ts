@@ -55,9 +55,7 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void> | void) {
     // https://github.com/denoland/deno/issues/18363
     ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
-      const db: Deno.Kv = await Deno.openKv(
-        ":memory:",
-      );
+      const db: Deno.Kv = await Deno.openKv(":memory:");
       try {
         await fn(db);
       } finally {
@@ -73,9 +71,7 @@ function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
     // https://github.com/denoland/deno/issues/18363
     ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
-      const db: Deno.Kv = await Deno.openKv(
-        ":memory:",
-      );
+      const db: Deno.Kv = await Deno.openKv(":memory:");
       await fn(db);
     },
   });
@@ -2078,8 +2074,8 @@ Deno.test({
       async () => {
         await db.set(["some-key"], 1);
       },
-      TypeError,
-      "Metadata error: Failed to decode metadata: ",
+      Error,
+      "Failed to parse metadata: ",
     );
 
     db.close();
@@ -2097,8 +2093,8 @@ Deno.test({
       async () => {
         await db.set(["some-key"], 1);
       },
-      TypeError,
-      "Metadata error: Unsupported metadata version: 1000",
+      Error,
+      "Failed to parse metadata: unsupported metadata version: 1000",
     );
 
     db.close();

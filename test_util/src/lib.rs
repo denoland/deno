@@ -1267,9 +1267,7 @@ async fn main_server(
                 .map(|_| ReadRangeOutput { values: vec![] })
                 .collect(),
               read_disabled: false,
-              regions_if_read_disabled: vec![],
               read_is_strongly_consistent: true,
-              primary_if_not_strongly_consistent: "".into(),
             }
             .encode_to_vec(),
           ))
@@ -1310,7 +1308,7 @@ async fn main_server(
             AtomicWriteOutput {
               status: AtomicWriteStatus::AwSuccess.into(),
               versionstamp: vec![0u8; 10],
-              primary_if_write_disabled: "".into(),
+              failed_checks: vec![],
             }
             .encode_to_vec(),
           ))

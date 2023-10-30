@@ -35,11 +35,12 @@ impl MultiBackendDbHandler {
   >(
     default_storage_dir: Option<std::path::PathBuf>,
     versionstamp_rng_seed: Option<u64>,
+    http_options: crate::remote::HttpOptions,
   ) -> Self {
     Self::new(vec![
       (
         &["https://", "http://"],
-        Box::new(crate::remote::RemoteDbHandler::<P>::new()),
+        Box::new(crate::remote::RemoteDbHandler::<P>::new(http_options)),
       ),
       (
         &[""],

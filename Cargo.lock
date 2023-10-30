@@ -1432,9 +1432,12 @@ dependencies = [
  "base64 0.21.4",
  "chrono",
  "deno_core",
+ "deno_fetch",
  "deno_node",
+ "deno_tls",
  "deno_unsync 0.1.1",
  "denokv_proto",
+ "denokv_remote",
  "denokv_sqlite",
  "hex",
  "log",
@@ -1800,9 +1803,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e67151880f4edac77039c02ef54802ca02121cdeee491cb56d10690c67c55eb"
+checksum = "40733fc5665fa99dbcf04e743a8ea658be132761330cdaca41c91b3c9cd53e3a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1815,10 +1818,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "denokv_sqlite"
-version = "0.1.0"
+name = "denokv_remote"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aea1dc558b74e5b592d1e304f9ed23b0a3ef124243de0955c268e87de9fe7d1c"
+checksum = "628c02b90e3877ef4757696885224d4f08117574b95830db4458d1e32a6c2701"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "denokv_proto",
+ "log",
+ "prost",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "uuid 1.5.0",
+]
+
+[[package]]
+name = "denokv_sqlite"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6dbd93acd7631e4948d19e7021dc9e8cf3437857e79a4b06f26e4546c7d6438"
 dependencies = [
  "anyhow",
  "async-trait",

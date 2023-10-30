@@ -32,19 +32,19 @@ use deno_core::ToJsBuffer;
 use denokv_proto::decode_key;
 use denokv_proto::encode_key;
 use denokv_proto::AtomicWrite;
+use denokv_proto::Check;
 use denokv_proto::Consistency;
 use denokv_proto::Database;
 use denokv_proto::Enqueue;
 use denokv_proto::Key;
 use denokv_proto::KeyPart;
-use denokv_proto::KvCheck;
 use denokv_proto::KvEntry;
-use denokv_proto::KvMutation;
+use denokv_proto::KvValue;
+use denokv_proto::Mutation;
 use denokv_proto::MutationKind;
 use denokv_proto::QueueMessageHandle;
 use denokv_proto::ReadRange;
 use denokv_proto::SnapshotReadOptions;
-use denokv_proto::Value;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -165,25 +165,25 @@ enum ToV8Value {
   U64(BigInt),
 }
 
-impl TryFrom<FromV8Value> for Value {
+impl TryFrom<FromV8Value> for KvValue {
   type Error = AnyError;
   fn try_from(value: FromV8Value) -> Result<Self, AnyError> {
     Ok(match value {
-      FromV8Value::V8(buf) => Value::V8(buf.to_vec()),
-      FromV8Value::Bytes(buf) => Value::Bytes(buf.to_vec()),
+      FromV8Value::V8(buf) => KvValue::V8(buf.to_vec()),
+      FromV8Value::Bytes(buf) => KvValue::Bytes(buf.to_vec()),
       FromV8Value::U64(n) => {
-        Value::U64(num_bigint::BigInt::from(n).try_into()?)
+        KvValue::U64(num_bigint::BigInt::from(n).try_into()?)
       }
     })
   }
 }
 
-impl From<Value> for ToV8Value {
-  fn from(value: Value) -> Self {
+impl From<KvValue> for ToV8Value {
+  fn from(value: KvValue) -> Self {
     match value {
-      Value::V8(buf) => ToV8Value::V8(buf.into()),
-      Value::Bytes(buf) => ToV8Value::Bytes(buf.into()),
-      Value::U64(n) => ToV8Value::U64(num_bigint::BigInt::from(n).into()),
+      KvValue::V8(buf) => ToV8Value::V8(buf.into()),
+      KvValue::Bytes(buf) => ToV8Value::Bytes(buf.into()),
+      KvValue::U64(n) => ToV8Value::U64(num_bigint::BigInt::from(n).into()),
     }
   }
 }
@@ -382,7 +382,7 @@ where
 
 type V8KvCheck = (KvKey, Option<ByteString>);
 
-fn check_from_v8(value: V8KvCheck) -> Result<KvCheck, AnyError> {
+fn check_from_v8(value: V8KvCheck) -> Result<Check, AnyError> {
   let versionstamp = match value.1 {
     Some(data) => {
       let mut out = [0u8; 10];
@@ -392,7 +392,7 @@ fn check_from_v8(value: V8KvCheck) -> Result<KvCheck, AnyError> {
     }
     None => None,
   };
-  Ok(KvCheck {
+  Ok(Check {
     key: encode_v8_key(value.0)?,
     versionstamp,
   })
@@ -402,7 +402,7 @@ type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
 
 fn mutation_from_v8(
   (value, current_timstamp): (V8KvMutation, DateTime<Utc>),
-) -> Result<KvMutation, AnyError> {
+) -> Result<Mutation, AnyError> {
   let key = encode_v8_key(value.0)?;
   let kind = match (value.1.as_str(), value.2) {
     ("set", Some(value)) => MutationKind::Set(value.try_into()?),
@@ -417,7 +417,7 @@ fn mutation_from_v8(
       return Err(type_error(format!("invalid mutation '{op}' without value")))
     }
   };
-  Ok(KvMutation {
+  Ok(Mutation {
     key,
     kind,
     expire_at: value
@@ -643,12 +643,12 @@ where
   let checks = checks
     .into_iter()
     .map(check_from_v8)
-    .collect::<Result<Vec<KvCheck>, AnyError>>()
+    .collect::<Result<Vec<Check>, AnyError>>()
     .with_context(|| "invalid check")?;
   let mutations = mutations
     .into_iter()
     .map(|mutation| mutation_from_v8((mutation, current_timestamp)))
-    .collect::<Result<Vec<KvMutation>, AnyError>>()
+    .collect::<Result<Vec<Mutation>, AnyError>>()
     .with_context(|| "invalid mutation")?;
   let enqueues = enqueues
     .into_iter()
@@ -743,11 +743,11 @@ fn check_write_key_size(key: &[u8]) -> Result<usize, AnyError> {
   }
 }
 
-fn check_value_size(value: &Value) -> Result<usize, AnyError> {
+fn check_value_size(value: &KvValue) -> Result<usize, AnyError> {
   let payload = match value {
-    Value::Bytes(x) => x,
-    Value::V8(x) => x,
-    Value::U64(_) => return Ok(8),
+    KvValue::Bytes(x) => x,
+    KvValue::V8(x) => x,
+    KvValue::U64(_) => return Ok(8),
   };
 
   if payload.len() > MAX_VALUE_SIZE_BYTES {
