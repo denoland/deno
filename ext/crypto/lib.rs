@@ -38,16 +38,16 @@ use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
+use rsa::signature::RandomizedSigner;
+use rsa::signature::SignatureEncoding;
+use rsa::signature::Signer;
+use rsa::signature::Verifier;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
-use rsa::signature::RandomizedSigner;
-use rsa::signature::SignatureEncoding;
-use rsa::signature::Signer;
-use rsa::signature::Verifier;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
@@ -330,18 +330,15 @@ pub async fn op_crypto_verify_key(
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let verifying_key =
-            VerifyingKey::<Sha256>::new(public_key);
+          let verifying_key = VerifyingKey::<Sha256>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let verifying_key =
-            VerifyingKey::<Sha384>::new(public_key);
+          let verifying_key = VerifyingKey::<Sha384>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let verifying_key =
-            VerifyingKey::<Sha512>::new(public_key);
+          let verifying_key = VerifyingKey::<Sha512>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
       }

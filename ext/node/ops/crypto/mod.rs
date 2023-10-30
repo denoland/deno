@@ -23,13 +23,13 @@ use std::rc::Rc;
 use p224::NistP224;
 use p256::NistP256;
 use p384::NistP384;
-use rsa::Oaep;
-use rsa::Pkcs1v15Encrypt;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::signature::hazmat::PrehashSigner;
 use rsa::signature::hazmat::PrehashVerifier;
 use rsa::signature::SignatureEncoding;
+use rsa::Oaep;
+use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 use secp256k1::ecdh::SharedSecret;
@@ -208,16 +208,8 @@ pub fn op_node_private_decrypt(
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   match padding {
-    1 => Ok(
-      key
-        .decrypt(Pkcs1v15Encrypt, &msg)?
-        .into(),
-    ),
-    4 => Ok(
-      key
-        .decrypt(Oaep::new::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
+    4 => Ok(key.decrypt(Oaep::new::<sha1::Sha1>(), &msg)?.into()),
     _ => Err(type_error("Unknown padding")),
   }
 }
@@ -233,11 +225,7 @@ pub fn op_node_public_encrypt(
 
   let mut rng = rand::thread_rng();
   match padding {
-    1 => Ok(
-      key
-        .encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?
-        .into(),
-    ),
+    1 => Ok(key.encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?.into()),
     4 => Ok(
       key
         .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?

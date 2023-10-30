@@ -2,8 +2,8 @@
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
-use deno_core::error::AnyError;
 use deno_core::error::custom_error;
+use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
@@ -124,9 +124,14 @@ pub fn op_crypto_export_spki_ed25519(
     },
     subject_public_key: pubkey,
   };
-  Ok(key_info.to_vec().map_err(|_| {
-    custom_error("DOMExceptionOperationError", "Failed to export key")
-  })?.into())
+  Ok(
+    key_info
+      .to_vec()
+      .map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Failed to export key")
+      })?
+      .into(),
+  )
 }
 
 #[op2]
