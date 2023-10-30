@@ -13,7 +13,6 @@ use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decode;
-use spki::der::Encode;
 
 use crate::key::CryptoNamedCurve;
 use crate::shared::*;
