@@ -111,7 +111,7 @@ impl Emitter {
       ModuleSpecifier::to_file_path(specifier).unwrap(),
     )
     .await?;
-    let source_arc: Arc<str> = Arc::from(source_code.as_str());
+    let source_arc: Arc<str> = source_code.into();
     let parsed_source = self
       .parsed_source_cache
       .get_or_parse_module(specifier, source_arc, media_type)?;
