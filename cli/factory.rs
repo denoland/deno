@@ -66,7 +66,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 pub struct CliFactoryBuilder {
-  watcher_communicator: Option<WatcherCommunicator>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
 impl CliFactoryBuilder {
@@ -86,7 +86,7 @@ impl CliFactoryBuilder {
   pub async fn build_from_flags_for_watcher(
     mut self,
     flags: Flags,
-    watcher_communicator: WatcherCommunicator,
+    watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Result<CliFactory, AnyError> {
     self.watcher_communicator = Some(watcher_communicator);
     self.build_from_flags(flags).await
@@ -171,7 +171,7 @@ struct CliFactoryServices {
 }
 
 pub struct CliFactory {
-  watcher_communicator: Option<WatcherCommunicator>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }

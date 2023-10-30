@@ -40,7 +40,7 @@ use json_types::Status;
 /// force a full restart of a program by notifying the `FileWatcher`.
 pub struct HmrRunner {
   session: LocalInspectorSession,
-  watcher_communicator: WatcherCommunicator,
+  watcher_communicator: Arc<WatcherCommunicator>,
   script_ids: HashMap<String, String>,
   emitter: Arc<Emitter>,
 }
@@ -49,7 +49,7 @@ impl HmrRunner {
   pub fn new(
     emitter: Arc<Emitter>,
     session: LocalInspectorSession,
-    watcher_communicator: WatcherCommunicator,
+    watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Self {
     Self {
       session,

@@ -17,9 +17,11 @@ use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
@@ -151,21 +153,9 @@ pub struct WatcherCommunicator {
   /// Send a message to force a restart.
   restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
 
-  restart_mode: Arc<Mutex<WatcherRestartMode>>,
+  restart_mode: Mutex<WatcherRestartMode>,
 
   banner: String,
-}
-
-impl Clone for WatcherCommunicator {
-  fn clone(&self) -> Self {
-    Self {
-      paths_to_watch_tx: self.paths_to_watch_tx.clone(),
-      changed_paths_rx: self.changed_paths_rx.resubscribe(),
-      restart_tx: self.restart_tx.clone(),
-      restart_mode: self.restart_mode.clone(),
-      banner: self.banner.clone(),
-    }
-  }
 }
 
 impl WatcherCommunicator {
@@ -209,7 +199,7 @@ pub async fn watch_func<O, F>(
 where
   O: FnMut(
     Flags,
-    WatcherCommunicator,
+    Arc<WatcherCommunicator>,
     Option<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
@@ -249,7 +239,7 @@ pub async fn watch_recv<O, F>(
 where
   O: FnMut(
     Flags,
-    WatcherCommunicator,
+    Arc<WatcherCommunicator>,
     Option<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
@@ -267,25 +257,26 @@ where
     clear_screen,
   } = print_config;
 
-  let restart_mode = Arc::new(Mutex::new(restart_mode));
   let print_after_restart = create_print_after_restart_fn(banner, clear_screen);
-  let watcher_communicator = WatcherCommunicator {
+  let watcher_communicator = Arc::new(WatcherCommunicator {
     paths_to_watch_tx: paths_to_watch_tx.clone(),
     changed_paths_rx: changed_paths_rx.resubscribe(),
     restart_tx: restart_tx.clone(),
-    restart_mode: restart_mode.clone(),
+    restart_mode: Mutex::new(restart_mode),
     banner: colors::intense_blue(banner).to_string(),
-  };
+  });
   info!("{} {} started.", colors::intense_blue(banner), job_name);
 
-  let changed_paths = Arc::new(Mutex::new(None));
+  let changed_paths = Rc::new(RefCell::new(None));
   let changed_paths_ = changed_paths.clone();
+  let watcher_ = watcher_communicator.clone();
 
   deno_core::unsync::spawn(async move {
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
-      *changed_paths_.lock() = received_changed_paths.clone();
-      match *restart_mode.lock() {
+      *changed_paths_.borrow_mut() = received_changed_paths.clone();
+
+      match *watcher_.restart_mode.lock() {
         WatcherRestartMode::Automatic => {
           let _ = restart_tx.send(());
         }
@@ -317,7 +308,7 @@ where
     let operation_future = error_handler(operation(
       flags.clone(),
       watcher_communicator.clone(),
-      changed_paths.lock().take(),
+      changed_paths.borrow_mut().take(),
     )?);
 
     // don't reload dependencies after the first run
