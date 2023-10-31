@@ -107,6 +107,6 @@ if (common.isLinux || common.isOSX || common.isWindows) {
       fs.writeFile(path.join(dir, 'foo.txt'), 'foo', common.mustCall((err) => {
         if (err) assert.fail(err);
       }));
-    }, 1);
+    }, 20);
   }));
 }
