@@ -1412,8 +1412,13 @@ dependencies = [
  "base64 0.21.4",
  "chrono",
  "deno_core",
+ "deno_fetch",
  "deno_node",
+ "deno_tls",
  "deno_unsync 0.1.1",
+ "denokv_proto",
+ "denokv_remote",
+ "denokv_sqlite",
  "hex",
  "log",
  "num-bigint",
@@ -1774,6 +1779,64 @@ dependencies = [
  "deno_web",
  "rusqlite",
  "serde",
+]
+
+[[package]]
+name = "denokv_proto"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8952fb8c38c1dcd796d49b00030afb74aa184160ae86817b72a32a994c8e16f0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "num-bigint",
+ "prost",
+ "prost-build",
+ "serde",
+ "uuid 1.5.0",
+]
+
+[[package]]
+name = "denokv_remote"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edfc8447324d783b01e215bd5040ff9149c34d9715c7b7b5080dd648ebf1148a"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "denokv_proto",
+ "log",
+ "prost",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "uuid 1.5.0",
+]
+
+[[package]]
+name = "denokv_sqlite"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ec76b691ff069f14e56e3e053c2b2163540b27e4b60179f2b120064a7e4960d"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "denokv_proto",
+ "futures",
+ "log",
+ "num-bigint",
+ "rand 0.8.5",
+ "rusqlite",
+ "serde_json",
+ "tokio",
+ "uuid 1.5.0",
 ]
 
 [[package]]
@@ -5621,6 +5684,7 @@ dependencies = [
  "base64 0.21.4",
  "bytes",
  "console_static_text",
+ "denokv_proto",
  "fastwebsockets",
  "flate2",
  "futures",
@@ -5743,9 +5807,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.32.0"
+version = "1.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17ed6077ed6cd6c74735e21f37eb16dc3935f96878b1fe961074089cc80893f9"
+checksum = "4f38200e3ef7995e5ef13baec2f432a6da0aa9ac495b2c0e8f3b7eec2c92d653"
 dependencies = [
  "backtrace",
  "bytes",
@@ -5773,9 +5837,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-metrics"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4b2fc67d5dec41db679b9b052eb572269616926040b7831e32c8a152df77b84"
+checksum = "eace09241d62c98b7eeb1107d4c5c64ca3bd7da92e8c218c153ab3a78f9be112"
 dependencies = [
  "futures-util",
  "pin-project-lite",
