@@ -1484,6 +1484,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_native_certs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9c7c5a7f03be0fccb523765d76aa6758760f3163459ce777ba3979596db0998"
+dependencies = [
+ "dlopen",
+ "dlopen_derive",
+ "once_cell",
+ "rustls-native-certs",
+ "rustls-pemfile",
+]
+
+[[package]]
 name = "deno_net"
 version = "0.113.0"
 dependencies = [
@@ -1687,9 +1700,9 @@ name = "deno_tls"
 version = "0.108.0"
 dependencies = [
  "deno_core",
+ "deno_native_certs",
  "once_cell",
  "rustls",
- "rustls-native-certs",
  "rustls-pemfile",
  "rustls-webpki",
  "serde",
