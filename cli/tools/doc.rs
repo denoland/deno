@@ -34,8 +34,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let capturing_parser =
     CapturingModuleParser::new(Some(&source_parser), &store);
 
-  // TODO(bartlomieju): rewrite to return an IndexMap
-  let (doc_nodes, specifier) = match doc_flags.source_files {
+  let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
       let source_file_specifier =
         ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
@@ -72,7 +71,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       )?;
       let nodes = doc_parser.parse_module(&source_file_specifier)?.definitions;
 
-      (nodes, source_file_specifier)
+      IndexMap::from([(source_file_specifier, nodes)])
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_builder = factory.module_graph_builder().await?;
@@ -109,29 +108,31 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         },
       )?;
 
-      let mut doc_nodes = vec![];
+      let mut doc_nodes_by_url =
+        IndexMap::with_capacity(module_specifiers.len());
 
       for module_specifier in &module_specifiers {
         let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
-        doc_nodes.extend_from_slice(&nodes);
+        doc_nodes_by_url.insert(module_specifier.clone(), nodes);
       }
 
-      (doc_nodes, module_specifiers[0].clone())
+      doc_nodes_by_url
     }
   };
 
   if let Some(html_options) = doc_flags.html {
-    generate_docs_directory(specifier, doc_nodes, html_options)
+    generate_docs_directory(&doc_nodes_by_url, html_options)
       .boxed_local()
       .await
   } else {
+    let doc_nodes: Vec<doc::DocNode> =
+      doc_nodes_by_url.values().cloned().flatten().collect();
     print_docs(doc_flags, doc_nodes)
   }
 }
 
 async fn generate_docs_directory(
-  specifier: ModuleSpecifier,
-  doc_nodes: Vec<deno_doc::DocNode>,
+  doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: DocHtmlFlag,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
@@ -141,8 +142,6 @@ async fn generate_docs_directory(
     package_name: html_options.name,
   };
 
-  // TODO(bartlomieju): parse all files here
-  let doc_nodes_by_url = IndexMap::from([(specifier, doc_nodes)]);
   let html = deno_doc::html::generate(options.clone(), &doc_nodes_by_url)?;
 
   let path = &output_dir_resolved;
