@@ -48,7 +48,7 @@ test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
-denokv_proto = "0.2.0"
+denokv_proto = "0.2.1"
 denokv_sqlite = "0.2.1"
 denokv_remote = "0.2.3"
 
