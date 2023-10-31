@@ -66,7 +66,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 pub struct CliFactoryBuilder {
-  watcher_communicator: Option<WatcherCommunicator>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
 impl CliFactoryBuilder {
@@ -86,7 +86,7 @@ impl CliFactoryBuilder {
   pub async fn build_from_flags_for_watcher(
     mut self,
     flags: Flags,
-    watcher_communicator: WatcherCommunicator,
+    watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Result<CliFactory, AnyError> {
     self.watcher_communicator = Some(watcher_communicator);
     self.build_from_flags(flags).await
@@ -171,7 +171,7 @@ struct CliFactoryServices {
 }
 
 pub struct CliFactory {
-  watcher_communicator: Option<WatcherCommunicator>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }
@@ -620,6 +620,11 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
+    let maybe_file_watcher_communicator = if self.options.has_hmr() {
+      Some(self.watcher_communicator.clone().unwrap())
+    } else {
+      None
+    };
 
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
@@ -643,6 +648,8 @@ impl CliFactory {
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
+      Some(self.emitter()?.clone()),
+      maybe_file_watcher_communicator,
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
@@ -659,6 +666,7 @@ impl CliFactory {
       coverage_dir: self.options.coverage_dir(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
+      hmr: self.options.has_hmr(),
       inspect_brk: self.options.inspect_brk().is_some(),
       inspect_wait: self.options.inspect_wait().is_some(),
       is_inspecting: self.options.is_inspecting(),

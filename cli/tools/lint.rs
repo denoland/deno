@@ -59,10 +59,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     }
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig {
-        job_name: "Lint".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
+      file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let lint_flags = lint_flags.clone();
         Ok(async move {

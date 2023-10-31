@@ -212,11 +212,13 @@ impl RunFlags {
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlags {
+  pub hmr: bool,
   pub no_clear_screen: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlagsWithPaths {
+  pub hmr: bool,
   pub paths: Vec<PathBuf>,
   pub no_clear_screen: bool,
 }
@@ -1860,6 +1862,7 @@ fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
     .arg(watch_arg(true))
+    .arg(hmr_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     .arg(
@@ -2726,6 +2729,33 @@ fn seed_arg() -> Arg {
     .value_name("NUMBER")
     .help("Set the random number generator seed")
     .value_parser(value_parser!(u64))
+}
+
+fn hmr_arg(takes_files: bool) -> Arg {
+  let arg = Arg::new("hmr")
+    .long("unstable-hmr")
+    .help("UNSTABLE: Watch for file changes and hot replace modules")
+    .conflicts_with("watch");
+
+  if takes_files {
+    arg
+      .value_name("FILES")
+      .num_args(0..)
+      .value_parser(value_parser!(PathBuf))
+      .use_value_delimiter(true)
+      .require_equals(true)
+      .long_help(
+        "Watch for file changes and restart process automatically.
+Local files from entry point module graph are watched by default.
+Additional paths might be watched by passing them as arguments to this flag.",
+      )
+      .value_hint(ValueHint::AnyPath)
+  } else {
+    arg.action(ArgAction::SetTrue).long_help(
+      "Watch for file changes and restart process automatically.
+      Only local files from entry point module graph are watched.",
+    )
+  }
 }
 
 fn watch_arg(takes_files: bool) -> Arg {
@@ -3849,6 +3879,7 @@ fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
 fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
   if matches.get_flag("watch") {
     Some(WatchFlags {
+      hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
   } else {
@@ -3859,10 +3890,19 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
 fn watch_arg_parse_with_paths(
   matches: &mut ArgMatches,
 ) -> Option<WatchFlagsWithPaths> {
+  if let Some(paths) = matches.remove_many::<PathBuf>("watch") {
+    return Some(WatchFlagsWithPaths {
+      paths: paths.collect(),
+      hmr: false,
+      no_clear_screen: matches.get_flag("no-clear-screen"),
+    });
+  }
+
   matches
-    .remove_many::<PathBuf>("watch")
-    .map(|f| WatchFlagsWithPaths {
-      paths: f.collect(),
+    .remove_many::<PathBuf>("hmr")
+    .map(|paths| WatchFlagsWithPaths {
+      paths: paths.collect(),
+      hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
 }
@@ -3980,6 +4020,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
+            hmr: false,
             paths: vec![],
             no_clear_screen: false,
           }),
@@ -3987,6 +4028,79 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: true,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable-hmr",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![],
+            no_clear_screen: true,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable-hmr=foo.txt",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![PathBuf::from("foo.txt")],
+            no_clear_screen: true,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--hmr", "--watch", "script.ts"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -4000,6 +4114,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
+            hmr: false,
             paths: vec![PathBuf::from("file1"), PathBuf::from("file2")],
             no_clear_screen: false,
           }),
@@ -4026,6 +4141,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
+            hmr: false,
             paths: vec![],
             no_clear_screen: true,
           })
@@ -4347,9 +4463,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -4374,6 +4488,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           })
         }),
@@ -4405,9 +4520,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -4461,9 +4574,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ext: Some("ts".to_string()),
@@ -4587,9 +4698,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: false,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         ..Flags::default()
       }
@@ -4621,6 +4730,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           })
         }),
@@ -5823,9 +5933,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -5849,6 +5957,7 @@ mod tests {
           source_file: "source.ts".to_string(),
           out_file: None,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           }),
         }),
@@ -7017,9 +7126,7 @@ mod tests {
           concurrent_jobs: None,
           trace_ops: false,
           coverage_dir: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
         }),
@@ -7049,9 +7156,7 @@ mod tests {
           concurrent_jobs: None,
           trace_ops: false,
           coverage_dir: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
         }),
@@ -7084,6 +7189,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           }),
           reporter: Default::default(),
@@ -7851,9 +7957,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,

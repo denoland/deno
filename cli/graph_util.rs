@@ -681,12 +681,12 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
 
 #[derive(Clone, Debug)]
 pub struct FileWatcherReporter {
-  watcher_communicator: WatcherCommunicator,
+  watcher_communicator: Arc<WatcherCommunicator>,
   file_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl FileWatcherReporter {
-  pub fn new(watcher_communicator: WatcherCommunicator) -> Self {
+  pub fn new(watcher_communicator: Arc<WatcherCommunicator>) -> Self {
     Self {
       watcher_communicator,
       file_paths: Default::default(),
