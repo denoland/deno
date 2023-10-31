@@ -282,7 +282,7 @@ Deno.test(async function websocketTlsSocketWorks() {
   const cert = await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt");
   const key = await Deno.readTextFile("cli/tests/testdata/tls/localhost.key");
 
-  let messages: any[] = [], errors: any[] = [];
+  const messages = [], errors = [];
   const promise = new Promise((okay, nope) => {
     const ac = new AbortController();
     const server = Deno.serve({
