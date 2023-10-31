@@ -29,6 +29,9 @@ use http::Request;
 use http::Uri;
 use hyper::Body;
 use once_cell::sync::Lazy;
+use rustls_tokio_stream::rustls::RootCertStore;
+use rustls_tokio_stream::rustls::ServerName;
+use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -36,6 +39,7 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -44,9 +48,6 @@ use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls::RootCertStore;
-use tokio_rustls::rustls::ServerName;
-use tokio_rustls::TlsConnector;
 
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
@@ -284,11 +285,16 @@ where
         unsafely_ignore_certificate_errors,
         None,
       )?;
-      let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
-      let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      handshake(cancel_resource, request, tls_socket).await?
+      let mut tls_connector = TlsStream::new_client_side(
+        tcp_socket,
+        tls_config.into(),
+        dnsname,
+        NonZeroUsize::new(65536),
+      );
+      let _hs = tls_connector.handshake().await?;
+      handshake(cancel_resource, request, tls_connector).await?
     }
     _ => unreachable!(),
   };
