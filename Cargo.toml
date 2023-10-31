@@ -129,7 +129,7 @@ ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.8"
 rustls-pemfile = "1.0.0"
-rustls-tokio-stream = "0.2.4"
+rustls-tokio-stream = "=0.2.6"
 rustls-webpki = "0.101.4"
 rustls-native-certs = "0.6.2"
 webpki-roots = "0.25.2"
