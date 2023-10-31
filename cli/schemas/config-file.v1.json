@@ -54,7 +54,8 @@
             "react",
             "react-jsx",
             "react-jsxdev",
-            "react-native"
+            "react-native",
+            "precompile"
           ]
         },
         "jsxFactory": {
