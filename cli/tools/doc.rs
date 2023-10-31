@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
@@ -20,8 +21,54 @@ use deno_doc as doc;
 use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
+use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
 use indexmap::IndexMap;
+use std::sync::Arc;
+
+async fn generate_doc_nodes_for_builtin_types(
+  doc_flags: DocFlags,
+  cli_options: &Arc<CliOptions>,
+  capturing_parser: CapturingModuleParser<'_>,
+  analyzer: &dyn ModuleAnalyzer,
+) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
+  let source_file_specifier =
+    ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
+  let content = get_types_declaration_file_text(cli_options.unstable());
+  let mut loader = deno_graph::source::MemoryLoader::new(
+    vec![(
+      source_file_specifier.to_string(),
+      deno_graph::source::Source::Module {
+        specifier: source_file_specifier.to_string(),
+        content,
+        maybe_headers: None,
+      },
+    )],
+    Vec::new(),
+  );
+  let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
+  graph
+    .build(
+      vec![source_file_specifier.clone()],
+      &mut loader,
+      deno_graph::BuildOptions {
+        module_analyzer: Some(analyzer),
+        ..Default::default()
+      },
+    )
+    .await;
+  let doc_parser = doc::DocParser::new(
+    &graph,
+    capturing_parser,
+    doc::DocParserOptions {
+      diagnostics: false,
+      private: doc_flags.private,
+    },
+  )?;
+  let nodes = doc_parser.parse_module(&source_file_specifier)?.definitions;
+
+  Ok(IndexMap::from([(source_file_specifier, nodes)]))
+}
 
 pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
@@ -36,42 +83,13 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
   let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
-      let source_file_specifier =
-        ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
-      let content = get_types_declaration_file_text(cli_options.unstable());
-      let mut loader = deno_graph::source::MemoryLoader::new(
-        vec![(
-          source_file_specifier.to_string(),
-          deno_graph::source::Source::Module {
-            specifier: source_file_specifier.to_string(),
-            content,
-            maybe_headers: None,
-          },
-        )],
-        Vec::new(),
-      );
-      let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
-      graph
-        .build(
-          vec![source_file_specifier.clone()],
-          &mut loader,
-          deno_graph::BuildOptions {
-            module_analyzer: Some(&analyzer),
-            ..Default::default()
-          },
-        )
-        .await;
-      let doc_parser = doc::DocParser::new(
-        &graph,
+      generate_doc_nodes_for_builtin_types(
+        doc_flags.clone(),
+        cli_options,
         capturing_parser,
-        doc::DocParserOptions {
-          diagnostics: false,
-          private: doc_flags.private,
-        },
-      )?;
-      let nodes = doc_parser.parse_module(&source_file_specifier)?.definitions;
-
-      IndexMap::from([(source_file_specifier, nodes)])
+        &analyzer,
+      )
+      .await?
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_builder = factory.module_graph_builder().await?;
