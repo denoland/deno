@@ -38,7 +38,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.31.1", features = ["transpiling"] }
+deno_ast = { version = "0.31.2", features = ["transpiling"] }
 deno_core = { version = "0.223.0" }
 
 deno_runtime = { version = "0.129.0", path = "./runtime" }
@@ -332,4 +332,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_config = { git = "https://github.com/denoland/deno_config", branch = "precompile_jsx" }
+deno_config = { git = "https://github.com/denoland/deno_config", branch = "main" }
