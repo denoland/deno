@@ -4,7 +4,6 @@
 // Copyright 2020 The Evcxr Authors. MIT license.
 
 use bytes::Bytes;
-use chrono::Utc;
 use data_encoding::HEXLOWER;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -14,6 +13,8 @@ use deno_core::serde_json::json;
 use ring::hmac;
 use std::fmt;
 use uuid::Uuid;
+
+use crate::util::time::utc_now;
 
 pub(crate) struct Connection<S> {
   pub(crate) socket: S,
@@ -177,7 +178,7 @@ impl JupyterMessage {
     header["msg_type"] = serde_json::Value::String(msg_type.to_owned());
     header["username"] = serde_json::Value::String("kernel".to_owned());
     header["msg_id"] = serde_json::Value::String(Uuid::new_v4().to_string());
-    header["date"] = serde_json::Value::String(Utc::now().to_rfc3339());
+    header["date"] = serde_json::Value::String(utc_now().to_rfc3339());
 
     JupyterMessage {
       zmq_identities: Vec::new(),

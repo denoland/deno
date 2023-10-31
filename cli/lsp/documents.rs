@@ -37,9 +37,11 @@ use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
+use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -899,6 +901,7 @@ pub struct UpdateDocumentConfigOptions<'a> {
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
   pub maybe_package_json: Option<&'a PackageJson>,
+  pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
 
@@ -955,16 +958,17 @@ impl Documents {
       file_system_docs: Default::default(),
       resolver_config_hash: 0,
       imports: Default::default(),
-      resolver: Arc::new(CliGraphResolver::new(
-        None,
-        Arc::new(PackageJsonDepsProvider::default()),
-        CliGraphResolverOptions {
-          maybe_jsx_import_source_config: None,
-          maybe_import_map: None,
-          maybe_vendor_dir: None,
-          bare_node_builtins_enabled: false,
-        },
-      )),
+      resolver: Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+        fs: Arc::new(RealFs),
+        node_resolver: None,
+        npm_resolver: None,
+        cjs_resolutions: None,
+        package_json_deps_provider: Arc::new(PackageJsonDepsProvider::default()),
+        maybe_jsx_import_source_config: None,
+        maybe_import_map: None,
+        maybe_vendor_dir: None,
+        bare_node_builtins_enabled: false,
+      })),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(cache)),
@@ -1329,7 +1333,7 @@ impl Documents {
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
         // this in order to catch if the type of package_json_deps ever changes
-        // from a sorted/deterministic IndexMap to something else.
+        // from a deterministic IndexMap to something else.
         let package_json_deps: &IndexMap<_, _> = *package_json_deps;
         for (key, value) in package_json_deps {
           hasher.write_hashable(key);
@@ -1364,27 +1368,28 @@ impl Documents {
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
-    self.resolver = Arc::new(CliGraphResolver::new(
-      options.npm_resolver,
-      deps_provider,
-      CliGraphResolverOptions {
-        maybe_jsx_import_source_config: maybe_jsx_config,
-        maybe_import_map: options.maybe_import_map,
-        maybe_vendor_dir: options
-          .maybe_config_file
-          .and_then(|c| c.vendor_dir_path())
-          .as_ref(),
-        bare_node_builtins_enabled: options
-          .maybe_config_file
-          .map(|config| {
-            config
-              .json
-              .unstable
-              .contains(&"bare-node-builtins".to_string())
-          })
-          .unwrap_or(false),
-      },
-    ));
+    self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
+      fs: Arc::new(RealFs),
+      node_resolver: options.node_resolver,
+      npm_resolver: options.npm_resolver,
+      cjs_resolutions: None, // only used for runtime
+      package_json_deps_provider: deps_provider,
+      maybe_jsx_import_source_config: maybe_jsx_config,
+      maybe_import_map: options.maybe_import_map,
+      maybe_vendor_dir: options
+        .maybe_config_file
+        .and_then(|c| c.vendor_dir_path())
+        .as_ref(),
+      bare_node_builtins_enabled: options
+        .maybe_config_file
+        .map(|config| {
+          config
+            .json
+            .unstable
+            .contains(&"bare-node-builtins".to_string())
+        })
+        .unwrap_or(false),
+    }));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         options.maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -2194,6 +2199,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        node_resolver: None,
         npm_resolver: None,
       });
 
@@ -2235,6 +2241,7 @@ console.log(b, "hello deno");
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
         maybe_package_json: None,
+        node_resolver: None,
         npm_resolver: None,
       });
 

@@ -5,6 +5,7 @@ use crate::args::Lockfile;
 use crate::args::TsTypeLib;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
+use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
@@ -27,6 +28,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
+use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -182,10 +184,18 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   }
 }
 
+pub struct CreateGraphOptions<'a> {
+  pub graph_kind: GraphKind,
+  pub roots: Vec<ModuleSpecifier>,
+  pub loader: &'a mut dyn Loader,
+  pub analyzer: &'a dyn ModuleAnalyzer,
+}
+
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  module_info_cache: Arc<ModuleInfoCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -201,6 +211,7 @@ impl ModuleGraphBuilder {
     options: Arc<CliOptions>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
+    module_info_cache: Arc<ModuleInfoCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -213,6 +224,7 @@ impl ModuleGraphBuilder {
       options,
       resolver,
       npm_resolver,
+      module_info_cache,
       parsed_source_cache,
       lockfile,
       maybe_file_watcher_reporter,
@@ -223,35 +235,61 @@ impl ModuleGraphBuilder {
     }
   }
 
+  pub async fn create_graph(
+    &self,
+    graph_kind: GraphKind,
+    roots: Vec<ModuleSpecifier>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let mut cache = self.create_graph_loader();
+    self
+      .create_graph_with_loader(graph_kind, roots, &mut cache)
+      .await
+  }
+
   pub async fn create_graph_with_loader(
     &self,
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let store = self.parsed_source_cache.as_store();
+    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
+    self
+      .create_graph_with_options(CreateGraphOptions {
+        graph_kind,
+        roots,
+        loader,
+        analyzer: &analyzer,
+      })
+      .await
+  }
+
+  pub async fn create_graph_with_options(
+    &self,
+    options: CreateGraphOptions<'_>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
 
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let analyzer = self.parsed_source_cache.as_analyzer();
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
 
-    let mut graph = ModuleGraph::new(graph_kind);
+    let mut graph = ModuleGraph::new(options.graph_kind);
     self
       .build_graph_with_npm_resolution(
         &mut graph,
-        roots,
-        loader,
+        options.roots,
+        options.loader,
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&*analyzer),
+          module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
           // todo(dsherret): workspace support
           workspace_members: vec![],
@@ -277,7 +315,8 @@ impl ModuleGraphBuilder {
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let analyzer = self.parsed_source_cache.as_analyzer();
+    let store = self.parsed_source_cache.as_store();
+    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
     let graph_kind = self.options.type_check_mode().as_graph_kind();
     let mut graph = ModuleGraph::new(graph_kind);
     let maybe_file_watcher_reporter = self
@@ -295,7 +334,7 @@ impl ModuleGraphBuilder {
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&*analyzer),
+          module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
           // todo(dsherret): workspace support
           workspace_members: vec![],
@@ -435,21 +474,10 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
-      self.parsed_source_cache.clone(),
+      self.npm_resolver.clone(),
+      self.module_info_cache.clone(),
       permissions,
-      self.options.node_modules_dir_specifier(),
     )
-  }
-
-  pub async fn create_graph(
-    &self,
-    graph_kind: GraphKind,
-    roots: Vec<ModuleSpecifier>,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.create_graph_loader();
-    self
-      .create_graph_with_loader(graph_kind, roots, &mut cache)
-      .await
   }
 }
 
@@ -653,12 +681,12 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
 
 #[derive(Clone, Debug)]
 pub struct FileWatcherReporter {
-  watcher_communicator: WatcherCommunicator,
+  watcher_communicator: Arc<WatcherCommunicator>,
   file_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl FileWatcherReporter {
-  pub fn new(watcher_communicator: WatcherCommunicator) -> Self {
+  pub fn new(watcher_communicator: Arc<WatcherCommunicator>) -> Self {
     Self {
       watcher_communicator,
       file_paths: Default::default(),
