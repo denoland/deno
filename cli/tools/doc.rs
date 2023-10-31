@@ -60,8 +60,14 @@ pub async fn print_docs(
           },
         )
         .await;
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          private: doc_flags.private,
+          diagnostics: false,
+        },
+      )?;
       doc_parser.parse_module(&source_file_specifier)?.definitions
     }
     DocSourceFileFlag::Paths(source_files) => {
@@ -90,8 +96,14 @@ pub async fn print_docs(
         graph_lock_or_exit(&graph, &mut lockfile.lock());
       }
 
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          private: doc_flags.private,
+          diagnostics: false,
+        },
+      )?;
 
       let mut doc_nodes = vec![];
 
