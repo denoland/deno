@@ -688,7 +688,7 @@ function serveHttpOn(context, callback) {
     async shutdown() {
       if (!context.closing && !context.closed) {
         // Shut this HTTP server down gracefully
-        context.closing = op_http_close(rid, true);
+        context.closing = op_http_close(context.serverRid, true);
       }
       await context.closing;
       context.closed = true;
