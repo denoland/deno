@@ -32,6 +32,7 @@ const {
   StringPrototypeSubstring,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
+  Symbol,
   TypeError,
 } = primordials;
 import { URLPrototype } from "ext:deno_url/00_url.js";
