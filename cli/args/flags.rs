@@ -1368,7 +1368,8 @@ Show documentation for runtime built-ins:
             .long("filter")
             .help("Dot separated path to symbol")
             .required(false)
-            .conflicts_with("json"),
+            .conflicts_with("json")
+            .conflicts_with("lint"),
         )
         .arg(
           Arg::new("lint")
