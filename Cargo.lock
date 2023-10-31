@@ -1508,6 +1508,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_net",
+ "deno_whoami",
  "digest 0.10.7",
  "dsa",
  "ecb",
@@ -1549,7 +1550,6 @@ dependencies = [
  "tokio",
  "typenum",
  "url",
- "whoami",
  "winapi",
  "x25519-dalek",
  "x509-parser",
@@ -1773,6 +1773,16 @@ dependencies = [
  "deno_web",
  "rusqlite",
  "serde",
+]
+
+[[package]]
+name = "deno_whoami"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e75e4caa92b98a27f09c671d1399aee0f5970aa491b9a598523aac000a2192e3"
+dependencies = [
+ "libc",
+ "whoami",
 ]
 
 [[package]]
