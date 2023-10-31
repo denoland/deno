@@ -115,7 +115,6 @@ pub fn ts_config_to_emit_options(
       "react-jsx" => (true, true, false, false),
       "react-jsxdev" => (true, true, true, false),
       "precompile" => (false, false, false, true),
-      "precompile-dev" => (false, false, true, true),
       _ => (false, false, false, false),
     };
   deno_ast::EmitOptions {
