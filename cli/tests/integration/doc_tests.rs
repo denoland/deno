@@ -114,7 +114,7 @@ fn deno_doc_html() {
       "doc",
       "--html",
       "--name=MyLib",
-      &format!("--output={}", temp_dir.path().to_string_lossy().to_string()),
+      &format!("--output={}", temp_dir.path().to_string_lossy()),
       "doc/referenced_private_types_fixed.ts",
     ])
     .split_output()

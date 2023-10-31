@@ -100,7 +100,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let maybe_lockfile = factory.maybe_lockfile();
 
       let expanded_globs =
-        expand_globs(source_files.iter().map(|f| PathBuf::from(f)).collect())?;
+        expand_globs(source_files.iter().map(PathBuf::from).collect())?;
       let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
         expanded_globs
           .iter()
