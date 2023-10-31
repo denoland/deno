@@ -437,8 +437,6 @@ function fastSyncResponseOrStream(req, respBody, status) {
  */
 function mapToCallback(context, callback, onError) {
   const signal = context.abortController.signal;
-  const hasCallback = callback.length > 0;
-  const hasOneCallback = callback.length === 1;
 
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
@@ -446,20 +444,11 @@ function mapToCallback(context, callback, onError) {
     let innerRequest;
     let response;
     try {
-      if (hasCallback) {
-        innerRequest = new InnerRequest(req, context);
-        const request = fromInnerRequest(innerRequest, signal, "immutable");
-        if (hasOneCallback) {
-          response = await callback(request);
-        } else {
-          response = await callback(
-            request,
-            new ServeHandlerInfo(innerRequest),
-          );
-        }
-      } else {
-        response = await callback();
-      }
+      innerRequest = new InnerRequest(req, context);
+      response = await callback(
+        fromInnerRequest(innerRequest, signal, "immutable"),
+        new ServeHandlerInfo(innerRequest),
+      );
     } catch (error) {
       try {
         response = await onError(error);

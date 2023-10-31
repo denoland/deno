@@ -21,8 +21,61 @@ Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
   const promise = deferred();
   const ws = new WebSocket(new URL("ws://localhost:4242/"));
   assertEquals(ws.url, "ws://localhost:4242/");
-  ws.onerror = () => fail();
+  ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => ws.close();
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketSendLargePacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  assertEquals(ws.url, "wss://localhost:4243/");
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send("a".repeat(65000));
+  };
+  ws.onmessage = () => {
+    ws.close();
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketSendLargeBinaryPacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  assertEquals(ws.url, "wss://localhost:4243/");
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send(new Uint8Array(65000));
+  };
+  ws.onmessage = (msg) => {
+    console.log(msg);
+    ws.close();
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketSendLargeBlobPacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  assertEquals(ws.url, "wss://localhost:4243/");
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send(new Blob(["a".repeat(65000)]));
+  };
+  ws.onmessage = (msg) => {
+    console.log(msg);
+    ws.close();
+  };
   ws.onclose = () => {
     promise.resolve();
   };
@@ -35,7 +88,7 @@ Deno.test(async function websocketPingPong() {
   const promise = deferred();
   const ws = new WebSocket("ws://localhost:4245/");
   assertEquals(ws.url, "ws://localhost:4245/");
-  ws.onerror = () => fail();
+  ws.onerror = (e) => promise.reject(e);
   ws.onmessage = (e) => {
     ws.send(e.data);
   };
@@ -144,7 +197,9 @@ Deno.test({
   const ws = new WebSocket(serveUrl);
   assertEquals(ws.url, serveUrl);
   ws.onerror = () => fail();
-  ws.onmessage = () => ws.send("bye");
+  ws.onmessage = (m: MessageEvent) => {
+    if (m.data == "Hello") ws.send("bye");
+  };
   ws.onclose = () => {
     promise.resolve();
   };

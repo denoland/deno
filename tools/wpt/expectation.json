@@ -2249,26 +2249,8 @@
       "hmac.https.any.worker.html": true,
       "rsa_pkcs.https.any.html": true,
       "rsa_pkcs.https.any.worker.html": true,
-      "rsa_pss.https.any.html": [
-        "RSA-PSS with SHA-1 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-1, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512, salted verification failure with wrong saltLength"
-      ],
-      "rsa_pss.https.any.worker.html": [
-        "RSA-PSS with SHA-1 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512 and no salt verification failure with wrong saltLength",
-        "RSA-PSS with SHA-1, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-256, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-384, salted verification failure with wrong saltLength",
-        "RSA-PSS with SHA-512, salted verification failure with wrong saltLength"
-      ],
+      "rsa_pss.https.any.html": true,
+      "rsa_pss.https.any.worker.html": true,
       "eddsa.https.any.html": [
         "Sign and verify using generated Ed448 keys.",
         "importVectorKeys step: EdDSA Ed448 verification",
@@ -3161,32 +3143,20 @@
     "transform-streams": {
       "backpressure.any.html": true,
       "backpressure.any.worker.html": true,
-      "errors.any.html": [
-        "controller.error() should close writable immediately after readable.cancel()"
-      ],
-      "errors.any.worker.html": [
-        "controller.error() should close writable immediately after readable.cancel()"
-      ],
+      "errors.any.html": true,
+      "errors.any.worker.html": true,
       "flush.any.html": true,
       "flush.any.worker.html": true,
-      "general.any.html": [
-        "terminate() should abort writable immediately after readable.cancel()"
-      ],
-      "general.any.worker.html": [
-        "terminate() should abort writable immediately after readable.cancel()"
-      ],
+      "general.any.html": true,
+      "general.any.worker.html": true,
       "lipfuzz.any.html": true,
       "lipfuzz.any.worker.html": true,
       "patched-global.any.html": true,
       "patched-global.any.worker.html": true,
       "properties.any.html": true,
       "properties.any.worker.html": true,
-      "reentrant-strategies.any.html": [
-        "writer.abort() inside size() should work"
-      ],
-      "reentrant-strategies.any.worker.html": [
-        "writer.abort() inside size() should work"
-      ],
+      "reentrant-strategies.any.html": true,
+      "reentrant-strategies.any.worker.html": true,
       "strategies.any.html": true,
       "strategies.any.worker.html": true,
       "terminate.any.html": true,
@@ -8192,42 +8162,30 @@
     "send-many-64K-messages-with-backpressure.any.worker.html?wss": true,
     "stream": {
       "tentative": {
-        "abort.any.html?wpt_flags=h2": false,
-        "abort.any.html?wss": false,
-        "abort.any.worker.html?wpt_flags=h2": false,
-        "abort.any.worker.html?wss": false,
+        "abort.any.html?wpt_flags=h2": [
+          "abort after connect should do nothing"
+        ],
+        "abort.any.html?wss": true,
+        "abort.any.worker.html?wpt_flags=h2": [
+          "abort after connect should do nothing"
+        ],
+        "abort.any.worker.html?wss": true,
         "backpressure-receive.any.html?wpt_flags=h2": false,
-        "backpressure-receive.any.html?wss": false,
+        "backpressure-receive.any.html?wss": true,
         "backpressure-receive.any.worker.html?wpt_flags=h2": false,
-        "backpressure-receive.any.worker.html?wss": false,
+        "backpressure-receive.any.worker.html?wss": true,
         "backpressure-send.any.html?wpt_flags=h2": false,
-        "backpressure-send.any.html?wss": false,
+        "backpressure-send.any.html?wss": true,
         "backpressure-send.any.worker.html?wpt_flags=h2": false,
-        "backpressure-send.any.worker.html?wss": false,
+        "backpressure-send.any.worker.html?wss": true,
         "close.any.html?wpt_flags=h2": false,
-        "close.any.html?wss": false,
+        "close.any.html?wss": true,
         "close.any.worker.html?wpt_flags=h2": false,
-        "close.any.worker.html?wss": false,
-        "constructor.any.html?wpt_flags=h2": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ],
-        "constructor.any.html?wss": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ],
-        "constructor.any.worker.html?wpt_flags=h2": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ],
-        "constructor.any.worker.html?wss": [
-          "setting a protocol in the constructor should work",
-          "connection failure should reject the promises",
-          "wss.opened should resolve to the right types"
-        ]
+        "close.any.worker.html?wss": true,
+        "constructor.any.html?wpt_flags=h2": false,
+        "constructor.any.html?wss": true,
+        "constructor.any.worker.html?wpt_flags=h2": false,
+        "constructor.any.worker.html?wss": true
       }
     }
   },
