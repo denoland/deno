@@ -3,7 +3,8 @@
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
-import { Duplex } from "node:stream";
+import { Socket } from "node:net";
+import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 const { Error } = globalThis.__bootstrap.primordials;
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
@@ -24,7 +25,7 @@ class TTY extends LibuvStreamWrap {
   }
 }
 
-export class ReadStream extends Duplex {
+export class ReadStream extends Socket {
   constructor(fd, options) {
     if (fd >> 0 !== fd || fd < 0) {
       throw new ERR_INVALID_FD(fd);
@@ -54,7 +55,9 @@ export class ReadStream extends Duplex {
   }
 }
 
-export class WriteStream extends Duplex {
+setReadStream(ReadStream);
+
+export class WriteStream extends Socket {
   constructor(fd) {
     if (fd >> 0 !== fd || fd < 0) {
       throw new ERR_INVALID_FD(fd);

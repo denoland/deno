@@ -121,8 +121,8 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         &graph,
         capturing_parser,
         doc::DocParserOptions {
-          diagnostics: false,
           private: doc_flags.private,
+          diagnostics: false,
         },
       )?;
 
