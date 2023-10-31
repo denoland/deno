@@ -138,7 +138,6 @@ export const initStdin = () => {
       break;
     }
     case "TTY": {
-      //      stdin = new tty.ReadStream(fd);
       stdin = new readStream(fd);
       break;
     }
