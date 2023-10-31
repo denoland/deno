@@ -60,8 +60,14 @@ pub async fn print_docs(
           },
         )
         .await;
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          private: doc_flags.private,
+          diagnostics: false,
+        },
+      )?;
       doc_parser.parse_module(&source_file_specifier)?.definitions
     }
     DocSourceFileFlag::Paths(source_files) => {
@@ -90,14 +96,33 @@ pub async fn print_docs(
         graph_lock_or_exit(&graph, &mut lockfile.lock());
       }
 
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          private: doc_flags.private,
+          diagnostics: true,
+        },
+      )?;
 
       let mut doc_nodes = vec![];
 
       for module_specifier in module_specifiers {
         let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
         doc_nodes.extend_from_slice(&nodes);
+      }
+
+      let diagnostics = doc_parser.take_diagnostics();
+      for (i, diagnostic) in diagnostics.iter().enumerate() {
+        log::warn!(
+          "{}{} {}\n    at {}:{}:{}",
+          if i > 0 { "\n" } else { "" },
+          colors::yellow("WARN"),
+          diagnostic.kind,
+          colors::cyan(diagnostic.location.filename.as_str()),
+          colors::yellow(&(diagnostic.location.line).to_string()),
+          colors::yellow(&(diagnostic.location.col + 1).to_string())
+        )
       }
 
       doc_nodes
