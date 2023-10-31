@@ -48,6 +48,10 @@ test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
+denokv_proto = "0.2.1"
+denokv_sqlite = "0.2.1"
+denokv_remote = "0.2.3"
+
 # exts
 deno_broadcast_channel = { version = "0.115.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.53.0", path = "./ext/cache" }
@@ -78,14 +82,16 @@ brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
-chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
+# Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
+#       Instead use util::time::utc_now()
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"
 data-encoding = "2.3.3"
 dlopen = "0.1.8"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
-fastwebsockets = "=0.4.4"
+fastwebsockets = "=0.5.0"
 filetime = "0.2.16"
 flate2 = { version = "1.0.26", features = ["zlib-ng"], default-features = false }
 fs3 = "0.5.0"
@@ -153,7 +159,7 @@ p256 = { version = "0.13.2", features = ["ecdh"] }
 p384 = { version = "0.13.0", features = ["ecdh"] }
 
 # crypto
-rsa = { version = "0.7.0", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
+rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 hkdf = "0.12.3"
 
 # macros
