@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FeatureChecker;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
@@ -42,15 +43,20 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReqReference;
+use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
+use crate::emit::Emitter;
 use crate::errors;
 use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::run::hmr::HmrRunner;
 use crate::util::checksum;
+use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -82,6 +88,7 @@ pub struct CliMainWorkerOptions {
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
+  pub hmr: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
   pub is_inspecting: bool,
@@ -107,8 +114,11 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  emitter: Option<Arc<Emitter>>,
+  maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  feature_checker: Arc<FeatureChecker>,
 }
 
 impl SharedWorkerState {
@@ -135,6 +145,8 @@ impl CliMainWorker {
   pub async fn run(&mut self) -> Result<i32, AnyError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
+    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
+
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
@@ -151,10 +163,34 @@ impl CliMainWorker {
     self.worker.dispatch_load_event(located_script_name!())?;
 
     loop {
-      self
-        .worker
-        .run_event_loop(maybe_coverage_collector.is_none())
-        .await?;
+      if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+        let watcher_communicator =
+          self.shared.maybe_file_watcher_communicator.clone().unwrap();
+
+        let hmr_future = hmr_runner.run().boxed_local();
+        let event_loop_future = self.worker.run_event_loop(false).boxed_local();
+
+        let result;
+        select! {
+          hmr_result = hmr_future => {
+            result = hmr_result;
+          },
+          event_loop_result = event_loop_future => {
+            result = event_loop_result;
+          }
+        }
+        if let Err(e) = result {
+          watcher_communicator
+            .change_restart_mode(WatcherRestartMode::Automatic);
+          return Err(e);
+        }
+      } else {
+        self
+          .worker
+          .run_event_loop(maybe_coverage_collector.is_none())
+          .await?;
+      }
+
       if !self
         .worker
         .dispatch_beforeunload_event(located_script_name!())?
@@ -169,6 +205,12 @@ impl CliMainWorker {
       self
         .worker
         .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+        .await?;
+    }
+    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+      self
+        .worker
+        .with_event_loop(hmr_runner.stop().boxed_local())
         .await?;
     }
 
@@ -285,6 +327,28 @@ impl CliMainWorker {
     }
   }
 
+  pub async fn maybe_setup_hmr_runner(
+    &mut self,
+  ) -> Result<Option<HmrRunner>, AnyError> {
+    if !self.shared.options.hmr {
+      return Ok(None);
+    }
+
+    let watcher_communicator =
+      self.shared.maybe_file_watcher_communicator.clone().unwrap();
+    let emitter = self.shared.emitter.clone().unwrap();
+
+    let session = self.worker.create_inspector_session().await;
+    let mut hmr_runner = HmrRunner::new(emitter, session, watcher_communicator);
+
+    self
+      .worker
+      .with_event_loop(hmr_runner.start().boxed_local())
+      .await?;
+
+    Ok(Some(hmr_runner))
+  }
+
   pub fn execute_script_static(
     &mut self,
     name: &'static str,
@@ -311,8 +375,11 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    emitter: Option<Arc<Emitter>>,
+    maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
   ) -> Self {
     Self {
@@ -327,9 +394,12 @@ impl CliMainWorkerFactory {
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
         root_cert_store_provider,
+        emitter,
         fs,
+        maybe_file_watcher_communicator,
         maybe_inspector_server,
         maybe_lockfile,
+        feature_checker,
       }),
     }
   }
@@ -510,6 +580,7 @@ impl CliMainWorkerFactory {
         shared.compiled_wasm_module_store.clone(),
       ),
       stdio,
+      feature_checker: shared.feature_checker.clone(),
     };
 
     let worker = MainWorker::bootstrap_from_options(
@@ -681,6 +752,7 @@ fn create_web_worker_callback(
       ),
       stdio: stdio.clone(),
       cache_storage_dir,
+      feature_checker: shared.feature_checker.clone(),
     };
 
     WebWorker::bootstrap_from_options(

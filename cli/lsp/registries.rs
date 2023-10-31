@@ -64,7 +64,7 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'+')
   .add(b',');
 
-const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
+const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 static REPLACEMENT_VARIABLE_RE: Lazy<regex::Regex> =
   lazy_regex::lazy_regex!(r"\$\{\{?(\w+)\}?\}");
