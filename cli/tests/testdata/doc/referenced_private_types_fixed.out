@@ -1,0 +1,16 @@
+Defined in file:///[WILDCARD]/referenced_private_types_fixed.ts:8:1
+
+class MyClass
+  Doc comment
+
+  prop: MyInterface
+    Doc comment
+
+Defined in file:///[WILDCARD]/referenced_private_types_fixed.ts:2:1
+
+interface MyInterface
+  Doc comment
+
+  prop?: string
+    Doc comment
+
