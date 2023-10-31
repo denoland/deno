@@ -12,6 +12,7 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
+use crate::util::glob::expand_globs;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -26,6 +27,7 @@ use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 async fn generate_doc_nodes_for_builtin_types(
@@ -97,11 +99,16 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
+      let expanded_globs =
+        expand_globs(source_files.iter().map(|f| PathBuf::from(f)).collect())?;
       let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
-        source_files
+        expanded_globs
           .iter()
           .map(|source_file| {
-            Ok(resolve_url_or_path(source_file, cli_options.initial_cwd())?)
+            Ok(resolve_url_or_path(
+              &source_file.to_string_lossy(),
+              cli_options.initial_cwd(),
+            )?)
           })
           .collect();
       let module_specifiers = module_specifiers?;

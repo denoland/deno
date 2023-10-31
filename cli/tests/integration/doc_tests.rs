@@ -67,7 +67,7 @@ itest!(deno_doc_lint_referenced_private_types_fixed {
 itest!(deno_doc_html_lint_referenced_private_types_fixed {
   args: "doc --lint --html --name=Library doc/referenced_private_types.ts",
   exit_code: 1,
-  output: "doc/referenced_private_types.out",
+  output: "doc/referenced_private_types_lint.out",
 });
 
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
