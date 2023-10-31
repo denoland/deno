@@ -108,7 +108,7 @@ impl Default for DocSourceFileFlag {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocHtmlFlag {
   pub name: String,
-  pub output: String,
+  pub output: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1386,6 +1386,8 @@ Show documentation for runtime built-ins:
             .help("Directory for HTML documentation output")
             .action(ArgAction::Set)
             .require_equals(true)
+            .value_hint(ValueHint::DirPath)
+            .value_parser(value_parser!(PathBuf))
         )
         .arg(
           Arg::new("private")
@@ -3182,20 +3184,11 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let private = matches.get_flag("private");
   let json = matches.get_flag("json");
   let filter = matches.remove_one::<String>("filter");
-  let html = matches.get_flag("html");
-  let name = if html {
-    matches.remove_one::<String>("name").unwrap()
-  } else {
-    "".to_string()
-  };
-  let output = if html {
-    matches
-      .remove_one::<String>("output")
-      .unwrap_or(String::from("./docs/"))
-  } else {
-    "".to_string()
-  };
-  let html = if html {
+  let html = if matches.get_flag("html") {
+    let name = matches.remove_one::<String>("name").unwrap();
+    let output = matches
+      .remove_one::<PathBuf>("output")
+      .unwrap_or(PathBuf::from("./docs/"));
     Some(DocHtmlFlag { name, output })
   } else {
     None
@@ -7380,7 +7373,7 @@ mod tests {
           json: false,
           html: Some(DocHtmlFlag {
             name: "My library".to_string(),
-            output: "./docs/".to_string(),
+            output: PathBuf::from("./docs/"),
           }),
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
@@ -7405,7 +7398,7 @@ mod tests {
           json: false,
           html: Some(DocHtmlFlag {
             name: "My library".to_string(),
-            output: "./foo".to_string(),
+            output: PathBuf::from("./foo"),
           }),
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
