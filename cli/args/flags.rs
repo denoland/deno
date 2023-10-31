@@ -109,6 +109,7 @@ impl Default for DocSourceFileFlag {
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
+  pub lint: bool,
   pub source_files: DocSourceFileFlag,
   pub filter: Option<String>,
 }
@@ -1329,6 +1330,10 @@ Output documentation in JSON format:
 
     deno doc --json ./path/to/module.ts
 
+Lint a module for documentation diagnostics:
+
+    deno doc --lint ./path/to/module.ts
+
 Target a specific symbol:
 
     deno doc ./path/to/module.ts MyClass.someField
@@ -1364,6 +1369,12 @@ Show documentation for runtime built-ins:
             .help("Dot separated path to symbol")
             .required(false)
             .conflicts_with("json"),
+        )
+        .arg(
+          Arg::new("lint")
+            .long("lint")
+            .help("Output documentation diagnostics.")
+            .action(ArgAction::SetTrue),
         )
         // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
         // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
@@ -3145,11 +3156,13 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     DocSourceFileFlag::Builtin
   };
   let private = matches.get_flag("private");
+  let lint = matches.get_flag("lint");
   let json = matches.get_flag("json");
   let filter = matches.remove_one::<String>("filter");
   flags.subcommand = DenoSubcommand::Doc(DocFlags {
     source_files,
     json,
+    lint,
     filter,
     private,
   });
@@ -6044,6 +6057,7 @@ mod tests {
           source_files: DocSourceFileFlag::Paths(vec!["script.ts".to_owned()]),
           private: false,
           json: false,
+          lint: false,
           filter: None,
         }),
         import_map_path: Some("import_map.json".to_owned()),
@@ -7298,6 +7312,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: true,
+          lint: false,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.ts".to_string()
           ]),
@@ -7320,6 +7335,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
+          lint: false,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.ts".to_string()
           ]),
@@ -7336,6 +7352,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
+          lint: false,
           source_files: Default::default(),
           filter: None,
         }),
@@ -7355,6 +7372,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
+          lint: false,
           json: false,
           source_files: DocSourceFileFlag::Builtin,
           filter: Some("Deno.Listener".to_string()),
@@ -7376,6 +7394,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: true,
+          lint: false,
           json: false,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.js".to_string()
@@ -7399,6 +7418,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
+          lint: false,
           json: false,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.js".to_string(),
@@ -7422,6 +7442,31 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
+          json: false,
+          lint: false,
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.js".to_string(),
+            "path/to/module2.js".to_string()
+          ]),
+          filter: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--lint",
+      "path/to/module.js",
+      "path/to/module2.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc(DocFlags {
+          private: false,
+          lint: true,
           json: false,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.js".to_string(),

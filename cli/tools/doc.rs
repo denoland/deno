@@ -101,7 +101,7 @@ pub async fn print_docs(
         capturing_parser,
         doc::DocParserOptions {
           private: doc_flags.private,
-          diagnostics: true,
+          diagnostics: doc_flags.lint,
         },
       )?;
 
@@ -112,17 +112,25 @@ pub async fn print_docs(
         doc_nodes.extend_from_slice(&nodes);
       }
 
-      let diagnostics = doc_parser.take_diagnostics();
-      for (i, diagnostic) in diagnostics.iter().enumerate() {
-        log::warn!(
-          "{}{} {}\n    at {}:{}:{}",
-          if i > 0 { "\n" } else { "" },
-          colors::yellow("WARN"),
-          diagnostic.kind,
-          colors::cyan(diagnostic.location.filename.as_str()),
-          colors::yellow(&(diagnostic.location.line).to_string()),
-          colors::yellow(&(diagnostic.location.col + 1).to_string())
-        )
+      if doc_flags.lint {
+        let diagnostics = doc_parser.take_diagnostics();
+        if !diagnostics.is_empty() {
+          for diagnostic in &diagnostics {
+            log::warn!(
+              "{} {}\n    at {}:{}:{}\n",
+              colors::yellow("WARN"),
+              diagnostic.kind,
+              colors::cyan(diagnostic.location.filename.as_str()),
+              colors::yellow(&(diagnostic.location.line).to_string()),
+              colors::yellow(&(diagnostic.location.col + 1).to_string())
+            )
+          }
+          bail!(
+            "Found {} documentation diagnostic{}.",
+            colors::bold(diagnostics.len().to_string()),
+            if diagnostics.len() == 1 { "" } else { "s" }
+          );
+        }
       }
 
       doc_nodes
