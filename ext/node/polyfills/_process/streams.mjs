@@ -13,7 +13,6 @@ import {
 } from "ext:deno_node/internal/readline/callbacks.mjs";
 import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
-import * as tty from "node:tty";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
@@ -112,6 +111,11 @@ const _read = function (size) {
   );
 };
 
+let readStream;
+export function setReadStream(s) {
+  readStream = s;
+}
+
 /** https://nodejs.org/api/process.html#process_process_stdin */
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
 /** Create process.stdin */
@@ -134,7 +138,8 @@ export const initStdin = () => {
       break;
     }
     case "TTY": {
-      stdin = new tty.ReadStream(fd);
+      //      stdin = new tty.ReadStream(fd);
+      stdin = new readStream(fd);
       break;
     }
     case "PIPE":
