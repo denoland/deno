@@ -18,7 +18,11 @@ const {
 } = primordials;
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
-import { assert, pathFromURL, SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
+import {
+  assert,
+  pathFromURL,
+  SymbolAsyncDispose,
+} from "ext:deno_web/00_infra.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   readableStreamCollectIntoUint8Array,
@@ -320,8 +324,8 @@ class ChildProcess {
   }
 
   async [SymbolAsyncDispose]() {
-    try { 
-      ops.op_spawn_kill(this.#rid, "SIGTERM")
+    try {
+      ops.op_spawn_kill(this.#rid, "SIGTERM");
     } catch {
       // ignore errors from killing the process (such as ESRCH or BadResource)
     }

@@ -461,7 +461,8 @@ internals.pathFromURL = pathFromURL;
 // deno-lint-ignore prefer-primordials
 export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
 // deno-lint-ignore prefer-primordials
-export const SymbolAsyncDispose = Symbol.asyncDispose ?? Symbol("Symbol.asyncDispose");
+export const SymbolAsyncDispose = Symbol.asyncDispose ??
+  Symbol("Symbol.asyncDispose");
 
 export {
   ASCII_ALPHA,
