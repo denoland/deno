@@ -178,7 +178,7 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
         for diagnostic in diagnostics {
           log::warn!("{}", diagnostic.kind);
         }
-        log::warn!(
+        log::info!(
           "    at {}:{}:{}\n",
           colors::cyan(filename.as_str()),
           colors::yellow(&line.to_string()),
