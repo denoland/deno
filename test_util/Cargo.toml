@@ -19,6 +19,7 @@ async-stream = "0.3.3"
 base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
+denokv_proto.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade"] }
 flate2.workspace = true
 futures.workspace = true
