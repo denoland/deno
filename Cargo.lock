@@ -1779,9 +1779,9 @@ dependencies = [
  "http",
  "hyper 0.14.27",
  "once_cell",
+ "rustls-tokio-stream",
  "serde",
  "tokio",
- "tokio-rustls",
 ]
 
 [[package]]
@@ -4565,6 +4565,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d3987094b1d07b653b7dfdc3f70ce9a1da9c51ac18c1b06b662e4f9a0e9f4b2"
 dependencies = [
  "base64 0.21.4",
+]
+
+[[package]]
+name = "rustls-tokio-stream"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8101c6e909600a3648a7774cb06837a5f976eb3265736d7135b4c177fa3020b9"
+dependencies = [
+ "futures",
+ "rustls",
+ "tokio",
 ]
 
 [[package]]
