@@ -130,7 +130,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         IndexMap::with_capacity(module_specifiers.len());
 
       for module_specifier in &module_specifiers {
-        let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
+        let nodes = doc_parser.parse_with_reexports(module_specifier)?;
         doc_nodes_by_url.insert(module_specifier.clone(), nodes);
       }
 
@@ -144,7 +144,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .await
   } else {
     let doc_nodes: Vec<doc::DocNode> =
-      doc_nodes_by_url.values().cloned().flatten().collect();
+      doc_nodes_by_url.values().flatten().cloned().collect();
     print_docs(doc_flags, doc_nodes)
   }
 }
@@ -160,7 +160,7 @@ async fn generate_docs_directory(
     package_name: html_options.name,
   };
 
-  let html = deno_doc::html::generate(options.clone(), &doc_nodes_by_url)?;
+  let html = deno_doc::html::generate(options.clone(), doc_nodes_by_url)?;
 
   let path = &output_dir_resolved;
   let _ = std::fs::remove_dir_all(path);
