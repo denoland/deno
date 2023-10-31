@@ -62,8 +62,14 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           },
         )
         .await;
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          diagnostics: false,
+          private: doc_flags.private,
+        },
+      )?;
       let nodes = doc_parser.parse_module(&source_file_specifier)?.definitions;
 
       (nodes, source_file_specifier)
@@ -94,8 +100,14 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         graph_lock_or_exit(&graph, &mut lockfile.lock());
       }
 
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          diagnostics: false,
+          private: doc_flags.private,
+        },
+      )?;
 
       let mut doc_nodes = vec![];
 
@@ -124,23 +136,9 @@ async fn generate_docs_directory(
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
-  let output_dir_relative = output_dir_resolved.strip_prefix(&cwd).unwrap();
-  let mut output_dir_relative_str =
-    output_dir_relative.to_string_lossy().to_string();
-  output_dir_relative_str = output_dir_relative_str
-    .strip_prefix('/')
-    .unwrap_or(&output_dir_relative_str)
-    .to_string();
-  output_dir_relative_str = output_dir_relative_str
-    .strip_suffix('/')
-    .unwrap_or(&output_dir_relative_str)
-    .to_string();
-  // TODO: make `base_url` configurable?
-  let base_url = format!("/{}/", output_dir_relative_str);
 
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name,
-    base_url,
   };
 
   // TODO(bartlomieju): parse all files here
@@ -151,21 +149,6 @@ async fn generate_docs_directory(
   let _ = std::fs::remove_dir_all(path);
   std::fs::create_dir(path)?;
 
-  std::fs::write(
-    path.join(deno_doc::html::STYLESHEET_FILENAME),
-    deno_doc::html::STYLESHEET,
-  )
-  .unwrap();
-  std::fs::write(
-    path.join(deno_doc::html::SEARCH_INDEX_FILENAME),
-    deno_doc::html::generate_search_index(&doc_nodes_by_url)?,
-  )
-  .unwrap();
-  std::fs::write(
-    path.join(deno_doc::html::SEARCH_FILENAME),
-    deno_doc::html::SEARCH_JS,
-  )
-  .unwrap();
   for (name, content) in html {
     let this_path = path.join(name);
     let prefix = this_path.parent().unwrap();
