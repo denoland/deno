@@ -2401,15 +2401,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fsevent-sys"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "fslock"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3429,7 +3420,6 @@ dependencies = [
  "bitflags 1.3.2",
  "crossbeam-channel 0.5.8",
  "filetime",
- "fsevent-sys",
  "inotify",
  "kqueue",
  "libc",
