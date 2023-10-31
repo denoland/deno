@@ -167,19 +167,33 @@ async fn generate_docs_directory(
     package_name: html_options.name,
   };
 
-  let html = deno_doc::html::generate(options.clone(), doc_nodes_by_url)?;
+  let files = deno_doc::html::generate(options, doc_nodes_by_url)
+    .context("Failed to generate HTML documentation")?;
 
   let path = &output_dir_resolved;
   let _ = std::fs::remove_dir_all(path);
-  std::fs::create_dir(path)?;
+  std::fs::create_dir(path)
+    .with_context(|| format!("Failed to create directory {:?}", path))?;
 
-  for (name, content) in html {
+  let no_of_files = files.len();
+  for (name, content) in files {
     let this_path = path.join(name);
-    let prefix = this_path.parent().unwrap();
-    std::fs::create_dir_all(prefix).unwrap();
-    std::fs::write(this_path, content).unwrap();
+    let prefix = this_path.parent().with_context(|| {
+      format!("Failed to get parent path for {:?}", this_path)
+    })?;
+    std::fs::create_dir_all(prefix)
+      .with_context(|| format!("Failed to create directory {:?}", prefix))?;
+    std::fs::write(&this_path, content)
+      .with_context(|| format!("Failed to write file {:?}", this_path))?;
   }
 
+  println!(
+    "{}",
+    colors::green(format!(
+      "Written {} files to {:?}",
+      no_of_files, html_options.output
+    ))
+  );
   Ok(())
 }
 

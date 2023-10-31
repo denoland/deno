@@ -1297,7 +1297,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.71.0"
-source = "git+https://github.com/denoland/deno_doc?branch=main#c014267b04f6ba061434f58b87b2cbb8eaa27958"
+source = "git+https://github.com/denoland/deno_doc?branch=main#ce71bb319d52b345e3483b4a22522155be092538"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
