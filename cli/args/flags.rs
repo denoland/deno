@@ -96,7 +96,7 @@ pub struct CoverageFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DocSourceFileFlag {
   Builtin,
-  Path(String),
+  Paths(Vec<String>),
 }
 
 impl Default for DocSourceFileFlag {
@@ -116,7 +116,7 @@ pub struct DocFlags {
   pub private: bool,
   pub json: bool,
   pub html: Option<DocHtmlFlag>,
-  pub source_file: DocSourceFileFlag,
+  pub source_files: DocSourceFileFlag,
   pub filter: Option<String>,
 }
 
@@ -219,11 +219,13 @@ impl RunFlags {
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlags {
+  pub hmr: bool,
   pub no_clear_screen: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlagsWithPaths {
+  pub hmr: bool,
   pub paths: Vec<PathBuf>,
   pub no_clear_screen: bool,
 }
@@ -1391,17 +1393,23 @@ Show documentation for runtime built-ins:
             .help("Output private documentation")
             .action(ArgAction::SetTrue),
         )
+        .arg(
+          Arg::new("filter")
+            .long("filter")
+            .help("Dot separated path to symbol")
+            .required(false)
+            .conflicts_with("json"),
+        )
         // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
         // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
         // just a possible value of `source_file` so leading hyphens must be
         // enabled.
         .allow_hyphen_values(true)
-        .arg(Arg::new("source_file").value_hint(ValueHint::FilePath))
         .arg(
-          Arg::new("filter")
-            .help("Dot separated path to symbol")
-            .required(false)
-            .conflicts_with("json"),
+          Arg::new("source_file")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .value_hint(ValueHint::FilePath),
         )
     })
 }
@@ -1889,6 +1897,7 @@ fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
     .arg(check_arg(false))
     .arg(watch_arg(true))
+    .arg(hmr_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     .arg(
@@ -2757,6 +2766,33 @@ fn seed_arg() -> Arg {
     .value_parser(value_parser!(u64))
 }
 
+fn hmr_arg(takes_files: bool) -> Arg {
+  let arg = Arg::new("hmr")
+    .long("unstable-hmr")
+    .help("UNSTABLE: Watch for file changes and hot replace modules")
+    .conflicts_with("watch");
+
+  if takes_files {
+    arg
+      .value_name("FILES")
+      .num_args(0..)
+      .value_parser(value_parser!(PathBuf))
+      .use_value_delimiter(true)
+      .require_equals(true)
+      .long_help(
+        "Watch for file changes and restart process automatically.
+Local files from entry point module graph are watched by default.
+Additional paths might be watched by passing them as arguments to this flag.",
+      )
+      .value_hint(ValueHint::AnyPath)
+  } else {
+    arg.action(ArgAction::SetTrue).long_help(
+      "Watch for file changes and restart process automatically.
+      Only local files from entry point module graph are watched.",
+    )
+  }
+}
+
 fn watch_arg(takes_files: bool) -> Arg {
   let arg = Arg::new("watch")
     .long("watch")
@@ -3125,16 +3161,24 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
 
-  let source_file = matches
-    .remove_one::<String>("source_file")
-    .map(|value| {
-      if value == "--builtin" {
+  let source_files_val = matches.remove_many::<String>("source_file");
+  let source_files = if let Some(val) = source_files_val {
+    let vals: Vec<String> = val.collect();
+
+    if vals.len() == 1 {
+      if vals[0] == "--builtin" {
         DocSourceFileFlag::Builtin
       } else {
-        DocSourceFileFlag::Path(value)
+        DocSourceFileFlag::Paths(vec![vals[0].to_string()])
       }
-    })
-    .unwrap_or_default();
+    } else {
+      DocSourceFileFlag::Paths(
+        vals.into_iter().filter(|v| v != "--builtin").collect(),
+      )
+    }
+  } else {
+    DocSourceFileFlag::Builtin
+  };
   let private = matches.get_flag("private");
   let json = matches.get_flag("json");
   let filter = matches.remove_one::<String>("filter");
@@ -3158,7 +3202,7 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   flags.subcommand = DenoSubcommand::Doc(DocFlags {
-    source_file,
+    source_files,
     json,
     html,
     filter,
@@ -3890,6 +3934,7 @@ fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
 fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
   if matches.get_flag("watch") {
     Some(WatchFlags {
+      hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
   } else {
@@ -3900,10 +3945,19 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
 fn watch_arg_parse_with_paths(
   matches: &mut ArgMatches,
 ) -> Option<WatchFlagsWithPaths> {
+  if let Some(paths) = matches.remove_many::<PathBuf>("watch") {
+    return Some(WatchFlagsWithPaths {
+      paths: paths.collect(),
+      hmr: false,
+      no_clear_screen: matches.get_flag("no-clear-screen"),
+    });
+  }
+
   matches
-    .remove_many::<PathBuf>("watch")
-    .map(|f| WatchFlagsWithPaths {
-      paths: f.collect(),
+    .remove_many::<PathBuf>("hmr")
+    .map(|paths| WatchFlagsWithPaths {
+      paths: paths.collect(),
+      hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
     })
 }
@@ -4021,6 +4075,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
+            hmr: false,
             paths: vec![],
             no_clear_screen: false,
           }),
@@ -4028,6 +4083,79 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: true,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable-hmr",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![],
+            no_clear_screen: true,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable-hmr=foo.txt",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![PathBuf::from("foo.txt")],
+            no_clear_screen: true,
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--hmr", "--watch", "script.ts"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -4041,6 +4169,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
+            hmr: false,
             paths: vec![PathBuf::from("file1"), PathBuf::from("file2")],
             no_clear_screen: false,
           }),
@@ -4067,6 +4196,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
+            hmr: false,
             paths: vec![],
             no_clear_screen: true,
           })
@@ -4388,9 +4518,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -4415,6 +4543,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           })
         }),
@@ -4446,9 +4575,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -4502,9 +4629,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ext: Some("ts".to_string()),
@@ -4628,9 +4753,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: false,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          })
+          watch: Some(Default::default()),
         }),
         ..Flags::default()
       }
@@ -4662,6 +4785,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           })
         }),
@@ -5864,9 +5988,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -5890,6 +6012,7 @@ mod tests {
           source_file: "source.ts".to_string(),
           out_file: None,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           }),
         }),
@@ -5973,7 +6096,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
-          source_file: DocSourceFileFlag::Path("script.ts".to_owned()),
+          source_files: DocSourceFileFlag::Paths(vec!["script.ts".to_owned()]),
           private: false,
           json: false,
           html: None,
@@ -7059,9 +7182,7 @@ mod tests {
           concurrent_jobs: None,
           trace_ops: false,
           coverage_dir: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
         }),
@@ -7091,9 +7212,7 @@ mod tests {
           concurrent_jobs: None,
           trace_ops: false,
           coverage_dir: None,
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
         }),
@@ -7126,6 +7245,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Some(WatchFlags {
+            hmr: false,
             no_clear_screen: true,
           }),
           reporter: Default::default(),
@@ -7235,7 +7355,7 @@ mod tests {
           private: false,
           json: true,
           html: None,
-          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
         }),
         ..Flags::default()
@@ -7262,7 +7382,7 @@ mod tests {
             name: "My library".to_string(),
             output: "./docs/".to_string(),
           }),
-          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
         }),
         ..Flags::default()
@@ -7287,7 +7407,7 @@ mod tests {
             name: "My library".to_string(),
             output: "./foo".to_string(),
           }),
-          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
         }),
         ..Flags::default()
@@ -7297,8 +7417,9 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "doc",
+      "--filter",
+      "SomeClass.someField",
       "path/to/module.ts",
-      "SomeClass.someField"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -7307,7 +7428,9 @@ mod tests {
           private: false,
           json: false,
           html: None,
-          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.ts".to_string()
+          ]),
           filter: Some("SomeClass.someField".to_string()),
         }),
         ..Flags::default()
@@ -7322,14 +7445,20 @@ mod tests {
           private: false,
           json: false,
           html: None,
-          source_file: Default::default(),
+          source_files: Default::default(),
           filter: None,
         }),
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "doc", "--builtin", "Deno.Listener"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--filter",
+      "Deno.Listener",
+      "--builtin"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7337,7 +7466,7 @@ mod tests {
           private: false,
           json: false,
           html: None,
-          source_file: DocSourceFileFlag::Builtin,
+          source_files: DocSourceFileFlag::Builtin,
           filter: Some("Deno.Listener".to_string()),
         }),
         ..Flags::default()
@@ -7359,11 +7488,58 @@ mod tests {
           private: true,
           json: false,
           html: None,
-          source_file: DocSourceFileFlag::Path("path/to/module.js".to_string()),
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.js"]),
           filter: None,
         }),
         no_npm: true,
         no_remote: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "path/to/module.js",
+      "path/to/module2.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc(DocFlags {
+          private: false,
+          json: false,
+          html: None,
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.js".to_string(),
+            "path/to/module2.js".to_string()
+          ]),
+          filter: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "path/to/module.js",
+      "--builtin",
+      "path/to/module2.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc(DocFlags {
+          private: false,
+          json: false,
+          html: None,
+          source_files: DocSourceFileFlag::Paths(vec![
+            "path/to/module.js".to_string(),
+            "path/to/module2.js".to_string()
+          ]),
+          filter: None,
+        }),
         ..Flags::default()
       }
     );
@@ -7892,9 +8068,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          watch: Some(WatchFlags {
-            no_clear_screen: false,
-          }),
+          watch: Some(Default::default()),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,

@@ -6,6 +6,7 @@ mod interface;
 mod proto;
 pub mod remote;
 pub mod sqlite;
+mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -14,7 +15,6 @@ use std::rc::Rc;
 
 use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
-use chrono::Utc;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
@@ -610,7 +610,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let current_timestamp = Utc::now().timestamp_millis() as u64;
+  let current_timestamp = time::utc_now().timestamp_millis() as u64;
   let db = {
     let state = state.borrow();
     let resource =

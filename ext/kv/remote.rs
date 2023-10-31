@@ -426,7 +426,7 @@ async fn metadata_refresh_task(
       metadata
         .expires_at
         .timestamp_millis()
-        .saturating_sub(Utc::now().timestamp_millis()),
+        .saturating_sub(crate::time::utc_now().timestamp_millis()),
     )
     .unwrap_or_default();
 

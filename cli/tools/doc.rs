@@ -34,8 +34,8 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let capturing_parser =
     CapturingModuleParser::new(Some(&source_parser), &store);
 
-  // TODO(bartlomieju): update to handle multiple files
-  let (doc_nodes, specifier) = match doc_flags.source_file {
+  // TODO(bartlomieju): rewrite to return an IndexMap
+  let (doc_nodes, specifier) = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
       let source_file_specifier =
         ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
@@ -68,18 +68,23 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       (nodes, source_file_specifier)
     }
-    DocSourceFileFlag::Path(ref source_file) => {
+    DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
-      let module_specifier =
-        resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
-
+      let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
+        source_files
+          .iter()
+          .map(|source_file| {
+            Ok(resolve_url_or_path(source_file, cli_options.initial_cwd())?)
+          })
+          .collect();
+      let module_specifiers = module_specifiers?;
       let mut loader = module_graph_builder.create_graph_loader();
       let graph = module_graph_builder
         .create_graph_with_options(CreateGraphOptions {
           graph_kind: GraphKind::TypesOnly,
-          roots: vec![module_specifier.clone()],
+          roots: module_specifiers.clone(),
           loader: &mut loader,
           analyzer: &analyzer,
         })
@@ -89,11 +94,17 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         graph_lock_or_exit(&graph, &mut lockfile.lock());
       }
 
-      let nodes =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?
-          .parse_with_reexports(&module_specifier)?;
+      let doc_parser =
+        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
 
-      (nodes, module_specifier)
+      let mut doc_nodes = vec![];
+
+      for module_specifier in &module_specifiers {
+        let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
+        doc_nodes.extend_from_slice(&nodes);
+      }
+
+      (doc_nodes, module_specifiers[0].clone())
     }
   };
 
