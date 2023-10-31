@@ -48,6 +48,7 @@ use denokv_proto::SnapshotReadOptions;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use time::utc_now;
 
 pub use crate::interface::*;
 
@@ -621,7 +622,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let current_timestamp = Utc::now();
+  let current_timestamp = utc_now();
   let db = {
     let state = state.borrow();
     let resource =
