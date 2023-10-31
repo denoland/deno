@@ -32,7 +32,7 @@ async function getTwoEvents(
   const events = [];
   for await (const event of iter) {
     events.push(event);
-    if (events.length >= 2) break;
+    if (events.length == 2) break;
   }
   return events;
 }
