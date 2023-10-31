@@ -70,6 +70,7 @@
       "test-fs-open.js",
       "test-fs-opendir.js",
       "test-fs-rmdir-recursive.js",
+      "test-fs-watchfile.js",
       "test-fs-write-file.js",
       "test-fs-write.js",
       "test-http-url.parse-https.request.js",
