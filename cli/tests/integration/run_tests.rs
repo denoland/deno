@@ -1767,8 +1767,8 @@ itest!(jsx_import_source_pragma_import_map_dev {
 });
 
 itest!(jsx_import_source_precompile_import_map {
-  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc run/jsx_precompile_no_pragma.tsx",
-  output: "run/jsx_precompile_no_pragma.out",
+  args: "run --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc run/jsx_precompile/no_pragma.tsx",
+  output: "run/jsx_precompile/no_pragma.out",
   http_server: true,
 });
 

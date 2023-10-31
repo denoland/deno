@@ -862,12 +862,25 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @param {Record<string, string>} config */
+  function normalizeConfig(config) {
+    // the typescript compiler doesn't know about the precompile
+    // transform at the moment, so just tell it we're using react-jsx
+    if (config.jsx === "precompile") {
+      config.jsx = "react-jsx";
+    }
+    return config;
+  }
+
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames, localOnly }) {
     setLogDebug(debugFlag, "TS");
     performanceStart();
+
+    config = normalizeConfig(config);
+
     if (logDebug) {
       debug(">>> exec start", { rootNames });
       debug(config);
@@ -983,8 +996,9 @@ delete Object.prototype.__proto__;
         return respond(id, true);
       }
       case "$configure": {
+        const config = normalizeConfig(args[0]);
         const { options, errors } = ts
-          .convertCompilerOptionsFromJson(args[0], "");
+          .convertCompilerOptionsFromJson(config, "");
         Object.assign(options, {
           allowNonTsExtensions: true,
           allowImportingTsExtensions: true,

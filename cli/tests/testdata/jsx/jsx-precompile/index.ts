@@ -13,3 +13,11 @@ export const jsxTemplate = (_template: string[], ..._exprs: any[]) => "";
 // deno-lint-ignore-file no-explicit-any
 export const jsxEscape = (_value: any) => "";
 console.log("imported", import.meta.url);
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      [tagName: string]: Record<string, any>;
+    }
+  }
+}
