@@ -282,7 +282,8 @@ Deno.test(async function websocketTlsSocketWorks() {
   const cert = await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt");
   const key = await Deno.readTextFile("cli/tests/testdata/tls/localhost.key");
 
-  const messages = [], errors = [];
+  const messages: string[] = [],
+    errors: { server?: Event; client?: Event }[] = [];
   const promise = new Promise((okay, nope) => {
     const ac = new AbortController();
     const server = Deno.serve({
@@ -309,7 +310,10 @@ Deno.test(async function websocketTlsSocketWorks() {
         messages.push(e.data);
         ws.send("pong");
       };
-      ws.onerror = (e) => errors.push(nope({ client: e }));
+      ws.onerror = (e) => {
+        errors.push({ client: e });
+        nope();
+      };
       ws.onclose = () => okay(server.finished);
     }, 1000);
   });
