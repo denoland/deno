@@ -512,7 +512,7 @@ fn jsx_import_source() {
     .build();
   context
     .new_command()
-    .args_vec(&["repl", "-A"])
+    .args_vec(["repl", "-A"])
     .with_pty(|mut console| {
       console.write_line("/** @jsxImportSource http://localhost:4545/jsx */");
       console.expect("undefined");
