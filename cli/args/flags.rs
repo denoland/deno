@@ -2656,7 +2656,7 @@ fn env_file_arg() -> Arg {
     .long("env")
     .value_name("FILE")
     .help("Load .env file")
-    .long_help("Load environment variables from local file. Only the first environment variable with a given key is used. Existing process environment variables are not overwritten.")
+    .long_help("UNSTABLE: Load environment variables from local file. Only the first environment variable with a given key is used. Existing process environment variables are not overwritten.")
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
