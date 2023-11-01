@@ -300,6 +300,11 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &'static [(
     "Enable unstable Web Worker APIs",
     7,
   ),
+  (
+    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Deno.cron API",
+    8,
+  ),
 ];
 
 pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {

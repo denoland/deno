@@ -184,7 +184,6 @@ const denoNsUnstableById = {
     Kv: kv.Kv,
     KvU64: kv.KvU64,
     KvListIterator: kv.KvListIterator,
-    cron: cron.cron,
   },
 
   // net
@@ -205,6 +204,10 @@ const denoNsUnstableById = {
   },
   // Worker options
   // 7: {}
+
+  8: {
+    cron: cron.cron,
+  },
 };
 
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js

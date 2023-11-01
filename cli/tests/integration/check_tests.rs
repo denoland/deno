@@ -123,9 +123,14 @@ itest!(check_deno_not_found {
 });
 
 itest!(check_deno_unstable_not_found {
-  args: "check --quiet check/deno_unstable_not_found/main.ts",
+  args: "check --quiet --no-config check/deno_unstable_not_found/main.ts",
   output: "check/deno_unstable_not_found/main.out",
   exit_code: 1,
+});
+
+itest!(check_deno_unstable_from_config {
+  args: "check --quiet --config check/deno_unstable_not_found/deno.json check/deno_unstable_not_found/main.ts",
+  output_str: Some(""),
 });
 
 #[test]

@@ -850,6 +850,11 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       .unstable_features
       .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME.to_string());
   }
+  if matches.get_flag("unstable-cron") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME.to_string());
+  }
 
   flags.unstable_bare_node_builtlins =
     matches.get_flag("unstable-bare-node-builtins");
