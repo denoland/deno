@@ -99,13 +99,11 @@ impl AsyncWrite for WebSocketStream {
           return Poll::Ready(Ok(0));
         }
 
-        eprintln!("buf={} cap1={}", buf.len(), send.capacity());
         send.reserve_capacity(buf.len());
-        eprintln!("cap1b={}", send.capacity());
-
         let res = ready!(send.poll_capacity(cx));
-        eprintln!("poll={res:?}");
-        eprintln!("cap2={}", send.capacity());
+        
+        // TODO(mmastrac): the documentation is not entirely clear what to do here, so we'll continue
+        _ = res;
 
         // We'll try to send whatever we have capacity for
         let size = std::cmp::min(buf.len(), send.capacity());
@@ -114,9 +112,7 @@ impl AsyncWrite for WebSocketStream {
         let buf: Bytes = Bytes::copy_from_slice(&buf[0..size]);
         let len = buf.len();
         // TODO(mmastrac): surface the h2 error?
-        eprintln!("send={}", buf.len());
         let res = send.send_data(buf, false).map_err(|_| std::io::Error::from(ErrorKind::Other));
-        eprintln!("sent!={}", len);
         Poll::Ready(res.map(|_| len))
       }
     }
