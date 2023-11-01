@@ -239,12 +239,13 @@ async fn handshake_http1_wss(
   let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
   let dnsname =
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
-  let tls_connector = TlsStream::new_client_side(
+  let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
     tls_config.into(),
     dnsname,
     NonZeroUsize::new(65536),
   );
+  tls_connector.handshake().await?;
   handshake_connection(request, tls_connector).await
 }
 
@@ -270,8 +271,10 @@ async fn handshake_http2_wss(
     dnsname,
     None,
   );
-  let res = tls_connector.handshake().await;
-  _ = res?;
+  let handshake = tls_connector.handshake().await?;
+  if handshake.alpn.is_none() {
+    bail!("Didn't receive h2 alpn, aborting connection");
+  }
   let h2 = h2::client::Builder::new();
   let (mut send, conn) = h2.handshake::<_, Bytes>(tls_connector).await?;
   spawn(conn);

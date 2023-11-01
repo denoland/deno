@@ -33,12 +33,17 @@ Deno.test(async function websocketH2SendLargePacket() {
   const promise = deferred();
   const ws = new WebSocket(new URL("wss://localhost:4248/"));
   assertEquals(ws.url, "wss://localhost:4248/");
+  let messageCount = 0;
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
     ws.send("a".repeat(65000));
+    ws.send("a".repeat(65000));
+    ws.send("a".repeat(65000));
   };
   ws.onmessage = () => {
-    ws.close();
+    if (++messageCount == 3) {
+      ws.close();
+    }
   };
   ws.onclose = () => {
     promise.resolve();
@@ -72,7 +77,6 @@ Deno.test(async function websocketSendLargeBinaryPacket() {
     ws.send(new Uint8Array(65000));
   };
   ws.onmessage = (msg) => {
-    console.log(msg);
     ws.close();
   };
   ws.onclose = () => {
@@ -90,7 +94,6 @@ Deno.test(async function websocketSendLargeBlobPacket() {
     ws.send(new Blob(["a".repeat(65000)]));
   };
   ws.onmessage = (msg) => {
-    console.log(msg);
     ws.close();
   };
   ws.onclose = () => {
