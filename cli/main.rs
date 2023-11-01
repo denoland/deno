@@ -368,7 +368,8 @@ pub fn main() {
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
-      _ => vec![],
+      // TODO(bartlomieju): upstream this to `deno_core` crate
+      _ => vec!["--harmony-array-from-async".to_string()],
     };
     init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
     deno_core::JsRuntime::init_platform(None);

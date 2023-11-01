@@ -153,3 +153,20 @@ Deno.test(async function promiseWithResolvers() {
     await assertRejects(() => promise, Error, "boom!");
   }
 });
+
+Deno.test(async function arrayFromAsync() {
+  // Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/fromAsync#examples
+  // Thank you.
+  const asyncIterable = (async function* () {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10 * i));
+      yield i;
+    }
+  })();
+
+  const a = await Array.fromAsync(asyncIterable);
+  assertEquals(a, [0, 1, 2, 3, 4]);
+
+  const b = await Array.fromAsync(new Map([[1, 2], [3, 4]]));
+  assertEquals(b, [[1, 2], [3, 4]]);
+});
