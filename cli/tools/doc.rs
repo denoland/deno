@@ -194,7 +194,7 @@ async fn generate_docs_directory(
       .with_context(|| format!("Failed to write file {:?}", this_path))?;
   }
 
-  println!(
+  log::info!(
     "{}",
     colors::green(format!(
       "Written {} files to {:?}",
