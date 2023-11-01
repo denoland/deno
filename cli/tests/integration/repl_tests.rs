@@ -497,11 +497,10 @@ fn syntax_error() {
 }
 
 #[test]
-fn syntax_error_jsx() {
-  // JSX is not supported in the REPL
+fn jsx_errors_without_pragma() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const element = <div />;");
-    console.expect("Expression expected");
+    console.expect("React is not defined");
   });
 }
 
@@ -897,11 +896,11 @@ fn repl_unit_tests() {
     console.expect("test1 ... ok (");
     console.expect("test2 ... FAILED (");
     console.expect(" ERRORS ");
-    console.expect("test2 => <anonymous>:7:6");
+    console.expect("test2 => <anonymous>:6:6");
     console.expect("error: Error: some message");
-    console.expect("   at <anonymous>:8:9");
+    console.expect("   at <anonymous>:7:9");
     console.expect(" FAILURES ");
-    console.expect("test2 => <anonymous>:7:6");
+    console.expect("test2 => <anonymous>:6:6");
     console.expect("FAILED | 1 passed (1 step) | 1 failed (");
     console.expect("undefined");
 
