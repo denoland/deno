@@ -33,8 +33,6 @@ export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
-  Readable,
-  Writable,
 } from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,
@@ -57,41 +55,9 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
-// We want streams to be as lazy as possible, but we cannot export a getter in a module. To
-// work around this we make these proxies that eagerly instantiate the underlying object on
-// first access of any property/method.
-function makeLazyStream<T>(objectFactory: () => T): T {
-  return new Proxy({}, {
-    get: function (_, prop, receiver) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.get(objectFactory() as any, prop, receiver);
-    },
-    has: function (_, prop) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.has(objectFactory() as any, prop);
-    },
-    ownKeys: function (_) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.ownKeys(objectFactory() as any);
-    },
-    set: function (_, prop, value, receiver) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.set(objectFactory() as any, prop, value, receiver);
-    },
-    getPrototypeOf: function (_) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.getPrototypeOf(objectFactory() as any);
-    },
-    getOwnPropertyDescriptor(_, prop) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.getOwnPropertyDescriptor(objectFactory() as any, prop);
-    },
-  }) as T;
-}
+let stdin, stdout, stderr;
 
-export let stderr = makeLazyStream(getStderr);
-export let stdin = makeLazyStream(getStdin);
-export let stdout = makeLazyStream(getStdout);
+export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
@@ -646,19 +612,13 @@ class Process extends EventEmitter {
   memoryUsage = memoryUsage;
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  get stderr(): Writable {
-    return getStderr();
-  }
+  stderr = stderr;
 
   /** https://nodejs.org/api/process.html#process_process_stdin */
-  get stdin(): Readable {
-    return getStdin();
-  }
+  stdin = stdin;
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  get stdout(): Writable {
-    return getStdout();
-  }
+  stdout = stdout;
 
   /** https://nodejs.org/api/process.html#process_process_version */
   version = version;
@@ -906,52 +866,24 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
+  stdin = process.stdin = initStdin();
+  /** https://nodejs.org/api/process.html#process_process_stdout */
+  stdout = process.stdout = createWritableStdioStream(
+    io.stdout,
+    "stdout",
+  );
+
+  /** https://nodejs.org/api/process.html#process_process_stderr */
+  stderr = process.stderr = createWritableStdioStream(
+    io.stderr,
+    "stderr",
+  );
+
   process.setStartTime(Date.now());
+
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
-
-// deno-lint-ignore no-explicit-any
-let stderr_ = null as any;
-// deno-lint-ignore no-explicit-any
-let stdin_ = null as any;
-// deno-lint-ignore no-explicit-any
-let stdout_ = null as any;
-
-function getStdin(): Readable {
-  if (!stdin_) {
-    stdin_ = initStdin();
-    stdin = stdin_;
-    Object.defineProperty(process, "stdin", { get: () => stdin_ });
-  }
-  return stdin_;
-}
-
-/** https://nodejs.org/api/process.html#process_process_stdout */
-function getStdout(): Writable {
-  if (!stdout_) {
-    stdout_ = createWritableStdioStream(
-      io.stdout,
-      "stdout",
-    );
-    stdout = stdout_;
-    Object.defineProperty(process, "stdout", { get: () => stdout_ });
-  }
-  return stdout_;
-}
-
-/** https://nodejs.org/api/process.html#process_process_stderr */
-function getStderr(): Writable {
-  if (!stderr_) {
-    stderr_ = createWritableStdioStream(
-      io.stderr,
-      "stderr",
-    );
-    stderr = stderr_;
-    Object.defineProperty(process, "stderr", { get: () => stderr_ });
-  }
-  return stderr_;
-}
 
 export default process;

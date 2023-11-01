@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2924
+Total: 2923
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -2356,7 +2356,6 @@ Total: 2924
 - [parallel/test-trace-exit.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-trace-exit.js)
 - [parallel/test-tracing-no-crash.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tracing-no-crash.js)
 - [parallel/test-tty-backwards-api.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tty-backwards-api.js)
-- [parallel/test-tty-stdin-end.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tty-stdin-end.js)
 - [parallel/test-tty-stdin-pipe.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tty-stdin-pipe.js)
 - [parallel/test-ttywrap-invalid-fd.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-ttywrap-invalid-fd.js)
 - [parallel/test-ttywrap-stack.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-ttywrap-stack.js)

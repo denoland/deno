@@ -32,6 +32,7 @@ mod deno_dir;
 mod disk_cache;
 mod emit;
 mod incremental;
+mod module_info;
 mod node;
 mod parsed_source;
 
@@ -43,6 +44,8 @@ pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use incremental::IncrementalCache;
+pub use module_info::ModuleInfoCache;
+pub use module_info::ModuleInfoCacheModuleAnalyzer;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
 
@@ -103,7 +106,7 @@ pub struct FetchCacher {
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
+  module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
 }
@@ -115,7 +118,7 @@ impl FetchCacher {
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
+    module_info_cache: Arc<ModuleInfoCache>,
     permissions: PermissionsContainer,
   ) -> Self {
     Self {
@@ -124,7 +127,7 @@ impl FetchCacher {
       file_header_overrides,
       global_http_cache,
       npm_resolver,
-      parsed_source_cache,
+      module_info_cache,
       permissions,
       cache_info_enabled: false,
     }
@@ -297,7 +300,7 @@ impl Loader for FetchCacher {
     source: &str,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    let result = self.parsed_source_cache.cache_module_info(
+    let result = self.module_info_cache.set_module_info(
       specifier,
       MediaType::from_specifier(specifier),
       source,

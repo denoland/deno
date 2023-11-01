@@ -15,6 +15,7 @@ use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalHttpCache;
+use crate::cache::ModuleInfoCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
@@ -65,7 +66,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 pub struct CliFactoryBuilder {
-  watcher_communicator: Option<WatcherCommunicator>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
 impl CliFactoryBuilder {
@@ -85,7 +86,7 @@ impl CliFactoryBuilder {
   pub async fn build_from_flags_for_watcher(
     mut self,
     flags: Flags,
-    watcher_communicator: WatcherCommunicator,
+    watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Result<CliFactory, AnyError> {
     self.watcher_communicator = Some(watcher_communicator);
     self.build_from_flags(flags).await
@@ -152,6 +153,7 @@ struct CliFactoryServices {
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   blob_store: Deferred<Arc<BlobStore>>,
+  module_info_cache: Deferred<Arc<ModuleInfoCache>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   resolver: Deferred<Arc<CliGraphResolver>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
@@ -169,7 +171,7 @@ struct CliFactoryServices {
 }
 
 pub struct CliFactory {
-  watcher_communicator: Option<WatcherCommunicator>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }
@@ -413,14 +415,19 @@ impl CliFactory {
     })
   }
 
-  pub fn parsed_source_cache(
-    &self,
-  ) -> Result<&Arc<ParsedSourceCache>, AnyError> {
-    self.services.parsed_source_cache.get_or_try_init(|| {
-      Ok(Arc::new(ParsedSourceCache::new(
+  pub fn module_info_cache(&self) -> Result<&Arc<ModuleInfoCache>, AnyError> {
+    self.services.module_info_cache.get_or_try_init(|| {
+      Ok(Arc::new(ModuleInfoCache::new(
         self.caches()?.dep_analysis_db(),
       )))
     })
+  }
+
+  pub fn parsed_source_cache(&self) -> &Arc<ParsedSourceCache> {
+    self
+      .services
+      .parsed_source_cache
+      .get_or_init(Default::default)
   }
 
   pub fn emitter(&self) -> Result<&Arc<Emitter>, AnyError> {
@@ -435,7 +442,7 @@ impl CliFactory {
         crate::args::ts_config_to_emit_options(ts_config_result.ts_config);
       Ok(Arc::new(Emitter::new(
         self.emit_cache()?.clone(),
-        self.parsed_source_cache()?.clone(),
+        self.parsed_source_cache().clone(),
         emit_options,
       )))
     })
@@ -503,7 +510,8 @@ impl CliFactory {
           self.options.clone(),
           self.resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
-          self.parsed_source_cache()?.clone(),
+          self.module_info_cache()?.clone(),
+          self.parsed_source_cache().clone(),
           self.maybe_lockfile().clone(),
           self.maybe_file_watcher_reporter().clone(),
           self.emit_cache()?.clone(),
@@ -547,7 +555,8 @@ impl CliFactory {
           self.maybe_lockfile().clone(),
           self.maybe_file_watcher_reporter().clone(),
           self.module_graph_builder().await?.clone(),
-          self.parsed_source_cache()?.clone(),
+          self.module_info_cache()?.clone(),
+          self.parsed_source_cache().clone(),
           self.text_only_progress_bar().clone(),
           self.resolver().await?.clone(),
           self.type_checker().await?.clone(),
@@ -620,6 +629,11 @@ impl CliFactory {
     let npm_resolver = self.npm_resolver().await?;
     let fs = self.fs();
     let cli_node_resolver = self.cli_node_resolver().await?;
+    let maybe_file_watcher_communicator = if self.options.has_hmr() {
+      Some(self.watcher_communicator.clone().unwrap())
+    } else {
+      None
+    };
 
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
@@ -631,7 +645,7 @@ impl CliFactory {
         self.emitter()?.clone(),
         self.graph_container().clone(),
         self.module_load_preparer().await?.clone(),
-        self.parsed_source_cache()?.clone(),
+        self.parsed_source_cache().clone(),
         self.resolver().await?.clone(),
         cli_node_resolver.clone(),
         NpmModuleLoader::new(
@@ -643,6 +657,8 @@ impl CliFactory {
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
+      Some(self.emitter()?.clone()),
+      maybe_file_watcher_communicator,
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
@@ -659,6 +675,7 @@ impl CliFactory {
       coverage_dir: self.options.coverage_dir(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
+      hmr: self.options.has_hmr(),
       inspect_brk: self.options.inspect_brk().is_some(),
       inspect_wait: self.options.inspect_wait().is_some(),
       is_inspecting: self.options.is_inspecting(),

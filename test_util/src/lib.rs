@@ -2,6 +2,14 @@
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use denokv_proto::datapath::AtomicWrite;
+use denokv_proto::datapath::AtomicWriteOutput;
+use denokv_proto::datapath::AtomicWriteStatus;
+use denokv_proto::datapath::ReadRangeOutput;
+use denokv_proto::datapath::SnapshotRead;
+use denokv_proto::datapath::SnapshotReadOutput;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
@@ -16,12 +24,6 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use kv_remote::datapath::AtomicWrite;
-use kv_remote::datapath::AtomicWriteOutput;
-use kv_remote::datapath::AtomicWriteStatus;
-use kv_remote::datapath::ReadRangeOutput;
-use kv_remote::datapath::SnapshotRead;
-use kv_remote::datapath::SnapshotReadOutput;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
@@ -68,7 +70,6 @@ pub mod assertions;
 mod builders;
 pub mod factory;
 mod fs;
-mod kv_remote;
 pub mod lsp;
 mod npm;
 pub mod pty;
@@ -317,7 +318,7 @@ async fn basic_auth_redirect(
   {
     let credentials =
       format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
-    if auth == format!("Basic {}", base64::encode(credentials)) {
+    if auth == format!("Basic {}", BASE64_STANDARD.encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
@@ -1204,7 +1205,7 @@ async fn main_server(
           .header("content-type", "application/json")
           .body(Body::from(
             serde_json::json!({
-              "version": 2,
+              "version": 1000,
               "databaseId": KV_DATABASE_ID,
               "endpoints": [
                 {
@@ -1266,9 +1267,7 @@ async fn main_server(
                 .map(|_| ReadRangeOutput { values: vec![] })
                 .collect(),
               read_disabled: false,
-              regions_if_read_disabled: vec![],
               read_is_strongly_consistent: true,
-              primary_if_not_strongly_consistent: "".into(),
             }
             .encode_to_vec(),
           ))
@@ -1309,7 +1308,7 @@ async fn main_server(
             AtomicWriteOutput {
               status: AtomicWriteStatus::AwSuccess.into(),
               versionstamp: vec![0u8; 10],
-              primary_if_write_disabled: "".into(),
+              failed_checks: vec![],
             }
             .encode_to_vec(),
           ))

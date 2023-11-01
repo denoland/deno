@@ -62,7 +62,7 @@ pub async fn vendor(
       }
       .boxed_local()
     },
-    parsed_source_cache: factory.parsed_source_cache()?,
+    parsed_source_cache: factory.parsed_source_cache(),
     output_dir: &output_dir,
     maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
     maybe_lockfile: factory.maybe_lockfile().clone(),

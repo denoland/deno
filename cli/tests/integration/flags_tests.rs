@@ -34,7 +34,7 @@ fn help_output() {
     "Bundle module and dependencies into single file",
     "Cache the dependencies",
     "Type-check the dependencies",
-    "UNSTABLE: Compile the script into a self contained executable",
+    "Compile the script into a self contained executable",
     "Generate shell completions",
     "Print coverage reports",
     "Show documentation for a module",

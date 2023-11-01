@@ -49,7 +49,7 @@ where
     permissions.check_sys("userInfo", "node:os.userInfo()")?;
   }
 
-  Ok(whoami::username())
+  Ok(deno_whoami::username())
 }
 
 #[cfg(unix)]
