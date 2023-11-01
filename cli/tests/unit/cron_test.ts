@@ -7,6 +7,7 @@ Deno.test(function noNameTest() {
   assertThrows(
     // @ts-ignore test
     () => Deno.cron(),
+    TypeError,
     "Deno.cron requires a unique name",
   );
 });
@@ -15,6 +16,7 @@ Deno.test(function noSchedule() {
   assertThrows(
     // @ts-ignore test
     () => Deno.cron("foo"),
+    TypeError,
     "Deno.cron requires a valid schedule",
   );
 });
@@ -23,25 +25,30 @@ Deno.test(function noHandler() {
   assertThrows(
     // @ts-ignore test
     () => Deno.cron("foo", "*/1 * * * *"),
-    "Deno.cron requires a valid schedule",
+    TypeError,
+    "Deno.cron requires a handler",
   );
 });
 
 Deno.test(function invalidNameTest() {
   assertThrows(
     () => Deno.cron("abc[]", "*/1 * * * *", () => {}),
+    TypeError,
     "Invalid cron name",
   );
   assertThrows(
     () => Deno.cron("a**bc", "*/1 * * * *", () => {}),
+    TypeError,
     "Invalid cron name",
   );
   assertThrows(
     () => Deno.cron("abc<>", "*/1 * * * *", () => {}),
+    TypeError,
     "Invalid cron name",
   );
   assertThrows(
     () => Deno.cron(";']", "*/1 * * * *", () => {}),
+    TypeError,
     "Invalid cron name",
   );
   assertThrows(
@@ -51,26 +58,31 @@ Deno.test(function invalidNameTest() {
         "*/1 * * * *",
         () => {},
       ),
-    "Invalid cron name",
+    TypeError,
+    "Cron name is too long",
   );
 });
 
 Deno.test(function invalidScheduleTest() {
   assertThrows(
     () => Deno.cron("abc", "bogus", () => {}),
+    TypeError,
     "Invalid cron schedule",
   );
   assertThrows(
     () => Deno.cron("abc", "* * * * * *", () => {}),
+    TypeError,
     "Invalid cron schedule",
   );
   assertThrows(
     () => Deno.cron("abc", "* * * *", () => {}),
+    TypeError,
     "Invalid cron schedule",
   );
   assertThrows(
     () => Deno.cron("abc", "m * * * *", () => {}),
-    "Invalid cron name",
+    TypeError,
+    "Invalid cron schedule",
   );
 });
 
@@ -80,6 +92,7 @@ Deno.test(function invalidBackoffScheduleTest() {
       Deno.cron("abc", "*/1 * * * *", () => {}, {
         backoffSchedule: [1, 1, 1, 1, 1, 1],
       }),
+    TypeError,
     "Invalid backoff schedule",
   );
   assertThrows(
@@ -87,6 +100,7 @@ Deno.test(function invalidBackoffScheduleTest() {
       Deno.cron("abc", "*/1 * * * *", () => {}, {
         backoffSchedule: [3600001],
       }),
+    TypeError,
     "Invalid backoff schedule",
   );
 });
@@ -106,6 +120,7 @@ Deno.test(async function tooManyCrons() {
       () => {
         Deno.cron("next-cron", "*/1 * * * *", () => {}, { signal: ac.signal });
       },
+      TypeError,
       "Too many crons",
     );
   } finally {
@@ -123,7 +138,8 @@ Deno.test(async function duplicateCrons() {
   try {
     assertThrows(
       () => Deno.cron("abc", "*/20 * * * *", () => {}),
-      "Invalid cron name",
+      TypeError,
+      "Cron with this name already exists",
     );
   } finally {
     ac.abort();
