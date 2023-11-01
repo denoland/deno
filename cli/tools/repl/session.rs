@@ -18,12 +18,17 @@ use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
 
 use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParsedSource;
+use deno_ast::SourcePos;
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
@@ -34,11 +39,39 @@ use deno_core::unsync::spawn;
 use deno_core::LocalInspectorSession;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
+use deno_graph::Position;
+use deno_graph::PositionRange;
+use deno_graph::SpecifierWithRange;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
+use regex::Match;
+use regex::Regex;
 
 use super::cdp;
+
+fn comment_source_to_position_range(
+  comment_start: SourcePos,
+  m: &Match,
+  text_info: &SourceTextInfo,
+  is_jsx_import_source: bool,
+) -> PositionRange {
+  // the comment text starts after the double slash or slash star, so add 2
+  let comment_start = comment_start + 2;
+  // -1 and +1 to include the quotes, but not for jsx import sources because
+  // they don't have quotes
+  let padding = if is_jsx_import_source { 0 } else { 1 };
+  PositionRange {
+    start: Position::from_source_pos(
+      comment_start + m.start() - padding,
+      text_info,
+    ),
+    end: Position::from_source_pos(
+      comment_start + m.end() + padding,
+      text_info,
+    ),
+  }
+}
 
 /// We store functions used in the repl on this object because
 /// the user might modify the `Deno` global or delete it outright.
@@ -131,6 +164,12 @@ pub struct TsEvaluateResponse {
   pub value: cdp::EvaluateResponse,
 }
 
+struct ReplJsxState {
+  factory: String,
+  frag_factory: String,
+  import_source: Option<String>,
+}
+
 pub struct ReplSession {
   npm_resolver: Arc<dyn CliNpmResolver>,
   resolver: Arc<CliGraphResolver>,
@@ -145,6 +184,7 @@ pub struct ReplSession {
   test_event_sender: TestEventSender,
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
+  jsx: ReplJsxState,
 }
 
 impl ReplSession {
@@ -212,6 +252,11 @@ impl ReplSession {
       main_module,
       test_event_sender,
       test_event_receiver: Some(test_event_receiver),
+      jsx: ReplJsxState {
+        factory: "React.createElement".to_string(),
+        frag_factory: "React.Fragment".to_string(),
+        import_source: None,
+      },
     };
 
     // inject prelude
@@ -515,46 +560,73 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: "repl.ts".to_string(),
-      text_info: deno_ast::SourceTextInfo::from_string(expression.to_string()),
-      media_type: deno_ast::MediaType::TypeScript,
-      capture_tokens: false,
-      maybe_syntax: None,
-      scope_analysis: false,
-    })?;
+    let parsed_source =
+      match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+          if let Ok(parsed) = parse_source_as(
+            expression.to_string(),
+            deno_ast::MediaType::TypeScript,
+          ) {
+            parsed
+          } else {
+            return Err(err);
+          }
+        }
+      };
 
     self
-      .check_for_npm_or_node_imports(&parsed_module.program())
+      .check_for_npm_or_node_imports(&parsed_source.program())
       .await?;
 
-    let transpiled_src = parsed_module
+    self.analyze_and_handle_jsx(&parsed_source);
+
+    let transpiled_src = parsed_source
       .transpile(&deno_ast::EmitOptions {
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
         inline_sources: false,
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
-        // JSX is not supported in the REPL
-        transform_jsx: false,
+        transform_jsx: true,
         precompile_jsx: false,
         jsx_automatic: false,
         jsx_development: false,
-        jsx_factory: "React.createElement".into(),
-        jsx_fragment_factory: "React.Fragment".into(),
+        jsx_factory: self.jsx.factory.clone(),
+        jsx_fragment_factory: self.jsx.frag_factory.clone(),
         jsx_import_source: None,
         var_decl_imports: true,
       })?
       .text;
 
     let value = self
-      .evaluate_expression(&format!("'use strict'; void 0;\n{transpiled_src}"))
+      .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
 
     Ok(TsEvaluateResponse {
       ts_code: expression.to_string(),
       value,
     })
+  }
+
+  fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {
+    let Some(analyzed_pragmas) = analyze_jsx_pragmas(parsed_source) else {
+      return;
+    };
+
+    if !analyzed_pragmas.has_any() {
+      return;
+    }
+
+    if let Some(jsx) = analyzed_pragmas.jsx {
+      self.jsx.factory = jsx.text;
+    }
+    if let Some(jsx_frag) = analyzed_pragmas.jsx_fragment {
+      self.jsx.frag_factory = jsx_frag.text;
+    }
+    if let Some(jsx_import_source) = analyzed_pragmas.jsx_import_source {
+      self.jsx.import_source = Some(jsx_import_source.text);
+    }
   }
 
   async fn check_for_npm_or_node_imports(
@@ -678,4 +750,122 @@ impl Visit for ImportCollector {
       _ => {}
     }
   }
+}
+
+fn parse_source_as(
+  source: String,
+  media_type: deno_ast::MediaType,
+) -> Result<deno_ast::ParsedSource, AnyError> {
+  let specifier = if media_type == deno_ast::MediaType::Tsx {
+    "repl.tsx"
+  } else {
+    "repl.ts"
+  };
+
+  let parsed = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.to_string(),
+    text_info: deno_ast::SourceTextInfo::from_string(source),
+    media_type,
+    capture_tokens: true,
+    maybe_syntax: None,
+    scope_analysis: false,
+  })?;
+
+  Ok(parsed)
+}
+
+// TODO(bartlomieju): remove these and use regexes from `deno_graph`
+/// Matches the `@jsxImportSource` pragma.
+static JSX_IMPORT_SOURCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxImportSource\s+(\S+)").unwrap());
+/// Matches the `@jsx` pragma.
+static JSX_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsx\s+(\S+)").unwrap());
+/// Matches the `@jsxFrag` pragma.
+static JSX_FRAG_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxFrag\s+(\S+)").unwrap());
+
+#[derive(Default, Debug)]
+struct AnalyzedJsxPragmas {
+  /// Information about `@jsxImportSource` pragma.
+  jsx_import_source: Option<SpecifierWithRange>,
+
+  /// Matches the `@jsx` pragma.
+  jsx: Option<SpecifierWithRange>,
+
+  /// Matches the `@jsxFrag` pragma.
+  jsx_fragment: Option<SpecifierWithRange>,
+}
+
+impl AnalyzedJsxPragmas {
+  fn has_any(&self) -> bool {
+    self.jsx_import_source.is_some()
+      || self.jsx.is_some()
+      || self.jsx_fragment.is_some()
+  }
+}
+
+/// Analyze provided source and return information about carious pragmas
+/// used to configure the JSX tranforms.
+fn analyze_jsx_pragmas(
+  parsed_source: &ParsedSource,
+) -> Option<AnalyzedJsxPragmas> {
+  if !matches!(
+    parsed_source.media_type(),
+    deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx
+  ) {
+    return None;
+  }
+
+  let mut analyzed_pragmas = AnalyzedJsxPragmas::default();
+
+  for c in parsed_source.get_leading_comments().iter() {
+    if c.kind != CommentKind::Block {
+      continue; // invalid
+    }
+
+    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
+      if let Some(m) = captures.get(1) {
+        analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            true,
+          ),
+        });
+      }
+    }
+
+    if let Some(captures) = JSX_RE.captures(&c.text) {
+      if let Some(m) = captures.get(1) {
+        analyzed_pragmas.jsx = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            false,
+          ),
+        });
+      }
+    }
+
+    if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
+      if let Some(m) = captures.get(1) {
+        analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+          text: m.as_str().to_string(),
+          range: comment_source_to_position_range(
+            c.start(),
+            &m,
+            parsed_source.text_info(),
+            false,
+          ),
+        });
+      }
+    }
+  }
+
+  Some(analyzed_pragmas)
 }

@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
+
 use crate::args::DocFlags;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
@@ -18,6 +20,8 @@ use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
+use doc::DocDiagnostic;
+use indexmap::IndexMap;
 
 pub async fn print_docs(
   flags: Flags,
@@ -101,7 +105,7 @@ pub async fn print_docs(
         capturing_parser,
         doc::DocParserOptions {
           private: doc_flags.private,
-          diagnostics: false,
+          diagnostics: doc_flags.lint,
         },
       )?;
 
@@ -110,6 +114,11 @@ pub async fn print_docs(
       for module_specifier in module_specifiers {
         let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
         doc_nodes.extend_from_slice(&nodes);
+      }
+
+      if doc_flags.lint {
+        let diagnostics = doc_parser.take_diagnostics();
+        check_diagnostics(&diagnostics)?;
       }
 
       doc_nodes
@@ -143,4 +152,44 @@ pub async fn print_docs(
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
   }
+}
+
+fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
+  if diagnostics.is_empty() {
+    return Ok(());
+  }
+
+  // group by location then by line (sorted) then column (sorted)
+  let mut diagnostic_groups = IndexMap::new();
+  for diagnostic in diagnostics {
+    diagnostic_groups
+      .entry(diagnostic.location.filename.clone())
+      .or_insert_with(BTreeMap::new)
+      .entry(diagnostic.location.line)
+      .or_insert_with(BTreeMap::new)
+      .entry(diagnostic.location.col)
+      .or_insert_with(Vec::new)
+      .push(diagnostic);
+  }
+
+  for (filename, diagnostics_by_lc) in diagnostic_groups {
+    for (line, diagnostics_by_col) in diagnostics_by_lc {
+      for (col, diagnostics) in diagnostics_by_col {
+        for diagnostic in diagnostics {
+          log::warn!("{}", diagnostic.kind);
+        }
+        log::warn!(
+          "    at {}:{}:{}\n",
+          colors::cyan(filename.as_str()),
+          colors::yellow(&line.to_string()),
+          colors::yellow(&(col + 1).to_string())
+        )
+      }
+    }
+  }
+  bail!(
+    "Found {} documentation diagnostic{}.",
+    colors::bold(diagnostics.len().to_string()),
+    if diagnostics.len() == 1 { "" } else { "s" }
+  );
 }
