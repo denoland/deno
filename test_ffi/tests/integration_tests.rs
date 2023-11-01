@@ -29,7 +29,7 @@ fn basic() {
     .arg("run")
     .arg("--allow-ffi")
     .arg("--allow-read")
-    .arg("--unstable")
+    .arg("--unstable-ffi")
     .arg("--quiet")
     .arg(r#"--v8-flags=--allow-natives-syntax"#)
     .arg("tests/test.js")

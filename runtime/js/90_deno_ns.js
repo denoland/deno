@@ -154,6 +154,62 @@ const denoNs = {
   ChildProcess: process.ChildProcess,
 };
 
+// NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
+const denoNsUnstableById = {
+  // BroadcastChannel is always available?
+  // 1: {},
+
+  // FFI
+  2: {
+    dlopen: ffi.dlopen,
+    UnsafeCallback: ffi.UnsafeCallback,
+    UnsafePointer: ffi.UnsafePointer,
+    UnsafePointerView: ffi.UnsafePointerView,
+    UnsafeFnPointer: ffi.UnsafeFnPointer,
+  },
+
+  // FS
+  3: {
+    flock: fs.flock,
+    flockSync: fs.flockSync,
+    funlock: fs.funlock,
+    funlockSync: fs.funlockSync,
+    umask: fs.umask,
+  },
+
+  // KV
+  4: {
+    openKv: kv.openKv,
+    AtomicOperation: kv.AtomicOperation,
+    Kv: kv.Kv,
+    KvU64: kv.KvU64,
+    KvListIterator: kv.KvListIterator,
+  },
+
+  // net
+  5: {
+    listenDatagram: net.createListenDatagram(
+      ops.op_net_listen_udp,
+      ops.op_net_listen_unixpacket,
+    ),
+  },
+
+  // HTTP
+  6: {
+    HttpClient: httpClient.HttpClient,
+    createHttpClient: httpClient.createHttpClient,
+    // TODO(bartlomieju): why is it needed?
+    http,
+    upgradeHttp: http.upgradeHttp,
+  },
+  // Worker options
+  // 7: {}
+
+  8: {
+    cron: cron.cron,
+  },
+};
+
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
   listenDatagram: net.createListenDatagram(
@@ -183,4 +239,4 @@ const denoNsUnstable = {
   cron: cron.cron,
 };
 
-export { denoNs, denoNsUnstable };
+export { denoNs, denoNsUnstable, denoNsUnstableById };
