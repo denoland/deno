@@ -9,6 +9,13 @@ use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::tools::test::report_tests;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::reporters::TestReporter;
+use crate::tools::test::run_tests_for_worker;
+use crate::tools::test::worker_has_tests;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventSender;
 
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::CommentKind;
@@ -28,7 +35,9 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::unsync::spawn;
 use deno_core::LocalInspectorSession;
+use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::Position;
 use deno_graph::PositionRange;
@@ -171,6 +180,11 @@ pub struct ReplSession {
   pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
   jsx: ReplJsxState,
+  main_module: ModuleSpecifier,
+  test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
+  test_event_sender: TestEventSender,
+  /// This is only optional because it's temporarily taken when evaluating.
+  test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
 }
 
 impl ReplSession {
@@ -179,6 +193,9 @@ impl ReplSession {
     npm_resolver: Arc<dyn CliNpmResolver>,
     resolver: Arc<CliGraphResolver>,
     mut worker: MainWorker,
+    main_module: ModuleSpecifier,
+    test_event_sender: TestEventSender,
+    test_event_receiver: tokio::sync::mpsc::UnboundedReceiver<TestEvent>,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
@@ -234,12 +251,25 @@ impl ReplSession {
         frag_factory: "React.Fragment".to_string(),
         import_source: None,
       },
+      test_reporter_factory: Box::new(|| {
+        Box::new(PrettyTestReporter::new(false, true, false, true))
+      }),
+      main_module,
+      test_event_sender,
+      test_event_receiver: Some(test_event_receiver),
     };
 
     // inject prelude
     repl_session.evaluate_expression(&get_prelude()).await?;
 
     Ok(repl_session)
+  }
+
+  pub fn set_test_reporter_factory(
+    &mut self,
+    f: Box<dyn Fn() -> Box<dyn TestReporter>>,
+  ) {
+    self.test_reporter_factory = f;
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
@@ -370,7 +400,7 @@ impl ReplSession {
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
-    if wrapped_line != line
+    let result = if wrapped_line != line
       && (evaluate_response.is_err()
         || evaluate_response
           .as_ref()
@@ -382,7 +412,29 @@ impl ReplSession {
       self.evaluate_ts_expression(line).await
     } else {
       evaluate_response
+    };
+
+    if worker_has_tests(&mut self.worker) {
+      let report_tests_handle = spawn(report_tests(
+        self.test_event_receiver.take().unwrap(),
+        (self.test_reporter_factory)(),
+      ));
+      run_tests_for_worker(
+        &mut self.worker,
+        &self.main_module,
+        &Default::default(),
+        &Default::default(),
+      )
+      .await
+      .unwrap();
+      self
+        .test_event_sender
+        .send(TestEvent::ForceEndReport)
+        .unwrap();
+      self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
+
+    result
   }
 
   async fn set_last_thrown_error(
@@ -542,6 +594,7 @@ impl ReplSession {
         jsx_factory: self.jsx.factory.clone(),
         jsx_fragment_factory: self.jsx.frag_factory.clone(),
         jsx_import_source: None,
+        precompile_jsx: false,
         var_decl_imports: true,
       })?
       .text;
@@ -593,7 +646,7 @@ impl ReplSession {
       .flat_map(|i| {
         self
           .resolver
-          .resolve(i, &self.referrer)
+          .resolve(i, &self.referrer, ResolutionMode::Execution)
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })

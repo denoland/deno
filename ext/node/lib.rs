@@ -32,6 +32,7 @@ pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+pub use resolution::parse_npm_pkg_name;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
@@ -269,6 +270,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_read_package_scope<P>,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
+    ops::util::op_node_guess_handle_type,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -489,7 +491,7 @@ deno_core::extension!(deno_node,
     "timers.ts" with_specifier "node:timers",
     "timers/promises.ts" with_specifier "node:timers/promises",
     "tls.ts" with_specifier "node:tls",
-    "tty.ts" with_specifier "node:tty",
+    "tty.js" with_specifier "node:tty",
     "url.ts" with_specifier "node:url",
     "util.ts" with_specifier "node:util",
     "util/types.ts" with_specifier "node:util/types",

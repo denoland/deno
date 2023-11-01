@@ -428,7 +428,7 @@ class Blob {
   }
 }
 
-webidl.configurePrototype(Blob);
+webidl.configureInterface(Blob);
 const BlobPrototype = Blob.prototype;
 
 webidl.converters["Blob"] = webidl.createInterfaceConverter(
@@ -549,7 +549,7 @@ class File extends Blob {
   }
 }
 
-webidl.configurePrototype(File);
+webidl.configureInterface(File);
 const FilePrototype = File.prototype;
 
 webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(

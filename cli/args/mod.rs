@@ -7,7 +7,6 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
-pub use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
@@ -46,15 +45,17 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -67,8 +68,6 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
-use crate::npm::CliNpmRegistryApi;
-use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::glob::expand_globs;
 use crate::version;
@@ -76,6 +75,32 @@ use crate::version;
 use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
+
+pub fn npm_registry_default_url() -> &'static Url {
+  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "NPM_CONFIG_REGISTRY";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
+      }
+    }
+
+    Url::parse("https://registry.npmjs.org").unwrap()
+  });
+
+  &NPM_REGISTRY_DEFAULT_URL
+}
 
 pub fn ts_config_to_emit_options(
   config: deno_config::TsConfig,
@@ -106,6 +131,7 @@ pub fn ts_config_to_emit_options(
     jsx_factory: options.jsx_factory,
     jsx_fragment_factory: options.jsx_fragment_factory,
     jsx_import_source: options.jsx_import_source,
+    precompile_jsx: false,
     transform_jsx,
     var_decl_imports: false,
   }
@@ -545,6 +571,19 @@ pub fn get_root_cert_store(
   Ok(root_cert_store)
 }
 
+/// State provided to the process via an environment variable.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NpmProcessState {
+  pub kind: NpmProcessStateKind,
+  pub local_node_modules_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NpmProcessStateKind {
+  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
+  Byonm,
+}
+
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
 
@@ -560,7 +599,7 @@ static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
@@ -843,32 +882,17 @@ impl CliOptions {
     }
   }
 
-  pub async fn resolve_npm_resolution_snapshot(
+  pub fn resolve_npm_resolution_snapshot(
     &self,
-    api: &CliNpmRegistryApi,
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
-    if let Some(state) = &*NPM_PROCESS_STATE {
+    if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
+      NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+    {
       // TODO(bartlomieju): remove this clone
-      return Ok(Some(state.snapshot.clone().into_valid()?));
+      Ok(Some(snapshot.clone().into_valid()?))
+    } else {
+      Ok(None)
     }
-
-    if let Some(lockfile) = self.maybe_lockfile() {
-      if !lockfile.lock().overwrite {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
-          .await
-          .with_context(|| {
-            format!(
-              "failed reading lockfile '{}'",
-              lockfile.lock().filename.display()
-            )
-          })?;
-        // clear the memory cache to reduce memory usage
-        api.clear_memory_cache();
-        return Ok(Some(snapshot));
-      }
-    }
-
-    Ok(None)
   }
 
   // If the main module should be treated as being in an npm package.
@@ -892,6 +916,19 @@ impl CliOptions {
     self.maybe_node_modules_folder.clone()
   }
 
+  pub fn with_node_modules_dir_path(&self, path: PathBuf) -> Self {
+    Self {
+      flags: self.flags.clone(),
+      initial_cwd: self.initial_cwd.clone(),
+      maybe_node_modules_folder: Some(path),
+      maybe_vendor_folder: self.maybe_vendor_folder.clone(),
+      maybe_config_file: self.maybe_config_file.clone(),
+      maybe_package_json: self.maybe_package_json.clone(),
+      maybe_lockfile: self.maybe_lockfile.clone(),
+      overrides: self.overrides.clone(),
+    }
+  }
+
   pub fn node_modules_dir_enablement(&self) -> Option<bool> {
     self.flags.node_modules_dir.or_else(|| {
       self
@@ -899,13 +936,6 @@ impl CliOptions {
         .as_ref()
         .and_then(|c| c.node_modules_dir_flag())
     })
-  }
-
-  pub fn node_modules_dir_specifier(&self) -> Option<ModuleSpecifier> {
-    self
-      .maybe_node_modules_folder
-      .as_ref()
-      .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1100,6 +1130,18 @@ impl CliOptions {
     &self.flags.ext
   }
 
+  pub fn has_hmr(&self) -> bool {
+    if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hmr
+    } else {
+      false
+    }
+  }
+
   /// If the --inspect or --inspect-brk flags are used.
   pub fn is_inspecting(&self) -> bool {
     self.flags.inspect.is_some()
@@ -1190,6 +1232,28 @@ impl CliOptions {
 
   pub fn unstable(&self) -> bool {
     self.flags.unstable
+  }
+
+  pub fn unstable_bare_node_builtlins(&self) -> bool {
+    self.flags.unstable_bare_node_builtlins
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.json.unstable.contains(&"bare-node-builtins".to_string()))
+        .unwrap_or(false)
+  }
+
+  pub fn unstable_byonm(&self) -> bool {
+    self.flags.unstable_byonm
+      || NPM_PROCESS_STATE
+        .as_ref()
+        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
+        .unwrap_or(false)
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+        .unwrap_or(false)
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

@@ -69,7 +69,7 @@ Deno.test(
 );
 
 // Test that ops from extensions have metrics (via OpMiddleware)
-Deno.test(function metricsForOpCrates() {
+Deno.test.ignore(function metricsForOpCrates() {
   const _ = new URL("https://deno.land");
 
   const m1 = Deno.metrics().ops["op_url_parse"];

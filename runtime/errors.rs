@@ -212,6 +212,10 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_url_parse_error_class)
     })
     .or_else(|| {
+      e.downcast_ref::<deno_kv::sqlite::TypeError>()
+        .map(|_| "TypeError")
+    })
+    .or_else(|| {
       #[cfg(unix)]
       let maybe_get_nix_error_class =
         || e.downcast_ref::<nix::Error>().map(get_nix_error_class);

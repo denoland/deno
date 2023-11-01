@@ -146,6 +146,7 @@ const OP_DETAILS = {
   "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_text": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_binary": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_binary_ab": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_ping": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
@@ -981,20 +982,17 @@ async function benchMeasure(timeBudget, fn, async, context) {
       fn(context);
       const t2 = benchNow();
       const totalTime = t2 - t1;
-      let measuredTime = totalTime;
       if (currentBenchUserExplicitStart !== null) {
-        measuredTime -= currentBenchUserExplicitStart - t1;
         currentBenchUserExplicitStart = null;
         usedExplicitTimers = true;
       }
       if (currentBenchUserExplicitEnd !== null) {
-        measuredTime -= t2 - currentBenchUserExplicitEnd;
         currentBenchUserExplicitEnd = null;
         usedExplicitTimers = true;
       }
 
       c++;
-      wavg += measuredTime;
+      wavg += totalTime;
       budget -= totalTime;
     }
   } else {
@@ -1003,20 +1001,17 @@ async function benchMeasure(timeBudget, fn, async, context) {
       await fn(context);
       const t2 = benchNow();
       const totalTime = t2 - t1;
-      let measuredTime = totalTime;
       if (currentBenchUserExplicitStart !== null) {
-        measuredTime -= currentBenchUserExplicitStart - t1;
         currentBenchUserExplicitStart = null;
         usedExplicitTimers = true;
       }
       if (currentBenchUserExplicitEnd !== null) {
-        measuredTime -= t2 - currentBenchUserExplicitEnd;
         currentBenchUserExplicitEnd = null;
         usedExplicitTimers = true;
       }
 
       c++;
-      wavg += measuredTime;
+      wavg += totalTime;
       budget -= totalTime;
     }
   }

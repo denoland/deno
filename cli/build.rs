@@ -376,22 +376,17 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_crypto::deno_crypto::init_ops(None),
     deno_broadcast_channel::deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-      false, // No --unstable.
     ),
-    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(false),
-    deno_net::deno_net::init_ops::<PermissionsContainer>(
-      None, false, // No --unstable.
-      None,
-    ),
+    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(),
+    deno_net::deno_net::init_ops::<PermissionsContainer>(None, None),
     deno_tls::deno_tls::init_ops(),
-    deno_kv::deno_kv::init_ops(
-      SqliteDbHandler::<PermissionsContainer>::new(None),
-      false, // No --unstable.
-    ),
+    deno_kv::deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(
+      None, None,
+    )),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
+    deno_fs::deno_fs::init_ops::<PermissionsContainer>(fs.clone()),
     deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
     deno_runtime::runtime::init_ops(),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!

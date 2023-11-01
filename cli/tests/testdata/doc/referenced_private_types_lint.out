@@ -1,0 +1,10 @@
+Type is not exported, but referenced by an exported type.
+    at file:///[WILDCARD]/referenced_private_types.ts:1:1
+
+Missing JS documentation comment.
+    at file:///[WILDCARD]/referenced_private_types.ts:5:1
+
+Missing JS documentation comment.
+    at file:///[WILDCARD]/referenced_private_types.ts:6:3
+
+error: Found 3 documentation diagnostics.

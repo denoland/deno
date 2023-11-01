@@ -361,7 +361,7 @@ class CryptoKey {
   }
 }
 
-webidl.configurePrototype(CryptoKey);
+webidl.configureInterface(CryptoKey);
 const CryptoKeyPrototype = CryptoKey.prototype;
 
 /**
@@ -1313,6 +1313,7 @@ class SubtleCrypto {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
           signature,
+          saltLength: normalizedAlgorithm.saltLength,
         }, data);
       }
       case "HMAC": {
@@ -4671,7 +4672,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
   }
 }
 
-webidl.configurePrototype(SubtleCrypto);
+webidl.configureInterface(SubtleCrypto);
 const subtle = webidl.createBranded(SubtleCrypto);
 
 class Crypto {
@@ -4734,7 +4735,7 @@ class Crypto {
   }
 }
 
-webidl.configurePrototype(Crypto);
+webidl.configureInterface(Crypto);
 const CryptoPrototype = Crypto.prototype;
 
 const crypto = webidl.createBranded(Crypto);

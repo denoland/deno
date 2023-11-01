@@ -4,7 +4,7 @@ use bytes::Bytes;
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::url;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -29,6 +29,9 @@ use http::Request;
 use http::Uri;
 use hyper::Body;
 use once_cell::sync::Lazy;
+use rustls_tokio_stream::rustls::RootCertStore;
+use rustls_tokio_stream::rustls::ServerName;
+use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -36,22 +39,24 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
+use tokio::io::ReadHalf;
+use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls::RootCertStore;
-use tokio_rustls::rustls::ServerName;
-use tokio_rustls::TlsConnector;
 
 use fastwebsockets::CloseCode;
-use fastwebsockets::FragmentCollector;
+use fastwebsockets::FragmentCollectorRead;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
+use fastwebsockets::WebSocketWrite;
+
 mod stream;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
@@ -108,11 +113,12 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op]
+#[op2]
+#[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
-  api_name: String,
-  url: String,
+  #[string] api_name: String,
+  #[string] url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
 where
@@ -167,14 +173,15 @@ async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
   Ok((stream, response))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  api_name: String,
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-  headers: Option<Vec<(ByteString, ByteString)>>,
+  #[string] api_name: String,
+  #[string] url: String,
+  #[string] protocols: String,
+  #[smi] cancel_handle: Option<ResourceId>,
+  #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -278,11 +285,16 @@ where
         unsafely_ignore_certificate_errors,
         None,
       )?;
-      let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
-      let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      handshake(cancel_resource, request, tls_socket).await?
+      let mut tls_connector = TlsStream::new_client_side(
+        tcp_socket,
+        tls_config.into(),
+        dnsname,
+        NonZeroUsize::new(65536),
+      );
+      let _hs = tls_connector.handshake().await?;
+      handshake(cancel_resource, request, tls_connector).await?
     }
     _ => unreachable!(),
   };
@@ -330,12 +342,13 @@ pub struct ServerWebSocket {
   closed: Cell<bool>,
   buffer: Cell<Option<Vec<u8>>>,
   string: Cell<Option<String>>,
-  ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
-  tx_lock: AsyncRefCell<()>,
+  ws_read: AsyncRefCell<FragmentCollectorRead<ReadHalf<WebSocketStream>>>,
+  ws_write: AsyncRefCell<WebSocketWrite<WriteHalf<WebSocketStream>>>,
 }
 
 impl ServerWebSocket {
   fn new(ws: WebSocket<WebSocketStream>) -> Self {
+    let (ws_read, ws_write) = ws.split(tokio::io::split);
     Self {
       buffered: Cell::new(0),
       error: Cell::new(None),
@@ -343,8 +356,8 @@ impl ServerWebSocket {
       closed: Cell::new(false),
       buffer: Cell::new(None),
       string: Cell::new(None),
-      ws: AsyncRefCell::new(FragmentCollector::new(ws)),
-      tx_lock: AsyncRefCell::new(()),
+      ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
+      ws_write: AsyncRefCell::new(ws_write),
     }
   }
 
@@ -359,22 +372,22 @@ impl ServerWebSocket {
   }
 
   /// Reserve a lock, but don't wait on it. This gets us our place in line.
-  pub fn reserve_lock(self: &Rc<Self>) -> AsyncMutFuture<()> {
-    RcRef::map(self, |r| &r.tx_lock).borrow_mut()
+  fn reserve_lock(
+    self: &Rc<Self>,
+  ) -> AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>> {
+    RcRef::map(self, |r| &r.ws_write).borrow_mut()
   }
 
   #[inline]
-  pub async fn write_frame(
+  async fn write_frame(
     self: &Rc<Self>,
-    lock: AsyncMutFuture<()>,
+    lock: AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>>,
     frame: Frame<'_>,
   ) -> Result<(), AnyError> {
-    lock.await;
-
-    // SAFETY: fastwebsockets only needs a mutable reference to the WebSocket
-    // to populate the write buffer. We encounter an await point when writing
-    // to the socket after the frame has already been written to the buffer.
-    let ws = unsafe { &mut *self.ws.as_ptr() };
+    let mut ws = lock.await;
+    if ws.is_closed() {
+      return Ok(());
+    }
     ws.write_frame(frame)
       .await
       .map_err(|err| type_error(err.to_string()))?;
@@ -403,12 +416,12 @@ pub fn ws_create_server_stream(
   ws.set_writev(*USE_WRITEV);
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
+
   let rid = state.resource_table.add(ServerWebSocket::new(ws));
   Ok(rid)
 }
 
-#[op(fast)]
-pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
+fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let data = data.to_vec();
   let len = data.len();
@@ -426,8 +439,30 @@ pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op(fast)]
-pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
+#[op2(fast)]
+pub fn op_ws_send_binary(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[anybuffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
+}
+
+#[op2(fast)]
+pub fn op_ws_send_binary_ab(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[arraybuffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
+}
+
+#[op2(fast)]
+pub fn op_ws_send_text(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
+) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
@@ -448,11 +483,11 @@ pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[buffer] data: JsBuffer,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -466,11 +501,11 @@ pub async fn op_ws_send_binary_async(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: String,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -487,8 +522,12 @@ pub async fn op_ws_send_text_async(
 
 const EMPTY_PAYLOAD: &[u8] = &[];
 
-#[op(fast)]
-pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
+#[op2(fast)]
+#[smi]
+pub fn op_ws_get_buffered_amount(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> u32 {
   state
     .resource_table
     .get::<ServerWebSocket>(rid)
@@ -497,10 +536,10 @@ pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
     .get() as u32
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_ws_send_pong(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -512,10 +551,10 @@ pub async fn op_ws_send_pong(
     .await
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -530,12 +569,12 @@ pub async fn op_ws_send_ping(
     .await
 }
 
-#[op(deferred)]
+#[op2(async(lazy))]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  code: Option<u16>,
-  reason: Option<String>,
+  #[smi] rid: ResourceId,
+  #[smi] code: Option<u16>,
+  #[string] reason: Option<String>,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -551,23 +590,29 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[op]
-pub fn op_ws_get_buffer(state: &mut OpState, rid: ResourceId) -> ToJsBuffer {
+#[op2]
+#[serde]
+pub fn op_ws_get_buffer(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> ToJsBuffer {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.buffer.take().unwrap().into()
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> String {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.string.take().unwrap()
 }
 
-#[op]
-pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
+#[op2]
+#[string]
+pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
     return "Bad resource".into();
   };
@@ -575,10 +620,10 @@ pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
   resource.error.take().unwrap_or_default()
 }
 
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> u16 {
   let Ok(resource) = state
     .borrow_mut()
@@ -594,9 +639,15 @@ pub async fn op_ws_next_event(
     return MessageKind::Error as u16;
   }
 
-  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
+  let mut ws = RcRef::map(&resource, |r| &r.ws_read).borrow_mut().await;
+  let writer = RcRef::map(&resource, |r| &r.ws_write);
+  let mut sender = move |frame| {
+    let writer = writer.clone();
+    async move { writer.borrow_mut().await.write_frame(frame).await }
+  };
   loop {
-    let val = match ws.read_frame().await {
+    let res = ws.read_frame(&mut sender).await;
+    let val = match res {
       Ok(val) => val,
       Err(err) => {
         // No message was received, socket closed while we waited.
@@ -660,6 +711,7 @@ deno_core::extension!(deno_websocket,
     op_ws_get_buffer_as_string,
     op_ws_get_error,
     op_ws_send_binary,
+    op_ws_send_binary_ab,
     op_ws_send_text,
     op_ws_send_binary_async,
     op_ws_send_text_async,

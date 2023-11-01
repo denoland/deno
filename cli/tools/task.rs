@@ -86,18 +86,9 @@ pub async fn execute_script(
 
     // install the npm packages if we're using a managed resolver
     if let Some(npm_resolver) = npm_resolver.as_managed() {
-      let package_json_deps_installer =
-        factory.package_json_deps_installer().await?;
-      package_json_deps_installer
-        .ensure_top_level_install()
-        .await?;
+      npm_resolver.ensure_top_level_package_json_install().await?;
       npm_resolver.resolve_pending().await?;
     }
-
-    log::info!(
-      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in an upcoming release.",
-      colors::yellow("Warning"),
-    );
 
     let cwd = match task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
@@ -130,7 +121,7 @@ pub async fn execute_script(
           }
           None => Default::default(),
         };
-        let env_vars = match npm_resolver.node_modules_path() {
+        let env_vars = match npm_resolver.root_node_modules_path() {
           Some(dir_path) => collect_env_vars_with_node_modules_dir(&dir_path),
           None => collect_env_vars(),
         };

@@ -1877,9 +1877,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use
-   * [`readAll()`](https://deno.land/std/streams/read_all.ts?s=readAll) from
-   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
+   * work with this directly, but rather use {@linkcode ReadableStream} and
+   * {@linkcode https://deno.land/std/streams/mod.ts?s=toArrayBuffer|toArrayBuffer}
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
@@ -1907,10 +1906,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use
-   * [`readAllSync()`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
-   * from
-   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
+   * work with this directly, but rather use {@linkcode ReadableStream} and
+   * {@linkcode https://deno.land/std/streams/mod.ts?s=toArrayBuffer|toArrayBuffer}
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single
@@ -1932,10 +1929,9 @@ declare namespace Deno {
   /** Write to the resource ID (`rid`) the contents of the array buffer (`data`).
    *
    * Resolves to the number of bytes written. This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather use
-   * [`writeAll()`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
-   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   * instead.
+   * level APIs and most users should not work with this directly, but rather
+   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
+   * {@linkcode ReadableStream.pipeTo}.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -1957,11 +1953,8 @@ declare namespace Deno {
    *
    * Returns the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather
-   * use
-   * [`writeAllSync()`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
-   * from
-   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   * instead.
+   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
+   * {@linkcode ReadableStream.pipeTo}.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -5918,7 +5911,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface Server {
+  export interface HttpServer {
     /** A promise that resolves once server finishes - eg. when aborted using
      * the signal passed to {@linkcode ServeOptions.signal}.
      */
@@ -5936,6 +5929,12 @@ declare namespace Deno {
     unref(): void;
   }
 
+  /**
+   * @category HTTP Server
+   * @deprecated Use {@linkcode HttpServer} instead.
+   */
+  export type Server = HttpServer;
+
   /** Serves HTTP requests with the given handler.
    *
    * The below example serves with the port `8000` on hostname `"127.0.0.1"`.
@@ -5946,7 +5945,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): Server;
+  export function serve(handler: ServeHandler): HttpServer;
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -6006,7 +6005,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Server;
+  ): HttpServer;
   /** Serves HTTP requests with the given option bag.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -6034,5 +6033,5 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Server;
+  ): HttpServer;
 }

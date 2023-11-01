@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2926
+Total: 2923
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -252,14 +252,12 @@ Total: 2926
 - [parallel/test-blocklist.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-blocklist.js)
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-broadcastchannel-custom-inspect.js)
-- [parallel/test-buffer-alloc.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-alloc.js)
 - [parallel/test-buffer-backing-arraybuffer.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-backing-arraybuffer.js)
 - [parallel/test-buffer-compare.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-compare.js)
 - [parallel/test-buffer-constructor-deprecation-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-constructor-deprecation-error.js)
 - [parallel/test-buffer-constructor-node-modules-paths.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-constructor-node-modules-paths.js)
 - [parallel/test-buffer-constructor-outside-node-modules.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-constructor-outside-node-modules.js)
 - [parallel/test-buffer-fill.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-fill.js)
-- [parallel/test-buffer-indexof.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-indexof.js)
 - [parallel/test-buffer-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-inspect.js)
 - [parallel/test-buffer-pending-deprecation.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-pending-deprecation.js)
 - [parallel/test-buffer-pool-untransferable.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-pool-untransferable.js)
@@ -2358,7 +2356,6 @@ Total: 2926
 - [parallel/test-trace-exit.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-trace-exit.js)
 - [parallel/test-tracing-no-crash.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tracing-no-crash.js)
 - [parallel/test-tty-backwards-api.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tty-backwards-api.js)
-- [parallel/test-tty-stdin-end.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tty-stdin-end.js)
 - [parallel/test-tty-stdin-pipe.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-tty-stdin-pipe.js)
 - [parallel/test-ttywrap-invalid-fd.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-ttywrap-invalid-fd.js)
 - [parallel/test-ttywrap-stack.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-ttywrap-stack.js)

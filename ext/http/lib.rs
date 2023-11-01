@@ -3,6 +3,8 @@
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
 use async_compression::Level;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -990,7 +992,7 @@ fn op_http_websocket_accept_header(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
-  Ok(base64::encode(digest))
+  Ok(BASE64_STANDARD.encode(digest))
 }
 
 #[op2(async)]

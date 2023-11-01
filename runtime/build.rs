@@ -55,14 +55,6 @@ mod startup_snapshot {
     fn allow_hrtime(&mut self) -> bool {
       unreachable!("snapshotting!")
     }
-
-    fn check_unstable(
-      &self,
-      _state: &deno_core::OpState,
-      _api_name: &'static str,
-    ) {
-      unreachable!("snapshotting!")
-    }
   }
 
   impl deno_ffi::FfiPermissions for Permissions {
@@ -224,22 +216,17 @@ mod startup_snapshot {
       deno_crypto::deno_crypto::init_ops_and_esm(None),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-        false, // No --unstable.
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(false),
-      deno_net::deno_net::init_ops_and_esm::<Permissions>(
-        None, false, // No --unstable.
-        None,
-      ),
+      deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(),
+      deno_net::deno_net::init_ops_and_esm::<Permissions>(None, None),
       deno_tls::deno_tls::init_ops_and_esm(),
-      deno_kv::deno_kv::init_ops_and_esm(
-        deno_kv::sqlite::SqliteDbHandler::<Permissions>::new(None),
-        false, // No --unstable
-      ),
+      deno_kv::deno_kv::init_ops_and_esm(deno_kv::sqlite::SqliteDbHandler::<
+        Permissions,
+      >::new(None, None)),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, fs.clone()),
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
       deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
       runtime::init_ops_and_esm(),
     ];
