@@ -419,6 +419,7 @@ pub struct Flags {
   pub unstable: bool,
   pub unstable_bare_node_builtlins: bool,
   pub unstable_byonm: bool,
+  pub unstable_features: Vec<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }
@@ -814,6 +815,46 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   if matches.get_flag("unstable") {
     flags.unstable = true;
   }
+  if matches.get_flag("unstable-broadcast-channel") {
+    flags.unstable_features.push(
+      deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME.to_string(),
+    );
+  }
+  if matches.get_flag("unstable-ffi") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-fs") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-http") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::http::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-kv") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-net") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_net::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-worker-options") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-cron") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME.to_string());
+  }
 
   flags.unstable_bare_node_builtlins =
     matches.get_flag("unstable-bare-node-builtins");
@@ -901,7 +942,7 @@ fn clap_root() -> Command {
     crate::version::TYPESCRIPT
   );
 
-  Command::new("deno")
+  let mut cmd = Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
     .max_term_width(80)
@@ -931,7 +972,19 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
-    )
+    );
+
+  for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+    cmd = cmd.arg(
+      Arg::new(format!("unstable-{}", flag_name))
+        .long(format!("unstable-{}", flag_name))
+        .help(help)
+        .action(ArgAction::SetTrue)
+        .global(true),
+    );
+  }
+
+  cmd
     .arg(
       Arg::new("log-level")
         .short('L')

@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub const UNSTABLE_FEATURE_NAME: &str = "worker";
+pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 pub struct CreateWebWorkerArgs {
   pub name: String,

@@ -595,6 +595,12 @@ impl CliFactory {
       if self.options.unstable() {
         checker.enable_legacy_unstable();
       }
+      let unstable_features = self.options.unstable_features();
+      for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+        if unstable_features.contains(&flag_name.to_string()) {
+          checker.enable_feature(flag_name);
+        }
+      }
 
       Arc::new(checker)
     })

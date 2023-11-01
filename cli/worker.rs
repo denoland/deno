@@ -529,6 +529,16 @@ impl CliMainWorkerFactory {
     let mut extensions = ops::cli_exts(shared.npm_resolver.clone());
     extensions.append(&mut custom_extensions);
 
+    // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
+    // list of enabled features.
+    let feature_checker = shared.feature_checker.clone();
+    let mut unstable_features = Vec::with_capacity(8);
+    for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
+      if feature_checker.check(feature_name) {
+        unstable_features.push(*id);
+      }
+    }
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         args: shared.options.argv.clone(),
@@ -544,6 +554,7 @@ impl CliMainWorkerFactory {
         runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: shared.options.unstable,
+        unstable_features,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
@@ -580,7 +591,7 @@ impl CliMainWorkerFactory {
         shared.compiled_wasm_module_store.clone(),
       ),
       stdio,
-      feature_checker: shared.feature_checker.clone(),
+      feature_checker,
     };
 
     let worker = MainWorker::bootstrap_from_options(
@@ -704,6 +715,16 @@ fn create_web_worker_callback(
         .join(checksum::gen(&[key.as_bytes()]))
     });
 
+    // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
+    // list of enabled features.
+    let feature_checker = shared.feature_checker.clone();
+    let mut unstable_features = Vec::with_capacity(8);
+    for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
+      if feature_checker.check(feature_name) {
+        unstable_features.push(*id);
+      }
+    }
+
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: shared.options.argv.clone(),
@@ -719,6 +740,7 @@ fn create_web_worker_callback(
         runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: shared.options.unstable,
+        unstable_features,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
@@ -752,7 +774,7 @@ fn create_web_worker_callback(
       ),
       stdio: stdio.clone(),
       cache_storage_dir,
-      feature_checker: shared.feature_checker.clone(),
+      feature_checker,
     };
 
     WebWorker::bootstrap_from_options(
