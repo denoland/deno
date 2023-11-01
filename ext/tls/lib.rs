@@ -205,19 +205,7 @@ pub fn create_client_config(
         client_config.with_no_client_auth()
       };
 
-    match socket_use {
-      SocketUse::Http1Only => {
-        client.alpn_protocols = vec!["http/1.1".into()];
-      }
-      SocketUse::Http2Only => {
-        client.alpn_protocols = vec!["h2".into()];
-      }
-      SocketUse::Http => {
-        client.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
-      }
-      SocketUse::GeneralSsl => {}
-    };
-
+    add_alpn(&mut client, socket_use);
     return Ok(client);
   }
 
@@ -245,16 +233,32 @@ pub fn create_client_config(
       root_cert_store
     });
 
-  let client = if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key
-  {
-    client_config
-      .with_client_auth_cert(cert_chain, private_key)
-      .expect("invalid client key or certificate")
-  } else {
-    client_config.with_no_client_auth()
-  };
+  let mut client =
+    if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
+      client_config
+        .with_client_auth_cert(cert_chain, private_key)
+        .expect("invalid client key or certificate")
+    } else {
+      client_config.with_no_client_auth()
+    };
 
+  add_alpn(&mut client, socket_use);
   Ok(client)
+}
+
+fn add_alpn(client: &mut ClientConfig, socket_use: SocketUse) {
+  match socket_use {
+    SocketUse::Http1Only => {
+      client.alpn_protocols = vec!["http/1.1".into()];
+    }
+    SocketUse::Http2Only => {
+      client.alpn_protocols = vec!["h2".into()];
+    }
+    SocketUse::Http => {
+      client.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+    }
+    SocketUse::GeneralSsl => {}
+  };
 }
 
 pub fn load_certs(

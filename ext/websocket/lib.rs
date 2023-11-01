@@ -264,11 +264,10 @@ async fn handshake_http2_wss(
   // We need to better expose the underlying errors here
   let mut tls_connector =
     TlsStream::new_client_side(tcp_socket, tls_config.into(), dnsname, None);
-  let _handshake = tls_connector.handshake().await?;
-  // TODO(mmastrac): this might be non-conformance in the WPT server
-  // if handshake.alpn.is_none() {
-  //   bail!("Didn't receive h2 alpn, aborting connection");
-  // }
+  let handshake = tls_connector.handshake().await?;
+  if handshake.alpn.is_none() {
+    bail!("Didn't receive h2 alpn, aborting connection");
+  }
   let h2 = h2::client::Builder::new();
   let (mut send, conn) = h2.handshake::<_, Bytes>(tls_connector).await?;
   spawn(conn);
