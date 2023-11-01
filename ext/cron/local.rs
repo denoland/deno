@@ -92,10 +92,7 @@ impl LocalCronHandler {
         .copied();
 
       let sleep_fut = if let Some(earliest_deadline) = earliest_deadline {
-        let now = SystemTime::now()
-          .duration_since(SystemTime::UNIX_EPOCH)
-          .unwrap()
-          .as_millis() as u64;
+        let now = crate::time::utc_now().timestamp_millis() as u64;
         if let Some(delta) = earliest_deadline.checked_sub(now) {
           tokio::time::sleep(std::time::Duration::from_millis(delta)).boxed()
         } else {
@@ -125,10 +122,7 @@ impl LocalCronHandler {
           {
             let backoff_ms =
               backoff_schedule[cron.current_execution_retries as usize];
-            let now = SystemTime::now()
-              .duration_since(SystemTime::UNIX_EPOCH)
-              .unwrap()
-              .as_millis() as u64;
+            let now = crate::time::utc_now().timestamp_millis() as u64;
             cron.current_execution_retries += 1;
             now + backoff_ms as u64
           } else {
@@ -162,10 +156,7 @@ impl RuntimeState {
   fn get_ready_crons(
     &mut self,
   ) -> Result<Vec<(String, WeakSender<()>)>, AnyError> {
-    let now = SystemTime::now()
-      .duration_since(SystemTime::UNIX_EPOCH)
-      .unwrap()
-      .as_millis() as u64;
+    let now = crate::time::utc_now().timestamp_millis() as u64;
 
     let ready = {
       let to_remove = self
@@ -343,10 +334,7 @@ mod tests {
 
   #[test]
   fn test_compute_next_deadline() {
-    let now = SystemTime::now()
-      .duration_since(SystemTime::UNIX_EPOCH)
-      .unwrap()
-      .as_millis() as u64;
+    let now = crate::time::utc_now().timestamp_millis() as u64;
     assert!(compute_next_deadline("*/1 * * * *").unwrap() > now);
     assert!(compute_next_deadline("* * * * *").unwrap() > now);
     assert!(compute_next_deadline("bogus").is_err());
