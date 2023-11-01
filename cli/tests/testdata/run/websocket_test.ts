@@ -163,7 +163,7 @@ Deno.test("websocket error", async () => {
     // Error message got changed because we don't use warp in test_util
     assertEquals(
       err.message,
-      "InvalidData: invalid data",
+      "NetworkError: failed to connect to WebSocket: invalid data",
     );
     promise1.resolve();
   };
