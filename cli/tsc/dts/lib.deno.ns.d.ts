@@ -5917,7 +5917,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface HttpServer extends Disposable {
+  export interface HttpServer extends AsyncDisposable {
     /** A promise that resolves once server finishes - eg. when aborted using
      * the signal passed to {@linkcode ServeOptions.signal}.
      */
