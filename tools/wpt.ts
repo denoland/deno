@@ -174,7 +174,7 @@ function getTestTimeout(test: TestToRun) {
   if (Deno.env.get("CI")) {
     // Don't give expected failures the full time
     if (test.expectation === false) {
-      return { long: 60_000, default: 10_000 };
+      return { long: 10_000, default: 10_000 };
     }
     return { long: 4 * 60_000, default: 4 * 60_000 };
   }

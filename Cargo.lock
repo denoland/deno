@@ -1757,6 +1757,7 @@ dependencies = [
  "deno_net",
  "deno_tls",
  "fastwebsockets",
+ "h2",
  "http",
  "hyper 0.14.27",
  "once_cell",
@@ -4539,9 +4540,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-tokio-stream"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb55523a1a023f0e9eb66038515964b59dd0ef63f188ca759360a0e4cf0ee632"
+checksum = "3abd2fa2e122bbf891a7333bf2091d8130367d8c381913821b24389208a3db45"
 dependencies = [
  "futures",
  "rustls",

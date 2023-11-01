@@ -25,3 +25,4 @@ once_cell.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
 tokio.workspace = true
+h2.workspace = true
