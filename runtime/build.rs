@@ -222,7 +222,7 @@ mod startup_snapshot {
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(deno_kv::sqlite::SqliteDbHandler::<
         Permissions,
-      >::new(None)),
+      >::new(None, None)),
       deno_cron::deno_cron::init_ops_and_esm(
         deno_cron::local::LocalCronHandler::new(),
       ),

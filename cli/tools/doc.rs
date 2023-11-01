@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
+
 use crate::args::DocFlags;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
@@ -18,6 +20,8 @@ use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
+use doc::DocDiagnostic;
+use indexmap::IndexMap;
 
 pub async fn print_docs(
   flags: Flags,
@@ -33,7 +37,7 @@ pub async fn print_docs(
   let capturing_parser =
     CapturingModuleParser::new(Some(&source_parser), &store);
 
-  let mut doc_nodes = match doc_flags.source_file {
+  let mut doc_nodes = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
       let source_file_specifier =
         ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
@@ -60,22 +64,33 @@ pub async fn print_docs(
           },
         )
         .await;
-      let doc_parser =
-        doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?;
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          private: doc_flags.private,
+          diagnostics: false,
+        },
+      )?;
       doc_parser.parse_module(&source_file_specifier)?.definitions
     }
-    DocSourceFileFlag::Path(source_file) => {
+    DocSourceFileFlag::Paths(source_files) => {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
-      let module_specifier =
-        resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
-
+      let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
+        source_files
+          .iter()
+          .map(|source_file| {
+            Ok(resolve_url_or_path(source_file, cli_options.initial_cwd())?)
+          })
+          .collect();
+      let module_specifiers = module_specifiers?;
       let mut loader = module_graph_builder.create_graph_loader();
       let graph = module_graph_builder
         .create_graph_with_options(CreateGraphOptions {
           graph_kind: GraphKind::TypesOnly,
-          roots: vec![module_specifier.clone()],
+          roots: module_specifiers.clone(),
           loader: &mut loader,
           analyzer: &analyzer,
         })
@@ -85,8 +100,28 @@ pub async fn print_docs(
         graph_lock_or_exit(&graph, &mut lockfile.lock());
       }
 
-      doc::DocParser::new(&graph, doc_flags.private, capturing_parser)?
-        .parse_with_reexports(&module_specifier)?
+      let doc_parser = doc::DocParser::new(
+        &graph,
+        capturing_parser,
+        doc::DocParserOptions {
+          private: doc_flags.private,
+          diagnostics: doc_flags.lint,
+        },
+      )?;
+
+      let mut doc_nodes = vec![];
+
+      for module_specifier in module_specifiers {
+        let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
+        doc_nodes.extend_from_slice(&nodes);
+      }
+
+      if doc_flags.lint {
+        let diagnostics = doc_parser.take_diagnostics();
+        check_diagnostics(&diagnostics)?;
+      }
+
+      doc_nodes
     }
   };
 
@@ -117,4 +152,44 @@ pub async fn print_docs(
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
   }
+}
+
+fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
+  if diagnostics.is_empty() {
+    return Ok(());
+  }
+
+  // group by location then by line (sorted) then column (sorted)
+  let mut diagnostic_groups = IndexMap::new();
+  for diagnostic in diagnostics {
+    diagnostic_groups
+      .entry(diagnostic.location.filename.clone())
+      .or_insert_with(BTreeMap::new)
+      .entry(diagnostic.location.line)
+      .or_insert_with(BTreeMap::new)
+      .entry(diagnostic.location.col)
+      .or_insert_with(Vec::new)
+      .push(diagnostic);
+  }
+
+  for (filename, diagnostics_by_lc) in diagnostic_groups {
+    for (line, diagnostics_by_col) in diagnostics_by_lc {
+      for (col, diagnostics) in diagnostics_by_col {
+        for diagnostic in diagnostics {
+          log::warn!("{}", diagnostic.kind);
+        }
+        log::warn!(
+          "    at {}:{}:{}\n",
+          colors::cyan(filename.as_str()),
+          colors::yellow(&line.to_string()),
+          colors::yellow(&(col + 1).to_string())
+        )
+      }
+    }
+  }
+  bail!(
+    "Found {} documentation diagnostic{}.",
+    colors::bold(diagnostics.len().to_string()),
+    if diagnostics.len() == 1 { "" } else { "s" }
+  );
 }

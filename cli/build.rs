@@ -382,7 +382,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_net::deno_net::init_ops::<PermissionsContainer>(None, None),
     deno_tls::deno_tls::init_ops(),
     deno_kv::deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(
-      None,
+      None, None,
     )),
     deno_cron::deno_cron::init_ops(LocalCronHandler::new()),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),

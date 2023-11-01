@@ -49,6 +49,10 @@ test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
+denokv_proto = "0.2.1"
+denokv_sqlite = "0.2.1"
+denokv_remote = "0.2.3"
+
 # exts
 deno_broadcast_channel = { version = "0.115.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.53.0", path = "./ext/cache" }
@@ -108,7 +112,8 @@ log = "=0.4.20"
 lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.4.3"
-notify = "=5.0.0"
+# Note: Do not use the "macos_fsevent" feature of notify, as it links us to CoreFoundation on macOS.
+notify = { version = "=5.0.0", default-features = false, features = ["macos_kqueue"] }
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = "=1.1.4"
@@ -126,6 +131,7 @@ ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.8"
 rustls-pemfile = "1.0.0"
+rustls-tokio-stream = "=0.2.6"
 rustls-webpki = "0.101.4"
 rustls-native-certs = "0.6.2"
 webpki-roots = "0.25.2"

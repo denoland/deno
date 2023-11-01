@@ -725,11 +725,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69323bff1fb41c635347b8ead484a5ca6c3f11914d784170b158d8449ab07f8e"
 dependencies = [
  "cfg-if 0.1.10",
- "crossbeam-channel 0.4.4",
+ "crossbeam-channel",
  "crossbeam-deque",
  "crossbeam-epoch",
  "crossbeam-queue",
- "crossbeam-utils 0.7.2",
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -738,18 +738,8 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b153fe7cbef478c567df0f972e02e6d736db11affe43dfc9c56a9374d1adfb87"
 dependencies = [
- "crossbeam-utils 0.7.2",
+ "crossbeam-utils",
  "maybe-uninit",
-]
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a33c2bf77f2df06183c3aa30d1e96c0695a313d4f9c453cc3762a6db39f99200"
-dependencies = [
- "cfg-if 1.0.0",
- "crossbeam-utils 0.8.16",
 ]
 
 [[package]]
@@ -759,7 +749,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c20ff29ded3204c5106278a81a38f4b482636ed4fa1e6cfbeef193291beb29ed"
 dependencies = [
  "crossbeam-epoch",
- "crossbeam-utils 0.7.2",
+ "crossbeam-utils",
  "maybe-uninit",
 ]
 
@@ -771,7 +761,7 @@ checksum = "058ed274caafc1f60c4997b5fc07bf7dc7cca454af7c6e81edffe5f33f70dace"
 dependencies = [
  "autocfg",
  "cfg-if 0.1.10",
- "crossbeam-utils 0.7.2",
+ "crossbeam-utils",
  "lazy_static",
  "maybe-uninit",
  "memoffset 0.5.6",
@@ -785,7 +775,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "774ba60a54c213d409d5353bda12d49cd68d14e45036a285234c8d6f91f92570"
 dependencies = [
  "cfg-if 0.1.10",
- "crossbeam-utils 0.7.2",
+ "crossbeam-utils",
  "maybe-uninit",
 ]
 
@@ -798,15 +788,6 @@ dependencies = [
  "autocfg",
  "cfg-if 0.1.10",
  "lazy_static",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a22b2d63d4d1dc0b7f1b6b2747dd0088008a9be28b6ddf0b1e7d335e3037294"
-dependencies = [
- "cfg-if 1.0.0",
 ]
 
 [[package]]
@@ -1258,9 +1239,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.70.0"
+version = "0.71.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dd0a46bf024da1e3a1caa7fbb6309bd2abd5395c738b73efe34276a6d9b9838"
+checksum = "2ce98ca0c84dd2599c1b7f5c77268f5993dc716583e9c64365a3e68198b68837"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -1425,8 +1406,13 @@ dependencies = [
  "base64 0.21.4",
  "chrono",
  "deno_core",
+ "deno_fetch",
  "deno_node",
+ "deno_tls",
  "deno_unsync 0.1.1",
+ "denokv_proto",
+ "denokv_remote",
+ "denokv_sqlite",
  "hex",
  "log",
  "num-bigint",
@@ -1492,6 +1478,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_native_certs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9c7c5a7f03be0fccb523765d76aa6758760f3163459ce777ba3979596db0998"
+dependencies = [
+ "dlopen",
+ "dlopen_derive",
+ "once_cell",
+ "rustls-native-certs",
+ "rustls-pemfile",
+]
+
+[[package]]
 name = "deno_net"
 version = "0.113.0"
 dependencies = [
@@ -1522,6 +1521,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_net",
+ "deno_whoami",
  "digest 0.10.7",
  "dsa",
  "ecb",
@@ -1563,7 +1563,6 @@ dependencies = [
  "tokio",
  "typenum",
  "url",
- "whoami",
  "winapi",
  "x25519-dalek",
  "x509-parser",
@@ -1696,9 +1695,9 @@ name = "deno_tls"
 version = "0.108.0"
 dependencies = [
  "deno_core",
+ "deno_native_certs",
  "once_cell",
  "rustls",
- "rustls-native-certs",
  "rustls-pemfile",
  "rustls-webpki",
  "serde",
@@ -1775,9 +1774,9 @@ dependencies = [
  "http",
  "hyper 0.14.27",
  "once_cell",
+ "rustls-tokio-stream",
  "serde",
  "tokio",
- "tokio-rustls",
 ]
 
 [[package]]
@@ -1788,6 +1787,74 @@ dependencies = [
  "deno_web",
  "rusqlite",
  "serde",
+]
+
+[[package]]
+name = "deno_whoami"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e75e4caa92b98a27f09c671d1399aee0f5970aa491b9a598523aac000a2192e3"
+dependencies = [
+ "libc",
+ "whoami",
+]
+
+[[package]]
+name = "denokv_proto"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8952fb8c38c1dcd796d49b00030afb74aa184160ae86817b72a32a994c8e16f0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "num-bigint",
+ "prost",
+ "prost-build",
+ "serde",
+ "uuid 1.5.0",
+]
+
+[[package]]
+name = "denokv_remote"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edfc8447324d783b01e215bd5040ff9149c34d9715c7b7b5080dd648ebf1148a"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "denokv_proto",
+ "log",
+ "prost",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "uuid 1.5.0",
+]
+
+[[package]]
+name = "denokv_sqlite"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ec76b691ff069f14e56e3e053c2b2163540b27e4b60179f2b120064a7e4960d"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "denokv_proto",
+ "futures",
+ "log",
+ "num-bigint",
+ "rand 0.8.5",
+ "rusqlite",
+ "serde_json",
+ "tokio",
+ "uuid 1.5.0",
 ]
 
 [[package]]
@@ -2412,15 +2479,6 @@ dependencies = [
  "libc",
  "rustc_version 0.2.3",
  "winapi",
-]
-
-[[package]]
-name = "fsevent-sys"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -3451,9 +3509,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2c66da08abae1c024c01d635253e402341b4060a12e99b31c7594063bf490a"
 dependencies = [
  "bitflags 1.3.2",
- "crossbeam-channel 0.5.8",
  "filetime",
- "fsevent-sys",
  "inotify",
  "kqueue",
  "libc",
@@ -4503,6 +4559,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d3987094b1d07b653b7dfdc3f70ce9a1da9c51ac18c1b06b662e4f9a0e9f4b2"
 dependencies = [
  "base64 0.21.4",
+]
+
+[[package]]
+name = "rustls-tokio-stream"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb55523a1a023f0e9eb66038515964b59dd0ef63f188ca759360a0e4cf0ee632"
+dependencies = [
+ "futures",
+ "rustls",
+ "tokio",
 ]
 
 [[package]]
@@ -5655,6 +5722,7 @@ dependencies = [
  "base64 0.21.4",
  "bytes",
  "console_static_text",
+ "denokv_proto",
  "fastwebsockets",
  "flate2",
  "futures",
@@ -5777,9 +5845,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.32.0"
+version = "1.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17ed6077ed6cd6c74735e21f37eb16dc3935f96878b1fe961074089cc80893f9"
+checksum = "4f38200e3ef7995e5ef13baec2f432a6da0aa9ac495b2c0e8f3b7eec2c92d653"
 dependencies = [
  "backtrace",
  "bytes",
@@ -5807,9 +5875,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-metrics"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4b2fc67d5dec41db679b9b052eb572269616926040b7831e32c8a152df77b84"
+checksum = "eace09241d62c98b7eeb1107d4c5c64ca3bd7da92e8c218c153ab3a78f9be112"
 dependencies = [
  "futures-util",
  "pin-project-lite",

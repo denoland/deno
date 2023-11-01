@@ -437,7 +437,19 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(None),
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+          None,
+          options.seed,
+          deno_kv::remote::HttpOptions {
+            user_agent: options.bootstrap.user_agent.clone(),
+            root_cert_store_provider: options.root_cert_store_provider.clone(),
+            unsafely_ignore_certificate_errors: options
+              .unsafely_ignore_certificate_errors
+              .clone(),
+            client_cert_chain_and_key: None,
+            proxy: None,
+          },
+        ),
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),

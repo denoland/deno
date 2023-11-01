@@ -277,3 +277,51 @@ Deno.test(
     }
   },
 );
+
+Deno.test(async function websocketTlsSocketWorks() {
+  const cert = await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt");
+  const key = await Deno.readTextFile("cli/tests/testdata/tls/localhost.key");
+
+  const messages: string[] = [],
+    errors: { server?: Event; client?: Event }[] = [];
+  const promise = new Promise((okay, nope) => {
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (req) => {
+        const { response, socket } = Deno.upgradeWebSocket(req);
+        socket.onopen = () => socket.send("ping");
+        socket.onmessage = (e) => {
+          messages.push(e.data);
+          socket.close();
+        };
+        socket.onerror = (e) => errors.push({ server: e });
+        socket.onclose = () => ac.abort();
+        return response;
+      },
+      signal: ac.signal,
+      hostname: "localhost",
+      port: servePort,
+      cert,
+      key,
+    });
+    setTimeout(() => {
+      const ws = new WebSocket(`wss://localhost:${servePort}`);
+      ws.onmessage = (e) => {
+        messages.push(e.data);
+        ws.send("pong");
+      };
+      ws.onerror = (e) => {
+        errors.push({ client: e });
+        nope();
+      };
+      ws.onclose = () => okay(server.finished);
+    }, 1000);
+  });
+
+  const finished = await promise;
+
+  assertEquals(errors, []);
+  assertEquals(messages, ["ping", "pong"]);
+
+  await finished;
+});

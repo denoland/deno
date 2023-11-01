@@ -15,6 +15,9 @@ use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::util;
+use crate::util::file_watcher::WatcherRestartMode;
+
+pub mod hmr;
 
 pub async fn run_script(
   flags: Flags,
@@ -104,12 +107,14 @@ async fn run_with_watch(
   flags: Flags,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
-  util::file_watcher::watch_func(
+  util::file_watcher::watch_recv(
     flags,
-    util::file_watcher::PrintConfig {
-      job_name: "Process".to_string(),
-      clear_screen: !watch_flags.no_clear_screen,
-    },
+    util::file_watcher::PrintConfig::new_with_banner(
+      if watch_flags.hmr { "HMR" } else { "Watcher" },
+      "Process",
+      !watch_flags.no_clear_screen,
+    ),
+    WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, _changed_paths| {
       Ok(async move {
         let factory = CliFactoryBuilder::new()
@@ -125,12 +130,17 @@ async fn run_with_watch(
         let permissions = PermissionsContainer::new(Permissions::from_options(
           &cli_options.permissions_options(),
         )?);
-        let worker = factory
+        let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
           .create_main_worker(main_module, permissions)
           .await?;
-        worker.run_for_watcher().await?;
+
+        if watch_flags.hmr {
+          worker.run().await?;
+        } else {
+          worker.run_for_watcher().await?;
+        }
 
         Ok(())
       })
