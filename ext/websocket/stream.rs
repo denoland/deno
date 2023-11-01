@@ -101,7 +101,7 @@ impl AsyncWrite for WebSocketStream {
 
         send.reserve_capacity(buf.len());
         let res = ready!(send.poll_capacity(cx));
-        
+
         // TODO(mmastrac): the documentation is not entirely clear what to do here, so we'll continue
         _ = res;
 
@@ -112,7 +112,9 @@ impl AsyncWrite for WebSocketStream {
         let buf: Bytes = Bytes::copy_from_slice(&buf[0..size]);
         let len = buf.len();
         // TODO(mmastrac): surface the h2 error?
-        let res = send.send_data(buf, false).map_err(|_| std::io::Error::from(ErrorKind::Other));
+        let res = send
+          .send_data(buf, false)
+          .map_err(|_| std::io::Error::from(ErrorKind::Other));
         Poll::Ready(res.map(|_| len))
       }
     }
@@ -138,7 +140,9 @@ impl AsyncWrite for WebSocketStream {
       WsStreamKind::Upgraded(stream) => Pin::new(stream).poll_shutdown(cx),
       WsStreamKind::H2(send, _) => {
         // TODO(mmastrac): surface the h2 error?
-        let res = send.send_data(Bytes::new(), false).map_err(|_| std::io::Error::from(ErrorKind::Other));
+        let res = send
+          .send_data(Bytes::new(), false)
+          .map_err(|_| std::io::Error::from(ErrorKind::Other));
         Poll::Ready(res)
       }
     }

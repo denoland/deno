@@ -180,12 +180,8 @@ async fn handshake_websocket(
     );
 
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
-  request = populate_common_request_headers(
-    request,
-    &user_agent,
-    protocols,
-    &headers,
-  )?;
+  request =
+    populate_common_request_headers(request, &user_agent, protocols, &headers)?;
 
   let request = request.body(Body::empty())?;
   let domain = &uri.host().unwrap().to_string();
@@ -266,12 +262,8 @@ async fn handshake_http2_wss(
   let dnsname =
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   // We need to better expose the underlying errors here
-  let mut tls_connector = TlsStream::new_client_side(
-    tcp_socket,
-    tls_config.into(),
-    dnsname,
-    None,
-  );
+  let mut tls_connector =
+    TlsStream::new_client_side(tcp_socket, tls_config.into(), dnsname, None);
   let _handshake = tls_connector.handshake().await?;
   // TODO(mmastrac): this might be non-conformance in the WPT server
   // if handshake.alpn.is_none() {
@@ -288,12 +280,8 @@ async fn handshake_http2_wss(
     .scheme("https")
     .build()?;
   request = request.uri(uri);
-  request = populate_common_request_headers(
-    request,
-    user_agent,
-    protocols,
-    headers,
-  )?;
+  request =
+    populate_common_request_headers(request, user_agent, protocols, headers)?;
   request = request.extension(h2::ext::Protocol::from("websocket"));
   let (resp, send) = send.send_request(request.body(())?, false)?;
   let resp = resp.await?;

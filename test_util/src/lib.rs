@@ -46,7 +46,6 @@ use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
 use serde::Serialize;
-use tokio::io::AsyncReadExt;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -72,6 +71,7 @@ use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -527,7 +527,9 @@ async fn handle_wss_stream(
       }
       resp.reserve_capacity(n);
       poll_fn(|cx| resp.poll_capacity(cx)).await;
-      resp.send_data(Bytes::copy_from_slice(&buf[0..n]), false).unwrap();
+      resp
+        .send_data(Bytes::copy_from_slice(&buf[0..n]), false)
+        .unwrap();
     }
     resp.send_data(Bytes::new(), true).unwrap();
   }));
