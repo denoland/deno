@@ -1,6 +1,6 @@
 Type 'MyClass' references type 'MyInterface' which is not exported from a root module.
 Missing JS documentation comment.
-    at file:///V:/deno/cli/tests/testdata/doc/referenced_private_types.ts:5:1
+    at file:///[WILDCARD]/referenced_private_types.ts:5:1
 
 Missing JS documentation comment.
     at file:///[WILDCARD]/referenced_private_types.ts:6:3
