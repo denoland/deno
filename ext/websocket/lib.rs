@@ -248,6 +248,7 @@ async fn handshake_http1_wss(
   handshake_connection(request, tls_connector).await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handshake_http2_wss(
   state: &Rc<RefCell<OpState>>,
   uri: &Uri,
