@@ -78,7 +78,7 @@ impl AsyncRead for WebSocketStream {
         if !data.is_empty() {
           self.pre = Some(data);
         }
-        return Poll::Ready(Ok(()));
+        Poll::Ready(Ok(()))
       }
     }
   }
@@ -95,7 +95,7 @@ impl AsyncWrite for WebSocketStream {
       WsStreamKind::Upgraded(stream) => Pin::new(stream).poll_write(cx, buf),
       WsStreamKind::H2(send, _) => {
         // Zero-length write succeeds
-        if buf.len() == 0 {
+        if buf.is_empty() {
           return Poll::Ready(Ok(0));
         }
 

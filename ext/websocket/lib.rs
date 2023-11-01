@@ -183,7 +183,7 @@ async fn handshake_websocket(
   request = populate_common_request_headers(
     request,
     &user_agent,
-    &protocols,
+    protocols,
     &headers,
   )?;
 
@@ -199,16 +199,16 @@ async fn handshake_websocket(
   let res = match uri.scheme_str() {
     Some("ws") => handshake_http1_ws(request, &addr).await?,
     Some("wss") => {
-      match handshake_http1_wss(&state, request, &domain, &addr).await {
+      match handshake_http1_wss(state, request, domain, &addr).await {
         Ok(res) => res,
         Err(_) => {
           handshake_http2_wss(
-            &state,
-            &uri,
+            state,
+            uri,
             authority,
             &user_agent,
-            &protocols,
-            &domain,
+            protocols,
+            domain,
             &headers,
             &addr,
           )
@@ -236,7 +236,7 @@ async fn handshake_http1_wss(
   addr: &str,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
-  let tls_config = create_ws_client_config(&state, SocketUse::Http1Only)?;
+  let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
   let dnsname =
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   let tls_connector = TlsStream::new_client_side(
@@ -260,7 +260,7 @@ async fn handshake_http2_wss(
   addr: &str,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
-  let tls_config = create_ws_client_config(&state, SocketUse::Http2Only)?;
+  let tls_config = create_ws_client_config(state, SocketUse::Http2Only)?;
   let dnsname =
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   // We need to better expose the underlying errors here
@@ -285,9 +285,9 @@ async fn handshake_http2_wss(
   request = request.uri(uri);
   request = populate_common_request_headers(
     request,
-    &user_agent,
-    &protocols,
-    &headers,
+    user_agent,
+    protocols,
+    headers,
   )?;
   request = request.extension(h2::ext::Protocol::from("websocket"));
   let (resp, send) = send.send_request(request.body(())?, false)?;
@@ -363,9 +363,9 @@ fn populate_common_request_headers(
 
   if let Some(headers) = headers {
     for (key, value) in headers {
-      let name = HeaderName::from_bytes(&key)
+      let name = HeaderName::from_bytes(key)
         .map_err(|err| type_error(err.to_string()))?;
-      let v = HeaderValue::from_bytes(&value)
+      let v = HeaderValue::from_bytes(value)
         .map_err(|err| type_error(err.to_string()))?;
 
       let is_disallowed_header = matches!(
