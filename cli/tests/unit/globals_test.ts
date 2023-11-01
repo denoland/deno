@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-window-prefix
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
   assert(globalThis != null);
@@ -139,4 +139,17 @@ Deno.test(function windowNameIsDefined() {
   name = "";
   assertEquals(window.name, "");
   assertEquals(name, "");
+});
+
+Deno.test(async function promiseWithResolvers() {
+  {
+    const { promise, resolve } = Promise.withResolvers();
+    resolve(true);
+    assert(await promise);
+  }
+  {
+    const { promise, reject } = Promise.withResolvers();
+    reject(new Error("boom!"));
+    await assertRejects((() => promise, Error, "boom!");
+  }
 });

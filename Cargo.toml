@@ -38,8 +38,8 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.31.0", features = ["transpiling"] }
-deno_core = { git = "https://github.com/denoland/deno_core.git", branch = "main" }
+deno_ast = { version = "0.31.2", features = ["transpiling"] }
+deno_core = { version = "0.224.0" }
 
 deno_runtime = { version = "0.129.0", path = "./runtime" }
 napi_sym = { version = "0.51.0", path = "./cli/napi/sym" }
