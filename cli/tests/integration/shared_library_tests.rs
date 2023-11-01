@@ -43,9 +43,11 @@ fn macos_shared_libraries() {
   use test_util as util;
 
   // target/release/deno:
+  //  /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 1953.1.0)
   // 	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
-  const EXPECTED: [&str; 3] = [
+  const EXPECTED: [&str; 4] = [
+    "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
     "/usr/lib/libiconv.2.dylib",
     "/usr/lib/libSystem.B.dylib",
     "/usr/lib/libobjc.A.dylib",
