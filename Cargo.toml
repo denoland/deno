@@ -110,8 +110,7 @@ log = "=0.4.20"
 lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.4.3"
-# Note: Do not use the "macos_fsevent" feature of notify, as it links us to CoreFoundation on macOS.
-notify = { version = "=5.0.0", default-features = false, features = ["macos_kqueue"] }
+notify = "=5.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = "=1.1.4"
