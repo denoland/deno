@@ -21,15 +21,3 @@ and limitations under the License.
 /// <reference lib="esnext.intl" />
 /// <reference lib="esnext.decorators" />
 /// <reference lib="esnext.disposable" />
-
-interface ArrayConstructor {
-    fromAsync<T>(
-        iterableOrArrayLike: AsyncIterable<T> | Iterable<T | Promise<T>> | ArrayLike<T | Promise<T>>,
-    ): Promise<T[]>;
-    
-    fromAsync<T, U>(
-        iterableOrArrayLike: AsyncIterable<T> | Iterable<T> | ArrayLike<T>, 
-        mapFn: (value: Awaited<T>) => U, 
-        thisArg?: any,
-    ): Promise<Awaited<U>[]>;
-}
