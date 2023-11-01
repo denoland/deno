@@ -1138,6 +1138,7 @@ delete Object.prototype.__proto__;
         `${ASSETS_URL_PREFIX}${specifier}`,
         ts.ScriptTarget.ESNext,
       ),
+      `failed to load '${ASSETS_URL_PREFIX}${specifier}'`,
     );
   }
   // this helps ensure as much as possible is in memory that is re-usable
@@ -1148,7 +1149,10 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+  assert(
+    ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0,
+    "lib.d.ts files have errors",
+  );
 
   // remove this now that we don't need it anymore for warming up tsc
   sourceFileCache.delete(buildSpecifier);

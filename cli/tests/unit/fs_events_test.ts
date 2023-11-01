@@ -22,7 +22,7 @@ Deno.test({ permissions: { read: true } }, function watchFsInvalidPath() {
   } else {
     assertThrows(() => {
       Deno.watchFs("non-existent.file");
-    }, Error);
+    }, Deno.errors.NotFound);
   }
 });
 
@@ -32,7 +32,7 @@ async function getTwoEvents(
   const events = [];
   for await (const event of iter) {
     events.push(event);
-    if (events.length == 2) break;
+    if (events.length > 2) break;
   }
   return events;
 }
@@ -105,5 +105,35 @@ Deno.test(
     // Expect zero events.
     const events = await eventsPromise;
     assertEquals(events, []);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsExplicitResourceManagement() {
+    let res;
+    {
+      const testDir = await makeTempDir();
+      using iter = Deno.watchFs(testDir);
+
+      res = iter[Symbol.asyncIterator]().next();
+    }
+
+    const { done } = await res;
+    assert(done);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsExplicitResourceManagementManualClose() {
+    const testDir = await makeTempDir();
+    using iter = Deno.watchFs(testDir);
+
+    const res = iter[Symbol.asyncIterator]().next();
+
+    iter.close();
+    const { done } = await res;
+    assert(done);
   },
 );

@@ -24,6 +24,7 @@ import * as tty from "ext:runtime/40_tty.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "ext:runtime/40_http.js";
 import * as kv from "ext:deno_kv/01_db.ts";
+import * as cron from "ext:deno_cron/01_cron.ts";
 
 const denoNs = {
   metrics: core.metrics,
@@ -179,6 +180,7 @@ const denoNsUnstable = {
   Kv: kv.Kv,
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,
+  cron: cron.cron,
 };
 
 export { denoNs, denoNsUnstable };
