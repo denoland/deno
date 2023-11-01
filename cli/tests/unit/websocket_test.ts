@@ -29,6 +29,50 @@ Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
   await promise;
 });
 
+Deno.test(async function websocketH2SendSmallPacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4248/"));
+  assertEquals(ws.url, "wss://localhost:4248/");
+  let messageCount = 0;
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send("a".repeat(16));
+    ws.send("a".repeat(16));
+    ws.send("a".repeat(16));
+  };
+  ws.onmessage = () => {
+    if (++messageCount == 3) {
+      ws.close();
+    }
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketH2SendLargePacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4248/"));
+  assertEquals(ws.url, "wss://localhost:4248/");
+  let messageCount = 0;
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send("a".repeat(65000));
+    ws.send("a".repeat(65000));
+    ws.send("a".repeat(65000));
+  };
+  ws.onmessage = () => {
+    if (++messageCount == 3) {
+      ws.close();
+    }
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
 Deno.test(async function websocketSendLargePacket() {
   const promise = deferred();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
@@ -49,13 +93,14 @@ Deno.test(async function websocketSendLargePacket() {
 Deno.test(async function websocketSendLargeBinaryPacket() {
   const promise = deferred();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  ws.binaryType = "arraybuffer";
   assertEquals(ws.url, "wss://localhost:4243/");
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
     ws.send(new Uint8Array(65000));
   };
-  ws.onmessage = (msg) => {
-    console.log(msg);
+  ws.onmessage = (msg: MessageEvent) => {
+    assertEquals(msg.data.byteLength, 65000);
     ws.close();
   };
   ws.onclose = () => {
@@ -67,13 +112,14 @@ Deno.test(async function websocketSendLargeBinaryPacket() {
 Deno.test(async function websocketSendLargeBlobPacket() {
   const promise = deferred();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  ws.binaryType = "arraybuffer";
   assertEquals(ws.url, "wss://localhost:4243/");
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
     ws.send(new Blob(["a".repeat(65000)]));
   };
-  ws.onmessage = (msg) => {
-    console.log(msg);
+  ws.onmessage = (msg: MessageEvent) => {
+    assertEquals(msg.data.byteLength, 65000);
     ws.close();
   };
   ws.onclose = () => {

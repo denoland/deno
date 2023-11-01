@@ -923,6 +923,7 @@ pub fn create_http_client(
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
     options.client_cert_chain_and_key,
+    deno_tls::SocketUse::Http,
   )?;
 
   let mut alpn_protocols = vec![];
