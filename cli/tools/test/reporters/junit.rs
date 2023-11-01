@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::path::PathBuf;
+
 use super::*;
 
 pub struct JunitTestReporter {
@@ -191,10 +193,8 @@ impl TestReporter for JunitTestReporter {
         .serialize(std::io::stdout())
         .with_context(|| "Failed to write JUnit report to stdout")?;
     } else {
-      let file =
-        std::fs::File::create(self.path.clone()).with_context(|| {
-          format!("Failed to open JUnit report file {}", self.path)
-        })?;
+      let file = crate::util::fs::create_file(&PathBuf::from(&self.path))
+        .context("Failed to open JUnit report file.")?;
       report.serialize(file).with_context(|| {
         format!("Failed to write JUnit report to {}", self.path)
       })?;
