@@ -179,12 +179,12 @@ pub struct ReplSession {
   pub language_server: ReplLanguageServer,
   pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
-  jsx: ReplJsxState,
   main_module: ModuleSpecifier,
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
   test_event_sender: TestEventSender,
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<TestEvent>>,
+  jsx: ReplJsxState,
 }
 
 impl ReplSession {
@@ -246,17 +246,17 @@ impl ReplSession {
       language_server,
       referrer,
       notifications: Rc::new(RefCell::new(notification_rx)),
-      jsx: ReplJsxState {
-        factory: "React.createElement".to_string(),
-        frag_factory: "React.Fragment".to_string(),
-        import_source: None,
-      },
       test_reporter_factory: Box::new(|| {
         Box::new(PrettyTestReporter::new(false, true, false, true))
       }),
       main_module,
       test_event_sender,
       test_event_receiver: Some(test_event_receiver),
+      jsx: ReplJsxState {
+        factory: "React.createElement".to_string(),
+        frag_factory: "React.Fragment".to_string(),
+        import_source: None,
+      },
     };
 
     // inject prelude
