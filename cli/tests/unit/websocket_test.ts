@@ -29,6 +29,28 @@ Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
   await promise;
 });
 
+Deno.test(async function websocketH2SendSmallPacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4248/"));
+  assertEquals(ws.url, "wss://localhost:4248/");
+  let messageCount = 0;
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send("a".repeat(16));
+    ws.send("a".repeat(16));
+    ws.send("a".repeat(16));
+  };
+  ws.onmessage = () => {
+    if (++messageCount == 3) {
+      ws.close();
+    }
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
 Deno.test(async function websocketH2SendLargePacket() {
   const promise = deferred();
   const ws = new WebSocket(new URL("wss://localhost:4248/"));

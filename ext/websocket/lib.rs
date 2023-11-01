@@ -245,6 +245,7 @@ async fn handshake_http1_wss(
     dnsname,
     NonZeroUsize::new(65536),
   );
+  // If we can bail on an http/1.1 ALPN mismatch here, we can avoid doing extra work
   tls_connector.handshake().await?;
   handshake_connection(request, tls_connector).await
 }
@@ -305,8 +306,8 @@ async fn handshake_http2_wss(
   );
   // We currently don't support vectored writes in the H2 streams
   stream.set_writev(false);
-  // We don't need to mask on H2
-  stream.set_auto_apply_mask(false);
+  // TODO(mmastrac): we should be able to use a zero masking key over HTTPS
+  // stream.set_auto_apply_mask(false);
   Ok((stream, headers))
 }
 

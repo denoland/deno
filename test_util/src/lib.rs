@@ -11,6 +11,13 @@ use denokv_proto::datapath::AtomicWriteStatus;
 use denokv_proto::datapath::ReadRangeOutput;
 use denokv_proto::datapath::SnapshotRead;
 use denokv_proto::datapath::SnapshotReadOutput;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+use futures::future::Join3;
+use futures::future::join3;
 use futures::future::poll_fn;
 use futures::Future;
 use futures::FutureExt;
@@ -40,6 +47,8 @@ use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
 use serde::Serialize;
+use tokio::io::AsyncReadExt;
+use tokio::task::JoinSet;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -471,17 +480,17 @@ async fn handle_wss_stream(
   mut send: SendResponse<Bytes>,
 ) -> Result<(), h2::Error> {
   if recv.method() != Method::CONNECT {
-    println!("wss2: refusing non-CONNECT stream");
+    eprintln!("wss2: refusing non-CONNECT stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   }
   let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
-    println!("wss2: refusing no-:protocol stream");
+    eprintln!("wss2: refusing no-:protocol stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   };
   if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
-    println!("wss2: refusing non-websocket stream");
+    eprintln!("wss2: refusing non-websocket stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   }
@@ -489,17 +498,45 @@ async fn handle_wss_stream(
   let mut response = Response::new(());
   *response.status_mut() = StatusCode::OK;
   let mut resp = send.send_response(response, false)?;
-  loop {
-    let Some(data) = poll_fn(|cx| body.poll_data(cx)).await else {
-      break;
-    };
-    let data = data?;
-    body.flow_control().release_capacity(data.len())?;
-    resp.reserve_capacity(data.len());
-    poll_fn(|cx| resp.poll_capacity(cx)).await;
-    resp.send_data(data, false)?;
-  }
-  resp.send_data(Bytes::new(), true)?;
+  // Use a duplex stream to talk to fastwebsockets because it's just faster to implement
+  let (a, b) = tokio::io::duplex(65536);
+  let f1 = tokio::spawn(tokio::task::unconstrained(async move {
+    let ws = WebSocket::after_handshake(a, Role::Server);
+    let mut ws = FragmentCollector::new(ws);
+    loop {
+      let frame = ws.read_frame().await.unwrap();
+      if frame.opcode == OpCode::Close {
+        break;
+      }
+      ws.write_frame(frame).await.unwrap();
+    }
+  }));
+  let (mut br, mut bw) = tokio::io::split(b);
+  let f2 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let Some(Ok(data)) = poll_fn(|cx| body.poll_data(cx)).await else {
+        return;
+      };
+      body.flow_control().release_capacity(data.len()).unwrap();
+      let Ok(_) = bw.write_all(&data).await else {
+        break;
+      };
+    }
+  }));
+  let f3 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let mut buf = [0; 65536];
+      let n = br.read(&mut buf).await.unwrap();
+      if n == 0 {
+        break;
+      }
+      resp.reserve_capacity(n);
+      poll_fn(|cx| resp.poll_capacity(cx)).await;
+      resp.send_data(Bytes::copy_from_slice(&buf[0..n]), false).unwrap();
+    }
+    resp.send_data(Bytes::new(), true).unwrap();
+  }));
+  _ = join3(f1, f2, f3).await;
   Ok(())
 }
 
@@ -525,6 +562,7 @@ async fn run_wss2_server(addr: &SocketAddr) {
         tokio::spawn(async move {
           let mut h2 = h2::server::Builder::new();
           h2.enable_connect_protocol();
+          // Using Bytes is pretty alloc-heavy but this is a test server
           let server: Handshake<_, Bytes> = h2.handshake(tls);
           let mut server = match server.await {
             Ok(server) => server,
