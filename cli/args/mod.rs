@@ -653,12 +653,9 @@ impl CliOptions {
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
 
     if let Some(env_file_name) = &flags.env_file {
-      from_filename(env_file_name).unwrap_or_else(|_| {
-        panic!(
-          "Unable to load '{}' environment variable file",
-          env_file_name.as_str()
-        )
-      });
+      if (from_filename(env_file_name)).is_err() {
+        bail!("Unable to load '{env_file_name}' environment variable file")
+      }
     }
 
     Ok(Self {
