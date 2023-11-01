@@ -95,7 +95,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::bundle::bundle(flags, bundle_flags).await
     }),
     DenoSubcommand::Doc(doc_flags) => {
-      spawn_subcommand(async { tools::doc::print_docs(flags, doc_flags).await })
+      spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
     DenoSubcommand::Eval(eval_flags) => spawn_subcommand(async {
       tools::run::eval_command(flags, eval_flags).await

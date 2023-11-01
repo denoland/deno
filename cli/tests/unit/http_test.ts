@@ -2817,6 +2817,24 @@ Deno.test({
   },
 });
 
+Deno.test(
+  async function httpConnExplicitResourceManagement() {
+    let promise;
+
+    {
+      const listen = Deno.listen({ port: listenPort });
+      promise = fetch(`http://localhost:${listenPort}/`).catch(() => null);
+      const serverConn = await listen.accept();
+      listen.close();
+
+      using _httpConn = Deno.serveHttp(serverConn);
+    }
+
+    const response = await promise;
+    assertEquals(response, null);
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);

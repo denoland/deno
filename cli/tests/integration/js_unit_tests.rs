@@ -24,6 +24,7 @@ util::unit_test_factory!(
     console_test,
     copy_file_test,
     custom_event_test,
+    cron_test,
     dir_test,
     dom_exception_test,
     error_stack_test,

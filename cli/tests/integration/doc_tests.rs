@@ -64,6 +64,12 @@ itest!(deno_doc_lint_referenced_private_types_fixed {
   output: "doc/referenced_private_types_fixed.out",
 });
 
+itest!(deno_doc_html_lint_referenced_private_types_fixed {
+  args: "doc --lint --html --name=Library doc/referenced_private_types.ts",
+  exit_code: 1,
+  output: "doc/referenced_private_types_lint.out",
+});
+
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args:
     "doc --filter NS.test doc/060_deno_doc_displays_all_overloads_in_details_view.ts",
@@ -96,3 +102,32 @@ itest!(doc_no_lock {
   cwd: Some("lockfile/basic"),
   output: "lockfile/basic/doc.nolock.out",
 });
+
+#[test]
+fn deno_doc_html() {
+  let context = TestContext::default();
+  let temp_dir = context.temp_dir();
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(vec![
+      "doc",
+      "--html",
+      "--name=MyLib",
+      &format!("--output={}", temp_dir.path().to_string_lossy()),
+      "doc/referenced_private_types_fixed.ts",
+    ])
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stderr(), "Written 8 files to");
+  assert!(temp_dir.path().join("index.html").exists());
+  assert!(temp_dir.path().join("compound_index.html").exists());
+  assert!(temp_dir.path().join("fuse.js").exists());
+  assert!(temp_dir.path().join("search.js").exists());
+  assert!(temp_dir.path().join("search_index.js").exists());
+  assert!(temp_dir.path().join("styles.css").exists());
+  assert!(temp_dir.path().join("MyInterface.html").exists());
+  assert!(temp_dir.path().join("MyClass.html").exists());
+}

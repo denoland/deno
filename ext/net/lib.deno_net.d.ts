@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="esnext.disposable" />
 
 declare namespace Deno {
   /** @category Network */
@@ -24,7 +25,8 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface Listener<T extends Conn = Conn> extends AsyncIterable<T> {
+  export interface Listener<T extends Conn = Conn>
+    extends AsyncIterable<T>, Disposable {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<T>;
     /** Close closes the listener. Any pending accept promises will be rejected
@@ -57,7 +59,7 @@ declare namespace Deno {
   export type TlsListener = Listener<TlsConn>;
 
   /** @category Network */
-  export interface Conn extends Reader, Writer, Closer {
+  export interface Conn extends Reader, Writer, Closer, Disposable {
     /** The local address of the connection. */
     readonly localAddr: Addr;
     /** The remote address of the connection. */
