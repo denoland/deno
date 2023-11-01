@@ -15,6 +15,9 @@ function cron(
   if (schedule === undefined) {
     throw new TypeError("Deno.cron requires a valid schedule");
   }
+  if (handler === undefined) {
+    throw new TypeError("Deno.cron requires a handler");
+  }
 
   const rid = core.ops.op_cron_create(
     name,

@@ -3,6 +3,30 @@ import { assertEquals, assertThrows, deferred } from "./test_util.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
+Deno.test(function noNameTest() {
+  assertThrows(
+    // @ts-ignore test
+    () => Deno.cron(),
+    "Deno.cron requires a unique name",
+  );
+});
+
+Deno.test(function noSchedule() {
+  assertThrows(
+    // @ts-ignore test
+    () => Deno.cron("foo"),
+    "Deno.cron requires a valid schedule",
+  );
+});
+
+Deno.test(function noHandler() {
+  assertThrows(
+    // @ts-ignore test
+    () => Deno.cron("foo", "*/1 * * * *"),
+    "Deno.cron requires a valid schedule",
+  );
+});
+
 Deno.test(function invalidNameTest() {
   assertThrows(
     () => Deno.cron("abc[]", "*/1 * * * *", () => {}),
