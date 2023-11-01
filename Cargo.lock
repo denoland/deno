@@ -1296,8 +1296,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.71.0"
-source = "git+https://github.com/denoland/deno_doc?branch=main#ce71bb319d52b345e3483b4a22522155be092538"
+version = "0.72.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "277051ea4bb6b321efffe2099e331f86659c7daed8a6b877552ac82a595e6969"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -6440,8 +6441,8 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
- "rand 0.7.3",
+ "cfg-if 1.0.0",
+ "rand 0.8.5",
  "static_assertions",
 ]
 
