@@ -52,7 +52,6 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
-use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -653,9 +652,9 @@ impl CliOptions {
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
 
     if let Some(env_file_name) = &flags.env_file {
-      if (from_filename(env_file_name)).is_err() {
-        bail!("Unable to load '{env_file_name}' environment variable file")
-      }
+      dotenvy::from_filename(env_file_name).with_context(|| {
+        format!("Unable to load '{env_file_name}' environment variable file")
+      })?;
     }
 
     Ok(Self {
