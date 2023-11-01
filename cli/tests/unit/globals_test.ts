@@ -150,6 +150,6 @@ Deno.test(async function promiseWithResolvers() {
   {
     const { promise, reject } = Promise.withResolvers();
     reject(new Error("boom!"));
-    await assertRejects((() => promise, Error, "boom!");
+    await assertRejects(() => promise, Error, "boom!");
   }
 });
