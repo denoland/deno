@@ -589,12 +589,12 @@ impl ReplSession {
         inline_sources: false,
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         transform_jsx: true,
+        precompile_jsx: false,
         jsx_automatic: false,
         jsx_development: false,
         jsx_factory: self.jsx.factory.clone(),
         jsx_fragment_factory: self.jsx.frag_factory.clone(),
         jsx_import_source: None,
-        precompile_jsx: false,
         var_decl_imports: true,
       })?
       .text;
