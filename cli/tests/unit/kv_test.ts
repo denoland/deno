@@ -2100,3 +2100,30 @@ Deno.test({
     db.close();
   },
 });
+
+Deno.test(
+  { permissions: { read: true } },
+  async function kvExplicitResourceManagement() {
+    let kv2: Deno.Kv;
+
+    {
+      using kv = await Deno.openKv(":memory:");
+      kv2 = kv;
+
+      const res = await kv.get(["a"]);
+      assertEquals(res.versionstamp, null);
+    }
+
+    await assertRejects(() => kv2.get(["a"]), Deno.errors.BadResource);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function kvExplicitResourceManagementManualClose() {
+    using kv = await Deno.openKv(":memory:");
+    kv.close();
+    await assertRejects(() => kv.get(["a"]), Deno.errors.BadResource);
+    // calling [Symbol.dispose] after manual close is a no-op
+  },
+);
