@@ -505,6 +505,23 @@ fn jsx_errors_without_pragma() {
 }
 
 #[test]
+fn jsx_import_source() {
+  let context = TestContextBuilder::default()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  context
+    .new_command()
+    .args_vec(&["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line("/** @jsxImportSource http://localhost:4545/jsx */");
+      console.expect("undefined");
+      console.write_line("const element = <div />;");
+      console.expect("undefined");
+    });
+}
+
+#[test]
 fn type_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console()");

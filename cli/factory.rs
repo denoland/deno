@@ -392,7 +392,7 @@ impl CliFactory {
           maybe_vendor_dir: self.options.vendor_dir_path(),
           bare_node_builtins_enabled: self
             .options
-            .unstable_bare_node_builtlins(),
+            .unstable_bare_node_builtins(),
         })))
       })
       .await

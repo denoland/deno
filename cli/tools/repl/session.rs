@@ -590,11 +590,11 @@ impl ReplSession {
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         transform_jsx: true,
         precompile_jsx: false,
-        jsx_automatic: false,
+        jsx_automatic: self.jsx.import_source.is_some(),
         jsx_development: false,
         jsx_factory: self.jsx.factory.clone(),
         jsx_fragment_factory: self.jsx.frag_factory.clone(),
-        jsx_import_source: None,
+        jsx_import_source: self.jsx.import_source.clone(),
         var_decl_imports: true,
       })?
       .text;
@@ -620,9 +620,11 @@ impl ReplSession {
 
     if let Some(jsx) = analyzed_pragmas.jsx {
       self.jsx.factory = jsx.text;
+      self.jsx.import_source = None;
     }
     if let Some(jsx_frag) = analyzed_pragmas.jsx_fragment {
       self.jsx.frag_factory = jsx_frag.text;
+      self.jsx.import_source = None;
     }
     if let Some(jsx_import_source) = analyzed_pragmas.jsx_import_source {
       self.jsx.import_source = Some(jsx_import_source.text);

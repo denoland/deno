@@ -1242,8 +1242,8 @@ impl CliOptions {
     self.flags.unstable
   }
 
-  pub fn unstable_bare_node_builtlins(&self) -> bool {
-    self.flags.unstable_bare_node_builtlins
+  pub fn unstable_bare_node_builtins(&self) -> bool {
+    self.flags.unstable_bare_node_builtins
       || self
         .maybe_config_file()
         .as_ref()
