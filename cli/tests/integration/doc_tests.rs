@@ -121,7 +121,7 @@ fn deno_doc_html() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "Written 8 files to");
+  assert_contains!(output.stderr(), "Written 8 files to");
   assert!(temp_dir.path().join("index.html").exists());
   assert!(temp_dir.path().join("compound_index.html").exists());
   assert!(temp_dir.path().join("fuse.js").exists());
