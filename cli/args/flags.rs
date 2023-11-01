@@ -417,7 +417,7 @@ pub struct Flags {
   pub reload: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
-  pub unstable_bare_node_builtlins: bool,
+  pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
   pub unstable_features: Vec<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -856,7 +856,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       .push(deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME.to_string());
   }
 
-  flags.unstable_bare_node_builtlins =
+  flags.unstable_bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
 
