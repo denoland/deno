@@ -16,7 +16,6 @@ use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
-use futures::future::Join3;
 use futures::future::join3;
 use futures::future::poll_fn;
 use futures::Future;
@@ -48,7 +47,6 @@ use rustls::Certificate;
 use rustls::PrivateKey;
 use serde::Serialize;
 use tokio::io::AsyncReadExt;
-use tokio::task::JoinSet;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -416,9 +414,6 @@ async fn run_ws_server(addr: &SocketAddr) {
 async fn ping_websocket_handler(
   ws: fastwebsockets::WebSocket<Upgraded>,
 ) -> Result<(), anyhow::Error> {
-  use fastwebsockets::Frame;
-  use fastwebsockets::OpCode;
-
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
   for i in 0..9 {

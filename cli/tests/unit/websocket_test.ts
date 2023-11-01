@@ -93,12 +93,14 @@ Deno.test(async function websocketSendLargePacket() {
 Deno.test(async function websocketSendLargeBinaryPacket() {
   const promise = deferred();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  ws.binaryType = "arraybuffer";
   assertEquals(ws.url, "wss://localhost:4243/");
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
     ws.send(new Uint8Array(65000));
   };
-  ws.onmessage = (msg) => {
+  ws.onmessage = (msg: MessageEvent) => {
+    assertEquals(msg.data.length, 65000);
     ws.close();
   };
   ws.onclose = () => {
@@ -110,12 +112,14 @@ Deno.test(async function websocketSendLargeBinaryPacket() {
 Deno.test(async function websocketSendLargeBlobPacket() {
   const promise = deferred();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  ws.binaryType = "arraybuffer";
   assertEquals(ws.url, "wss://localhost:4243/");
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
     ws.send(new Blob(["a".repeat(65000)]));
   };
-  ws.onmessage = (msg) => {
+  ws.onmessage = (msg: MessageEvent) => {
+    assertEquals(msg.data.length, 65000);
     ws.close();
   };
   ws.onclose = () => {
