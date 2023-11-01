@@ -274,7 +274,11 @@ Deno.test(
       });
     }
 
-    assertEquals(dead, "SIGTERM");
+    if (Deno.build.os == "windows") {
+      assertEquals(dead, null);
+    } else {
+      assertEquals(dead, "SIGTERM");
+    }
   },
 );
 
