@@ -1058,3 +1058,19 @@ fn closed_file_pre_load_does_not_occur() {
       assert_contains!(console.all_output(), "Skipping document preload.",);
     });
 }
+
+#[test]
+fn env_file() {
+  TestContext::default()
+    .new_command()
+    .args_vec([
+      "repl",
+      "--env=env",
+      "--allow-env",
+      "--eval",
+      "console.log(Deno.env.get('FOO'))",
+    ])
+    .with_pty(|console| {
+      assert_contains!(console.all_output(), "BAR",);
+    });
+}
