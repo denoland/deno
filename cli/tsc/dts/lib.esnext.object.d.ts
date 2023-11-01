@@ -13,12 +13,20 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
 /// <reference no-default-lib="true"/>
 
-/// <reference lib="es2023" />
-/// <reference lib="esnext.array" />
-/// <reference lib="esnext.intl" />
-/// <reference lib="esnext.object" />
-/// <reference lib="esnext.decorators" />
-/// <reference lib="esnext.disposable" />
+// NOTE(iuioiua): taken from https://github.com/microsoft/TypeScript/issues/47171#issuecomment-1697373352
+// while we wait for these types to officially ship
+interface ObjectConstructor {
+  groupBy<Item, Key extends PropertyKey>(
+    items: Iterable<Item>,
+    keySelector: (item: Item, index: number) => Key,
+  ): Record<Key, Item[]>;
+}
+
+interface MapConstructor {
+  groupBy<Item, Key>(
+    items: Iterable<Item>,
+    keySelector: (item: Item, index: number) => Key,
+  ): Map<Key, Item[]>;
+}

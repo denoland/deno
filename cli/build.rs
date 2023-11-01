@@ -251,6 +251,7 @@ mod ts {
       "esnext.decorators",
       "esnext.disposable",
       "esnext.intl",
+      "esnext.object",
     ];
 
     let path_dts = cwd.join("tsc/dts");

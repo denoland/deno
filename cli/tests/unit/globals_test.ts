@@ -170,3 +170,50 @@ Deno.test(async function arrayFromAsync() {
   const b = await Array.fromAsync(new Map([[1, 2], [3, 4]]));
   assertEquals(b, [[1, 2], [3, 4]]);
 });
+
+// Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/groupBy#examples
+Deno.test(function objectGroupBy() {
+  const inventory = [
+    { name: "asparagus", type: "vegetables", quantity: 5 },
+    { name: "bananas", type: "fruit", quantity: 0 },
+    { name: "goat", type: "meat", quantity: 23 },
+    { name: "cherries", type: "fruit", quantity: 5 },
+    { name: "fish", type: "meat", quantity: 22 },
+  ];
+  const result = Object.groupBy(inventory, ({ type }) => type);
+  assertEquals(result, {
+    vegetables: [
+      { name: "asparagus", type: "vegetables", quantity: 5 },
+    ],
+    fruit: [
+      { name: "bananas", type: "fruit", quantity: 0 },
+      { name: "cherries", type: "fruit", quantity: 5 },
+    ],
+    meat: [
+      { name: "goat", type: "meat", quantity: 23 },
+      { name: "fish", type: "meat", quantity: 22 },
+    ],
+  });
+});
+
+// Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map/groupBy#examples
+Deno.test(function mapGroupBy() {
+  const inventory = [
+    { name: "asparagus", type: "vegetables", quantity: 9 },
+    { name: "bananas", type: "fruit", quantity: 5 },
+    { name: "goat", type: "meat", quantity: 23 },
+    { name: "cherries", type: "fruit", quantity: 12 },
+    { name: "fish", type: "meat", quantity: 22 },
+  ];
+  const restock = { restock: true };
+  const sufficient = { restock: false };
+  const result = Map.groupBy(
+    inventory,
+    ({ quantity }) => quantity < 6 ? restock : sufficient,
+  );
+  assertEquals(result.get(restock), [{
+    name: "bananas",
+    type: "fruit",
+    quantity: 5,
+  }]);
+});
