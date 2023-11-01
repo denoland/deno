@@ -13,6 +13,7 @@ members = [
   "ext/broadcast_channel",
   "ext/cache",
   "ext/console",
+  "ext/cron",
   "ext/crypto",
   "ext/fetch",
   "ext/ffi",
@@ -56,6 +57,7 @@ denokv_remote = "0.2.3"
 deno_broadcast_channel = { version = "0.115.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.53.0", path = "./ext/cache" }
 deno_console = { version = "0.121.0", path = "./ext/console" }
+deno_cron = { version = "0.1.0", path = "./ext/cron" }
 deno_crypto = { version = "0.135.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.145.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.108.0", path = "./ext/ffi" }
@@ -133,6 +135,7 @@ rustls-webpki = "0.101.4"
 rustls-native-certs = "0.6.2"
 webpki-roots = "0.25.2"
 scopeguard = "1.2.0"
+saffron = "=0.1.0"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"

@@ -349,6 +349,7 @@ deno_core::extension!(
 fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   use deno_core::Extension;
   use deno_runtime::deno_cache::SqliteBackedCache;
+  use deno_runtime::deno_cron::local::LocalCronHandler;
   use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
   use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
   use deno_runtime::permissions::PermissionsContainer;
@@ -383,6 +384,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_kv::deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(
       None, None,
     )),
+    deno_cron::deno_cron::init_ops(LocalCronHandler::new()),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops(Default::default()),
