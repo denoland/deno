@@ -997,7 +997,7 @@ dependencies = [
  "quick-junit",
  "rand 0.8.5",
  "regex",
- "ring",
+ "ring 0.17.5",
  "rustyline",
  "rustyline-derive",
  "serde",
@@ -1050,9 +1050,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e2cfd8ef0fe8a32192505c480e19456df1a2a057857243e1e65b8a877a26fb7"
+checksum = "00e1590ff56dcebd6087a6615f1adb7dd93b9e2e808959eb2aab53dd0e7750b7"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1132,7 +1132,7 @@ dependencies = [
  "log",
  "once_cell",
  "parking_lot 0.12.1",
- "ring",
+ "ring 0.17.5",
  "serde",
  "serde_json",
  "thiserror",
@@ -1210,7 +1210,7 @@ dependencies = [
  "p256 0.11.1",
  "p384 0.11.2",
  "rand 0.8.5",
- "ring",
+ "ring 0.17.5",
  "rsa",
  "sec1 0.3.0",
  "serde",
@@ -1361,7 +1361,7 @@ dependencies = [
  "phf",
  "pin-project",
  "rand 0.8.5",
- "ring",
+ "ring 0.17.5",
  "scopeguard",
  "serde",
  "slab",
@@ -1439,7 +1439,7 @@ version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8cd29f62e6dec60e585f579df3e9c2fc562aadf881319152974bc442a9042077"
 dependencies = [
- "ring",
+ "ring 0.17.5",
  "serde",
  "serde_json",
  "thiserror",
@@ -1538,7 +1538,7 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "reqwest",
- "ring",
+ "ring 0.17.5",
  "ripemd",
  "rsa",
  "scrypt",
@@ -1558,8 +1558,6 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "210f62105862f1ff371e278c623c7ed73d62b0efece4d417c15663d37b730098"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1634,7 +1632,7 @@ dependencies = [
  "ntapi",
  "once_cell",
  "regex",
- "ring",
+ "ring 0.17.5",
  "serde",
  "signal-hook-registry",
  "termcolor",
@@ -3220,9 +3218,9 @@ checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.4.10"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2479e8c062e40bf0066ffa0bc823de0a9368974af99c9f6df941d2c231e03f"
+checksum = "1a9bad9f94746442c783ca431b22403b519cd7fbeed0533fdd6328b2f2212128"
 
 [[package]]
 name = "lock_api"
@@ -4397,15 +4395,30 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.2"
+version = "0.16.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "911b295d2d302948838c8ac142da1ee09fa7863163b44e6715bc9357905878b8"
+checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
+dependencies = [
+ "cc",
+ "libc",
+ "once_cell",
+ "spin 0.5.2",
+ "untrusted 0.7.1",
+ "web-sys",
+ "winapi",
+]
+
+[[package]]
+name = "ring"
+version = "0.17.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb0205304757e5d899b9c2e448b867ffd03ae7f988002e47cd24954391394d0b"
 dependencies = [
  "cc",
  "getrandom 0.2.10",
  "libc",
  "spin 0.9.8",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys",
 ]
 
@@ -4493,9 +4506,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.38.19"
+version = "0.38.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "745ecfa778e66b2b63c88a61cb36e0eea109e803b0b86bf9879fbc77c70e86ed"
+checksum = "747c788e9ce8e92b12cd485c49ddf90723550b654b32508f979b71a7b1ecda4f"
 dependencies = [
  "bitflags 2.4.0",
  "errno 0.3.3",
@@ -4511,7 +4524,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "446e14c5cda4f3f30fe71863c34ec70f5ac79d6087097ad0bb433e1be5edf04c"
 dependencies = [
  "log",
- "ring",
+ "ring 0.17.5",
  "rustls-webpki",
  "sct",
 ]
@@ -4554,8 +4567,8 @@ version = "0.101.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
- "ring",
- "untrusted",
+ "ring 0.17.5",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -4662,12 +4675,12 @@ dependencies = [
 
 [[package]]
 name = "sct"
-version = "0.7.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
+checksum = "d53dcdb7c9f8158937a7981b48accfd39a43af418591a5d008c7b22b5e1b7ca4"
 dependencies = [
- "ring",
- "untrusted",
+ "ring 0.16.20",
+ "untrusted 0.7.1",
 ]
 
 [[package]]
@@ -5708,7 +5721,7 @@ dependencies = [
  "prost-build",
  "regex",
  "reqwest",
- "ring",
+ "ring 0.17.5",
  "rustls-pemfile",
  "semver 1.0.14",
  "serde",
@@ -6272,6 +6285,12 @@ dependencies = [
 
 [[package]]
 name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
@@ -6782,3 +6801,7 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "eszip"
+version = "0.53.0"

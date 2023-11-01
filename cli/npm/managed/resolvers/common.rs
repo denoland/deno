@@ -135,11 +135,8 @@ pub async fn cache_packages(
   for package in packages {
     let cache = cache.clone();
     let registry_url = registry_url.clone();
-    let handle = spawn(async move {
-      cache
-        .ensure_package(&package.id.nv, &package.dist, &registry_url)
-        .await
-    });
+    let handle =
+      spawn(async move { cache.ensure_package(&package, &registry_url).await });
     handles.push(handle);
   }
   let results = futures::future::join_all(handles).await;
