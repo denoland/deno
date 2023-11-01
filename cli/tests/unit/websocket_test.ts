@@ -100,7 +100,7 @@ Deno.test(async function websocketSendLargeBinaryPacket() {
     ws.send(new Uint8Array(65000));
   };
   ws.onmessage = (msg: MessageEvent) => {
-    assertEquals(msg.data.length, 65000);
+    assertEquals(msg.data.byteLength, 65000);
     ws.close();
   };
   ws.onclose = () => {
@@ -119,7 +119,7 @@ Deno.test(async function websocketSendLargeBlobPacket() {
     ws.send(new Blob(["a".repeat(65000)]));
   };
   ws.onmessage = (msg: MessageEvent) => {
-    assertEquals(msg.data.length, 65000);
+    assertEquals(msg.data.byteLength, 65000);
     ws.close();
   };
   ws.onclose = () => {
