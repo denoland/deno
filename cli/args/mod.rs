@@ -1263,8 +1263,15 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
-  pub fn unstable_features(&self) -> &[&'static str] {
-    &self.flags.unstable_features
+  pub fn unstable_features(&self) -> Vec<String> {
+    let mut from_config_file = self
+      .maybe_config_file()
+      .as_ref()
+      .map(|c| c.json.unstable.clone())
+      .unwrap_or_default();
+
+    from_config_file.extend_from_slice(&self.flags.unstable_features);
+    from_config_file
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

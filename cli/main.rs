@@ -256,37 +256,49 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js`.
 pub(crate) static UNSTABLE_GRANULAR_FLAGS: &'static [(
+  // flag name
   &'static str,
+  // help text
   &'static str,
+  // id to enable it in runtime/99_main.js
+  i32,
 )] = &[
   (
     deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
     "Enable unstable `BroadcastChannel` API",
+    1,
   ),
   (
     deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
     "Enable unstable FFI APIs",
+    2,
   ),
   (
     deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
     "Enable unstable file system APIs",
+    3,
   ),
   (
     deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
     "Enable unstable Key-Value store APIs",
+    4,
   ),
   (
     deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
     "Enable unstable net APIs",
+    5,
   ),
   (
     deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
     "Enable unstable HTTP APIs",
+    6,
   ),
   (
     deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
     "Enable unstable Web Worker APIs",
+    7,
   ),
 ];
 
