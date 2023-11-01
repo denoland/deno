@@ -8,7 +8,6 @@ use std::env;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use async_trait::async_trait;
 use deno_core::error::type_error;
