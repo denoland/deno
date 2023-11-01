@@ -106,10 +106,17 @@ impl Default for DocSourceFileFlag {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DocHtmlFlag {
+  pub name: String,
+  pub output: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
   pub lint: bool,
+  pub html: Option<DocHtmlFlag>,
   pub source_files: DocSourceFileFlag,
   pub filter: Option<String>,
 }
@@ -1325,6 +1332,12 @@ Output documentation to standard output:
 
     deno doc ./path/to/module.ts
 
+Output documentation in HTML format:
+
+    deno doc --html --name=\"My library\" ./path/to/module.ts
+    deno doc --html --name=\"My library\" ./main.ts ./dev.ts
+    deno doc --html --name=\"My library\" --output=./documentation/ ./path/to/module.ts
+
 Output private documentation to standard output:
 
     deno doc --private ./path/to/module.ts
@@ -1361,6 +1374,30 @@ Show documentation for runtime built-ins:
             .action(ArgAction::SetTrue),
         )
         .arg(
+          Arg::new("html")
+            .long("html")
+            .help("Output documentation in HTML format")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("json")
+        )
+        .arg(
+          Arg::new("name")
+            .long("name")
+            .help("The name that will be displayed in the docs")
+            .action(ArgAction::Set)
+            .required_if_eq("html", "true")
+            .require_equals(true)
+        )
+        .arg(
+          Arg::new("output")
+            .long("output")
+            .help("Directory for HTML documentation output")
+            .action(ArgAction::Set)
+            .require_equals(true)
+            .value_hint(ValueHint::DirPath)
+            .value_parser(value_parser!(PathBuf))
+        )
+        .arg(
           Arg::new("private")
             .long("private")
             .help("Output private documentation")
@@ -1372,7 +1409,8 @@ Show documentation for runtime built-ins:
             .help("Dot separated path to symbol")
             .required(false)
             .conflicts_with("json")
-            .conflicts_with("lint"),
+            .conflicts_with("lint")
+            .conflicts_with("html"),
         )
         .arg(
           Arg::new("lint")
@@ -3180,10 +3218,21 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let lint = matches.get_flag("lint");
   let json = matches.get_flag("json");
   let filter = matches.remove_one::<String>("filter");
+  let html = if matches.get_flag("html") {
+    let name = matches.remove_one::<String>("name").unwrap();
+    let output = matches
+      .remove_one::<PathBuf>("output")
+      .unwrap_or(PathBuf::from("./docs/"));
+    Some(DocHtmlFlag { name, output })
+  } else {
+    None
+  };
+
   flags.subcommand = DenoSubcommand::Doc(DocFlags {
     source_files,
     json,
     lint,
+    html,
     filter,
     private,
   });
@@ -6085,6 +6134,7 @@ mod tests {
           source_files: DocSourceFileFlag::Paths(vec!["script.ts".to_owned()]),
           private: false,
           json: false,
+          html: None,
           lint: false,
           filter: None,
         }),
@@ -7374,10 +7424,64 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: true,
+          html: None,
           lint: false,
-          source_files: DocSourceFileFlag::Paths(vec![
-            "path/to/module.ts".to_string()
-          ]),
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
+          filter: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "doc", "--html", "path/to/module.ts"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--html",
+      "--name=My library",
+      "path/to/module.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc(DocFlags {
+          private: false,
+          json: false,
+          lint: false,
+          html: Some(DocHtmlFlag {
+            name: "My library".to_string(),
+            output: PathBuf::from("./docs/"),
+          }),
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
+          filter: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--html",
+      "--name=My library",
+      "--lint",
+      "--output=./foo",
+      "path/to/module.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc(DocFlags {
+          private: false,
+          json: false,
+          html: Some(DocHtmlFlag {
+            name: "My library".to_string(),
+            output: PathBuf::from("./foo"),
+          }),
+          lint: true,
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
         }),
         ..Flags::default()
@@ -7397,6 +7501,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
+          html: None,
           lint: false,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.ts".to_string()
@@ -7414,6 +7519,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
+          html: None,
           lint: false,
           source_files: Default::default(),
           filter: None,
@@ -7436,6 +7542,7 @@ mod tests {
           private: false,
           lint: false,
           json: false,
+          html: None,
           source_files: DocSourceFileFlag::Builtin,
           filter: Some("Deno.Listener".to_string()),
         }),
@@ -7458,9 +7565,8 @@ mod tests {
           private: true,
           lint: false,
           json: false,
-          source_files: DocSourceFileFlag::Paths(vec![
-            "path/to/module.js".to_string()
-          ]),
+          html: None,
+          source_files: DocSourceFileFlag::Paths(svec!["path/to/module.js"]),
           filter: None,
         }),
         no_npm: true,
@@ -7482,6 +7588,7 @@ mod tests {
           private: false,
           lint: false,
           json: false,
+          html: None,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.js".to_string(),
             "path/to/module2.js".to_string()
@@ -7505,6 +7612,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
+          html: None,
           lint: false,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.js".to_string(),
@@ -7530,6 +7638,7 @@ mod tests {
           private: false,
           lint: true,
           json: false,
+          html: None,
           source_files: DocSourceFileFlag::Paths(vec![
             "path/to/module.js".to_string(),
             "path/to/module2.js".to_string()
