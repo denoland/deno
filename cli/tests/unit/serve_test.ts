@@ -307,17 +307,18 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, write: true, read: true } },
   async function httpServerExplicitResourceManagement() {
-    let f;
+    let dataPromise;
 
     {
       await using _server = await makeServer(async (_req) => {
         return new Response((await makeTempFile(1024 * 1024)).readable);
       });
 
-      f = await fetch(`http://localhost:${servePort}`);
+      const resp = await fetch(`http://localhost:${servePort}`);
+      dataPromise = resp.arrayBuffer();
     }
 
-    assertEquals((await f.text()).length, 1048576);
+    assertEquals((await dataPromise).byteLength, 1048576);
   },
 );
 
@@ -328,11 +329,14 @@ Deno.test(
       return new Response((await makeTempFile(1024 * 1024)).readable);
     });
 
-    const f = await fetch(`http://localhost:${servePort}`);
+    const resp = await fetch(`http://localhost:${servePort}`);
 
-    await server.shutdown();
+    const [_, data] = await Promise.all([
+      server.shutdown(),
+      resp.arrayBuffer(),
+    ]);
 
-    assertEquals((await f.text()).length, 1048576);
+    assertEquals(data.byteLength, 1048576);
   },
 );
 
