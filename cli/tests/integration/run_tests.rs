@@ -808,6 +808,19 @@ fn permissions_cache() {
     });
 }
 
+itest!(env_file {
+  args: "run --env=env --allow-env run/env_file.ts",
+  output: "run/env_file.out",
+});
+
+itest!(env_file_missing {
+  args: "run --env=missing --allow-env run/env_file.ts",
+  output_str: Some(
+    "error: Unable to load 'missing' environment variable file\n"
+  ),
+  exit_code: 1,
+});
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
