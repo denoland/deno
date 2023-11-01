@@ -257,11 +257,11 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 }
 
 // NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js`.
-pub(crate) static UNSTABLE_GRANULAR_FLAGS: &'static [(
+pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
   // flag name
-  &'static str,
+  &str,
   // help text
-  &'static str,
+  &str,
   // id to enable it in runtime/99_main.js
   i32,
 )] = &[

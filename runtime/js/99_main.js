@@ -583,7 +583,8 @@ function bootstrapMainRuntime(runtimeOptions) {
       },
     });
   } else {
-    for (const id of unstableFeatures) {
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
       ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
   }
@@ -703,7 +704,8 @@ function bootstrapWorkerRuntime(
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
   } else {
-    for (const id of unstableFeatures) {
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
       ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
   }
