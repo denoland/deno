@@ -1137,6 +1137,11 @@ impl CliOptions {
     }
   }
 
+  pub fn enable_op_summary_metrics(&self) -> bool {
+    self.flags.enable_op_summary_metrics
+      || matches!(self.flags.subcommand, DenoSubcommand::Test(_))
+  }
+
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
   }

@@ -27,6 +27,7 @@ use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::OpMetricsSummaryTracker;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -208,6 +209,16 @@ impl MainWorker {
       },
     );
 
+    let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
+    deno_core::extension!(deno_op_metrics,
+      options = {
+        op_summary_metrics: Rc<OpMetricsSummaryTracker>
+      },
+      state = |state, options| {
+        state.put(options.op_summary_metrics)
+      }
+    );
+
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
@@ -302,6 +313,7 @@ impl MainWorker {
         permissions,
         enable_testing_features,
       ),
+      deno_op_metrics::init_ops_and_esm(op_summary_metrics.clone()),
       runtime::init_ops_and_esm(),
     ];
 
@@ -323,6 +335,13 @@ impl MainWorker {
         }
       }
     }
+
+    // Hook up the summary metrics if the user or subcommand requested them
+    let op_metrics_factory_fn = if options.bootstrap.enable_op_summary_metrics {
+      Some(op_summary_metrics.op_metrics_factory_fn(|_| true))
+    } else {
+      None
+    };
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
@@ -349,6 +368,7 @@ impl MainWorker {
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
+      op_metrics_factory_fn,
       ..Default::default()
     });
 
