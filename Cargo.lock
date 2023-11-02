@@ -951,7 +951,6 @@ dependencies = [
  "http",
  "hyper 0.14.27",
  "import_map",
- "indexmap 1.9.3",
  "indexmap 2.0.2",
  "jsonc-parser",
  "junction",
