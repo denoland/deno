@@ -272,7 +272,6 @@ pub(crate) fn unstable_warn_cb(feature: &str) {
 pub fn main() {
   setup_panic_hook();
 
-  util::unix::prepare_stdio();
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
