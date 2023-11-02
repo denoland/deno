@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.38.0 / 2023.11.01
 
-- Revert "chore: update deno_std submodule (#20994)" (#21001)
-- Revert "chore: use kqueue backend of notify on macOS" (#21039)
 - feat(cron) implement Deno.cron() (#21019)
 - feat(doc): display non-exported types referenced in exported types (#20990)
 - feat(doc): improve non-exported diagnostic (#21033)
