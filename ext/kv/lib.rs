@@ -60,7 +60,7 @@ const MAX_READ_KEY_SIZE_BYTES: usize = MAX_WRITE_KEY_SIZE_BYTES + 1;
 const MAX_VALUE_SIZE_BYTES: usize = 65536;
 const MAX_READ_RANGES: usize = 10;
 const MAX_READ_ENTRIES: usize = 1000;
-const MAX_CHECKS: usize = 10;
+const MAX_CHECKS: usize = 100;
 const MAX_MUTATIONS: usize = 1000;
 const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
 const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
@@ -669,13 +669,16 @@ where
       return Err(type_error("key cannot be empty"));
     }
 
-    let checked_size = check_write_key_size(key)?;
-    total_payload_size += checked_size;
-    total_key_size += checked_size;
+    total_payload_size += check_write_key_size(key)?;
   }
 
-  for value in mutations.iter().flat_map(|m| m.kind.value()) {
-    total_payload_size += check_value_size(value)?;
+  for (key, value) in mutations
+    .iter()
+    .flat_map(|m| m.kind.value().map(|x| (&m.key, x)))
+  {
+    let key_size = check_write_key_size(key)?;
+    total_payload_size += check_value_size(value)? + key_size;
+    total_key_size += key_size;
   }
 
   for enqueue in &enqueues {
