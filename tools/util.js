@@ -185,7 +185,7 @@ export async function downloadPrebuilt(toolName) {
   }
 
   const downloadPromise = DOWNLOAD_TASKS[toolName] = deferred();
-  const spinner = wait("Downloading prebuilt tool: " + toolName).start();
+  const spinner = wait("Downloading prebuilt tool: " + toolName, { interval: 1000 }).start();
   const toolPath = getPrebuiltToolPath(toolName);
   const tempFile = `${toolPath}.temp`;
 
