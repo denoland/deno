@@ -2103,6 +2103,7 @@ declare namespace Deno {
    *
    * @category Jupyter */
   export namespace jupyter {
+    /** @category Jupyter */
     export interface DisplayOptions {
       raw?: boolean;
       update?: boolean;
@@ -2116,6 +2117,8 @@ declare namespace Deno {
 
     /**
      * A collection of supported media types and data for Jupyter frontends.
+     *
+     * @category Jupyter
      */
     export type MediaBundle = {
       "text/plain"?: string;
@@ -2145,8 +2148,10 @@ declare namespace Deno {
       [key: string]: string | object | undefined;
     };
 
+    /** @category Jupyter */
     export const $display: unique symbol;
 
+    /** @category Jupyter */
     export type Displayable = {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
     };
@@ -2158,6 +2163,7 @@ declare namespace Deno {
      *
      * @param obj - The object to be displayed
      * @param options - Display options with a default { raw: true }
+     * @category Jupyter
      */
     export function display(obj: unknown, options?: DisplayOptions): void;
 
@@ -2180,6 +2186,8 @@ declare namespace Deno {
      * Interactive compute with Jupyter _built into Deno_!
      * `
      * ```
+     *
+     * @category Jupyter
      */
     export function md(
       strings: TemplateStringsArray,
@@ -2197,6 +2205,8 @@ declare namespace Deno {
      * const { html } = Deno.jupyter;
      * html`<h1>Hello, world!</h1>`
      * ```
+     *
+     * @category Jupyter
      */
     export function html(
       strings: TemplateStringsArray,
@@ -2213,6 +2223,8 @@ declare namespace Deno {
      * svg`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
      *      <circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
      *    </svg>`
+     *
+     * @category Jupyter
      */
     export function svg(
       strings: TemplateStringsArray,
@@ -2224,6 +2236,8 @@ declare namespace Deno {
      *
      * @param obj - The object to be displayed
      * @returns MediaBundle
+     *
+     * @category Jupyter
      */
     export function format(obj: unknown): MediaBundle;
 
