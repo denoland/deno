@@ -16,7 +16,7 @@ export { delay } from "../test_util/std/async/delay.ts";
 // [toolName] --version output
 const versions = {
   "dprint": "dprint 0.40.0",
-  "dlint": "dlint 0.52.2",
+  "dlint": "dlint 0.51.0",
 };
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -208,6 +208,11 @@ export async function downloadPrebuilt(toolName) {
     await resp.body.pipeTo(file.writable);
     spinner.text = `Checking prebuilt tool: ${toolName}`;
     await sanityCheckPrebuiltFile(tempFile);
+    if (!await verifyVersion(toolName)) {
+      throw new Error(
+        "Didn't get the correct version of the tool after downloading.",
+      );
+    }
     spinner.text = `Successfully downloaded: ${toolName}`;
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
