@@ -1165,6 +1165,10 @@ dbTest("operation size limit", async (db) => {
     _,
     i,
   ) => ["a", i]);
+  const invalidCheckKeys: Deno.KvKey[] = new Array(101).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
 
   const res = await db.getMany(lastValidKeys);
   assertEquals(res.length, 10);
@@ -1206,7 +1210,7 @@ dbTest("operation size limit", async (db) => {
   await assertRejects(
     async () => {
       await db.atomic()
-        .check(...firstInvalidKeys.map((key) => ({
+        .check(...invalidCheckKeys.map((key) => ({
           key,
           versionstamp: null,
         })))
@@ -1218,7 +1222,7 @@ dbTest("operation size limit", async (db) => {
         .commit();
     },
     TypeError,
-    "too many checks (max 10)",
+    "too many checks (max 100)",
   );
 
   const validMutateKeys: Deno.KvKey[] = new Array(1000).fill(0).map((
