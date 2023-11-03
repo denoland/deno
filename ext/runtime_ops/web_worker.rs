@@ -6,7 +6,6 @@ use crate::worker_host::WebWorkerType;
 use deno_core::error::AnyError;
 use deno_core::op2;
 
-use deno_core::CancelFuture;
 use deno_core::OpState;
 use deno_web::JsMessageData;
 use std::cell::RefCell;

@@ -41,7 +41,6 @@ impl fmt::Display for PermissionState {
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use std::path::Path;
-use std::path::{self};
 
 /// Helper for checking unstable features. Used for sync ops.
 pub fn check_unstable(state: &OpState, feature: &str, api_name: &str) {
@@ -57,114 +56,118 @@ pub struct TestingFeaturesEnabled(pub bool);
 pub trait RuntimePermissions {
   fn check_read(
     &mut self,
-    path: &Path,
-    api_name: &str,
+    _path: &Path,
+    _api_name: &str,
   ) -> Result<(), AnyError> {
     unimplemented!()
   }
   fn check_read_blind(
     &mut self,
-    p: &Path,
-    display: &str,
-    api_name: &str,
+    _p: &Path,
+    _display: &str,
+    _api_name: &str,
   ) -> Result<(), AnyError> {
     unimplemented!()
   }
-  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+  fn check_env(&mut self, _var: &str) -> Result<(), AnyError> {
     unimplemented!()
   }
   fn check_env_all(&mut self) -> Result<(), AnyError> {
     unimplemented!()
   }
-  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+  fn check_sys(
+    &mut self,
+    _kind: &str,
+    _api_name: &str,
+  ) -> Result<(), AnyError> {
     unimplemented!()
   }
-  fn check_run(&mut self, cmd: &str, api_name: &str) -> Result<(), AnyError> {
+  fn check_run(&mut self, _cmd: &str, _api_name: &str) -> Result<(), AnyError> {
     unimplemented!()
   }
-  fn check_run_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+  fn check_run_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
     unimplemented!()
   }
 
   // Queries
-  fn query_read(&self, path: Option<&Path>) -> PermissionState {
+  fn query_read(&self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
-  fn query_write(&self, path: Option<&Path>) -> PermissionState {
+  fn query_write(&self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
   fn query_net<T: AsRef<str>>(
     &self,
-    host: Option<&(T, Option<u16>)>,
+    _host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     unimplemented!()
   }
-  fn query_env(&self, var: Option<&str>) -> PermissionState {
+  fn query_env(&self, _var: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn query_sys(&self, kind: Option<&str>) -> PermissionState {
+  fn query_sys(&self, _kind: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn query_run(&self, cmd: Option<&str>) -> PermissionState {
+  fn query_run(&self, _cmd: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn query_ffi(&self, path: Option<&Path>) -> PermissionState {
+  fn query_ffi(&self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
   fn query_hrtime(&self) -> PermissionState {
     unimplemented!()
   }
 
-  fn revoke_read(&mut self, path: Option<&Path>) -> PermissionState {
+  fn revoke_read(&mut self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
-  fn revoke_write(&mut self, path: Option<&Path>) -> PermissionState {
+  fn revoke_write(&mut self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
   fn revoke_net<T: AsRef<str>>(
     &self,
-    host: Option<&(T, Option<u16>)>,
+    _host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     unimplemented!()
   }
-  fn revoke_env(&mut self, var: Option<&str>) -> PermissionState {
+  fn revoke_env(&mut self, _var: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn revoke_sys(&mut self, kind: Option<&str>) -> PermissionState {
+  fn revoke_sys(&mut self, _kind: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn revoke_run(&mut self, cmd: Option<&str>) -> PermissionState {
+  fn revoke_run(&mut self, _cmd: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn revoke_ffi(&mut self, path: Option<&Path>) -> PermissionState {
+  fn revoke_ffi(&mut self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
   fn revoke_hrtime(&mut self) -> PermissionState {
     unimplemented!()
   }
 
-  fn request_read(&mut self, path: Option<&Path>) -> PermissionState {
+  fn request_read(&mut self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
-  fn request_write(&mut self, path: Option<&Path>) -> PermissionState {
+  fn request_write(&mut self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
   fn request_net<T: AsRef<str>>(
     &self,
-    host: Option<&(T, Option<u16>)>,
+    _host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     unimplemented!()
   }
-  fn request_env(&mut self, var: Option<&str>) -> PermissionState {
+  fn request_env(&mut self, _var: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn request_sys(&mut self, kind: Option<&str>) -> PermissionState {
+  fn request_sys(&mut self, _kind: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn request_run(&mut self, cmd: Option<&str>) -> PermissionState {
+  fn request_run(&mut self, _cmd: Option<&str>) -> PermissionState {
     unimplemented!()
   }
-  fn request_ffi(&mut self, path: Option<&Path>) -> PermissionState {
+  fn request_ffi(&mut self, _path: Option<&Path>) -> PermissionState {
     unimplemented!()
   }
   fn request_hrtime(&mut self) -> PermissionState {

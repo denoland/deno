@@ -106,7 +106,7 @@ pub fn op_revoke_permission<P>(
 where
   P: RuntimePermissions + 'static,
 {
-  let mut permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<P>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.revoke_read(path.map(Path::new)),
@@ -143,7 +143,7 @@ pub fn op_request_permission<P>(
 where
   P: RuntimePermissions + 'static,
 {
-  let mut permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<P>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.request_read(path.map(Path::new)),

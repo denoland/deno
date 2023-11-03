@@ -10,17 +10,11 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_web::JsMessageData;
-use log::debug;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use std::sync::Arc;
 
 #[derive(
   Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
@@ -89,30 +83,30 @@ impl Serialize for WorkerControlEvent {
 #[async_trait::async_trait(?Send)]
 pub trait WorkerHost {
   fn create_worker(
-    state: &mut OpState,
-    args: CreateWorkerArgs,
+    _state: &mut OpState,
+    _args: CreateWorkerArgs,
   ) -> Result<WorkerId, AnyError> {
     unimplemented!()
   }
-  fn terminate_worker(state: &mut OpState, id: WorkerId) {
+  fn terminate_worker(_state: &mut OpState, _id: WorkerId) {
     unimplemented!()
   }
   fn post_message(
-    state: &mut OpState,
-    id: WorkerId,
-    data: JsMessageData,
+    _state: &mut OpState,
+    _id: WorkerId,
+    _data: JsMessageData,
   ) -> Result<(), AnyError> {
     unimplemented!()
   }
   async fn recv_ctrl(
-    state: Rc<RefCell<OpState>>,
-    id: WorkerId,
+    _state: Rc<RefCell<OpState>>,
+    _id: WorkerId,
   ) -> Result<WorkerControlEvent, AnyError> {
     unimplemented!()
   }
   async fn recv_message(
-    state: Rc<RefCell<OpState>>,
-    id: WorkerId,
+    _state: Rc<RefCell<OpState>>,
+    _id: WorkerId,
   ) -> Result<Option<JsMessageData>, AnyError> {
     unimplemented!()
   }
