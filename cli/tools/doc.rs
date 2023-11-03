@@ -156,7 +156,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
               "s"
             }
           );
-          return Ok(()); // don't output anything if only linting
+          return Ok(()); // no output flag, so done
         }
       }
 
