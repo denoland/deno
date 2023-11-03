@@ -73,9 +73,7 @@ class AbortSignal extends EventTarget {
     if (this.aborted) {
       return;
     }
-    if (this[abortAlgos] === null) {
-      this[abortAlgos] = new SafeSet();
-    }
+    this[abortAlgos] ??= new SafeSet();
     SetPrototypeAdd(this[abortAlgos], algorithm);
   }
 
@@ -91,7 +89,7 @@ class AbortSignal extends EventTarget {
 
     const event = new Event("abort");
     setIsTrusted(event, true);
-    this.dispatchEvent(event);
+    super.dispatchEvent(event);
     if (algos !== null) {
       for (const algorithm of new SafeSetIterator(algos)) {
         algorithm();
@@ -104,7 +102,7 @@ class AbortSignal extends EventTarget {
   }
 
   constructor(key = null) {
-    if (key != illegalConstructorKey) {
+    if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
     }
     super();
