@@ -5,6 +5,10 @@ use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::FormatJsErrorFn;
+use crate::worker_host::CreateWebWorkerCb;
+use crate::worker_host::CreateWebWorkerCbHolder;
+use crate::worker_host::FormatJsErrorFnHolder;
+use crate::worker_host::WorkersTable;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
@@ -345,10 +349,20 @@ impl WebWorker {
       options = {
         permissions: PermissionsContainer,
         enable_testing_features: bool,
+        create_web_worker_cb: Arc<CreateWebWorkerCb>,
+        format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
         state.put(deno_runtime_ops::TestingFeaturesEnabled(options.enable_testing_features));
+
+        state.put::<WorkersTable>(WorkersTable::default());
+        let create_web_worker_cb_holder =
+            CreateWebWorkerCbHolder(options.create_web_worker_cb);
+        state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
+        let format_js_error_fn_holder =
+          FormatJsErrorFnHolder(options.format_js_error_fn);
+        state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
       },
     );
 
@@ -454,6 +468,8 @@ impl WebWorker {
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
+        options.create_web_worker_cb,
+        options.format_js_error_fn,
       ),
       runtime::init_ops_and_esm(),
     ];

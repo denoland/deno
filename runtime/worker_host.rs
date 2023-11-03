@@ -47,10 +47,10 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
 /// because `GothamState` used in `OpState` overrides
 /// value if type aliases have the same underlying type
 #[derive(Clone)]
-struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
+pub struct CreateWebWorkerCbHolder(pub Arc<CreateWebWorkerCb>);
 
 #[derive(Clone)]
-struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
+pub struct FormatJsErrorFnHolder(pub Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,

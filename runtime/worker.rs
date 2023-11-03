@@ -44,7 +44,12 @@ use log::debug;
 use crate::inspector_server::InspectorServer;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
+use crate::worker_host;
+use crate::worker_host::CreateWebWorkerCb;
+use crate::worker_host::CreateWebWorkerCbHolder;
+use crate::worker_host::FormatJsErrorFnHolder;
 use crate::worker_host::MainWorkerHost;
+use crate::worker_host::WorkersTable;
 use crate::BootstrapOptions;
 
 /// This worker is created and used by almost all
@@ -186,10 +191,20 @@ impl MainWorker {
       options = {
         permissions: PermissionsContainer,
         enable_testing_features: bool,
+        create_web_worker_cb: Arc<CreateWebWorkerCb>,
+        format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
         state.put(deno_runtime_ops::TestingFeaturesEnabled(options.enable_testing_features));
+
+        state.put::<WorkersTable>(WorkersTable::default());
+        let create_web_worker_cb_holder =
+            CreateWebWorkerCbHolder(options.create_web_worker_cb);
+        state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
+        let format_js_error_fn_holder =
+          FormatJsErrorFnHolder(options.format_js_error_fn);
+        state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
       },
     );
 
@@ -294,6 +309,8 @@ impl MainWorker {
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
+        options.create_web_worker_cb.clone(),
+        options.format_js_error_fn.clone(),
       ),
       runtime::init_ops_and_esm(),
     ];
