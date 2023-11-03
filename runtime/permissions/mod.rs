@@ -2082,6 +2082,7 @@ pub fn create_child_permissions(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::serde_json;
   use deno_core::serde_json::json;
   use prompter::tests::*;
 
