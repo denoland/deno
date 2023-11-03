@@ -3744,7 +3744,29 @@ declare namespace Deno {
     ops: Record<string, OpMetrics>;
   }
 
-  /**
+  /** Receive metrics from the privileged side of Deno. This is primarily used
+   * in the development of Deno. _Ops_, also called _bindings_, are the
+   * go-between between Deno JavaScript sandbox and the rest of Deno.
+   *
+   * ```shell
+   * > console.table(Deno.metrics())
+   * ┌─────────────────────────┬────────┐
+   * │         (index)         │ Values │
+   * ├─────────────────────────┼────────┤
+   * │      opsDispatched      │   3    │
+   * │    opsDispatchedSync    │   2    │
+   * │   opsDispatchedAsync    │   1    │
+   * │ opsDispatchedAsyncUnref │   0    │
+   * │      opsCompleted       │   3    │
+   * │    opsCompletedSync     │   2    │
+   * │    opsCompletedAsync    │   1    │
+   * │ opsCompletedAsyncUnref  │   0    │
+   * │    bytesSentControl     │   73   │
+   * │      bytesSentData      │   0    │
+   * │      bytesReceived      │  375   │
+   * └─────────────────────────┴────────┘
+   * ```
+   *
    * @category Observability
    *
    * @deprecated This API has been deprecated in Deno v1.37.1.

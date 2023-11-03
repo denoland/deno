@@ -209,16 +209,6 @@ impl MainWorker {
       },
     );
 
-    let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
-    deno_core::extension!(deno_op_metrics,
-      options = {
-        op_summary_metrics: Rc<OpMetricsSummaryTracker>
-      },
-      state = |state, options| {
-        state.put(options.op_summary_metrics)
-      }
-    );
-
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
@@ -313,7 +303,6 @@ impl MainWorker {
         permissions,
         enable_testing_features,
       ),
-      deno_op_metrics::init_ops_and_esm(op_summary_metrics.clone()),
       runtime::init_ops_and_esm(),
     ];
 
@@ -337,11 +326,16 @@ impl MainWorker {
     }
 
     // Hook up the summary metrics if the user or subcommand requested them
-    let op_metrics_factory_fn = if options.bootstrap.enable_op_summary_metrics {
-      Some(op_summary_metrics.op_metrics_factory_fn(|_| true))
-    } else {
-      None
-    };
+    let (op_summary_metrics, op_metrics_factory_fn) =
+      if options.bootstrap.enable_op_summary_metrics {
+        let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
+        (
+          Some(op_summary_metrics.clone()),
+          Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
+        )
+      } else {
+        (None, None)
+      };
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
@@ -371,6 +365,10 @@ impl MainWorker {
       op_metrics_factory_fn,
       ..Default::default()
     });
+
+    if let Some(op_summary_metrics) = op_summary_metrics {
+      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
