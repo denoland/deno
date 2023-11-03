@@ -7542,13 +7542,8 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "doc",
-      "--html",
-      "--name=My library",
-      "--lint",
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "doc", "--html", "--name=My library",]);
     assert!(r.is_err());
 
     let r = flags_from_vec(svec![
