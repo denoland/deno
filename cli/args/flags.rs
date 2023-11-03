@@ -1480,7 +1480,8 @@ Show documentation for runtime built-ins:
           Arg::new("source_file")
             .num_args(1..)
             .action(ArgAction::Append)
-            .value_hint(ValueHint::FilePath),
+            .value_hint(ValueHint::FilePath)
+            .required_if_eq_any([("html", "true"), ("lint", "true")]),
         )
     })
 }
@@ -7541,6 +7542,10 @@ mod tests {
       }
     );
 
+    let r =
+      flags_from_vec(svec!["deno", "doc", "--html", "--name=My library",]);
+    assert!(r.is_err());
+
     let r = flags_from_vec(svec![
       "deno",
       "doc",
@@ -7676,6 +7681,9 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "doc", "--lint",]);
+    assert!(r.is_err());
 
     let r = flags_from_vec(svec![
       "deno",
