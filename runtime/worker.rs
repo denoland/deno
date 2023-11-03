@@ -91,7 +91,7 @@ pub struct WorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
-  // pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub create_web_worker_cb: Arc<crate::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
@@ -134,9 +134,9 @@ pub struct WorkerOptions {
 impl Default for WorkerOptions {
   fn default() -> Self {
     Self {
-      // create_web_worker_cb: Arc::new(|_| {
-      //   unimplemented!("web workers are not supported")
-      // }),
+      create_web_worker_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
       fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,

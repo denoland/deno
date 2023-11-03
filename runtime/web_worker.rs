@@ -21,6 +21,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -35,7 +36,6 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
-use deno_core::CancelFuture;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -75,28 +75,28 @@ pub struct WebWorkerInternalHandle {
 #[async_trait::async_trait(?Send)]
 impl deno_runtime_ops::web_worker::WebWorkerHandle for WebWorkerInternalHandle {
   fn post_message(
-      &self,
-      state: &mut deno_core::OpState,
-      data: deno_web::JsMessageData,
-    ) -> Result<(), AnyError> {
-      let handle = state.borrow::<WebWorkerInternalHandle>().clone();
-      handle.port.send(state, data)?;
-      Ok(())
+    &self,
+    state: &mut deno_core::OpState,
+    data: deno_web::JsMessageData,
+  ) -> Result<(), AnyError> {
+    let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+    handle.port.send(state, data)?;
+    Ok(())
   }
 
   async fn recv_message(
-      &self,
-      state: Rc<RefCell<deno_core::OpState>>,
-    ) -> Result<Option<deno_web::JsMessageData>, AnyError> {
-      let handle = {
-        let state = state.borrow();
-        state.borrow::<WebWorkerInternalHandle>().clone()
-      };
-      handle
-        .port
-        .recv(state.clone())
-        .or_cancel(handle.cancel)
-        .await?
+    &self,
+    state: Rc<RefCell<deno_core::OpState>>,
+  ) -> Result<Option<deno_web::JsMessageData>, AnyError> {
+    let handle = {
+      let state = state.borrow();
+      state.borrow::<WebWorkerInternalHandle>().clone()
+    };
+    handle
+      .port
+      .recv(state.clone())
+      .or_cancel(handle.cancel)
+      .await?
   }
 
   /// Terminate the worker
@@ -304,7 +304,7 @@ pub struct WebWorkerOptions {
   pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
-  // pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub create_web_worker_cb: Arc<crate::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,

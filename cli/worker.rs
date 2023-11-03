@@ -33,12 +33,12 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
-// use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_runtime::worker_host::CreateWebWorkerCb;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
@@ -504,8 +504,8 @@ impl CliMainWorkerFactory {
       shared.module_loader_factory.create_source_map_getter();
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    // let create_web_worker_cb =
-    //   create_web_worker_callback(shared.clone(), stdio.clone());
+    let create_web_worker_cb =
+      create_web_worker_callback(shared.clone(), stdio.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -563,7 +563,7 @@ impl CliMainWorkerFactory {
       seed: shared.options.seed,
       source_map_getter: maybe_source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      // create_web_worker_cb,
+      create_web_worker_cb,
       maybe_inspector_server,
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
@@ -675,95 +675,95 @@ impl CliMainWorkerFactory {
   }
 }
 
-// fn create_web_worker_callback(
-//   shared: Arc<SharedWorkerState>,
-//   stdio: deno_runtime::deno_io::Stdio,
-// ) -> Arc<CreateWebWorkerCb> {
-//   Arc::new(move |args| {
-//     let maybe_inspector_server = shared.maybe_inspector_server.clone();
+fn create_web_worker_callback(
+  shared: Arc<SharedWorkerState>,
+  stdio: deno_runtime::deno_io::Stdio,
+) -> Arc<CreateWebWorkerCb> {
+  Arc::new(move |args| {
+    let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-//     let module_loader = shared.module_loader_factory.create_for_worker(
-//       args.parent_permissions.clone(),
-//       args.permissions.clone(),
-//     );
-//     let maybe_source_map_getter =
-//       shared.module_loader_factory.create_source_map_getter();
-//     // let create_web_worker_cb =
-//     //   create_web_worker_callback(shared.clone(), stdio.clone());
+    let module_loader = shared.module_loader_factory.create_for_worker(
+      args.parent_permissions.clone(),
+      args.permissions.clone(),
+    );
+    let maybe_source_map_getter =
+      shared.module_loader_factory.create_source_map_getter();
+    let create_web_worker_cb =
+      create_web_worker_callback(shared.clone(), stdio.clone());
 
-//     let extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let extensions = ops::cli_exts(shared.npm_resolver.clone());
 
-//     let maybe_storage_key = shared
-//       .storage_key_resolver
-//       .resolve_storage_key(&args.main_module);
-//     let cache_storage_dir = maybe_storage_key.map(|key| {
-//       // TODO(@satyarohith): storage quota management
-//       // Note: we currently use temp_dir() to avoid managing storage size.
-//       std::env::temp_dir()
-//         .join("deno_cache")
-//         .join(checksum::gen(&[key.as_bytes()]))
-//     });
+    let maybe_storage_key = shared
+      .storage_key_resolver
+      .resolve_storage_key(&args.main_module);
+    let cache_storage_dir = maybe_storage_key.map(|key| {
+      // TODO(@satyarohith): storage quota management
+      // Note: we currently use temp_dir() to avoid managing storage size.
+      std::env::temp_dir()
+        .join("deno_cache")
+        .join(checksum::gen(&[key.as_bytes()]))
+    });
 
-//     let options = WebWorkerOptions {
-//       bootstrap: BootstrapOptions {
-//         args: shared.options.argv.clone(),
-//         cpu_count: std::thread::available_parallelism()
-//           .map(|p| p.get())
-//           .unwrap_or(1),
-//         log_level: shared.options.log_level,
-//         enable_testing_features: shared.options.enable_testing_features,
-//         locale: deno_core::v8::icu::get_language_tag(),
-//         location: Some(args.main_module.clone()),
-//         no_color: !colors::use_color(),
-//         is_tty: colors::is_tty(),
-//         runtime_version: version::deno().to_string(),
-//         ts_version: version::TYPESCRIPT.to_string(),
-//         unstable: shared.options.unstable,
-//         user_agent: version::get_user_agent().to_string(),
-//         inspect: shared.options.is_inspecting,
-//         has_node_modules_dir: shared.options.has_node_modules_dir,
-//         maybe_binary_npm_command_name: shared
-//           .options
-//           .maybe_binary_npm_command_name
-//           .clone(),
-//       },
-//       extensions,
-//       startup_snapshot: crate::js::deno_isolate_init(),
-//       unsafely_ignore_certificate_errors: shared
-//         .options
-//         .unsafely_ignore_certificate_errors
-//         .clone(),
-//       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
-//       seed: shared.options.seed,
-//       // create_web_worker_cb,
-//       format_js_error_fn: Some(Arc::new(format_js_error)),
-//       source_map_getter: maybe_source_map_getter,
-//       module_loader,
-//       fs: shared.fs.clone(),
-//       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
-//       worker_type: args.worker_type,
-//       maybe_inspector_server,
-//       get_error_class_fn: Some(&errors::get_error_class_name),
-//       blob_store: shared.blob_store.clone(),
-//       broadcast_channel: shared.broadcast_channel.clone(),
-//       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
-//       compiled_wasm_module_store: Some(
-//         shared.compiled_wasm_module_store.clone(),
-//       ),
-//       stdio: stdio.clone(),
-//       cache_storage_dir,
-//       feature_checker: shared.feature_checker.clone(),
-//     };
+    let options = WebWorkerOptions {
+      bootstrap: BootstrapOptions {
+        args: shared.options.argv.clone(),
+        cpu_count: std::thread::available_parallelism()
+          .map(|p| p.get())
+          .unwrap_or(1),
+        log_level: shared.options.log_level,
+        enable_testing_features: shared.options.enable_testing_features,
+        locale: deno_core::v8::icu::get_language_tag(),
+        location: Some(args.main_module.clone()),
+        no_color: !colors::use_color(),
+        is_tty: colors::is_tty(),
+        runtime_version: version::deno().to_string(),
+        ts_version: version::TYPESCRIPT.to_string(),
+        unstable: shared.options.unstable,
+        user_agent: version::get_user_agent().to_string(),
+        inspect: shared.options.is_inspecting,
+        has_node_modules_dir: shared.options.has_node_modules_dir,
+        maybe_binary_npm_command_name: shared
+          .options
+          .maybe_binary_npm_command_name
+          .clone(),
+      },
+      extensions,
+      startup_snapshot: crate::js::deno_isolate_init(),
+      unsafely_ignore_certificate_errors: shared
+        .options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
+      seed: shared.options.seed,
+      create_web_worker_cb,
+      format_js_error_fn: Some(Arc::new(format_js_error)),
+      source_map_getter: maybe_source_map_getter,
+      module_loader,
+      fs: shared.fs.clone(),
+      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
+      worker_type: args.worker_type,
+      maybe_inspector_server,
+      get_error_class_fn: Some(&errors::get_error_class_name),
+      blob_store: shared.blob_store.clone(),
+      broadcast_channel: shared.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(
+        shared.compiled_wasm_module_store.clone(),
+      ),
+      stdio: stdio.clone(),
+      cache_storage_dir,
+      feature_checker: shared.feature_checker.clone(),
+    };
 
-//     WebWorker::bootstrap_from_options(
-//       args.name,
-//       args.permissions,
-//       args.main_module,
-//       args.worker_id,
-//       options,
-//     )
-//   })
-// }
+    WebWorker::bootstrap_from_options(
+      args.name,
+      args.permissions,
+      args.main_module,
+      args.worker_id,
+      options,
+    )
+  })
+}
 
 #[cfg(test)]
 mod tests {

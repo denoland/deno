@@ -14,6 +14,7 @@ description = "Ops for the deno_runtime crate"
 path = "lib.rs"
 
 [dependencies]
+async-trait.workspace = true
 deno_core.workspace = true
 deno_fetch.workspace = true
 deno_http.workspace = true
@@ -24,7 +25,6 @@ deno_web.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 encoding_rs.workspace = true
-async-trait.workspace = true
 hyper.workspace = true
 libc.workspace = true
 log.workspace = true

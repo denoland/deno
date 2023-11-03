@@ -219,7 +219,7 @@ impl WorkerHost for MainWorkerHost {
         return Ok(WorkerControlEvent::Close);
       }
     };
-  
+
     let maybe_event = worker_handle
       .get_control_event()
       .or_cancel(cancel_handle)
@@ -260,7 +260,7 @@ impl WorkerHost for MainWorkerHost {
         return Ok(None);
       }
     };
-  
+
     let ret = worker_handle
       .port
       .recv(state.clone())
