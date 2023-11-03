@@ -50,6 +50,20 @@ pub enum PermissionState {
   Denied = 3,
 }
 
+#[inline]
+fn runtime_perm_state(
+  state: PermissionState,
+) -> deno_runtime_ops::PermissionState {
+  match state {
+    PermissionState::Granted => deno_runtime_ops::PermissionState::Granted,
+    PermissionState::GrantedPartial => {
+      deno_runtime_ops::PermissionState::GrantedPartial
+    }
+    PermissionState::Prompt => deno_runtime_ops::PermissionState::Prompt,
+    PermissionState::Denied => deno_runtime_ops::PermissionState::Denied,
+  }
+}
+
 /// `AllowPartial` prescribes how to treat a permission which is partially
 /// denied due to a `--deny-*` flag affecting a subscope of the queried
 /// permission.
@@ -1358,7 +1372,173 @@ impl PermissionsContainer {
   }
 }
 
-impl deno_runtime_ops::RuntimePermissions for PermissionsContainer {}
+impl deno_runtime_ops::RuntimePermissions for PermissionsContainer {
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.check_read(path, api_name)
+  }
+
+  fn check_read_blind(
+    &mut self,
+    p: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.check_read_blind(p, display, api_name)
+  }
+
+  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+    self.check_env(var)
+  }
+
+  fn check_env_all(&mut self) -> Result<(), AnyError> {
+    self.check_env_all()
+  }
+
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+    self.check_sys(kind, api_name)
+  }
+
+  fn check_run(&mut self, cmd: &str, api_name: &str) -> Result<(), AnyError> {
+    self.check_run(cmd, api_name)
+  }
+
+  fn check_run_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.check_run_all(api_name)
+  }
+
+  fn query_read(
+    &self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().read.query(path))
+  }
+  fn query_write(
+    &self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().write.query(path))
+  }
+  fn query_net<T: AsRef<str>>(
+    &self,
+    host: Option<&(T, Option<u16>)>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().net.query(host))
+  }
+  fn query_env(&self, var: Option<&str>) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().env.query(var))
+  }
+  fn query_sys(&self, kind: Option<&str>) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().sys.query(kind))
+  }
+  fn query_run(&self, cmd: Option<&str>) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().run.query(cmd))
+  }
+  fn query_ffi(
+    &self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().ffi.query(path))
+  }
+  fn query_hrtime(&self) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().hrtime.query())
+  }
+
+  fn revoke_read(
+    &mut self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().read.revoke(path))
+  }
+  fn revoke_write(
+    &mut self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().write.revoke(path))
+  }
+  fn revoke_net<T: AsRef<str>>(
+    &self,
+    host: Option<&(T, Option<u16>)>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().net.revoke(host))
+  }
+  fn revoke_env(
+    &mut self,
+    var: Option<&str>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().env.revoke(var))
+  }
+  fn revoke_sys(
+    &mut self,
+    kind: Option<&str>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().sys.revoke(kind))
+  }
+  fn revoke_run(
+    &mut self,
+    cmd: Option<&str>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().run.revoke(cmd))
+  }
+  fn revoke_ffi(
+    &mut self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().ffi.revoke(path))
+  }
+  fn revoke_hrtime(&mut self) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().hrtime.revoke())
+  }
+
+  fn request_read(
+    &mut self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().read.request(path))
+  }
+  fn request_write(
+    &mut self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().write.request(path))
+  }
+  fn request_net<T: AsRef<str>>(
+    &self,
+    host: Option<&(T, Option<u16>)>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().net.request(host))
+  }
+  fn request_env(
+    &mut self,
+    var: Option<&str>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().env.request(var))
+  }
+  fn request_sys(
+    &mut self,
+    kind: Option<&str>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().sys.request(kind))
+  }
+  fn request_run(
+    &mut self,
+    cmd: Option<&str>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().run.request(cmd))
+  }
+  fn request_ffi(
+    &mut self,
+    path: Option<&Path>,
+  ) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().ffi.request(path))
+  }
+  fn request_hrtime(&mut self) -> deno_runtime_ops::PermissionState {
+    runtime_perm_state(self.0.lock().hrtime.request())
+  }
+}
 
 impl deno_node::NodePermissions for PermissionsContainer {
   #[inline(always)]
