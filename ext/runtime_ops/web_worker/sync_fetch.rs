@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
+use crate::web_worker::WebWorkerHandle;
+use crate::worker_host::WebWorkerType;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -35,13 +35,16 @@ pub struct SyncFetchScript {
 
 #[op2]
 #[serde]
-pub fn op_worker_sync_fetch(
+pub fn op_worker_sync_fetch<W>(
   state: &mut OpState,
   #[serde] scripts: Vec<String>,
   mut loose_mime_checks: bool,
-) -> Result<Vec<SyncFetchScript>, AnyError> {
-  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
-  assert_eq!(handle.worker_type, WebWorkerType::Classic);
+) -> Result<Vec<SyncFetchScript>, AnyError>
+where
+  W: WebWorkerHandle + 'static,
+{
+  let handle = state.borrow::<W>().clone();
+  assert_eq!(handle.worker_type(), WebWorkerType::Classic);
 
   let client = deno_fetch::get_or_create_client_from_state(state)?;
 

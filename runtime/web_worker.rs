@@ -71,6 +71,8 @@ pub struct WebWorkerInternalHandle {
   pub worker_type: WebWorkerType,
 }
 
+impl deno_runtime_ops::web_worker::WebWorkerHandle for WebWorkerInternalHandle {}
+
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
   pub fn post_event(&self, event: WorkerControlEvent) -> Result<(), AnyError> {
@@ -392,14 +394,15 @@ impl WebWorker {
         options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      // deno_runtime_ops::web_worker::deno_web_worker::init_ops_and_esm(),
+      deno_runtime_ops::web_worker::deno_web_worker::init_ops_and_esm::<
+        WebWorkerInternalHandle,
+      >(),
       deno_runtime_ops::runtime::deno_runtime::init_ops_and_esm::<
         PermissionsContainer,
       >(main_module.clone()),
-      // deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm(
-      //   options.create_web_worker_cb.clone(),
-      //   options.format_js_error_fn.clone(),
-      // ),
+      deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm::<
+        crate::worker::MainWorkerHost,
+      >(),
       deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<
         PermissionsContainer,
       >(),

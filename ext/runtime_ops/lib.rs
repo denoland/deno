@@ -9,7 +9,7 @@ pub mod runtime;
 pub mod signal;
 pub mod tty;
 mod utils;
-// pub mod web_worker;
+pub mod web_worker;
 pub mod worker_host;
 
 use serde::Deserialize;
