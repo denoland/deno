@@ -4,6 +4,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { assert } from "ext:deno_web/00_infra.js";
 import {
   defineEventHandler,
   Event,
@@ -13,27 +14,115 @@ import {
 } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypePush,
   SafeArrayIterator,
   SafeSet,
   SafeSetIterator,
+  SafeWeakRef,
+  SafeWeakSet,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
   TypeError,
+  WeakRefPrototypeDeref,
+  WeakSetPrototypeAdd,
+  WeakSetPrototypeHas,
 } = primordials;
 import { refTimer, setTimeout, unrefTimer } from "ext:deno_web/02_timers.js";
+
+// Since WeakSet is not a iterable, WeakRefSet class is provided to store and
+// iterate objects.
+// To create an AsyncIterable using GeneratorFunction in the internal code,
+// there are many primordial considerations, so we simply implement the
+// toArray method.
+class WeakRefSet {
+  #weakSet = new SafeWeakSet();
+  #refSet = new SafeSet();
+
+  add(value) {
+    if (WeakSetPrototypeHas(this.#weakSet, value)) {
+      return;
+    }
+    const ref = new SafeWeakRef(value);
+    WeakSetPrototypeAdd(this.#weakSet, value);
+    SetPrototypeAdd(this.#refSet, ref);
+  }
+
+  has(value) {
+    return WeakSetPrototypeHas(this.#weakSet, value);
+  }
+
+  toArray() {
+    const arr = [];
+    for (const ref of new SafeSetIterator(this.#refSet)) {
+      const value = WeakRefPrototypeDeref(ref);
+      if (value !== undefined) {
+        ArrayPrototypePush(value);
+      }
+    }
+    return arr;
+  }
+}
 
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");
 const remove = Symbol("[[remove]]");
 const abortReason = Symbol("[[abortReason]]");
 const abortAlgos = Symbol("[[abortAlgos]]");
+const dependent = Symbol("[[dependent]]");
+const sourceSignals = Symbol("[[sourceSignals]]");
+const dependentSignals = Symbol("[[dependentSignals]]");
 const signal = Symbol("[[signal]]");
 const timerId = Symbol("[[timerId]]");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 class AbortSignal extends EventTarget {
+  static any(signals) {
+    const prefix = "Failed to call 'AbortSignal.any'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    signals = webidl.converters["sequence<AbortSignal>"](
+      signals,
+      prefix,
+      "Argument 1",
+    );
+
+    const resultSignal = new AbortSignal(illegalConstructorKey);
+    for (let i = 0; i < signals.length; ++i) {
+      const signal = signals[i];
+      if (signal[abortReason] !== undefined) {
+        resultSignal[abortReason] = signal[abortReason];
+        return resultSignal;
+      }
+    }
+
+    resultSignal[dependent] = true;
+    resultSignal[sourceSignals] = new WeakRefSet();
+    for (let i = 0; i < signals.length; ++i) {
+      const signal = signals[i];
+      if (!signal[dependent]) {
+        signal[dependentSignals] ??= new WeakRefSet();
+        resultSignal[sourceSignals].add(signal);
+        signal[dependentSignals].add(resultSignal);
+      } else {
+        const sourceSignalArray = signal[sourceSignals].toArray();
+        for (let j = 0; j < sourceSignalArray.length; ++j) {
+          const sourceSignal = sourceSignalArray[j];
+          assert(sourceSignal[abortReason] === undefined);
+          assert(!sourceSignal[dependent]);
+
+          if (resultSignal[sourceSignals].has(sourceSignal)) {
+            continue;
+          }
+          resultSignal[sourceSignals].add(sourceSignal);
+          sourceSignal[dependentSignals].add(resultSignal);
+        }
+      }
+    }
+
+    return resultSignal;
+  }
+
   static abort(reason = undefined) {
     if (reason !== undefined) {
       reason = webidl.converters.any(reason);
@@ -95,6 +184,15 @@ class AbortSignal extends EventTarget {
         algorithm();
       }
     }
+
+    const signals = this[dependentSignals];
+    if (signals !== null) {
+      const signalArray = signals.toArray();
+      for (let i = 0; i < signalArray; ++i) {
+        const signal = signalArray[i];
+        signal[signalAbort](reason);
+      }
+    }
   }
 
   [remove](algorithm) {
@@ -108,6 +206,9 @@ class AbortSignal extends EventTarget {
     super();
     this[abortReason] = undefined;
     this[abortAlgos] = null;
+    this[dependent] = false;
+    this[sourceSignals] = null;
+    this[dependentSignals] = null;
     this[timerId] = null;
     this[webidl.brand] = webidl.brand;
   }
@@ -174,9 +275,12 @@ class AbortController {
 webidl.configureInterface(AbortController);
 const AbortControllerPrototype = AbortController.prototype;
 
-webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(
+webidl.converters.AbortSignal = webidl.createInterfaceConverter(
   "AbortSignal",
   AbortSignal.prototype,
+);
+webidl.converters["sequence<AbortSignal>"] = webidl.createSequenceConverter(
+  webidl.converters.AbortSignal,
 );
 
 function newSignal() {
