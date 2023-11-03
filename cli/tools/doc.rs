@@ -146,6 +146,18 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       if doc_flags.lint {
         let diagnostics = doc_parser.take_diagnostics();
         check_diagnostics(&diagnostics)?;
+        if doc_flags.html.is_none() && !doc_flags.json {
+          log::info!(
+            "Checked {} file{}",
+            module_specifiers.len(),
+            if module_specifiers.len() == 1 {
+              ""
+            } else {
+              "s"
+            }
+          );
+          return Ok(()); // don't output anything if only linting
+        }
       }
 
       doc_nodes_by_url
