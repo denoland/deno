@@ -125,24 +125,30 @@ fn op_stdin_set_raw(
         use libc::tcgetattr;
         use libc::tcsetattr;
         use libc::termios;
+        use once_cell::sync::OnceCell;
 
-        static mut ORIG_TERMIOS: Option<termios> = None;
         // Only save original state once.
-        if ORIG_TERMIOS.is_some() {
-          return;
-        }
+        static ORIG_TERMIOS: OnceCell<Option<termios>> = OnceCell::new();
+        ORIG_TERMIOS.get_or_init(|| {
+          let mut termios = std::mem::zeroed::<termios>();
+          if tcgetattr(libc::STDIN_FILENO, &mut termios) == 0 {
+            extern "C" fn reset_stdio() {
+              // SAFETY: Reset the stdio state.
+              unsafe {
+                tcsetattr(
+                  libc::STDIN_FILENO,
+                  0,
+                  &ORIG_TERMIOS.get().unwrap().unwrap(),
+                )
+              };
+            }
 
-        let mut termios = std::mem::zeroed::<termios>();
-        if tcgetattr(libc::STDIN_FILENO, &mut termios) == 0 {
-          ORIG_TERMIOS = Some(termios);
-
-          extern "C" fn reset_stdio() {
-            // SAFETY: Reset the stdio state.
-            unsafe { tcsetattr(libc::STDIN_FILENO, 0, &ORIG_TERMIOS.unwrap()) };
+            atexit(reset_stdio);
+            return Some(termios);
           }
 
-          atexit(reset_stdio);
-        }
+          None
+        });
       }
     }
 
