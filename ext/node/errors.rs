@@ -138,12 +138,12 @@ pub fn err_package_import_not_defined(
   base: &str,
 ) -> AnyError {
   let mut msg = format!(
-    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{specifier}\" is not defined in"
+    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{specifier}\" is not defined"
   );
 
   if let Some(package_path) = package_path {
     let pkg_json_path = PathBuf::from(package_path).join("package.json");
-    msg = format!("{} package {}", msg, pkg_json_path.display());
+    msg = format!("{} in package {}", msg, pkg_json_path.display());
   }
 
   msg = format!("{msg} imported from {base}");
