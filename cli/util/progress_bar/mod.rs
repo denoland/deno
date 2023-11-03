@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_core::parking_lot::Mutex;
-use deno_runtime::ops::tty::ConsoleSize;
+use deno_runtime::deno_runtime_ops::tty::ConsoleSize;
 
 use crate::colors;
 

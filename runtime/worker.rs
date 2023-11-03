@@ -3,7 +3,6 @@
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -38,28 +37,15 @@ use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
+use deno_runtime_ops::os::ExitCode;
 use log::debug;
 
 use crate::inspector_server::InspectorServer;
-use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
-
-#[derive(Clone, Default)]
-pub struct ExitCode(Arc<AtomicI32>);
-
-impl ExitCode {
-  pub fn get(&self) -> i32 {
-    self.0.load(Relaxed)
-  }
-
-  pub fn set(&mut self, code: i32) {
-    self.0.store(code, Relaxed);
-  }
-}
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -105,7 +91,7 @@ pub struct WorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
-  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  // pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
@@ -148,9 +134,9 @@ pub struct WorkerOptions {
 impl Default for WorkerOptions {
   fn default() -> Self {
     Self {
-      create_web_worker_cb: Arc::new(|_| {
-        unimplemented!("web workers are not supported")
-      }),
+      // create_web_worker_cb: Arc::new(|_| {
+      //   unimplemented!("web workers are not supported")
+      // }),
       fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
@@ -203,13 +189,13 @@ impl MainWorker {
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
+        state.put(deno_runtime_ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
     );
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
+    let exit_code = deno_runtime_ops::os::ExitCode(Arc::new(AtomicI32::new(0)));
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
       CreateCache(Arc::new(create_cache_fn))
@@ -284,18 +270,20 @@ impl MainWorker {
         options.fs,
       ),
       // Ops from this crate
-      ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops_and_esm(
-        options.create_web_worker_cb.clone(),
-        options.format_js_error_fn.clone(),
+      deno_runtime_ops::runtime::deno_runtime::init_ops_and_esm::<PermissionsContainer>(
+        main_module.clone(),
       ),
-      ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::process::deno_process::init_ops_and_esm(),
-      ops::signal::deno_signal::init_ops_and_esm(),
-      ops::tty::deno_tty::init_ops_and_esm(),
-      ops::http::deno_http_runtime::init_ops_and_esm(),
+      // deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm(
+      //   options.create_web_worker_cb.clone(),
+      //   options.format_js_error_fn.clone(),
+      // ),
+      deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::os::deno_os::init_ops_and_esm::<PermissionsContainer>(exit_code.clone()),
+      deno_runtime_ops::permissions::deno_permissions::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::process::deno_process::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::signal::deno_signal::init_ops_and_esm(),
+      deno_runtime_ops::tty::deno_tty::init_ops_and_esm(),
+      deno_runtime_ops::http::deno_http_runtime::init_ops_and_esm(),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -332,11 +320,13 @@ impl MainWorker {
     let preserve_snapshotted_modules =
       Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
 
+    let register_ops = options.startup_snapshot.is_none();
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options
         .startup_snapshot
         .or_else(crate::js::deno_isolate_init),
+      register_ops,
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,

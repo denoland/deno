@@ -60,6 +60,7 @@ deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 deno_napi.workspace = true
+deno_runtime_ops.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres.workspace = true
@@ -81,6 +82,7 @@ deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_runtime_ops.workspace = true
 deno_tls.workspace = true
 deno_url.workspace = true
 deno_web.workspace = true
@@ -98,13 +100,11 @@ http.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
-netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
 regex.workspace = true
 ring.workspace = true
 serde.workspace = true
-signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"
 tokio.workspace = true
 tokio-metrics.workspace = true

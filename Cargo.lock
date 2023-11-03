@@ -1166,8 +1166,6 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.223.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68c55228461e414205ff6eeabe4058dfe37d41663883d70e1809a84c1814288c"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1575,8 +1573,6 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.99.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a755d96f9ccd44e4779d859ac1fc823be2b9c975821ac8b05b3e318bc5301aa8"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -1612,6 +1608,7 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
+ "deno_runtime_ops",
  "deno_tls",
  "deno_url",
  "deno_web",
@@ -1628,7 +1625,6 @@ dependencies = [
  "hyper 0.14.27",
  "libc",
  "log",
- "netif",
  "nix 0.26.2",
  "notify",
  "ntapi",
@@ -1636,7 +1632,6 @@ dependencies = [
  "regex",
  "ring",
  "serde",
- "signal-hook-registry",
  "termcolor",
  "test_util",
  "tokio",
@@ -1645,6 +1640,34 @@ dependencies = [
  "which",
  "winapi",
  "winres",
+]
+
+[[package]]
+name = "deno_runtime_ops"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_fetch",
+ "deno_http",
+ "deno_io",
+ "deno_net",
+ "deno_node",
+ "deno_web",
+ "deno_websocket",
+ "deno_webstorage",
+ "encoding_rs",
+ "fwdansi",
+ "hyper 0.14.27",
+ "libc",
+ "log",
+ "netif",
+ "nix 0.26.2",
+ "notify",
+ "ntapi",
+ "serde",
+ "signal-hook-registry",
+ "tokio",
+ "winapi",
 ]
 
 [[package]]
@@ -4838,8 +4861,6 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.132.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9378f2bc5e649f1cbc703ac75d90abe386f924d729215d95950f08c55dad4a8d"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6334,9 +6355,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.79.2"
+version = "0.80.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b15561535230812a1db89a696f1f16a12ae6c2c370c6b2241c68d4cb33963faf"
+checksum = "959eead7f97b80b08ec7154262c3abef0d9c4de2f4b80c100762d7fa880258fe"
 dependencies = [
  "bitflags 1.3.2",
  "fslock",

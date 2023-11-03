@@ -1,8 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::utils::into_string;
-use crate::permissions::PermissionsContainer;
-use crate::worker::ExitCode;
+use crate::RuntimePermissions;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -14,34 +13,46 @@ use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
 
 mod sys_info;
 
-deno_core::ops!(
-  deno_ops,
-  [
-    op_env,
-    op_exec_path,
-    op_exit,
-    op_delete_env,
-    op_get_env,
-    op_gid,
-    op_hostname,
-    op_loadavg,
-    op_network_interfaces,
-    op_os_release,
-    op_os_uptime,
-    op_set_env,
-    op_set_exit_code,
-    op_system_memory_info,
-    op_uid,
-    op_runtime_memory_usage,
-  ]
-);
+#[derive(Clone, Default)]
+pub struct ExitCode(pub Arc<AtomicI32>);
+
+impl ExitCode {
+  pub fn get(&self) -> i32 {
+    self.0.load(Relaxed)
+  }
+
+  pub fn set(&mut self, code: i32) {
+    self.0.store(code, Relaxed);
+  }
+}
 
 deno_core::extension!(
   deno_os,
-  ops_fn = deno_ops,
+  parameters = [P: RuntimePermissions],
+  ops = [
+    op_env<P>,
+    op_exec_path<P>,
+    op_exit,
+    op_delete_env<P>,
+    op_get_env<P>,
+    op_gid<P>,
+    op_hostname<P>,
+    op_loadavg<P>,
+    op_network_interfaces<P>,
+    op_os_release<P>,
+    op_os_uptime<P>,
+    op_set_env<P>,
+    op_set_exit_code,
+    op_system_memory_info<P>,
+    op_uid<P>,
+    op_runtime_memory_usage,
+  ],
   options = {
     exit_code: ExitCode,
   },
@@ -52,7 +63,25 @@ deno_core::extension!(
 
 deno_core::extension!(
   deno_os_worker,
-  ops_fn = deno_ops,
+  parameters = [P: RuntimePermissions],
+  ops = [
+    op_env<P>,
+    op_exec_path<P>,
+    op_exit,
+    op_delete_env<P>,
+    op_get_env<P>,
+    op_gid<P>,
+    op_hostname<P>,
+    op_loadavg<P>,
+    op_network_interfaces<P>,
+    op_os_release<P>,
+    op_os_uptime<P>,
+    op_set_env<P>,
+    op_set_exit_code,
+    op_system_memory_info<P>,
+    op_uid<P>,
+    op_runtime_memory_usage,
+  ],
   middleware = |op| match op.name {
     "op_exit" | "op_set_exit_code" =>
       op.with_implementation_from(&deno_core::op_void_sync::DECL),
@@ -62,11 +91,16 @@ deno_core::extension!(
 
 #[op2]
 #[string]
-fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
+fn op_exec_path<P>(state: &mut OpState) -> Result<String, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   let current_exe = env::current_exe().unwrap();
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
+  state.borrow_mut::<P>().check_read_blind(
+    &current_exe,
+    "exec_path",
+    "Deno.execPath()",
+  )?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -76,12 +110,15 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
 }
 
 #[op2(fast)]
-fn op_set_env(
+fn op_set_env<P>(
   state: &mut OpState,
   #[string] key: &str,
   #[string] value: &str,
-) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+) -> Result<(), AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_env(key)?;
   if key.is_empty() {
     return Err(type_error("Key is an empty string."));
   }
@@ -101,21 +138,27 @@ fn op_set_env(
 
 #[op2]
 #[serde]
-fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env_all()?;
+fn op_env<P>(state: &mut OpState) -> Result<HashMap<String, String>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_env_all()?;
   Ok(env::vars().collect())
 }
 
 #[op2]
 #[string]
-fn op_get_env(
+fn op_get_env<P>(
   state: &mut OpState,
   #[string] key: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+    state.borrow_mut::<P>().check_env(&key)?;
   }
 
   if key.is_empty() {
@@ -136,11 +179,14 @@ fn op_get_env(
 }
 
 #[op2(fast)]
-fn op_delete_env(
+fn op_delete_env<P>(
   state: &mut OpState,
   #[string] key: String,
-) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+) -> Result<(), AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_env(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -161,38 +207,50 @@ fn op_exit(state: &mut OpState) {
 
 #[op2]
 #[serde]
-fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
+fn op_loadavg<P>(state: &mut OpState) -> Result<(f64, f64, f64), AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_sys("loadavg", "Deno.loadavg()")?;
   Ok(sys_info::loadavg())
 }
 
 #[op2]
 #[string]
-fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
+fn op_hostname<P>(state: &mut OpState) -> Result<String, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_sys("hostname", "Deno.hostname()")?;
   Ok(sys_info::hostname())
 }
 
 #[op2]
 #[string]
-fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
+fn op_os_release<P>(state: &mut OpState) -> Result<String, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_sys("osRelease", "Deno.osRelease()")?;
   Ok(sys_info::os_release())
 }
 
 #[op2]
 #[serde]
-fn op_network_interfaces(
+fn op_network_interfaces<P>(
   state: &mut OpState,
-) -> Result<Vec<NetworkInterface>, AnyError> {
+) -> Result<Vec<NetworkInterface>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_sys("networkInterfaces", "Deno.networkInterfaces()")?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
@@ -240,11 +298,14 @@ impl From<netif::Interface> for NetworkInterface {
 
 #[op2]
 #[serde]
-fn op_system_memory_info(
+fn op_system_memory_info<P>(
   state: &mut OpState,
-) -> Result<Option<sys_info::MemInfo>, AnyError> {
+) -> Result<Option<sys_info::MemInfo>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_sys("systemMemoryInfo", "Deno.systemMemoryInfo()")?;
   Ok(sys_info::mem_info())
 }
@@ -252,10 +313,11 @@ fn op_system_memory_info(
 #[cfg(not(windows))]
 #[op2]
 #[smi]
-fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("gid", "Deno.gid()")?;
+fn op_gid<P>(state: &mut OpState) -> Result<Option<u32>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_sys("gid", "Deno.gid()")?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -266,20 +328,22 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(windows)]
 #[op2]
 #[smi]
-fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("gid", "Deno.gid()")?;
+fn op_gid<P>(state: &mut OpState) -> Result<Option<u32>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_sys("gid", "Deno.gid()")?;
   Ok(None)
 }
 
 #[cfg(not(windows))]
 #[op2]
 #[smi]
-fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("uid", "Deno.uid()")?;
+fn op_uid<P>(state: &mut OpState) -> Result<Option<u32>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_sys("uid", "Deno.uid()")?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -290,10 +354,11 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(windows)]
 #[op2]
 #[smi]
-fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("uid", "Deno.uid()")?;
+fn op_uid<P>(state: &mut OpState) -> Result<Option<u32>, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_sys("uid", "Deno.uid()")?;
   Ok(None)
 }
 
@@ -468,15 +533,21 @@ fn rss() -> usize {
   }
 }
 
-fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+fn os_uptime<P>(state: &mut OpState) -> Result<u64, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_sys("osUptime", "Deno.osUptime()")?;
   Ok(sys_info::os_uptime())
 }
 
 #[op2(fast)]
 #[number]
-fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  os_uptime(state)
+fn op_os_uptime<P>(state: &mut OpState) -> Result<u64, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  os_uptime::<P>(state)
 }

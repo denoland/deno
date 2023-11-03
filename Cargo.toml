@@ -22,6 +22,7 @@ members = [
   "ext/kv",
   "ext/net",
   "ext/node",
+  "ext/runtime_ops",
   "ext/url",
   "ext/web",
   "ext/webidl",
@@ -64,6 +65,7 @@ deno_http = { version = "0.116.0", path = "./ext/http" }
 deno_io = { version = "0.31.0", path = "./ext/io" }
 deno_net = { version = "0.113.0", path = "./ext/net" }
 deno_node = { version = "0.58.0", path = "./ext/node" }
+deno_runtime_ops = { version = "0.1.0", path = "./ext/runtime_ops" }
 deno_kv = { version = "0.29.0", path = "./ext/kv" }
 deno_tls = { version = "0.108.0", path = "./ext/tls" }
 deno_url = { version = "0.121.0", path = "./ext/url" }
@@ -221,6 +223,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_runtime]
 opt-level = 3
+[profile.bench.package.deno_runtime_ops]
+opt-level = 3
 [profile.bench.package.deno_http]
 opt-level = 3
 [profile.bench.package.deno_web]
@@ -286,6 +290,8 @@ opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
 [profile.release.package.deno_runtime]
+opt-level = 3
+[profile.release.package.deno_runtime_ops]
 opt-level = 3
 [profile.release.package.deno_http]
 opt-level = 3

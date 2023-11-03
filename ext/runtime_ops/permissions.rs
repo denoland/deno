@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::parse_sys_kind;
-use crate::permissions::PermissionState;
-use crate::permissions::PermissionsContainer;
+use crate::PermissionState;
+use crate::RuntimePermissions;
 use deno_core::error::custom_error;
+use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -15,10 +15,11 @@ use std::path::Path;
 
 deno_core::extension!(
   deno_permissions,
+  parameters = [P: RuntimePermissions],
   ops = [
-    op_query_permission,
-    op_revoke_permission,
-    op_request_permission,
+    op_query_permission<P>,
+    op_revoke_permission<P>,
+    op_request_permission<P>,
   ],
 );
 
@@ -51,31 +52,41 @@ impl From<PermissionState> for PermissionStatus {
   }
 }
 
+pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
+  match kind {
+    "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
+    | "systemMemoryInfo" | "uid" | "gid" => Ok(kind),
+    _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
+  }
+}
+
 #[op2]
 #[serde]
-pub fn op_query_permission(
+pub fn op_query_permission<P>(
   state: &mut OpState,
   #[serde] args: PermissionArgs,
-) -> Result<PermissionStatus, AnyError> {
-  let permissions = state.borrow::<PermissionsContainer>().0.lock();
+) -> Result<PermissionStatus, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  let permissions = state.borrow::<P>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.query(path.map(Path::new)),
-    "write" => permissions.write.query(path.map(Path::new)),
-    "net" => permissions.net.query(
+    "read" => permissions.query_read(path.map(Path::new)),
+    "write" => permissions.query_write(path.map(Path::new)),
+    "net" => permissions.query_net(
       match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
       .as_ref(),
     ),
-    "env" => permissions.env.query(args.variable.as_deref()),
+    "env" => permissions.query_env(args.variable.as_deref()),
     "sys" => permissions
-      .sys
-      .query(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions.run.query(args.command.as_deref()),
-    "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
-    "hrtime" => permissions.hrtime.query(),
+      .query_sys(args.kind.as_deref().map(parse_sys_kind).transpose()?),
+    "run" => permissions.query_run(args.command.as_deref()),
+    "ffi" => permissions.query_ffi(args.path.as_deref().map(Path::new)),
+    "hrtime" => permissions.query_hrtime(),
     n => {
       return Err(custom_error(
         "ReferenceError",
@@ -88,29 +99,31 @@ pub fn op_query_permission(
 
 #[op2]
 #[serde]
-pub fn op_revoke_permission(
+pub fn op_revoke_permission<P>(
   state: &mut OpState,
   #[serde] args: PermissionArgs,
-) -> Result<PermissionStatus, AnyError> {
-  let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
+) -> Result<PermissionStatus, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  let mut permissions = state.borrow_mut::<P>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.revoke(path.map(Path::new)),
-    "write" => permissions.write.revoke(path.map(Path::new)),
-    "net" => permissions.net.revoke(
+    "read" => permissions.revoke_read(path.map(Path::new)),
+    "write" => permissions.revoke_write(path.map(Path::new)),
+    "net" => permissions.revoke_net(
       match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
       .as_ref(),
     ),
-    "env" => permissions.env.revoke(args.variable.as_deref()),
+    "env" => permissions.revoke_env(args.variable.as_deref()),
     "sys" => permissions
-      .sys
-      .revoke(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions.run.revoke(args.command.as_deref()),
-    "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
-    "hrtime" => permissions.hrtime.revoke(),
+      .revoke_sys(args.kind.as_deref().map(parse_sys_kind).transpose()?),
+    "run" => permissions.revoke_run(args.command.as_deref()),
+    "ffi" => permissions.revoke_ffi(args.path.as_deref().map(Path::new)),
+    "hrtime" => permissions.revoke_hrtime(),
     n => {
       return Err(custom_error(
         "ReferenceError",
@@ -123,29 +136,31 @@ pub fn op_revoke_permission(
 
 #[op2]
 #[serde]
-pub fn op_request_permission(
+pub fn op_request_permission<P>(
   state: &mut OpState,
   #[serde] args: PermissionArgs,
-) -> Result<PermissionStatus, AnyError> {
-  let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
+) -> Result<PermissionStatus, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  let mut permissions = state.borrow_mut::<P>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.request(path.map(Path::new)),
-    "write" => permissions.write.request(path.map(Path::new)),
-    "net" => permissions.net.request(
+    "read" => permissions.request_read(path.map(Path::new)),
+    "write" => permissions.request_write(path.map(Path::new)),
+    "net" => permissions.request_net(
       match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
       .as_ref(),
     ),
-    "env" => permissions.env.request(args.variable.as_deref()),
+    "env" => permissions.request_env(args.variable.as_deref()),
     "sys" => permissions
-      .sys
-      .request(args.kind.as_deref().map(parse_sys_kind).transpose()?),
-    "run" => permissions.run.request(args.command.as_deref()),
-    "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
-    "hrtime" => permissions.hrtime.request(),
+      .request_sys(args.kind.as_deref().map(parse_sys_kind).transpose()?),
+    "run" => permissions.request_run(args.command.as_deref()),
+    "ffi" => permissions.request_ffi(args.path.as_deref().map(Path::new)),
+    "hrtime" => permissions.request_hrtime(),
     n => {
       return Err(custom_error(
         "ReferenceError",

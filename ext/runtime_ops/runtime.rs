@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::PermissionsContainer;
+use crate::RuntimePermissions;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ModuleSpecifier;
@@ -8,7 +8,8 @@ use deno_core::OpState;
 
 deno_core::extension!(
   deno_runtime,
-  ops = [op_main_module, op_ppid],
+  parameters = [P: RuntimePermissions],
+  ops = [op_main_module<P>, op_ppid],
   options = { main_module: ModuleSpecifier },
   state = |state, options| {
     state.put::<ModuleSpecifier>(options.main_module);
@@ -17,14 +18,19 @@ deno_core::extension!(
 
 #[op2]
 #[string]
-fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
+fn op_main_module<P>(state: &mut OpState) -> Result<String, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   let main_url = state.borrow::<ModuleSpecifier>();
   let main_path = main_url.to_string();
   if main_url.scheme() == "file" {
     let main_path = main_url.to_file_path().unwrap();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
+    state.borrow_mut::<P>().check_read_blind(
+      &main_path,
+      "main_module",
+      "Deno.mainModule",
+    )?;
   }
   Ok(main_path)
 }

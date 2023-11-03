@@ -3,7 +3,7 @@
 use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::ops::tty::ConsoleSize;
+use deno_runtime::deno_runtime_ops::tty::ConsoleSize;
 use once_cell::sync::Lazy;
 use std::io::IsTerminal;
 use std::sync::Arc;

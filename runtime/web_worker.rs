@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::inspector_server::InspectorServer;
-use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
@@ -338,7 +337,7 @@ pub struct WebWorkerOptions {
   pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
-  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  // pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,
@@ -382,7 +381,7 @@ impl WebWorker {
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
+        state.put(deno_runtime_ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
     );
 
@@ -461,19 +460,21 @@ impl WebWorker {
         options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::deno_web_worker::init_ops_and_esm(),
-      ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops_and_esm(
-        options.create_web_worker_cb.clone(),
-        options.format_js_error_fn.clone(),
+      // deno_runtime_ops::web_worker::deno_web_worker::init_ops_and_esm(),
+      deno_runtime_ops::runtime::deno_runtime::init_ops_and_esm::<PermissionsContainer>(
+        main_module.clone(),
       ),
-      ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::os::deno_os_worker::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::process::deno_process::init_ops_and_esm(),
-      ops::signal::deno_signal::init_ops_and_esm(),
-      ops::tty::deno_tty::init_ops_and_esm(),
-      ops::http::deno_http_runtime::init_ops_and_esm(),
+      // deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm(
+      //   options.create_web_worker_cb.clone(),
+      //   options.format_js_error_fn.clone(),
+      // ),
+      deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::os::deno_os_worker::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::permissions::deno_permissions::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::process::deno_process::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::signal::deno_signal::init_ops_and_esm(),
+      deno_runtime_ops::tty::deno_tty::init_ops_and_esm(),
+      deno_runtime_ops::http::deno_http_runtime::init_ops_and_esm(),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,

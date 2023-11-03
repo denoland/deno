@@ -20,6 +20,7 @@ pub use deno_web;
 pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
+pub use deno_runtime_ops;
 
 pub mod colors;
 pub mod errors;
@@ -27,7 +28,6 @@ pub mod fmt_errors;
 pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
-pub mod ops;
 pub mod permissions;
 pub mod tokio_util;
 pub mod web_worker;

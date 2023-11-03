@@ -4009,6 +4009,7 @@ fn js_runtime(
   JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
+    register_ops: true,
     ..Default::default()
   })
 }

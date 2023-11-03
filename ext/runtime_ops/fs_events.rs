@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -11,6 +10,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 
+use crate::RuntimePermissions;
 use deno_core::op2;
 
 use notify::event::Event as NotifyEvent;
@@ -30,7 +30,8 @@ use tokio::sync::mpsc;
 
 deno_core::extension!(
   deno_fs_events,
-  ops = [op_fs_events_open, op_fs_events_poll],
+  parameters = [P: RuntimePermissions],
+  ops = [op_fs_events_open<P>, op_fs_events_poll],
 );
 
 struct FsEventsResource {
@@ -94,10 +95,13 @@ pub struct OpenArgs {
 
 #[op2]
 #[smi]
-fn op_fs_events_open(
+fn op_fs_events_open<P>(
   state: &mut OpState,
   #[serde] args: OpenArgs,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
   let mut watcher: RecommendedWatcher = Watcher::new(
@@ -118,7 +122,7 @@ fn op_fs_events_open(
   for path in &args.paths {
     let path = PathBuf::from(path);
     state
-      .borrow_mut::<PermissionsContainer>()
+      .borrow_mut::<P>()
       .check_read(&path, "Deno.watchFs()")?;
     watcher.watch(&path, recursive_mode)?;
   }

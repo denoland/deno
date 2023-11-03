@@ -245,6 +245,7 @@ mod startup_snapshot {
       snapshot_path,
       startup_snapshot: None,
       extensions,
+      register_ops: true,
       compression_cb: None,
       with_runtime_cb: None,
     });

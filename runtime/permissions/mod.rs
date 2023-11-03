@@ -1359,6 +1359,8 @@ impl PermissionsContainer {
   }
 }
 
+impl deno_runtime_ops::RuntimePermissions for PermissionsContainer {}
+
 impl deno_node::NodePermissions for PermissionsContainer {
   #[inline(always)]
   fn check_net_url(

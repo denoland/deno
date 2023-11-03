@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::check_unstable;
-use crate::permissions::PermissionsContainer;
+use crate::RuntimePermissions;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -106,14 +106,15 @@ impl StdioOrRid {
 
 deno_core::extension!(
   deno_process,
+  parameters = [P: RuntimePermissions],
   ops = [
-    op_spawn_child,
+    op_spawn_child<P>,
     op_spawn_wait,
-    op_spawn_sync,
+    op_spawn_sync<P>,
     op_spawn_kill,
-    deprecated::op_run,
+    deprecated::op_run<P>,
     deprecated::op_run_status,
-    deprecated::op_kill,
+    deprecated::op_kill<P>,
   ],
 );
 
@@ -177,9 +178,7 @@ impl TryFrom<ExitStatus> for ChildStatus {
         success: false,
         code: 128 + signal,
         #[cfg(unix)]
-        signal: Some(
-          crate::ops::signal::signal_int_to_str(signal)?.to_string(),
-        ),
+        signal: Some(crate::signal::signal_int_to_str(signal)?.to_string()),
         #[cfg(not(unix))]
         signal: None,
       }
@@ -205,14 +204,15 @@ pub struct SpawnOutput {
   stderr: Option<ToJsBuffer>,
 }
 
-fn create_command(
+fn create_command<P>(
   state: &mut OpState,
   args: SpawnArgs,
   api_name: &str,
-) -> Result<std::process::Command, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_run(&args.cmd, api_name)?;
+) -> Result<std::process::Command, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  state.borrow_mut::<P>().check_run(&args.cmd, api_name)?;
 
   let mut command = std::process::Command::new(args.cmd);
 
@@ -367,12 +367,15 @@ fn spawn_child(
 
 #[op2]
 #[serde]
-fn op_spawn_child(
+fn op_spawn_child<P>(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
-) -> Result<Child, AnyError> {
-  let command = create_command(state, args, &api_name)?;
+) -> Result<Child, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
+  let command = create_command::<P>(state, args, &api_name)?;
   spawn_child(state, command)
 }
 
@@ -396,13 +399,17 @@ async fn op_spawn_wait(
 
 #[op2]
 #[serde]
-fn op_spawn_sync(
+fn op_spawn_sync<P>(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
-) -> Result<SpawnOutput, AnyError> {
+) -> Result<SpawnOutput, AnyError>
+where
+  P: RuntimePermissions + 'static,
+{
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
+  let mut command =
+    create_command::<P>(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
     format!(
       "Failed to spawn '{}'",
@@ -486,14 +493,15 @@ mod deprecated {
 
   #[op2]
   #[serde]
-  pub fn op_run(
+  pub fn op_run<P>(
     state: &mut OpState,
     #[serde] run_args: RunArgs,
-  ) -> Result<RunInfo, AnyError> {
+  ) -> Result<RunInfo, AnyError>
+  where
+    P: RuntimePermissions + 'static,
+  {
     let args = run_args.cmd;
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_run(&args[0], "Deno.run()")?;
+    state.borrow_mut::<P>().check_run(&args[0], "Deno.run()")?;
     let env = run_args.env;
     let cwd = run_args.cwd;
 
@@ -695,15 +703,16 @@ mod deprecated {
   }
 
   #[op2(fast)]
-  pub fn op_kill(
+  pub fn op_kill<P>(
     state: &mut OpState,
     #[smi] pid: i32,
     #[string] signal: String,
     #[string] api_name: String,
-  ) -> Result<(), AnyError> {
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name)?;
+  ) -> Result<(), AnyError>
+  where
+    P: RuntimePermissions + 'static,
+  {
+    state.borrow_mut::<P>().check_run_all(&api_name)?;
     kill(pid, &signal)?;
     Ok(())
   }
