@@ -356,6 +356,9 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   use deno_runtime::permissions::PermissionsContainer;
   use std::sync::Arc;
 
+  struct FakeWorkerHost;
+  impl deno_runtime_ops::worker_host::WorkerHost for FakeWorkerHost {}
+
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
   let fs = Arc::new(deno_fs::RealFs);
@@ -394,15 +397,17 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_runtime_ops::runtime::deno_runtime::init_ops::<PermissionsContainer>(
       "deno:cli_snapshot".try_into().unwrap(),
     ),
-    // deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm(
-    //   options.create_web_worker_cb.clone(),
-    //   options.format_js_error_fn.clone(),
-    // ),
-    deno_runtime_ops::fs_events::deno_fs_events::init_ops::<PermissionsContainer>(),
-    deno_runtime_ops::os::deno_os::init_ops::<PermissionsContainer>(
-      deno_runtime_ops::os::ExitCode(Arc::new(AtomicI32::new(0)))
+    deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm::<
+      FakeWorkerHost,
+    >(),
+    deno_runtime_ops::fs_events::deno_fs_events::init_ops::<PermissionsContainer>(
     ),
-    deno_runtime_ops::permissions::deno_permissions::init_ops::<PermissionsContainer>(),
+    deno_runtime_ops::os::deno_os::init_ops::<PermissionsContainer>(
+      deno_runtime_ops::os::ExitCode(Arc::new(AtomicI32::new(0))),
+    ),
+    deno_runtime_ops::permissions::deno_permissions::init_ops::<
+      PermissionsContainer,
+    >(),
     deno_runtime_ops::process::deno_process::init_ops::<PermissionsContainer>(),
     deno_runtime_ops::signal::deno_signal::init_ops(),
     deno_runtime_ops::tty::deno_tty::init_ops(),

@@ -40,6 +40,9 @@ use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+use deno_runtime_ops::worker_host::WebWorkerType;
+use deno_runtime_ops::worker_host::WorkerControlEvent;
+use deno_runtime_ops::worker_host::WorkerId;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -53,77 +56,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WebWorkerType {
-  Classic,
-  Module,
-}
-
-#[derive(
-  Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
-pub struct WorkerId(u32);
-impl fmt::Display for WorkerId {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "worker-{}", self.0)
-  }
-}
-impl WorkerId {
-  pub fn next(&self) -> Option<WorkerId> {
-    self.0.checked_add(1).map(WorkerId)
-  }
-}
-
-/// Events that are sent to host from child
-/// worker.
-pub enum WorkerControlEvent {
-  Error(AnyError),
-  TerminalError(AnyError),
-  Close,
-}
-
-use deno_core::serde::Serializer;
-
-impl Serialize for WorkerControlEvent {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let type_id = match &self {
-      WorkerControlEvent::TerminalError(_) => 1_i32,
-      WorkerControlEvent::Error(_) => 2_i32,
-      WorkerControlEvent::Close => 3_i32,
-    };
-
-    match self {
-      WorkerControlEvent::TerminalError(error)
-      | WorkerControlEvent::Error(error) => {
-        let value = match error.downcast_ref::<JsError>() {
-          Some(js_error) => {
-            let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
-              None => false,
-            });
-            json!({
-              "message": js_error.exception_message,
-              "fileName": frame.map(|f| f.file_name.as_ref()),
-              "lineNumber": frame.map(|f| f.line_number.as_ref()),
-              "columnNumber": frame.map(|f| f.column_number.as_ref()),
-            })
-          }
-          None => json!({
-            "message": error.to_string(),
-          }),
-        };
-
-        Serialize::serialize(&(type_id, value), serializer)
-      }
-      _ => Serialize::serialize(&(type_id, ()), serializer),
-    }
-  }
-}
 
 // Channels used for communication with worker's parent
 #[derive(Clone)]
@@ -461,17 +393,25 @@ impl WebWorker {
       ),
       // Runtime ops that are always initialized for WebWorkers
       // deno_runtime_ops::web_worker::deno_web_worker::init_ops_and_esm(),
-      deno_runtime_ops::runtime::deno_runtime::init_ops_and_esm::<PermissionsContainer>(
-        main_module.clone(),
-      ),
+      deno_runtime_ops::runtime::deno_runtime::init_ops_and_esm::<
+        PermissionsContainer,
+      >(main_module.clone()),
       // deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm(
       //   options.create_web_worker_cb.clone(),
       //   options.format_js_error_fn.clone(),
       // ),
-      deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<PermissionsContainer>(),
-      deno_runtime_ops::os::deno_os_worker::init_ops_and_esm::<PermissionsContainer>(),
-      deno_runtime_ops::permissions::deno_permissions::init_ops_and_esm::<PermissionsContainer>(),
-      deno_runtime_ops::process::deno_process::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<
+        PermissionsContainer,
+      >(),
+      deno_runtime_ops::os::deno_os_worker::init_ops_and_esm::<
+        PermissionsContainer,
+      >(),
+      deno_runtime_ops::permissions::deno_permissions::init_ops_and_esm::<
+        PermissionsContainer,
+      >(),
+      deno_runtime_ops::process::deno_process::init_ops_and_esm::<
+        PermissionsContainer,
+      >(),
       deno_runtime_ops::signal::deno_signal::init_ops_and_esm(),
       deno_runtime_ops::tty::deno_tty::init_ops_and_esm(),
       deno_runtime_ops::http::deno_http_runtime::init_ops_and_esm(),

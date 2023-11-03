@@ -9,10 +9,11 @@ pub mod runtime;
 pub mod signal;
 pub mod tty;
 mod utils;
+// pub mod web_worker;
+pub mod worker_host;
+
 use serde::Deserialize;
 use std::fmt;
-// pub mod web_worker;
-// pub mod worker_host;
 
 /// Quadri-state value for storing permission state
 #[derive(
@@ -124,7 +125,8 @@ pub trait RuntimePermissions {
     &self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    unimplemented!()}
+    unimplemented!()
+  }
   fn revoke_env(&mut self, var: Option<&str>) -> PermissionState {
     unimplemented!()
   }

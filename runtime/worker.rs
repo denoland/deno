@@ -35,9 +35,10 @@ use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+use deno_runtime_ops::os::ExitCode;
+pub use deno_runtime_ops::worker_host::FormatJsErrorFn;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
-use deno_runtime_ops::os::ExitCode;
 use log::debug;
 
 use crate::inspector_server::InspectorServer;
@@ -45,7 +46,9 @@ use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
-pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
+pub struct MainWorkerHost;
+// TODO(@littledivy)
+impl deno_runtime_ops::worker_host::WorkerHost for MainWorkerHost {}
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -270,17 +273,24 @@ impl MainWorker {
         options.fs,
       ),
       // Ops from this crate
-      deno_runtime_ops::runtime::deno_runtime::init_ops_and_esm::<PermissionsContainer>(
-        main_module.clone(),
+      deno_runtime_ops::runtime::deno_runtime::init_ops_and_esm::<
+        PermissionsContainer,
+      >(main_module.clone()),
+      deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm::<
+        MainWorkerHost,
+      >(),
+      deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<
+        PermissionsContainer,
+      >(),
+      deno_runtime_ops::os::deno_os::init_ops_and_esm::<PermissionsContainer>(
+        exit_code.clone(),
       ),
-      // deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm(
-      //   options.create_web_worker_cb.clone(),
-      //   options.format_js_error_fn.clone(),
-      // ),
-      deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<PermissionsContainer>(),
-      deno_runtime_ops::os::deno_os::init_ops_and_esm::<PermissionsContainer>(exit_code.clone()),
-      deno_runtime_ops::permissions::deno_permissions::init_ops_and_esm::<PermissionsContainer>(),
-      deno_runtime_ops::process::deno_process::init_ops_and_esm::<PermissionsContainer>(),
+      deno_runtime_ops::permissions::deno_permissions::init_ops_and_esm::<
+        PermissionsContainer,
+      >(),
+      deno_runtime_ops::process::deno_process::init_ops_and_esm::<
+        PermissionsContainer,
+      >(),
       deno_runtime_ops::signal::deno_signal::init_ops_and_esm(),
       deno_runtime_ops::tty::deno_tty::init_ops_and_esm(),
       deno_runtime_ops::http::deno_http_runtime::init_ops_and_esm(),
