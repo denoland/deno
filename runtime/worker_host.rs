@@ -1,0 +1,338 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use crate::permissions::create_child_permissions;
+use crate::permissions::ChildPermissionsArg;
+use crate::permissions::PermissionsContainer;
+use crate::web_worker::run_web_worker;
+use crate::web_worker::SendableWebWorkerHandle;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::worker::FormatJsErrorFn;
+use deno_core::error::AnyError;
+use deno_core::op2;
+use deno_core::serde::Deserialize;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_runtime_ops::worker_host::WebWorkerType;
+use deno_runtime_ops::worker_host::WorkerControlEvent;
+use deno_runtime_ops::worker_host::WorkerHost;
+use deno_runtime_ops::worker_host::WorkerId;
+use deno_runtime_ops::TestingFeaturesEnabled;
+use deno_web::JsMessageData;
+use log::debug;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
+
+pub struct CreateWebWorkerArgs {
+  pub name: String,
+  pub worker_id: WorkerId,
+  pub parent_permissions: PermissionsContainer,
+  pub permissions: PermissionsContainer,
+  pub main_module: ModuleSpecifier,
+  pub worker_type: WebWorkerType,
+}
+
+pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
+  + Sync
+  + Send;
+
+/// A holder for callback that is used to create a new
+/// WebWorker. It's a struct instead of a type alias
+/// because `GothamState` used in `OpState` overrides
+/// value if type aliases have the same underlying type
+#[derive(Clone)]
+struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
+
+#[derive(Clone)]
+struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
+
+pub struct WorkerThread {
+  worker_handle: WebWorkerHandle,
+  cancel_handle: Rc<CancelHandle>,
+
+  // A WorkerThread that hasn't been explicitly terminated can only be removed
+  // from the WorkersTable once close messages have been received for both the
+  // control and message channels. See `close_channel`.
+  ctrl_closed: bool,
+  message_closed: bool,
+}
+
+impl WorkerThread {
+  fn terminate(self) {
+    // Cancel recv ops when terminating the worker, so they don't show up as
+    // pending ops.
+    self.cancel_handle.cancel();
+  }
+}
+
+impl Drop for WorkerThread {
+  fn drop(&mut self) {
+    self.worker_handle.clone().terminate();
+  }
+}
+
+pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
+
+pub struct MainWorkerHost;
+
+#[async_trait::async_trait(?Send)]
+impl WorkerHost for MainWorkerHost {
+  fn create_worker(
+    state: &mut OpState,
+    args: deno_runtime_ops::worker_host::CreateWorkerArgs,
+  ) -> Result<WorkerId, AnyError> {
+    let specifier = args.specifier.clone();
+    let maybe_source_code = if args.has_source_code {
+      Some(args.source_code.clone())
+    } else {
+      None
+    };
+    let args_name = args.name;
+    let worker_type = args.worker_type;
+    if let WebWorkerType::Classic = worker_type {
+      if let TestingFeaturesEnabled(false) = state.borrow() {
+        return Err(
+          deno_webstorage::DomExceptionNotSupportedError::new(
+            "Classic workers are not supported.",
+          )
+          .into(),
+        );
+      }
+    }
+
+    if args.permissions.is_some() {
+      deno_runtime_ops::check_unstable(
+        state,
+        UNSTABLE_FEATURE_NAME,
+        "Worker.deno.permissions",
+      );
+    }
+    let parent_permissions = state.borrow_mut::<PermissionsContainer>();
+    let worker_permissions =
+      if let Some(child_permissions_arg) = args.permissions {
+        let mut parent_permissions = parent_permissions.0.lock();
+        let perms = create_child_permissions(
+          &mut parent_permissions,
+          child_permissions_arg,
+        )?;
+        PermissionsContainer::new(perms)
+      } else {
+        parent_permissions.clone()
+      };
+    let parent_permissions = parent_permissions.clone();
+    let worker_id = state.take::<WorkerId>();
+    let create_web_worker_cb =
+      state.borrow::<CreateWebWorkerCbHolder>().clone();
+    let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
+    state.put::<WorkerId>(worker_id.next().unwrap());
+
+    let module_specifier = deno_core::resolve_url(&specifier)?;
+    let worker_name = args_name.unwrap_or_default();
+
+    let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<
+      Result<SendableWebWorkerHandle, AnyError>,
+    >(1);
+
+    // Setup new thread
+    let thread_builder =
+      std::thread::Builder::new().name(format!("{worker_id}"));
+
+    // Spawn it
+    thread_builder.spawn(move || {
+      // Any error inside this block is terminal:
+      // - JS worker is useless - meaning it throws an exception and can't do anything else,
+      //  all action done upon it should be noops
+      // - newly spawned thread exits
+
+      let (worker, external_handle) =
+        (create_web_worker_cb.0)(CreateWebWorkerArgs {
+          name: worker_name,
+          worker_id,
+          parent_permissions,
+          permissions: worker_permissions,
+          main_module: module_specifier.clone(),
+          worker_type,
+        });
+
+      // Send thread safe handle from newly created worker to host thread
+      handle_sender.send(Ok(external_handle)).unwrap();
+      drop(handle_sender);
+
+      // At this point the only method of communication with host
+      // is using `worker.internal_channels`.
+      //
+      // Host can already push messages and interact with worker.
+      run_web_worker(
+        worker,
+        module_specifier,
+        maybe_source_code,
+        format_js_error_fn.0,
+      )
+    })?;
+
+    // Receive WebWorkerHandle from newly created worker
+    let worker_handle = handle_receiver.recv().unwrap()?;
+
+    let worker_thread = WorkerThread {
+      worker_handle: worker_handle.into(),
+      cancel_handle: CancelHandle::new_rc(),
+      ctrl_closed: false,
+      message_closed: false,
+    };
+
+    // At this point all interactions with worker happen using thread
+    // safe handler returned from previous function calls
+    state
+      .borrow_mut::<WorkersTable>()
+      .insert(worker_id, worker_thread);
+
+    Ok(worker_id)
+  }
+
+  fn terminate_worker(state: &mut OpState, id: WorkerId) {
+    if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id)
+    {
+      worker_thread.terminate();
+    } else {
+      debug!("tried to terminate non-existent worker {}", id);
+    }
+  }
+
+  async fn recv_ctrl(
+    state: Rc<RefCell<OpState>>,
+    id: WorkerId,
+  ) -> Result<WorkerControlEvent, AnyError> {
+    let (worker_handle, cancel_handle) = {
+      let state = state.borrow();
+      let workers_table = state.borrow::<WorkersTable>();
+      let maybe_handle = workers_table.get(&id);
+      if let Some(handle) = maybe_handle {
+        (handle.worker_handle.clone(), handle.cancel_handle.clone())
+      } else {
+        // If handle was not found it means worker has already shutdown
+        return Ok(WorkerControlEvent::Close);
+      }
+    };
+  
+    let maybe_event = worker_handle
+      .get_control_event()
+      .or_cancel(cancel_handle)
+      .await;
+    match maybe_event {
+      Ok(Ok(Some(event))) => {
+        // Terminal error means that worker should be removed from worker table.
+        if let WorkerControlEvent::TerminalError(_) = &event {
+          close_channel(state, id, WorkerChannel::Ctrl);
+        }
+        Ok(event)
+      }
+      Ok(Ok(None)) => {
+        // If there was no event from worker it means it has already been closed.
+        close_channel(state, id, WorkerChannel::Ctrl);
+        Ok(WorkerControlEvent::Close)
+      }
+      Ok(Err(err)) => Err(err),
+      Err(_) => {
+        // The worker was terminated.
+        Ok(WorkerControlEvent::Close)
+      }
+    }
+  }
+
+  async fn recv_message(
+    state: Rc<RefCell<OpState>>,
+    id: WorkerId,
+  ) -> Result<Option<JsMessageData>, AnyError> {
+    let (worker_handle, cancel_handle) = {
+      let s = state.borrow();
+      let workers_table = s.borrow::<WorkersTable>();
+      let maybe_handle = workers_table.get(&id);
+      if let Some(handle) = maybe_handle {
+        (handle.worker_handle.clone(), handle.cancel_handle.clone())
+      } else {
+        // If handle was not found it means worker has already shutdown
+        return Ok(None);
+      }
+    };
+  
+    let ret = worker_handle
+      .port
+      .recv(state.clone())
+      .or_cancel(cancel_handle)
+      .await;
+    match ret {
+      Ok(Ok(ret)) => {
+        if ret.is_none() {
+          close_channel(state, id, WorkerChannel::Messages);
+        }
+        Ok(ret)
+      }
+      Ok(Err(err)) => Err(err),
+      Err(_) => {
+        // The worker was terminated.
+        Ok(None)
+      }
+    }
+  }
+
+  fn post_message(
+    state: &mut OpState,
+    id: WorkerId,
+    data: JsMessageData,
+  ) -> Result<(), AnyError> {
+    if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+      debug!("post message to worker {}", id);
+      let worker_handle = worker_thread.worker_handle.clone();
+      worker_handle.port.send(state, data)?;
+    } else {
+      debug!("tried to post message to non-existent worker {}", id);
+    }
+    Ok(())
+  }
+}
+
+enum WorkerChannel {
+  Ctrl,
+  Messages,
+}
+
+/// Close a worker's channel. If this results in both of a worker's channels
+/// being closed, the worker will be removed from the workers table.
+fn close_channel(
+  state: Rc<RefCell<OpState>>,
+  id: WorkerId,
+  channel: WorkerChannel,
+) {
+  use std::collections::hash_map::Entry;
+
+  let mut s = state.borrow_mut();
+  let workers = s.borrow_mut::<WorkersTable>();
+
+  // `Worker.terminate()` might have been called already, meaning that we won't
+  // find the worker in the table - in that case ignore.
+  if let Entry::Occupied(mut entry) = workers.entry(id) {
+    let terminate = {
+      let worker_thread = entry.get_mut();
+      match channel {
+        WorkerChannel::Ctrl => {
+          worker_thread.ctrl_closed = true;
+          worker_thread.message_closed
+        }
+        WorkerChannel::Messages => {
+          worker_thread.message_closed = true;
+          worker_thread.ctrl_closed
+        }
+      }
+    };
+
+    if terminate {
+      entry.remove().terminate();
+    }
+  }
+}

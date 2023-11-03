@@ -1592,6 +1592,7 @@ dependencies = [
 name = "deno_runtime"
 version = "0.129.0"
 dependencies = [
+ "async-trait",
  "console_static_text",
  "deno_ast",
  "deno_broadcast_channel",
@@ -1646,6 +1647,7 @@ dependencies = [
 name = "deno_runtime_ops"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "deno_core",
  "deno_fetch",
  "deno_http",

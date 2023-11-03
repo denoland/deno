@@ -44,11 +44,8 @@ use log::debug;
 use crate::inspector_server::InspectorServer;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
+use crate::worker_host::MainWorkerHost;
 use crate::BootstrapOptions;
-
-pub struct MainWorkerHost;
-// TODO(@littledivy)
-impl deno_runtime_ops::worker_host::WorkerHost for MainWorkerHost {}
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.

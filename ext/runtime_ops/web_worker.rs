@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
 
+#[async_trait::async_trait(?Send)]
 pub trait WebWorkerHandle: Clone {
   fn post_message(
     &self,
@@ -23,7 +24,7 @@ pub trait WebWorkerHandle: Clone {
     unimplemented!()
   }
 
-  fn recv_message(
+  async fn recv_message(
     &self,
     _state: Rc<RefCell<OpState>>,
   ) -> Result<Option<JsMessageData>, AnyError> {
@@ -77,7 +78,7 @@ where
     let state = state.borrow();
     state.borrow::<W>().clone()
   };
-  handle.recv_message(state.clone())
+  handle.recv_message(state.clone()).await
 }
 
 #[op2(fast)]

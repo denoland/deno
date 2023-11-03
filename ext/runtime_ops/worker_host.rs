@@ -86,6 +86,7 @@ impl Serialize for WorkerControlEvent {
   }
 }
 
+#[async_trait::async_trait(?Send)]
 pub trait WorkerHost {
   fn create_worker(
     state: &mut OpState,
@@ -103,13 +104,13 @@ pub trait WorkerHost {
   ) -> Result<(), AnyError> {
     unimplemented!()
   }
-  fn recv_ctrl(
+  async fn recv_ctrl(
     state: Rc<RefCell<OpState>>,
     id: WorkerId,
   ) -> Result<WorkerControlEvent, AnyError> {
     unimplemented!()
   }
-  fn recv_message(
+  async fn recv_message(
     state: Rc<RefCell<OpState>>,
     id: WorkerId,
   ) -> Result<Option<JsMessageData>, AnyError> {
@@ -183,7 +184,7 @@ async fn op_host_recv_ctrl<H>(
 where
   H: WorkerHost + 'static,
 {
-  H::recv_ctrl(state, id)
+  H::recv_ctrl(state, id).await
 }
 
 #[op2(async)]
@@ -195,7 +196,7 @@ async fn op_host_recv_message<H>(
 where
   H: WorkerHost + 'static,
 {
-  H::recv_message(state, id)
+  H::recv_message(state, id).await
 }
 
 /// Post message to guest worker as host

@@ -35,6 +35,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_core::CancelFuture;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -71,7 +72,56 @@ pub struct WebWorkerInternalHandle {
   pub worker_type: WebWorkerType,
 }
 
-impl deno_runtime_ops::web_worker::WebWorkerHandle for WebWorkerInternalHandle {}
+#[async_trait::async_trait(?Send)]
+impl deno_runtime_ops::web_worker::WebWorkerHandle for WebWorkerInternalHandle {
+  fn post_message(
+      &self,
+      state: &mut deno_core::OpState,
+      data: deno_web::JsMessageData,
+    ) -> Result<(), AnyError> {
+      let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+      handle.port.send(state, data)?;
+      Ok(())
+  }
+
+  async fn recv_message(
+      &self,
+      state: Rc<RefCell<deno_core::OpState>>,
+    ) -> Result<Option<deno_web::JsMessageData>, AnyError> {
+      let handle = {
+        let state = state.borrow();
+        state.borrow::<WebWorkerInternalHandle>().clone()
+      };
+      handle
+        .port
+        .recv(state.clone())
+        .or_cancel(handle.cancel)
+        .await?
+  }
+
+  /// Terminate the worker
+  /// This function will set terminated to true, terminate the isolate and close the message channel
+  fn terminate(&mut self) {
+    self.cancel.cancel();
+
+    // This function can be called multiple times by whomever holds
+    // the handle. However only a single "termination" should occur so
+    // we need a guard here.
+    let already_terminated = self.has_terminated.swap(true, Ordering::SeqCst);
+
+    if !already_terminated {
+      // Stop javascript execution
+      self.isolate_handle.terminate_execution();
+    }
+
+    // Wake parent by closing the channel
+    self.sender.close_channel();
+  }
+
+  fn worker_type(&self) -> WebWorkerType {
+    self.worker_type
+  }
+}
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
@@ -98,6 +148,8 @@ impl WebWorkerInternalHandle {
   /// set), and terminates it if so. Returns whether the worker is terminated or
   /// being terminated, as with [`Self::is_terminated()`].
   pub fn terminate_if_needed(&mut self) -> bool {
+    use deno_runtime_ops::web_worker::WebWorkerHandle;
+
     let has_terminated = self.is_terminated();
 
     if !has_terminated && self.termination_signal.load(Ordering::SeqCst) {
@@ -106,25 +158,6 @@ impl WebWorkerInternalHandle {
     }
 
     has_terminated
-  }
-
-  /// Terminate the worker
-  /// This function will set terminated to true, terminate the isolate and close the message channel
-  pub fn terminate(&mut self) {
-    self.cancel.cancel();
-
-    // This function can be called multiple times by whomever holds
-    // the handle. However only a single "termination" should occur so
-    // we need a guard here.
-    let already_terminated = self.has_terminated.swap(true, Ordering::SeqCst);
-
-    if !already_terminated {
-      // Stop javascript execution
-      self.isolate_handle.terminate_execution();
-    }
-
-    // Wake parent by closing the channel
-    self.sender.close_channel();
   }
 }
 
@@ -401,7 +434,7 @@ impl WebWorker {
         PermissionsContainer,
       >(main_module.clone()),
       deno_runtime_ops::worker_host::deno_worker_host::init_ops_and_esm::<
-        crate::worker::MainWorkerHost,
+        crate::worker_host::MainWorkerHost,
       >(),
       deno_runtime_ops::fs_events::deno_fs_events::init_ops_and_esm::<
         PermissionsContainer,
