@@ -126,9 +126,14 @@ fn op_stdin_set_raw(
         use libc::tcsetattr;
         use libc::termios;
 
+        static mut ORIG_TERMIOS: Option<termios> = None;
+        // Only save original state once.
+        if ORIG_TERMIOS.is_some() {
+          return;
+        }
+
         let mut termios = std::mem::zeroed::<termios>();
         if tcgetattr(libc::STDIN_FILENO, &mut termios) == 0 {
-          static mut ORIG_TERMIOS: Option<termios> = None;
           ORIG_TERMIOS = Some(termios);
 
           extern "C" fn reset_stdio() {
