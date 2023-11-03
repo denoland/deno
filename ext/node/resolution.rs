@@ -543,7 +543,7 @@ impl NodeResolver {
 
     let mut package_json_path = None;
     if let Some(package_config) =
-      self.get_package_scope_config(referrer, permissions)?
+      self.get_closest_package_json(referrer, permissions)?
     {
       if package_config.exists {
         package_json_path = Some(package_config.path.clone());
@@ -977,12 +977,12 @@ impl NodeResolver {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
-    // ResolveSelf
     let Some(package_config) =
-      self.get_package_scope_config(referrer, permissions)?
+      self.get_closest_package_json(referrer, permissions)?
     else {
       return Ok(None);
     };
+    // ResolveSelf
     if package_config.exists
       && package_config.name.as_ref() == Some(&package_name)
     {
@@ -1086,23 +1086,6 @@ impl NodeResolver {
     }
   }
 
-  pub(super) fn get_package_scope_config(
-    &self,
-    referrer: &ModuleSpecifier,
-    permissions: &dyn NodePermissions,
-  ) -> Result<Option<PackageJson>, AnyError> {
-    let Some(root_folder) = self
-      .npm_resolver
-      .resolve_package_folder_from_path(referrer)?
-    else {
-      return Ok(None);
-    };
-    let package_json_path = root_folder.join("package.json");
-    self
-      .load_package_json(permissions, package_json_path)
-      .map(Some)
-  }
-
   pub(super) fn get_closest_package_json(
     &self,
     url: &ModuleSpecifier,
@@ -1130,15 +1113,8 @@ impl NodeResolver {
     if self.fs.exists_sync(&package_json_path) {
       return Ok(Some(package_json_path));
     }
-    let Some(root_pkg_folder) =
-      self.npm_resolver.resolve_package_folder_from_path(
-        &ModuleSpecifier::from_directory_path(current_dir).unwrap(),
-      )?
-    else {
-      return Ok(None);
-    };
-    while current_dir.starts_with(&root_pkg_folder) {
-      current_dir = current_dir.parent().unwrap();
+    while let Some(parent) = current_dir.parent() {
+      current_dir = parent;
       let package_json_path = current_dir.join("package.json");
       if self.fs.exists_sync(&package_json_path) {
         return Ok(Some(package_json_path));

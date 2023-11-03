@@ -1,0 +1,6 @@
+Download http://localhost:4545/npm/registry/@denotest/imports-package-json
+Download http://localhost:4545/npm/registry/@denotest/imports-package-json/1.0.0.tgz
+error: Could not resolve '#not-defined' from 'file:///[WILDCARD]/@denotest/imports-package-json/1.0.0/import_not_defined.js'.
+
+Caused by:
+    [ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier "#not-defined" is not defined in package [WILDCARD]package.json imported from [WILDCARD]import_not_defined.js

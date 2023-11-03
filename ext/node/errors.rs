@@ -142,7 +142,8 @@ pub fn err_package_import_not_defined(
   );
 
   if let Some(package_path) = package_path {
-    msg = format!("{msg} in package {package_path}package.json");
+    let pkg_json_path = PathBuf::from(package_path).join("package.json");
+    msg = format!("{} package {}", msg, pkg_json_path.display());
   }
 
   msg = format!("{msg} imported from {base}");

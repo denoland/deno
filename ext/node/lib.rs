@@ -81,12 +81,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
-  /// Resolves the npm package folder path from the specified path.
-  fn resolve_package_folder_from_path(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
   fn in_npm_package_at_path(&self, path: &Path) -> bool {

@@ -8,6 +8,7 @@ use super::tsc;
 
 use crate::npm::CliNpmResolver;
 use crate::tools::lint::create_linter;
+use crate::util::path::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -249,12 +250,20 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let specifier_path = specifier.to_file_path().ok()?;
-    let root_folder = self
-      .npm_resolver
-      .as_ref()
-      .and_then(|r| r.resolve_package_folder_from_path(specifier).ok())
-      .flatten()?;
+    fn closest_package_json_parent_dir(file_path: &Path) -> Option<&Path> {
+      let mut dir_path = file_path;
+      while let Some(parent) = dir_path.parent() {
+        let package_json_path = parent.join("package.json");
+        if package_json_path.exists() {
+          return Some(parent);
+        }
+        dir_path = parent;
+      }
+      None
+    }
+
+    let specifier_path = specifier_to_file_path(specifier).ok()?;
+    let root_folder = closest_package_json_parent_dir(&specifier_path)?;
     let package_json_path = root_folder.join("package.json");
     let package_json_text = std::fs::read_to_string(&package_json_path).ok()?;
     let package_json =
@@ -271,7 +280,7 @@ impl<'a> TsResponseImportMapper<'a> {
     for search_path in search_paths {
       if let Some(exports) = &package_json.exports {
         if let Some(result) = try_reverse_map_package_json_exports(
-          &root_folder,
+          root_folder,
           &search_path,
           exports,
         ) {
