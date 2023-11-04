@@ -1194,11 +1194,6 @@ pub enum AsymmetricKeyDetails {
     hash_algorithm: String,
     salt_length: u32,
   },
-  #[serde(rename = "dsa")]
-  Dsa {
-    divisor_length: usize,
-    modulus_length: usize,
-  },
   #[serde(rename = "ec")]
   Ec { named_curve: String },
 }
@@ -1210,6 +1205,12 @@ const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
 const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.8");
+pub const ID_SECP256R1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
+pub const ID_SECP384R1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.34");
+pub const ID_SECP521R1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.35");
 
 // Default HashAlgorithm for RSASSA-PSS-params (sha1)
 //
@@ -1219,8 +1220,8 @@ const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
 // }
 //
 // SHA1Parameters ::= NULL
-static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifierRef<'static>> = Lazy::new(|| 
-  rsa::pkcs8::AlgorithmIdentifierRef {
+static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifierRef<'static>> =
+  Lazy::new(|| rsa::pkcs8::AlgorithmIdentifierRef {
     // id-sha1
     oid: ID_SHA1_OID,
     // NULL
@@ -1252,6 +1253,8 @@ pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
 pub const RSASSA_PSS_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
+pub const EC_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
 
 // The parameters field associated with OID id-RSASSA-PSS
 // Defined in RFC 3447, section A.2.3
@@ -1411,6 +1414,22 @@ pub fn op_node_create_private_key(
         ),
         hash_algorithm: hash_algorithm.to_string(),
         salt_length: params.salt_length,
+      })
+    }
+    EC_OID => {
+      let named_curve = pk_info
+        .algorithm
+        .parameters_oid()
+        .map_err(|_| type_error("malformed parameters"))?;
+      let named_curve = match named_curve {
+        ID_SECP256R1_OID => "p256",
+        ID_SECP384R1_OID => "p384",
+        ID_SECP521R1_OID => "p521",
+        _ => return Err(type_error("Unsupported named curve")),
+      };
+
+      Ok(AsymmetricKeyDetails::Ec {
+        named_curve: named_curve.to_string(),
       })
     }
     _ => Err(type_error("Unsupported algorithm")),
