@@ -5,6 +5,8 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_npm::registry::NpmPackageVersionDistInfo;
@@ -52,7 +54,7 @@ fn verify_tarball_integrity(
       let mut hash_ctx = Context::new(algo);
       hash_ctx.update(data);
       let digest = hash_ctx.finish();
-      let tarball_checksum = base64::encode(digest.as_ref());
+      let tarball_checksum = BASE64_STANDARD.encode(digest.as_ref());
       (tarball_checksum, base64_hash)
     }
     NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => {

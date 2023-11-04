@@ -808,6 +808,19 @@ fn permissions_cache() {
     });
 }
 
+itest!(env_file {
+  args: "run --env=env --allow-env run/env_file.ts",
+  output: "run/env_file.out",
+});
+
+itest!(env_file_missing {
+  args: "run --env=missing --allow-env run/env_file.ts",
+  output_str: Some(
+    "error: Unable to load 'missing' environment variable file\n"
+  ),
+  exit_code: 1,
+});
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
@@ -1763,6 +1776,12 @@ itest!(jsx_import_source_pragma_import_map {
 itest!(jsx_import_source_pragma_import_map_dev {
   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_pragma_import_map.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_precompile_import_map {
+  args: "run --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc run/jsx_precompile/no_pragma.tsx",
+  output: "run/jsx_precompile/no_pragma.out",
   http_server: true,
 });
 

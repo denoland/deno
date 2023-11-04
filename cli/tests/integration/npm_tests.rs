@@ -2314,6 +2314,55 @@ console.log(getKind());
 }
 
 #[test]
+pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_UNSTABLE_BYONM", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import '@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context
+    .new_command()
+    .name("npm")
+    .args("install")
+    .run()
+    .skip_output_check();
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDCARD]' imported from '[WILDCARD]main.ts'
+    at file:///[WILDCARD]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
 pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
@@ -2334,7 +2383,7 @@ pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   // no npm install has been run, so this should give an informative error
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Could not find '[WILDCARD]package.json'. Maybe run `npm install`?
+    r#"error: Could not find '[WILDCARD]package.json'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
     at file:///[WILDCARD]/main.ts:1:19
 "#,
   );

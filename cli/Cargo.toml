@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.37.2"
+version = "1.38.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -46,18 +46,18 @@ winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_cache_dir = "=0.6.0"
-deno_config = "=0.4.0"
+deno_cache_dir = "=0.6.1"
+deno_config = "=0.5.0"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = "=0.69.2"
+deno_doc = { version = "=0.72.2", features = ["html"] }
 deno_emit = "=0.31.1"
-deno_graph = "=0.59.0"
+deno_graph = "=0.59.2"
 deno_lint = { version = "=0.52.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "0.15.2"
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
 deno_semver = "0.5.1"
-deno_task_shell = "=0.13.2"
+deno_task_shell = "=0.14.0"
 eszip = "=0.55.2"
 napi_sym.workspace = true
 
@@ -76,6 +76,7 @@ dashmap = "5.5.3"
 data-encoding.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
+dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.0"
 dprint-plugin-markdown = "=0.16.2"
 dprint-plugin-typescript = "=0.88.3"
@@ -91,7 +92,6 @@ http.workspace = true
 hyper.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
-indexmap1.workspace = true
 jsonc-parser = { version = "=0.21.1", features = ["serde"] }
 lazy-regex.workspace = true
 libc.workspace = true
@@ -103,7 +103,7 @@ once_cell.workspace = true
 os_pipe.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
-quick-junit = "^0.3.3"
+quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
@@ -124,7 +124,7 @@ twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
-zeromq = { version = "=0.3.3", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]

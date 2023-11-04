@@ -45,13 +45,14 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
+use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -113,12 +114,13 @@ pub fn ts_config_to_emit_options(
       "error" => deno_ast::ImportsNotUsedAsValues::Error,
       _ => deno_ast::ImportsNotUsedAsValues::Remove,
     };
-  let (transform_jsx, jsx_automatic, jsx_development) =
+  let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
     match options.jsx.as_str() {
-      "react" => (true, false, false),
-      "react-jsx" => (true, true, false),
-      "react-jsxdev" => (true, true, true),
-      _ => (false, false, false),
+      "react" => (true, false, false, false),
+      "react-jsx" => (true, true, false, false),
+      "react-jsxdev" => (true, true, true, false),
+      "precompile" => (false, false, false, true),
+      _ => (false, false, false, false),
     };
   deno_ast::EmitOptions {
     emit_metadata: options.emit_decorator_metadata,
@@ -131,7 +133,7 @@ pub fn ts_config_to_emit_options(
     jsx_factory: options.jsx_factory,
     jsx_fragment_factory: options.jsx_fragment_factory,
     jsx_import_source: options.jsx_import_source,
-    precompile_jsx: false,
+    precompile_jsx,
     transform_jsx,
     var_decl_imports: false,
   }
@@ -651,6 +653,12 @@ impl CliOptions {
     let maybe_vendor_folder =
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
 
+    if let Some(env_file_name) = &flags.env_file {
+      if (from_filename(env_file_name)).is_err() {
+        bail!("Unable to load '{env_file_name}' environment variable file")
+      }
+    }
+
     Ok(Self {
       flags,
       initial_cwd,
@@ -715,7 +723,14 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    if self.flags.unstable {
+    if self.flags.unstable
+      || !self.flags.unstable_features.is_empty()
+      || self
+        .maybe_config_file
+        .as_ref()
+        .map(|f| !f.json.unstable.is_empty())
+        .unwrap_or(false)
+    {
       TsTypeLib::UnstableDenoWindow
     } else {
       TsTypeLib::DenoWindow
@@ -1130,6 +1145,18 @@ impl CliOptions {
     &self.flags.ext
   }
 
+  pub fn has_hmr(&self) -> bool {
+    if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hmr
+    } else {
+      false
+    }
+  }
+
   /// If the --inspect or --inspect-brk flags are used.
   pub fn is_inspecting(&self) -> bool {
     self.flags.inspect.is_some()
@@ -1222,8 +1249,8 @@ impl CliOptions {
     self.flags.unstable
   }
 
-  pub fn unstable_bare_node_builtlins(&self) -> bool {
-    self.flags.unstable_bare_node_builtlins
+  pub fn unstable_bare_node_builtins(&self) -> bool {
+    self.flags.unstable_bare_node_builtins
       || self
         .maybe_config_file()
         .as_ref()
@@ -1242,6 +1269,17 @@ impl CliOptions {
         .as_ref()
         .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
         .unwrap_or(false)
+  }
+
+  pub fn unstable_features(&self) -> Vec<String> {
+    let mut from_config_file = self
+      .maybe_config_file()
+      .as_ref()
+      .map(|c| c.json.unstable.clone())
+      .unwrap_or_default();
+
+    from_config_file.extend_from_slice(&self.flags.unstable_features);
+    from_config_file
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

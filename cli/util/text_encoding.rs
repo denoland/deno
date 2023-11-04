@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use deno_core::ModuleCode;
 use encoding_rs::*;
 use std::borrow::Cow;
@@ -62,7 +64,8 @@ pub fn source_map_from_code(code: &ModuleCode) -> Option<Vec<u8>> {
   let last_line = bytes.rsplit(|u| *u == b'\n').next()?;
   if last_line.starts_with(SOURCE_MAP_PREFIX) {
     let input = last_line.split_at(SOURCE_MAP_PREFIX.len()).1;
-    let decoded_map = base64::decode(input)
+    let decoded_map = BASE64_STANDARD
+      .decode(input)
       .expect("Unable to decode source map from emitted file.");
     Some(decoded_map)
   } else {

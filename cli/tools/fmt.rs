@@ -64,10 +64,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   if let Some(watch_flags) = &fmt_flags.watch {
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig {
-        job_name: "Fmt".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
+      file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
@@ -82,7 +79,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
                 Ok(files)
               }
             })?;
-          _ = watcher_communicator.watch_paths(files.clone());
+          let _ = watcher_communicator.watch_paths(files.clone());
           let refmt_files = if let Some(paths) = changed_paths {
             if fmt_options.check {
               // check all files on any changed (https://github.com/denoland/deno/issues/12446)

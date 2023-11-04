@@ -409,14 +409,14 @@ pub async fn run_benchmarks_with_watch(
 ) -> Result<(), AnyError> {
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig {
-      job_name: "Bench".to_string(),
-      clear_screen: bench_flags
+    file_watcher::PrintConfig::new(
+      "Bench",
+      bench_flags
         .watch
         .as_ref()
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
-    },
+    ),
     move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
       Ok(async move {

@@ -48,7 +48,12 @@ function onListen<T>(
 async function makeServer(
   handler: (req: Request) => Response | Promise<Response>,
 ): Promise<
-  { finished: Promise<void>; abort: () => void; shutdown: () => Promise<void> }
+  {
+    finished: Promise<void>;
+    abort: () => void;
+    shutdown: () => Promise<void>;
+    [Symbol.asyncDispose](): PromiseLike<void>;
+  }
 > {
   const ac = new AbortController();
   const listeningPromise = deferred();
@@ -68,6 +73,9 @@ async function makeServer(
     },
     async shutdown() {
       await server.shutdown();
+    },
+    [Symbol.asyncDispose]() {
+      return server[Symbol.asyncDispose]();
     },
   };
 }
@@ -293,6 +301,42 @@ Deno.test(
     assertEquals((await (await f).text()).length, 1048576);
     await s;
     await finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerExplicitResourceManagement() {
+    let dataPromise;
+
+    {
+      await using _server = await makeServer(async (_req) => {
+        return new Response((await makeTempFile(1024 * 1024)).readable);
+      });
+
+      const resp = await fetch(`http://localhost:${servePort}`);
+      dataPromise = resp.arrayBuffer();
+    }
+
+    assertEquals((await dataPromise).byteLength, 1048576);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerExplicitResourceManagementManualClose() {
+    await using server = await makeServer(async (_req) => {
+      return new Response((await makeTempFile(1024 * 1024)).readable);
+    });
+
+    const resp = await fetch(`http://localhost:${servePort}`);
+
+    const [_, data] = await Promise.all([
+      server.shutdown(),
+      resp.arrayBuffer(),
+    ]);
+
+    assertEquals(data.byteLength, 1048576);
   },
 );
 

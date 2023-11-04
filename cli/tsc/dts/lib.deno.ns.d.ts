@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="esnext.disposable" />
 /// <reference lib="deno.net" />
 
 /** Deno provides extra properties on `import.meta`. These are included here
@@ -2177,7 +2178,8 @@ declare namespace Deno {
       WriterSync,
       Seeker,
       SeekerSync,
-      Closer {
+      Closer,
+      Disposable {
     /** The resource ID associated with the file instance. The resource ID
      * should be considered an opaque reference to resource. */
     readonly rid: number;
@@ -2451,6 +2453,8 @@ declare namespace Deno {
      * ```
      */
     close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /**
@@ -3831,7 +3835,7 @@ declare namespace Deno {
    *
    * @category File System
    */
-  export interface FsWatcher extends AsyncIterable<FsEvent> {
+  export interface FsWatcher extends AsyncIterable<FsEvent>, Disposable {
     /** The resource id. */
     readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
@@ -4284,7 +4288,7 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
-  export class ChildProcess {
+  export class ChildProcess implements Disposable {
     get stdin(): WritableStream<Uint8Array>;
     get stdout(): ReadableStream<Uint8Array>;
     get stderr(): ReadableStream<Uint8Array>;
@@ -4307,6 +4311,8 @@ declare namespace Deno {
     /** Ensure that the status of the child process does not block the Deno
      * process from exiting. */
     unref(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /**
@@ -5258,7 +5264,7 @@ declare namespace Deno {
    * requests on the HTTP server connection.
    *
    * @category HTTP Server */
-  export interface HttpConn extends AsyncIterable<RequestEvent> {
+  export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
      * need to be aware of this identifier. */
     readonly rid: number;
@@ -5911,7 +5917,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface Server {
+  export interface HttpServer extends AsyncDisposable {
     /** A promise that resolves once server finishes - eg. when aborted using
      * the signal passed to {@linkcode ServeOptions.signal}.
      */
@@ -5929,6 +5935,12 @@ declare namespace Deno {
     unref(): void;
   }
 
+  /**
+   * @category HTTP Server
+   * @deprecated Use {@linkcode HttpServer} instead.
+   */
+  export type Server = HttpServer;
+
   /** Serves HTTP requests with the given handler.
    *
    * The below example serves with the port `8000` on hostname `"127.0.0.1"`.
@@ -5939,7 +5951,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): Server;
+  export function serve(handler: ServeHandler): HttpServer;
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -5999,7 +6011,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Server;
+  ): HttpServer;
   /** Serves HTTP requests with the given option bag.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -6027,5 +6039,5 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Server;
+  ): HttpServer;
 }

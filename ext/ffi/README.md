@@ -21,5 +21,5 @@ MacOS.
 To run benchmarks:
 
 ```bash
-target/release/deno bench --allow-ffi --allow-read --unstable ./test_ffi/tests/bench.js
+target/release/deno bench --allow-ffi --allow-read --unstable-ffi ./test_ffi/tests/bench.js
 ```

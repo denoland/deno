@@ -57,7 +57,11 @@ import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
-import { denoNs, denoNsUnstable } from "ext:runtime/90_deno_ns.js";
+import {
+  denoNs,
+  denoNsUnstable,
+  denoNsUnstableById,
+} from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
@@ -70,11 +74,24 @@ import {
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
+import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
 
 // deno-lint-ignore prefer-primordials
-Symbol.dispose ??= Symbol("Symbol.dispose");
-// deno-lint-ignore prefer-primordials
-Symbol.asyncDispose ??= Symbol("Symbol.asyncDispose");
+if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
+ObjectDefineProperties(Symbol, {
+  dispose: {
+    value: SymbolDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+  asyncDispose: {
+    value: SymbolAsyncDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+});
 
 let windowIsClosing = false;
 let globalThis_;
@@ -454,14 +471,15 @@ function bootstrapMainRuntime(runtimeOptions) {
     7: isTty,
     8: tsVersion,
     9: unstableFlag,
-    10: pid,
-    11: target,
-    12: v8Version,
-    13: userAgent,
-    14: inspectFlag,
-    // 15: enableTestingFeaturesFlag
-    16: hasNodeModulesDir,
-    17: maybeBinaryNpmCommandName,
+    10: unstableFeatures,
+    11: pid,
+    12: target,
+    13: v8Version,
+    14: userAgent,
+    15: inspectFlag,
+    // 16: enableTestingFeaturesFlag
+    17: hasNodeModulesDir,
+    18: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -544,6 +562,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     mainModule: util.getterOnly(opMainModule),
   });
 
+  // TODO(bartlomieju): deprecate --unstable
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
     // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
@@ -563,6 +582,11 @@ function bootstrapMainRuntime(runtimeOptions) {
         jupyterNs = val;
       },
     });
+  } else {
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+    }
   }
 
   // Setup `Deno` global - we're actually overriding already existing global
@@ -598,14 +622,15 @@ function bootstrapWorkerRuntime(
     7: isTty,
     8: tsVersion,
     9: unstableFlag,
-    10: pid,
-    11: target,
-    12: v8Version,
-    13: userAgent,
-    // 14: inspectFlag,
-    15: enableTestingFeaturesFlag,
-    16: hasNodeModulesDir,
-    17: maybeBinaryNpmCommandName,
+    10: unstableFeatures,
+    11: pid,
+    12: target,
+    13: v8Version,
+    14: userAgent,
+    // 15: inspectFlag,
+    16: enableTestingFeaturesFlag,
+    17: hasNodeModulesDir,
+    18: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -675,8 +700,14 @@ function bootstrapWorkerRuntime(
 
   globalThis.pollForMessages = pollForMessages;
 
+  // TODO(bartlomieju): deprecate --unstable
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
+  } else {
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+    }
   }
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
