@@ -17,7 +17,6 @@ import {
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type {
   KeyFormat,
-  KeyType,
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
