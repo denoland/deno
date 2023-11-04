@@ -13,10 +13,12 @@ use hkdf::Hkdf;
 use num_bigint::BigInt;
 use num_bigint_dig::BigUint;
 use num_traits::FromPrimitive;
+use once_cell::sync::Lazy;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
+use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
 use rsa::pkcs8::der::Encode;
@@ -1198,9 +1200,6 @@ pub enum AsymmetricKeyDetails {
   Ec { named_curve: String },
 }
 
-use rsa::pkcs8;
-
-use once_cell::sync::Lazy;
 const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
 const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
