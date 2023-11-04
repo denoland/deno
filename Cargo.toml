@@ -138,7 +138,7 @@ serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.16"
-sha2 = { version = "0.10.6", features = ["oid"] }
+sha2 = { version = "0.10.8", features = ["oid"] }
 signature = "=1.6.4"
 slab = "0.4"
 smallvec = "1.8"
