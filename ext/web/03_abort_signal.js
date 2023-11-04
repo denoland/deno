@@ -14,6 +14,7 @@ import {
 } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeEvery,
   ArrayPrototypePush,
   SafeArrayIterator,
   SafeSet,
@@ -236,15 +237,48 @@ class AbortSignal extends EventTarget {
   // ops which would block the event loop.
   addEventListener(...args) {
     super.addEventListener(...new SafeArrayIterator(args));
-    if (this[timerId] !== null && listenerCount(this, "abort") > 0) {
-      refTimer(this[timerId]);
+    if (listenerCount(this, "abort") > 0) {
+      if (this[timerId] !== null) {
+        refTimer(this[timerId]);
+      } else if (this[sourceSignals] !== null) {
+        const sourceSignalArray = this[sourceSignals].toArray();
+        for (let i = 0; i < sourceSignalArray.length; ++i) {
+          const sourceSignal = sourceSignalArray[i];
+          if (sourceSignal[timerId] !== null) {
+            refTimer(sourceSignal[timerId]);
+          }
+        }
+      }
     }
   }
 
   removeEventListener(...args) {
     super.removeEventListener(...new SafeArrayIterator(args));
-    if (this[timerId] !== null && listenerCount(this, "abort") === 0) {
-      unrefTimer(this[timerId]);
+    if (listenerCount(this, "abort") === 0) {
+      if (this[timerId] !== null) {
+        unrefTimer(this[timerId]);
+      } else if (this[sourceSignals] !== null) {
+        const sourceSignalArray = this[sourceSignals].toArray();
+        for (let i = 0; i < sourceSignalArray.length; ++i) {
+          const sourceSignal = sourceSignalArray[i];
+          if (
+            sourceSignal[timerId] !== null &&
+            sourceSignal[dependentSignals] !== null
+          ) {
+            // Check that all dependent signals of the timer signal do not have listeners
+            if (
+              ArrayPrototypeEvery(
+                sourceSignal[dependentSignals].toArray(),
+                (dependentSignal) =>
+                  dependentSignal === this ||
+                  listenerCount(dependentSignal, "abort") === 0,
+              )
+            ) {
+              unrefTimer(sourceSignal[timerId]);
+            }
+          }
+        }
+      }
     }
   }
 }
