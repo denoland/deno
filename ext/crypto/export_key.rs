@@ -139,7 +139,7 @@ fn export_key_rsa(
           // It MUST have ASN.1 type NULL.
           parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },
-        subject_public_key: BitString::from_bytes(&subject_public_key).unwrap(),
+        subject_public_key: BitString::from_bytes(subject_public_key).unwrap(),
       };
 
       // Infallible because we know the public key is valid.
