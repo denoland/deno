@@ -21,9 +21,10 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules::LintRule;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
@@ -162,6 +163,7 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
+  node_resolver: Option<&'a NodeResolver>,
   npm_resolver: Option<&'a dyn CliNpmResolver>,
 }
 
@@ -169,11 +171,13 @@ impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
+    node_resolver: Option<&'a NodeResolver>,
     npm_resolver: Option<&'a dyn CliNpmResolver>,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
+      node_resolver,
       npm_resolver,
     }
   }
@@ -250,26 +254,14 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    fn closest_package_json_parent_dir(file_path: &Path) -> Option<&Path> {
-      let mut dir_path = file_path;
-      while let Some(parent) = dir_path.parent() {
-        let package_json_path = parent.join("package.json");
-        if package_json_path.exists() {
-          return Some(parent);
-        }
-        dir_path = parent;
-      }
-      None
-    }
+    let node_resolver = self.node_resolver?;
+    let package_json = node_resolver
+      .get_closest_package_json(specifier, &PermissionsContainer::allow_all())
+      .ok()
+      .flatten()?;
+    let root_folder = package_json.path.parent()?;
 
     let specifier_path = specifier_to_file_path(specifier).ok()?;
-    let root_folder = closest_package_json_parent_dir(&specifier_path)?;
-    let package_json_path = root_folder.join("package.json");
-    let package_json_text = std::fs::read_to_string(&package_json_path).ok()?;
-    let package_json =
-      PackageJson::load_from_string(package_json_path, package_json_text)
-        .ok()?;
-
     let mut search_paths = vec![specifier_path.clone()];
     // TypeScript will provide a .js extension for quick fixes, so do
     // a search for the .d.ts file instead

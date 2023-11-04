@@ -1086,7 +1086,7 @@ impl NodeResolver {
     }
   }
 
-  pub(super) fn get_closest_package_json(
+  pub fn get_closest_package_json(
     &self,
     url: &ModuleSpecifier,
     permissions: &dyn NodePermissions,
@@ -1104,7 +1104,9 @@ impl NodeResolver {
     &self,
     url: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let file_path = url.to_file_path().unwrap();
+    let Ok(file_path) = url.to_file_path() else {
+      return Ok(None);
+    };
     let current_dir = deno_core::strip_unc_prefix(
       self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
