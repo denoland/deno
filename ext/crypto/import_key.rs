@@ -238,7 +238,7 @@ fn import_key_rsassa(
         return Err(data_error("public key is invalid (too long)"));
       }
 
-      let data = pk_info.subject_public_key.to_der()?.into();
+      let data = pk_info.subject_public_key.raw_bytes().to_vec().into();
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -330,7 +330,7 @@ fn import_key_rsapss(
         return Err(data_error("public key is invalid (too long)"));
       }
 
-      let data = pk_info.subject_public_key.to_der()?.into();
+      let data = pk_info.subject_public_key.raw_bytes().to_vec().into();
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -422,7 +422,7 @@ fn import_key_rsaoaep(
         return Err(data_error("public key is invalid (too long)"));
       }
 
-      let data = pk_info.subject_public_key.to_der()?.into();
+      let data = pk_info.subject_public_key.raw_bytes().to_vec().into();
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -729,7 +729,7 @@ fn import_key_ec(
       if let Some(pk_named_curve) = pk_named_curve {
         let pk = pk_info.subject_public_key;
 
-        encoded_key = pk.to_der()?;
+        encoded_key = pk.raw_bytes().to_vec();
 
         let bytes_consumed = match named_curve {
           EcNamedCurve::P256 => {
