@@ -2127,6 +2127,7 @@ impl Inner {
     TsResponseImportMapper::new(
       &self.documents,
       self.maybe_import_map.as_deref(),
+      self.npm.node_resolver.as_deref(),
       self.npm.resolver.as_deref(),
     )
   }

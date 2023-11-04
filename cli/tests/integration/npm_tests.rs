@@ -2505,3 +2505,28 @@ console.log(add(1, 2));
     .run();
   output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
 }
+
+itest!(imports_package_json {
+  args: "run --node-modules-dir=false npm/imports_package_json/main.js",
+  output: "npm/imports_package_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(imports_package_json_import_not_defined {
+  args:
+    "run --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
+  output: "npm/imports_package_json/import_not_defined.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(imports_package_json_sub_path_import_not_defined {
+  args:
+    "run --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
+  output: "npm/imports_package_json/sub_path_import_not_defined.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
