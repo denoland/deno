@@ -185,12 +185,11 @@ class AbortSignal extends EventTarget {
       }
     }
 
-    const signals = this[dependentSignals];
-    if (signals !== null) {
-      const signalArray = signals.toArray();
-      for (let i = 0; i < signalArray.length; ++i) {
-        const signal = signalArray[i];
-        signal[signalAbort](reason);
+    if (this[dependentSignals] !== null) {
+      const dependentSignalArray = this[dependentSignals].toArray();
+      for (let i = 0; i < dependentSignalArray.length; ++i) {
+        const dependentSignal = dependentSignalArray[i];
+        dependentSignal[signalAbort](reason);
       }
     }
   }
