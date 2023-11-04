@@ -43,9 +43,8 @@ class WeakRefSet {
     if (WeakSetPrototypeHas(this.#weakSet, value)) {
       return;
     }
-    const ref = new SafeWeakRef(value);
     WeakSetPrototypeAdd(this.#weakSet, value);
-    SetPrototypeAdd(this.#refSet, ref);
+    SetPrototypeAdd(this.#refSet, new SafeWeakRef(value));
   }
 
   has(value) {
@@ -57,7 +56,7 @@ class WeakRefSet {
     for (const ref of new SafeSetIterator(this.#refSet)) {
       const value = WeakRefPrototypeDeref(ref);
       if (value !== undefined) {
-        ArrayPrototypePush(value);
+        ArrayPrototypePush(arr, value);
       }
     }
     return arr;
@@ -188,7 +187,7 @@ class AbortSignal extends EventTarget {
     const signals = this[dependentSignals];
     if (signals !== null) {
       const signalArray = signals.toArray();
-      for (let i = 0; i < signalArray; ++i) {
+      for (let i = 0; i < signalArray.length; ++i) {
         const signal = signalArray[i];
         signal[signalAbort](reason);
       }
