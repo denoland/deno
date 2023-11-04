@@ -1175,30 +1175,30 @@ pub async fn op_node_gen_prime_async(
 }
 
 #[derive(serde::Serialize)]
+#[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum AsymmetricKeyDetails {
+  #[serde(rename = "rsa")]
   Rsa {
     modulus_length: usize,
     public_exponent: BigInt,
   },
+  #[serde(rename = "rsa-pss")]
   RsaPss {
     modulus_length: usize,
     public_exponent: usize,
     hash_algorithm: String,
     mgf1_hash_algorithm: String,
-    salt_length: usize,  
+    salt_length: usize,
   },
+  #[serde(rename = "dsa")]
   Dsa {
     divisor_length: usize,
     modulus_length: usize,
   },
-  Ec {
-    named_curve: String,
-  }
+  #[serde(rename = "ec")]
+  Ec { named_curve: String },
 }
-
-
-use rsa::pkcs1::der::DecodePem;
 
 use rsa::pkcs8;
 
@@ -1211,7 +1211,10 @@ pub fn op_node_create_private_key(
   #[buffer] privkey: &[u8],
 ) -> Result<AsymmetricKeyDetails, AnyError> {
   // We only support PEM for now.
-  let pk_info = pkcs8::PrivateKeyInfo::from_pem(privkey.to_vec())?;
+  let (label, doc) =
+    pkcs8::SecretDocument::from_pem(std::str::from_utf8(privkey).unwrap())?;
+  let pk_info = pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?;
+  assert_eq!(label, "PRIVATE KEY");
 
   let alg = pk_info.algorithm.oid;
 
@@ -1222,7 +1225,10 @@ pub fn op_node_create_private_key(
     let modulus_length = private_key.modulus.as_bytes().len() * 8;
     return Ok(AsymmetricKeyDetails::Rsa {
       modulus_length,
-      public_exponent: BigInt::from_bytes_be(num_bigint::Sign::Plus, private_key.public_exponent.as_bytes()),
+      public_exponent: BigInt::from_bytes_be(
+        num_bigint::Sign::Plus,
+        private_key.public_exponent.as_bytes(),
+      ),
     });
   }
 

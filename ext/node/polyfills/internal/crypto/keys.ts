@@ -216,10 +216,8 @@ export function createPrivateKey(
 ): KeyObject {
   const { data } = prepareKey(key);
   const details = ops.op_node_create_private_key(data);
-  
   const handle = setOwnedKey(copyBuffer(data));
-
-  return new PrivateKeyObject(handle);
+  return new PrivateKeyObject(handle, details);
 }
 
 export function createPublicKey(
@@ -313,41 +311,33 @@ export class SecretKeyObject extends KeyObject {
   }
 }
 
-const kAsymmetricKeyType = Symbol('kAsymmetricKeyType');
-const kAsymmetricKeyDetails = Symbol('kAsymmetricKeyDetails');
+const kAsymmetricKeyType = Symbol("kAsymmetricKeyType");
+const kAsymmetricKeyDetails = Symbol("kAsymmetricKeyDetails");
 
 class AsymmetricKeyObject extends KeyObject {
-  constructor(type: KeyObjectType, handle: unknown) {
+  constructor(type: KeyObjectType, handle: unknown, details: unknown) {
     super(type, handle);
+    console.log(details);
+    this[kAsymmetricKeyType] = details.type;
+    this[kAsymmetricKeyDetails] = details;
   }
 
   get asymmetricKeyType() {
-    return this[kAsymmetricKeyType] ||
-           (this[kAsymmetricKeyType] = this[kHandle].getAsymmetricKeyType());
+    return this[kAsymmetricKeyType];
   }
 
   get asymmetricKeyDetails() {
-    switch (this.asymmetricKeyType) {
-      case 'rsa':
-      case 'rsa-pss':
-      case 'dsa':
-      case 'ec':
-        return this[kAsymmetricKeyDetails] ||
-           (this[kAsymmetricKeyDetails] = normalizeKeyDetails(
-             this[kHandle].keyDetail({}),
-           ));
-      default:
-        return {};
-    }
+    return this[kAsymmetricKeyDetails];
+  }
 }
 
 class PrivateKeyObject extends AsymmetricKeyObject {
-  constructor(handle: unknown) {
-    super("private", handle);
+  constructor(handle: unknown, details: unknown) {
+    super("private", handle, details);
   }
 
   export(_options: unknown) {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyDetails");
+    notImplemented("crypto.PrivateKeyObject.prototype.export");
   }
 }
 
