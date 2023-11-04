@@ -37,14 +37,14 @@ import { refTimer, setTimeout, unrefTimer } from "ext:deno_web/02_timers.js";
 // toArray method.
 class WeakRefSet {
   #weakSet = new SafeWeakSet();
-  #refSet = new SafeSet();
+  #refs = [];
 
   add(value) {
     if (WeakSetPrototypeHas(this.#weakSet, value)) {
       return;
     }
     WeakSetPrototypeAdd(this.#weakSet, value);
-    SetPrototypeAdd(this.#refSet, new SafeWeakRef(value));
+    ArrayPrototypePush(this.#refs, new SafeWeakRef(value));
   }
 
   has(value) {
@@ -52,14 +52,14 @@ class WeakRefSet {
   }
 
   toArray() {
-    const arr = [];
-    for (const ref of new SafeSetIterator(this.#refSet)) {
-      const value = WeakRefPrototypeDeref(ref);
+    const ret = [];
+    for (let i = 0; i < this.#refs.length; ++i) {
+      const value = WeakRefPrototypeDeref(this.#refs[i]);
       if (value !== undefined) {
-        ArrayPrototypePush(arr, value);
+        ArrayPrototypePush(ret, value);
       }
     }
-    return arr;
+    return ret;
   }
 }
 
