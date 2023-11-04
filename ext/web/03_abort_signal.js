@@ -261,10 +261,7 @@ class AbortSignal extends EventTarget {
         const sourceSignalArray = this[sourceSignals].toArray();
         for (let i = 0; i < sourceSignalArray.length; ++i) {
           const sourceSignal = sourceSignalArray[i];
-          if (
-            sourceSignal[timerId] !== null &&
-            sourceSignal[dependentSignals] !== null
-          ) {
+          if (sourceSignal[timerId] !== null) {
             // Check that all dependent signals of the timer signal do not have listeners
             if (
               ArrayPrototypeEvery(
