@@ -70,6 +70,23 @@ itest!(deno_doc_html_lint_referenced_private_types_fixed {
   output: "doc/referenced_private_types_lint.out",
 });
 
+itest!(deno_doc_lint_success {
+  args: "doc --lint doc/lint_success.ts",
+  output: "doc/lint_success.out",
+});
+
+itest!(deno_doc_lint_json_success {
+  args: "doc --lint --json doc/lint_success.ts",
+  output: "doc/lint_success_json.out",
+});
+
+itest!(deno_doc_lint_html_success {
+  args: "doc --lint --html --name=Library lint_success.ts",
+  copy_temp_dir: Some("doc"),
+  cwd: Some("doc"),
+  output: "doc/lint_success_html.out",
+});
+
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args:
     "doc --filter NS.test doc/060_deno_doc_displays_all_overloads_in_details_view.ts",
