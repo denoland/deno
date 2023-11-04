@@ -118,6 +118,41 @@ fn op_stdin_set_raw(
   }
   #[cfg(unix)]
   {
+    fn prepare_stdio() {
+      // SAFETY: Save current state of stdio and restore it when we exit.
+      unsafe {
+        use libc::atexit;
+        use libc::tcgetattr;
+        use libc::tcsetattr;
+        use libc::termios;
+        use once_cell::sync::OnceCell;
+
+        // Only save original state once.
+        static ORIG_TERMIOS: OnceCell<Option<termios>> = OnceCell::new();
+        ORIG_TERMIOS.get_or_init(|| {
+          let mut termios = std::mem::zeroed::<termios>();
+          if tcgetattr(libc::STDIN_FILENO, &mut termios) == 0 {
+            extern "C" fn reset_stdio() {
+              // SAFETY: Reset the stdio state.
+              unsafe {
+                tcsetattr(
+                  libc::STDIN_FILENO,
+                  0,
+                  &ORIG_TERMIOS.get().unwrap().unwrap(),
+                )
+              };
+            }
+
+            atexit(reset_stdio);
+            return Some(termios);
+          }
+
+          None
+        });
+      }
+    }
+
+    prepare_stdio();
     let tty_mode_store = state.borrow::<TtyModeStore>().clone();
     let previous_mode = tty_mode_store.get(rid);
 

@@ -91,16 +91,16 @@ impl NpmResolver for ByonmCliNpmResolver {
     fn inner(
       fs: &dyn FileSystem,
       name: &str,
-      package_root_path: &Path,
       referrer: &ModuleSpecifier,
       mode: NodeResolutionMode,
     ) -> Result<PathBuf, AnyError> {
+      let referrer_file = specifier_to_file_path(referrer)?;
       let types_pkg_name = if mode.is_types() && !name.starts_with("@types/") {
         Some(types_package_name(name))
       } else {
         None
       };
-      let mut current_folder = package_root_path;
+      let mut current_folder = referrer_file.parent().unwrap();
       loop {
         let node_modules_folder = if current_folder.ends_with("node_modules") {
           Cow::Borrowed(current_folder)
@@ -135,46 +135,8 @@ impl NpmResolver for ByonmCliNpmResolver {
       );
     }
 
-    let package_root_path =
-      self.resolve_package_folder_from_path(referrer)?.unwrap(); // todo(byonm): don't unwrap
-    let path = inner(&*self.fs, name, &package_root_path, referrer, mode)?;
+    let path = inner(&*self.fs, name, referrer, mode)?;
     Ok(self.fs.realpath_sync(&path)?)
-  }
-
-  fn resolve_package_folder_from_path(
-    &self,
-    specifier: &deno_core::ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let path = specifier.to_file_path().unwrap(); // todo(byonm): don't unwrap
-    let path = self.fs.realpath_sync(&path)?;
-    if self.in_npm_package(specifier) {
-      let mut path = path.as_path();
-      while let Some(parent) = path.parent() {
-        if parent
-          .file_name()
-          .and_then(|f| f.to_str())
-          .map(|s| s.to_ascii_lowercase())
-          .as_deref()
-          == Some("node_modules")
-        {
-          return Ok(Some(path.to_path_buf()));
-        } else {
-          path = parent;
-        }
-      }
-    } else {
-      // find the folder with a package.json
-      // todo(dsherret): not exactly correct, but good enough for a first pass
-      let mut path = path.as_path();
-      while let Some(parent) = path.parent() {
-        if self.fs.exists_sync(&parent.join("package.json")) {
-          return Ok(Some(parent.to_path_buf()));
-        } else {
-          path = parent;
-        }
-      }
-    }
-    Ok(None)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {

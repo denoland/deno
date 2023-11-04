@@ -138,9 +138,9 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let mut doc_nodes_by_url =
         IndexMap::with_capacity(module_specifiers.len());
 
-      for module_specifier in &module_specifiers {
-        let nodes = doc_parser.parse_with_reexports(module_specifier)?;
-        doc_nodes_by_url.insert(module_specifier.clone(), nodes);
+      for module_specifier in module_specifiers {
+        let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
+        doc_nodes_by_url.insert(module_specifier, nodes);
       }
 
       if doc_flags.lint {
@@ -157,9 +157,23 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .boxed_local()
       .await
   } else {
-    let doc_nodes: Vec<doc::DocNode> =
-      doc_nodes_by_url.values().flatten().cloned().collect();
-    print_docs(doc_flags, doc_nodes)
+    let modules_len = doc_nodes_by_url.len();
+    let doc_nodes =
+      doc_nodes_by_url.into_values().flatten().collect::<Vec<_>>();
+
+    if doc_flags.json {
+      write_json_to_stdout(&doc_nodes)
+    } else if doc_flags.lint {
+      // don't output docs if running with only the --lint flag
+      log::info!(
+        "Checked {} file{}",
+        modules_len,
+        if modules_len == 1 { "" } else { "s" }
+      );
+      Ok(())
+    } else {
+      print_docs_to_stdout(doc_flags, doc_nodes)
+    }
   }
 }
 
@@ -204,14 +218,10 @@ async fn generate_docs_directory(
   Ok(())
 }
 
-fn print_docs(
+fn print_docs_to_stdout(
   doc_flags: DocFlags,
   mut doc_nodes: Vec<deno_doc::DocNode>,
 ) -> Result<(), AnyError> {
-  if doc_flags.json {
-    return write_json_to_stdout(&doc_nodes);
-  }
-
   doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
   let details = if let Some(filter) = doc_flags.filter {
     let nodes = doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
