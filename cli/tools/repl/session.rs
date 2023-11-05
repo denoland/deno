@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::CliOptions;
+use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmResolver;
@@ -47,8 +48,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
-
-use super::cdp;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,
