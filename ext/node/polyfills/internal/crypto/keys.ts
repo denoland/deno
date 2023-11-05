@@ -336,9 +336,8 @@ const kAsymmetricKeyDetails = Symbol("kAsymmetricKeyDetails");
 class AsymmetricKeyObject extends KeyObject {
   constructor(type: KeyObjectType, handle: unknown, details: unknown) {
     super(type, handle);
-    console.log(details);
     this[kAsymmetricKeyType] = details.type;
-    this[kAsymmetricKeyDetails] = details;
+    this[kAsymmetricKeyDetails] = { ...details };
   }
 
   get asymmetricKeyType() {

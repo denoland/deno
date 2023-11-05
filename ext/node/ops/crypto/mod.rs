@@ -1183,14 +1183,15 @@ pub async fn op_node_gen_prime_async(
 
 #[derive(serde::Serialize)]
 #[serde(tag = "type")]
-#[serde(rename_all = "camelCase")]
 pub enum AsymmetricKeyDetails {
   #[serde(rename = "rsa")]
+  #[serde(rename_all = "camelCase")]
   Rsa {
     modulus_length: usize,
     public_exponent: V8BigInt,
   },
   #[serde(rename = "rsa-pss")]
+  #[serde(rename_all = "camelCase")]
   RsaPss {
     modulus_length: usize,
     public_exponent: V8BigInt,
@@ -1198,6 +1199,7 @@ pub enum AsymmetricKeyDetails {
     salt_length: u32,
   },
   #[serde(rename = "ec")]
+  #[serde(rename_all = "camelCase")]
   Ec { named_curve: String },
 }
 
