@@ -16,7 +16,9 @@ use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::asn1;
+use spki::der::asn1::BitString;
 use spki::AlgorithmIdentifier;
+use spki::AlgorithmIdentifierOwned;
 
 use crate::shared::*;
 
@@ -126,7 +128,6 @@ fn export_key_rsa(
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::Spki => {
-      use spki::der::Encode;
       let subject_public_key = &key_data.as_rsa_public_key()?;
 
       // the SPKI structure
@@ -138,11 +139,11 @@ fn export_key_rsa(
           // It MUST have ASN.1 type NULL.
           parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },
-        subject_public_key,
+        subject_public_key: BitString::from_bytes(subject_public_key).unwrap(),
       };
 
       // Infallible because we know the public key is valid.
-      let spki_der = key_info.to_vec().unwrap();
+      let spki_der = key_info.to_der().unwrap();
       Ok(ExportKeyResult::Spki(spki_der.into()))
     }
     ExportKeyFormat::Pkcs8 => {
@@ -259,8 +260,6 @@ fn export_key_ec(
       Ok(ExportKeyResult::Raw(subject_public_key.into()))
     }
     ExportKeyFormat::Spki => {
-      use spki::der::Encode;
-
       let subject_public_key = match named_curve {
         EcNamedCurve::P256 => {
           let point = key_data.as_ec_public_key_p256()?;
@@ -278,11 +277,11 @@ fn export_key_ec(
       };
 
       let alg_id = match named_curve {
-        EcNamedCurve::P256 => AlgorithmIdentifier {
+        EcNamedCurve::P256 => AlgorithmIdentifierOwned {
           oid: elliptic_curve::ALGORITHM_OID,
           parameters: Some((&p256::NistP256::OID).into()),
         },
-        EcNamedCurve::P384 => AlgorithmIdentifier {
+        EcNamedCurve::P384 => AlgorithmIdentifierOwned {
           oid: elliptic_curve::ALGORITHM_OID,
           parameters: Some((&p384::NistP384::OID).into()),
         },
@@ -302,10 +301,10 @@ fn export_key_ec(
       // the SPKI structure
       let key_info = spki::SubjectPublicKeyInfo {
         algorithm: alg_id,
-        subject_public_key: &subject_public_key,
+        subject_public_key: BitString::from_bytes(&subject_public_key).unwrap(),
       };
 
-      let spki_der = key_info.to_vec().unwrap();
+      let spki_der = key_info.to_der().unwrap();
 
       Ok(ExportKeyResult::Spki(spki_der.into()))
     }
@@ -374,7 +373,7 @@ fn export_key_ec(
             Ok(ExportKeyResult::JwkPrivateEc {
               x: bytes_to_b64(x),
               y: bytes_to_b64(y),
-              d: bytes_to_b64(&ec_key.to_be_bytes()),
+              d: bytes_to_b64(&ec_key.to_bytes()),
             })
           } else {
             Err(data_error("expected valid public EC key"))
@@ -397,7 +396,7 @@ fn export_key_ec(
             Ok(ExportKeyResult::JwkPrivateEc {
               x: bytes_to_b64(x),
               y: bytes_to_b64(y),
-              d: bytes_to_b64(&ec_key.to_be_bytes()),
+              d: bytes_to_b64(&ec_key.to_bytes()),
             })
           } else {
             Err(data_error("expected valid public EC key"))
