@@ -117,9 +117,11 @@ function createStorage(persistent) {
       }
       return true;
     },
-    has(target, p) {
-      return p === SymbolFor("Deno.customInspect") ||
-        (typeof target.getItem(p)) === "string";
+    has(target, key) {
+      if (ReflectHas(target, key)) {
+        return true;
+      }
+      return typeof key === "string" && typeof target.getItem(key) === "string";
     },
     ownKeys() {
       return ops.op_webstorage_iterate_keys(persistent);
