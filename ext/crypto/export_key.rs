@@ -1,19 +1,21 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
-use rsa::pkcs1::UIntRef;
+use rsa::pkcs1::der::Decode;
+use rsa::pkcs8::der::asn1::UintRef;
+use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::asn1;
-use spki::der::Decode;
-use spki::der::Encode;
 use spki::AlgorithmIdentifier;
 
 use crate::shared::*;
@@ -90,10 +92,11 @@ pub enum ExportKeyResult {
   },
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_export_key(
-  opts: ExportKeyOptions,
-  key_data: V8RawKeyData,
+  #[serde] opts: ExportKeyOptions,
+  #[serde] key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, AnyError> {
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
@@ -109,12 +112,12 @@ pub fn op_crypto_export_key(
   }
 }
 
-fn uint_to_b64(bytes: UIntRef) -> String {
-  base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
+fn uint_to_b64(bytes: UintRef) -> String {
+  BASE64_URL_SAFE_NO_PAD.encode(bytes.as_bytes())
 }
 
 fn bytes_to_b64(bytes: &[u8]) -> String {
-  base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
+  BASE64_URL_SAFE_NO_PAD.encode(bytes)
 }
 
 fn export_key_rsa(
@@ -123,6 +126,7 @@ fn export_key_rsa(
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::Spki => {
+      use spki::der::Encode;
       let subject_public_key = &key_data.as_rsa_public_key()?;
 
       // the SPKI structure
@@ -155,18 +159,21 @@ fn export_key_rsa(
 
       let pk_info = rsa::pkcs8::PrivateKeyInfo {
         public_key: None,
-        algorithm: rsa::pkcs8::AlgorithmIdentifier {
+        algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
           // rsaEncryption(1)
           oid: rsa::pkcs8::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1"),
           // parameters field should not be omitted (None).
           // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
-          parameters: Some(asn1::AnyRef::from(asn1::Null)),
+          parameters: Some(rsa::pkcs8::der::asn1::AnyRef::from(
+            rsa::pkcs8::der::asn1::Null,
+          )),
         },
         private_key,
       };
 
       // Infallible because we know the private key is valid.
-      let pkcs8_der = pk_info.to_vec().unwrap();
+      let mut pkcs8_der = Vec::new();
+      pk_info.encode_to_vec(&mut pkcs8_der)?;
 
       Ok(ExportKeyResult::Pkcs8(pkcs8_der.into()))
     }
@@ -252,6 +259,8 @@ fn export_key_ec(
       Ok(ExportKeyResult::Raw(subject_public_key.into()))
     }
     ExportKeyFormat::Spki => {
+      use spki::der::Encode;
+
       let subject_public_key = match named_curve {
         EcNamedCurve::P256 => {
           let point = key_data.as_ec_public_key_p256()?;

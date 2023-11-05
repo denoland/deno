@@ -121,7 +121,10 @@ pub fn server_capabilities(
     color_provider: None,
     execute_command_provider: Some(ExecuteCommandOptions {
       commands: if enable_builtin_commands {
-        vec!["deno.cache".into()]
+        vec![
+          "deno.cache".to_string(),
+          "deno.reloadImportRegistries".to_string(),
+        ]
       } else {
         vec![]
       },
@@ -153,5 +156,8 @@ pub fn server_capabilities(
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
     position_encoding: None,
+    // TODO(nayeemrmn): Support pull-based diagnostics.
+    diagnostic_provider: None,
+    inline_value_provider: None,
   }
 }

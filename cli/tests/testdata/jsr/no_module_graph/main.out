@@ -1,0 +1,6 @@
+Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/meta.json
+Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/0.1.0_meta.json
+Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/0.1.0/mod.ts
+Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/0.1.0/TestClass.ts
+0.1.0
+TestClass {}

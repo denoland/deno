@@ -389,7 +389,7 @@ where
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   let permissions = state.borrow::<P>();
   let pkg = node_resolver
-    .get_package_scope_config(
+    .get_closest_package_json(
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
       permissions,
     )
@@ -423,7 +423,7 @@ where
     node_resolver
       .package_exports_resolve(
         &pkg.path,
-        expansion,
+        &expansion,
         exports,
         &referrer,
         NodeModuleKind::Cjs,
@@ -507,7 +507,7 @@ where
     node_resolver
       .package_exports_resolve(
         &pkg.path,
-        format!(".{expansion}"),
+        &format!(".{expansion}"),
         exports,
         &referrer,
         NodeModuleKind::Cjs,

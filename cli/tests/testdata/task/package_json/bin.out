@@ -1,9 +1,10 @@
 Download http://localhost:4545/npm/registry/@denotest/bin
+[UNORDERED_START]
 Download http://localhost:4545/npm/registry/@denotest/bin/0.5.0.tgz
 Initialize @denotest/bin@0.5.0
 Download http://localhost:4545/npm/registry/@denotest/bin/1.0.0.tgz
 Initialize @denotest/bin@1.0.0
-Warning Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in an upcoming release.
+[UNORDERED_END]
 Task bin @denotest/bin hi && cli-esm testing this out && npx cli-cjs test "extra"
 hi
 testing

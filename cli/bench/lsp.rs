@@ -45,6 +45,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true } }));
 
   client.write_notification(
     "textDocument/didOpen",
@@ -55,16 +56,6 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
         "version": 1,
         "text": FIXTURE_DB_TS
       }
-    }),
-  );
-
-  let (id, method, _): (u64, String, Option<Value>) = client.read_request();
-  assert_eq!(method, "workspace/configuration");
-
-  client.write_response(
-    id,
-    json!({
-      "enable": true
     }),
   );
 
@@ -110,6 +101,14 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  client.change_configuration(json!({ "deno": {
+    "enable": true,
+    "codeLens": {
+      "implementations": true,
+      "references": true,
+      "test": true,
+    },
+  } }));
 
   client.write_notification(
     "textDocument/didOpen",
@@ -120,16 +119,6 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
         "version": 1,
         "text": FIXTURE_CODE_LENS_TS
       }
-    }),
-  );
-
-  let (id, method, _): (u64, String, Option<Value>) = client.read_request();
-  assert_eq!(method, "workspace/configuration");
-
-  client.write_response(
-    id,
-    json!({
-      "enable": true
     }),
   );
 
@@ -163,6 +152,7 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true } }));
 
   for i in 0..10 {
     client.write_notification(
@@ -176,12 +166,6 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
         }
       }),
     );
-  }
-
-  for _ in 0..10 {
-    let (id, method, _) = client.read_request::<Value>();
-    assert_eq!(method, "workspace/configuration");
-    client.write_response(id, json!({ "enable": true }));
   }
 
   for _ in 0..3 {
@@ -252,6 +236,7 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true } }));
 
   client.write_notification(
     "textDocument/didOpen",
@@ -262,16 +247,6 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
         "version": 1,
         "text": "console.log(Deno.args);\n"
       }
-    }),
-  );
-
-  let (id, method, _) = client.read_request::<Value>();
-  assert_eq!(method, "workspace/configuration");
-
-  client.write_response(
-    id,
-    json!({
-      "enable": true
     }),
   );
 

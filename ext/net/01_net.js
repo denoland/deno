@@ -9,6 +9,8 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -19,6 +21,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
+  Symbol,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeSubarray,
@@ -159,6 +162,10 @@ class Conn {
       (id) => core.unrefOp(id),
     );
   }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
+  }
 }
 
 class TcpConn extends Conn {
@@ -246,6 +253,10 @@ class Listener {
 
   close() {
     core.close(this.rid);
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 
   [SymbolAsyncIterator]() {
@@ -416,6 +427,8 @@ class Datagram {
   }
 }
 
+const listenOptionApiName = Symbol("listenOptionApiName");
+
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
@@ -427,7 +440,10 @@ function listen(args) {
       return new Listener(rid, addr);
     }
     case "unix": {
-      const { 0: rid, 1: path } = ops.op_net_listen_unix(args.path);
+      const { 0: rid, 1: path } = ops.op_net_listen_unix(
+        args.path,
+        args[listenOptionApiName] ?? "Deno.listen",
+      );
       const addr = {
         transport: "unix",
         path,
@@ -505,6 +521,7 @@ export {
   Datagram,
   listen,
   Listener,
+  listenOptionApiName,
   resolveDns,
   shutdown,
   TcpConn,

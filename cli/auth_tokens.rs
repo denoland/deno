@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use deno_core::ModuleSpecifier;
 use log::debug;
 use log::error;
@@ -23,7 +25,7 @@ impl fmt::Display for AuthToken {
       AuthTokenData::Bearer(token) => write!(f, "Bearer {token}"),
       AuthTokenData::Basic { username, password } => {
         let credentials = format!("{username}:{password}");
-        write!(f, "Basic {}", base64::encode(credentials))
+        write!(f, "Basic {}", BASE64_STANDARD.encode(credentials))
       }
     }
   }

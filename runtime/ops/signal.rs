@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -536,10 +536,11 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
 }
 
 #[cfg(unix)]
-#[op]
+#[op2(fast)]
+#[smi]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  #[string] sig: &str,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
@@ -556,10 +557,11 @@ fn op_signal_bind(
 }
 
 #[cfg(windows)]
-#[op]
+#[op2(fast)]
+#[smi]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  #[string] sig: &str,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
@@ -580,10 +582,10 @@ fn op_signal_bind(
   Ok(rid)
 }
 
-#[op]
+#[op2(async)]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
   let resource = state
     .borrow_mut()
@@ -599,11 +601,11 @@ async fn op_signal_poll(
   }
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_signal_unbind(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  state.resource_table.close(rid)?;
+  state.resource_table.take_any(rid)?.close();
   Ok(())
 }

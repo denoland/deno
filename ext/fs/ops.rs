@@ -11,7 +11,6 @@ use std::rc::Rc;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -28,7 +27,6 @@ use rand::Rng;
 use serde::Serialize;
 
 use crate::check_unstable;
-use crate::check_unstable2;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
@@ -371,11 +369,11 @@ where
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_stat_sync<P>(
   state: &mut OpState,
-  path: String,
-  stat_out_buf: &mut [u32],
+  #[string] path: String,
+  #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -414,11 +412,11 @@ where
   Ok(SerializableStat::from(stat))
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_lstat_sync<P>(
   state: &mut OpState,
-  path: String,
-  stat_out_buf: &mut [u32],
+  #[string] path: String,
+  #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -767,11 +765,11 @@ where
   Ok(target_string)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_truncate_sync<P>(
   state: &mut OpState,
-  path: &str,
-  len: u64,
+  #[string] path: &str,
+  #[number] len: u64,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -789,11 +787,11 @@ where
   Ok(())
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_fs_truncate_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  len: u64,
+  #[string] path: String,
+  #[number] len: u64,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -815,14 +813,14 @@ where
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_utime_sync<P>(
   state: &mut OpState,
-  path: &str,
-  atime_secs: i64,
-  atime_nanos: u32,
-  mtime_secs: i64,
-  mtime_nanos: u32,
+  #[string] path: &str,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -838,14 +836,14 @@ where
   Ok(())
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_fs_utime_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  atime_secs: i64,
-  atime_nanos: u32,
-  mtime_secs: i64,
-  mtime_nanos: u32,
+  #[string] path: String,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1123,16 +1121,17 @@ where
   Ok(())
 }
 
-#[op]
+#[op2(async)]
+#[allow(clippy::too_many_arguments)]
 pub async fn op_fs_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  mode: Option<u32>,
+  #[string] path: String,
+  #[smi] mode: Option<u32>,
   append: bool,
   create: bool,
   create_new: bool,
-  data: JsBuffer,
-  cancel_rid: Option<ResourceId>,
+  #[buffer] data: JsBuffer,
+  #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1156,7 +1155,9 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     res?.context_path("writefile", &path)?;
@@ -1187,11 +1188,12 @@ where
   Ok(buf.into())
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  cancel_rid: Option<ResourceId>,
+  #[string] path: String,
+  #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<ToJsBuffer, AnyError>
 where
   P: FsPermissions + 'static,
@@ -1213,7 +1215,9 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     res?.context_path("readfile", &path)?
@@ -1224,10 +1228,11 @@ where
   Ok(buf.into())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
@@ -1243,11 +1248,12 @@ where
   Ok(string_from_utf8_lossy(buf))
 }
 
-#[op]
+#[op2(async)]
+#[string]
 pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
-  path: String,
-  cancel_rid: Option<ResourceId>,
+  #[string] path: String,
+  #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
@@ -1269,7 +1275,9 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     res?.context_path("readfile", &path)?
@@ -1303,12 +1311,13 @@ fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {
   Ok(seek_from)
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 pub fn op_fs_seek_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  offset: i64,
-  whence: i32,
+  #[smi] rid: ResourceId,
+  #[number] offset: i64,
+  #[smi] whence: i32,
 ) -> Result<u64, AnyError> {
   let pos = to_seek_from(offset, whence)?;
   let file = FileResource::get_file(state, rid)?;
@@ -1316,12 +1325,13 @@ pub fn op_fs_seek_sync(
   Ok(cursor)
 }
 
-#[op]
+#[op2(async)]
+#[number]
 pub async fn op_fs_seek_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  offset: i64,
-  whence: i32,
+  #[smi] rid: ResourceId,
+  #[number] offset: i64,
+  #[smi] whence: i32,
 ) -> Result<u64, AnyError> {
   let pos = to_seek_from(offset, whence)?;
   let file = FileResource::get_file(&state.borrow(), rid)?;
@@ -1369,11 +1379,11 @@ pub async fn op_fs_fsync_async(
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_fstat_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  stat_out_buf: &mut [u32],
+  #[smi] rid: ResourceId,
+  #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError> {
   let file = FileResource::get_file(state, rid)?;
   let stat = file.stat_sync()?;
@@ -1411,7 +1421,7 @@ pub async fn op_fs_flock_async(
   #[smi] rid: ResourceId,
   exclusive: bool,
 ) -> Result<(), AnyError> {
-  check_unstable2(&state, "Deno.flock");
+  check_unstable(&state.borrow(), "Deno.flock");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.lock_async(exclusive).await?;
   Ok(())
@@ -1433,56 +1443,56 @@ pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  check_unstable2(&state, "Deno.funlock");
+  check_unstable(&state.borrow(), "Deno.funlock");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.unlock_async().await?;
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_ftruncate_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  len: u64,
+  #[smi] rid: ResourceId,
+  #[number] len: u64,
 ) -> Result<(), AnyError> {
   let file = FileResource::get_file(state, rid)?;
   file.truncate_sync(len)?;
   Ok(())
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_fs_ftruncate_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  len: u64,
+  #[smi] rid: ResourceId,
+  #[number] len: u64,
 ) -> Result<(), AnyError> {
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.truncate_async(len).await?;
   Ok(())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_fs_futime_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  atime_secs: i64,
-  atime_nanos: u32,
-  mtime_secs: i64,
-  mtime_nanos: u32,
+  #[smi] rid: ResourceId,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
 ) -> Result<(), AnyError> {
   let file = FileResource::get_file(state, rid)?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_fs_futime_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  atime_secs: i64,
-  atime_nanos: u32,
-  mtime_secs: i64,
-  mtime_nanos: u32,
+  #[smi] rid: ResourceId,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
 ) -> Result<(), AnyError> {
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file

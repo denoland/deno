@@ -1,17 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::Engine;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use ring::signature::EcdsaKeyPair;
-use rsa::pkcs1::UIntRef;
+use rsa::pkcs1::UintRef;
+use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decode;
-use spki::der::Encode;
 
 use crate::key::CryptoNamedCurve;
 use crate::shared::*;
@@ -87,10 +88,11 @@ pub enum ImportKeyResult {
   Hmac { raw_data: RustRawKeyData },
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_import_key(
-  opts: ImportKeyOptions,
-  key_data: KeyData,
+  #[serde] opts: ImportKeyOptions,
+  #[serde] key_data: KeyData,
 ) -> Result<ImportKeyResult, AnyError> {
   match opts {
     ImportKeyOptions::RsassaPkcs1v15 {} => import_key_rsassa(key_data),
@@ -105,14 +107,21 @@ pub fn op_crypto_import_key(
   }
 }
 
-const URL_SAFE_FORGIVING: base64::Config =
-  base64::URL_SAFE_NO_PAD.decode_allow_trailing_bits(true);
+const BASE64_URL_SAFE_FORGIVING:
+  base64::engine::general_purpose::GeneralPurpose =
+  base64::engine::general_purpose::GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    base64::engine::general_purpose::GeneralPurposeConfig::new()
+      .with_decode_allow_trailing_bits(true)
+      .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+  );
 
 macro_rules! jwt_b64_int_or_err {
   ($name:ident, $b64:expr, $err:expr) => {
-    let bytes = base64::decode_config($b64, URL_SAFE_FORGIVING)
+    let bytes = BASE64_URL_SAFE_FORGIVING
+      .decode($b64)
       .map_err(|_| data_error($err))?;
-    let $name = UIntRef::new(&bytes).map_err(|_| data_error($err))?;
+    let $name = UintRef::new(&bytes).map_err(|_| data_error($err))?;
   };
 }
 
@@ -129,9 +138,11 @@ fn import_key_rsa_jwk(
         public_exponent,
       };
 
-      let data = public_key
-        .to_vec()
+      let mut data = Vec::new();
+      public_key
+        .encode_to_vec(&mut data)
         .map_err(|_| data_error("invalid rsa public key"))?;
+
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -173,8 +184,9 @@ fn import_key_rsa_jwk(
         other_prime_infos: None,
       };
 
-      let data = private_key
-        .to_vec()
+      let mut data = Vec::new();
+      private_key
+        .encode_to_vec(&mut data)
         .map_err(|_| data_error("invalid rsa private key"))?;
 
       let public_exponent =
@@ -194,6 +206,8 @@ fn import_key_rsa_jwk(
 fn import_key_rsassa(
   key_data: KeyData,
 ) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
+  use rsa::pkcs1::der::Decode;
+
   match key_data {
     KeyData::Spki(data) => {
       // 2-3.
@@ -218,7 +232,7 @@ fn import_key_rsassa(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.subject_public_key.len() as u16)
       {
         return Err(data_error("public key is invalid (too long)"));
       }
@@ -257,7 +271,7 @@ fn import_key_rsassa(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.private_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
       {
         return Err(data_error("private key is invalid (too long)"));
       }
@@ -283,6 +297,8 @@ fn import_key_rsassa(
 fn import_key_rsapss(
   key_data: KeyData,
 ) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
+  use rsa::pkcs1::der::Decode;
+
   match key_data {
     KeyData::Spki(data) => {
       // 2-3.
@@ -307,7 +323,7 @@ fn import_key_rsapss(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.subject_public_key.len() as u16)
       {
         return Err(data_error("public key is invalid (too long)"));
       }
@@ -346,7 +362,7 @@ fn import_key_rsapss(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.private_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
       {
         return Err(data_error("private key is invalid (too long)"));
       }
@@ -372,6 +388,8 @@ fn import_key_rsapss(
 fn import_key_rsaoaep(
   key_data: KeyData,
 ) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
+  use rsa::pkcs1::der::Decode;
+
   match key_data {
     KeyData::Spki(data) => {
       // 2-3.
@@ -396,7 +414,7 @@ fn import_key_rsaoaep(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.subject_public_key.len() as u16)
       {
         return Err(data_error("public key is invalid (too long)"));
       }
@@ -435,7 +453,7 @@ fn import_key_rsaoaep(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.private_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
       {
         return Err(data_error("private key is invalid (too long)"));
       }
@@ -525,13 +543,15 @@ fn import_key_ec_jwk(
           let d = decode_b64url_to_field_bytes::<p256::NistP256>(&d)?;
           let pk = p256::SecretKey::from_be_bytes(&d)?;
 
-          pk.to_pkcs8_der()?
+          pk.to_pkcs8_der()
+            .map_err(|_| data_error("invalid JWK private key"))?
         }
         EcNamedCurve::P384 => {
           let d = decode_b64url_to_field_bytes::<p384::NistP384>(&d)?;
           let pk = p384::SecretKey::from_be_bytes(&d)?;
 
-          pk.to_pkcs8_der()?
+          pk.to_pkcs8_der()
+            .map_err(|_| data_error("invalid JWK private key"))?
         }
         EcNamedCurve::P521 => {
           return Err(data_error("Unsupported named curve"))
@@ -547,10 +567,12 @@ fn import_key_ec_jwk(
         }
       };
 
+      let rng = ring::rand::SystemRandom::new();
       let _key_pair = EcdsaKeyPair::from_private_key_and_public_key(
         key_alg,
         private_d.as_bytes(),
         point_bytes.as_ref(),
+        &rng,
       );
 
       Ok(ImportKeyResult::Ec {
@@ -649,8 +671,9 @@ fn import_key_ec(
           }
         };
 
+        let rng = ring::rand::SystemRandom::new();
         // deserialize pkcs8 using ring crate, to VALIDATE public key
-        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data)?;
+        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data, &rng)?;
 
         // 11.
         if named_curve != pk_named_curve {
@@ -758,7 +781,8 @@ fn import_key_ec(
 fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
+      let data = BASE64_URL_SAFE_FORGIVING
+        .decode(k)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RustRawKeyData::Secret(data.into()),
@@ -771,7 +795,8 @@ fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
 fn import_key_hmac(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
+      let data = BASE64_URL_SAFE_FORGIVING
+        .decode(k)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RustRawKeyData::Secret(data.into()),

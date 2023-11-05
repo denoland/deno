@@ -15,7 +15,8 @@ use os_pipe::pipe;
 
 use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
-use crate::env_vars_for_npm_tests_no_sync_download;
+use crate::env_vars_for_jsr_tests;
+use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
@@ -48,6 +49,10 @@ impl TestContextBuilder {
 
   pub fn for_npm() -> Self {
     Self::new().use_http_server().add_npm_env_vars()
+  }
+
+  pub fn for_jsr() -> Self {
+    Self::new().use_http_server().add_jsr_env_vars()
   }
 
   pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
@@ -98,18 +103,17 @@ impl TestContextBuilder {
   }
 
   pub fn add_npm_env_vars(mut self) -> Self {
-    for (key, value) in env_vars_for_npm_tests_no_sync_download() {
+    for (key, value) in env_vars_for_npm_tests() {
       self = self.env(key, value);
     }
     self
   }
 
-  pub fn use_sync_npm_download(self) -> Self {
-    self.env(
-      // make downloads deterministic
-      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
-      "1",
-    )
+  pub fn add_jsr_env_vars(mut self) -> Self {
+    for (key, value) in env_vars_for_jsr_tests() {
+      self = self.env(key, value);
+    }
+    self
   }
 
   pub fn build(&self) -> TestContext {
@@ -223,7 +227,7 @@ pub struct TestCommandBuilder {
 }
 
 impl TestCommandBuilder {
-  pub fn command_name(mut self, name: impl AsRef<OsStr>) -> Self {
+  pub fn name(mut self, name: impl AsRef<OsStr>) -> Self {
     self.command_name = name.as_ref().to_string_lossy().to_string();
     self
   }
@@ -302,7 +306,11 @@ impl TestCommandBuilder {
   }
 
   fn build_command_path(&self) -> PathRef {
-    let command_name = &self.command_name;
+    let command_name = if cfg!(windows) && self.command_name == "npm" {
+      "npm.cmd"
+    } else {
+      &self.command_name
+    };
     if command_name == "deno" {
       deno_exe_path()
     } else {
@@ -403,11 +411,11 @@ impl TestCommandBuilder {
       command.env_clear();
     }
     command.env("DENO_DIR", self.context.deno_dir.path());
-    let envs = self.build_envs();
+    let mut envs = self.build_envs();
     if !envs.contains_key("NPM_CONFIG_REGISTRY") {
-      command.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
+      envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
     }
-    command.envs(self.build_envs());
+    command.envs(envs);
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
 
@@ -523,6 +531,7 @@ impl Drop for TestCommandOutput {
 
     // now ensure the exit code was asserted
     if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
+      self.print_output();
       panic!(
         "The non-zero exit code of the command was not asserted: {:?}",
         self.exit_code,

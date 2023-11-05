@@ -284,6 +284,9 @@ async function mainFetch(req, recursive, terminator) {
         cause: requestSendError,
       });
     }
+    if (requestBodyRid !== null) {
+      core.tryClose(requestBodyRid);
+    }
     throw err;
   } finally {
     if (cancelHandleRid !== null) {
@@ -591,4 +594,4 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-export { fetch, handleWasmStreaming };
+export { fetch, handleWasmStreaming, mainFetch };

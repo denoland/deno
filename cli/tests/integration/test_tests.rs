@@ -182,7 +182,7 @@ itest!(quiet {
 });
 
 itest!(fail_fast {
-  args: "test --fail-fast test/fail_fast.ts",
+  args: "test --fail-fast test/fail_fast.ts test/fail_fast_other.ts",
   exit_code: 1,
   output: "test/fail_fast.out",
 });
@@ -255,6 +255,12 @@ itest!(trace_ops_catch_error {
 //  output: "test/ops_sanitizer_missing_details.out",
 // });
 
+itest!(ops_sanitizer_closed_inside_started_before {
+  args: "test --trace-ops test/ops_sanitizer_closed_inside_started_before.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_closed_inside_started_before.out",
+});
+
 itest!(ops_sanitizer_nexttick {
   args: "test --no-check test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",
@@ -276,6 +282,23 @@ itest!(junit {
   args: "test --reporter junit test/pass.ts",
   output: "test/pass.junit.out",
 });
+
+#[test]
+fn junit_path() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("test.js", "Deno.test('does test', () => {});");
+  let output = context
+    .new_command()
+    .args("test --junit-path=sub_dir/output.xml test.js")
+    .run();
+  output.skip_output_check();
+  output.assert_exit_code(0);
+  temp_dir
+    .path()
+    .join("sub_dir/output.xml")
+    .assert_matches_text("<?xml [WILDCARD]");
+}
 
 itest!(clear_timeout {
   args: "test test/clear_timeout.ts",

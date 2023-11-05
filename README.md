@@ -77,7 +77,7 @@ and [releases](https://github.com/denoland/deno/releases) for other options.
 Try [running a simple program](https://examples.deno.land/hello-world):
 
 ```sh
-deno run https://deno.land/std/examples/welcome.ts
+deno run https://examples.deno.land/hello-world.ts
 ```
 
 Or [setup a simple HTTP server](https://examples.deno.land/http-server):
@@ -108,7 +108,7 @@ Deno.serve((_req) => new Response("Hello, World!"));
 We appreciate your help!
 
 To contribute, please read our
-[contributing instructions](https://deno.land/manual/contributing).
+[contributing instructions](https://deno.land/manual/references/contributing/).
 
 [Build status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions

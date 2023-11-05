@@ -155,7 +155,7 @@ export async function getPrebuilt(toolName) {
   const toolPath = getPrebuiltToolPath(toolName);
   try {
     await sanityCheckPrebuiltFile(toolPath);
-    const versionOk = await verifyVersion(toolName);
+    const versionOk = await verifyVersion(toolName, toolPath);
     if (!versionOk) {
       throw new Error("Version mismatch");
     }
@@ -185,7 +185,10 @@ export async function downloadPrebuilt(toolName) {
   }
 
   const downloadPromise = DOWNLOAD_TASKS[toolName] = deferred();
-  const spinner = wait("Downloading prebuilt tool: " + toolName).start();
+  const spinner = wait({
+    text: "Downloading prebuilt tool: " + toolName,
+    interval: 1000,
+  }).start();
   const toolPath = getPrebuiltToolPath(toolName);
   const tempFile = `${toolPath}.temp`;
 
@@ -208,6 +211,11 @@ export async function downloadPrebuilt(toolName) {
     await resp.body.pipeTo(file.writable);
     spinner.text = `Checking prebuilt tool: ${toolName}`;
     await sanityCheckPrebuiltFile(tempFile);
+    if (!await verifyVersion(toolName, tempFile)) {
+      throw new Error(
+        "Didn't get the correct version of the tool after downloading.",
+      );
+    }
     spinner.text = `Successfully downloaded: ${toolName}`;
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
@@ -220,14 +228,13 @@ export async function downloadPrebuilt(toolName) {
   downloadPromise.resolve(null);
 }
 
-export async function verifyVersion(toolName) {
+export async function verifyVersion(toolName, toolPath) {
   const requiredVersion = versions[toolName];
   if (!requiredVersion) {
     return true;
   }
 
   try {
-    const toolPath = getPrebuiltToolPath(toolName);
     const cmd = new Deno.Command(toolPath, {
       args: ["--version"],
       stdout: "piped",

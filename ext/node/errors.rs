@@ -53,8 +53,8 @@ pub fn err_module_not_found(path: &str, base: &str, typ: &str) -> AnyError {
 }
 
 pub fn err_invalid_package_target(
-  pkg_path: String,
-  key: String,
+  pkg_path: &str,
+  key: &str,
   target: String,
   is_import: bool,
   maybe_referrer: Option<String>,
@@ -95,7 +95,7 @@ pub fn err_invalid_package_target(
 
 pub fn err_package_path_not_exported(
   mut pkg_path: String,
-  subpath: String,
+  subpath: &str,
   maybe_referrer: Option<String>,
   mode: NodeResolutionMode,
 ) -> AnyError {
@@ -138,11 +138,12 @@ pub fn err_package_import_not_defined(
   base: &str,
 ) -> AnyError {
   let mut msg = format!(
-    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{specifier}\" is not defined in"
+    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{specifier}\" is not defined"
   );
 
   if let Some(package_path) = package_path {
-    msg = format!("{msg} in package {package_path}package.json");
+    let pkg_json_path = PathBuf::from(package_path).join("package.json");
+    msg = format!("{} in package {}", msg, pkg_json_path.display());
   }
 
   msg = format!("{msg} imported from {base}");
@@ -178,7 +179,7 @@ mod test {
     assert_eq!(
       err_package_path_not_exported(
         "test_path".to_string(),
-        "./jsx-runtime".to_string(),
+        "./jsx-runtime",
         None,
         NodeResolutionMode::Types,
       )
@@ -188,7 +189,7 @@ mod test {
     assert_eq!(
       err_package_path_not_exported(
         "test_path".to_string(),
-        ".".to_string(),
+        ".",
         None,
         NodeResolutionMode::Types,
       )
