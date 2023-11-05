@@ -8,7 +8,7 @@ import {
   kHandle,
   kKeyObject,
 } from "ext:deno_node/internal/crypto/constants.ts";
-import { prepareKey } from "ext:deno_node/internal/crypto/cipher.ts";
+import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
@@ -210,11 +210,31 @@ export interface JsonWebKeyInput {
   format: "jwk";
 }
 
+function prepareAsymmetricKey(key) {
+  if (isStringOrBuffer(key)) {
+    return { format: "pem", data: getArrayBufferOrView(key, "key") };
+  } else if (typeof key == "object") {
+    const { key: data, encoding, format, type } = key;
+    if (!isStringOrBuffer(data)) {
+      throw new TypeError("Invalid key type");
+    }
+
+    return {
+      data: getArrayBufferOrView(data, "key", encoding),
+      format: format ?? "pem",
+      encoding,
+      type,
+    };
+  }
+
+  throw new TypeError("Invalid key type");
+}
+
 export function createPrivateKey(
   key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
-): KeyObject {
-  const { data } = prepareKey(key);
-  const details = ops.op_node_create_private_key(data);
+): PrivateKeyObject {
+  const { data, format, type } = prepareAsymmetricKey(key);
+  const details = ops.op_node_create_private_key(data, format, type);
   const handle = setOwnedKey(copyBuffer(data));
   return new PrivateKeyObject(handle, details);
 }

@@ -3,6 +3,7 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
@@ -1187,12 +1188,12 @@ pub enum AsymmetricKeyDetails {
   #[serde(rename = "rsa")]
   Rsa {
     modulus_length: usize,
-    public_exponent: BigInt,
+    public_exponent: V8BigInt,
   },
   #[serde(rename = "rsa-pss")]
   RsaPss {
     modulus_length: usize,
-    public_exponent: BigInt,
+    public_exponent: V8BigInt,
     hash_algorithm: String,
     salt_length: u32,
   },
@@ -1202,6 +1203,12 @@ pub enum AsymmetricKeyDetails {
 
 const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
+const ID_SHA256_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
+const ID_SHA384_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.2");
+const ID_SHA512_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.3");
 const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.8");
 pub const ID_SECP256R1_OID: const_oid::ObjectIdentifier =
@@ -1382,7 +1389,8 @@ pub fn op_node_create_private_key(
         public_exponent: BigInt::from_bytes_be(
           num_bigint::Sign::Plus,
           private_key.public_exponent.as_bytes(),
-        ),
+        )
+        .into(),
       })
     }
     RSASSA_PSS_OID => {
@@ -1397,6 +1405,9 @@ pub fn op_node_create_private_key(
       let hash_alg = params.hash_algorithm;
       let hash_algorithm = match hash_alg.oid {
         ID_SHA1_OID => "sha1",
+        ID_SHA256_OID => "sha256",
+        ID_SHA384_OID => "sha384",
+        ID_SHA512_OID => "sha512",
         _ => return Err(type_error("Unsupported hash algorithm")),
       };
 
@@ -1408,7 +1419,8 @@ pub fn op_node_create_private_key(
         public_exponent: BigInt::from_bytes_be(
           num_bigint::Sign::Plus,
           private_key.public_exponent.as_bytes(),
-        ),
+        )
+        .into(),
         hash_algorithm: hash_algorithm.to_string(),
         salt_length: params.salt_length,
       })
