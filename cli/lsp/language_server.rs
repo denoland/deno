@@ -23,6 +23,7 @@ use import_map::ImportMap;
 use indexmap::IndexSet;
 use log::error;
 use serde_json::from_value;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -80,7 +81,6 @@ use super::tsc::AssetsSnapshot;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
-use super::urls::LspClientUrl;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
@@ -105,6 +105,7 @@ use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -131,6 +132,8 @@ struct LspNpmServices {
   config_hash: LspNpmConfigHash,
   /// Npm's search api.
   search_api: CliNpmSearchApi,
+  /// Node resolver.
+  node_resolver: Option<Arc<NodeResolver>>,
   /// Resolver for npm packages.
   resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -403,68 +406,42 @@ impl LanguageServer {
     }
   }
 
-  pub async fn refresh_specifiers_from_client(&self) -> bool {
-    let (client, specifiers) = {
+  pub async fn refresh_configuration(&self) {
+    let (client, folders, capable) = {
       let ls = self.0.read().await;
-      let specifiers = if ls.config.client_capabilities.workspace_configuration
-      {
-        let root_capacity = std::cmp::max(ls.config.workspace_folders.len(), 1);
-        let config_specifiers = ls.config.get_specifiers();
-        let mut specifiers =
-          HashMap::with_capacity(root_capacity + config_specifiers.len());
-        for (specifier, folder) in &ls.config.workspace_folders {
-          specifiers
-            .insert(specifier.clone(), LspClientUrl::new(folder.uri.clone()));
-        }
-        specifiers.extend(
-          ls.config
-            .get_specifiers()
-            .iter()
-            .map(|s| (s.clone(), ls.url_map.normalize_specifier(s).unwrap())),
-        );
-
-        Some(specifiers.into_iter().collect::<Vec<_>>())
-      } else {
-        None
-      };
-
-      (ls.client.clone(), specifiers)
+      (
+        ls.client.clone(),
+        ls.config.workspace_folders.clone(),
+        ls.config.client_capabilities.workspace_configuration,
+      )
     };
-
-    let mut touched = false;
-    if let Some(specifiers) = specifiers {
-      let configs_result = client
+    if capable {
+      let mut scopes = Vec::with_capacity(folders.len() + 1);
+      scopes.push(None);
+      for (_, folder) in &folders {
+        scopes.push(Some(folder.uri.clone()));
+      }
+      let configs = client
         .when_outside_lsp_lock()
-        .specifier_configurations(
-          specifiers
-            .iter()
-            .map(|(_, client_uri)| client_uri.clone())
-            .collect(),
-        )
+        .workspace_configuration(scopes)
         .await;
-
-      let mut ls = self.0.write().await;
-      if let Ok(configs) = configs_result {
-        for (value, internal_uri) in
-          configs.into_iter().zip(specifiers.into_iter().map(|s| s.0))
-        {
-          match value {
-            Ok(specifier_settings) => {
-              if ls
-                .config
-                .set_specifier_settings(internal_uri, specifier_settings)
-              {
-                touched = true;
-              }
-            }
-            Err(err) => {
-              error!("{}", err);
-            }
-          }
+      if let Ok(configs) = configs {
+        if configs.len() != folders.len() + 1 {
+          lsp_warn!("Incorrect number of configurations received.");
+          return;
         }
+        let mut configs = configs.into_iter();
+        let unscoped = configs.next().unwrap();
+        let mut by_workspace_folder = BTreeMap::new();
+        for (folder_uri, _) in &folders {
+          by_workspace_folder
+            .insert(folder_uri.clone(), configs.next().unwrap());
+        }
+        let mut ls = self.0.write().await;
+        ls.config
+          .set_workspace_settings(unscoped, Some(by_workspace_folder));
       }
     }
-    touched
   }
 }
 
@@ -521,6 +498,7 @@ impl Inner {
       npm: LspNpmServices {
         config_hash: LspNpmConfigHash(0), // this will be updated in initialize
         search_api: npm_search_api,
+        node_resolver: None,
         resolver: None,
       },
       performance,
@@ -841,15 +819,19 @@ impl Inner {
       return; // no need to do anything
     }
 
-    self.npm.resolver = Some(
-      create_npm_resolver(
-        &deno_dir,
-        &self.http_client,
-        self.config.maybe_lockfile(),
-        self.config.maybe_node_modules_dir_path().cloned(),
-      )
-      .await,
-    );
+    let npm_resolver = create_npm_resolver(
+      &deno_dir,
+      &self.http_client,
+      self.config.maybe_config_file(),
+      self.config.maybe_lockfile(),
+      self.config.maybe_node_modules_dir_path().cloned(),
+    )
+    .await;
+    self.npm.node_resolver = Some(Arc::new(NodeResolver::new(
+      Arc::new(deno_fs::RealFs),
+      npm_resolver.clone().into_npm_resolver(),
+    )));
+    self.npm.resolver = Some(npm_resolver);
 
     // update the hash
     self.npm.config_hash = config_hash;
@@ -1085,11 +1067,24 @@ impl Inner {
 async fn create_npm_resolver(
   deno_dir: &DenoDir,
   http_client: &Arc<HttpClient>,
+  maybe_config_file: Option<&ConfigFile>,
   maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
   maybe_node_modules_dir_path: Option<PathBuf>,
 ) -> Arc<dyn CliNpmResolver> {
-  create_cli_npm_resolver_for_lsp(CliNpmResolverCreateOptions::Managed(
-    CliNpmResolverManagedCreateOptions {
+  let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
+    || maybe_config_file
+      .as_ref()
+      .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+      .unwrap_or(false);
+  create_cli_npm_resolver_for_lsp(if is_byonm {
+    CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
+      fs: Arc::new(deno_fs::RealFs),
+      root_node_modules_dir: std::env::current_dir()
+        .unwrap()
+        .join("node_modules"),
+    })
+  } else {
+    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
       http_client: http_client.clone(),
       snapshot: match maybe_lockfile {
         Some(lockfile) => {
@@ -1116,8 +1111,8 @@ async fn create_npm_resolver(
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
       npm_registry_url: crate::args::npm_registry_default_url().to_owned(),
       npm_system_info: NpmSystemInfo::default(),
-    },
-  ))
+    })
+  })
   .await
 }
 
@@ -1182,6 +1177,7 @@ impl Inner {
       if let Some(options) = params.initialization_options {
         self.config.set_workspace_settings(
           WorkspaceSettings::from_initialization_options(options),
+          None,
         );
       }
       if let Some(folders) = params.workspace_folders {
@@ -1275,6 +1271,7 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
+      node_resolver: self.npm.node_resolver.clone(),
       npm_resolver: self.npm.resolver.clone(),
     });
 
@@ -1391,27 +1388,22 @@ impl Inner {
 
   async fn did_change_configuration(
     &mut self,
-    client_workspace_config: Option<WorkspaceSettings>,
     params: DidChangeConfigurationParams,
   ) {
-    let maybe_config =
-      if self.config.client_capabilities.workspace_configuration {
-        client_workspace_config
-      } else {
-        params.settings.as_object().map(|settings| {
-          let deno =
-            serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
-          let javascript =
-            serde_json::to_value(settings.get("javascript")).unwrap();
-          let typescript =
-            serde_json::to_value(settings.get("typescript")).unwrap();
-          WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
-        })
-      };
-
-    if let Some(settings) = maybe_config {
-      self.config.set_workspace_settings(settings);
-    }
+    if !self.config.client_capabilities.workspace_configuration {
+      let config = params.settings.as_object().map(|settings| {
+        let deno =
+          serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
+        let javascript =
+          serde_json::to_value(settings.get("javascript")).unwrap();
+        let typescript =
+          serde_json::to_value(settings.get("typescript")).unwrap();
+        WorkspaceSettings::from_raw_settings(deno, javascript, typescript)
+      });
+      if let Some(settings) = config {
+        self.config.set_workspace_settings(settings, None);
+      }
+    };
 
     self.update_debug_flag();
     if let Err(err) = self.update_cache().await {
@@ -2135,6 +2127,7 @@ impl Inner {
     TsResponseImportMapper::new(
       &self.documents,
       self.maybe_import_map.as_deref(),
+      self.npm.node_resolver.as_deref(),
       self.npm.resolver.as_deref(),
     )
   }
@@ -2148,8 +2141,7 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !(self.config.workspace_settings().enabled_code_lens()
-        || self.config.specifier_code_lens_test(&specifier))
+      || !self.config.enabled_code_lens_for_specifier(&specifier)
     {
       return Ok(None);
     }
@@ -2385,10 +2377,8 @@ impl Inner {
       &params.text_document_position.text_document.uri,
       LspUrlKind::File,
     );
-    let language_settings = self
-      .config
-      .workspace_settings()
-      .language_settings_for_specifier(&specifier);
+    let language_settings =
+      self.config.language_settings_for_specifier(&specifier);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
       || !language_settings.map(|s| s.suggest.enabled).unwrap_or(true)
@@ -2457,7 +2447,6 @@ impl Inner {
             line_index,
             &self
               .config
-              .workspace_settings()
               .language_settings_for_specifier(&specifier)
               .cloned()
               .unwrap_or_default()
@@ -2992,7 +2981,6 @@ impl Inner {
       );
       let options = self
         .config
-        .workspace_settings()
         .language_settings_for_specifier(&old_specifier)
         .map(|s| s.update_imports_on_file_move.clone())
         .unwrap_or_default();
@@ -3014,7 +3002,6 @@ impl Inner {
             (&self.fmt_options.options).into(),
             tsc::UserPreferences {
               allow_text_changes_in_new_files: Some(true),
-              quote_preference: Some((&self.fmt_options.options).into()),
               ..Default::default()
             },
           )
@@ -3189,7 +3176,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
     }
 
-    self.refresh_specifiers_from_client().await;
+    self.refresh_configuration().await;
 
     {
       let mut ls = self.0.write().await;
@@ -3213,58 +3200,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
       return;
     }
 
-    let (client, client_uri, specifier, should_get_specifier_settings) = {
-      let mut inner = self.0.write().await;
-      let client = inner.client.clone();
-      let client_uri = LspClientUrl::new(params.text_document.uri.clone());
-      let specifier = inner
-        .url_map
-        .normalize_url(client_uri.as_url(), LspUrlKind::File);
-      let document = inner.did_open(&specifier, params).await;
-      let should_get_specifier_settings =
-        !inner.config.has_specifier_settings(&specifier)
-          && inner.config.client_capabilities.workspace_configuration;
-      if document.is_diagnosable() {
-        inner.refresh_npm_specifiers().await;
-        let specifiers = inner.documents.dependents(&specifier);
-        inner.diagnostics_server.invalidate(&specifiers);
-        // don't send diagnostics yet if we don't have the specifier settings
-        if !should_get_specifier_settings {
-          inner.send_diagnostics_update();
-          inner.send_testing_update();
-        }
-      }
-      (client, client_uri, specifier, should_get_specifier_settings)
-    };
-
-    // retrieve the specifier settings outside the lock if
-    // they haven't been asked for yet
-    if should_get_specifier_settings {
-      let response = client
-        .when_outside_lsp_lock()
-        .specifier_configuration(&client_uri)
-        .await;
-      let mut ls = self.0.write().await;
-      match response {
-        Ok(specifier_settings) => {
-          ls.config
-            .set_specifier_settings(specifier.clone(), specifier_settings);
-        }
-        Err(err) => {
-          error!("{}", err);
-        }
-      }
-
-      if ls
-        .documents
-        .get(&specifier)
-        .map(|d| d.is_diagnosable())
-        .unwrap_or(false)
-      {
-        ls.refresh_documents_config().await;
-        ls.send_diagnostics_update();
-        ls.send_testing_update();
-      }
+    let mut inner = self.0.write().await;
+    let specifier = inner
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
+    let document = inner.did_open(&specifier, params).await;
+    if document.is_diagnosable() {
+      inner.refresh_npm_specifiers().await;
+      let specifiers = inner.documents.dependents(&specifier);
+      inner.diagnostics_server.invalidate(&specifiers);
+      inner.send_diagnostics_update();
+      inner.send_testing_update();
     }
   }
 
@@ -3278,7 +3224,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut inner = self.0.write().await;
       let specifier = inner.url_map.normalize_url(uri, LspUrlKind::File);
       inner.documents.save(&specifier);
-      if !inner.config.workspace_settings().cache_on_save
+      if !inner
+        .config
+        .workspace_settings_for_specifier(&specifier)
+        .cache_on_save
         || !inner.config.specifier_enabled(&specifier)
         || !inner.diagnostics_state.has_no_cache_diagnostics(&specifier)
       {
@@ -3311,47 +3260,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    let (mark, has_workspace_capability, client) = {
+    let mark = {
       let inner = self.0.read().await;
-      (
-        inner
-          .performance
-          .mark("did_change_configuration", Some(&params)),
-        inner.config.client_capabilities.workspace_configuration,
-        inner.client.clone(),
-      )
+      inner
+        .performance
+        .mark("did_change_configuration", Some(&params))
     };
 
-    self.refresh_specifiers_from_client().await;
+    self.refresh_configuration().await;
 
-    // Get the configuration from the client outside of the lock
-    // in order to prevent potential deadlocking scenarios where
-    // the server holds a lock and calls into the client, which
-    // calls into the server which deadlocks acquiring the lock.
-    // There is a gap here between when the configuration is
-    // received and acquiring the lock, but most likely there
-    // won't be any racing here.
-    let client_workspace_config = if has_workspace_capability {
-      let config_response = client
-        .when_outside_lsp_lock()
-        .workspace_configuration()
-        .await;
-      match config_response {
-        Ok(settings) => Some(settings),
-        Err(err) => {
-          error!("{}", err);
-          None
-        }
-      }
-    } else {
-      None
-    };
-
-    // now update the inner state
     let mut inner = self.0.write().await;
-    inner
-      .did_change_configuration(client_workspace_config, params)
-      .await;
+    inner.did_change_configuration(params).await;
     inner.performance.measure(mark);
   }
 
@@ -3375,7 +3294,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
       (ls.performance.clone(), mark)
     };
 
-    if self.refresh_specifiers_from_client().await {
+    self.refresh_configuration().await;
+    {
       let mut ls = self.0.write().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
@@ -3682,10 +3602,7 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !self
-        .config
-        .workspace_settings()
-        .enabled_inlay_hints(&specifier)
+      || !self.config.enabled_inlay_hints_for_specifier(&specifier)
     {
       return Ok(None);
     }

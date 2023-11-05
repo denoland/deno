@@ -1242,3 +1242,34 @@ Deno.test({
   const listener = Deno.listen({ hostname: "localhost", port: "0" });
   listener.close();
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function listenerExplicitResourceManagement() {
+    let done: Promise<Deno.errors.BadResource>;
+
+    {
+      using listener = Deno.listen({ port: listenPort });
+
+      done = assertRejects(
+        () => listener.accept(),
+        Deno.errors.BadResource,
+      );
+    }
+
+    await done;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function listenerExplicitResourceManagementManualClose() {
+    using listener = Deno.listen({ port: listenPort });
+    listener.close();
+    await assertRejects( // definitely closed
+      () => listener.accept(),
+      Deno.errors.BadResource,
+    );
+    // calling [Symbol.dispose] after manual close is a no-op
+  },
+);

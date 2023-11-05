@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
@@ -9,10 +8,20 @@ use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
+use deno_graph::source::ResolutionMode;
+use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
+use deno_runtime::deno_node::parse_npm_pkg_name;
+use deno_runtime::deno_node::NodeResolution;
+use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
+use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::path::PathBuf;
@@ -21,6 +30,8 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
+use crate::module_loader::CjsResolutionStore;
+use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
@@ -98,30 +109,48 @@ impl MappedSpecifierResolver {
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
+  fs: Arc<dyn FileSystem>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
+  cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+  node_resolver: Option<Arc<NodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
+  bare_node_builtins_enabled: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
+  pub fs: Arc<dyn FileSystem>,
+  pub cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+  pub node_resolver: Option<Arc<NodeResolver>>,
+  pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
+  pub bare_node_builtins_enabled: bool,
 }
 
 impl CliGraphResolver {
-  pub fn new(
-    npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
-    options: CliGraphResolverOptions,
-  ) -> Self {
+  pub fn new(options: CliGraphResolverOptions) -> Self {
+    let is_byonm = options
+      .npm_resolver
+      .as_ref()
+      .map(|n| n.as_byonm().is_some())
+      .unwrap_or(false);
     Self {
+      fs: options.fs,
+      cjs_resolutions: options.cjs_resolutions,
       mapped_specifier_resolver: MappedSpecifierResolver::new(
         options.maybe_import_map,
-        package_json_deps_provider,
+        if is_byonm {
+          // don't resolve from the root package.json deps for byonm
+          Arc::new(PackageJsonDepsProvider::new(None))
+        } else {
+          options.package_json_deps_provider
+        },
       ),
       maybe_default_jsx_import_source: options
         .maybe_jsx_import_source_config
@@ -133,8 +162,10 @@ impl CliGraphResolver {
       maybe_vendor_specifier: options
         .maybe_vendor_dir
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
-      npm_resolver,
+      node_resolver: options.node_resolver,
+      npm_resolver: options.npm_resolver,
       found_package_json_dep_flag: Default::default(),
+      bare_node_builtins_enabled: options.bare_node_builtins_enabled,
     }
   }
 
@@ -148,6 +179,41 @@ impl CliGraphResolver {
 
   pub fn found_package_json_dep(&self) -> bool {
     self.found_package_json_dep_flag.is_raised()
+  }
+
+  fn check_surface_byonm_node_error(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+    original_err: AnyError,
+    resolver: &ByonmCliNpmResolver,
+  ) -> Result<(), AnyError> {
+    if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
+      match resolver
+        .resolve_package_folder_from_package(&pkg_name, referrer, mode)
+      {
+        Ok(_) => {
+          return Err(original_err);
+        }
+        Err(_) => {
+          if resolver
+            .find_ancestor_package_json_with_dep(&pkg_name, referrer)
+            .is_some()
+          {
+            return Err(anyhow!(
+              concat!(
+                "Could not resolve \"{}\", but found it in a package.json. ",
+                "Deno expects the node_modules/ directory to be up to date. ",
+                "Did you forget to run `npm install`?"
+              ),
+              specifier
+            ));
+          }
+        }
+      }
+    }
+    Ok(())
   }
 }
 
@@ -167,7 +233,15 @@ impl Resolver for CliGraphResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+    mode: ResolutionMode,
+  ) -> Result<ModuleSpecifier, ResolveError> {
+    fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
+      match mode {
+        ResolutionMode::Execution => NodeResolutionMode::Execution,
+        ResolutionMode::Types => NodeResolutionMode::Types,
+      }
+    }
+
     let result = match self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
@@ -190,7 +264,105 @@ impl Resolver for CliGraphResolver {
     if let Some(vendor_specifier) = &self.maybe_vendor_specifier {
       if let Ok(specifier) = &result {
         if specifier.as_str().starts_with(vendor_specifier.as_str()) {
-          bail!("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.");
+          return Err(ResolveError::Other(anyhow!("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")));
+        }
+      }
+    }
+
+    if let Some(resolver) =
+      self.npm_resolver.as_ref().and_then(|r| r.as_byonm())
+    {
+      match &result {
+        Ok(specifier) => {
+          if let Ok(npm_req_ref) =
+            NpmPackageReqReference::from_specifier(specifier)
+          {
+            let package_folder = resolver
+              .resolve_pkg_folder_from_deno_module_req(
+                npm_req_ref.req(),
+                referrer,
+              )?;
+            let node_resolver = self.node_resolver.as_ref().unwrap();
+            let package_json_path = package_folder.join("package.json");
+            if !self.fs.exists_sync(&package_json_path) {
+              return Err(ResolveError::Other(anyhow!(
+                "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?",
+                package_json_path.display()
+              )));
+            }
+            let maybe_resolution = node_resolver
+              .resolve_package_subpath_from_deno_module(
+                &package_folder,
+                npm_req_ref.sub_path(),
+                referrer,
+                to_node_mode(mode),
+                &PermissionsContainer::allow_all(),
+              )?;
+            match maybe_resolution {
+              Some(resolution) => {
+                if let Some(cjs_resolutions) = &self.cjs_resolutions {
+                  if let NodeResolution::CommonJs(specifier) = &resolution {
+                    // remember that this was a common js resolution
+                    cjs_resolutions.insert(specifier.clone());
+                  }
+                }
+
+                return Ok(resolution.into_url());
+              }
+              None => {
+                return Err(ResolveError::Other(anyhow!(
+                  "Failed resolving package subpath for '{}' in '{}'.",
+                  npm_req_ref,
+                  package_folder.display()
+                )));
+              }
+            }
+          }
+        }
+        Err(_) => {
+          if referrer.scheme() == "file" {
+            if let Some(node_resolver) = &self.node_resolver {
+              let node_result = node_resolver.resolve(
+                specifier,
+                referrer,
+                to_node_mode(mode),
+                &PermissionsContainer::allow_all(),
+              );
+              match node_result {
+                Ok(Some(resolution)) => {
+                  if let Some(cjs_resolutions) = &self.cjs_resolutions {
+                    if let NodeResolution::CommonJs(specifier) = &resolution {
+                      // remember that this was a common js resolution
+                      cjs_resolutions.insert(specifier.clone());
+                    }
+                  }
+                  return Ok(resolution.into_url());
+                }
+                Ok(None) => {
+                  self
+                    .check_surface_byonm_node_error(
+                      specifier,
+                      referrer,
+                      to_node_mode(mode),
+                      anyhow!("Cannot find \"{}\"", specifier),
+                      resolver,
+                    )
+                    .map_err(ResolveError::Other)?;
+                }
+                Err(err) => {
+                  self
+                    .check_surface_byonm_node_error(
+                      specifier,
+                      referrer,
+                      to_node_mode(mode),
+                      err,
+                      resolver,
+                    )
+                    .map_err(ResolveError::Other)?;
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -238,6 +410,19 @@ impl NpmResolver for CliGraphResolver {
     }
   }
 
+  fn on_resolve_bare_builtin_node_module(
+    &self,
+    module_name: &str,
+    range: &deno_graph::Range,
+  ) {
+    let deno_graph::Range {
+      start, specifier, ..
+    } = range;
+    let line = start.line + 1;
+    let column = start.character + 1;
+    log::warn!("Warning: Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{line}:{column}. If you want to use a built-in Node module, add a \"node:\" prefix.")
+  }
+
   fn load_and_cache_npm_package_info(
     &self,
     package_name: &str,
@@ -275,6 +460,10 @@ impl NpmResolver for CliGraphResolver {
         "npm specifiers were requested; but --no-npm is specified"
       )),
     }
+  }
+
+  fn enables_bare_builtin_node_module(&self) -> bool {
+    self.bare_node_builtins_enabled
   }
 }
 

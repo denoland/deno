@@ -36,6 +36,7 @@ import {
 } from "ext:deno_web/06_streams.js";
 import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
+import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 const {
   ArrayPrototypePush,
   ObjectHasOwn,
@@ -343,6 +344,7 @@ class CallbackContext {
   fallbackHost;
   serverRid;
   closed;
+  /** @type {Promise<void> | undefined} */
   closing;
   listener;
 
@@ -435,8 +437,6 @@ function fastSyncResponseOrStream(req, respBody, status) {
  */
 function mapToCallback(context, callback, onError) {
   const signal = context.abortController.signal;
-  const hasCallback = callback.length > 0;
-  const hasOneCallback = callback.length === 1;
 
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
@@ -444,20 +444,11 @@ function mapToCallback(context, callback, onError) {
     let innerRequest;
     let response;
     try {
-      if (hasCallback) {
-        innerRequest = new InnerRequest(req, context);
-        const request = fromInnerRequest(innerRequest, signal, "immutable");
-        if (hasOneCallback) {
-          response = await callback(request);
-        } else {
-          response = await callback(
-            request,
-            new ServeHandlerInfo(innerRequest),
-          );
-        }
-      } else {
-        response = await callback();
-      }
+      innerRequest = new InnerRequest(req, context);
+      response = await callback(
+        fromInnerRequest(innerRequest, signal, "immutable"),
+        new ServeHandlerInfo(innerRequest),
+      );
     } catch (error) {
       try {
         response = await onError(error);
@@ -682,22 +673,25 @@ function serveHttpOn(context, callback) {
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
-    if (!context.closed && !context.closing) {
-      context.closed = true;
-      await op_http_close(rid, false);
+    if (!context.closing && !context.closed) {
+      context.closing = op_http_close(rid, false);
       context.close();
     }
+
+    await context.closing;
+    context.close();
+    context.closed = true;
   })();
 
   return {
     finished,
     async shutdown() {
-      if (!context.closed && !context.closing) {
+      if (!context.closing && !context.closed) {
         // Shut this HTTP server down gracefully
-        context.closing = true;
-        await op_http_close(context.serverRid, true);
-        context.closed = true;
+        context.closing = op_http_close(context.serverRid, true);
       }
+      await context.closing;
+      context.closed = true;
     },
     ref() {
       ref = true;
@@ -710,6 +704,9 @@ function serveHttpOn(context, callback) {
       if (currentPromise) {
         core.unrefOp(currentPromise[promiseIdSymbol]);
       }
+    },
+    [SymbolAsyncDispose]() {
+      return this.shutdown();
     },
   };
 }

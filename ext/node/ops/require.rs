@@ -389,7 +389,7 @@ where
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   let permissions = state.borrow::<P>();
   let pkg = node_resolver
-    .get_package_scope_config(
+    .get_closest_package_json(
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
       permissions,
     )

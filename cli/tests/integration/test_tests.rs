@@ -283,6 +283,23 @@ itest!(junit {
   output: "test/pass.junit.out",
 });
 
+#[test]
+fn junit_path() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("test.js", "Deno.test('does test', () => {});");
+  let output = context
+    .new_command()
+    .args("test --junit-path=sub_dir/output.xml test.js")
+    .run();
+  output.skip_output_check();
+  output.assert_exit_code(0);
+  temp_dir
+    .path()
+    .join("sub_dir/output.xml")
+    .assert_matches_text("<?xml [WILDCARD]");
+}
+
 itest!(clear_timeout {
   args: "test test/clear_timeout.ts",
   exit_code: 0,

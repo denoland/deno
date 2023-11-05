@@ -258,6 +258,46 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
+  // deno lint bug, see https://github.com/denoland/deno_lint/issues/1206
+  // deno-lint-ignore require-await
+  async function childProcessExplicitResourceManagement() {
+    let dead = undefined;
+    {
+      const command = new Deno.Command(Deno.execPath(), {
+        args: ["eval", "setTimeout(() => {}, 10000)"],
+        stdout: "null",
+        stderr: "null",
+      });
+      await using child = command.spawn();
+      child.status.then(({ signal }) => {
+        dead = signal;
+      });
+    }
+
+    if (Deno.build.os == "windows") {
+      assertEquals(dead, null);
+    } else {
+      assertEquals(dead, "SIGTERM");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function childProcessExplicitResourceManagementManualClose() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+    await using child = command.spawn();
+    child.kill("SIGTERM");
+    await child.status;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
   async function commandKillFailed() {
     const command = new Deno.Command(Deno.execPath(), {
       args: ["eval", "setTimeout(() => {}, 5000)"],

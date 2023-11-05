@@ -31,6 +31,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -261,8 +262,19 @@ impl MainWorker {
       deno_kv::deno_kv::init_ops_and_esm(
         MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           options.origin_storage_dir.clone(),
+          options.seed,
+          deno_kv::remote::HttpOptions {
+            user_agent: options.bootstrap.user_agent.clone(),
+            root_cert_store_provider: options.root_cert_store_provider.clone(),
+            unsafely_ignore_certificate_errors: options
+              .unsafely_ignore_certificate_errors
+              .clone(),
+            client_cert_chain_and_key: None,
+            proxy: None,
+          },
         ),
       ),
+      deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),

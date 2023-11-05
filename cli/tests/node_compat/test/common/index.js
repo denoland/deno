@@ -37,6 +37,7 @@ let knownGlobals = [
   crypto,
   Deno,
   dispatchEvent,
+  EventSource,
   fetch,
   getParent,
   global,

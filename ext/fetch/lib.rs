@@ -112,6 +112,7 @@ deno_core::extension!(deno_fetch,
     op_fetch<FP>,
     op_fetch_send,
     op_fetch_response_upgrade,
+    op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
   ],
   esm = [
@@ -121,7 +122,8 @@ deno_core::extension!(deno_fetch,
     "22_http_client.js",
     "23_request.js",
     "23_response.js",
-    "26_fetch.js"
+    "26_fetch.js",
+    "27_eventsource.js"
   ],
   options = {
     options: Options,
@@ -921,6 +923,7 @@ pub fn create_http_client(
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
     options.client_cert_chain_and_key,
+    deno_tls::SocketUse::Http,
   )?;
 
   let mut alpn_protocols = vec![];
@@ -968,4 +971,12 @@ pub fn create_http_client(
   }
 
   builder.build().map_err(|e| e.into())
+}
+
+#[op2]
+#[serde]
+pub fn op_utf8_to_byte_string(
+  #[string] input: String,
+) -> Result<ByteString, AnyError> {
+  Ok(input.into())
 }

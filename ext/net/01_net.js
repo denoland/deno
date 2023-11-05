@@ -9,6 +9,8 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -160,6 +162,10 @@ class Conn {
       (id) => core.unrefOp(id),
     );
   }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
+  }
 }
 
 class TcpConn extends Conn {
@@ -247,6 +253,10 @@ class Listener {
 
   close() {
     core.close(this.rid);
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 
   [SymbolAsyncIterator]() {

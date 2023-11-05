@@ -54,7 +54,10 @@ pub struct BootstrapOptions {
   pub runtime_version: String,
   /// Sets `Deno.version.typescript` in JS runtime.
   pub ts_version: String,
+  // --unstable flag, deprecated
   pub unstable: bool,
+  // --unstable-* flags
+  pub unstable_features: Vec<i32>,
   pub user_agent: String,
   pub inspect: bool,
   pub has_node_modules_dir: bool,
@@ -82,6 +85,7 @@ impl Default for BootstrapOptions {
       locale: "en".to_string(),
       location: Default::default(),
       unstable: Default::default(),
+      unstable_features: Default::default(),
       inspect: Default::default(),
       args: Default::default(),
       has_node_modules_dir: Default::default(),
@@ -121,6 +125,8 @@ struct BootstrapV8<'a>(
   &'a str,
   // unstable
   bool,
+  // granular unstable flags
+  &'a [i32],
   // process_id
   i32,
   // env!("TARGET")
@@ -159,6 +165,7 @@ impl BootstrapOptions {
       self.is_tty,
       &self.ts_version,
       self.unstable,
+      self.unstable_features.as_ref(),
       std::process::id() as _,
       env!("TARGET"),
       deno_core::v8_version(),

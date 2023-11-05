@@ -2,10 +2,30 @@
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use bytes::Bytes;
+use denokv_proto::datapath::AtomicWrite;
+use denokv_proto::datapath::AtomicWriteOutput;
+use denokv_proto::datapath::AtomicWriteStatus;
+use denokv_proto::datapath::ReadRangeOutput;
+use denokv_proto::datapath::SnapshotRead;
+use denokv_proto::datapath::SnapshotReadOutput;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+use futures::future::join3;
+use futures::future::poll_fn;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
+use h2::server::Handshake;
+use h2::server::SendResponse;
+use h2::Reason;
+use h2::RecvStream;
 use hyper::header::HeaderValue;
 use hyper::http;
 use hyper::server::Server;
@@ -13,15 +33,10 @@ use hyper::service::make_service_fn;
 use hyper::service::service_fn;
 use hyper::upgrade::Upgraded;
 use hyper::Body;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use kv_remote::datapath::AtomicWrite;
-use kv_remote::datapath::AtomicWriteOutput;
-use kv_remote::datapath::AtomicWriteStatus;
-use kv_remote::datapath::ReadRangeOutput;
-use kv_remote::datapath::SnapshotRead;
-use kv_remote::datapath::SnapshotReadOutput;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
@@ -37,7 +52,9 @@ use std::env;
 use std::io;
 use std::io::Write;
 use std::mem::replace;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::net::SocketAddrV6;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::Path;
@@ -54,6 +71,7 @@ use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -66,7 +84,6 @@ pub mod assertions;
 mod builders;
 pub mod factory;
 mod fs;
-mod kv_remote;
 pub mod lsp;
 mod npm;
 pub mod pty;
@@ -102,6 +119,7 @@ const H2_ONLY_PORT: u16 = 5549;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const WSS2_PORT: u16 = 4248;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
@@ -315,7 +333,7 @@ async fn basic_auth_redirect(
   {
     let credentials =
       format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
-    if auth == format!("Basic {}", base64::encode(credentials)) {
+    if auth == format!("Basic {}", BASE64_STANDARD.encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
@@ -396,9 +414,6 @@ async fn run_ws_server(addr: &SocketAddr) {
 async fn ping_websocket_handler(
   ws: fastwebsockets::WebSocket<Upgraded>,
 ) -> Result<(), anyhow::Error> {
-  use fastwebsockets::Frame;
-  use fastwebsockets::OpCode;
-
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
   for i in 0..9 {
@@ -452,6 +467,126 @@ async fn run_ws_close_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
     spawn_ws_server(stream, |ws| Box::pin(close_websocket_handler(ws)));
+  }
+}
+
+async fn handle_wss_stream(
+  recv: Request<RecvStream>,
+  mut send: SendResponse<Bytes>,
+) -> Result<(), h2::Error> {
+  if recv.method() != Method::CONNECT {
+    eprintln!("wss2: refusing non-CONNECT stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  }
+  let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
+    eprintln!("wss2: refusing no-:protocol stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  };
+  if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
+    eprintln!("wss2: refusing non-websocket stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  }
+  let mut body = recv.into_body();
+  let mut response = Response::new(());
+  *response.status_mut() = StatusCode::OK;
+  let mut resp = send.send_response(response, false)?;
+  // Use a duplex stream to talk to fastwebsockets because it's just faster to implement
+  let (a, b) = tokio::io::duplex(65536);
+  let f1 = tokio::spawn(tokio::task::unconstrained(async move {
+    let ws = WebSocket::after_handshake(a, Role::Server);
+    let mut ws = FragmentCollector::new(ws);
+    loop {
+      let frame = ws.read_frame().await.unwrap();
+      if frame.opcode == OpCode::Close {
+        break;
+      }
+      ws.write_frame(frame).await.unwrap();
+    }
+  }));
+  let (mut br, mut bw) = tokio::io::split(b);
+  let f2 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let Some(Ok(data)) = poll_fn(|cx| body.poll_data(cx)).await else {
+        return;
+      };
+      body.flow_control().release_capacity(data.len()).unwrap();
+      let Ok(_) = bw.write_all(&data).await else {
+        break;
+      };
+    }
+  }));
+  let f3 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let mut buf = [0; 65536];
+      let n = br.read(&mut buf).await.unwrap();
+      if n == 0 {
+        break;
+      }
+      resp.reserve_capacity(n);
+      poll_fn(|cx| resp.poll_capacity(cx)).await;
+      resp
+        .send_data(Bytes::copy_from_slice(&buf[0..n]), false)
+        .unwrap();
+    }
+    resp.send_data(Bytes::new(), true).unwrap();
+  }));
+  _ = join3(f1, f2, f3).await;
+  Ok(())
+}
+
+async fn run_wss2_server(addr: &SocketAddr) {
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+
+  let tls_config = get_tls_config(
+    cert_file,
+    key_file,
+    ca_cert_file,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await
+  .unwrap();
+  let tls_acceptor = TlsAcceptor::from(tls_config);
+
+  let listener = TcpListener::bind(addr).await.unwrap();
+  while let Ok((stream, _addr)) = listener.accept().await {
+    match tls_acceptor.accept(stream).await {
+      Ok(tls) => {
+        tokio::spawn(async move {
+          let mut h2 = h2::server::Builder::new();
+          h2.enable_connect_protocol();
+          // Using Bytes is pretty alloc-heavy but this is a test server
+          let server: Handshake<_, Bytes> = h2.handshake(tls);
+          let mut server = match server.await {
+            Ok(server) => server,
+            Err(e) => {
+              println!("Failed to handshake h2: {e:?}");
+              return;
+            }
+          };
+          loop {
+            let Some(conn) = server.accept().await else {
+              break;
+            };
+            let (recv, send) = match conn {
+              Ok(conn) => conn,
+              Err(e) => {
+                println!("Failed to accept a connection: {e:?}");
+                break;
+              }
+            };
+            tokio::spawn(handle_wss_stream(recv, send));
+          }
+        });
+      }
+      Err(e) => {
+        println!("Failed to accept TLS: {e:?}");
+      }
+    }
   }
 }
 
@@ -1202,7 +1337,7 @@ async fn main_server(
           .header("content-type", "application/json")
           .body(Body::from(
             serde_json::json!({
-              "version": 2,
+              "version": 1000,
               "databaseId": KV_DATABASE_ID,
               "endpoints": [
                 {
@@ -1264,9 +1399,7 @@ async fn main_server(
                 .map(|_| ReadRangeOutput { values: vec![] })
                 .collect(),
               read_disabled: false,
-              regions_if_read_disabled: vec![],
               read_is_strongly_consistent: true,
-              primary_if_not_strongly_consistent: "".into(),
             }
             .encode_to_vec(),
           ))
@@ -1307,7 +1440,7 @@ async fn main_server(
             AtomicWriteOutput {
               status: AtomicWriteStatus::AwSuccess.into(),
               versionstamp: vec![0u8; 10],
-              primary_if_write_disabled: "".into(),
+              failed_checks: vec![],
             }
             .encode_to_vec(),
           ))
@@ -1316,15 +1449,18 @@ async fn main_server(
     }
     _ => {
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&req.uri().path()[1..]);
+      file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
       }
 
       // serve npm registry files
-      if let Some(suffix) =
-        req.uri().path().strip_prefix("/npm/registry/@denotest/")
+      if let Some(suffix) = req
+        .uri()
+        .path()
+        .strip_prefix("/npm/registry/@denotest/")
+        .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
       {
         // serve all requests to /npm/registry/@deno using the file system
         // at that path
@@ -1571,10 +1707,22 @@ async fn wrap_abs_redirect_server() {
 }
 
 async fn wrap_main_server() {
+  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+// necessary because on Windows the npm binary will resolve localhost to ::1
+async fn wrap_main_ipv6_server() {
+  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
+  let main_server_addr =
+    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, PORT, 0, 0));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
   let main_server_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
-  let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
+  let main_server = Server::bind(main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
     eprintln!("HTTP server error: {e:?}");
   }
@@ -1917,11 +2065,14 @@ pub async fn run_all_servers() {
   let wss_server_fut = run_wss_server(&wss_addr);
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
+  let wss2_addr = SocketAddr::from(([127, 0, 0, 1], WSS2_PORT));
+  let wss2_server_fut = run_wss2_server(&wss2_addr);
 
   let tls_server_fut = run_tls_server();
   let tls_client_auth_server_fut = run_tls_client_auth_server();
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
+  let main_server_ipv6_fut = wrap_main_ipv6_server();
   let main_server_https_fut = wrap_main_https_server();
   let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
@@ -1935,6 +2086,7 @@ pub async fn run_all_servers() {
       ws_server_fut,
       ws_ping_server_fut,
       wss_server_fut,
+      wss2_server_fut,
       tls_server_fut,
       tls_client_auth_server_fut,
       ws_close_server_fut,
@@ -1945,6 +2097,7 @@ pub async fn run_all_servers() {
       double_redirects_server_fut,
       abs_redirect_server_fut,
       main_server_fut,
+      main_server_ipv6_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
       h1_only_server_tls_fut,
