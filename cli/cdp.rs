@@ -424,3 +424,81 @@ pub type UnserializableValue = String;
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-UniqueDebuggerId>
 pub type UniqueDebuggerId = String;
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#method-setScriptSource>
+#[derive(Debug, Deserialize)]
+pub struct SetScriptSourceResponse {
+  pub status: Status,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum Status {
+  Ok,
+  CompileError,
+  BlockedByActiveGenerator,
+  BlockedByActiveFunction,
+  BlockedByTopLevelEsModuleChange,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#event-scriptParsed>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptParsed {
+  pub script_id: String,
+  pub url: String,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-CoverageRange>
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageRange {
+  /// Start character index.
+  #[serde(rename = "startOffset")]
+  pub start_char_offset: usize,
+  /// End character index.
+  #[serde(rename = "endOffset")]
+  pub end_char_offset: usize,
+  pub count: i64,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-FunctionCoverage>
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionCoverage {
+  pub function_name: String,
+  pub ranges: Vec<CoverageRange>,
+  pub is_block_coverage: bool,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-ScriptCoverage>
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptCoverage {
+  pub script_id: String,
+  pub url: String,
+  pub functions: Vec<FunctionCoverage>,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartPreciseCoverageArgs {
+  pub call_count: bool,
+  pub detailed: bool,
+  pub allow_triggered_updates: bool,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartPreciseCoverageResponse {
+  pub timestamp: f64,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-takePreciseCoverage>
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TakePreciseCoverageResponse {
+  pub result: Vec<ScriptCoverage>,
+  pub timestamp: f64,
+}

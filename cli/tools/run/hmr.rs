@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::cdp;
 use crate::emit::Emitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -7,21 +8,45 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_runtime::colors;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::select;
 
-mod json_types;
+// TODO(bartlomieju): the same thing is used in the REPL. Deduplicate.
+#[derive(Debug, Deserialize)]
+pub struct RpcNotification {
+  pub method: String,
+  pub params: Value,
+}
 
-use json_types::RpcNotification;
-use json_types::ScriptParsed;
-use json_types::SetScriptSourceReturnObject;
-use json_types::Status;
+fn explain(status: &cdp::Status) -> &'static str {
+  match status {
+    cdp::Status::Ok => "OK",
+    cdp::Status::CompileError => "compile error",
+    cdp::Status::BlockedByActiveGenerator => "blocked by active generator",
+    cdp::Status::BlockedByActiveFunction => "blocked by active function",
+    cdp::Status::BlockedByTopLevelEsModuleChange => {
+      "blocked by top-level ES module change"
+    }
+  }
+}
+
+fn should_retry(status: &cdp::Status) -> bool {
+  match status {
+    cdp::Status::Ok => false,
+    cdp::Status::CompileError => false,
+    cdp::Status::BlockedByActiveGenerator => true,
+    cdp::Status::BlockedByActiveFunction => true,
+    cdp::Status::BlockedByTopLevelEsModuleChange => false,
+  }
+}
 
 /// This structure is responsible for providing Hot Module Replacement
 /// functionality.
@@ -102,7 +127,7 @@ impl HmrRunner {
     &mut self,
     script_id: &str,
     source: &str,
-  ) -> Result<SetScriptSourceReturnObject, AnyError> {
+  ) -> Result<cdp::SetScriptSourceResponse, AnyError> {
     let result = self
       .session
       .post_message(
@@ -115,7 +140,7 @@ impl HmrRunner {
       )
       .await?;
 
-    Ok(serde_json::from_value::<SetScriptSourceReturnObject>(
+    Ok(serde_json::from_value::<cdp::SetScriptSourceResponse>(
       result,
     )?)
   }
@@ -162,7 +187,7 @@ impl HmrRunner {
             let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
             break Err(generic_error(format!("{text} {description}")));
           } else if notification.method == "Debugger.scriptParsed" {
-            let params = serde_json::from_value::<ScriptParsed>(notification.params)?;
+            let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params)?;
             if params.url.starts_with("file://") {
               let file_url = Url::parse(&params.url).unwrap();
               let file_path = file_url.to_file_path().unwrap();
@@ -217,14 +242,14 @@ impl HmrRunner {
             loop {
               let result = self.set_script_source(&id, source_code.as_str()).await?;
 
-              if matches!(result.status, Status::Ok) {
+              if matches!(result.status, cdp::Status::Ok) {
                 self.dispatch_hmr_event(module_url.as_str()).await?;
                 self.watcher_communicator.print(format!("Replaced changed module {}", module_url.as_str()));
                 break;
               }
 
-              self.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(result.status.explain())));
-              if result.status.should_retry() && tries <= 2 {
+              self.watcher_communicator.print(format!("Failed to reload module {}: {}.", module_url, colors::gray(explain(&result.status))));
+              if should_retry(&result.status) && tries <= 2 {
                 tries += 1;
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 continue;
