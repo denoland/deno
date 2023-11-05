@@ -53,7 +53,6 @@ util::unit_test_factory!(
     link_test,
     make_temp_test,
     message_channel_test,
-    metrics_test,
     mkdir_test,
     navigator_test,
     net_test,

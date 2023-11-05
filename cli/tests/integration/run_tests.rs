@@ -3425,11 +3425,6 @@ itest!(unstable_ffi_19 {
   exit_code: 70,
 });
 
-itest!(future_check2 {
-  args: "run --check run/future_check.ts",
-  output: "run/future_check2.out",
-});
-
 itest!(event_listener_error {
   args: "run --quiet run/event_listener_error.ts",
   output: "run/event_listener_error.ts.out",
