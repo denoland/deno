@@ -505,24 +505,6 @@ impl NpmResolver for ManagedCliNpmResolver {
     Ok(path)
   }
 
-  fn resolve_package_folder_from_path(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(path) = self
-      .fs_resolver
-      .resolve_package_folder_from_specifier(specifier)?
-    else {
-      return Ok(None);
-    };
-    log::debug!(
-      "Resolved package folder of {} to {}",
-      specifier,
-      path.display()
-    );
-    Ok(Some(path))
-  }
-
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     let root_dir_url = self.fs_resolver.root_dir_url();
     debug_assert!(root_dir_url.as_str().ends_with('/'));

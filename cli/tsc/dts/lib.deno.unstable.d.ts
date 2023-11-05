@@ -1323,7 +1323,7 @@ declare namespace Deno {
    * callback based on the specified schedule.
    *
    * ```ts
-   * Deno.cron("sample cron", "*\/20 * * * *", () => {
+   * Deno.cron("sample cron", "20 * * * *", () => {
    *   console.log("cron job executed");
    * });
    * ```
