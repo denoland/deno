@@ -1350,9 +1350,7 @@ fn parse_private_key(
         "pkcs1" => pkcs8::SecretDocument::from_pkcs1_der(key)
           .map_err(|_| type_error("Invalid PKCS1 private key")),
         // TODO(@littledivy): sec1 type
-        _ => {
-          return Err(type_error(format!("Unsupported key type: {}", type_)))
-        }
+        _ => Err(type_error(format!("Unsupported key type: {}", type_))),
       }
     }
     _ => Err(type_error(format!("Unsupported key format: {}", format))),
