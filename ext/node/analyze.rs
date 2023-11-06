@@ -193,67 +193,59 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     }
 
     // We've got a bare specifier or maybe bare_specifier/blah.js"
+    let resolved_specifier = self
+      .npm_resolver
+      .resolve_package_folder_from_package(specifier, referrer, mode)?;
+    let module_dir = resolved_specifier.folder_path;
+    let package_subpath = resolved_specifier.sub_path;
 
-    let (package_specifier, package_subpath) =
-      parse_specifier(specifier).unwrap();
-
-    // todo(dsherret): use not_found error on not found here
-    let module_dir = self.npm_resolver.resolve_package_folder_from_package(
-      package_specifier.as_str(),
-      referrer,
-      mode,
-    )?;
-
+    // the package.json may or may not exist
     let package_json_path = module_dir.join("package.json");
-    if self.fs.exists_sync(&package_json_path) {
-      let package_json = PackageJson::load(
-        &*self.fs,
-        &*self.npm_resolver,
+    let package_json = PackageJson::load(
+      &*self.fs,
+      &*self.npm_resolver,
+      permissions,
+      package_json_path.clone(),
+    )?;
+    if let Some(exports) = &package_json.exports {
+      return self.node_resolver.package_exports_resolve(
+        &package_json_path,
+        &package_subpath,
+        exports,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        mode,
         permissions,
-        package_json_path.clone(),
-      )?;
-
-      if let Some(exports) = &package_json.exports {
-        return self.node_resolver.package_exports_resolve(
-          &package_json_path,
-          &package_subpath,
-          exports,
-          referrer,
-          NodeModuleKind::Esm,
-          conditions,
-          mode,
-          permissions,
-        );
-      }
-
-      // old school
-      if package_subpath != "." {
-        let d = module_dir.join(package_subpath);
-        if self.fs.is_dir_sync(&d) {
-          // subdir might have a package.json that specifies the entrypoint
-          let package_json_path = d.join("package.json");
-          if self.fs.exists_sync(&package_json_path) {
-            let package_json = PackageJson::load(
-              &*self.fs,
-              &*self.npm_resolver,
-              permissions,
-              package_json_path,
-            )?;
-            if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-              return Ok(d.join(main).clean());
-            }
-          }
-
-          return Ok(d.join("index.js").clean());
-        }
-        return self.file_extension_probe(d, &referrer_path);
-      } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-        return Ok(module_dir.join(main).clean());
-      } else {
-        return Ok(module_dir.join("index.js").clean());
-      }
+      );
     }
-    Err(not_found(specifier, &referrer_path))
+
+    // old school
+    if package_subpath != "." {
+      let d = module_dir.join(package_subpath);
+      if self.fs.is_dir_sync(&d) {
+        // subdir might have a package.json that specifies the entrypoint
+        let package_json_path = d.join("package.json");
+        if self.fs.exists_sync(&package_json_path) {
+          let package_json = PackageJson::load(
+            &*self.fs,
+            &*self.npm_resolver,
+            permissions,
+            package_json_path,
+          )?;
+          if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+            return Ok(d.join(main).clean());
+          }
+        }
+
+        return Ok(d.join("index.js").clean());
+      }
+      return self.file_extension_probe(d, &referrer_path);
+    } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+      return Ok(module_dir.join(main).clean());
+    } else {
+      return Ok(module_dir.join("index.js").clean());
+    }
   }
 
   fn file_extension_probe(
@@ -388,48 +380,6 @@ fn add_export(
   }
 }
 
-fn parse_specifier(specifier: &str) -> Option<(String, String)> {
-  let mut separator_index = specifier.find('/');
-  let mut valid_package_name = true;
-  // let mut is_scoped = false;
-  if specifier.is_empty() {
-    valid_package_name = false;
-  } else if specifier.starts_with('@') {
-    // is_scoped = true;
-    if let Some(index) = separator_index {
-      separator_index = specifier[index + 1..].find('/').map(|i| i + index + 1);
-    } else {
-      valid_package_name = false;
-    }
-  }
-
-  let package_name = if let Some(index) = separator_index {
-    specifier[0..index].to_string()
-  } else {
-    specifier.to_string()
-  };
-
-  // Package name cannot have leading . and cannot have percent-encoding or separators.
-  for ch in package_name.chars() {
-    if ch == '%' || ch == '\\' {
-      valid_package_name = false;
-      break;
-    }
-  }
-
-  if !valid_package_name {
-    return None;
-  }
-
-  let package_subpath = if let Some(index) = separator_index {
-    format!(".{}", specifier.chars().skip(index).collect::<String>())
-  } else {
-    ".".to_string()
-  };
-
-  Some((package_name, package_subpath))
-}
-
 fn not_found(path: &str, referrer: &Path) -> AnyError {
   let msg = format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find module \"{}\" imported from \"{}\"",
@@ -466,13 +416,5 @@ mod tests {
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
       ]
     )
-  }
-
-  #[test]
-  fn test_parse_specifier() {
-    assert_eq!(
-      parse_specifier("@some-package/core/actions"),
-      Some(("@some-package/core".to_string(), "./actions".to_string()))
-    );
   }
 }

@@ -45,7 +45,6 @@ pub fn err_invalid_package_config(
   generic_error(msg)
 }
 
-#[allow(unused)]
 pub fn err_module_not_found(path: &str, base: &str, typ: &str) -> AnyError {
   generic_error(format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find {typ} \"{path}\" imported from \"{base}\""

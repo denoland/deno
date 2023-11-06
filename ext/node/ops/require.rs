@@ -185,6 +185,8 @@ pub fn op_require_is_request_relative(#[string] request: String) -> bool {
   false
 }
 
+// todo(dsherret): the existence of this function is questionable because why
+// do we need to do this special deno_dir resolution for require and not esm?
 #[op2]
 #[string]
 pub fn op_require_resolve_deno_dir(
@@ -200,7 +202,8 @@ pub fn op_require_resolve_deno_dir(
       NodeResolutionMode::Execution,
     )
     .ok()
-    .map(|p| p.to_string_lossy().to_string())
+    // todo(dsherret): probably the JS code should handle the sub path
+    .map(|p| p.folder_path.to_string_lossy().to_string())
 }
 
 #[op2(fast)]

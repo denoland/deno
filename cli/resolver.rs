@@ -189,14 +189,14 @@ impl CliGraphResolver {
     original_err: AnyError,
     resolver: &ByonmCliNpmResolver,
   ) -> Result<(), AnyError> {
-    if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
-      match resolver
-        .resolve_package_folder_from_package(&pkg_name, referrer, mode)
-      {
-        Ok(_) => {
-          return Err(original_err);
-        }
-        Err(_) => {
+    match resolver
+      .resolve_package_folder_from_package(&specifier, referrer, mode)
+    {
+      Ok(_) => {
+        return Err(original_err);
+      }
+      Err(_) => {
+        if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
           if resolver
             .find_ancestor_package_json_with_dep(&pkg_name, referrer)
             .is_some()

@@ -110,8 +110,13 @@ impl PackageJson {
     path: PathBuf,
     source: String,
   ) -> Result<PackageJson, AnyError> {
-    let package_json: Value = serde_json::from_str(&source)
-      .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
+    let package_json: Value = serde_json::from_str(&source).map_err(|err| {
+      anyhow::anyhow!(
+        "malformed package.json: {}\n  at {}",
+        err,
+        path.display()
+      )
+    })?;
     Self::load_from_value(path, package_json)
   }
 

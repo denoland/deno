@@ -2483,6 +2483,62 @@ console.log(add(1, 2));
   output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
 }
 
+#[test]
+pub fn byonm_cjs_export_analysis_require_re_export() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "unstable": [
+      "byonm"
+    ]
+  }"#,
+  );
+
+  dir.write(
+    "package.json",
+    r#"{
+  "name": "my-package",
+  "packages": {
+    "my-package": "1.0.0"
+  }
+}
+"#,
+  );
+
+  let node_modules_dir = dir.path().join("node_modules");
+  node_modules_dir.create_dir_all();
+
+  let first_pkg_dir = node_modules_dir
+    .join(".multipart")
+    .join("name")
+    .join("nested");
+  first_pkg_dir.create_dir_all();
+  first_pkg_dir
+    .join("index.js")
+    .write("module.exports.value = 5;");
+
+  let my_package_dir = node_modules_dir.join("my-package");
+  my_package_dir.create_dir_all();
+  my_package_dir.join("package.json").write_json(&json!({
+    "name": "my-package",
+    "version": "1.0.0",
+  }));
+  my_package_dir
+    .join("index.js")
+    .write("module.exports = { ...require('.multipart/name/nested/index') }");
+  dir.write(
+    "main.js",
+    "import data from 'my-package';\nconsole.log(data);",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read main.js")
+    .run();
+  output.assert_matches_text("{ value: 5 }\n");
+}
+
 itest!(imports_package_json {
   args: "run --node-modules-dir=false npm/imports_package_json/main.js",
   output: "npm/imports_package_json/main.out",
