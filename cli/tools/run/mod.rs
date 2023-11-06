@@ -7,6 +7,7 @@ use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
+use crate::args::DenoSubcommand;
 use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
@@ -68,7 +69,14 @@ To grant permissions, set them before the script argument. For example:
   Ok(exit_code)
 }
 
-pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
+pub async fn run_from_stdin(
+  flags: Flags,
+  run_flags: RunFlags,
+) -> Result<i32, AnyError> {
+  if let Some(watch_flags) = run_flags.watch {
+    return run_with_watch(flags, watch_flags).await;
+  }
+
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
@@ -107,6 +115,16 @@ async fn run_with_watch(
   flags: Flags,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
+  // Read source from stdin
+  let stdin_source = match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) if run_flags.is_stdin() => {
+      let mut source = Vec::new();
+      std::io::stdin().read_to_end(&mut source)?;
+      Some(source)
+    }
+    _ => None,
+  };
+
   util::file_watcher::watch_recv(
     flags,
     util::file_watcher::PrintConfig::new_with_banner(
@@ -116,15 +134,33 @@ async fn run_with_watch(
     ),
     WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, _changed_paths| {
+      let stdin_source = stdin_source.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
+          .build_from_flags_for_watcher(
+            flags.clone(),
+            watcher_communicator.clone(),
+          )
           .await?;
         let cli_options = factory.cli_options();
         let main_module = cli_options.resolve_main_module()?;
 
         maybe_npm_install(&factory).await?;
 
+        if let Some(source) = stdin_source {
+          let file_fetcher = factory.file_fetcher()?;
+          // Create a dummy source file.
+          let source_file = File {
+            maybe_types: None,
+            media_type: MediaType::TypeScript,
+            source: String::from_utf8(source)?.into(),
+            specifier: main_module.clone(),
+            maybe_headers: None,
+          };
+          // Save our fake file into file fetcher cache
+          // to allow module access by TS compiler
+          file_fetcher.insert_cached(source_file);
+        }
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
         let permissions = PermissionsContainer::new(Permissions::from_options(
