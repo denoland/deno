@@ -11,6 +11,7 @@ import {
   fromInnerResponse,
   newInnerResponse,
   toInnerResponse,
+  ResponsePrototype
 } from "ext:deno_fetch/23_response.js";
 import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
@@ -449,6 +450,11 @@ function mapToCallback(context, callback, onError) {
         fromInnerRequest(innerRequest, signal, "immutable"),
         new ServeHandlerInfo(innerRequest),
       );
+      
+      // Throwing Error if the handler return value is not a Response class
+      if(!(response && ObjectPrototypeIsPrototypeOf(ResponsePrototype, response))) {
+        throw TypeError("Invalid Response")
+      }
     } catch (error) {
       try {
         response = await onError(error);
