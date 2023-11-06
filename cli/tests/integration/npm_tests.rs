@@ -2227,17 +2227,9 @@ pub fn byonm_cjs_esm_packages() {
     .use_temp_cwd()
     .build();
   let dir = test_context.temp_dir();
-  let run_npm = |args: &str| {
-    test_context
-      .new_command()
-      .name("npm")
-      .args(args)
-      .run()
-      .skip_output_check();
-  };
 
-  run_npm("init -y");
-  run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
+  test_context.run_npm("init -y");
+  test_context.run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
 
   dir.write(
     "main.ts",
@@ -2346,12 +2338,7 @@ pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
     "import '@denotest/conditional-exports-strict/test';",
   );
 
-  test_context
-    .new_command()
-    .name("npm")
-    .args("install")
-    .run()
-    .skip_output_check();
+  test_context.run_npm("install");
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
@@ -2395,12 +2382,7 @@ pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
     "import 'npm:@denotest/conditional-exports-strict/test';",
   );
 
-  test_context
-    .new_command()
-    .name("npm")
-    .args("install")
-    .run()
-    .skip_output_check();
+  test_context.run_npm("install");
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
@@ -2487,12 +2469,7 @@ console.log(add(1, 2));
 "#,
   );
 
-  test_context
-    .new_command()
-    .name("npm")
-    .args("install")
-    .run()
-    .skip_output_check();
+  test_context.run_npm("install");
 
   let output = test_context
     .new_command()
@@ -2530,3 +2507,37 @@ itest!(imports_package_json_sub_path_import_not_defined {
   exit_code: 1,
   http_server: true,
 });
+
+itest!(different_nested_dep_node_modules_dir_false {
+  args: "run --quiet --node-modules-dir=false npm/different_nested_dep/main.js",
+  output: "npm/different_nested_dep/main.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(different_nested_dep_node_modules_dir_true {
+  args: "run --quiet --node-modules-dir=true main.js",
+  output: "npm/different_nested_dep/main.out",
+  copy_temp_dir: Some("npm/different_nested_dep/"),
+  cwd: Some("npm/different_nested_dep/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+#[test]
+pub fn different_nested_dep_byonm() {
+  let test_context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("npm/different_nested_dep")
+    .cwd("npm/different_nested_dep/")
+    .build();
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run --unstable-byonm main.js")
+    .run();
+  output.assert_matches_file("npm/different_nested_dep/main.out");
+}
