@@ -8,6 +8,7 @@
 const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
   _normalizeArgs,
   // createConnection,
@@ -289,6 +290,10 @@ class FakeSocket extends EventEmitter {
   end() {}
 
   destroy() {}
+
+  setTimeout(callback, timeout = 0, ...args) {
+    setTimeout(callback, timeout, args);
+  }
 }
 
 /** ClientRequest represents the http(s) request from the client */
