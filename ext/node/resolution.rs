@@ -974,22 +974,23 @@ impl NodeResolver {
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<PathBuf>, AnyError> {
+    let (package_name, package_subpath, _is_scoped) =
+      parse_npm_pkg_name(specifier, referrer)?;
+
     let Some(package_config) =
       self.get_closest_package_json(referrer, permissions)?
     else {
       return Ok(None);
     };
     // ResolveSelf
-    if let Some(sub_path) = package_config
-      .name
-      .as_ref()
-      .and_then(|name| strip_package_name_from_specifier(name, specifier))
+    if package_config.exists
+      && package_config.name.as_ref() == Some(&package_name)
     {
       if let Some(exports) = &package_config.exports {
         return self
           .package_exports_resolve(
             &package_config.path,
-            &sub_path,
+            &package_subpath,
             exports,
             referrer,
             referrer_kind,
@@ -1001,11 +1002,9 @@ impl NodeResolver {
       }
     }
 
-    let resolved_folder = self
+    let package_dir_path = self
       .npm_resolver
-      .resolve_package_folder_from_package(&specifier, referrer, mode)?;
-    let package_dir_path = resolved_folder.folder_path;
-    let package_subpath = resolved_folder.sub_path;
+      .resolve_package_folder_from_package(&package_name, referrer, mode)?;
     let package_json_path = package_dir_path.join("package.json");
 
     // todo: error with this instead when can't find package
@@ -1464,20 +1463,6 @@ fn throw_exports_not_found(
   )
 }
 
-fn strip_package_name_from_specifier(
-  package_name: &str,
-  specifier: &str,
-) -> Option<String> {
-  let suffix = specifier.strip_prefix(package_name)?;
-  if suffix.is_empty() || suffix == "/" {
-    Some(".".to_string())
-  } else if suffix.starts_with('/') {
-    Some(format!(".{}", suffix))
-  } else {
-    None
-  }
-}
-
 pub fn parse_npm_pkg_name(
   specifier: &str,
   referrer: &ModuleSpecifier,
@@ -1750,32 +1735,5 @@ mod tests {
       let actual = with_known_extension(&PathBuf::from(path), ext);
       assert_eq!(actual.to_string_lossy(), *expected);
     }
-  }
-
-  #[test]
-  fn test_strip_package_name_from_specifier() {
-    assert_eq!(
-      strip_package_name_from_specifier("foo", "foo"),
-      Some(".".to_string())
-    );
-    assert_eq!(strip_package_name_from_specifier("bar", "foo"), None);
-    assert_eq!(strip_package_name_from_specifier("foo_test", "foo"), None);
-    assert_eq!(strip_package_name_from_specifier("foo", "foo_test"), None);
-    assert_eq!(
-      strip_package_name_from_specifier("foo", "foo/bar"),
-      Some("./bar".to_string())
-    );
-    assert_eq!(
-      strip_package_name_from_specifier("@foo/bar", "@foo/bar"),
-      Some(".".to_string())
-    );
-    assert_eq!(
-      strip_package_name_from_specifier("@foo/bar", "@foo/bar/"),
-      Some(".".to_string())
-    );
-    assert_eq!(
-      strip_package_name_from_specifier("@foo/bar", "@foo/bar/test"),
-      Some("./test".to_string())
-    );
   }
 }

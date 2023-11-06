@@ -19,7 +19,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::ResolvedPackageFolder;
 
 use super::super::cache::NpmCache;
 
@@ -39,10 +38,10 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn resolve_package_folder_from_package(
     &self,
-    specifier: &str,
+    name: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<ResolvedPackageFolder, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
     &self,

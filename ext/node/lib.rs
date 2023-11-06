@@ -69,30 +69,6 @@ impl NodePermissions for AllowAllNodePermissions {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct ResolvedPackageFolder {
-  /// Path to the package's folder.
-  pub folder_path: PathBuf,
-  /// Rest of the specifier that was unresolved.
-  pub sub_path: String,
-}
-
-impl ResolvedPackageFolder {
-  /// Create a new `ResolvedPackageFolder` and ensures the sub_path is normalized.
-  pub fn new(package_folder: PathBuf, sub_path: String) -> Self {
-    Self {
-      folder_path: package_folder,
-      sub_path: if sub_path.is_empty() || sub_path == "/" || sub_path == "." {
-        ".".to_string()
-      } else if sub_path.starts_with("./") {
-        sub_path
-      } else {
-        format!("./{}", sub_path)
-      },
-    }
-  }
-}
-
 #[allow(clippy::disallowed_types)]
 pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
 
@@ -103,7 +79,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<ResolvedPackageFolder, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 

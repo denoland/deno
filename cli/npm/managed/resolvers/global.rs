@@ -19,7 +19,6 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::ResolvedPackageFolder;
 
 use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
@@ -94,35 +93,30 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
   fn resolve_package_folder_from_package(
     &self,
-    specifier: &str,
+    name: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<ResolvedPackageFolder, AnyError> {
-    let (package_name, package_subpath, _is_scoped) =
-      deno_runtime::deno_node::parse_npm_pkg_name(specifier, referrer)?;
+  ) -> Result<PathBuf, AnyError> {
     let Some(referrer_pkg_id) = self
       .cache
       .resolve_package_folder_id_from_specifier(referrer, &self.registry_url)
     else {
       bail!("could not find npm package for '{}'", referrer);
     };
-    let pkg = if mode.is_types() && !package_name.starts_with("@types/") {
+    let pkg = if mode.is_types() && !name.starts_with("@types/") {
       // attempt to resolve the types package first, then fallback to the regular package
-      match self.resolve_types_package(&package_name, &referrer_pkg_id) {
+      match self.resolve_types_package(name, &referrer_pkg_id) {
         Ok(pkg) => pkg,
         Err(_) => self
           .resolution
-          .resolve_package_from_package(&package_name, &referrer_pkg_id)?,
+          .resolve_package_from_package(name, &referrer_pkg_id)?,
       }
     } else {
       self
         .resolution
-        .resolve_package_from_package(&package_name, &referrer_pkg_id)?
+        .resolve_package_from_package(name, &referrer_pkg_id)?
     };
-    Ok(ResolvedPackageFolder {
-      folder_path: self.package_folder(&pkg.id)?,
-      sub_path: package_subpath,
-    })
+    self.package_folder(&pkg.id)
   }
 
   fn resolve_package_folder_from_specifier(

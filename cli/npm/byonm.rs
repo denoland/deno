@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,7 +14,6 @@ use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_node::ResolvedPackageFolder;
 use deno_semver::package::PackageReq;
 
 use crate::args::package_json::get_local_package_json_version_reqs;
@@ -22,6 +22,7 @@ use crate::args::NpmProcessStateKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 
+use super::common::types_package_name;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 
@@ -83,13 +84,59 @@ impl ByonmCliNpmResolver {
 impl NpmResolver for ByonmCliNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
-    specifier: &str,
+    name: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<ResolvedPackageFolder, AnyError> {
-    super::common::resolve_node_modules_pkg_folder_from_pkg(
-      &*self.fs, specifier, referrer, mode, None,
-    )
+  ) -> Result<PathBuf, AnyError> {
+    fn inner(
+      fs: &dyn FileSystem,
+      name: &str,
+      referrer: &ModuleSpecifier,
+      mode: NodeResolutionMode,
+    ) -> Result<PathBuf, AnyError> {
+      let referrer_file = specifier_to_file_path(referrer)?;
+      let types_pkg_name = if mode.is_types() && !name.starts_with("@types/") {
+        Some(types_package_name(name))
+      } else {
+        None
+      };
+      let mut current_folder = referrer_file.parent().unwrap();
+      loop {
+        let node_modules_folder = if current_folder.ends_with("node_modules") {
+          Cow::Borrowed(current_folder)
+        } else {
+          Cow::Owned(current_folder.join("node_modules"))
+        };
+
+        // attempt to resolve the types package first, then fallback to the regular package
+        if let Some(types_pkg_name) = &types_pkg_name {
+          let sub_dir = join_package_name(&node_modules_folder, types_pkg_name);
+          if fs.is_dir_sync(&sub_dir) {
+            return Ok(sub_dir);
+          }
+        }
+
+        let sub_dir = join_package_name(&node_modules_folder, name);
+        if fs.is_dir_sync(&sub_dir) {
+          return Ok(sub_dir);
+        }
+
+        if let Some(parent) = current_folder.parent() {
+          current_folder = parent;
+        } else {
+          break;
+        }
+      }
+
+      bail!(
+        "could not find package '{}' from referrer '{}'.",
+        name,
+        referrer
+      );
+    }
+
+    let path = inner(&*self.fs, name, referrer, mode)?;
+    Ok(self.fs.realpath_sync(&path)?)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -131,7 +178,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     InnerCliNpmResolverRef::Byonm(self)
   }
 
-  fn root_node_modules_path(&self) -> Option<PathBuf> {
+  fn root_node_modules_path(&self) -> Option<std::path::PathBuf> {
     Some(self.root_node_modules_dir.clone())
   }
 
@@ -216,4 +263,13 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     // so we just return None to signify check caching is not supported
     None
   }
+}
+
+fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
+  let mut path = path.to_path_buf();
+  // ensure backslashes are used on windows
+  for part in package_name.split('/') {
+    path = path.join(part);
+  }
+  path
 }

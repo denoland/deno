@@ -22,7 +22,6 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
-use deno_runtime::deno_node::ResolvedPackageFolder;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -495,20 +494,15 @@ impl ManagedCliNpmResolver {
 impl NpmResolver for ManagedCliNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
-    specifier: &str,
+    name: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<ResolvedPackageFolder, AnyError> {
-    let folder = self
+  ) -> Result<PathBuf, AnyError> {
+    let path = self
       .fs_resolver
-      .resolve_package_folder_from_package(specifier, referrer, mode)?;
-    log::debug!(
-      "Resolved {} from {} to {}",
-      specifier,
-      referrer,
-      folder.folder_path.display()
-    );
-    Ok(folder)
+      .resolve_package_folder_from_package(name, referrer, mode)?;
+    log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
+    Ok(path)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
