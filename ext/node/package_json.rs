@@ -112,7 +112,7 @@ impl PackageJson {
   ) -> Result<PackageJson, AnyError> {
     let package_json: Value = serde_json::from_str(&source).map_err(|err| {
       anyhow::anyhow!(
-        "malformed package.json: {}\n  at {}",
+        "malformed package.json: {}\n    at {}",
         err,
         path.display()
       )
