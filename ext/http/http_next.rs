@@ -32,6 +32,7 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::ExternalPointer;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -117,15 +118,42 @@ impl<
 {
 }
 
+#[repr(transparent)]
+struct RcHttpRecord(Rc<HttpRecord>);
+
+// Temp copy
+/// Define an external type.
+macro_rules! external {
+  ($type:ident, $name:literal) => {
+    impl deno_core::Externalizable for $type {
+      fn external_marker() -> usize {
+        // Use the address of a static mut as a way to get around lack of usize-sized TypeId. Because it is mutable, the
+        // compiler cannot collapse multiple definitions into one.
+        static mut DEFINITION: deno_core::ExternalDefinition =
+          deno_core::ExternalDefinition::new($name);
+        // Wash the pointer through black_box so the compiler cannot see what we're going to do with it and needs
+        // to assume it will be used for valid purposes.
+        // SAFETY: temporary while waiting on deno core bump
+        let ptr = std::hint::black_box(unsafe { &mut DEFINITION } as *mut _);
+        ptr as usize
+      }
+
+      fn external_name() -> &'static str {
+        $name
+      }
+    }
+  };
+}
+
+// Register the [`HttpRecord`] as an external.
+external!(RcHttpRecord, "http record");
+
 /// Construct Rc<HttpRecord> from raw external pointer, consuming
 /// refcount. You must make sure the external is deleted on the JS side.
 macro_rules! take_external {
   ($external:expr, $args:tt) => {{
-    assert!(
-      !$external.is_null(),
-      "HTTP state error: external must not be null"
-    );
-    let record = Rc::from_raw($external as *const HttpRecord);
+    let ptr = ExternalPointer::<RcHttpRecord>::from_raw($external);
+    let record = ptr.unsafely_take().0;
     http_trace!(record, $args);
     record
   }};
@@ -134,9 +162,8 @@ macro_rules! take_external {
 /// Clone Rc<HttpRecord> from raw external pointer.
 macro_rules! clone_external {
   ($external:expr, $args:tt) => {{
-    let record = take_external!($external, $args);
-    Rc::increment_strong_count($external as *const HttpRecord);
-    record
+    let ptr = ExternalPointer::<RcHttpRecord>::from_raw($external);
+    ptr.unsafely_deref().0.clone()
   }};
 }
 
@@ -1069,7 +1096,8 @@ pub fn op_http_try_wait(
     return null();
   };
 
-  Rc::into_raw(record) as _
+  let ptr = ExternalPointer::new(RcHttpRecord(record));
+  ptr.into_raw()
 }
 
 #[op2(async)]
@@ -1094,7 +1122,8 @@ pub async fn op_http_wait(
 
   // Do we have a request?
   if let Some(record) = next {
-    return Ok(Rc::into_raw(record) as _);
+    let ptr = ExternalPointer::new(RcHttpRecord(record));
+    return Ok(ptr.into_raw());
   }
 
   // No - we're shutting down
