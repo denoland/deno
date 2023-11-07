@@ -290,10 +290,19 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         return Ok(p);
       }
     } else if let Some(file_name) = p.file_name() {
-      let p_js =
-        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.fs.is_file_sync(&p_js) {
-        return Ok(p_js);
+      {
+        let p_js =
+          p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+        if self.fs.is_file_sync(&p_js) {
+          return Ok(p_js);
+        }
+      }
+      {
+        let p_json =
+          p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
+        if self.fs.is_file_sync(&p_json) {
+          return Ok(p_json);
+        }
       }
     }
     Err(not_found(&p.to_string_lossy(), referrer))
