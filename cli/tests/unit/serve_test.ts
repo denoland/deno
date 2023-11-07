@@ -3805,3 +3805,70 @@ Deno.test(
     await server.finished;
   },
 );
+
+// serve Handler must return Response class or promise that resolves Response class
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeCallbackReturn() {
+    const d = deferred();
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(listeningPromise),
+        signal: ac.signal,
+        onError: (error) => {
+          assert(error instanceof TypeError);
+          assert(
+            error.message ===
+              "Return value from serve handler must be a response or a promise resolving to a response",
+          );
+          d.resolve();
+          return new Response("Customized Internal Error from onError");
+        },
+      },
+      () => {
+        // Trick the typechecker
+        return <Response> <unknown> undefined;
+      },
+    );
+    await listeningPromise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    await d;
+    ac.abort();
+    await server.finished;
+    assert(respText === "Customized Internal Error from onError");
+  },
+);
+
+// onError Handler must return Response class or promise that resolves Response class
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeErrorCallbackReturn() {
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(listeningPromise),
+        signal: ac.signal,
+        onError: () => {
+          // Trick the typechecker
+          return <Response> <unknown> undefined;
+        },
+      },
+      () => {
+        // Trick the typechecker
+        return <Response> <unknown> undefined;
+      },
+    );
+    await listeningPromise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    ac.abort();
+    await server.finished;
+    assert(respText === "Internal Server Error");
+  },
+);
