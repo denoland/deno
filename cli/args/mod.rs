@@ -924,7 +924,7 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some()
+    self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
   }
 
   pub fn node_modules_dir_path(&self) -> Option<PathBuf> {

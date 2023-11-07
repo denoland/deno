@@ -2483,6 +2483,73 @@ console.log(add(1, 2));
   output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
 }
 
+#[test]
+pub fn byonm_cjs_export_analysis_require_re_export() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "unstable": [
+      "byonm"
+    ]
+  }"#,
+  );
+
+  dir.write(
+    "package.json",
+    r#"{
+  "name": "test",
+  "packages": {
+    "my-package": "1.0.0"
+  }
+}
+"#,
+  );
+  dir.write(
+    "main.js",
+    "import { value1, value2 } from 'my-package';\nconsole.log(value1);\nconsole.log(value2)\n",
+  );
+
+  let node_modules_dir = dir.path().join("node_modules");
+
+  // create a package at node_modules/.multipart/name/nested without a package.json
+  {
+    let pkg_dir = node_modules_dir
+      .join(".multipart")
+      .join("name")
+      .join("nested");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("index.js").write("module.exports.value1 = 5;");
+  }
+  // create a package at node_modules/.multipart/other with a package.json
+  {
+    let pkg_dir = node_modules_dir.join(".multipart").join("other");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("index.js").write("module.exports.value2 = 6;");
+  }
+  // create a package at node_modules/my-package that requires them both
+  {
+    let pkg_dir = node_modules_dir.join("my-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "my-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir
+    .join("index.js")
+    .write("module.exports = { ...require('.multipart/name/nested/index'), ...require('.multipart/other/index.js') }");
+  }
+
+  // the cjs export analysis was preivously failing, but it should
+  // resolve these exports similar to require
+  let output = test_context
+    .new_command()
+    .args("run --allow-read main.js")
+    .run();
+  output.assert_matches_text("5\n6\n");
+}
+
 itest!(imports_package_json {
   args: "run --node-modules-dir=false npm/imports_package_json/main.js",
   output: "npm/imports_package_json/main.out",
