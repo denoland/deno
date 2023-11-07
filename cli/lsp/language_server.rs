@@ -118,7 +118,6 @@ use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::version;
 
 struct LspRootCertStoreProvider(RootCertStore);
 
@@ -405,6 +404,28 @@ impl LanguageServer {
       )),
       Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
       None => Err(LspError::invalid_params("Missing parameters")),
+    }
+  }
+
+  pub async fn upgrade_available(
+    &self,
+  ) -> LspResult<Option<lsp_custom::UpgradeAvailable>> {
+    let http_client = {
+      let ls = self.0.read().await;
+      ls.http_client.clone()
+    };
+    match check_for_upgrades_for_lsp(http_client).await {
+      Ok(Some((latest_version, is_canary))) => {
+        Ok(Some(lsp_custom::UpgradeAvailable {
+          latest_version,
+          is_canary,
+        }))
+      }
+      Ok(None) => Ok(None),
+      Err(err) => {
+        error!("Failed to check for upgrades: {err}");
+        Ok(None)
+      }
     }
   }
 
@@ -3188,23 +3209,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
 
     lsp_log!("Server ready.");
-
-    let (http_client, maybe_global_cache_path) = {
-      let ls = self.0.read().await;
-      (ls.http_client.clone(), ls.maybe_global_cache_path.clone())
-    };
-    if let Ok(deno_dir) = DenoDir::new(maybe_global_cache_path.clone()) {
-      if let Some(latest_version) =
-        check_for_upgrades_for_lsp(http_client, &deno_dir).await
-      {
-        client.send_deno_upgrade_available_notification(
-          lsp_custom::DenoUpgradeAvailableNotificationParams {
-            latest_version,
-            is_canary: version::is_canary(),
-          },
-        );
-      }
-    }
   }
 
   async fn shutdown(&self) -> LspResult<()> {

@@ -96,19 +96,6 @@ impl Client {
     });
   }
 
-  pub fn send_deno_upgrade_available_notification(
-    &self,
-    params: lsp_custom::DenoUpgradeAvailableNotificationParams,
-  ) {
-    // do on a task in case the caller currently is in the lsp lock
-    let client = self.0.clone();
-    spawn(async move {
-      client
-        .send_deno_upgrade_available_notification(params)
-        .await;
-    });
-  }
-
   pub fn show_message(
     &self,
     message_type: lsp::MessageType,
@@ -177,10 +164,6 @@ trait ClientTrait: Send + Sync {
   async fn send_did_change_deno_configuration_notification(
     &self,
     params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
-  );
-  async fn send_deno_upgrade_available_notification(
-    &self,
-    params: lsp_custom::DenoUpgradeAvailableNotificationParams,
   );
   async fn workspace_configuration(
     &self,
@@ -263,16 +246,6 @@ impl ClientTrait for TowerClient {
       .send_notification::<lsp_custom::DidChangeDenoConfigurationNotification>(
         params,
       )
-      .await
-  }
-
-  async fn send_deno_upgrade_available_notification(
-    &self,
-    params: lsp_custom::DenoUpgradeAvailableNotificationParams,
-  ) {
-    self
-      .0
-      .send_notification::<lsp_custom::DenoUpgradeAvailableNotification>(params)
       .await
   }
 
@@ -374,12 +347,6 @@ impl ClientTrait for ReplClient {
   async fn send_did_change_deno_configuration_notification(
     &self,
     _params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
-  ) {
-  }
-
-  async fn send_deno_upgrade_available_notification(
-    &self,
-    _params: lsp_custom::DenoUpgradeAvailableNotificationParams,
   ) {
   }
 

@@ -4,7 +4,6 @@
 
 use crate::args::Flags;
 use crate::args::UpgradeFlags;
-use crate::cache::DenoDir;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -57,21 +56,15 @@ struct RealUpdateCheckerEnvironment {
   http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
-  for_lsp: bool,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(
-    http_client: Arc<HttpClient>,
-    cache_file_path: PathBuf,
-    for_lsp: bool,
-  ) -> Self {
+  pub fn new(http_client: Arc<HttpClient>, cache_file_path: PathBuf) -> Self {
     Self {
       http_client,
       cache_file_path,
       // cache the current time
       current_time: time::utc_now(),
-      for_lsp,
     }
   }
 }
@@ -79,12 +72,11 @@ impl RealUpdateCheckerEnvironment {
 impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>> {
     let http_client = self.http_client.clone();
-    let for_lsp = self.for_lsp;
     async move {
       if version::is_canary() {
-        get_latest_canary_version(&http_client, for_lsp).await
+        get_latest_canary_version(&http_client, false).await
       } else {
-        get_latest_release_version(&http_client, for_lsp).await
+        get_latest_release_version(&http_client, false).await
       }
     }
     .boxed()
@@ -194,16 +186,15 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   }
 }
 
-pub fn check_for_upgrades(http_client: Arc<HttpClient>, deno_dir: &DenoDir) {
+pub fn check_for_upgrades(
+  http_client: Arc<HttpClient>,
+  cache_file_path: PathBuf,
+) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
   }
 
-  let env = RealUpdateCheckerEnvironment::new(
-    http_client,
-    deno_dir.upgrade_check_file_path(),
-    false,
-  );
+  let env = RealUpdateCheckerEnvironment::new(http_client, cache_file_path);
   let update_checker = UpdateChecker::new(env);
 
   if update_checker.should_check_for_new_version() {
@@ -250,26 +241,25 @@ pub fn check_for_upgrades(http_client: Arc<HttpClient>, deno_dir: &DenoDir) {
 
 pub async fn check_for_upgrades_for_lsp(
   http_client: Arc<HttpClient>,
-  deno_dir: &DenoDir,
-) -> Option<String> {
-  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
-    return None;
-  }
-  let env = RealUpdateCheckerEnvironment::new(
-    http_client,
-    deno_dir.upgrade_check_lsp_file_path(),
-    true,
-  );
-  let update_checker = UpdateChecker::new(env);
-  if update_checker.should_check_for_new_version() {
-    let env = update_checker.env.clone();
-    fetch_and_store_latest_version(&env).await;
-  }
-  let upgrade_version = update_checker.should_prompt();
-  if upgrade_version.is_some() {
-    update_checker.store_prompted();
-  }
-  upgrade_version
+) -> Result<Option<(String, bool)>, AnyError> {
+  let is_canary = version::is_canary();
+  let latest_version;
+  let mut is_upgrade;
+  if is_canary {
+    latest_version = get_latest_canary_version(&http_client, true).await?;
+    is_upgrade = &latest_version != version::GIT_COMMIT_HASH;
+  } else {
+    latest_version = get_latest_release_version(&http_client, true).await?;
+    is_upgrade = true;
+    if let Ok(current) = Version::parse_standard(version::deno()) {
+      if let Ok(latest) = Version::parse_standard(&latest_version) {
+        if current >= latest {
+          is_upgrade = false;
+        }
+      }
+    }
+  };
+  Ok(is_upgrade.then(|| (latest_version, is_canary)))
 }
 
 async fn fetch_and_store_latest_version<
