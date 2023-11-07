@@ -683,6 +683,7 @@ impl LspClient {
         "config": null,
         "importMap": null,
         "lint": true,
+        "disableUpgradeCheck": true,
         "suggest": {
           "autoImports": true,
           "completeFunctionCalls": false,

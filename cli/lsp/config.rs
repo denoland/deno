@@ -463,6 +463,9 @@ pub struct WorkspaceSettings {
   pub document_preload_limit: usize,
 
   #[serde(default)]
+  pub disable_upgrade_check: bool,
+
+  #[serde(default)]
   pub suggest: DenoCompletionSettings,
 
   /// Testing settings for the workspace.
@@ -504,6 +507,7 @@ impl Default for WorkspaceSettings {
       internal_debug: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
+      disable_upgrade_check: false,
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -880,6 +884,10 @@ impl Config {
       | MediaType::SourceMap
       | MediaType::Unknown => None,
     }
+  }
+
+  pub fn disabled_upgrade_check(&self) -> bool {
+    self.settings.unscoped.disable_upgrade_check
   }
 
   /// Determine if any inlay hints are enabled. This allows short circuiting
@@ -1346,6 +1354,7 @@ mod tests {
         internal_debug: false,
         lint: true,
         document_preload_limit: 1_000,
+        disable_upgrade_check: false,
         suggest: DenoCompletionSettings {
           imports: ImportCompletionSettings {
             auto_discover: true,
