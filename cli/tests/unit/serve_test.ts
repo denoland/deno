@@ -3829,8 +3829,9 @@ Deno.test(
           return new Response("Customized Internal Error from onError");
         },
       },
-      (_req) => {
-        return;
+      () => {
+        // Trick the typechecker
+        return <Response> <unknown> undefined;
       },
     );
     await listeningPromise;
@@ -3854,12 +3855,14 @@ Deno.test(
         port: servePort,
         onListen: onListen(listeningPromise),
         signal: ac.signal,
-        onError: (_error) => {
-          return;
+        onError: () => {
+          // Trick the typechecker
+          return <Response> <unknown> undefined;
         },
       },
-      (_req) => {
-        return;
+      () => {
+        // Trick the typechecker
+        return <Response> <unknown> undefined;
       },
     );
     await listeningPromise;
