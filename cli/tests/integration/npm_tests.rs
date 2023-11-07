@@ -2397,14 +2397,7 @@ pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 pub fn byonm_npm_workspaces() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
-  dir.write(
-    "deno.json",
-    r#"{
-    "unstable": [
-      "byonm"
-    ]
-  }"#,
-  );
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
 
   dir.write(
     "package.json",
@@ -2484,27 +2477,14 @@ console.log(add(1, 2));
 }
 
 #[test]
-pub fn byonm_cjs_export_analysis_require_re_export() {
+pub fn cjs_export_analysis_require_re_export() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
-  dir.write(
-    "deno.json",
-    r#"{
-    "unstable": [
-      "byonm"
-    ]
-  }"#,
-  );
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
 
   dir.write(
     "package.json",
-    r#"{
-  "name": "test",
-  "packages": {
-    "my-package": "1.0.0"
-  }
-}
-"#,
+    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
   );
   dir.write(
     "main.js",
@@ -2541,13 +2521,78 @@ pub fn byonm_cjs_export_analysis_require_re_export() {
     .write("module.exports = { ...require('.multipart/name/nested/index'), ...require('.multipart/other/index.js') }");
   }
 
-  // the cjs export analysis was preivously failing, but it should
+  // the cjs export analysis was previously failing, but it should
   // resolve these exports similar to require
   let output = test_context
     .new_command()
     .args("run --allow-read main.js")
     .run();
   output.assert_matches_text("5\n6\n");
+}
+
+#[test]
+pub fn cjs_rexport_analysis_json() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
+  );
+  dir.write(
+    "main.js",
+    "import data from 'my-package';\nconsole.log(data);\n",
+  );
+
+  let node_modules_dir = dir.path().join("node_modules");
+
+  // create a package that has a json file at index.json and data.json then folder/index.json
+  {
+    let pkg_dir = node_modules_dir.join("data-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "data-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir.join("index.json").write(r#"{ "value": 2 }"#);
+    pkg_dir.join("data.json").write(r#"{ "value": 3 }"#);
+    let folder = pkg_dir.join("folder");
+    folder.create_dir_all();
+    folder.join("index.json").write(r#"{ "value": 4 }"#);
+  }
+  // create a package at node_modules/my-package that re-exports a json file
+  {
+    let pkg_dir = node_modules_dir.join("my-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "my-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir.join("data.json").write(r#"{ "value": 1 }"#);
+    pkg_dir.join("index.js").write(
+      "module.exports = {
+  data1: require('./data'),
+  data2: require('data-package'),
+  data3: require('data-package/data'),
+  data4: require('data-package/folder'),
+};",
+    );
+  }
+
+  let output = test_context
+    .new_command()
+    .args("run --allow-read main.js")
+    .run();
+  output.assert_matches_text(
+    "{
+  data1: { value: 1 },
+  data2: { value: 2 },
+  data3: { value: 3 },
+  data4: { value: 4 }
+}
+",
+  );
 }
 
 itest!(imports_package_json {
