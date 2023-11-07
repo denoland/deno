@@ -529,6 +529,7 @@ impl LspClientBuilder {
         "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",
         if self.use_diagnostic_sync { "1" } else { "" },
       )
+      .env("DENO_NO_UPDATE_CHECK", "1")
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());

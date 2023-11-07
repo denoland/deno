@@ -3188,21 +3188,26 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     lsp_log!("Server ready.");
 
-    let http_client = self.0.read().await.http_client.clone();
-    match check_for_upgrades_for_lsp(http_client).await {
-      Ok(version_info) => {
-        client.send_did_upgrade_check_notification(
-          lsp_custom::DidUpgradeCheckNotificationParams {
-            upgrade_available: version_info.map(
-              |(latest_version, is_canary)| lsp_custom::UpgradeAvailable {
-                latest_version,
-                is_canary,
-              },
-            ),
-          },
-        );
+    if matches!(
+      env::var("DENO_NO_UPDATE_CHECK"),
+      Err(env::VarError::NotPresent)
+    ) {
+      let http_client = self.0.read().await.http_client.clone();
+      match check_for_upgrades_for_lsp(http_client).await {
+        Ok(version_info) => {
+          client.send_did_upgrade_check_notification(
+            lsp_custom::DidUpgradeCheckNotificationParams {
+              upgrade_available: version_info.map(
+                |(latest_version, is_canary)| lsp_custom::UpgradeAvailable {
+                  latest_version,
+                  is_canary,
+                },
+              ),
+            },
+          );
+        }
+        Err(err) => error!("Failed to check for upgrades: {err}"),
       }
-      Err(err) => error!("Failed to check for upgrades: {err}"),
     }
   }
 
