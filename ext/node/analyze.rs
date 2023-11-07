@@ -193,7 +193,6 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     }
 
     // We've got a bare specifier or maybe bare_specifier/blah.js"
-
     let (package_specifier, package_subpath) =
       parse_specifier(specifier).unwrap();
 
@@ -205,14 +204,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    if self.fs.exists_sync(&package_json_path) {
-      let package_json = PackageJson::load(
-        &*self.fs,
-        &*self.npm_resolver,
-        permissions,
-        package_json_path.clone(),
-      )?;
-
+    let package_json = PackageJson::load(
+      &*self.fs,
+      &*self.npm_resolver,
+      permissions,
+      package_json_path.clone(),
+    )?;
+    if package_json.exists {
       if let Some(exports) = &package_json.exports {
         return self.node_resolver.package_exports_resolve(
           &package_json_path,
@@ -232,13 +230,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         if self.fs.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          if self.fs.exists_sync(&package_json_path) {
-            let package_json = PackageJson::load(
-              &*self.fs,
-              &*self.npm_resolver,
-              permissions,
-              package_json_path,
-            )?;
+          let package_json = PackageJson::load(
+            &*self.fs,
+            &*self.npm_resolver,
+            permissions,
+            package_json_path,
+          )?;
+          if package_json.exists {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(d.join(main).clean());
             }
@@ -253,6 +251,24 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         return Ok(module_dir.join("index.js").clean());
       }
     }
+
+    // as a fallback, attempt to resolve it via the ancestor directories
+    let mut last = referrer_path.as_path();
+    while let Some(parent) = last.parent() {
+      if !self.npm_resolver.in_npm_package_at_dir_path(parent) {
+        break;
+      }
+      let path = if parent.ends_with("node_modules") {
+        parent.join(specifier)
+      } else {
+        parent.join("node_modules").join(specifier)
+      };
+      if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
+        return Ok(path);
+      }
+      last = parent;
+    }
+
     Err(not_found(specifier, &referrer_path))
   }
 
