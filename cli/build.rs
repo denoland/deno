@@ -288,7 +288,6 @@ mod ts {
         build_libs,
         path_dts,
       )],
-      register_ops: true,
       // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
       // ~45s on M1 MacBook Pro; without compression it took ~1s.
       // Thus we're not not using compressed snapshot, trading off
@@ -305,6 +304,7 @@ mod ts {
         );
       })),
       with_runtime_cb: None,
+      skip_op_registration: false,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
@@ -402,7 +402,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     extensions,
     compression_cb: None,
     with_runtime_cb: None,
-    register_ops: true,
+    skip_op_registration: false,
   })
 }
 
