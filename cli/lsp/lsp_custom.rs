@@ -12,7 +12,6 @@ pub const RELOAD_IMPORT_REGISTRIES_REQUEST: &str =
 pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
 pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
   "deno/internalLatestDiagnosticBatchIndex";
-pub const UPGRADE_AVAILABLE_REQUEST: &str = "deno/upgradeAvailable";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,13 +32,6 @@ pub struct TaskDefinition {
   #[serde(rename = "detail")]
   pub command: String,
   pub source_uri: lsp::Url,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpgradeAvailable {
-  pub latest_version: String,
-  pub is_canary: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -97,6 +89,27 @@ impl lsp::notification::Notification
   type Params = DidChangeDenoConfigurationNotificationParams;
 
   const METHOD: &'static str = "deno/didChangeDenoConfiguration";
+}
+
+pub enum DidUpgradeCheckNotification {}
+
+impl lsp::notification::Notification for DidUpgradeCheckNotification {
+  type Params = DidUpgradeCheckNotificationParams;
+
+  const METHOD: &'static str = "deno/didUpgradeCheck";
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpgradeAvailable {
+  pub latest_version: String,
+  pub is_canary: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DidUpgradeCheckNotificationParams {
+  pub upgrade_available: Option<UpgradeAvailable>,
 }
 
 /// This notification is only sent for testing purposes

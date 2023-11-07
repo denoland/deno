@@ -407,28 +407,6 @@ impl LanguageServer {
     }
   }
 
-  pub async fn upgrade_available(
-    &self,
-  ) -> LspResult<Option<lsp_custom::UpgradeAvailable>> {
-    let http_client = {
-      let ls = self.0.read().await;
-      ls.http_client.clone()
-    };
-    match check_for_upgrades_for_lsp(http_client).await {
-      Ok(Some((latest_version, is_canary))) => {
-        Ok(Some(lsp_custom::UpgradeAvailable {
-          latest_version,
-          is_canary,
-        }))
-      }
-      Ok(None) => Ok(None),
-      Err(err) => {
-        error!("Failed to check for upgrades: {err}");
-        Ok(None)
-      }
-    }
-  }
-
   pub async fn refresh_configuration(&self) {
     let (client, folders, capable) = {
       let ls = self.0.read().await;
@@ -3209,6 +3187,23 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
 
     lsp_log!("Server ready.");
+
+    let http_client = self.0.read().await.http_client.clone();
+    match check_for_upgrades_for_lsp(http_client).await {
+      Ok(version_info) => {
+        client.send_did_upgrade_check_notification(
+          lsp_custom::DidUpgradeCheckNotificationParams {
+            upgrade_available: version_info.map(
+              |(latest_version, is_canary)| lsp_custom::UpgradeAvailable {
+                latest_version,
+                is_canary,
+              },
+            ),
+          },
+        );
+      }
+      Err(err) => error!("Failed to check for upgrades: {err}"),
+    }
   }
 
   async fn shutdown(&self) -> LspResult<()> {

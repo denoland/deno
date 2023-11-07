@@ -68,10 +68,6 @@ pub async fn start() -> Result<(), AnyError> {
   .custom_method(
     lsp_custom::VIRTUAL_TEXT_DOCUMENT,
     LanguageServer::virtual_text_document,
-  )
-  .custom_method(
-    lsp_custom::UPGRADE_AVAILABLE_REQUEST,
-    LanguageServer::upgrade_available,
   );
 
   let builder = if should_send_diagnostic_batch_index_notifications() {
