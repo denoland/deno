@@ -247,7 +247,7 @@ pub async fn check_for_upgrades_for_lsp(
   let mut is_upgrade;
   if is_canary {
     latest_version = get_latest_canary_version(&http_client, true).await?;
-    is_upgrade = &latest_version != version::GIT_COMMIT_HASH;
+    is_upgrade = latest_version != version::GIT_COMMIT_HASH;
   } else {
     latest_version = get_latest_release_version(&http_client, true).await?;
     is_upgrade = true;
@@ -259,7 +259,7 @@ pub async fn check_for_upgrades_for_lsp(
       }
     }
   };
-  Ok(is_upgrade.then(|| (latest_version, is_canary)))
+  Ok(is_upgrade.then_some((latest_version, is_canary)))
 }
 
 async fn fetch_and_store_latest_version<
