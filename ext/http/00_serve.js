@@ -10,8 +10,8 @@ import { Event } from "ext:deno_web/02_event.js";
 import {
   fromInnerResponse,
   newInnerResponse,
+  ResponsePrototype,
   toInnerResponse,
-  ResponsePrototype
 } from "ext:deno_fetch/23_response.js";
 import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
@@ -450,20 +450,26 @@ function mapToCallback(context, callback, onError) {
         fromInnerRequest(innerRequest, signal, "immutable"),
         new ServeHandlerInfo(innerRequest),
       );
-      
+
       // Throwing Error if the handler return value is not a Response class
-      if(!(response && ObjectPrototypeIsPrototypeOf(ResponsePrototype, response))) {
-        throw TypeError("Invalid Response")
+      if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+        throw TypeError(
+          "Return value from serve handler must be a response or a promise resolving to a response",
+        );
       }
     } catch (error) {
       try {
         response = await onError(error);
+        if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+          throw TypeError(
+            "Return value from onError handler must be a response or a promise resolving to a response",
+          );
+        }
       } catch (error) {
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
     }
-
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
