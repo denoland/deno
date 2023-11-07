@@ -115,8 +115,27 @@ struct HttpRecordInner {
 
 pub struct HttpRecord(RefCell<HttpRecordInner>);
 
+#[cfg(feature = "__http_tracing")]
+pub static RECORD_COUNT: std::sync::atomic::AtomicUsize =
+  std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(feature = "__http_tracing")]
+impl Drop for HttpRecord {
+  fn drop(&mut self) {
+    let count = RECORD_COUNT
+      .fetch_sub(1, std::sync::atomic::Ordering::SeqCst)
+      .checked_sub(1)
+      .expect("Count went below zero");
+    println!("HTTP count={count}: HttpRecord::drop");
+  }
+}
+
 impl HttpRecord {
   fn new(request: Request, request_info: HttpConnectionProperties) -> Rc<Self> {
+    #[cfg(feature = "__http_tracing")]
+    {
+      RECORD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
     let (request_parts, request_body) = request.into_parts();
     let body = ResponseBytes::default();
     let trailers = body.trailers();
