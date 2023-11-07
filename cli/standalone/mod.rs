@@ -453,6 +453,7 @@ pub async fn run(
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,
       coverage_dir: None,
+      enable_op_summary_metrics: false,
       enable_testing_features: false,
       has_node_modules_dir,
       hmr: false,

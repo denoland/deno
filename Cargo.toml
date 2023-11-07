@@ -40,7 +40,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.31.2", features = ["transpiling"] }
-deno_core = { version = "0.224.0" }
+deno_core = { version = "0.227.0" }
 
 deno_runtime = { version = "0.130.0", path = "./runtime" }
 napi_sym = { version = "0.52.0", path = "./cli/napi/sym" }
@@ -90,7 +90,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"
 data-encoding = "2.3.3"
-dlopen = "0.1.8"
+dlopen2 = "0.6.1"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
 fastwebsockets = "=0.5.0"
@@ -130,7 +130,6 @@ rustls = "0.21.8"
 rustls-pemfile = "1.0.0"
 rustls-tokio-stream = "=0.2.7"
 rustls-webpki = "0.101.4"
-rustls-native-certs = "0.6.2"
 webpki-roots = "0.25.2"
 scopeguard = "1.2.0"
 saffron = "=0.1.0"
@@ -138,7 +137,7 @@ serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.16"
-sha2 = { version = "0.10.6", features = ["oid"] }
+sha2 = { version = "0.10.8", features = ["oid"] }
 signature = "=1.6.4"
 slab = "0.4"
 smallvec = "1.8"

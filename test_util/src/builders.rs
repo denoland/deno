@@ -212,6 +212,15 @@ impl TestContext {
     builder.deno_exe(&self.deno_exe).set_test_context(self);
     builder
   }
+
+  pub fn run_npm(&self, args: impl AsRef<str>) {
+    self
+      .new_command()
+      .name("npm")
+      .args(args)
+      .run()
+      .skip_output_check();
+  }
 }
 
 pub struct TestCommandBuilder {
