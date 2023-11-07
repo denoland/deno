@@ -1589,7 +1589,6 @@ fn lsp_workspace_disable_enable_paths() {
         "enable": false,
         "disablePaths": ["./worker/node.ts"],
         "enablePaths": ["./worker"],
-        "disableUpgradeCheck": true,
       } }),
     );
 
@@ -6410,8 +6409,7 @@ fn lsp_semantic_tokens_for_disabled_module() {
       builder.set_deno_enable(false);
     },
     json!({ "deno": {
-      "enable": false,
-      "disableUpgradeCheck": true,
+      "enable": false
     } }),
   );
   client.did_open(json!({
