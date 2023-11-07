@@ -131,6 +131,11 @@ impl DenoDir {
     self.root.join("latest.txt")
   }
 
+  /// File used for the upgrade checker invoked from the LSP.
+  pub fn upgrade_check_lsp_file_path(&self) -> PathBuf {
+    self.root.join("latest_lsp.txt")
+  }
+
   /// Folder used for the npm cache.
   pub fn npm_folder_path(&self) -> PathBuf {
     self.root.join("npm")

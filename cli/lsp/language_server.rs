@@ -112,11 +112,13 @@ use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
+use crate::tools::upgrade::check_for_upgrades_for_lsp;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use crate::version;
 
 struct LspRootCertStoreProvider(RootCertStore);
 
@@ -3186,6 +3188,23 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
 
     lsp_log!("Server ready.");
+
+    let (http_client, maybe_global_cache_path) = {
+      let ls = self.0.read().await;
+      (ls.http_client.clone(), ls.maybe_global_cache_path.clone())
+    };
+    if let Ok(deno_dir) = DenoDir::new(maybe_global_cache_path.clone()) {
+      if let Some(latest_version) =
+        check_for_upgrades_for_lsp(http_client, &deno_dir).await
+      {
+        client.send_deno_upgrade_available_notification(
+          lsp_custom::DenoUpgradeAvailableNotificationParams {
+            latest_version,
+            is_canary: version::is_canary(),
+          },
+        );
+      }
+    }
   }
 
   async fn shutdown(&self) -> LspResult<()> {

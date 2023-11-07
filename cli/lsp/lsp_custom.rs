@@ -91,6 +91,21 @@ impl lsp::notification::Notification
   const METHOD: &'static str = "deno/didChangeDenoConfiguration";
 }
 
+pub enum DenoUpgradeAvailableNotification {}
+
+impl lsp::notification::Notification for DenoUpgradeAvailableNotification {
+  type Params = DenoUpgradeAvailableNotificationParams;
+
+  const METHOD: &'static str = "deno/denoUpgradeAvailable";
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DenoUpgradeAvailableNotificationParams {
+  pub latest_version: String,
+  pub is_canary: bool,
+}
+
 /// This notification is only sent for testing purposes
 /// in order to know what the latest diagnostics are.
 pub enum DiagnosticBatchNotification {}
