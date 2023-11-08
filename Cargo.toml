@@ -49,9 +49,9 @@ test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
-denokv_proto = "0.2.1"
-denokv_sqlite = "0.2.1"
-denokv_remote = "0.2.3"
+denokv_proto = { git = "https://github.com/denoland/denokv", rev = "9189d8c" }
+denokv_sqlite = { git = "https://github.com/denoland/denokv", rev = "9189d8c" }
+denokv_remote = { git = "https://github.com/denoland/denokv", rev = "9189d8c" }
 
 # exts
 deno_broadcast_channel = { version = "0.117.0", path = "./ext/broadcast_channel" }

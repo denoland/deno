@@ -11,6 +11,7 @@ use denokv_proto::datapath::AtomicWriteStatus;
 use denokv_proto::datapath::ReadRangeOutput;
 use denokv_proto::datapath::SnapshotRead;
 use denokv_proto::datapath::SnapshotReadOutput;
+use denokv_proto::datapath::SnapshotReadStatus;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
@@ -1228,6 +1229,7 @@ async fn main_server(
                 .collect(),
               read_disabled: false,
               read_is_strongly_consistent: true,
+              status: SnapshotReadStatus::SrSuccess.into(),
             }
             .encode_to_vec(),
           ))
