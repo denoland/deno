@@ -598,7 +598,7 @@ async fn get_tcp_listener_stream(
   let listeners = tokio::net::lookup_host(host_and_port)
     .await
     .expect(host_and_port)
-    .inspect(|address| addresses.push(address.clone()))
+    .inspect(|address| addresses.push(*address))
     .map(tokio::net::TcpListener::bind)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
@@ -611,8 +611,7 @@ async fn get_tcp_listener_stream(
   // Eye catcher for HttpServerCount
   println!("ready: {name} on {:?}", addresses);
 
-  let listeners = futures::stream::select_all(listeners);
-  listeners
+  futures::stream::select_all(listeners)
 }
 
 /// This server responds with 'PASS' if client authentication was successful. Try it by running

@@ -52,8 +52,7 @@ pub async fn get_tls_listener_stream(
     .unwrap();
 
   let tcp = get_tcp_listener_stream(name, port).await;
-  let tls = get_tls_listener_stream_from_tcp(tls_config, tcp);
-  tls
+  get_tls_listener_stream_from_tcp(tls_config, tcp)
 }
 
 pub async fn get_tls_config(
