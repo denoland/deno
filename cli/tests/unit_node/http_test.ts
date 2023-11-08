@@ -811,3 +811,28 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test("[node/http] node:http exports globalAgent", async () => {
+  const http = await import("node:https");
+  assert(
+    http.globalAgent,
+    "node:http must export 'globalAgent' on module namespace",
+  );
+  assert(
+    http.default.globalAgent,
+    "node:http must export 'globalAgent' on module default export",
+  );
+});
+
+Deno.test("[node/https] node:https exports globalAgent", async () => {
+  const https = await import("node:https");
+  assert(
+    https.globalAgent,
+    "node:https must export 'globalAgent' on module namespace",
+  );
+  assert(
+    https.default.globalAgent,
+    "node:https must export 'globalAgent' on module default export",
+  );
+});
+
