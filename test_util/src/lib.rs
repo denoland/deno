@@ -45,6 +45,8 @@ use pty::Pty;
 use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
+use rustls_tokio_stream::rustls;
+use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -55,6 +57,7 @@ use std::mem::replace;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::net::SocketAddrV6;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::Path;
@@ -75,9 +78,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls;
-use tokio_rustls::server::TlsStream;
-use tokio_rustls::TlsAcceptor;
 use url::Url;
 
 pub mod assertions;
@@ -124,6 +124,8 @@ const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
+
+const TLS_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(65536);
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -550,43 +552,36 @@ async fn run_wss2_server(addr: &SocketAddr) {
   )
   .await
   .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
-
   let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
-    match tls_acceptor.accept(stream).await {
-      Ok(tls) => {
-        tokio::spawn(async move {
-          let mut h2 = h2::server::Builder::new();
-          h2.enable_connect_protocol();
-          // Using Bytes is pretty alloc-heavy but this is a test server
-          let server: Handshake<_, Bytes> = h2.handshake(tls);
-          let mut server = match server.await {
-            Ok(server) => server,
-            Err(e) => {
-              println!("Failed to handshake h2: {e:?}");
-              return;
-            }
-          };
-          loop {
-            let Some(conn) = server.accept().await else {
-              break;
-            };
-            let (recv, send) = match conn {
-              Ok(conn) => conn,
-              Err(e) => {
-                println!("Failed to accept a connection: {e:?}");
-                break;
-              }
-            };
-            tokio::spawn(handle_wss_stream(recv, send));
+    let tls =
+      TlsStream::new_server_side(stream, tls_config.clone(), TLS_BUFFER_SIZE);
+    tokio::spawn(async move {
+      let mut h2 = h2::server::Builder::new();
+      h2.enable_connect_protocol();
+      // Using Bytes is pretty alloc-heavy but this is a test server
+      let server: Handshake<_, Bytes> = h2.handshake(tls);
+      let mut server = match server.await {
+        Ok(server) => server,
+        Err(e) => {
+          println!("Failed to handshake h2: {e:?}");
+          return;
+        }
+      };
+      loop {
+        let Some(conn) = server.accept().await else {
+          break;
+        };
+        let (recv, send) = match conn {
+          Ok(conn) => conn,
+          Err(e) => {
+            println!("Failed to accept a connection: {e:?}");
+            break;
           }
-        });
+        };
+        tokio::spawn(handle_wss_stream(recv, send));
       }
-      Err(e) => {
-        println!("Failed to accept TLS: {e:?}");
-      }
-    }
+    });
   }
 }
 
@@ -684,23 +679,15 @@ async fn run_wss_server(addr: &SocketAddr) {
     get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
       .await
       .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: wss"); // Eye catcher for HttpServerCount
 
   while let Ok((stream, _addr)) = listener.accept().await {
-    let acceptor = tls_acceptor.clone();
+    let tls_config = tls_config.clone();
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(tls_stream) => {
-          spawn_ws_server(tls_stream, |ws| {
-            Box::pin(echo_websocket_handler(ws))
-          });
-        }
-        Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
-        }
-      }
+      let tls_stream =
+        TlsStream::new_server_side(stream, tls_config, TLS_BUFFER_SIZE);
+      spawn_ws_server(tls_stream, |ws| Box::pin(echo_websocket_handler(ws)));
     });
   }
 }
@@ -718,7 +705,6 @@ async fn run_tls_client_auth_server() {
     get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
       .await
       .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
 
   // Listen on ALL addresses that localhost can resolves to.
   let accept = |listener: tokio::net::TcpListener| {
@@ -749,24 +735,21 @@ async fn run_tls_client_auth_server() {
   let mut listeners = futures::stream::select_all(listeners);
 
   while let Some(Ok((stream, _addr))) = listeners.next().await {
-    let acceptor = tls_acceptor.clone();
+    let tls_config = tls_config.clone();
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(mut tls_stream) => {
-          let (_, tls_session) = tls_stream.get_mut();
-          // We only need to check for the presence of client certificates
-          // here. Rusttls ensures that they are valid and signed by the CA.
-          let response = match tls_session.peer_certificates() {
-            Some(_certs) => b"PASS",
-            None => b"FAIL",
-          };
-          tls_stream.write_all(response).await.unwrap();
-        }
-
-        Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
-        }
-      }
+      let mut tls_stream =
+        TlsStream::new_server_side(stream, tls_config, TLS_BUFFER_SIZE);
+      let Ok(handshake) = tls_stream.handshake().await else {
+        eprintln!("Failed to handshake");
+        return;
+      };
+      // We only need to check for the presence of client certificates
+      // here. Rusttls ensures that they are valid and signed by the CA.
+      let response = match handshake.has_peer_certificates {
+        true => b"PASS",
+        false => b"FAIL",
+      };
+      tls_stream.write_all(response).await.unwrap();
     });
   }
 }
@@ -782,7 +765,6 @@ async fn run_tls_server() {
     get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
       .await
       .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
 
   // Listen on ALL addresses that localhost can resolves to.
   let accept = |listener: tokio::net::TcpListener| {
@@ -813,17 +795,10 @@ async fn run_tls_server() {
   let mut listeners = futures::stream::select_all(listeners);
 
   while let Some(Ok((stream, _addr))) = listeners.next().await {
-    let acceptor = tls_acceptor.clone();
+    let mut tls_stream =
+      TlsStream::new_server_side(stream, tls_config.clone(), TLS_BUFFER_SIZE);
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(mut tls_stream) => {
-          tls_stream.write_all(b"PASS").await.unwrap();
-        }
-
-        Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
-        }
-      }
+      tls_stream.write_all(b"PASS").await.unwrap();
     });
   }
 }
@@ -1595,15 +1570,12 @@ async fn download_npm_registry_file(
 /// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs
 struct HyperAcceptor<'a> {
   acceptor: Pin<
-    Box<
-      dyn Stream<Item = io::Result<tokio_rustls::server::TlsStream<TcpStream>>>
-        + 'a,
-    >,
+    Box<dyn Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + 'a>,
   >,
 }
 
 impl hyper::server::accept::Accept for HyperAcceptor<'_> {
-  type Conn = tokio_rustls::server::TlsStream<TcpStream>;
+  type Conn = rustls_tokio_stream::TlsStream;
   type Error = io::Error;
 
   fn poll_accept(
@@ -1742,13 +1714,13 @@ async fn wrap_main_https_server() {
       .await
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
+                              // Prepare a long-running future stream to accept and serve clients.
+    let tls_config = tls_config.clone();
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
+          let stream = TlsStream::new_server_side(socket, tls_config.clone(), TLS_BUFFER_SIZE);
+          yield Ok(stream);
       }
     }
     .boxed();
@@ -1787,13 +1759,12 @@ async fn wrap_https_h1_only_tls_server() {
       .await
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
+                              // Prepare a long-running future stream to accept and serve clients.
+    let tls_config = tls_config.clone();
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
+          yield Ok(TlsStream::new_server_side(socket, tls_config.clone(), TLS_BUFFER_SIZE));
       }
     }
     .boxed();
@@ -1823,13 +1794,12 @@ async fn wrap_https_h2_only_tls_server() {
       .await
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
+                              // Prepare a long-running future stream to accept and serve clients.
+    let tls_config = tls_config.clone();
     let incoming_tls_stream = async_stream::stream! {
       loop {
-          let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
+        let (socket, _) = tcp.accept().await?;
+        yield Ok(TlsStream::new_server_side(socket, tls_config.clone(), TLS_BUFFER_SIZE));
       }
     }
     .boxed();
@@ -1907,9 +1877,7 @@ async fn h2_grpc_server() {
     Ok(())
   }
 
-  async fn serve_tls(
-    socket: TlsStream<TcpStream>,
-  ) -> Result<(), anyhow::Error> {
+  async fn serve_tls(socket: TlsStream) -> Result<(), anyhow::Error> {
     let mut connection = h2::server::handshake(socket).await?;
 
     while let Some(result) = connection.accept().await {
@@ -1970,8 +1938,11 @@ async fn h2_grpc_server() {
   let https = tokio::spawn(async move {
     loop {
       if let Ok((socket, _peer_addr)) = listener_tls.accept().await {
-        let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-        let tls = tls_acceptor.accept(socket).await.unwrap();
+        let tls = TlsStream::new_server_side(
+          socket,
+          tls_config.clone(),
+          TLS_BUFFER_SIZE,
+        );
         tokio::spawn(async move {
           let _ = serve_tls(tls).await;
         });
@@ -1998,29 +1969,19 @@ async fn wrap_client_auth_https_server() {
       .await
       .expect("Cannot bind TCP");
     println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
+                                                                         // Prepare a long-running future stream to accept and serve clients.
+    let tls_config = tls_config.clone();
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
-
-          match tls_acceptor.accept(socket).await {
-            Ok(mut tls_stream) => {
-              let (_, tls_session) = tls_stream.get_mut();
-              // We only need to check for the presence of client certificates
-              // here. Rusttls ensures that they are valid and signed by the CA.
-              match tls_session.peer_certificates() {
-                Some(_certs) => { yield Ok(tls_stream); },
-                None => { eprintln!("https_client_auth: no valid client certificate"); },
-              };
-            }
-
-            Err(e) => {
-              eprintln!("https-client-auth accept error: {e:?}");
-              yield Err(e);
-            }
-          }
-
+          let mut tls_stream = TlsStream::new_server_side(socket, tls_config.clone(), TLS_BUFFER_SIZE);
+          let handshake = tls_stream.handshake().await?;
+          // We only need to check for the presence of client certificates
+          // here. Rusttls ensures that they are valid and signed by the CA.
+          match handshake.has_peer_certificates {
+            true => { yield Ok(tls_stream); },
+            false => { eprintln!("https_client_auth: no valid client certificate"); },
+          };
       }
     }
     .boxed();
@@ -2107,7 +2068,7 @@ pub async fn run_all_servers() {
       h2_grpc_server_fut,
     )
   }
-  .boxed();
+  .boxed_local();
 
   let mut did_print_ready = false;
   futures::future::poll_fn(move |cx| {

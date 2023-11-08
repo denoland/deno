@@ -4472,9 +4472,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-tokio-stream"
-version = "0.2.7"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3abd2fa2e122bbf891a7333bf2091d8130367d8c381913821b24389208a3db45"
+checksum = "55cae64d5219dfdd7f2d18dda421a2137ebdd63be6d0dc53d7836003f224f3d0"
 dependencies = [
  "futures",
  "rustls",
@@ -5678,6 +5678,7 @@ dependencies = [
  "reqwest",
  "ring",
  "rustls-pemfile",
+ "rustls-tokio-stream",
  "semver 1.0.14",
  "serde",
  "serde_json",
@@ -5685,7 +5686,6 @@ dependencies = [
  "tempfile",
  "termcolor",
  "tokio",
- "tokio-rustls",
  "url",
  "winapi",
 ]
