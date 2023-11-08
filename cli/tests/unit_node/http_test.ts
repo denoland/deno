@@ -813,7 +813,7 @@ Deno.test(
 );
 
 Deno.test("[node/http] node:http exports globalAgent", async () => {
-  const http = await import("node:https");
+  const http = await import("node:http");
   assert(
     http.globalAgent,
     "node:http must export 'globalAgent' on module namespace",
