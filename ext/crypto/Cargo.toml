@@ -33,7 +33,6 @@ p384 = "0.13.0"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
 rsa.workspace = true
-sec1 = "0.3.0"
 serde.workspace = true
 serde_bytes.workspace = true
 sha1 = { version = "0.10.6", features = ["oid"] }
