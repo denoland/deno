@@ -3,7 +3,6 @@ import {
   assert,
   assertEquals,
   assertRejects,
-  deferred,
   delay,
   fail,
   unimplemented,
@@ -1260,13 +1259,13 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchNoServerReadableStreamBody() {
-    const done = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const body = new ReadableStream({
       start(controller) {
         controller.enqueue(new Uint8Array([1]));
         setTimeout(() => {
           controller.enqueue(new Uint8Array([2]));
-          done.resolve();
+          resolve();
         }, 1000);
       },
     });
@@ -1274,7 +1273,7 @@ Deno.test(
     await assertRejects(async () => {
       await fetch(nonExistentHostname, { body, method: "POST" });
     }, TypeError);
-    await done;
+    await promise;
   },
 );
 
