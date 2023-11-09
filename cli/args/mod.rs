@@ -988,6 +988,8 @@ impl CliOptions {
       maybe_package_json: self.maybe_package_json.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
       overrides: self.overrides.clone(),
+      // TODO(bartlomieju): fix me
+      maybe_workspace_config: None,
     }
   }
 

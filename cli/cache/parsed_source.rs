@@ -54,18 +54,6 @@ impl ParsedSourceCache {
   pub fn as_store(self: &Arc<Self>) -> Arc<dyn deno_graph::ParsedSourceStore> {
     self.clone()
   }
-
-  pub fn cache_module_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    source: &str,
-    module_info: &ModuleInfo,
-  ) -> Result<(), AnyError> {
-    let source_hash = compute_source_hash(source.as_bytes());
-    ParsedSourceCacheModuleAnalyzer::new(self.db.clone(), self.sources.clone())
-      .set_module_info(specifier, media_type, &source_hash, module_info)
-  }
 }
 
 /// It's ok that this is racy since in non-LSP situations

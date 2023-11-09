@@ -4,6 +4,8 @@ use std::fmt::Write;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use deno_config::ConfigFile;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
@@ -229,7 +231,7 @@ async fn perform_publish(
   let authorization = match auth_method {
     AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
-      let challenge = base64::encode(sha2::Sha256::digest(&verifier));
+      let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
 
       let permissions = packages
         .iter()
