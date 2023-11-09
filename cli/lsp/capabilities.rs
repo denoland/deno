@@ -39,6 +39,7 @@ fn code_action_capabilities(
 
 pub fn server_capabilities(
   client_capabilities: &ClientCapabilities,
+  enable_builtin_commands: bool,
 ) -> ServerCapabilities {
   let code_action_provider = code_action_capabilities(client_capabilities);
   ServerCapabilities {
@@ -118,7 +119,17 @@ pub fn server_capabilities(
     rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,
-    execute_command_provider: None,
+    execute_command_provider: Some(ExecuteCommandOptions {
+      commands: if enable_builtin_commands {
+        vec![
+          "deno.cache".to_string(),
+          "deno.reloadImportRegistries".to_string(),
+        ]
+      } else {
+        vec![]
+      },
+      ..Default::default()
+    }),
     call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
     semantic_tokens_provider: Some(
       SemanticTokensServerCapabilities::SemanticTokensOptions(
@@ -145,5 +156,8 @@ pub fn server_capabilities(
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
     position_encoding: None,
+    // TODO(nayeemrmn): Support pull-based diagnostics.
+    diagnostic_provider: None,
+    inline_value_provider: None,
   }
 }

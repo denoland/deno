@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file camelcase
 const core = globalThis.Deno.core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
@@ -278,8 +277,8 @@ class Cache {
   }
 }
 
-webidl.configurePrototype(CacheStorage);
-webidl.configurePrototype(Cache);
+webidl.configureInterface(CacheStorage);
+webidl.configureInterface(Cache);
 const CacheStoragePrototype = CacheStorage.prototype;
 const CachePrototype = Cache.prototype;
 

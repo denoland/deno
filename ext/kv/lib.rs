@@ -1,23 +1,26 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-pub mod codec;
 pub mod dynamic;
 mod interface;
-mod proto;
 pub mod remote;
 pub mod sqlite;
+mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use std::time::Duration;
 
-use codec::decode_key;
-use codec::encode_key;
+use base64::prelude::BASE64_URL_SAFE;
+use base64::Engine;
+use chrono::DateTime;
+use chrono::Utc;
 use deno_core::anyhow::Context;
+use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_core::ByteString;
@@ -26,10 +29,30 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use denokv_proto::decode_key;
+use denokv_proto::encode_key;
+use denokv_proto::AtomicWrite;
+use denokv_proto::Check;
+use denokv_proto::Consistency;
+use denokv_proto::Database;
+use denokv_proto::Enqueue;
+use denokv_proto::Key;
+use denokv_proto::KeyPart;
+use denokv_proto::KvEntry;
+use denokv_proto::KvValue;
+use denokv_proto::Mutation;
+use denokv_proto::MutationKind;
+use denokv_proto::QueueMessageHandle;
+use denokv_proto::ReadRange;
+use denokv_proto::SnapshotReadOptions;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use time::utc_now;
 
 pub use crate::interface::*;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "kv";
 
 const MAX_WRITE_KEY_SIZE_BYTES: usize = 2048;
 // range selectors can contain 0x00 or 0xff suffixes
@@ -37,28 +60,13 @@ const MAX_READ_KEY_SIZE_BYTES: usize = MAX_WRITE_KEY_SIZE_BYTES + 1;
 const MAX_VALUE_SIZE_BYTES: usize = 65536;
 const MAX_READ_RANGES: usize = 10;
 const MAX_READ_ENTRIES: usize = 1000;
-const MAX_CHECKS: usize = 10;
+const MAX_CHECKS: usize = 100;
 const MAX_MUTATIONS: usize = 1000;
-const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 819200;
-
-struct UnstableChecker {
-  pub unstable: bool,
-}
-
-impl UnstableChecker {
-  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.unstable {
-      eprintln!(
-        "Unstable API '{api_name}'. The --unstable flag must be provided."
-      );
-      std::process::exit(70);
-    }
-  }
-}
+const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
+const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
 
 deno_core::extension!(deno_kv,
-  deps = [ deno_console ],
+  deps = [ deno_console, deno_web ],
   parameters = [ DBH: DatabaseHandler ],
   ops = [
     op_kv_database_open<DBH>,
@@ -71,11 +79,9 @@ deno_core::extension!(deno_kv,
   esm = [ "01_db.ts" ],
   options = {
     handler: DBH,
-    unstable: bool,
   },
   state = |state, options| {
     state.put(Rc::new(options.handler));
-    state.put(UnstableChecker { unstable: options.unstable })
   }
 );
 
@@ -93,19 +99,22 @@ impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
   }
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
-  path: Option<String>,
+  #[string] path: Option<String>,
 ) -> Result<ResourceId, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
   let handler = {
     let state = state.borrow();
+    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+    // once we phase out `check_or_exit_with_legacy_fallback`
     state
-      .borrow::<UnstableChecker>()
-      .check_unstable("Deno.openKv");
+      .feature_checker
+      .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, "Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;
@@ -118,30 +127,26 @@ where
 
 type KvKey = Vec<AnyValue>;
 
-impl From<AnyValue> for KeyPart {
-  fn from(value: AnyValue) -> Self {
-    match value {
-      AnyValue::Bool(false) => KeyPart::False,
-      AnyValue::Bool(true) => KeyPart::True,
-      AnyValue::Number(n) => KeyPart::Float(n),
-      AnyValue::BigInt(n) => KeyPart::Int(n),
-      AnyValue::String(s) => KeyPart::String(s),
-      AnyValue::V8Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
-      AnyValue::RustBuffer(_) => unreachable!(),
-    }
+fn key_part_from_v8(value: AnyValue) -> KeyPart {
+  match value {
+    AnyValue::Bool(false) => KeyPart::False,
+    AnyValue::Bool(true) => KeyPart::True,
+    AnyValue::Number(n) => KeyPart::Float(n),
+    AnyValue::BigInt(n) => KeyPart::Int(n),
+    AnyValue::String(s) => KeyPart::String(s),
+    AnyValue::V8Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
+    AnyValue::RustBuffer(_) => unreachable!(),
   }
 }
 
-impl From<KeyPart> for AnyValue {
-  fn from(value: KeyPart) -> Self {
-    match value {
-      KeyPart::False => AnyValue::Bool(false),
-      KeyPart::True => AnyValue::Bool(true),
-      KeyPart::Float(n) => AnyValue::Number(n),
-      KeyPart::Int(n) => AnyValue::BigInt(n),
-      KeyPart::String(s) => AnyValue::String(s),
-      KeyPart::Bytes(buf) => AnyValue::RustBuffer(buf.into()),
-    }
+fn key_part_to_v8(value: KeyPart) -> AnyValue {
+  match value {
+    KeyPart::False => AnyValue::Bool(false),
+    KeyPart::True => AnyValue::Bool(true),
+    KeyPart::Float(n) => AnyValue::Number(n),
+    KeyPart::Int(n) => AnyValue::BigInt(n),
+    KeyPart::String(s) => AnyValue::String(s),
+    KeyPart::Bytes(buf) => AnyValue::RustBuffer(buf.into()),
   }
 }
 
@@ -161,25 +166,25 @@ enum ToV8Value {
   U64(BigInt),
 }
 
-impl TryFrom<FromV8Value> for Value {
+impl TryFrom<FromV8Value> for KvValue {
   type Error = AnyError;
   fn try_from(value: FromV8Value) -> Result<Self, AnyError> {
     Ok(match value {
-      FromV8Value::V8(buf) => Value::V8(buf.to_vec()),
-      FromV8Value::Bytes(buf) => Value::Bytes(buf.to_vec()),
+      FromV8Value::V8(buf) => KvValue::V8(buf.to_vec()),
+      FromV8Value::Bytes(buf) => KvValue::Bytes(buf.to_vec()),
       FromV8Value::U64(n) => {
-        Value::U64(num_bigint::BigInt::from(n).try_into()?)
+        KvValue::U64(num_bigint::BigInt::from(n).try_into()?)
       }
     })
   }
 }
 
-impl From<Value> for ToV8Value {
-  fn from(value: Value) -> Self {
+impl From<KvValue> for ToV8Value {
+  fn from(value: KvValue) -> Self {
     match value {
-      Value::V8(buf) => ToV8Value::V8(buf.into()),
-      Value::Bytes(buf) => ToV8Value::Bytes(buf.into()),
-      Value::U64(n) => ToV8Value::U64(num_bigint::BigInt::from(n).into()),
+      KvValue::V8(buf) => ToV8Value::V8(buf.into()),
+      KvValue::Bytes(buf) => ToV8Value::Bytes(buf.into()),
+      KvValue::U64(n) => ToV8Value::U64(num_bigint::BigInt::from(n).into()),
     }
   }
 }
@@ -198,7 +203,7 @@ impl TryFrom<KvEntry> for ToV8KvEntry {
       key: decode_key(&entry.key)?
         .0
         .into_iter()
-        .map(Into::into)
+        .map(key_part_to_v8)
         .collect(),
       value: entry.value.into(),
       versionstamp: hex::encode(entry.versionstamp).into(),
@@ -232,12 +237,13 @@ type SnapshotReadRange = (
   Option<ByteString>,
 );
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_kv_snapshot_read<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  ranges: Vec<SnapshotReadRange>,
-  consistency: V8Consistency,
+  #[smi] rid: ResourceId,
+  #[serde] ranges: Vec<SnapshotReadRange>,
+  #[serde] consistency: V8Consistency,
 ) -> Result<Vec<Vec<ToV8KvEntry>>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
@@ -289,8 +295,7 @@ where
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
   };
-  let output_ranges =
-    db.snapshot_read(state.clone(), read_ranges, opts).await?;
+  let output_ranges = db.snapshot_read(read_ranges, opts).await?;
   let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
@@ -309,38 +314,50 @@ struct QueueMessageResource<QPH: QueueMessageHandle + 'static> {
 
 impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
   fn name(&self) -> Cow<str> {
-    "queue_message".into()
+    "queueMessage".into()
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-) -> Result<(ToJsBuffer, ResourceId), AnyError>
+  #[smi] rid: ResourceId,
+) -> Result<Option<(ToJsBuffer, ResourceId)>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
   let db = {
     let state = state.borrow();
     let resource =
-      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
+      match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
+        Ok(resource) => resource,
+        Err(err) => {
+          if get_custom_error_class(&err) == Some("BadResource") {
+            return Ok(None);
+          } else {
+            return Err(err);
+          }
+        }
+      };
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message(state.clone()).await?;
+  let Some(mut handle) = db.dequeue_next_message().await? else {
+    return Ok(None);
+  };
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
     state.resource_table.add(QueueMessageResource { handle })
   };
-  Ok((payload, handle_rid))
+  Ok(Some((payload, handle_rid)))
 }
 
-#[op]
+#[op2(async)]
 async fn op_kv_finish_dequeued_message<DBH>(
   state: Rc<RefCell<OpState>>,
-  handle_rid: ResourceId,
+  #[smi] handle_rid: ResourceId,
   success: bool,
 ) -> Result<(), AnyError>
 where
@@ -356,79 +373,81 @@ where
       .map_err(|_| type_error("Queue message not found"))?
       .handle
   };
-  handle.finish(success).await
+  // if we fail to finish the message, there is not much we can do and the
+  // message will be retried anyway, so we just ignore the error
+  if let Err(err) = handle.finish(success).await {
+    debug!("Failed to finish dequeued message: {}", err);
+  };
+  Ok(())
 }
 
 type V8KvCheck = (KvKey, Option<ByteString>);
 
-impl TryFrom<V8KvCheck> for KvCheck {
-  type Error = AnyError;
-  fn try_from(value: V8KvCheck) -> Result<Self, AnyError> {
-    let versionstamp = match value.1 {
-      Some(data) => {
-        let mut out = [0u8; 10];
-        hex::decode_to_slice(data, &mut out)
-          .map_err(|_| type_error("invalid versionstamp"))?;
-        Some(out)
-      }
-      None => None,
-    };
-    Ok(KvCheck {
-      key: encode_v8_key(value.0)?,
-      versionstamp,
-    })
-  }
+fn check_from_v8(value: V8KvCheck) -> Result<Check, AnyError> {
+  let versionstamp = match value.1 {
+    Some(data) => {
+      let mut out = [0u8; 10];
+      hex::decode_to_slice(data, &mut out)
+        .map_err(|_| type_error("invalid versionstamp"))?;
+      Some(out)
+    }
+    None => None,
+  };
+  Ok(Check {
+    key: encode_v8_key(value.0)?,
+    versionstamp,
+  })
 }
 
 type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
 
-impl TryFrom<V8KvMutation> for KvMutation {
-  type Error = AnyError;
-  fn try_from(value: V8KvMutation) -> Result<Self, AnyError> {
-    let key = encode_v8_key(value.0)?;
-    let kind = match (value.1.as_str(), value.2) {
-      ("set", Some(value)) => MutationKind::Set(value.try_into()?),
-      ("delete", None) => MutationKind::Delete,
-      ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
-      ("min", Some(value)) => MutationKind::Min(value.try_into()?),
-      ("max", Some(value)) => MutationKind::Max(value.try_into()?),
-      (op, Some(_)) => {
-        return Err(type_error(format!("invalid mutation '{op}' with value")))
-      }
-      (op, None) => {
-        return Err(type_error(format!(
-          "invalid mutation '{op}' without value"
-        )))
-      }
-    };
-    Ok(KvMutation {
-      key,
-      kind,
-      expire_at: value.3,
-    })
-  }
+fn mutation_from_v8(
+  (value, current_timstamp): (V8KvMutation, DateTime<Utc>),
+) -> Result<Mutation, AnyError> {
+  let key = encode_v8_key(value.0)?;
+  let kind = match (value.1.as_str(), value.2) {
+    ("set", Some(value)) => MutationKind::Set(value.try_into()?),
+    ("delete", None) => MutationKind::Delete,
+    ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
+    ("min", Some(value)) => MutationKind::Min(value.try_into()?),
+    ("max", Some(value)) => MutationKind::Max(value.try_into()?),
+    (op, Some(_)) => {
+      return Err(type_error(format!("invalid mutation '{op}' with value")))
+    }
+    (op, None) => {
+      return Err(type_error(format!("invalid mutation '{op}' without value")))
+    }
+  };
+  Ok(Mutation {
+    key,
+    kind,
+    expire_at: value
+      .3
+      .map(|expire_in| current_timstamp + Duration::from_millis(expire_in)),
+  })
 }
 
 type V8Enqueue = (JsBuffer, u64, Vec<KvKey>, Option<Vec<u32>>);
 
-impl TryFrom<V8Enqueue> for Enqueue {
-  type Error = AnyError;
-  fn try_from(value: V8Enqueue) -> Result<Self, AnyError> {
-    Ok(Enqueue {
-      payload: value.0.to_vec(),
-      delay_ms: value.1,
-      keys_if_undelivered: value
-        .2
-        .into_iter()
-        .map(encode_v8_key)
-        .collect::<std::io::Result<_>>()?,
-      backoff_schedule: value.3,
-    })
-  }
+fn enqueue_from_v8(
+  value: V8Enqueue,
+  current_timestamp: DateTime<Utc>,
+) -> Result<Enqueue, AnyError> {
+  Ok(Enqueue {
+    payload: value.0.to_vec(),
+    deadline: current_timestamp
+      + chrono::Duration::milliseconds(value.1 as i64),
+    keys_if_undelivered: value
+      .2
+      .into_iter()
+      .map(encode_v8_key)
+      .collect::<std::io::Result<_>>()?,
+    backoff_schedule: value.3,
+  })
 }
 
 fn encode_v8_key(key: KvKey) -> Result<Vec<u8>, std::io::Error> {
-  encode_key(&Key(key.into_iter().map(From::from).collect()))
+  encode_key(&Key(key.into_iter().map(key_part_from_v8).collect()))
 }
 
 enum RawSelector {
@@ -538,11 +557,7 @@ fn encode_cursor(
   if !boundary_key.starts_with(common_prefix) {
     return Err(type_error("invalid boundary key"));
   }
-
-  Ok(base64::encode_config(
-    &boundary_key[common_prefix.len()..],
-    base64::URL_SAFE,
-  ))
+  Ok(BASE64_URL_SAFE.encode(&boundary_key[common_prefix.len()..]))
 }
 
 fn decode_selector_and_cursor(
@@ -555,7 +570,8 @@ fn decode_selector_and_cursor(
   };
 
   let common_prefix = selector.common_prefix();
-  let cursor = base64::decode_config(cursor, base64::URL_SAFE)
+  let cursor = BASE64_URL_SAFE
+    .decode(cursor)
     .map_err(|_| type_error("invalid cursor"))?;
 
   let first_key: Vec<u8>;
@@ -594,17 +610,19 @@ fn decode_selector_and_cursor(
   Ok((first_key, last_key))
 }
 
-#[op]
+#[op2(async)]
+#[string]
 async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  checks: Vec<V8KvCheck>,
-  mutations: Vec<V8KvMutation>,
-  enqueues: Vec<V8Enqueue>,
+  #[smi] rid: ResourceId,
+  #[serde] checks: Vec<V8KvCheck>,
+  #[serde] mutations: Vec<V8KvMutation>,
+  #[serde] enqueues: Vec<V8Enqueue>,
 ) -> Result<Option<String>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
+  let current_timestamp = utc_now();
   let db = {
     let state = state.borrow();
     let resource =
@@ -625,21 +643,22 @@ where
 
   let checks = checks
     .into_iter()
-    .map(TryInto::try_into)
-    .collect::<Result<Vec<KvCheck>, AnyError>>()
+    .map(check_from_v8)
+    .collect::<Result<Vec<Check>, AnyError>>()
     .with_context(|| "invalid check")?;
   let mutations = mutations
     .into_iter()
-    .map(TryInto::try_into)
-    .collect::<Result<Vec<KvMutation>, AnyError>>()
+    .map(|mutation| mutation_from_v8((mutation, current_timestamp)))
+    .collect::<Result<Vec<Mutation>, AnyError>>()
     .with_context(|| "invalid mutation")?;
   let enqueues = enqueues
     .into_iter()
-    .map(TryInto::try_into)
+    .map(|e| enqueue_from_v8(e, current_timestamp))
     .collect::<Result<Vec<Enqueue>, AnyError>>()
     .with_context(|| "invalid enqueue")?;
 
   let mut total_payload_size = 0usize;
+  let mut total_key_size = 0usize;
 
   for key in checks
     .iter()
@@ -653,8 +672,13 @@ where
     total_payload_size += check_write_key_size(key)?;
   }
 
-  for value in mutations.iter().flat_map(|m| m.kind.value()) {
-    total_payload_size += check_value_size(value)?;
+  for (key, value) in mutations
+    .iter()
+    .flat_map(|m| m.kind.value().map(|x| (&m.key, x)))
+  {
+    let key_size = check_write_key_size(key)?;
+    total_payload_size += check_value_size(value)? + key_size;
+    total_key_size += key_size;
   }
 
   for enqueue in &enqueues {
@@ -668,13 +692,20 @@ where
     )));
   }
 
+  if total_key_size > MAX_TOTAL_KEY_SIZE_BYTES {
+    return Err(type_error(format!(
+      "total key size too large (max {} bytes)",
+      MAX_TOTAL_KEY_SIZE_BYTES
+    )));
+  }
+
   let atomic_write = AtomicWrite {
     checks,
     mutations,
     enqueues,
   };
 
-  let result = db.atomic_write(state.clone(), atomic_write).await?;
+  let result = db.atomic_write(atomic_write).await?;
 
   Ok(result.map(|res| hex::encode(res.versionstamp)))
 }
@@ -682,10 +713,11 @@ where
 // (prefix, start, end)
 type EncodeCursorRangeSelector = (Option<KvKey>, Option<KvKey>, Option<KvKey>);
 
-#[op]
+#[op2]
+#[string]
 fn op_kv_encode_cursor(
-  (prefix, start, end): EncodeCursorRangeSelector,
-  boundary_key: KvKey,
+  #[serde] (prefix, start, end): EncodeCursorRangeSelector,
+  #[serde] boundary_key: KvKey,
 ) -> Result<String, AnyError> {
   let selector = RawSelector::from_tuple(prefix, start, end)?;
   let boundary_key = encode_v8_key(boundary_key)?;
@@ -715,11 +747,11 @@ fn check_write_key_size(key: &[u8]) -> Result<usize, AnyError> {
   }
 }
 
-fn check_value_size(value: &Value) -> Result<usize, AnyError> {
+fn check_value_size(value: &KvValue) -> Result<usize, AnyError> {
   let payload = match value {
-    Value::Bytes(x) => x,
-    Value::V8(x) => x,
-    Value::U64(_) => return Ok(8),
+    KvValue::Bytes(x) => x,
+    KvValue::V8(x) => x,
+    KvValue::U64(_) => return Ok(8),
   };
 
   if payload.len() > MAX_VALUE_SIZE_BYTES {

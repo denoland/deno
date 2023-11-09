@@ -9,6 +9,7 @@ use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
+use std::fmt::Write as FmtWrite;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -48,18 +49,12 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
     Ok(())
   }
 
-  fn add_file_context(file_path: &Path, err: Error) -> Error {
-    Error::new(
-      err.kind(),
-      format!("{:#} (for '{}')", err, file_path.display()),
-    )
-  }
-
   fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
     let temp_file_path = {
-      let rand: String = (0..4)
-        .map(|_| format!("{:02x}", rand::random::<u8>()))
-        .collect();
+      let rand: String = (0..4).fold(String::new(), |mut output, _| {
+        let _ = write!(output, "{:02x}", rand::random::<u8>());
+        output
+      });
       let extension = format!("{rand}.tmp");
       file_path.with_extension(extension)
     };
@@ -77,7 +72,7 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
               data,
               mode,
             )
-            .map_err(|err| add_file_context(file_path, err));
+            .map_err(|err| add_file_context_to_err(file_path, err));
           }
           Err(create_err) => {
             if !parent_dir_path.exists() {
@@ -93,12 +88,50 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
           }
         }
       }
-      return Err(add_file_context(file_path, write_err));
+      return Err(add_file_context_to_err(file_path, write_err));
     }
     Ok(())
   }
 
   inner(file_path, data.as_ref(), mode)
+}
+
+/// Creates a std::fs::File handling if the parent does not exist.
+pub fn create_file(file_path: &Path) -> std::io::Result<std::fs::File> {
+  match std::fs::File::create(file_path) {
+    Ok(file) => Ok(file),
+    Err(err) => {
+      if err.kind() == ErrorKind::NotFound {
+        let parent_dir_path = file_path.parent().unwrap();
+        match std::fs::create_dir_all(parent_dir_path) {
+          Ok(()) => {
+            return std::fs::File::create(file_path)
+              .map_err(|err| add_file_context_to_err(file_path, err));
+          }
+          Err(create_err) => {
+            if !parent_dir_path.exists() {
+              return Err(Error::new(
+                create_err.kind(),
+                format!(
+                  "{:#} (for '{}')\nCheck the permission of the directory.",
+                  create_err,
+                  parent_dir_path.display()
+                ),
+              ));
+            }
+          }
+        }
+      }
+      Err(add_file_context_to_err(file_path, err))
+    }
+  }
+}
+
+fn add_file_context_to_err(file_path: &Path, err: Error) -> Error {
+  Error::new(
+    err.kind(),
+    format!("{:#} (for '{}')", err, file_path.display()),
+  )
 }
 
 pub fn write_file<T: AsRef<[u8]>>(
@@ -239,14 +272,13 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 
   pub fn collect_files(
     &self,
-    files: &[PathBuf],
+    files: Option<&[PathBuf]>,
   ) -> Result<Vec<PathBuf>, AnyError> {
     let mut target_files = Vec::new();
-    let files = if files.is_empty() {
-      // collect files in the current directory when empty
-      Cow::Owned(vec![PathBuf::from(".")])
-    } else {
+    let files = if let Some(files) = files {
       Cow::Borrowed(files)
+    } else {
+      Cow::Owned(vec![PathBuf::from(".")])
     };
     for file in files.iter() {
       if let Ok(file) = canonicalize_path(file) {
@@ -312,11 +344,10 @@ pub fn collect_specifiers(
     .ignore_vendor_folder();
 
   let root_path = current_dir()?;
-  let include_files = if files.include.is_empty() {
-    // collect files in the current directory when empty
-    Cow::Owned(vec![root_path.clone()])
+  let include_files = if let Some(include) = &files.include {
+    Cow::Borrowed(include)
   } else {
-    Cow::Borrowed(&files.include)
+    Cow::Owned(vec![root_path.clone()])
   };
   for path in include_files.iter() {
     let path = path.to_string_lossy();
@@ -336,7 +367,7 @@ pub fn collect_specifiers(
     };
     let p = normalize_path(p);
     if p.is_dir() {
-      let test_files = file_collector.collect_files(&[p])?;
+      let test_files = file_collector.collect_files(Some(&[p]))?;
       let mut test_files_as_urls = test_files
         .iter()
         .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
@@ -776,7 +807,7 @@ mod tests {
     .add_ignore_paths(&[ignore_dir_path.to_path_buf()]);
 
     let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
+      .collect_files(Some(&[root_dir_path.to_path_buf()]))
       .unwrap();
     let expected = [
       "README.md",
@@ -803,7 +834,7 @@ mod tests {
       .ignore_node_modules()
       .ignore_vendor_folder();
     let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
+      .collect_files(Some(&[root_dir_path.to_path_buf()]))
       .unwrap();
     let expected = [
       "README.md",
@@ -823,10 +854,10 @@ mod tests {
 
     // test opting out of ignoring by specifying the dir
     let result = file_collector
-      .collect_files(&[
+      .collect_files(Some(&[
         root_dir_path.to_path_buf(),
         root_dir_path.to_path_buf().join("child/node_modules/"),
-      ])
+      ]))
       .unwrap();
     let expected = [
       "README.md",
@@ -894,11 +925,11 @@ mod tests {
 
     let result = collect_specifiers(
       &FilesConfig {
-        include: vec![
+        include: Some(vec![
           PathBuf::from("http://localhost:8080"),
           root_dir_path.to_path_buf(),
           PathBuf::from("https://localhost:8080".to_string()),
-        ],
+        ]),
         exclude: vec![ignore_dir_path.to_path_buf()],
       },
       predicate,
@@ -933,11 +964,11 @@ mod tests {
     };
     let result = collect_specifiers(
       &FilesConfig {
-        include: vec![PathBuf::from(format!(
+        include: Some(vec![PathBuf::from(format!(
           "{}{}",
           scheme,
           root_dir_path.join("child").to_string().replace('\\', "/")
-        ))],
+        ))]),
         exclude: vec![],
       },
       predicate,

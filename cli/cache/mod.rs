@@ -1,18 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
+use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file;
 
 use deno_ast::MediaType;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -27,6 +32,7 @@ mod deno_dir;
 mod disk_cache;
 mod emit;
 mod incremental;
+mod module_info;
 mod node;
 mod parsed_source;
 
@@ -38,6 +44,8 @@ pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use incremental::IncrementalCache;
+pub use module_info::ModuleInfoCache;
+pub use module_info::ModuleInfoCacheModuleAnalyzer;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
 
@@ -97,10 +105,10 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
+  module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
-  maybe_local_node_modules_url: Option<ModuleSpecifier>,
 }
 
 impl FetchCacher {
@@ -109,19 +117,19 @@ impl FetchCacher {
     file_fetcher: Arc<FileFetcher>,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
+    module_info_cache: Arc<ModuleInfoCache>,
     permissions: PermissionsContainer,
-    maybe_local_node_modules_url: Option<ModuleSpecifier>,
   ) -> Self {
     Self {
       emit_cache,
       file_fetcher,
       file_header_overrides,
       global_http_cache,
-      parsed_source_cache,
+      npm_resolver,
+      module_info_cache,
       permissions,
       cache_info_enabled: false,
-      maybe_local_node_modules_url,
     }
   }
 
@@ -157,7 +165,29 @@ impl FetchCacher {
   }
 }
 
+static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "DENO_REGISTRY_URL";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+});
+
 impl Loader for FetchCacher {
+  fn registry_url(&self) -> &Url {
+    &DENO_REGISTRY_URL
+  }
+
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
       return None;
@@ -184,32 +214,50 @@ impl Loader for FetchCacher {
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
+    cache_setting: deno_graph::source::CacheSetting,
   ) -> LoadFuture {
-    if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
+    use deno_graph::source::CacheSetting as LoaderCacheSetting;
+
+    if specifier.path().contains("/node_modules/") {
       // The specifier might be in a completely different symlinked tree than
-      // what the resolved node_modules_url is in (ex. `/my-project-1/node_modules`
-      // symlinked to `/my-project-2/node_modules`), so first check if the path
-      // is in a node_modules dir to avoid needlessly canonicalizing, then compare
+      // what the node_modules url is in (ex. `/my-project-1/node_modules`
+      // symlinked to `/my-project-2/node_modules`), so first we checked if the path
+      // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
       // against the canonicalized specifier.
-      if specifier.path().contains("/node_modules/") {
-        let specifier =
-          crate::node::resolve_specifier_into_node_modules(specifier);
-        if specifier.as_str().starts_with(node_modules_url.as_str()) {
-          return Box::pin(futures::future::ready(Ok(Some(
-            LoadResponse::External { specifier },
-          ))));
-        }
+      let specifier =
+        crate::node::resolve_specifier_into_node_modules(specifier);
+      if self.npm_resolver.in_npm_package(&specifier) {
+        return Box::pin(futures::future::ready(Ok(Some(
+          LoadResponse::External { specifier },
+        ))));
       }
     }
 
-    let permissions = self.permissions.clone();
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
+    let permissions = self.permissions.clone();
     let specifier = specifier.clone();
 
     async move {
+      let maybe_cache_setting = match cache_setting {
+        LoaderCacheSetting::Use => None,
+        LoaderCacheSetting::Reload => {
+          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
+            return Err(deno_core::anyhow::anyhow!(
+              "Failed to resolve version constraint. Try running again without --cached-only"
+            ));
+          }
+          Some(CacheSetting::ReloadAll)
+        }
+        LoaderCacheSetting::Only => Some(CacheSetting::Only),
+      };
       file_fetcher
-        .fetch(&specifier, permissions)
+        .fetch_with_options(FetchOptions {
+          specifier: &specifier,
+          permissions,
+          maybe_accept: None,
+          maybe_cache_setting: maybe_cache_setting.as_ref(),
+        })
         .await
         .map(|file| {
           let maybe_headers =
@@ -228,35 +276,22 @@ impl Loader for FetchCacher {
           }))
         })
         .unwrap_or_else(|err| {
-          if let Some(err) = err.downcast_ref::<std::io::Error>() {
-            if err.kind() == std::io::ErrorKind::NotFound {
+          if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+            if io_err.kind() == std::io::ErrorKind::NotFound {
               return Ok(None);
+            } else {
+              return Err(err);
             }
-          } else if get_error_class_name(&err) == "NotFound" {
-            return Ok(None);
           }
-          Err(err)
+          let error_class_name = get_error_class_name(&err);
+          match error_class_name {
+            "NotFound" => Ok(None),
+            "NotCached" if cache_setting == LoaderCacheSetting::Only => Ok(None),
+            _ => Err(err),
+          }
         })
     }
     .boxed()
-  }
-
-  fn load_no_cache(
-    &mut self,
-    specifier: &deno_ast::ModuleSpecifier,
-    is_dynamic: bool,
-  ) -> deno_emit::LoadFuture {
-    // todo: actually implement this
-    self.load(specifier, is_dynamic)
-  }
-
-  fn load_from_cache(
-    &mut self,
-    specifier: &deno_ast::ModuleSpecifier,
-    is_dynamic: bool,
-  ) -> deno_emit::LoadFuture {
-    // todo: actually implement this
-    self.load(specifier, is_dynamic)
   }
 
   fn cache_module_info(
@@ -265,7 +300,7 @@ impl Loader for FetchCacher {
     source: &str,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    let result = self.parsed_source_cache.cache_module_info(
+    let result = self.module_info_cache.set_module_info(
       specifier,
       MediaType::from_specifier(specifier),
       source,

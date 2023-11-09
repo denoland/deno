@@ -7,6 +7,9 @@ import {
   fail,
 } from "./test_util.ts";
 
+const servePort = 4248;
+const serveUrl = `ws://localhost:${servePort}/`;
+
 Deno.test({ permissions: "none" }, function websocketPermissionless() {
   assertThrows(
     () => new WebSocket("ws://localhost"),
@@ -18,8 +21,107 @@ Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
   const promise = deferred();
   const ws = new WebSocket(new URL("ws://localhost:4242/"));
   assertEquals(ws.url, "ws://localhost:4242/");
-  ws.onerror = () => fail();
+  ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => ws.close();
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketH2SendSmallPacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4249/"));
+  assertEquals(ws.url, "wss://localhost:4249/");
+  let messageCount = 0;
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send("a".repeat(16));
+    ws.send("a".repeat(16));
+    ws.send("a".repeat(16));
+  };
+  ws.onmessage = () => {
+    if (++messageCount == 3) {
+      ws.close();
+    }
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketH2SendLargePacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4249/"));
+  assertEquals(ws.url, "wss://localhost:4249/");
+  let messageCount = 0;
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send("a".repeat(65000));
+    ws.send("a".repeat(65000));
+    ws.send("a".repeat(65000));
+  };
+  ws.onmessage = () => {
+    if (++messageCount == 3) {
+      ws.close();
+    }
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketSendLargePacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  assertEquals(ws.url, "wss://localhost:4243/");
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send("a".repeat(65000));
+  };
+  ws.onmessage = () => {
+    ws.close();
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketSendLargeBinaryPacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  ws.binaryType = "arraybuffer";
+  assertEquals(ws.url, "wss://localhost:4243/");
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send(new Uint8Array(65000));
+  };
+  ws.onmessage = (msg: MessageEvent) => {
+    assertEquals(msg.data.byteLength, 65000);
+    ws.close();
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test(async function websocketSendLargeBlobPacket() {
+  const promise = deferred();
+  const ws = new WebSocket(new URL("wss://localhost:4243/"));
+  ws.binaryType = "arraybuffer";
+  assertEquals(ws.url, "wss://localhost:4243/");
+  ws.onerror = (e) => promise.reject(e);
+  ws.onopen = () => {
+    ws.send(new Blob(["a".repeat(65000)]));
+  };
+  ws.onmessage = (msg: MessageEvent) => {
+    assertEquals(msg.data.byteLength, 65000);
+    ws.close();
+  };
   ws.onclose = () => {
     promise.resolve();
   };
@@ -32,7 +134,7 @@ Deno.test(async function websocketPingPong() {
   const promise = deferred();
   const ws = new WebSocket("ws://localhost:4245/");
   assertEquals(ws.url, "ws://localhost:4245/");
-  ws.onerror = () => fail();
+  ws.onerror = (e) => promise.reject(e);
   ws.onmessage = (e) => {
     ws.send(e.data);
   };
@@ -81,13 +183,13 @@ Deno.test(
       signal: ac.signal,
       onListen: () => listeningPromise.resolve(),
       hostname: "localhost",
-      port: 4246,
+      port: servePort,
     });
 
     await listeningPromise;
     const promise = deferred();
-    const ws = new WebSocket("ws://localhost:4246/");
-    assertEquals(ws.url, "ws://localhost:4246/");
+    const ws = new WebSocket(serveUrl);
+    assertEquals(ws.url, serveUrl);
     ws.onerror = () => fail();
     ws.onmessage = (e) => {
       assertEquals(e.data, "Hello");
@@ -133,15 +235,17 @@ Deno.test({
     signal: ac.signal,
     onListen: () => listeningPromise.resolve(),
     hostname: "localhost",
-    port: 4247,
+    port: servePort,
   });
 
   await listeningPromise;
 
-  const ws = new WebSocket("ws://localhost:4247/");
-  assertEquals(ws.url, "ws://localhost:4247/");
+  const ws = new WebSocket(serveUrl);
+  assertEquals(ws.url, serveUrl);
   ws.onerror = () => fail();
-  ws.onmessage = () => ws.send("bye");
+  ws.onmessage = (m: MessageEvent) => {
+    if (m.data == "Hello") ws.send("bye");
+  };
   ws.onclose = () => {
     promise.resolve();
   };
@@ -173,13 +277,13 @@ Deno.test({
     signal: ac.signal,
     onListen: () => listeningPromise.resolve(),
     hostname: "localhost",
-    port: 4247,
+    port: servePort,
   });
 
   await listeningPromise;
 
-  const ws = new WebSocket("ws://localhost:4247/");
-  assertEquals(ws.url, "ws://localhost:4247/");
+  const ws = new WebSocket(serveUrl);
+  assertEquals(ws.url, serveUrl);
   let seenBye = false;
   ws.onerror = () => fail();
   ws.onmessage = ({ data }) => {
@@ -219,3 +323,51 @@ Deno.test(
     }
   },
 );
+
+Deno.test(async function websocketTlsSocketWorks() {
+  const cert = await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt");
+  const key = await Deno.readTextFile("cli/tests/testdata/tls/localhost.key");
+
+  const messages: string[] = [],
+    errors: { server?: Event; client?: Event }[] = [];
+  const promise = new Promise((okay, nope) => {
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (req) => {
+        const { response, socket } = Deno.upgradeWebSocket(req);
+        socket.onopen = () => socket.send("ping");
+        socket.onmessage = (e) => {
+          messages.push(e.data);
+          socket.close();
+        };
+        socket.onerror = (e) => errors.push({ server: e });
+        socket.onclose = () => ac.abort();
+        return response;
+      },
+      signal: ac.signal,
+      hostname: "localhost",
+      port: servePort,
+      cert,
+      key,
+    });
+    setTimeout(() => {
+      const ws = new WebSocket(`wss://localhost:${servePort}`);
+      ws.onmessage = (e) => {
+        messages.push(e.data);
+        ws.send("pong");
+      };
+      ws.onerror = (e) => {
+        errors.push({ client: e });
+        nope();
+      };
+      ws.onclose = () => okay(server.finished);
+    }, 1000);
+  });
+
+  const finished = await promise;
+
+  assertEquals(errors, []);
+  assertEquals(messages, ["ping", "pong"]);
+
+  await finished;
+});

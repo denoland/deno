@@ -27,7 +27,6 @@ import {
   defaultTriggerAsyncIdScope,
   symbols,
 } from "ext:deno_node/internal/async_hooks.ts";
-// deno-lint-ignore camelcase
 const { async_id_symbol } = symbols;
 import {
   ERR_HTTP_HEADERS_SENT,

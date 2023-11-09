@@ -12,6 +12,7 @@ const {
   SymbolToStringTag,
   Uint8ArrayPrototype,
 } = globalThis.__bootstrap.primordials;
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
 const core = Deno.core;
 const ops = core.ops;
 
@@ -26,14 +27,14 @@ async function openKv(path: string) {
   return new Kv(rid, kvSymbol);
 }
 
-const millisecondsInOneWeek = 7 * 24 * 60 * 60 * 1000;
+const maxQueueDelay = 30 * 24 * 60 * 60 * 1000;
 
 function validateQueueDelay(delay: number) {
   if (delay < 0) {
     throw new TypeError("delay cannot be negative");
   }
-  if (delay > millisecondsInOneWeek) {
-    throw new TypeError("delay cannot be greater than one week");
+  if (delay > maxQueueDelay) {
+    throw new TypeError("delay cannot be greater than 30 days");
   }
   if (isNaN(delay)) {
     throw new TypeError("delay cannot be NaN");
@@ -61,7 +62,6 @@ const kvSymbol = Symbol("KvRid");
 
 class Kv {
   #rid: number;
-  #closed: boolean;
 
   constructor(rid: number = undefined, symbol: symbol = undefined) {
     if (kvSymbol !== symbol) {
@@ -70,7 +70,6 @@ class Kv {
       );
     }
     this.#rid = rid;
-    this.#closed = false;
   }
 
   atomic() {
@@ -134,11 +133,8 @@ class Kv {
     value = serializeValue(value);
 
     const checks: Deno.AtomicCheck[] = [];
-    const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
-      : undefined;
     const mutations = [
-      [key, "set", value, expireAt],
+      [key, "set", value, options?.expireIn],
     ];
 
     const versionstamp = await core.opAsync(
@@ -254,20 +250,14 @@ class Kv {
     handler: (message: unknown) => Promise<void> | void,
   ): Promise<void> {
     const finishMessageOps = new Map<number, Promise<void>>();
-    while (!this.#closed) {
+    while (true) {
       // Wait for the next message.
-      let next: { 0: Uint8Array; 1: number };
-      try {
-        next = await core.opAsync(
-          "op_kv_dequeue_next_message",
-          this.#rid,
-        );
-      } catch (error) {
-        if (this.#closed) {
-          break;
-        } else {
-          throw error;
-        }
+      const next: { 0: Uint8Array; 1: number } = await core.opAsync(
+        "op_kv_dequeue_next_message",
+        this.#rid,
+      );
+      if (next === null) {
+        break;
       }
 
       // Deserialize the payload.
@@ -286,20 +276,16 @@ class Kv {
         } catch (error) {
           console.error("Exception in queue handler", error);
         } finally {
-          if (this.#closed) {
-            core.close(handleId);
-          } else {
-            const promise: Promise<void> = core.opAsync(
-              "op_kv_finish_dequeued_message",
-              handleId,
-              success,
-            );
-            finishMessageOps.set(handleId, promise);
-            try {
-              await promise;
-            } finally {
-              finishMessageOps.delete(handleId);
-            }
+          const promise: Promise<void> = core.opAsync(
+            "op_kv_finish_dequeued_message",
+            handleId,
+            success,
+          );
+          finishMessageOps.set(handleId, promise);
+          try {
+            await promise;
+          } finally {
+            finishMessageOps.delete(handleId);
           }
         }
       })();
@@ -313,7 +299,10 @@ class Kv {
 
   close() {
     core.close(this.#rid);
-    this.#closed = true;
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 }
 
@@ -340,7 +329,7 @@ class AtomicOperation {
       const key = mutation.key;
       let type: string;
       let value: RawValue | null;
-      let expireAt: number | undefined = undefined;
+      let expireIn: number | undefined = undefined;
       switch (mutation.type) {
         case "delete":
           type = "delete";
@@ -350,7 +339,7 @@ class AtomicOperation {
           break;
         case "set":
           if (typeof mutation.expireIn === "number") {
-            expireAt = Date.now() + mutation.expireIn;
+            expireIn = mutation.expireIn;
           }
           /* falls through */
         case "sum":
@@ -365,7 +354,7 @@ class AtomicOperation {
         default:
           throw new TypeError("Invalid mutation type");
       }
-      this.#mutations.push([key, type, value, expireAt]);
+      this.#mutations.push([key, type, value, expireIn]);
     }
     return this;
   }
@@ -390,10 +379,12 @@ class AtomicOperation {
     value: unknown,
     options?: { expireIn?: number },
   ): this {
-    const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
-      : undefined;
-    this.#mutations.push([key, "set", serializeValue(value), expireAt]);
+    this.#mutations.push([
+      key,
+      "set",
+      serializeValue(value),
+      options?.expireIn,
+    ]);
     return this;
   }
 

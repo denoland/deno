@@ -19,3 +19,6 @@ and limitations under the License.
 /// <reference lib="es2023" />
 /// <reference lib="esnext.array" />
 /// <reference lib="esnext.intl" />
+/// <reference lib="esnext.object" />
+/// <reference lib="esnext.decorators" />
+/// <reference lib="esnext.disposable" />

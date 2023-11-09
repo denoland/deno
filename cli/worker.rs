@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -12,8 +13,10 @@ use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FeatureChecker;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
@@ -39,14 +42,21 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReqReference;
+use tokio::select;
 
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
+use crate::emit::Emitter;
 use crate::errors;
 use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::run::hmr::HmrRunner;
 use crate::util::checksum;
+use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -76,8 +86,10 @@ pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
   pub coverage_dir: Option<String>,
+  pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
+  pub hmr: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
   pub is_inspecting: bool,
@@ -88,12 +100,13 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
 }
 
 struct SharedWorkerState {
   options: CliMainWorkerOptions,
   storage_key_resolver: StorageKeyResolver,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
   blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
@@ -102,8 +115,11 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  emitter: Option<Arc<Emitter>>,
+  maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  feature_checker: Arc<FeatureChecker>,
 }
 
 impl SharedWorkerState {
@@ -130,6 +146,8 @@ impl CliMainWorker {
   pub async fn run(&mut self) -> Result<i32, AnyError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
+    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
+
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
@@ -146,10 +164,34 @@ impl CliMainWorker {
     self.worker.dispatch_load_event(located_script_name!())?;
 
     loop {
-      self
-        .worker
-        .run_event_loop(maybe_coverage_collector.is_none())
-        .await?;
+      if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+        let watcher_communicator =
+          self.shared.maybe_file_watcher_communicator.clone().unwrap();
+
+        let hmr_future = hmr_runner.run().boxed_local();
+        let event_loop_future = self.worker.run_event_loop(false).boxed_local();
+
+        let result;
+        select! {
+          hmr_result = hmr_future => {
+            result = hmr_result;
+          },
+          event_loop_result = event_loop_future => {
+            result = event_loop_result;
+          }
+        }
+        if let Err(e) = result {
+          watcher_communicator
+            .change_restart_mode(WatcherRestartMode::Automatic);
+          return Err(e);
+        }
+      } else {
+        self
+          .worker
+          .run_event_loop(maybe_coverage_collector.is_none())
+          .await?;
+      }
+
       if !self
         .worker
         .dispatch_beforeunload_event(located_script_name!())?
@@ -164,6 +206,12 @@ impl CliMainWorker {
       self
         .worker
         .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+        .await?;
+    }
+    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+      self
+        .worker
+        .with_event_loop(hmr_runner.stop().boxed_local())
         .await?;
     }
 
@@ -279,6 +327,39 @@ impl CliMainWorker {
       Ok(None)
     }
   }
+
+  pub async fn maybe_setup_hmr_runner(
+    &mut self,
+  ) -> Result<Option<HmrRunner>, AnyError> {
+    if !self.shared.options.hmr {
+      return Ok(None);
+    }
+
+    let watcher_communicator =
+      self.shared.maybe_file_watcher_communicator.clone().unwrap();
+    let emitter = self.shared.emitter.clone().unwrap();
+
+    let session = self.worker.create_inspector_session().await;
+    let mut hmr_runner = HmrRunner::new(emitter, session, watcher_communicator);
+
+    self
+      .worker
+      .with_event_loop(hmr_runner.start().boxed_local())
+      .await?;
+
+    Ok(Some(hmr_runner))
+  }
+
+  pub fn execute_script_static(
+    &mut self,
+    name: &'static str,
+    source_code: &'static str,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    self
+      .worker
+      .js_runtime
+      .execute_script_static(name, source_code)
+  }
 }
 
 pub struct CliMainWorkerFactory {
@@ -289,14 +370,17 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    emitter: Option<Arc<Emitter>>,
+    maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
   ) -> Self {
     Self {
@@ -311,9 +395,12 @@ impl CliMainWorkerFactory {
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
         root_cert_store_provider,
+        emitter,
         fs,
+        maybe_file_watcher_communicator,
         maybe_inspector_server,
         maybe_lockfile,
+        feature_checker,
       }),
     }
   }
@@ -344,12 +431,51 @@ impl CliMainWorkerFactory {
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
-      shared
+      let package_ref = if package_ref.req().version_req.version_text() == "*" {
+        // When using the wildcard version, select the same version used in the
+        // package.json deps in order to prevent adding new dependency version
+        shared
+          .options
+          .maybe_root_package_json_deps
+          .as_ref()
+          .and_then(|deps| {
+            deps
+              .values()
+              .filter_map(|v| v.as_ref().ok())
+              .find(|dep| dep.name == package_ref.req().name)
+              .map(|dep| {
+                NpmPackageReqReference::new(PackageReqReference {
+                  req: dep.clone(),
+                  sub_path: package_ref.sub_path().map(|s| s.to_string()),
+                })
+              })
+          })
+          .unwrap_or(package_ref)
+      } else {
+        package_ref
+      };
+      if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
+        npm_resolver
+          .add_package_reqs(&[package_ref.req().clone()])
+          .await?;
+      }
+
+      // use a fake referrer that can be used to discover the package.json if necessary
+      let referrer =
+        ModuleSpecifier::from_directory_path(self.shared.fs.cwd()?)
+          .unwrap()
+          .join("package.json")?;
+      let package_folder = shared
         .npm_resolver
-        .add_package_reqs(&[package_ref.req().clone()])
-        .await?;
-      let node_resolution =
-        self.resolve_binary_entrypoint(&package_ref, &permissions)?;
+        .resolve_pkg_folder_from_deno_module_req(
+          package_ref.req(),
+          &referrer,
+        )?;
+      let node_resolution = self.resolve_binary_entrypoint(
+        &package_folder,
+        package_ref.sub_path(),
+        &permissions,
+      )?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
 
       if let Some(lockfile) = &shared.maybe_lockfile {
@@ -404,6 +530,16 @@ impl CliMainWorkerFactory {
     let mut extensions = ops::cli_exts(shared.npm_resolver.clone());
     extensions.append(&mut custom_extensions);
 
+    // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
+    // list of enabled features.
+    let feature_checker = shared.feature_checker.clone();
+    let mut unstable_features = Vec::with_capacity(8);
+    for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
+      if feature_checker.check(feature_name) {
+        unstable_features.push(*id);
+      }
+    }
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         args: shared.options.argv.clone(),
@@ -411,6 +547,7 @@ impl CliMainWorkerFactory {
           .map(|p| p.get())
           .unwrap_or(1),
         log_level: shared.options.log_level,
+        enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
@@ -419,6 +556,7 @@ impl CliMainWorkerFactory {
         runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: shared.options.unstable,
+        unstable_features,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
@@ -444,7 +582,7 @@ impl CliMainWorkerFactory {
       should_wait_for_inspector_session: shared.options.inspect_wait,
       module_loader,
       fs: shared.fs.clone(),
-      npm_resolver: Some(shared.npm_resolver.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
@@ -455,6 +593,7 @@ impl CliMainWorkerFactory {
         shared.compiled_wasm_module_store.clone(),
       ),
       stdio,
+      feature_checker,
     };
 
     let worker = MainWorker::bootstrap_from_options(
@@ -473,15 +612,23 @@ impl CliMainWorkerFactory {
 
   fn resolve_binary_entrypoint(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_folder: &Path,
+    sub_path: Option<&str>,
     permissions: &PermissionsContainer,
   ) -> Result<NodeResolution, AnyError> {
-    match self.shared.node_resolver.resolve_binary_export(package_ref) {
+    match self
+      .shared
+      .node_resolver
+      .resolve_binary_export(package_folder, sub_path)
+    {
       Ok(node_resolution) => Ok(node_resolution),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
-        let result =
-          self.resolve_binary_entrypoint_fallback(package_ref, permissions);
+        let result = self.resolve_binary_entrypoint_fallback(
+          package_folder,
+          sub_path,
+          permissions,
+        );
         match result {
           Ok(Some(resolution)) => Ok(resolution),
           Ok(None) => Err(original_err),
@@ -496,20 +643,28 @@ impl CliMainWorkerFactory {
   /// resolve the binary entrypoint using regular node resolution
   fn resolve_binary_entrypoint_fallback(
     &self,
-    package_ref: &NpmPackageReqReference,
+    package_folder: &Path,
+    sub_path: Option<&str>,
     permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // only fallback if the user specified a sub path
-    if package_ref.sub_path().is_none() {
+    if sub_path.is_none() {
       // it's confusing to users if the package doesn't have any binary
       // entrypoint and we just execute the main script which will likely
       // have blank output, so do not resolve the entrypoint in this case
       return Ok(None);
     }
 
-    let Some(resolution) =
-      self.shared.node_resolver.resolve_npm_req_reference(
-        package_ref,
+    // use a fake referrer since a real one doesn't exist
+    let referrer =
+      ModuleSpecifier::from_directory_path(package_folder).unwrap();
+    let Some(resolution) = self
+      .shared
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        package_folder,
+        sub_path,
+        &referrer,
         NodeResolutionMode::Execution,
         permissions,
       )?
@@ -562,6 +717,16 @@ fn create_web_worker_callback(
         .join(checksum::gen(&[key.as_bytes()]))
     });
 
+    // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
+    // list of enabled features.
+    let feature_checker = shared.feature_checker.clone();
+    let mut unstable_features = Vec::with_capacity(8);
+    for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
+      if feature_checker.check(feature_name) {
+        unstable_features.push(*id);
+      }
+    }
+
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: shared.options.argv.clone(),
@@ -569,6 +734,7 @@ fn create_web_worker_callback(
           .map(|p| p.get())
           .unwrap_or(1),
         log_level: shared.options.log_level,
+        enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
@@ -577,6 +743,7 @@ fn create_web_worker_callback(
         runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: shared.options.unstable,
+        unstable_features,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
@@ -598,7 +765,7 @@ fn create_web_worker_callback(
       source_map_getter: maybe_source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
-      npm_resolver: Some(shared.npm_resolver.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),
@@ -610,6 +777,7 @@ fn create_web_worker_callback(
       ),
       stdio: stdio.clone(),
       cache_storage_dir,
+      feature_checker,
     };
 
     WebWorker::bootstrap_from_options(

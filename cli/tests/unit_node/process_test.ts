@@ -259,6 +259,23 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.argv0",
+  fn() {
+    assertEquals(typeof process.argv0, "string");
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+    // Setting should be a noop
+    process.argv0 = "foobar";
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+  },
+});
+
+Deno.test({
   name: "process.execArgv",
   fn() {
     assert(Array.isArray(process.execArgv));
@@ -784,5 +801,18 @@ Deno.test({
     );
     await delay(10);
     worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').errname",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.errname);
+    assert(typeof uv.errname === "function");
+    assertEquals(uv.errname(-1), "EPERM");
   },
 });

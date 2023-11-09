@@ -1795,7 +1795,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function fetchWithInvalidContentLength(): Promise<
+  async function fetchWithInvalidContentLength2(): Promise<
     void
   > {
     const addr = `127.0.0.1:${listenPort}`;
@@ -1822,7 +1822,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function fetchWithInvalidContentLength(): Promise<
+  async function fetchWithInvalidContentLength3(): Promise<
     void
   > {
     const addr = `127.0.0.1:${listenPort}`;

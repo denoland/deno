@@ -497,9 +497,15 @@ Deno.test({
     );
     const childProcess = spawn(Deno.execPath(), ["run", script]);
     const p = withTimeout();
+    const pStdout = withTimeout();
+    const pStderr = withTimeout();
     childProcess.on("exit", () => p.resolve());
+    childProcess.stdout.on("close", () => pStdout.resolve());
+    childProcess.stderr.on("close", () => pStderr.resolve());
     childProcess.kill("SIGKILL");
     await p;
+    await pStdout;
+    await pStderr;
     assert(childProcess.killed);
     assertEquals(childProcess.signalCode, "SIGKILL");
     assertExists(childProcess.exitCode);
@@ -633,9 +639,15 @@ Deno.test({
     // Spawn an infinite cat
     const cp = spawn("cat", ["-"]);
     const p = withTimeout();
+    const pStdout = withTimeout();
+    const pStderr = withTimeout();
     cp.on("exit", () => p.resolve());
+    cp.stdout.on("close", () => pStdout.resolve());
+    cp.stderr.on("close", () => pStderr.resolve());
     cp.kill("SIGIOT");
     await p;
+    await pStdout;
+    await pStderr;
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
   },

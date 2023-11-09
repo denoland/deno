@@ -101,6 +101,26 @@ impl Emitter {
     }
   }
 
+  /// Expects a file URL, panics otherwise.
+  pub async fn load_and_emit_for_hmr(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<String, AnyError> {
+    let media_type = MediaType::from_specifier(specifier);
+    let source_code = tokio::fs::read_to_string(
+      ModuleSpecifier::to_file_path(specifier).unwrap(),
+    )
+    .await?;
+    let source_arc: Arc<str> = source_code.into();
+    let parsed_source = self
+      .parsed_source_cache
+      .get_or_parse_module(specifier, source_arc, media_type)?;
+    let mut options = self.emit_options.clone();
+    options.inline_source_map = false;
+    let transpiled_source = parsed_source.transpile(&options)?;
+    Ok(transpiled_source.text)
+  }
+
   /// A hashing function that takes the source code and uses the global emit
   /// options then generates a string hash which can be stored to
   /// determine if the cached emit is valid or not.

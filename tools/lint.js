@@ -3,26 +3,34 @@
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 
-let didLint = false;
+const promises = [];
 
-if (Deno.args.includes("--js")) {
-  await dlint();
-  await dlintPreferPrimordials();
-  didLint = true;
+let js = Deno.args.includes("--js");
+let rs = Deno.args.includes("--rs");
+if (!js && !rs) {
+  js = true;
+  rs = true;
 }
 
-if (Deno.args.includes("--rs")) {
-  await clippy();
-  didLint = true;
+if (js) {
+  promises.push(dlint());
+  promises.push(dlintPreferPrimordials());
 }
 
-if (!didLint) {
-  await Promise.all([
-    dlint(),
-    dlintPreferPrimordials(),
-    checkCopyright(),
-    clippy(),
-  ]);
+if (rs) {
+  promises.push(clippy());
+}
+
+if (js && rs) {
+  promises.push(checkCopyright());
+}
+
+const results = await Promise.allSettled(promises);
+for (const result of results) {
+  if (result.status === "rejected") {
+    console.error(result.reason);
+    Deno.exit(1);
+  }
 }
 
 async function dlint() {

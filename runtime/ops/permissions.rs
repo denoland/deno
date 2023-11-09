@@ -6,7 +6,7 @@ use crate::permissions::PermissionsContainer;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::url;
 use deno_core::OpState;
 use serde::Deserialize;
@@ -51,10 +51,11 @@ impl From<PermissionState> for PermissionStatus {
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_query_permission(
   state: &mut OpState,
-  args: PermissionArgs,
+  #[serde] args: PermissionArgs,
 ) -> Result<PermissionStatus, AnyError> {
   let permissions = state.borrow::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
@@ -85,10 +86,11 @@ pub fn op_query_permission(
   Ok(PermissionStatus::from(perm))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_revoke_permission(
   state: &mut OpState,
-  args: PermissionArgs,
+  #[serde] args: PermissionArgs,
 ) -> Result<PermissionStatus, AnyError> {
   let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
@@ -119,10 +121,11 @@ pub fn op_revoke_permission(
   Ok(PermissionStatus::from(perm))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_request_permission(
   state: &mut OpState,
-  args: PermissionArgs,
+  #[serde] args: PermissionArgs,
 ) -> Result<PermissionStatus, AnyError> {
   let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();

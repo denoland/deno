@@ -15,7 +15,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::env_vars_for_npm_tests_no_sync_download;
+use util::env_vars_for_npm_tests;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -808,6 +808,19 @@ fn permissions_cache() {
     });
 }
 
+itest!(env_file {
+  args: "run --env=env --allow-env run/env_file.ts",
+  output: "run/env_file.out",
+});
+
+itest!(env_file_missing {
+  args: "run --env=missing --allow-env run/env_file.ts",
+  output_str: Some(
+    "error: Unable to load 'missing' environment variable file\n"
+  ),
+  exit_code: 1,
+});
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
@@ -870,7 +883,7 @@ itest!(lock_write_fetch {
 
 itest!(lock_check_ok {
   args:
-    "run --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -917,7 +930,7 @@ itest!(lock_flag_overrides_config_file_lock_path {
 
 itest!(lock_v2_check_ok {
   args:
-    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -993,7 +1006,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "2",
+  "version": "3",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -1012,7 +1025,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "2",
+  "version": "3",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -1044,24 +1057,24 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "2",
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": "sha512-[WILDCARD]",
+        "dependencies": {}
+      }
+    }
+  },
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
   "remote": {
     "http://localhost:4545/echo.ts": "829eb4d67015a695d70b2a33c78b631b29eea1dbac491a6bfcf394af2a2671c2",
     "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
-  },
-  "npm": {
-    "specifiers": {
-      "@denotest/esm-basic": "@denotest/esm-basic@1.0.0"
-    },
-    "packages": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-[WILDCARD]",
-        "dependencies": {}
-      }
-    }
   }
 }
 "#,
@@ -1766,6 +1779,12 @@ itest!(jsx_import_source_pragma_import_map_dev {
   http_server: true,
 });
 
+itest!(jsx_import_source_precompile_import_map {
+  args: "run --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc run/jsx_precompile/no_pragma.tsx",
+  output: "run/jsx_precompile/no_pragma.out",
+  http_server: true,
+});
+
 itest!(jsx_import_source_import_map {
   args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
@@ -2066,14 +2085,14 @@ itest!(shebang_swc {
 });
 
 itest!(shebang_with_json_imports_tsc {
-  args: "run --quiet import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
 itest!(shebang_with_json_imports_swc {
-  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet --no-check import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
@@ -3050,36 +3069,36 @@ itest!(issue_13562 {
   output: "run/issue13562.ts.out",
 });
 
-itest!(import_assertions_static_import {
-  args: "run --allow-read import_assertions/static_import.ts",
-  output: "import_assertions/static_import.out",
+itest!(import_attributes_static_import {
+  args: "run --allow-read import_attributes/static_import.ts",
+  output: "import_attributes/static_import.out",
 });
 
-itest!(import_assertions_static_export {
-  args: "run --allow-read import_assertions/static_export.ts",
-  output: "import_assertions/static_export.out",
+itest!(import_attributes_static_export {
+  args: "run --allow-read import_attributes/static_export.ts",
+  output: "import_attributes/static_export.out",
 });
 
-itest!(import_assertions_static_error {
-  args: "run --allow-read import_assertions/static_error.ts",
-  output: "import_assertions/static_error.out",
+itest!(import_attributes_static_error {
+  args: "run --allow-read import_attributes/static_error.ts",
+  output: "import_attributes/static_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_dynamic_import {
-  args: "run --allow-read import_assertions/dynamic_import.ts",
-  output: "import_assertions/dynamic_import.out",
+itest!(import_attributes_dynamic_import {
+  args: "run --allow-read --check import_attributes/dynamic_import.ts",
+  output: "import_attributes/dynamic_import.out",
 });
 
-itest!(import_assertions_dynamic_error {
-  args: "run --allow-read import_assertions/dynamic_error.ts",
-  output: "import_assertions/dynamic_error.out",
+itest!(import_attributes_dynamic_error {
+  args: "run --allow-read import_attributes/dynamic_error.ts",
+  output: "import_attributes/dynamic_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_type_check {
-  args: "run --allow-read --check import_assertions/type_check.ts",
-  output: "import_assertions/type_check.out",
+itest!(import_attributes_type_check {
+  args: "run --allow-read --check import_attributes/type_check.ts",
+  output: "import_attributes/type_check.out",
   exit_code: 1,
 });
 
@@ -3122,7 +3141,7 @@ itest!(package_json_auto_discovered_for_local_script_arg {
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -3134,7 +3153,7 @@ itest!(
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
     copy_temp_dir: Some("run/with_package_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
     exit_code: 1,
   }
@@ -3165,7 +3184,7 @@ itest!(
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
     copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
   }
 );
@@ -3175,7 +3194,7 @@ itest!(package_json_auto_discovered_for_npm_binary {
   output: "run/with_package_json/npm_binary/main.out",
   cwd: Some("run/with_package_json/npm_binary/"),
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -3404,11 +3423,6 @@ itest!(unstable_ffi_19 {
   args: "run run/ffi/unstable_ffi_19.js",
   output: "run/ffi/unstable_ffi_19.js.out",
   exit_code: 70,
-});
-
-itest!(future_check2 {
-  args: "run --check run/future_check.ts",
-  output: "run/future_check2.out",
 });
 
 itest!(event_listener_error {
@@ -4515,9 +4529,16 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.write_line(
       r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
     );
-    console.expect(
-      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\".",
-    )
+    // will be uppercase on windows
+    let env_name = if cfg!(windows) {
+      "DO YOU LIKE ICE CREAM? Y/N"
+    } else {
+      "Do you like ice cream? y/n"
+    };
+    console.expect(format!(
+      "┌ ⚠️  Deno requests env access to \"{}\".",
+      env_name
+    ))
   });
 
   util::with_pty(&["repl"], |mut console| {
@@ -4558,22 +4579,59 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
 itest!(node_builtin_modules_ts {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_builtin_modules_js {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
   output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
+});
+
+itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
+  args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+});
+
+itest!(
+  node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
+    args: "run run/node_prefix_missing/main.ts",
+    output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+    envs: [
+      env_vars_for_npm_tests(),
+      vec![(
+        "DENO_UNSTABLE_BARE_NODE_BUILTINS".to_string(),
+        "1".to_string()
+      )]
+    ]
+    .concat(),
+    exit_code: 0,
+  }
+);
+
+itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
+  args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+});
+
+itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
+  args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
 });
 
 itest!(dynamic_import_syntax_error {
@@ -4694,3 +4752,8 @@ console.log(returnsHi());"#,
 ")
     .assert_exit_code(1);
 }
+
+itest!(explicit_resource_management {
+  args: "run --quiet --check run/explicit_resource_management/main.ts",
+  output: "run/explicit_resource_management/main.out",
+});

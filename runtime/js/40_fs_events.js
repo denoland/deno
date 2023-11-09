@@ -9,6 +9,8 @@ const {
   PromiseResolve,
   SymbolAsyncIterator,
 } = primordials;
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+
 class FsWatcher {
   #rid = 0;
 
@@ -50,6 +52,10 @@ class FsWatcher {
 
   [SymbolAsyncIterator]() {
     return this;
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 }
 

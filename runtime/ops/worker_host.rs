@@ -13,7 +13,7 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -25,6 +25,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
@@ -114,10 +116,11 @@ pub struct CreateWorkerArgs {
 }
 
 /// Create worker as the host
-#[op]
+#[op2]
+#[serde]
 fn op_create_worker(
   state: &mut OpState,
-  args: CreateWorkerArgs,
+  #[serde] args: CreateWorkerArgs,
 ) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -139,7 +142,11 @@ fn op_create_worker(
   }
 
   if args.permissions.is_some() {
-    super::check_unstable(state, "Worker.deno.permissions");
+    super::check_unstable(
+      state,
+      UNSTABLE_FEATURE_NAME,
+      "Worker.deno.permissions",
+    );
   }
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
@@ -153,10 +160,8 @@ fn op_create_worker(
   };
   let parent_permissions = parent_permissions.clone();
   let worker_id = state.take::<WorkerId>();
-  let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
-  state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
-  let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
-  state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
+  let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
+  let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
@@ -221,8 +226,8 @@ fn op_create_worker(
   Ok(worker_id)
 }
 
-#[op]
-fn op_host_terminate_worker(state: &mut OpState, id: WorkerId) {
+#[op2]
+fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
     worker_thread.terminate();
   } else {
@@ -271,10 +276,11 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
-  id: WorkerId,
+  #[serde] id: WorkerId,
 ) -> Result<WorkerControlEvent, AnyError> {
   let (worker_handle, cancel_handle) = {
     let state = state.borrow();
@@ -313,10 +319,11 @@ async fn op_host_recv_ctrl(
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
-  id: WorkerId,
+  #[serde] id: WorkerId,
 ) -> Result<Option<JsMessageData>, AnyError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
@@ -351,11 +358,11 @@ async fn op_host_recv_message(
 }
 
 /// Post message to guest worker as host
-#[op]
+#[op2]
 fn op_host_post_message(
   state: &mut OpState,
-  id: WorkerId,
-  data: JsMessageData,
+  #[serde] id: WorkerId,
+  #[serde] data: JsMessageData,
 ) -> Result<(), AnyError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
     debug!("post message to worker {}", id);
