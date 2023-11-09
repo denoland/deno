@@ -68,7 +68,7 @@ const kDenoResponse = Symbol("kDenoResponse");
 const kDenoRid = Symbol("kDenoRid");
 const kDenoClientRid = Symbol("kDenoClientRid");
 const kDenoConnRid = Symbol("kDenoConnRid");
-const kPollConnPromiseId = Symbol("kPollConnPromiseId");
+const kPollConnPromise = Symbol("kPollConnPromise");
 
 const STREAM_FLAGS_PENDING = 0x0;
 const STREAM_FLAGS_READY = 0x1;
@@ -364,7 +364,7 @@ export class ClientHttp2Session extends Http2Session {
     this[kPendingRequestCalls] = null;
     this[kDenoClientRid] = undefined;
     this[kDenoConnRid] = undefined;
-    this[kPollConnPromiseId] = undefined;
+    this[kPollConnPromise] = undefined;
 
     socket.on("error", socketOnError);
     socket.on("close", socketOnClose);
@@ -394,8 +394,7 @@ export class ClientHttp2Session extends Http2Session {
             "op_http2_poll_client_connection",
             this[kDenoConnRid],
           );
-          this[kPollConnPromiseId] =
-            promise[Symbol.for("Deno.core.internalPromiseId")];
+          this[kPollConnPromise] = promise;
           if (!this.#refed) {
             this.unref();
           }
@@ -410,15 +409,15 @@ export class ClientHttp2Session extends Http2Session {
 
   ref() {
     this.#refed = true;
-    if (this[kPollConnPromiseId]) {
-      core.refOp(this[kPollConnPromiseId]);
+    if (this[kPollConnPromise]) {
+      core.refOpPromise(this[kPollConnPromise]);
     }
   }
 
   unref() {
     this.#refed = false;
-    if (this[kPollConnPromiseId]) {
-      core.unrefOp(this[kPollConnPromiseId]);
+    if (this[kPollConnPromise]) {
+      core.unrefOpPromise(this[kPollConnPromise]);
     }
   }
 
