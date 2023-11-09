@@ -205,7 +205,7 @@ for (const primeLength of [1024, 2048, 4096]) {
 }
 
 const rsaPrivateKey = Deno.readTextFileSync(
-  new URL("../testdata/rsa_private.pem", import.meta.url),
+  import.meta.resolve!("../testdata/rsa_private.pem"),
 );
 
 Deno.test("createPrivateKey rsa", function () {
@@ -219,7 +219,7 @@ Deno.test("createPrivateKey rsa", function () {
 // openssl ecparam -name secp256r1 -genkey -noout -out a.pem
 // openssl pkcs8 -topk8 -nocrypt -in a.pem -out b.pem
 const ecPrivateKey = Deno.readTextFileSync(
-  new URL("./ec_private_secp256r1.pem", import.meta.url),
+  import.meta.resolve!("./ec_private_secp256r1.pem"),
 );
 
 Deno.test("createPrivateKey ec", function () {

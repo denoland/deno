@@ -1203,6 +1203,7 @@ pub enum AsymmetricKeyDetails {
   Ec { named_curve: String },
 }
 
+// https://oidref.com/
 const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
 const ID_SHA256_OID: rsa::pkcs8::ObjectIdentifier =
