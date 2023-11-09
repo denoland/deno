@@ -355,6 +355,7 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assert(socket.readable);
     socket.setKeepAlive();
     socket.destroy();
+    socket.setTimeout(100);
   });
   req.write("hello ");
   req.write("world");

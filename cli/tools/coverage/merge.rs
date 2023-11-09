@@ -3,16 +3,18 @@
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
 
-use super::json_types::CoverageRange;
-use super::json_types::FunctionCoverage;
-use super::json_types::ProcessCoverage;
-use super::json_types::ScriptCoverage;
 use super::range_tree::RangeTree;
 use super::range_tree::RangeTreeArena;
+use crate::cdp;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::iter::Peekable;
+
+#[derive(Eq, PartialEq, Clone, Debug)]
+pub struct ProcessCoverage {
+  pub result: Vec<cdp::ScriptCoverage>,
+}
 
 pub fn merge_processes(
   mut processes: Vec<ProcessCoverage>,
@@ -20,7 +22,7 @@ pub fn merge_processes(
   if processes.len() <= 1 {
     return processes.pop();
   }
-  let mut url_to_scripts: BTreeMap<String, Vec<ScriptCoverage>> =
+  let mut url_to_scripts: BTreeMap<String, Vec<cdp::ScriptCoverage>> =
     BTreeMap::new();
   for process_cov in processes {
     for script_cov in process_cov.result {
@@ -31,12 +33,13 @@ pub fn merge_processes(
     }
   }
 
-  let result: Vec<ScriptCoverage> = url_to_scripts
+  let result: Vec<cdp::ScriptCoverage> = url_to_scripts
     .into_iter()
     .enumerate()
     .map(|(script_id, (_, scripts))| (script_id, scripts))
     .map(|(script_id, scripts)| {
-      let mut merged: ScriptCoverage = merge_scripts(scripts.to_vec()).unwrap();
+      let mut merged: cdp::ScriptCoverage =
+        merge_scripts(scripts.to_vec()).unwrap();
       merged.script_id = script_id.to_string();
       merged
     })
@@ -46,21 +49,21 @@ pub fn merge_processes(
 }
 
 pub fn merge_scripts(
-  mut scripts: Vec<ScriptCoverage>,
-) -> Option<ScriptCoverage> {
+  mut scripts: Vec<cdp::ScriptCoverage>,
+) -> Option<cdp::ScriptCoverage> {
   if scripts.len() <= 1 {
     return scripts.pop();
   }
   let (script_id, url) = {
-    let first: &ScriptCoverage = &scripts[0];
+    let first: &cdp::ScriptCoverage = &scripts[0];
     (first.script_id.clone(), first.url.clone())
   };
-  let mut range_to_funcs: BTreeMap<CharRange, Vec<FunctionCoverage>> =
+  let mut range_to_funcs: BTreeMap<CharRange, Vec<cdp::FunctionCoverage>> =
     BTreeMap::new();
   for script_cov in scripts {
     for func_cov in script_cov.functions {
       let root_range = {
-        let root_range_cov: &CoverageRange = &func_cov.ranges[0];
+        let root_range_cov: &cdp::CoverageRange = &func_cov.ranges[0];
         CharRange {
           start: root_range_cov.start_char_offset,
           end: root_range_cov.end_char_offset,
@@ -70,12 +73,12 @@ pub fn merge_scripts(
     }
   }
 
-  let functions: Vec<FunctionCoverage> = range_to_funcs
+  let functions: Vec<cdp::FunctionCoverage> = range_to_funcs
     .into_values()
     .map(|funcs| merge_functions(funcs).unwrap())
     .collect();
 
-  Some(ScriptCoverage {
+  Some(cdp::ScriptCoverage {
     script_id,
     url,
     functions,
@@ -105,8 +108,8 @@ impl PartialOrd for CharRange {
 }
 
 pub fn merge_functions(
-  mut funcs: Vec<FunctionCoverage>,
-) -> Option<FunctionCoverage> {
+  mut funcs: Vec<cdp::FunctionCoverage>,
+) -> Option<cdp::FunctionCoverage> {
   if funcs.len() <= 1 {
     return funcs.pop();
   }
@@ -124,7 +127,7 @@ pub fn merge_functions(
   let ranges = merged.to_ranges();
   let is_block_coverage: bool = !(ranges.len() == 1 && ranges[0].count == 0);
 
-  Some(FunctionCoverage {
+  Some(cdp::FunctionCoverage {
     function_name,
     ranges,
     is_block_coverage,
@@ -439,13 +442,13 @@ mod tests {
   fn two_flat_trees() {
     let inputs: Vec<ProcessCoverage> = vec![
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
-            ranges: vec![CoverageRange {
+            ranges: vec![cdp::CoverageRange {
               start_char_offset: 0,
               end_char_offset: 9,
               count: 1,
@@ -454,13 +457,13 @@ mod tests {
         }],
       },
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
-            ranges: vec![CoverageRange {
+            ranges: vec![cdp::CoverageRange {
               start_char_offset: 0,
               end_char_offset: 9,
               count: 2,
@@ -470,13 +473,13 @@ mod tests {
       },
     ];
     let expected: Option<ProcessCoverage> = Some(ProcessCoverage {
-      result: vec![ScriptCoverage {
+      result: vec![cdp::ScriptCoverage {
         script_id: String::from("0"),
         url: String::from("/lib.js"),
-        functions: vec![FunctionCoverage {
+        functions: vec![cdp::FunctionCoverage {
           function_name: String::from("lib"),
           is_block_coverage: true,
-          ranges: vec![CoverageRange {
+          ranges: vec![cdp::CoverageRange {
             start_char_offset: 0,
             end_char_offset: 9,
             count: 3,
@@ -492,19 +495,19 @@ mod tests {
   fn two_trees_with_matching_children() {
     let inputs: Vec<ProcessCoverage> = vec![
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 9,
                 count: 10,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 3,
                 end_char_offset: 6,
                 count: 1,
@@ -514,19 +517,19 @@ mod tests {
         }],
       },
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 9,
                 count: 20,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 3,
                 end_char_offset: 6,
                 count: 2,
@@ -537,19 +540,19 @@ mod tests {
       },
     ];
     let expected: Option<ProcessCoverage> = Some(ProcessCoverage {
-      result: vec![ScriptCoverage {
+      result: vec![cdp::ScriptCoverage {
         script_id: String::from("0"),
         url: String::from("/lib.js"),
-        functions: vec![FunctionCoverage {
+        functions: vec![cdp::FunctionCoverage {
           function_name: String::from("lib"),
           is_block_coverage: true,
           ranges: vec![
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 0,
               end_char_offset: 9,
               count: 30,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 3,
               end_char_offset: 6,
               count: 3,
@@ -566,19 +569,19 @@ mod tests {
   fn two_trees_with_partially_overlapping_children() {
     let inputs: Vec<ProcessCoverage> = vec![
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 9,
                 count: 10,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 2,
                 end_char_offset: 5,
                 count: 1,
@@ -588,19 +591,19 @@ mod tests {
         }],
       },
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 9,
                 count: 20,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 4,
                 end_char_offset: 7,
                 count: 2,
@@ -611,29 +614,29 @@ mod tests {
       },
     ];
     let expected: Option<ProcessCoverage> = Some(ProcessCoverage {
-      result: vec![ScriptCoverage {
+      result: vec![cdp::ScriptCoverage {
         script_id: String::from("0"),
         url: String::from("/lib.js"),
-        functions: vec![FunctionCoverage {
+        functions: vec![cdp::FunctionCoverage {
           function_name: String::from("lib"),
           is_block_coverage: true,
           ranges: vec![
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 0,
               end_char_offset: 9,
               count: 30,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 2,
               end_char_offset: 5,
               count: 21,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 4,
               end_char_offset: 5,
               count: 3,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 5,
               end_char_offset: 7,
               count: 12,
@@ -650,29 +653,29 @@ mod tests {
   fn two_trees_with_with_complementary_children_summing_to_the_same_count() {
     let inputs: Vec<ProcessCoverage> = vec![
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 9,
                 count: 1,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 1,
                 end_char_offset: 8,
                 count: 6,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 1,
                 end_char_offset: 5,
                 count: 5,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 5,
                 end_char_offset: 8,
                 count: 7,
@@ -682,29 +685,29 @@ mod tests {
         }],
       },
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 9,
                 count: 4,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 1,
                 end_char_offset: 8,
                 count: 8,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 1,
                 end_char_offset: 5,
                 count: 9,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 5,
                 end_char_offset: 8,
                 count: 7,
@@ -715,19 +718,19 @@ mod tests {
       },
     ];
     let expected: Option<ProcessCoverage> = Some(ProcessCoverage {
-      result: vec![ScriptCoverage {
+      result: vec![cdp::ScriptCoverage {
         script_id: String::from("0"),
         url: String::from("/lib.js"),
-        functions: vec![FunctionCoverage {
+        functions: vec![cdp::FunctionCoverage {
           function_name: String::from("lib"),
           is_block_coverage: true,
           ranges: vec![
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 0,
               end_char_offset: 9,
               count: 5,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 1,
               end_char_offset: 8,
               count: 14,
@@ -744,19 +747,19 @@ mod tests {
   fn merges_a_similar_sliding_chain_a_bc() {
     let inputs: Vec<ProcessCoverage> = vec![
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 7,
                 count: 10,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 4,
                 count: 1,
@@ -766,24 +769,24 @@ mod tests {
         }],
       },
       ProcessCoverage {
-        result: vec![ScriptCoverage {
+        result: vec![cdp::ScriptCoverage {
           script_id: String::from("0"),
           url: String::from("/lib.js"),
-          functions: vec![FunctionCoverage {
+          functions: vec![cdp::FunctionCoverage {
             function_name: String::from("lib"),
             is_block_coverage: true,
             ranges: vec![
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 0,
                 end_char_offset: 7,
                 count: 20,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 1,
                 end_char_offset: 6,
                 count: 11,
               },
-              CoverageRange {
+              cdp::CoverageRange {
                 start_char_offset: 2,
                 end_char_offset: 5,
                 count: 2,
@@ -794,29 +797,29 @@ mod tests {
       },
     ];
     let expected: Option<ProcessCoverage> = Some(ProcessCoverage {
-      result: vec![ScriptCoverage {
+      result: vec![cdp::ScriptCoverage {
         script_id: String::from("0"),
         url: String::from("/lib.js"),
-        functions: vec![FunctionCoverage {
+        functions: vec![cdp::FunctionCoverage {
           function_name: String::from("lib"),
           is_block_coverage: true,
           ranges: vec![
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 0,
               end_char_offset: 7,
               count: 30,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 0,
               end_char_offset: 6,
               count: 21,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 1,
               end_char_offset: 5,
               count: 12,
             },
-            CoverageRange {
+            cdp::CoverageRange {
               start_char_offset: 2,
               end_char_offset: 4,
               count: 3,

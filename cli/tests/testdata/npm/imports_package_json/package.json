@@ -1,0 +1,6 @@
+{
+  "name": "my-test",
+  "dependencies": {
+    "@denotest/imports-package-json": "1.0.0"
+  }
+}

@@ -14,16 +14,17 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use deno_core::OpMetrics;
+use deno_core::OpMetricsSummary;
+use deno_core::OpMetricsSummaryTracker;
 use deno_core::OpState;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::PermissionsContainer;
 use serde::Serialize;
-use std::cell::Ref;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
@@ -243,38 +244,28 @@ fn op_test_event_step_result_failed(
 struct TestOpSanitizers(HashMap<u32, TestOpSanitizerState>);
 
 enum TestOpSanitizerState {
-  Collecting { metrics: Vec<OpMetrics> },
+  Collecting { metrics: Vec<OpMetricsSummary> },
   Finished { report: Vec<TestOpSanitizerReport> },
 }
 
 fn try_collect_metrics(
-  state: &OpState,
+  metrics: &OpMetricsSummaryTracker,
   force: bool,
   op_id_host_recv_msg: usize,
   op_id_host_recv_ctrl: usize,
-) -> Result<Ref<Vec<OpMetrics>>, bool> {
-  let metrics = state.tracker.per_op();
-  for op_metric in &*metrics {
-    let has_pending_ops = op_metric.ops_dispatched_async
-      + op_metric.ops_dispatched_async_unref
-      > op_metric.ops_completed_async + op_metric.ops_completed_async_unref;
-    if has_pending_ops && !force {
-      let host_recv_msg = metrics
-        .get(op_id_host_recv_msg)
-        .map(|op_metric| {
-          op_metric.ops_dispatched_async + op_metric.ops_dispatched_async_unref
-            > op_metric.ops_completed_async
-              + op_metric.ops_completed_async_unref
-        })
-        .unwrap_or(false);
-      let host_recv_ctrl = metrics
-        .get(op_id_host_recv_ctrl)
-        .map(|op_metric| {
-          op_metric.ops_dispatched_async + op_metric.ops_dispatched_async_unref
-            > op_metric.ops_completed_async
-              + op_metric.ops_completed_async_unref
-        })
-        .unwrap_or(false);
+) -> Result<std::cell::Ref<Vec<OpMetricsSummary>>, bool> {
+  let metrics = metrics.per_op();
+  let host_recv_msg = metrics
+    .get(op_id_host_recv_msg)
+    .map(OpMetricsSummary::has_outstanding_ops)
+    .unwrap_or(false);
+  let host_recv_ctrl = metrics
+    .get(op_id_host_recv_ctrl)
+    .map(OpMetricsSummary::has_outstanding_ops)
+    .unwrap_or(false);
+
+  for op_metric in metrics.iter() {
+    if op_metric.has_outstanding_ops() && !force {
       return Err(host_recv_msg || host_recv_ctrl);
     }
   }
@@ -294,23 +285,23 @@ fn op_test_op_sanitizer_collect(
   #[smi] op_id_host_recv_msg: usize,
   #[smi] op_id_host_recv_ctrl: usize,
 ) -> Result<u8, AnyError> {
-  let metrics = {
-    let metrics = match try_collect_metrics(
-      state,
-      force,
-      op_id_host_recv_msg,
-      op_id_host_recv_ctrl,
-    ) {
-      Ok(metrics) => metrics,
-      Err(false) => {
-        return Ok(1);
-      }
-      Err(true) => {
-        return Ok(2);
-      }
-    };
-    metrics.clone()
-  };
+  let metrics = state.borrow::<Rc<OpMetricsSummaryTracker>>();
+  let metrics = match try_collect_metrics(
+    metrics,
+    force,
+    op_id_host_recv_msg,
+    op_id_host_recv_ctrl,
+  ) {
+    Ok(metrics) => metrics,
+    Err(false) => {
+      return Ok(1);
+    }
+    Err(true) => {
+      return Ok(2);
+    }
+  }
+  .clone();
+
   let op_sanitizers = state.borrow_mut::<TestOpSanitizers>();
   match op_sanitizers.0.entry(id) {
     Entry::Vacant(entry) => {
@@ -348,11 +339,12 @@ fn op_test_op_sanitizer_finish(
 ) -> Result<u8, AnyError> {
   // Drop `fetch` connection pool at the end of a test
   state.try_take::<reqwest::Client>();
+  let metrics = state.borrow::<Rc<OpMetricsSummaryTracker>>();
 
   // Generate a report of pending ops
   let report = {
     let after_metrics = match try_collect_metrics(
-      state,
+      metrics,
       force,
       op_id_host_recv_msg,
       op_id_host_recv_ctrl,
@@ -380,14 +372,10 @@ fn op_test_op_sanitizer_finish(
     for (id, (before, after)) in
       before_metrics.iter().zip(after_metrics.iter()).enumerate()
     {
-      let async_pending_before = before.ops_dispatched_async
-        + before.ops_dispatched_async_unref
-        - before.ops_completed_async
-        - before.ops_completed_async_unref;
-      let async_pending_after = after.ops_dispatched_async
-        + after.ops_dispatched_async_unref
-        - after.ops_completed_async
-        - after.ops_completed_async_unref;
+      let async_pending_before =
+        before.ops_dispatched_async - before.ops_completed_async;
+      let async_pending_after =
+        after.ops_dispatched_async - after.ops_completed_async;
       let diff = async_pending_after as i64 - async_pending_before as i64;
       if diff != 0 {
         report.push(TestOpSanitizerReport { id, diff });

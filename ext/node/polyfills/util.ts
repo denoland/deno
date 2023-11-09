@@ -37,7 +37,9 @@ const {
   SafeSet,
   SetPrototypeAdd,
   SetPrototypeHas,
+  StringPrototypeIsWellFormed,
   StringPrototypePadStart,
+  StringPrototypeToWellFormed,
 } = primordials;
 
 export {
@@ -187,6 +189,13 @@ export const TextDecoder = _TextDecoder;
 export type TextEncoder = import("./_utils.ts")._TextEncoder;
 export const TextEncoder = _TextEncoder;
 
+export function toUSVString(str: string): string {
+  if (StringPrototypeIsWellFormed(str)) {
+    return str;
+  }
+  return StringPrototypeToWellFormed(str);
+}
+
 function pad(n: number) {
   return StringPrototypePadStart(NumberPrototypeToString(n), 2, "0");
 }
@@ -309,6 +318,7 @@ export default {
   stripVTControlCharacters,
   TextDecoder,
   TextEncoder,
+  toUSVString,
   log,
   debuglog,
   isDeepStrictEqual,

@@ -70,8 +70,8 @@ const {
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
   String,
-  StringFromCodePoint,
   StringPrototypeCharCodeAt,
+  StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
   SymbolToStringTag,
@@ -425,29 +425,7 @@ converters.ByteString = (V, prefix, context, opts) => {
 
 converters.USVString = (V, prefix, context, opts) => {
   const S = converters.DOMString(V, prefix, context, opts);
-  const n = S.length;
-  let U = "";
-  for (let i = 0; i < n; ++i) {
-    const c = StringPrototypeCharCodeAt(S, i);
-    if (c < 0xd800 || c > 0xdfff) {
-      U += StringFromCodePoint(c);
-    } else if (0xdc00 <= c && c <= 0xdfff) {
-      U += StringFromCodePoint(0xfffd);
-    } else if (i === n - 1) {
-      U += StringFromCodePoint(0xfffd);
-    } else {
-      const d = StringPrototypeCharCodeAt(S, i + 1);
-      if (0xdc00 <= d && d <= 0xdfff) {
-        const a = c & 0x3ff;
-        const b = d & 0x3ff;
-        U += StringFromCodePoint((2 << 15) + (2 << 9) * a + b);
-        ++i;
-      } else {
-        U += StringFromCodePoint(0xfffd);
-      }
-    }
-  }
-  return U;
+  return StringPrototypeToWellFormed(S);
 };
 
 converters.object = (V, prefix, context, _opts) => {

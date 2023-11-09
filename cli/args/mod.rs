@@ -924,7 +924,7 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some()
+    self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
   }
 
   pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
@@ -1135,6 +1135,14 @@ impl CliOptions {
         .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()),
       _ => None,
     }
+  }
+
+  pub fn enable_op_summary_metrics(&self) -> bool {
+    self.flags.enable_op_summary_metrics
+      || matches!(
+        self.flags.subcommand,
+        DenoSubcommand::Test(_) | DenoSubcommand::Repl(_)
+      )
   }
 
   pub fn enable_testing_features(&self) -> bool {

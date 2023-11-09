@@ -32,6 +32,7 @@ use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::OpMetricsSummaryTracker;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -507,6 +508,18 @@ impl WebWorker {
     #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
     options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
 
+    // Hook up the summary metrics if the user or subcommand requested them
+    let (op_summary_metrics, op_metrics_factory_fn) =
+      if options.bootstrap.enable_op_summary_metrics {
+        let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
+        (
+          Some(op_summary_metrics.clone()),
+          Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
+        )
+      } else {
+        (None, None)
+      };
+
     // Clear extension modules from the module map, except preserve `node:*`
     // modules as `node:` specifiers.
     let preserve_snapshotted_modules =
@@ -525,8 +538,13 @@ impl WebWorker {
       inspector: options.maybe_inspector_server.is_some(),
       preserve_snapshotted_modules,
       feature_checker: Some(options.feature_checker.clone()),
+      op_metrics_factory_fn,
       ..Default::default()
     });
+
+    if let Some(op_summary_metrics) = op_summary_metrics {
+      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

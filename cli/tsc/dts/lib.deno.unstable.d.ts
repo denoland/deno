@@ -925,7 +925,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Create a custom HttpClient for to use with {@linkcode fetch}. This is an
+   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
    * extension of the web platform Fetch API which allows Deno to use custom
    * TLS certificates and connect via a proxy while using `fetch()`.
    *
@@ -1323,7 +1323,7 @@ declare namespace Deno {
    * callback based on the specified schedule.
    *
    * ```ts
-   * Deno.cron("sample cron", "*\/20 * * * *", () => {
+   * Deno.cron("sample cron", "20 * * * *", () => {
    *   console.log("cron job executed");
    * });
    * ```

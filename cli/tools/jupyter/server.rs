@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::cdp;
 use crate::tools::repl;
-use crate::tools::repl::cdp;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::serde_json;
@@ -382,7 +382,7 @@ impl JupyterServer {
       }
     };
 
-    let repl::cdp::EvaluateResponse {
+    let cdp::EvaluateResponse {
       result,
       exception_details,
     } = evaluate_response.value;
