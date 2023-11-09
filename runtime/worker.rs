@@ -341,20 +341,18 @@ impl MainWorker {
         let mut found_match = false;
         let mut found_nomatch = false;
         for pattern in patterns.iter() {
-          if pattern.starts_with('-') {
-            if name.contains(&pattern[1..]) {
+          if let Some(pattern) = pattern.strip_prefix('-') {
+            if name.contains(pattern) {
               return false;
             }
+          } else if name.contains(pattern.as_str()) {
+            found_match = true;
           } else {
-            if name.contains(pattern.as_str()) {
-              found_match = true;
-            } else {
-              found_nomatch = true;
-            }
+            found_nomatch = true;
           }
         }
 
-        return found_match || !found_nomatch;
+        found_match || !found_nomatch
       }
 
       op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
