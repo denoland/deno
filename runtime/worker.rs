@@ -354,6 +354,7 @@ impl MainWorker {
         .or_else(crate::js::deno_isolate_init),
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
+      skip_op_registration: true,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),

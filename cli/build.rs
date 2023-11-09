@@ -392,6 +392,18 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(fs.clone()),
     deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
     deno_runtime::runtime::init_ops(),
+    ops::runtime::deno_runtime::init_ops("deno:runtime".parse().unwrap()),
+    ops::worker_host::deno_worker_host::init_ops(
+      Arc::new(|_| panic!("not supported in this build.")),
+      None,
+    ),
+    ops::fs_events::deno_fs_events::init_ops(),
+    ops::os::deno_os::init_ops(Default::default()),
+    ops::permissions::deno_permissions::init_ops(),
+    ops::process::deno_process::init_ops(),
+    ops::signal::deno_signal::init_ops(),
+    ops::tty::deno_tty::init_ops(),
+    ops::http::deno_http_runtime::init_ops(),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 
