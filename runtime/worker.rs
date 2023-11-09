@@ -91,6 +91,9 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
+  /// Should op registration be skipped?
+  pub skip_op_registration: bool,
+
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
 
@@ -155,6 +158,7 @@ impl Default for WorkerOptions {
       }),
       fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
+      skip_op_registration: false,
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
@@ -354,7 +358,7 @@ impl MainWorker {
         .or_else(crate::js::deno_isolate_init),
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
-      skip_op_registration: true,
+      skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),

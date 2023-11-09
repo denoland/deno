@@ -307,6 +307,12 @@ pub enum DenoSubcommand {
   Vendor(VendorFlags),
 }
 
+impl DenoSubcommand {
+  pub fn is_run(&self) -> bool {
+    matches!(self, Self::Run(_))
+  }
+}
+
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
     DenoSubcommand::Repl(ReplFlags {

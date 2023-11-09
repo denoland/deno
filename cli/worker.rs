@@ -100,6 +100,7 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
 }
 
@@ -594,6 +595,7 @@ impl CliMainWorkerFactory {
       ),
       stdio,
       feature_checker,
+      skip_op_registration: shared.options.skip_op_registration,
     };
 
     let worker = MainWorker::bootstrap_from_options(

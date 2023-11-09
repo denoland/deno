@@ -461,6 +461,7 @@ pub async fn run(
       inspect_wait: false,
       is_inspecting: false,
       is_npm_main: main_module.scheme() == "npm",
+      skip_op_registration: true,
       location: metadata.location,
       maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
         main_module,

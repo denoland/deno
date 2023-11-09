@@ -668,6 +668,7 @@ impl CliFactory {
   ) -> Result<CliMainWorkerOptions, AnyError> {
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
+      skip_op_registration: self.options.sub_command().is_run(),
       log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
       coverage_dir: self.options.coverage_dir(),
       enable_op_summary_metrics: self.options.enable_op_summary_metrics(),
