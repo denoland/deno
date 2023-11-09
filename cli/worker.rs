@@ -528,7 +528,7 @@ impl CliMainWorkerFactory {
         .join(checksum::gen(&[key.as_bytes()]))
     });
 
-    let mut extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let mut extensions = ops::cli_exts();
     extensions.append(&mut custom_extensions);
 
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -706,7 +706,7 @@ fn create_web_worker_callback(
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 
-    let extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let extensions = ops::cli_exts();
 
     let maybe_storage_key = shared
       .storage_key_resolver

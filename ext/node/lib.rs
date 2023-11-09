@@ -14,6 +14,7 @@ use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use once_cell::sync::Lazy;
@@ -73,6 +74,9 @@ impl NodePermissions for AllowAllNodePermissions {
 pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
 
 pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
+  /// Gets the state of npm for the process.
+  fn get_npm_process_state(&self) -> String;
+
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -135,6 +139,13 @@ fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
   };
 
   promise.state() == v8::PromiseState::Rejected
+}
+
+#[op2]
+#[string]
+fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
+  let npm_resolver = state.borrow_mut::<NpmResolverRc>();
+  Ok(npm_resolver.get_npm_process_state())
 }
 
 deno_core::extension!(deno_node,
@@ -251,6 +262,7 @@ deno_core::extension!(deno_node,
     op_node_build_os,
     op_is_any_arraybuffer,
     op_node_is_promise_rejected,
+    op_npm_process_state,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
