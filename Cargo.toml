@@ -50,7 +50,8 @@ deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
 denokv_proto = "0.2.1"
-denokv_sqlite = "0.2.1"
+# denokv_sqlite brings in bundled sqlite if we don't disable the default features
+denokv_sqlite = { default-features = false, version = "0.2.1" }
 denokv_remote = "0.2.3"
 
 # exts
