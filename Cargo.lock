@@ -1454,6 +1454,7 @@ dependencies = [
  "http",
  "idna 0.3.0",
  "indexmap 2.0.2",
+ "k256",
  "lazy-regex",
  "libc",
  "libz-sys",
@@ -1476,7 +1477,6 @@ dependencies = [
  "ripemd",
  "rsa",
  "scrypt",
- "secp256k1",
  "serde",
  "sha-1",
  "sha2",
@@ -3012,6 +3012,20 @@ checksum = "be39922b087cecaba4e2d5592dedfc8bda5d4a5a1231f143337cca207950b61d"
 dependencies = [
  "scopeguard",
  "winapi",
+]
+
+[[package]]
+name = "k256"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cadb76004ed8e97623117f3df85b17aaa6626ab0b0831e6573f104df16cd1bcc"
+dependencies = [
+ "cfg-if",
+ "ecdsa",
+ "elliptic-curve",
+ "once_cell",
+ "sha2",
+ "signature",
 ]
 
 [[package]]
@@ -4599,25 +4613,6 @@ dependencies = [
  "pkcs8",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "secp256k1"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2acea373acb8c21ecb5a23741452acd2593ed44ee3d343e72baaa143bc89d0d5"
-dependencies = [
- "rand",
- "secp256k1-sys",
-]
-
-[[package]]
-name = "secp256k1-sys"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09e67c467c38fd24bd5499dc9a18183b31575c12ee549197e3e20d57aa4fe3b7"
-dependencies = [
- "cc",
 ]
 
 [[package]]
