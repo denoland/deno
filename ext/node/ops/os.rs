@@ -62,12 +62,12 @@ where
     permissions.check_sys("geteuid", "node:os.geteuid()")?;
   }
 
-  let euid = if cfg!(unix) {
-    // SAFETY: Call to libc geteuid.
-    unsafe { libc::geteuid() }
-  } else {
-    0
-  };
+  #[cfg(windows)]
+  let euid = 0;
+  #[cfg(unix)]
+  // SAFETY: Call to libc geteuid.
+  let euid = unsafe { libc::geteuid() };
+
   Ok(euid)
 }
 
