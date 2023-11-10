@@ -2,11 +2,11 @@
 
 import { assertNotEquals, execCode } from "./test_util.ts";
 
-Deno.test("[unrefOp] unref'ing invalid ops does not have effects", async () => {
+Deno.test("[unrefOpPromise] unref'ing invalid ops does not have effects", async () => {
   const [statusCode, _] = await execCode(`
-    Deno[Deno.internal].core.unrefOp(-1);
+    Deno[Deno.internal].core.unrefOpPromise(new Promise(r => null));
     setTimeout(() => { throw new Error() }, 10)
   `);
-  // Invalid unrefOp call doesn't affect exit condition of event loop
+  // Invalid unrefOpPromise call doesn't affect exit condition of event loop
   assertNotEquals(statusCode, 0);
 });
