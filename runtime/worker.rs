@@ -187,6 +187,71 @@ impl Default for WorkerOptions {
   }
 }
 
+fn create_op_metrics(
+  enable_op_summary_metrics: bool,
+  strace_ops: Option<Vec<String>>,
+) -> (
+  Option<Rc<OpMetricsSummaryTracker>>,
+  Option<OpMetricsFactoryFn>,
+) {
+  let mut op_summary_metrics = None;
+  let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
+  let now = Instant::now();
+  let max_len: Rc<std::cell::Cell<usize>> = Default::default();
+  if let Some(patterns) = strace_ops {
+    /// Match an op name against a list of patterns
+    fn matches_pattern(patterns: &[String], name: &str) -> bool {
+      let mut found_match = false;
+      let mut found_nomatch = false;
+      for pattern in patterns.iter() {
+        if let Some(pattern) = pattern.strip_prefix('-') {
+          if name.contains(pattern) {
+            return false;
+          }
+        } else if name.contains(pattern.as_str()) {
+          found_match = true;
+        } else {
+          found_nomatch = true;
+        }
+      }
+
+      found_match || !found_nomatch
+    }
+
+    op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
+      // If we don't match a requested pattern, or we match a negative pattern, bail
+      if !matches_pattern(&patterns, decl.name) {
+        return None;
+      }
+
+      max_len.set(max_len.get().max(decl.name.len()));
+      let max_len = max_len.clone();
+      Some(Rc::new(
+        move |op: &deno_core::_ops::OpCtx, event, source| {
+          eprintln!(
+            "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
+            now.elapsed().as_secs_f64(),
+            name = op.decl().name,
+            max_len = max_len.get()
+          );
+        },
+      ))
+    }));
+  }
+
+  if enable_op_summary_metrics {
+    let summary = Rc::new(OpMetricsSummaryTracker::default());
+    let summary_metrics = summary.clone().op_metrics_factory_fn(|_| true);
+    op_metrics_factory_fn = Some(match op_metrics_factory_fn {
+      Some(f) => merge_op_metrics(f, summary_metrics),
+      None => summary_metrics,
+    });
+    op_summary_metrics = Some(summary);
+  }
+
+  (op_summary_metrics, op_metrics_factory_fn)
+}
+
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -213,6 +278,12 @@ impl MainWorker {
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
+    );
+
+    // Get our op metrics
+    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
+      options.bootstrap.enable_op_summary_metrics,
+      options.strace_ops,
     );
 
     // Permissions: many ops depend on this
@@ -329,61 +400,6 @@ impl MainWorker {
           maybe_transpile_source(source).unwrap();
         }
       }
-    }
-
-    let mut op_summary_metrics = None;
-    let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
-    let now = Instant::now();
-    let max_len: Rc<std::cell::Cell<usize>> = Default::default();
-    if let Some(patterns) = options.strace_ops {
-      /// Match an op name against a list of patterns
-      fn matches_pattern(patterns: &[String], name: &str) -> bool {
-        let mut found_match = false;
-        let mut found_nomatch = false;
-        for pattern in patterns.iter() {
-          if let Some(pattern) = pattern.strip_prefix('-') {
-            if name.contains(pattern) {
-              return false;
-            }
-          } else if name.contains(pattern.as_str()) {
-            found_match = true;
-          } else {
-            found_nomatch = true;
-          }
-        }
-
-        found_match || !found_nomatch
-      }
-
-      op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
-        // If we don't match a requested pattern, or we match a negative pattern, bail
-        if !matches_pattern(&patterns, decl.name) {
-          return None;
-        }
-
-        max_len.set(max_len.get().max(decl.name.len()));
-        let max_len = max_len.clone();
-        Some(Rc::new(
-          move |op: &deno_core::_ops::OpCtx, event, source| {
-            eprintln!(
-              "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
-              now.elapsed().as_secs_f64(),
-              name = op.decl().name,
-              max_len = max_len.get()
-            );
-          },
-        ))
-      }));
-    }
-
-    if options.bootstrap.enable_op_summary_metrics {
-      let summary = Rc::new(OpMetricsSummaryTracker::default());
-      let summary_metrics = summary.clone().op_metrics_factory_fn(|_| true);
-      op_metrics_factory_fn = Some(match op_metrics_factory_fn {
-        Some(f) => merge_op_metrics(f, summary_metrics),
-        None => summary_metrics,
-      });
-      op_summary_metrics = Some(summary);
     }
 
     extensions.extend(std::mem::take(&mut options.extensions));
