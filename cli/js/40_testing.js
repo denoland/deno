@@ -1,5 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// Do not use primordials because we do not want to depend on the __bootstrap
+// namespace.
+//
+// deno-lint-ignore-file prefer-primordials
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
 
@@ -9,30 +14,6 @@ const {
   Console,
   serializePermissions,
 } = internals;
-
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeShift,
-  DateNow,
-  Error,
-  FunctionPrototype,
-  Map,
-  MapPrototypeGet,
-  MapPrototypeHas,
-  MapPrototypeSet,
-  MathCeil,
-  ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
-  Promise,
-  SafeArrayIterator,
-  Set,
-  StringPrototypeReplaceAll,
-  SymbolToStringTag,
-  TypeError,
-} = primordials;
 
 const opSanitizerDelayResolveQueue = [];
 let hasSetOpSanitizerDelayMacrotask = false;
@@ -62,14 +43,14 @@ function opSanitizerDelay(hasPendingWorkerOps) {
     // timeout callback will mean that the resolver gets called in the same
     // event loop tick as the timeout callback.
     setTimeout(() => {
-      ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
+      opSanitizerDelayResolveQueue.push(resolve);
     }, hasPendingWorkerOps ? 1 : 0);
   });
   return p;
 }
 
 function handleOpSanitizerDelayMacrotask() {
-  const resolve = ArrayPrototypeShift(opSanitizerDelayResolveQueue);
+  const resolve = opSanitizerDelayResolveQueue.shift();
   if (resolve) {
     resolve();
     return opSanitizerDelayResolveQueue.length === 0;
@@ -238,17 +219,17 @@ function assertOps(fn) {
         const traces = [];
         for (const [id, { opName: traceOpName, stack }] of postTraces) {
           if (traceOpName !== opName) continue;
-          if (MapPrototypeHas(preTraces, id)) continue;
-          ArrayPrototypePush(traces, stack);
+          if (preTraces.has(id)) continue;
+          traces.push(stack);
         }
         if (traces.length === 1) {
           message += " The operation was started here:\n";
           message += traces[0];
         } else if (traces.length > 1) {
           message += " The operations were started here:\n";
-          message += ArrayPrototypeJoin(traces, "\n\n");
+          message += traces.join("\n\n");
         }
-        ArrayPrototypePush(details, message);
+        details.push(message);
       } else if (diff < 0) {
         const [name, hint] = OP_DETAILS[opName] || [opName, null];
         const count = -diff;
@@ -265,17 +246,17 @@ function assertOps(fn) {
         const traces = [];
         for (const [id, { opName: traceOpName, stack }] of preTraces) {
           if (opName !== traceOpName) continue;
-          if (MapPrototypeHas(postTraces, id)) continue;
-          ArrayPrototypePush(traces, stack);
+          if (postTraces.has(id)) continue;
+          traces.push(stack);
         }
         if (traces.length === 1) {
           message += " The operation was started here:\n";
           message += traces[0];
         } else if (traces.length > 1) {
           message += " The operations were started here:\n";
-          message += ArrayPrototypeJoin(traces, "\n\n");
+          message += traces.join("\n\n");
         }
-        ArrayPrototypePush(details, message);
+        details.push(message);
       } else {
         throw new Error("unreachable");
       }
@@ -431,8 +412,8 @@ function assertResources(fn) {
     const post = core.resources();
 
     const allResources = new Set([
-      ...new SafeArrayIterator(ObjectKeys(pre)),
-      ...new SafeArrayIterator(ObjectKeys(post)),
+      ...Object.keys(pre),
+      ...Object.keys(post),
     ]);
 
     const details = [];
@@ -446,12 +427,12 @@ function assertResources(fn) {
         const hint = resourceCloseHint(postResource);
         const detail =
           `${name} (rid ${resource}) was ${action1} during the test, but not ${action2} during the test. ${hint}`;
-        ArrayPrototypePush(details, detail);
+        details.push(detail);
       } else {
         const [name, action1, action2] = prettyResourceNames(preResource);
         const detail =
           `${name} (rid ${resource}) was ${action1} before the test started, but was ${action2} during the test. Do not close resources in a test that were not created during that test.`;
-        ArrayPrototypePush(details, detail);
+        details.push(detail);
       }
     }
     if (details.length == 0) {
@@ -474,7 +455,7 @@ function assertExit(fn, isTest) {
     });
 
     try {
-      const innerResult = await fn(...new SafeArrayIterator(params));
+      const innerResult = await fn(...params);
       if (innerResult) return innerResult;
     } finally {
       setExitHandler(null);
@@ -492,7 +473,7 @@ function wrapOuter(fn, desc) {
     } catch (error) {
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
-      const state = MapPrototypeGet(testStates, desc.id);
+      const state = testStates.get(desc.id);
       for (const childDesc of state.children) {
         stepReportResult(childDesc, { failed: "incomplete" }, 0);
       }
@@ -508,14 +489,14 @@ function wrapInner(fn) {
       const results = [];
       let childDesc = desc;
       while (childDesc.parent != null) {
-        const state = MapPrototypeGet(testStates, childDesc.parent.id);
+        const state = testStates.get(childDesc.parent.id);
         for (const siblingDesc of state.children) {
           if (siblingDesc.id == childDesc.id) {
             continue;
           }
-          const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
+          const siblingState = testStates.get(siblingDesc.id);
           if (!siblingState.completed) {
-            ArrayPrototypePush(results, siblingDesc);
+            results.push(siblingDesc);
           }
         }
         childDesc = childDesc.parent;
@@ -523,8 +504,7 @@ function wrapInner(fn) {
       return results;
     }
     const runningStepDescs = getRunningStepDescs();
-    const runningStepDescsWithSanitizers = ArrayPrototypeFilter(
-      runningStepDescs,
+    const runningStepDescsWithSanitizers = runningStepDescs.filter(
       (d) => usesSanitizer(d),
     );
 
@@ -543,10 +523,10 @@ function wrapInner(fn) {
         failed: { hasSanitizersAndOverlaps: runningStepDescs.map(getFullName) },
       };
     }
-    await fn(MapPrototypeGet(testStates, desc.id).context);
+    await fn(testStates.get(desc.id).context);
     let failedSteps = 0;
-    for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-      const state = MapPrototypeGet(testStates, childDesc.id);
+    for (const childDesc of testStates.get(desc.id).children) {
+      const state = testStates.get(childDesc.id);
       if (!state.completed) {
         return { failed: "incompleteSteps" };
       }
@@ -573,7 +553,7 @@ function withPermissions(fn, permissions) {
     const token = pledgePermissions(permissions);
 
     try {
-      return await fn(...new SafeArrayIterator(params));
+      return await fn(...params);
     } finally {
       restorePermissions(token);
     }
@@ -600,7 +580,7 @@ function escapeName(name) {
     if (ch <= 13 && ch >= 8) {
       // Slow path: We do need to escape it
       for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
-        name = StringPrototypeReplaceAll(name, escape, replaceWith);
+        name = name.replaceAll(escape, replaceWith);
       }
       return name;
     }
@@ -792,7 +772,7 @@ function testInner(
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = origin;
-  MapPrototypeSet(testStates, testDesc.id, {
+  testStates.set(testDesc.id, {
     context: createTestContext(testDesc),
     children: [],
     completed: false,
@@ -953,11 +933,11 @@ function benchStats(n, highPrecision, usedExplicitTimers, avg, min, max, all) {
     n,
     min,
     max,
-    p75: all[MathCeil(n * (75 / 100)) - 1],
-    p99: all[MathCeil(n * (99 / 100)) - 1],
-    p995: all[MathCeil(n * (99.5 / 100)) - 1],
-    p999: all[MathCeil(n * (99.9 / 100)) - 1],
-    avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
+    p75: all[Math.ceil(n * (75 / 100)) - 1],
+    p99: all[Math.ceil(n * (99 / 100)) - 1],
+    p995: all[Math.ceil(n * (99.5 / 100)) - 1],
+    p999: all[Math.ceil(n * (99.9 / 100)) - 1],
+    avg: !highPrecision ? (avg / n) : Math.ceil(avg / n),
     highPrecision,
     usedExplicitTimers,
   };
@@ -1044,7 +1024,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
         n++;
         avg += measuredTime;
         budget -= totalTime;
-        ArrayPrototypePush(all, measuredTime);
+        all.push(measuredTime);
         if (measuredTime < min) min = measuredTime;
         if (measuredTime > max) max = measuredTime;
       }
@@ -1067,7 +1047,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
         n++;
         avg += measuredTime;
         budget -= totalTime;
-        ArrayPrototypePush(all, measuredTime);
+        all.push(measuredTime);
         if (measuredTime < min) min = measuredTime;
         if (measuredTime > max) max = measuredTime;
       }
@@ -1088,7 +1068,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
 
         n++;
         avg += iterationTime;
-        ArrayPrototypePush(all, iterationTime);
+        all.push(iterationTime);
         if (iterationTime < min) min = iterationTime;
         if (iterationTime > max) max = iterationTime;
         budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -1105,7 +1085,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
 
         n++;
         avg += iterationTime;
-        ArrayPrototypePush(all, iterationTime);
+        all.push(iterationTime);
         if (iterationTime < min) min = iterationTime;
         if (iterationTime > max) max = iterationTime;
         budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -1128,7 +1108,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
 /** @param desc {BenchDescription} */
 function createBenchContext(desc) {
   return {
-    [SymbolToStringTag]: "BenchContext",
+    [Symbol.toStringTag]: "BenchContext",
     name: desc.name,
     origin: desc.origin,
     start() {
@@ -1216,7 +1196,7 @@ function usesSanitizer(desc) {
 }
 
 function stepReportResult(desc, result, elapsed) {
-  const state = MapPrototypeGet(testStates, desc.id);
+  const state = testStates.get(desc.id);
   for (const childDesc of state.children) {
     stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
@@ -1236,7 +1216,7 @@ function createTestContext(desc) {
   let rootId;
   let rootName;
   if ("parent" in desc) {
-    parent = MapPrototypeGet(testStates, desc.parent.id).context;
+    parent = testStates.get(desc.parent.id).context;
     level = desc.level;
     rootId = desc.rootId;
     rootName = desc.rootName;
@@ -1247,7 +1227,7 @@ function createTestContext(desc) {
     rootName = desc.name;
   }
   return {
-    [SymbolToStringTag]: "TestContext",
+    [Symbol.toStringTag]: "TestContext",
     /**
      * The current test name.
      */
@@ -1265,7 +1245,7 @@ function createTestContext(desc) {
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
      */
     async step(nameOrFnOrOptions, maybeFn) {
-      if (MapPrototypeGet(testStates, desc.id).completed) {
+      if (testStates.get(desc.id).completed) {
         throw new Error(
           "Cannot run test step after parent scope has finished execution. " +
             "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
@@ -1274,7 +1254,7 @@ function createTestContext(desc) {
 
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
-        if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, maybeFn))) {
+        if (!Object.prototype.isPrototypeOf.call(Function.prototype, maybeFn)) {
           throw new TypeError("Expected function for second argument.");
         }
         stepDesc = {
@@ -1330,16 +1310,15 @@ function createTestContext(desc) {
         failed: false,
         completed: false,
       };
-      MapPrototypeSet(testStates, stepDesc.id, state);
-      ArrayPrototypePush(
-        MapPrototypeGet(testStates, stepDesc.parent.id).children,
+      testStates.set(stepDesc.id, state);
+      testStates.get(stepDesc.parent.id).children.push(
         stepDesc,
       );
 
       ops.op_test_event_step_wait(stepDesc.id);
-      const earlier = DateNow();
+      const earlier = Date.now();
       const result = await stepDesc.fn(stepDesc);
-      const elapsed = DateNow() - earlier;
+      const elapsed = Date.now() - earlier;
       state.failed = !!result.failed;
       stepReportResult(stepDesc, result, elapsed);
       return result == "ok";
