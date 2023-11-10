@@ -1,5 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// Do not use primordials because we do not want to depend on the __bootstrap
+// namespace.
+//
+// deno-lint-ignore-file prefer-primordials
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import { setExitHandler } from "ext:runtime/30_os.js";
