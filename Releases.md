@@ -6,6 +6,8 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.38.1 / 2023.11.10
+
 ### 1.38.0 / 2023.11.01
 
 - feat(cron) implement Deno.cron() (#21019)
