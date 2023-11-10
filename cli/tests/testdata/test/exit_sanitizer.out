@@ -7,21 +7,21 @@ exit(2) ... FAILED ([WILDCARD])
  ERRORS 
 
 exit(0) => ./test/exit_sanitizer.ts:[WILDCARD]
-error: AssertionError: Test case attempted to exit with exit code: 0
+error: Error: Test case attempted to exit with exit code: 0
   Deno.exit(0);
        ^
     at [WILDCARD]
     at [WILDCARD]/test/exit_sanitizer.ts:2:8
 
 exit(1) => ./test/exit_sanitizer.ts:[WILDCARD]
-error: AssertionError: Test case attempted to exit with exit code: 1
+error: Error: Test case attempted to exit with exit code: 1
   Deno.exit(1);
        ^
     at [WILDCARD]
     at [WILDCARD]/test/exit_sanitizer.ts:6:8
 
 exit(2) => ./test/exit_sanitizer.ts:[WILDCARD]
-error: AssertionError: Test case attempted to exit with exit code: 2
+error: Error: Test case attempted to exit with exit code: 2
   Deno.exit(2);
        ^
     at [WILDCARD]
