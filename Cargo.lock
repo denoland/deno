@@ -1060,16 +1060,13 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f4dd27020827a51857fbb47a21d2359f75db031e177821bff4e95368333a5a0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "indexmap 2.0.2",
  "jsonc-parser",
  "log",
  "percent-encoding",
- "pretty_assertions",
  "serde",
  "serde_json",
  "url",
@@ -2837,8 +2834,6 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 [[package]]
 name = "import_map"
 version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632089ec08bd62e807311104122fb26d5c911ab172e2b9864be154a575979e29"
 dependencies = [
  "cfg-if",
  "indexmap 1.9.3",

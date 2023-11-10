@@ -749,6 +749,13 @@ fn workspace_member_config_try_into_workspace_member(
   Ok(deno_graph::WorkspaceMember {
     base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
     nv,
+    exports: config
+      .config_file
+      .to_exports_config()?
+      .into_map()
+      // todo(dsherret): deno_graph should use an IndexMap
+      .into_iter()
+      .collect(),
   })
 }
 
