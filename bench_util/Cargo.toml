@@ -21,9 +21,5 @@ once_cell.workspace = true
 tokio.workspace = true
 
 [[bench]]
-name = "op_baseline"
-harness = false
-
-[[bench]]
 name = "utf8"
 harness = false

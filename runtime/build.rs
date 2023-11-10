@@ -250,6 +250,7 @@ mod startup_snapshot {
       extensions,
       compression_cb: None,
       with_runtime_cb: None,
+      skip_op_registration: false,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
