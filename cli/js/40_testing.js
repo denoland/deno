@@ -2,11 +2,15 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { setExitHandler } from "ext:runtime/30_os.js";
-import { Console } from "ext:deno_console/01_console.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
-import { assert } from "ext:deno_web/00_infra.js";
+
+const internals = globalThis.__bootstrap.internals;
+const {
+  setExitHandler,
+  Console,
+  serializePermissions,
+  setTimeout,
+} = internals;
+
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -463,8 +467,7 @@ function assertResources(fn) {
 function assertExit(fn, isTest) {
   return async function exitSanitizer(...params) {
     setExitHandler((exitCode) => {
-      assert(
-        false,
+      throw new Error(
         `${
           isTest ? "Test case" : "Bench"
         } attempted to exit with exit code: ${exitCode}`,
@@ -1174,8 +1177,7 @@ function wrapBenchmark(desc) {
 
       if (desc.sanitizeExit) {
         setExitHandler((exitCode) => {
-          assert(
-            false,
+          throw new Error(
             `Bench attempted to exit with exit code: ${exitCode}`,
           );
         });
