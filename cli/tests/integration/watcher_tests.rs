@@ -1603,3 +1603,299 @@ async fn run_watch_dynamic_imports() {
 
   check_alive_then_kill(child);
 }
+
+#[tokio::test]
+async fn run_watch_inspect() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      console.log("hello world");
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--inspect")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Debugger listening", &mut stderr_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("hello world", &mut stdout_lines).await;
+
+  file_to_watch.write(
+    r#"
+      console.log("updated file");
+    "#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Debugger listening", &mut stderr_lines).await;
+  wait_contains("updated file", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_server() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+globalThis.state = { i: 0 };
+
+function bar() {
+  globalThis.state.i = 0;
+  console.log("got request", globalThis.state.i);
+}
+
+function handler(_req) {
+  bar();
+  return new Response("Hello world!");
+}
+
+Deno.serve({ port: 11111 }, handler);
+console.log("Listening...")
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("--allow-net")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("Listening...", &mut stdout_lines).await;
+
+  file_to_watch.write(
+    r#"
+globalThis.state = { i: 0 };
+
+function bar() {
+  globalThis.state.i = 0;
+  console.log("got request1", globalThis.state.i);
+}
+
+function handler(_req) {
+  bar();
+  return new Response("Hello world!");
+}
+
+Deno.serve({ port: 11111 }, handler);
+console.log("Listening...")
+    "#,
+  );
+
+  wait_contains("Failed to reload module", &mut stderr_lines).await;
+  wait_contains("File change detected", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_jsx() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);    
+"#,
+  );
+  let file_to_watch2 = t.path().join("foo.jsx");
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>Hello</h1>`;
+}
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("5 <h1>Hello</h1>", &mut stdout_lines).await;
+
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>Hello world</h1>`;
+}
+    "#,
+  );
+
+  wait_contains("Replaced changed module", &mut stderr_lines).await;
+  wait_contains("<h1>Hello world</h1>", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_uncaught_error() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);
+"#,
+  );
+  let file_to_watch2 = t.path().join("foo.jsx");
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  setTimeout(() => {
+    throw new Error("fail");
+  });
+  return `<h1>asd1</h1>`;
+}
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("<h1>asd1</h1>", &mut stdout_lines).await;
+  wait_contains("fail", &mut stderr_lines).await;
+
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>asd2</h1>`;
+}
+    "#,
+  );
+
+  wait_contains("Process failed", &mut stderr_lines).await;
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("<h1>asd2</h1>", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_unhandled_rejection() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+// deno-lint-ignore require-await
+async function rejection() {
+  throw new Error("boom!");
+}
+
+let i = 0;
+setInterval(() => {
+  if (i == 3) {
+    rejection();
+  }
+  console.log(i++, foo());
+}, 100);
+"#,
+  );
+  let file_to_watch2 = t.path().join("foo.jsx");
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>asd1</h1>`;
+}
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("2 <h1>asd1</h1>", &mut stdout_lines).await;
+  wait_contains("boom", &mut stderr_lines).await;
+
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);
+    "#,
+  );
+
+  wait_contains("Process failed", &mut stderr_lines).await;
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("<h1>asd1</h1>", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}

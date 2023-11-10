@@ -20,7 +20,7 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
@@ -112,6 +112,7 @@ deno_core::extension!(deno_fetch,
     op_fetch<FP>,
     op_fetch_send,
     op_fetch_response_upgrade,
+    op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
   ],
   esm = [
@@ -121,7 +122,8 @@ deno_core::extension!(deno_fetch,
     "22_http_client.js",
     "23_request.js",
     "23_response.js",
-    "26_fetch.js"
+    "26_fetch.js",
+    "27_eventsource.js"
   ],
   options = {
     options: Options,
@@ -214,16 +216,18 @@ pub fn get_or_create_client_from_state(
   }
 }
 
-#[op]
+#[op2]
+#[serde]
+#[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  method: ByteString,
-  url: String,
-  headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
+  #[serde] method: ByteString,
+  #[string] url: String,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[smi] client_rid: Option<u32>,
   has_body: bool,
-  body_length: Option<u64>,
-  data: Option<JsBuffer>,
+  #[number] body_length: Option<u64>,
+  #[buffer] data: Option<JsBuffer>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -411,10 +415,11 @@ pub struct FetchResponse {
   pub remote_addr_port: Option<u16>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -463,10 +468,11 @@ pub async fn op_fetch_send(
   })
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 pub async fn op_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ResourceId, AnyError> {
   let raw_response = state
     .borrow_mut()
@@ -811,10 +817,11 @@ fn default_true() -> bool {
   true
 }
 
-#[op]
+#[op2]
+#[smi]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  args: CreateHttpClientArgs,
+  #[serde] args: CreateHttpClientArgs,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -916,6 +923,7 @@ pub fn create_http_client(
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
     options.client_cert_chain_and_key,
+    deno_tls::SocketUse::Http,
   )?;
 
   let mut alpn_protocols = vec![];
@@ -963,4 +971,12 @@ pub fn create_http_client(
   }
 
   builder.build().map_err(|e| e.into())
+}
+
+#[op2]
+#[serde]
+pub fn op_utf8_to_byte_string(
+  #[string] input: String,
+) -> Result<ByteString, AnyError> {
+  Ok(input.into())
 }

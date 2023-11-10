@@ -6,6 +6,7 @@
 
 const internals = globalThis.__bootstrap.internals;
 const { core } = globalThis.__bootstrap;
+const { ops } = core;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
@@ -33,8 +34,6 @@ export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
-  Readable,
-  Writable,
 } from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,
@@ -45,6 +44,9 @@ import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { Command } from "ext:runtime/40_process.js";
 
+let argv0Getter = () => "";
+export let argv0 = "deno";
+
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
 
@@ -54,41 +56,9 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
-// We want streams to be as lazy as possible, but we cannot export a getter in a module. To
-// work around this we make these proxies that eagerly instantiate the underlying object on
-// first access of any property/method.
-function makeLazyStream<T>(objectFactory: () => T): T {
-  return new Proxy({}, {
-    get: function (_, prop, receiver) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.get(objectFactory() as any, prop, receiver);
-    },
-    has: function (_, prop) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.has(objectFactory() as any, prop);
-    },
-    ownKeys: function (_) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.ownKeys(objectFactory() as any);
-    },
-    set: function (_, prop, value, receiver) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.set(objectFactory() as any, prop, value, receiver);
-    },
-    getPrototypeOf: function (_) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.getPrototypeOf(objectFactory() as any);
-    },
-    getOwnPropertyDescriptor(_, prop) {
-      // deno-lint-ignore no-explicit-any
-      return Reflect.getOwnPropertyDescriptor(objectFactory() as any, prop);
-    },
-  }) as T;
-}
+let stdin, stdout, stderr;
 
-export let stderr = makeLazyStream(getStderr);
-export let stdin = makeLazyStream(getStdin);
-export let stdout = makeLazyStream(getStdout);
+export { stderr, stdin, stdout };
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
@@ -408,6 +378,15 @@ class Process extends EventEmitter {
    */
   argv = argv;
 
+  get argv0() {
+    if (!argv0) {
+      argv0 = argv0Getter();
+    }
+    return argv0;
+  }
+
+  set argv0(_val) {}
+
   /** https://nodejs.org/api/process.html#process_process_chdir_directory */
   chdir = chdir;
 
@@ -634,19 +613,13 @@ class Process extends EventEmitter {
   memoryUsage = memoryUsage;
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  get stderr(): Writable {
-    return getStderr();
-  }
+  stderr = stderr;
 
   /** https://nodejs.org/api/process.html#process_process_stdin */
-  get stdin(): Readable {
-    return getStdin();
-  }
+  stdin = stdin;
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  get stdout(): Writable {
-    return getStdout();
-  }
+  stdout = stdout;
 
   /** https://nodejs.org/api/process.html#process_process_version */
   version = version;
@@ -678,6 +651,11 @@ class Process extends EventEmitter {
   /** This method is removed on Windows */
   getuid?(): number {
     return Deno.uid()!;
+  }
+
+  /** This method is removed on Windows */
+  geteuid?(): number {
+    return ops.op_geteuid();
   }
 
   // TODO(kt3k): Implement this when we added -e option to node compat mode
@@ -721,6 +699,7 @@ class Process extends EventEmitter {
 if (isWindows) {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
+  delete Process.prototype.geteuid;
 }
 
 /** https://nodejs.org/api/process.html#process_process */
@@ -851,23 +830,25 @@ function synchronizeListeners() {
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
-  argv0: string | undefined,
+  argv0Val: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
 ) {
   // Overwrites the 1st item with getter.
-  if (typeof argv0 === "string") {
+  if (typeof argv0Val === "string") {
     Object.defineProperty(argv, "0", {
       get: () => {
-        return argv0;
+        return argv0Val;
       },
     });
+    argv0Getter = () => argv0Val;
   } else {
     Object.defineProperty(argv, "0", {
       get: () => {
         return Deno.execPath();
       },
     });
+    argv0Getter = () => Deno.execPath();
   }
 
   // Overwrites the 2st item with getter.
@@ -892,52 +873,24 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
+  stdin = process.stdin = initStdin();
+  /** https://nodejs.org/api/process.html#process_process_stdout */
+  stdout = process.stdout = createWritableStdioStream(
+    io.stdout,
+    "stdout",
+  );
+
+  /** https://nodejs.org/api/process.html#process_process_stderr */
+  stderr = process.stderr = createWritableStdioStream(
+    io.stderr,
+    "stderr",
+  );
+
   process.setStartTime(Date.now());
+
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
-
-// deno-lint-ignore no-explicit-any
-let stderr_ = null as any;
-// deno-lint-ignore no-explicit-any
-let stdin_ = null as any;
-// deno-lint-ignore no-explicit-any
-let stdout_ = null as any;
-
-function getStdin(): Readable {
-  if (!stdin_) {
-    stdin_ = initStdin();
-    stdin = stdin_;
-    Object.defineProperty(process, "stdin", { get: () => stdin_ });
-  }
-  return stdin_;
-}
-
-/** https://nodejs.org/api/process.html#process_process_stdout */
-function getStdout(): Writable {
-  if (!stdout_) {
-    stdout_ = createWritableStdioStream(
-      io.stdout,
-      "stdout",
-    );
-    stdout = stdout_;
-    Object.defineProperty(process, "stdout", { get: () => stdout_ });
-  }
-  return stdout_;
-}
-
-/** https://nodejs.org/api/process.html#process_process_stderr */
-function getStderr(): Writable {
-  if (!stderr_) {
-    stderr_ = createWritableStdioStream(
-      io.stderr,
-      "stderr",
-    );
-    stderr = stderr_;
-    Object.defineProperty(process, "stderr", { get: () => stderr_ });
-  }
-  return stderr_;
-}
 
 export default process;

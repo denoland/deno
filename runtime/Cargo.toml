@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.126.0"
+version = "0.131.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -44,6 +44,7 @@ deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_console.workspace = true
 deno_core.workspace = true
+deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
@@ -71,6 +72,7 @@ deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_console.workspace = true
 deno_core.workspace = true
+deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
@@ -90,7 +92,7 @@ deno_webstorage.workspace = true
 fastwebsockets.workspace = true
 
 console_static_text.workspace = true
-dlopen.workspace = true
+dlopen2.workspace = true
 encoding_rs.workspace = true
 filetime = "0.2.16"
 fs3.workspace = true

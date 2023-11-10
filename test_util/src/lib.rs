@@ -2,41 +2,59 @@
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use bytes::Bytes;
+use denokv_proto::datapath::AtomicWrite;
+use denokv_proto::datapath::AtomicWriteOutput;
+use denokv_proto::datapath::AtomicWriteStatus;
+use denokv_proto::datapath::ReadRangeOutput;
+use denokv_proto::datapath::SnapshotRead;
+use denokv_proto::datapath::SnapshotReadOutput;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+use futures::future::join3;
+use futures::future::poll_fn;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
+use h2::server::Handshake;
+use h2::server::SendResponse;
+use h2::Reason;
+use h2::RecvStream;
+use https::get_tls_listener_stream;
+use https::SupportedHttpVersions;
 use hyper::header::HeaderValue;
+use hyper::http;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
 use hyper::upgrade::Upgraded;
 use hyper::Body;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use kv_remote::datapath::AtomicWrite;
-use kv_remote::datapath::AtomicWriteOutput;
-use kv_remote::datapath::AtomicWriteStatus;
-use kv_remote::datapath::ReadRangeOutput;
-use kv_remote::datapath::SnapshotRead;
-use kv_remote::datapath::SnapshotReadOutput;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
 use prost::Message;
 use pty::Pty;
 use regex::Regex;
-use rustls::Certificate;
-use rustls::PrivateKey;
+use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
 use std::io;
 use std::io::Write;
-use std::mem::replace;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::net::SocketAddrV6;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::Path;
@@ -47,24 +65,22 @@ use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 use std::result::Result;
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls;
-use tokio_rustls::TlsAcceptor;
+use tokio::task::LocalSet;
 use url::Url;
 
 pub mod assertions;
 mod builders;
 pub mod factory;
 mod fs;
-mod kv_remote;
+mod https;
 pub mod lsp;
 mod npm;
 pub mod pty;
@@ -100,8 +116,11 @@ const H2_ONLY_PORT: u16 = 5549;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const WSS2_PORT: u16 = 4249;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
+const H2_GRPC_PORT: u16 = 4246;
+const H2S_GRPC_PORT: u16 = 4247;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -110,21 +129,18 @@ pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 static GUARD: Lazy<Mutex<HttpServerCount>> =
   Lazy::new(|| Mutex::new(HttpServerCount::default()));
 
-pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
 
-pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
-  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
-  env_vars.push((
-    // make downloads deterministic
-    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
-    "1".to_string(),
-  ));
-  env_vars
+pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
+  vec![
+    ("DENO_REGISTRY_URL".to_string(), jsr_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
 }
 
 pub fn root_path() -> PathRef {
@@ -162,6 +178,10 @@ pub fn npm_registry_url() -> String {
 
 pub fn npm_registry_unset_url() -> String {
   "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
+}
+
+pub fn jsr_registry_url() -> String {
+  "http://localhost:4545/jsr/registry/".to_string()
 }
 
 pub fn std_path() -> PathRef {
@@ -310,7 +330,7 @@ async fn basic_auth_redirect(
   {
     let credentials =
       format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
-    if auth == format!("Basic {}", base64::encode(credentials)) {
+    if auth == format!("Basic {}", BASE64_STANDARD.encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
@@ -380,10 +400,9 @@ where
   });
 }
 
-async fn run_ws_server(addr: &SocketAddr) {
-  let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: ws"); // Eye catcher for HttpServerCount
-  while let Ok((stream, _addr)) = listener.accept().await {
+async fn run_ws_server(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws", port).await;
+  while let Some(Ok(stream)) = tcp.next().await {
     spawn_ws_server(stream, |ws| Box::pin(echo_websocket_handler(ws)));
   }
 }
@@ -391,9 +410,6 @@ async fn run_ws_server(addr: &SocketAddr) {
 async fn ping_websocket_handler(
   ws: fastwebsockets::WebSocket<Upgraded>,
 ) -> Result<(), anyhow::Error> {
-  use fastwebsockets::Frame;
-  use fastwebsockets::OpCode;
-
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
   for i in 0..9 {
@@ -423,10 +439,9 @@ async fn ping_websocket_handler(
   Ok(())
 }
 
-async fn run_ws_ping_server(addr: &SocketAddr) {
-  let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: ws"); // Eye catcher for HttpServerCount
-  while let Ok((stream, _addr)) = listener.accept().await {
+async fn run_ws_ping_server(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws (ping)", port).await;
+  while let Some(Ok(stream)) = tcp.next().await {
     spawn_ws_server(stream, |ws| Box::pin(ping_websocket_handler(ws)));
   }
 }
@@ -443,126 +458,160 @@ async fn close_websocket_handler(
   Ok(())
 }
 
-async fn run_ws_close_server(addr: &SocketAddr) {
-  let listener = TcpListener::bind(addr).await.unwrap();
-  while let Ok((stream, _addr)) = listener.accept().await {
+async fn run_ws_close_server(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws (close)", port).await;
+  while let Some(Ok(stream)) = tcp.next().await {
     spawn_ws_server(stream, |ws| Box::pin(close_websocket_handler(ws)));
   }
 }
 
-#[derive(Default)]
-enum SupportedHttpVersions {
-  #[default]
-  All,
-  Http1Only,
-  Http2Only,
-}
-
-async fn get_tls_config(
-  cert: &str,
-  key: &str,
-  ca: &str,
-  http_versions: SupportedHttpVersions,
-) -> io::Result<Arc<rustls::ServerConfig>> {
-  let cert_path = testdata_path().join(cert);
-  let key_path = testdata_path().join(key);
-  let ca_path = testdata_path().join(ca);
-
-  let cert_file = std::fs::File::open(cert_path)?;
-  let key_file = std::fs::File::open(key_path)?;
-  let ca_file = std::fs::File::open(ca_path)?;
-
-  let certs: Vec<Certificate> = {
-    let mut cert_reader = io::BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut cert_reader)
-      .unwrap()
-      .into_iter()
-      .map(Certificate)
-      .collect()
-  };
-
-  let mut ca_cert_reader = io::BufReader::new(ca_file);
-  let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)
-    .expect("Cannot load CA certificate")
-    .remove(0);
-
-  let mut key_reader = io::BufReader::new(key_file);
-  let key = {
-    let pkcs8_key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    let rsa_key = rustls_pemfile::rsa_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    if !pkcs8_key.is_empty() {
-      Some(pkcs8_key[0].clone())
-    } else if !rsa_key.is_empty() {
-      Some(rsa_key[0].clone())
-    } else {
-      None
-    }
-  };
-
-  match key {
-    Some(key) => {
-      let mut root_cert_store = rustls::RootCertStore::empty();
-      root_cert_store.add(&rustls::Certificate(ca_cert)).unwrap();
-
-      // Allow (but do not require) client authentication.
-
-      let mut config = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_client_cert_verifier(Arc::new(
-          rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
-            root_cert_store,
-          ),
-        ))
-        .with_single_cert(certs, PrivateKey(key))
-        .map_err(|e| anyhow!("Error setting cert: {:?}", e))
-        .unwrap();
-
-      match http_versions {
-        SupportedHttpVersions::All => {
-          config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
-        }
-        SupportedHttpVersions::Http1Only => {}
-        SupportedHttpVersions::Http2Only => {
-          config.alpn_protocols = vec!["h2".into()];
-        }
-      }
-
-      Ok(Arc::new(config))
-    }
-    None => Err(io::Error::new(io::ErrorKind::Other, "Cannot find key")),
+async fn handle_wss_stream(
+  recv: Request<RecvStream>,
+  mut send: SendResponse<Bytes>,
+) -> Result<(), h2::Error> {
+  if recv.method() != Method::CONNECT {
+    eprintln!("wss2: refusing non-CONNECT stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
   }
+  let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
+    eprintln!("wss2: refusing no-:protocol stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  };
+  if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
+    eprintln!("wss2: refusing non-websocket stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  }
+  let mut body = recv.into_body();
+  let mut response = Response::new(());
+  *response.status_mut() = StatusCode::OK;
+  let mut resp = send.send_response(response, false)?;
+  // Use a duplex stream to talk to fastwebsockets because it's just faster to implement
+  let (a, b) = tokio::io::duplex(65536);
+  let f1 = tokio::spawn(tokio::task::unconstrained(async move {
+    let ws = WebSocket::after_handshake(a, Role::Server);
+    let mut ws = FragmentCollector::new(ws);
+    loop {
+      let frame = ws.read_frame().await.unwrap();
+      if frame.opcode == OpCode::Close {
+        break;
+      }
+      ws.write_frame(frame).await.unwrap();
+    }
+  }));
+  let (mut br, mut bw) = tokio::io::split(b);
+  let f2 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let Some(Ok(data)) = poll_fn(|cx| body.poll_data(cx)).await else {
+        return;
+      };
+      body.flow_control().release_capacity(data.len()).unwrap();
+      let Ok(_) = bw.write_all(&data).await else {
+        break;
+      };
+    }
+  }));
+  let f3 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let mut buf = [0; 65536];
+      let n = br.read(&mut buf).await.unwrap();
+      if n == 0 {
+        break;
+      }
+      resp.reserve_capacity(n);
+      poll_fn(|cx| resp.poll_capacity(cx)).await;
+      resp
+        .send_data(Bytes::copy_from_slice(&buf[0..n]), false)
+        .unwrap();
+    }
+    resp.send_data(Bytes::new(), true).unwrap();
+  }));
+  _ = join3(f1, f2, f3).await;
+  Ok(())
 }
 
-async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
-  let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: wss"); // Eye catcher for HttpServerCount
-
-  while let Ok((stream, _addr)) = listener.accept().await {
-    let acceptor = tls_acceptor.clone();
+async fn run_wss2_server(port: u16) {
+  let mut tls = get_tls_listener_stream(
+    "wss2 (tls)",
+    port,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await;
+  while let Some(Ok(tls)) = tls.next().await {
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(tls_stream) => {
-          spawn_ws_server(tls_stream, |ws| {
-            Box::pin(echo_websocket_handler(ws))
-          });
-        }
+      let mut h2 = h2::server::Builder::new();
+      h2.enable_connect_protocol();
+      // Using Bytes is pretty alloc-heavy but this is a test server
+      let server: Handshake<_, Bytes> = h2.handshake(tls);
+      let mut server = match server.await {
+        Ok(server) => server,
         Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
+          println!("Failed to handshake h2: {e:?}");
+          return;
         }
+      };
+      loop {
+        let Some(conn) = server.accept().await else {
+          break;
+        };
+        let (recv, send) = match conn {
+          Ok(conn) => conn,
+          Err(e) => {
+            println!("Failed to accept a connection: {e:?}");
+            break;
+          }
+        };
+        tokio::spawn(handle_wss_stream(recv, send));
       }
     });
   }
+}
+
+async fn run_wss_server(port: u16) {
+  let mut tls = get_tls_listener_stream("wss", port, Default::default()).await;
+  while let Some(Ok(tls_stream)) = tls.next().await {
+    tokio::spawn(async move {
+      spawn_ws_server(tls_stream, |ws| Box::pin(echo_websocket_handler(ws)));
+    });
+  }
+}
+
+/// Returns a [`Stream`] of [`TcpStream`]s accepted from the given port.
+async fn get_tcp_listener_stream(
+  name: &'static str,
+  port: u16,
+) -> impl Stream<Item = Result<TcpStream, std::io::Error>> + Unpin + Send {
+  let host_and_port = &format!("localhost:{port}");
+
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result.map(|r| r.0), listener))
+    }
+    .boxed()
+  };
+
+  let mut addresses = vec![];
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| addresses.push(*address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
+  // Eye catcher for HttpServerCount
+  println!("ready: {name} on {:?}", addresses);
+
+  futures::stream::select_all(listeners)
 }
 
 /// This server responds with 'PASS' if client authentication was successful. Try it by running
@@ -571,62 +620,25 @@ async fn run_wss_server(addr: &SocketAddr) {
 ///        --cert cli/tests/testsdata/tls/localhost.crt \
 ///        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
 async fn run_tls_client_auth_server() {
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
-
-  // Listen on ALL addresses that localhost can resolves to.
-  let accept = |listener: tokio::net::TcpListener| {
-    async {
-      let result = listener.accept().await;
-      Some((result, listener))
-    }
-    .boxed()
-  };
-
-  let host_and_port = &format!("localhost:{TLS_CLIENT_AUTH_PORT}");
-
-  let listeners = tokio::net::lookup_host(host_and_port)
-    .await
-    .expect(host_and_port)
-    .inspect(|address| println!("{host_and_port} -> {address}"))
-    .map(tokio::net::TcpListener::bind)
-    .collect::<futures::stream::FuturesUnordered<_>>()
-    .collect::<Vec<_>>()
-    .await
-    .into_iter()
-    .map(|s| s.unwrap())
-    .map(|listener| futures::stream::unfold(listener, accept))
-    .collect::<Vec<_>>();
-
-  println!("ready: tls client auth"); // Eye catcher for HttpServerCount
-
-  let mut listeners = futures::stream::select_all(listeners);
-
-  while let Some(Ok((stream, _addr))) = listeners.next().await {
-    let acceptor = tls_acceptor.clone();
+  let mut tls = get_tls_listener_stream(
+    "tls client auth",
+    TLS_CLIENT_AUTH_PORT,
+    Default::default(),
+  )
+  .await;
+  while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(mut tls_stream) => {
-          let (_, tls_session) = tls_stream.get_mut();
-          // We only need to check for the presence of client certificates
-          // here. Rusttls ensures that they are valid and signed by the CA.
-          let response = match tls_session.peer_certificates() {
-            Some(_certs) => b"PASS",
-            None => b"FAIL",
-          };
-          tls_stream.write_all(response).await.unwrap();
-        }
-
-        Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
-        }
-      }
+      let Ok(handshake) = tls_stream.handshake().await else {
+        eprintln!("Failed to handshake");
+        return;
+      };
+      // We only need to check for the presence of client certificates
+      // here. Rusttls ensures that they are valid and signed by the CA.
+      let response = match handshake.has_peer_certificates {
+        true => b"PASS",
+        false => b"FAIL",
+      };
+      tls_stream.write_all(response).await.unwrap();
     });
   }
 }
@@ -635,55 +647,11 @@ async fn run_tls_client_auth_server() {
 /// test_server and
 ///   curl --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4553/
 async fn run_tls_server() {
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
-
-  // Listen on ALL addresses that localhost can resolves to.
-  let accept = |listener: tokio::net::TcpListener| {
-    async {
-      let result = listener.accept().await;
-      Some((result, listener))
-    }
-    .boxed()
-  };
-
-  let host_and_port = &format!("localhost:{TLS_PORT}");
-
-  let listeners = tokio::net::lookup_host(host_and_port)
-    .await
-    .expect(host_and_port)
-    .inspect(|address| println!("{host_and_port} -> {address}"))
-    .map(tokio::net::TcpListener::bind)
-    .collect::<futures::stream::FuturesUnordered<_>>()
-    .collect::<Vec<_>>()
-    .await
-    .into_iter()
-    .map(|s| s.unwrap())
-    .map(|listener| futures::stream::unfold(listener, accept))
-    .collect::<Vec<_>>();
-
-  println!("ready: tls"); // Eye catcher for HttpServerCount
-
-  let mut listeners = futures::stream::select_all(listeners);
-
-  while let Some(Ok((stream, _addr))) = listeners.next().await {
-    let acceptor = tls_acceptor.clone();
+  let mut tls =
+    get_tls_listener_stream("tls", TLS_PORT, Default::default()).await;
+  while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(mut tls_stream) => {
-          tls_stream.write_all(b"PASS").await.unwrap();
-        }
-
-        Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
-        }
-      }
+      tls_stream.write_all(b"PASS").await.unwrap();
     });
   }
 }
@@ -1197,7 +1165,7 @@ async fn main_server(
           .header("content-type", "application/json")
           .body(Body::from(
             serde_json::json!({
-              "version": 2,
+              "version": 1000,
               "databaseId": KV_DATABASE_ID,
               "endpoints": [
                 {
@@ -1259,9 +1227,7 @@ async fn main_server(
                 .map(|_| ReadRangeOutput { values: vec![] })
                 .collect(),
               read_disabled: false,
-              regions_if_read_disabled: vec![],
               read_is_strongly_consistent: true,
-              primary_if_not_strongly_consistent: "".into(),
             }
             .encode_to_vec(),
           ))
@@ -1302,7 +1268,7 @@ async fn main_server(
             AtomicWriteOutput {
               status: AtomicWriteStatus::AwSuccess.into(),
               versionstamp: vec![0u8; 10],
-              primary_if_write_disabled: "".into(),
+              failed_checks: vec![],
             }
             .encode_to_vec(),
           ))
@@ -1311,15 +1277,18 @@ async fn main_server(
     }
     _ => {
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&req.uri().path()[1..]);
+      file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
       }
 
       // serve npm registry files
-      if let Some(suffix) =
-        req.uri().path().strip_prefix("/npm/registry/@denotest/")
+      if let Some(suffix) = req
+        .uri()
+        .path()
+        .strip_prefix("/npm/registry/@denotest/")
+        .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
       {
         // serve all requests to /npm/registry/@deno using the file system
         // at that path
@@ -1454,15 +1423,12 @@ async fn download_npm_registry_file(
 /// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs
 struct HyperAcceptor<'a> {
   acceptor: Pin<
-    Box<
-      dyn Stream<Item = io::Result<tokio_rustls::server::TlsStream<TcpStream>>>
-        + 'a,
-    >,
+    Box<dyn Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + 'a>,
   >,
 }
 
 impl hyper::server::accept::Accept for HyperAcceptor<'_> {
-  type Conn = tokio_rustls::server::TlsStream<TcpStream>;
+  type Conn = rustls_tokio_stream::TlsStream;
   type Error = io::Error;
 
   fn poll_accept(
@@ -1566,148 +1532,78 @@ async fn wrap_abs_redirect_server() {
 }
 
 async fn wrap_main_server() {
+  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+// necessary because on Windows the npm binary will resolve localhost to ::1
+async fn wrap_main_ipv6_server() {
+  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
+  let main_server_addr =
+    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, PORT, 0, 0));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
   let main_server_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
-  let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
+  let main_server = Server::bind(main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
     eprintln!("HTTP server error: {e:?}");
   }
 }
 
 async fn wrap_main_https_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
-      }
-    }
-    .boxed();
-
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .serve(main_server_https_svc);
-
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
-  }
+  let tls =
+    get_tls_listener_stream("https", HTTPS_PORT, Default::default()).await;
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .serve(main_server_https_svc);
+  let _ = main_server_https.await;
 }
 
 async fn wrap_https_h1_only_tls_server() {
-  let main_server_https_addr =
-    SocketAddr::from(([127, 0, 0, 1], H1_ONLY_TLS_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(
-    cert_file,
-    key_file,
-    ca_cert_file,
+  let tls = get_tls_listener_stream(
+    "https (h1 only)",
+    H1_ONLY_TLS_PORT,
     SupportedHttpVersions::Http1Only,
   )
-  .await
-  .unwrap();
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
-      }
-    }
-    .boxed();
+  .await;
 
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .http1_only(true)
-    .serve(main_server_https_svc);
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .http1_only(true)
+  .serve(main_server_https_svc);
 
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
-  }
+  let _ = main_server_https.await;
 }
 
 async fn wrap_https_h2_only_tls_server() {
-  let main_server_https_addr =
-    SocketAddr::from(([127, 0, 0, 1], H2_ONLY_TLS_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(
-    cert_file,
-    key_file,
-    ca_cert_file,
+  let tls = get_tls_listener_stream(
+    "https (h2 only)",
+    H2_ONLY_TLS_PORT,
     SupportedHttpVersions::Http2Only,
   )
-  .await
-  .unwrap();
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
-      }
-    }
-    .boxed();
+  .await;
 
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .http2_only(true)
-    .serve(main_server_https_svc);
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .http2_only(true)
+  .serve(main_server_https_svc);
 
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
-  }
+  let _ = main_server_https.await;
 }
 
-async fn wrap_https_h1_only_server() {
+async fn wrap_http_h1_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
 
   let main_server_http_svc =
@@ -1718,7 +1614,7 @@ async fn wrap_https_h1_only_server() {
   let _ = main_server_http.await;
 }
 
-async fn wrap_https_h2_only_server() {
+async fn wrap_http_h2_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
 
   let main_server_http_svc =
@@ -1729,61 +1625,124 @@ async fn wrap_https_h2_only_server() {
   let _ = main_server_http.await;
 }
 
-async fn wrap_client_auth_https_server() {
-  let main_server_https_addr =
-    SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
+async fn h2_grpc_server() {
+  let mut tcp = get_tcp_listener_stream("grpc", H2_GRPC_PORT).await;
+  let mut tls = get_tls_listener_stream(
+    "grpc (tls)",
+    H2S_GRPC_PORT,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await;
 
-          match tls_acceptor.accept(socket).await {
-            Ok(mut tls_stream) => {
-              let (_, tls_session) = tls_stream.get_mut();
-              // We only need to check for the presence of client certificates
-              // here. Rusttls ensures that they are valid and signed by the CA.
-              match tls_session.peer_certificates() {
-                Some(_certs) => { yield Ok(tls_stream); },
-                None => { eprintln!("https_client_auth: no valid client certificate"); },
-              };
-            }
+  async fn serve(socket: TcpStream) -> Result<(), anyhow::Error> {
+    let mut connection = h2::server::handshake(socket).await?;
 
-            Err(e) => {
-              eprintln!("https-client-auth accept error: {e:?}");
-              yield Err(e);
-            }
-          }
+    while let Some(result) = connection.accept().await {
+      let (request, respond) = result?;
+      tokio::spawn(async move {
+        let _ = handle_request(request, respond).await;
+      });
+    }
 
+    Ok(())
+  }
+
+  async fn serve_tls(socket: TlsStream) -> Result<(), anyhow::Error> {
+    let mut connection = h2::server::handshake(socket).await?;
+
+    while let Some(result) = connection.accept().await {
+      let (request, respond) = result?;
+      tokio::spawn(async move {
+        let _ = handle_request(request, respond).await;
+      });
+    }
+
+    Ok(())
+  }
+
+  async fn handle_request(
+    mut request: http::Request<h2::RecvStream>,
+    mut respond: h2::server::SendResponse<bytes::Bytes>,
+  ) -> Result<(), anyhow::Error> {
+    let body = request.body_mut();
+    while let Some(data) = body.data().await {
+      let data = data?;
+      let _ = body.flow_control().release_capacity(data.len());
+    }
+
+    let maybe_recv_trailers = body.trailers().await?;
+
+    let response = http::Response::new(());
+    let mut send = respond.send_response(response, false)?;
+    send.send_data(bytes::Bytes::from_static(b"hello "), false)?;
+    send.send_data(bytes::Bytes::from_static(b"world\n"), false)?;
+    let mut trailers = http::HeaderMap::new();
+    trailers.insert(
+      http::HeaderName::from_static("abc"),
+      HeaderValue::from_static("def"),
+    );
+    trailers.insert(
+      http::HeaderName::from_static("opr"),
+      HeaderValue::from_static("stv"),
+    );
+    if let Some(recv_trailers) = maybe_recv_trailers {
+      for (key, value) in recv_trailers {
+        trailers.insert(key.unwrap(), value);
       }
     }
-    .boxed();
+    send.send_trailers(trailers)?;
 
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .serve(main_server_https_svc);
-
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
+    Ok(())
   }
+
+  let local_set = LocalSet::new();
+  local_set.spawn_local(async move {
+    while let Some(Ok(tcp)) = tcp.next().await {
+      tokio::spawn(async move {
+        let _ = serve(tcp).await;
+      });
+    }
+  });
+
+  local_set.spawn_local(async move {
+    while let Some(Ok(tls)) = tls.next().await {
+      tokio::spawn(async move {
+        let _ = serve_tls(tls).await;
+      });
+    }
+  });
+
+  local_set.await;
+}
+
+async fn wrap_client_auth_https_server() {
+  let mut tls = get_tls_listener_stream(
+    "https_client_auth",
+    HTTPS_CLIENT_AUTH_PORT,
+    Default::default(),
+  )
+  .await;
+
+  let tls = async_stream::stream! {
+    while let Some(Ok(mut tls)) = tls.next().await {
+      let handshake = tls.handshake().await?;
+      // We only need to check for the presence of client certificates
+      // here. Rusttls ensures that they are valid and signed by the CA.
+      match handshake.has_peer_certificates {
+        true => { yield Ok(tls); },
+        false => { eprintln!("https_client_auth: no valid client certificate"); },
+      };
+    }
+  };
+
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .serve(main_server_https_svc);
+
+  let _ = main_server_https.await;
 }
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
@@ -1803,31 +1762,31 @@ pub async fn run_all_servers() {
   let basic_auth_redirect_server_fut = wrap_basic_auth_redirect_server();
   let abs_redirect_server_fut = wrap_abs_redirect_server();
 
-  let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
-  let ws_server_fut = run_ws_server(&ws_addr);
-  let ws_ping_addr = SocketAddr::from(([127, 0, 0, 1], WS_PING_PORT));
-  let ws_ping_server_fut = run_ws_ping_server(&ws_ping_addr);
-  let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
-  let wss_server_fut = run_wss_server(&wss_addr);
-  let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
-  let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
+  let ws_server_fut = run_ws_server(WS_PORT);
+  let ws_ping_server_fut = run_ws_ping_server(WS_PING_PORT);
+  let wss_server_fut = run_wss_server(WSS_PORT);
+  let ws_close_server_fut = run_ws_close_server(WS_CLOSE_PORT);
+  let wss2_server_fut = run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server();
   let tls_client_auth_server_fut = run_tls_client_auth_server();
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
+  let main_server_ipv6_fut = wrap_main_ipv6_server();
   let main_server_https_fut = wrap_main_https_server();
   let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
-  let h1_only_server_fut = wrap_https_h1_only_server();
-  let h2_only_server_fut = wrap_https_h2_only_server();
+  let h1_only_server_fut = wrap_http_h1_only_server();
+  let h2_only_server_fut = wrap_http_h2_only_server();
+  let h2_grpc_server_fut = h2_grpc_server();
 
-  let mut server_fut = async {
+  let server_fut = async {
     futures::join!(
       redirect_server_fut,
       ws_server_fut,
       ws_ping_server_fut,
       wss_server_fut,
+      wss2_server_fut,
       tls_server_fut,
       tls_client_auth_server_fut,
       ws_close_server_fut,
@@ -1838,25 +1797,19 @@ pub async fn run_all_servers() {
       double_redirects_server_fut,
       abs_redirect_server_fut,
       main_server_fut,
+      main_server_ipv6_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
       h1_only_server_tls_fut,
       h2_only_server_tls_fut,
       h1_only_server_fut,
-      h2_only_server_fut
+      h2_only_server_fut,
+      h2_grpc_server_fut,
     )
   }
-  .boxed();
+  .boxed_local();
 
-  let mut did_print_ready = false;
-  futures::future::poll_fn(move |cx| {
-    let poll_result = server_fut.poll_unpin(cx);
-    if !replace(&mut did_print_ready, true) {
-      println!("ready: server_fut"); // Eye catcher for HttpServerCount
-    }
-    poll_result
-  })
-  .await;
+  server_fut.await;
 }
 
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
@@ -1982,7 +1935,7 @@ impl HttpServerCount {
           if line.starts_with("ready:") {
             ready_count += 1;
           }
-          if ready_count == 6 {
+          if ready_count == 12 {
             break;
           }
         } else {
@@ -2410,57 +2363,285 @@ impl<'a> CheckOutputIntegrationTest<'a> {
   }
 }
 
-pub fn wildcard_match(pattern: &str, s: &str) -> bool {
-  pattern_match(pattern, s, "[WILDCARD]")
+pub fn wildcard_match(pattern: &str, text: &str) -> bool {
+  match wildcard_match_detailed(pattern, text) {
+    WildcardMatchResult::Success => true,
+    WildcardMatchResult::Fail(debug_output) => {
+      eprintln!("{}", debug_output);
+      false
+    }
+  }
 }
 
-pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
+pub enum WildcardMatchResult {
+  Success,
+  Fail(String),
+}
+
+pub fn wildcard_match_detailed(
+  pattern: &str,
+  text: &str,
+) -> WildcardMatchResult {
+  fn annotate_whitespace(text: &str) -> String {
+    text.replace('\t', "\u{2192}").replace(' ', "\u{00B7}")
+  }
+
   // Normalize line endings
-  let mut s = s.replace("\r\n", "\n");
+  let original_text = text.replace("\r\n", "\n");
+  let mut current_text = original_text.as_str();
   let pattern = pattern.replace("\r\n", "\n");
+  let mut output_lines = Vec::new();
 
-  if pattern == wildcard {
-    return true;
-  }
+  let parts = parse_wildcard_pattern_text(&pattern).unwrap();
 
-  let parts = pattern.split(wildcard).collect::<Vec<&str>>();
-  if parts.len() == 1 {
-    return pattern == s;
-  }
-
-  if !s.starts_with(parts[0]) {
-    return false;
-  }
-
-  // If the first line of the pattern is just a wildcard the newline character
-  // needs to be pre-pended so it can safely match anything or nothing and
-  // continue matching.
-  if pattern.lines().next() == Some(wildcard) {
-    s.insert(0, '\n');
-  }
-
-  let mut t = s.split_at(parts[0].len());
-
+  let mut was_last_wildcard = false;
   for (i, part) in parts.iter().enumerate() {
-    if i == 0 {
-      continue;
+    match part {
+      WildcardPatternPart::Wildcard => {
+        output_lines.push("<WILDCARD />".to_string());
+      }
+      WildcardPatternPart::Text(search_text) => {
+        let is_last = i + 1 == parts.len();
+        let search_index = if is_last && was_last_wildcard {
+          // search from the end of the file
+          current_text.rfind(search_text)
+        } else {
+          current_text.find(search_text)
+        };
+        match search_index {
+          Some(found_index) if was_last_wildcard || found_index == 0 => {
+            output_lines.push(format!(
+              "<FOUND>{}</FOUND>",
+              colors::gray(annotate_whitespace(search_text))
+            ));
+            current_text = &current_text[found_index + search_text.len()..];
+          }
+          Some(index) => {
+            output_lines.push(
+              "==== FOUND SEARCH TEXT IN WRONG POSITION ====".to_string(),
+            );
+            output_lines.push(colors::gray(annotate_whitespace(search_text)));
+            output_lines
+              .push("==== HAD UNKNOWN PRECEEDING TEXT ====".to_string());
+            output_lines
+              .push(colors::red(annotate_whitespace(&current_text[..index])));
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
+          }
+          None => {
+            let mut max_found_index = 0;
+            for (index, _) in search_text.char_indices() {
+              let sub_string = &search_text[..index];
+              if let Some(found_index) = current_text.find(sub_string) {
+                if was_last_wildcard || found_index == 0 {
+                  max_found_index = index;
+                } else {
+                  break;
+                }
+              } else {
+                break;
+              }
+            }
+            if !was_last_wildcard && max_found_index > 0 {
+              output_lines.push(format!(
+                "<FOUND>{}</FOUND>",
+                colors::gray(annotate_whitespace(
+                  &search_text[..max_found_index]
+                ))
+              ));
+            }
+            output_lines
+              .push("==== COULD NOT FIND SEARCH TEXT ====".to_string());
+            output_lines.push(colors::green(annotate_whitespace(
+              if was_last_wildcard {
+                search_text
+              } else {
+                &search_text[max_found_index..]
+              },
+            )));
+            if was_last_wildcard && max_found_index > 0 {
+              output_lines.push(format!(
+                "==== MAX FOUND ====\n{}",
+                colors::red(annotate_whitespace(
+                  &search_text[..max_found_index]
+                ))
+              ));
+            }
+            let actual_next_text = &current_text[max_found_index..];
+            let max_next_text_len = 40;
+            let next_text_len =
+              std::cmp::min(max_next_text_len, actual_next_text.len());
+            output_lines.push(format!(
+              "==== NEXT ACTUAL TEXT ====\n{}{}",
+              colors::red(annotate_whitespace(
+                &actual_next_text[..next_text_len]
+              )),
+              if actual_next_text.len() > max_next_text_len {
+                "[TRUNCATED]"
+              } else {
+                ""
+              },
+            ));
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
+          }
+        }
+      }
+      WildcardPatternPart::UnorderedLines(expected_lines) => {
+        assert!(!was_last_wildcard, "unsupported");
+        let mut actual_lines = Vec::with_capacity(expected_lines.len());
+        for _ in 0..expected_lines.len() {
+          match current_text.find('\n') {
+            Some(end_line_index) => {
+              actual_lines.push(&current_text[..end_line_index]);
+              current_text = &current_text[end_line_index + 1..];
+            }
+            None => {
+              break;
+            }
+          }
+        }
+        actual_lines.sort_unstable();
+        let mut expected_lines = expected_lines.clone();
+        expected_lines.sort_unstable();
+
+        if actual_lines.len() != expected_lines.len() {
+          output_lines
+            .push("==== HAD WRONG NUMBER OF UNORDERED LINES ====".to_string());
+          output_lines.push("# ACTUAL".to_string());
+          output_lines.extend(
+            actual_lines
+              .iter()
+              .map(|l| colors::green(annotate_whitespace(l))),
+          );
+          output_lines.push("# EXPECTED".to_string());
+          output_lines.extend(
+            expected_lines
+              .iter()
+              .map(|l| colors::green(annotate_whitespace(l))),
+          );
+          return WildcardMatchResult::Fail(output_lines.join("\n"));
+        }
+        for (actual, expected) in actual_lines.iter().zip(expected_lines.iter())
+        {
+          if actual != expected {
+            output_lines
+              .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
+            output_lines.push(format!(
+              "  ACTUAL: {}",
+              colors::red(annotate_whitespace(actual))
+            ));
+            output_lines.push(format!(
+              "EXPECTED: {}",
+              colors::green(annotate_whitespace(expected))
+            ));
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
+          } else {
+            output_lines.push(format!(
+              "<FOUND>{}</FOUND>",
+              colors::gray(annotate_whitespace(expected))
+            ));
+          }
+        }
+      }
     }
-    dbg!(part, i);
-    if i == parts.len() - 1 && (part.is_empty() || *part == "\n") {
-      dbg!("exit 1 true", i);
-      return true;
-    }
-    if let Some(found) = t.1.find(*part) {
-      dbg!("found ", found);
-      t = t.1.split_at(found + part.len());
-    } else {
-      dbg!("exit false ", i);
-      return false;
+    was_last_wildcard = matches!(part, WildcardPatternPart::Wildcard);
+  }
+
+  if was_last_wildcard || current_text.is_empty() {
+    WildcardMatchResult::Success
+  } else {
+    output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
+    output_lines.push(colors::red(annotate_whitespace(current_text)));
+    WildcardMatchResult::Fail(output_lines.join("\n"))
+  }
+}
+
+#[derive(Debug)]
+enum WildcardPatternPart<'a> {
+  Wildcard,
+  Text(&'a str),
+  UnorderedLines(Vec<&'a str>),
+}
+
+fn parse_wildcard_pattern_text(
+  text: &str,
+) -> Result<Vec<WildcardPatternPart>, monch::ParseErrorFailureError> {
+  use monch::*;
+
+  fn parse_unordered_lines(input: &str) -> ParseResult<Vec<&str>> {
+    const END_TEXT: &str = "\n[UNORDERED_END]\n";
+    let (input, _) = tag("[UNORDERED_START]\n")(input)?;
+    match input.find(END_TEXT) {
+      Some(end_index) => ParseResult::Ok((
+        &input[end_index + END_TEXT.len()..],
+        input[..end_index].lines().collect::<Vec<_>>(),
+      )),
+      None => ParseError::fail(input, "Could not find [UNORDERED_END]"),
     }
   }
 
-  dbg!("end ", t.1.len());
-  t.1.is_empty()
+  enum InnerPart<'a> {
+    Wildcard,
+    UnorderedLines(Vec<&'a str>),
+    Char,
+  }
+
+  struct Parser<'a> {
+    current_input: &'a str,
+    last_text_input: &'a str,
+    parts: Vec<WildcardPatternPart<'a>>,
+  }
+
+  impl<'a> Parser<'a> {
+    fn parse(mut self) -> ParseResult<'a, Vec<WildcardPatternPart<'a>>> {
+      while !self.current_input.is_empty() {
+        let (next_input, inner_part) = or3(
+          map(tag("[WILDCARD]"), |_| InnerPart::Wildcard),
+          map(parse_unordered_lines, |lines| {
+            InnerPart::UnorderedLines(lines)
+          }),
+          map(next_char, |_| InnerPart::Char),
+        )(self.current_input)?;
+        match inner_part {
+          InnerPart::Wildcard => {
+            self.queue_previous_text(next_input);
+            self.parts.push(WildcardPatternPart::Wildcard);
+          }
+          InnerPart::UnorderedLines(expected_lines) => {
+            self.queue_previous_text(next_input);
+            self
+              .parts
+              .push(WildcardPatternPart::UnorderedLines(expected_lines));
+          }
+          InnerPart::Char => {
+            // ignore
+          }
+        }
+        self.current_input = next_input;
+      }
+
+      self.queue_previous_text("");
+
+      ParseResult::Ok(("", self.parts))
+    }
+
+    fn queue_previous_text(&mut self, next_input: &'a str) {
+      let previous_text = &self.last_text_input
+        [..self.last_text_input.len() - self.current_input.len()];
+      if !previous_text.is_empty() {
+        self.parts.push(WildcardPatternPart::Text(previous_text));
+      }
+      self.last_text_input = next_input;
+    }
+  }
+
+  with_failure_handling(|input| {
+    Parser {
+      current_input: input,
+      last_text_input: input,
+      parts: Vec::new(),
+    }
+    .parse()
+  })(text)
 }
 
 pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
@@ -2604,6 +2785,67 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   None
 }
 
+pub(crate) mod colors {
+  use std::io::Write;
+
+  use termcolor::Ansi;
+  use termcolor::Color;
+  use termcolor::ColorSpec;
+  use termcolor::WriteColor;
+
+  pub fn bold<S: AsRef<str>>(s: S) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_bold(true);
+    style(s, style_spec)
+  }
+
+  pub fn red<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Red)
+  }
+
+  pub fn bold_red<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Red)
+  }
+
+  pub fn green<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Green)
+  }
+
+  pub fn bold_green<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Green)
+  }
+
+  pub fn bold_blue<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Blue)
+  }
+
+  pub fn gray<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Ansi256(245))
+  }
+
+  fn bold_fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_bold(true);
+    style_spec.set_fg(Some(color));
+    style(s, style_spec)
+  }
+
+  fn fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_fg(Some(color));
+    style(s, style_spec)
+  }
+
+  fn style<S: AsRef<str>>(s: S, colorspec: ColorSpec) -> String {
+    let mut v = Vec::new();
+    let mut ansi_writer = Ansi::new(&mut v);
+    ansi_writer.set_color(&colorspec).unwrap();
+    ansi_writer.write_all(s.as_ref().as_bytes()).unwrap();
+    ansi_writer.reset().unwrap();
+    String::from_utf8_lossy(&v).into_owned()
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -2690,6 +2932,15 @@ mod tests {
   }
 
   #[test]
+  fn parse_parse_wildcard_match_text() {
+    let result =
+      parse_wildcard_pattern_text("[UNORDERED_START]\ntesting\ntesting")
+        .err()
+        .unwrap();
+    assert_contains!(result.to_string(), "Could not find [UNORDERED_END]");
+  }
+
+  #[test]
   fn test_wildcard_match() {
     let fixtures = vec![
       ("foobarbaz", "foobarbaz", true),
@@ -2733,16 +2984,15 @@ mod tests {
   }
 
   #[test]
-  fn test_pattern_match() {
+  fn test_wildcard_match2() {
     // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
 
-    let wildcard = "[BAR]";
-    assert!(pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
-    assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+    assert!(wildcard_match("foo[WILDCARD]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCARD]baz", "foobazbar"));
 
-    let multiline_pattern = "[BAR]
+    let multiline_pattern = "[WILDCARD]
 foo:
-[BAR]baz[BAR]";
+[WILDCARD]baz[WILDCARD]";
 
     fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
       // If there is leading text add a newline so it's on it's own line
@@ -2767,31 +3017,52 @@ grault",
     );
 
     // Correct input & leading line
-    assert!(pattern_match(
+    assert!(wildcard_match(
       multiline_pattern,
       &multi_line_builder("baz", Some("QUX=quux")),
-      wildcard
     ));
 
-    // Correct input & no leading line
-    assert!(pattern_match(
+    // Should fail when leading line
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("baz", None),
-      wildcard
     ));
 
     // Incorrect input & leading line
-    assert!(!pattern_match(
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("garply", Some("QUX=quux")),
-      wildcard
     ));
 
     // Incorrect input & no leading line
-    assert!(!pattern_match(
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("garply", None),
-      wildcard
+    ));
+  }
+
+  #[test]
+  fn test_wildcard_match_unordered_lines() {
+    // matching
+    assert!(wildcard_match(
+      concat!("[UNORDERED_START]\n", "B\n", "A\n", "[UNORDERED_END]\n"),
+      concat!("A\n", "B\n",)
+    ));
+    // different line
+    assert!(!wildcard_match(
+      concat!("[UNORDERED_START]\n", "Ba\n", "A\n", "[UNORDERED_END]\n"),
+      concat!("A\n", "B\n",)
+    ));
+    // different number of lines
+    assert!(!wildcard_match(
+      concat!(
+        "[UNORDERED_START]\n",
+        "B\n",
+        "A\n",
+        "C\n",
+        "[UNORDERED_END]\n"
+      ),
+      concat!("A\n", "B\n",)
     ));
   }
 

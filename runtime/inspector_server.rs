@@ -359,6 +359,9 @@ async fn pump_websocket_messages(
                 }
             }
         }
+        else => {
+          break 'pump;
+        }
     }
   }
 }

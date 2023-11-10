@@ -1,4 +1,3 @@
-[WILDCARD]
 error: Uncaught Error: bar <ref *1>
 const y = new Error("bar", { cause: x });
           ^

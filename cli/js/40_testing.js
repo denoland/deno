@@ -1,36 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// Do not use primordials because we do not want to depend on the __bootstrap
+// namespace.
+//
+// deno-lint-ignore-file prefer-primordials
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { setExitHandler } from "ext:runtime/30_os.js";
-import { Console } from "ext:deno_console/01_console.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
-import { assert } from "ext:deno_web/00_infra.js";
-const primordials = globalThis.__bootstrap.primordials;
+
+const internals = globalThis.__bootstrap.internals;
 const {
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeShift,
-  DateNow,
-  Error,
-  FunctionPrototype,
-  Map,
-  MapPrototypeGet,
-  MapPrototypeHas,
-  MapPrototypeSet,
-  MathCeil,
-  ObjectKeys,
-  ObjectHasOwn,
-  ObjectPrototypeIsPrototypeOf,
-  Promise,
-  SafeArrayIterator,
-  Set,
-  StringPrototypeReplaceAll,
-  SymbolToStringTag,
-  TypeError,
-} = primordials;
+  setExitHandler,
+  Console,
+  serializePermissions,
+} = internals;
 
 const opSanitizerDelayResolveQueue = [];
 let hasSetOpSanitizerDelayMacrotask = false;
@@ -40,25 +23,39 @@ let hasSetOpSanitizerDelayMacrotask = false;
 // that resolves when it's (probably) fine to run the op sanitizer.
 //
 // This is implemented by adding a macrotask callback that runs after the
-// timer macrotasks, so we can guarantee that a currently running interval
-// will have an associated op. An additional `setTimeout` of 0 is needed
-// before that, though, in order to give time for worker message ops to finish
-// (since timeouts of 0 don't queue tasks in the timer queue immediately).
-function opSanitizerDelay() {
+// all ready async ops resolve, and the timer macrotask. Using just a macrotask
+// callback without delaying is sufficient, because when the macrotask callback
+// runs after async op dispatch, we know that all async ops that can currently
+// return `Poll::Ready` have done so, and have been dispatched to JS.
+//
+// Worker ops are an exception to this, because there is no way for the user to
+// await shutdown of the worker from the thread calling `worker.terminate()`.
+// Because of this, we give extra leeway for worker ops to complete, by waiting
+// for a whole millisecond if there are pending worker ops.
+function opSanitizerDelay(hasPendingWorkerOps) {
   if (!hasSetOpSanitizerDelayMacrotask) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
     hasSetOpSanitizerDelayMacrotask = true;
   }
-  return new Promise((resolve) => {
+  const p = new Promise((resolve) => {
+    // Schedule an async op to complete immediately to ensure the macrotask is
+    // run. We rely on the fact that enqueueing the resolver callback during the
+    // timeout callback will mean that the resolver gets called in the same
+    // event loop tick as the timeout callback.
     setTimeout(() => {
-      ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 1);
+      opSanitizerDelayResolveQueue.push(resolve);
+    }, hasPendingWorkerOps ? 1 : 0);
   });
+  return p;
 }
 
 function handleOpSanitizerDelayMacrotask() {
-  ArrayPrototypeShift(opSanitizerDelayResolveQueue)?.();
-  return opSanitizerDelayResolveQueue.length === 0;
+  const resolve = opSanitizerDelayResolveQueue.shift();
+  if (resolve) {
+    resolve();
+    return opSanitizerDelayResolveQueue.length === 0;
+  }
+  return undefined; // we performed no work, so can skip microtasks checkpoint
 }
 
 // An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
@@ -126,15 +123,27 @@ const OP_DETAILS = {
   "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
   "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
   "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-  "op_worker_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_ctrl": ["receive a message from a web worker", "terminating a `Worker`"],
   "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
   "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
   "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_text": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_binary": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_binary_ab": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_ping": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
+
+let opIdHostRecvMessage = -1;
+let opIdHostRecvCtrl = -1;
+let opNames = null;
+
+function populateOpNames() {
+  opNames = core.ops.op_op_names();
+  opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
+  opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
+}
 
 // Wrap test function in additional assertion that makes sure
 // the test case does not leak async "ops" - ie. number of async
@@ -144,43 +153,61 @@ const OP_DETAILS = {
 function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
-    const pre = core.metrics();
+    if (opNames === null) populateOpNames();
+    const res = core.ops.op_test_op_sanitizer_collect(
+      desc.id,
+      false,
+      opIdHostRecvMessage,
+      opIdHostRecvCtrl,
+    );
+    if (res !== 0) {
+      await opSanitizerDelay(res === 2);
+      core.ops.op_test_op_sanitizer_collect(
+        desc.id,
+        true,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
+    }
     const preTraces = new Map(core.opCallTraces);
+    let postTraces;
+    let report = null;
+
     try {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      // Defer until next event loop turn - that way timeouts and intervals
-      // cleared can actually be removed from resource table, otherwise
-      // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await opSanitizerDelay();
+      let res = core.ops.op_test_op_sanitizer_finish(
+        desc.id,
+        false,
+        opIdHostRecvMessage,
+        opIdHostRecvCtrl,
+      );
+      if (res === 1 || res === 2) {
+        await opSanitizerDelay(res === 2);
+        res = core.ops.op_test_op_sanitizer_finish(
+          desc.id,
+          true,
+          opIdHostRecvMessage,
+          opIdHostRecvCtrl,
+        );
+      }
+      postTraces = new Map(core.opCallTraces);
+      if (res === 3) {
+        report = core.ops.op_test_op_sanitizer_report(desc.id);
+      }
     }
-    const post = core.metrics();
-    const postTraces = new Map(core.opCallTraces);
 
-    // We're checking diff because one might spawn HTTP server in the background
-    // that will be a pending async op before test starts.
-    const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
-    const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
-
-    if (dispatchedDiff === completedDiff) return null;
+    if (report === null) return null;
 
     const details = [];
-    for (const key in post.ops) {
-      if (!ObjectHasOwn(post.ops, key)) {
-        continue;
-      }
-      const preOp = pre.ops[key] ??
-        { opsDispatchedAsync: 0, opsCompletedAsync: 0 };
-      const postOp = post.ops[key];
-      const dispatchedDiff = postOp.opsDispatchedAsync -
-        preOp.opsDispatchedAsync;
-      const completedDiff = postOp.opsCompletedAsync -
-        preOp.opsCompletedAsync;
+    for (const opReport of report) {
+      const opName = opNames[opReport.id];
+      const diff = opReport.diff;
 
-      if (dispatchedDiff > completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = dispatchedDiff - completedDiff;
+      if (diff > 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = diff;
         let message = `${count} async operation${
           count === 1 ? "" : "s"
         } to ${name} ${
@@ -190,33 +217,51 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of postTraces) {
-          if (opName !== key) continue;
-          if (MapPrototypeHas(preTraces, id)) continue;
-          ArrayPrototypePush(traces, stack);
+        for (const [id, { opName: traceOpName, stack }] of postTraces) {
+          if (traceOpName !== opName) continue;
+          if (preTraces.has(id)) continue;
+          traces.push(stack);
         }
         if (traces.length === 1) {
           message += " The operation was started here:\n";
           message += traces[0];
         } else if (traces.length > 1) {
           message += " The operations were started here:\n";
-          message += ArrayPrototypeJoin(traces, "\n\n");
+          message += traces.join("\n\n");
         }
-        ArrayPrototypePush(details, message);
-      } else if (dispatchedDiff < completedDiff) {
-        const [name, hint] = OP_DETAILS[key] || [key, null];
-        const count = completedDiff - dispatchedDiff;
-        ArrayPrototypePush(
-          details,
-          `${count} async operation${count === 1 ? "" : "s"} to ${name} ${
-            count === 1 ? "was" : "were"
-          } started before this test, but ${
-            count === 1 ? "was" : "were"
-          } completed during the test. Async operations should not complete in a test if they were not started in that test.
-            ${hint ? `This is often caused by not ${hint}.` : ""}`,
-        );
+        details.push(message);
+      } else if (diff < 0) {
+        const [name, hint] = OP_DETAILS[opName] || [opName, null];
+        const count = -diff;
+        let message = `${count} async operation${
+          count === 1 ? "" : "s"
+        } to ${name} ${
+          count === 1 ? "was" : "were"
+        } started before this test, but ${
+          count === 1 ? "was" : "were"
+        } completed during the test. Async operations should not complete in a test if they were not started in that test.`;
+        if (hint) {
+          message += ` This is often caused by not ${hint}.`;
+        }
+        const traces = [];
+        for (const [id, { opName: traceOpName, stack }] of preTraces) {
+          if (opName !== traceOpName) continue;
+          if (postTraces.has(id)) continue;
+          traces.push(stack);
+        }
+        if (traces.length === 1) {
+          message += " The operation was started here:\n";
+          message += traces[0];
+        } else if (traces.length > 1) {
+          message += " The operations were started here:\n";
+          message += traces.join("\n\n");
+        }
+        details.push(message);
+      } else {
+        throw new Error("unreachable");
       }
     }
+
     return { failed: { leakedOps: [details, core.isOpCallTracingEnabled()] } };
   };
 }
@@ -367,8 +412,8 @@ function assertResources(fn) {
     const post = core.resources();
 
     const allResources = new Set([
-      ...new SafeArrayIterator(ObjectKeys(pre)),
-      ...new SafeArrayIterator(ObjectKeys(post)),
+      ...Object.keys(pre),
+      ...Object.keys(post),
     ]);
 
     const details = [];
@@ -382,12 +427,12 @@ function assertResources(fn) {
         const hint = resourceCloseHint(postResource);
         const detail =
           `${name} (rid ${resource}) was ${action1} during the test, but not ${action2} during the test. ${hint}`;
-        ArrayPrototypePush(details, detail);
+        details.push(detail);
       } else {
         const [name, action1, action2] = prettyResourceNames(preResource);
         const detail =
           `${name} (rid ${resource}) was ${action1} before the test started, but was ${action2} during the test. Do not close resources in a test that were not created during that test.`;
-        ArrayPrototypePush(details, detail);
+        details.push(detail);
       }
     }
     if (details.length == 0) {
@@ -402,8 +447,7 @@ function assertResources(fn) {
 function assertExit(fn, isTest) {
   return async function exitSanitizer(...params) {
     setExitHandler((exitCode) => {
-      assert(
-        false,
+      throw new Error(
         `${
           isTest ? "Test case" : "Bench"
         } attempted to exit with exit code: ${exitCode}`,
@@ -411,7 +455,7 @@ function assertExit(fn, isTest) {
     });
 
     try {
-      const innerResult = await fn(...new SafeArrayIterator(params));
+      const innerResult = await fn(...params);
       if (innerResult) return innerResult;
     } finally {
       setExitHandler(null);
@@ -429,7 +473,7 @@ function wrapOuter(fn, desc) {
     } catch (error) {
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
-      const state = MapPrototypeGet(testStates, desc.id);
+      const state = testStates.get(desc.id);
       for (const childDesc of state.children) {
         stepReportResult(childDesc, { failed: "incomplete" }, 0);
       }
@@ -445,14 +489,14 @@ function wrapInner(fn) {
       const results = [];
       let childDesc = desc;
       while (childDesc.parent != null) {
-        const state = MapPrototypeGet(testStates, childDesc.parent.id);
+        const state = testStates.get(childDesc.parent.id);
         for (const siblingDesc of state.children) {
           if (siblingDesc.id == childDesc.id) {
             continue;
           }
-          const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
+          const siblingState = testStates.get(siblingDesc.id);
           if (!siblingState.completed) {
-            ArrayPrototypePush(results, siblingDesc);
+            results.push(siblingDesc);
           }
         }
         childDesc = childDesc.parent;
@@ -460,8 +504,7 @@ function wrapInner(fn) {
       return results;
     }
     const runningStepDescs = getRunningStepDescs();
-    const runningStepDescsWithSanitizers = ArrayPrototypeFilter(
-      runningStepDescs,
+    const runningStepDescsWithSanitizers = runningStepDescs.filter(
       (d) => usesSanitizer(d),
     );
 
@@ -480,10 +523,10 @@ function wrapInner(fn) {
         failed: { hasSanitizersAndOverlaps: runningStepDescs.map(getFullName) },
       };
     }
-    await fn(MapPrototypeGet(testStates, desc.id).context);
+    await fn(testStates.get(desc.id).context);
     let failedSteps = 0;
-    for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-      const state = MapPrototypeGet(testStates, childDesc.id);
+    for (const childDesc of testStates.get(desc.id).children) {
+      const state = testStates.get(childDesc.id);
       if (!state.completed) {
         return { failed: "incompleteSteps" };
       }
@@ -510,7 +553,7 @@ function withPermissions(fn, permissions) {
     const token = pledgePermissions(permissions);
 
     try {
-      return await fn(...new SafeArrayIterator(params));
+      return await fn(...params);
     } finally {
       restorePermissions(token);
     }
@@ -526,12 +569,27 @@ const ESCAPE_ASCII_CHARS = [
   ["\v", "\\v"],
 ];
 
+/**
+ * @param {string} name
+ * @returns {string}
+ */
 function escapeName(name) {
-  for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
-    name = StringPrototypeReplaceAll(name, escape, replaceWith);
+  // Check if we need to escape a character
+  for (let i = 0; i < name.length; i++) {
+    const ch = name.charCodeAt(i);
+    if (ch <= 13 && ch >= 8) {
+      // Slow path: We do need to escape it
+      for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
+        name = name.replaceAll(escape, replaceWith);
+      }
+      return name;
+    }
   }
+
+  // We didn't need to escape anything, return original string
   return name;
 }
+
 /**
  * @typedef {{
  *   id: number,
@@ -599,6 +657,9 @@ let currentBenchId = null;
 let currentBenchUserExplicitStart = null;
 /** @type {number | null} */
 let currentBenchUserExplicitEnd = null;
+
+const registerTestIdRetBuf = new Uint32Array(1);
+const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
 function testInner(
   nameOrFnOrOptions,
@@ -694,29 +755,24 @@ function testInner(
 
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
-  const jsError = core.destructureError(new Error());
-  let location;
 
-  for (let i = 0; i < jsError.frames.length; i++) {
-    const filename = jsError.frames[i].fileName;
-    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
-      continue;
-    }
-    location = {
-      fileName: jsError.frames[i].fileName,
-      lineNumber: jsError.frames[i].lineNumber,
-      columnNumber: jsError.frames[i].columnNumber,
-    };
-    break;
-  }
-  testDesc.location = location;
+  testDesc.location = core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
-  const { id, origin } = ops.op_register_test(testDesc);
-  testDesc.id = id;
+  const origin = ops.op_register_test(
+    testDesc.fn,
+    testDesc.name,
+    testDesc.ignore,
+    testDesc.only,
+    testDesc.location.fileName,
+    testDesc.location.lineNumber,
+    testDesc.location.columnNumber,
+    registerTestIdRetBufU8,
+  );
+  testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = origin;
-  MapPrototypeSet(testStates, testDesc.id, {
+  testStates.set(testDesc.id, {
     context: createTestContext(testDesc),
     children: [],
     completed: false,
@@ -877,11 +933,11 @@ function benchStats(n, highPrecision, usedExplicitTimers, avg, min, max, all) {
     n,
     min,
     max,
-    p75: all[MathCeil(n * (75 / 100)) - 1],
-    p99: all[MathCeil(n * (99 / 100)) - 1],
-    p995: all[MathCeil(n * (99.5 / 100)) - 1],
-    p999: all[MathCeil(n * (99.9 / 100)) - 1],
-    avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
+    p75: all[Math.ceil(n * (75 / 100)) - 1],
+    p99: all[Math.ceil(n * (99 / 100)) - 1],
+    p995: all[Math.ceil(n * (99.5 / 100)) - 1],
+    p999: all[Math.ceil(n * (99.9 / 100)) - 1],
+    avg: !highPrecision ? (avg / n) : Math.ceil(avg / n),
     highPrecision,
     usedExplicitTimers,
   };
@@ -908,20 +964,17 @@ async function benchMeasure(timeBudget, fn, async, context) {
       fn(context);
       const t2 = benchNow();
       const totalTime = t2 - t1;
-      let measuredTime = totalTime;
       if (currentBenchUserExplicitStart !== null) {
-        measuredTime -= currentBenchUserExplicitStart - t1;
         currentBenchUserExplicitStart = null;
         usedExplicitTimers = true;
       }
       if (currentBenchUserExplicitEnd !== null) {
-        measuredTime -= t2 - currentBenchUserExplicitEnd;
         currentBenchUserExplicitEnd = null;
         usedExplicitTimers = true;
       }
 
       c++;
-      wavg += measuredTime;
+      wavg += totalTime;
       budget -= totalTime;
     }
   } else {
@@ -930,20 +983,17 @@ async function benchMeasure(timeBudget, fn, async, context) {
       await fn(context);
       const t2 = benchNow();
       const totalTime = t2 - t1;
-      let measuredTime = totalTime;
       if (currentBenchUserExplicitStart !== null) {
-        measuredTime -= currentBenchUserExplicitStart - t1;
         currentBenchUserExplicitStart = null;
         usedExplicitTimers = true;
       }
       if (currentBenchUserExplicitEnd !== null) {
-        measuredTime -= t2 - currentBenchUserExplicitEnd;
         currentBenchUserExplicitEnd = null;
         usedExplicitTimers = true;
       }
 
       c++;
-      wavg += measuredTime;
+      wavg += totalTime;
       budget -= totalTime;
     }
   }
@@ -974,7 +1024,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
         n++;
         avg += measuredTime;
         budget -= totalTime;
-        ArrayPrototypePush(all, measuredTime);
+        all.push(measuredTime);
         if (measuredTime < min) min = measuredTime;
         if (measuredTime > max) max = measuredTime;
       }
@@ -997,7 +1047,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
         n++;
         avg += measuredTime;
         budget -= totalTime;
-        ArrayPrototypePush(all, measuredTime);
+        all.push(measuredTime);
         if (measuredTime < min) min = measuredTime;
         if (measuredTime > max) max = measuredTime;
       }
@@ -1018,7 +1068,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
 
         n++;
         avg += iterationTime;
-        ArrayPrototypePush(all, iterationTime);
+        all.push(iterationTime);
         if (iterationTime < min) min = iterationTime;
         if (iterationTime > max) max = iterationTime;
         budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -1035,7 +1085,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
 
         n++;
         avg += iterationTime;
-        ArrayPrototypePush(all, iterationTime);
+        all.push(iterationTime);
         if (iterationTime < min) min = iterationTime;
         if (iterationTime > max) max = iterationTime;
         budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -1058,7 +1108,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
 /** @param desc {BenchDescription} */
 function createBenchContext(desc) {
   return {
-    [SymbolToStringTag]: "BenchContext",
+    [Symbol.toStringTag]: "BenchContext",
     name: desc.name,
     origin: desc.origin,
     start() {
@@ -1106,8 +1156,7 @@ function wrapBenchmark(desc) {
 
       if (desc.sanitizeExit) {
         setExitHandler((exitCode) => {
-          assert(
-            false,
+          throw new Error(
             `Bench attempted to exit with exit code: ${exitCode}`,
           );
         });
@@ -1147,13 +1196,17 @@ function usesSanitizer(desc) {
 }
 
 function stepReportResult(desc, result, elapsed) {
-  const state = MapPrototypeGet(testStates, desc.id);
+  const state = testStates.get(desc.id);
   for (const childDesc of state.children) {
     stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
-  ops.op_dispatch_test_event({
-    stepResult: [desc.id, result, elapsed],
-  });
+  if (result === "ok") {
+    ops.op_test_event_step_result_ok(desc.id, elapsed);
+  } else if (result === "ignored") {
+    ops.op_test_event_step_result_ignored(desc.id, elapsed);
+  } else {
+    ops.op_test_event_step_result_failed(desc.id, result.failed, elapsed);
+  }
 }
 
 /** @param desc {TestDescription | TestStepDescription} */
@@ -1163,7 +1216,7 @@ function createTestContext(desc) {
   let rootId;
   let rootName;
   if ("parent" in desc) {
-    parent = MapPrototypeGet(testStates, desc.parent.id).context;
+    parent = testStates.get(desc.parent.id).context;
     level = desc.level;
     rootId = desc.rootId;
     rootName = desc.rootName;
@@ -1174,7 +1227,7 @@ function createTestContext(desc) {
     rootName = desc.name;
   }
   return {
-    [SymbolToStringTag]: "TestContext",
+    [Symbol.toStringTag]: "TestContext",
     /**
      * The current test name.
      */
@@ -1192,7 +1245,7 @@ function createTestContext(desc) {
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
      */
     async step(nameOrFnOrOptions, maybeFn) {
-      if (MapPrototypeGet(testStates, desc.id).completed) {
+      if (testStates.get(desc.id).completed) {
         throw new Error(
           "Cannot run test step after parent scope has finished execution. " +
             "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
@@ -1201,7 +1254,7 @@ function createTestContext(desc) {
 
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
-        if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, maybeFn))) {
+        if (!Object.prototype.isPrototypeOf.call(Function.prototype, maybeFn)) {
           throw new TypeError("Expected function for second argument.");
         }
         stepDesc = {
@@ -1232,37 +1285,40 @@ function createTestContext(desc) {
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
-      const jsError = core.destructureError(new Error());
-      stepDesc.location = {
-        fileName: jsError.frames[1].fileName,
-        lineNumber: jsError.frames[1].lineNumber,
-        columnNumber: jsError.frames[1].columnNumber,
-      };
+      stepDesc.location = core.currentUserCallSite();
       stepDesc.level = level + 1;
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
       stepDesc.name = escapeName(stepDesc.name);
       stepDesc.rootName = escapeName(rootName);
       stepDesc.fn = wrapTest(stepDesc);
-      const { id, origin } = ops.op_register_test_step(stepDesc);
+      const id = ops.op_register_test_step(
+        stepDesc.name,
+        stepDesc.location.fileName,
+        stepDesc.location.lineNumber,
+        stepDesc.location.columnNumber,
+        stepDesc.level,
+        stepDesc.parent.id,
+        stepDesc.rootId,
+        stepDesc.rootName,
+      );
       stepDesc.id = id;
-      stepDesc.origin = origin;
+      stepDesc.origin = desc.origin;
       const state = {
         context: createTestContext(stepDesc),
         children: [],
         failed: false,
         completed: false,
       };
-      MapPrototypeSet(testStates, stepDesc.id, state);
-      ArrayPrototypePush(
-        MapPrototypeGet(testStates, stepDesc.parent.id).children,
+      testStates.set(stepDesc.id, state);
+      testStates.get(stepDesc.parent.id).children.push(
         stepDesc,
       );
 
-      ops.op_dispatch_test_event({ stepWait: stepDesc.id });
-      const earlier = DateNow();
+      ops.op_test_event_step_wait(stepDesc.id);
+      const earlier = Date.now();
       const result = await stepDesc.fn(stepDesc);
-      const elapsed = DateNow() - earlier;
+      const elapsed = Date.now() - earlier;
       state.failed = !!result.failed;
       stepReportResult(stepDesc, result, elapsed);
       return result == "ok";

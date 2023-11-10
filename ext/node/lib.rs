@@ -7,8 +7,7 @@ use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
@@ -17,10 +16,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
-use deno_npm::resolution::PackageReqNotFoundError;
-use deno_npm::NpmPackageId;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -37,6 +32,7 @@ pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+pub use resolution::parse_npm_pkg_name;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
@@ -85,26 +81,18 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
-  /// Resolves the npm package folder path from the specified path.
-  fn resolve_package_folder_from_path(
-    &self,
-    path: &Path,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
-  /// Resolves an npm package folder path from a Deno module.
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError>;
-
-  fn resolve_pkg_id_from_pkg_req(
-    &self,
-    req: &PackageReq,
-  ) -> Result<NpmPackageId, PackageReqNotFoundError>;
-
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
-  fn in_npm_package_at_path(&self, path: &Path) -> bool {
+  fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
+    let specifier =
+      match ModuleSpecifier::from_directory_path(path.to_path_buf().clean()) {
+        Ok(p) => p,
+        Err(_) => return false,
+      };
+    self.in_npm_package(&specifier)
+  }
+
+  fn in_npm_package_at_file_path(&self, path: &Path) -> bool {
     let specifier =
       match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
@@ -129,19 +117,20 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set
 });
 
-#[op]
+#[op2]
+#[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op(fast)]
-fn op_is_any_arraybuffer(value: serde_v8::Value) -> bool {
-  value.v8_value.is_array_buffer() || value.v8_value.is_shared_array_buffer()
+#[op2(fast)]
+fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
+  value.is_array_buffer() || value.is_shared_array_buffer()
 }
 
-#[op(fast)]
-fn op_node_is_promise_rejected(value: serde_v8::Value) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value.v8_value) else {
+#[op2(fast)]
+fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
+  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
     return false;
   };
 
@@ -243,9 +232,23 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http2::op_http2_connect,
+    ops::http2::op_http2_poll_client_connection,
+    ops::http2::op_http2_client_request,
+    ops::http2::op_http2_client_get_response,
+    ops::http2::op_http2_client_get_response_body_chunk,
+    ops::http2::op_http2_client_send_data,
+    ops::http2::op_http2_client_end_stream,
+    ops::http2::op_http2_client_reset_stream,
+    ops::http2::op_http2_client_send_trailers,
+    ops::http2::op_http2_client_get_response_trailers,
+    ops::http2::op_http2_accept,
+    ops::http2::op_http2_listen,
+    ops::http2::op_http2_send_response,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
+    ops::os::op_geteuid<P>,
     op_node_build_os,
     op_is_any_arraybuffer,
     op_node_is_promise_rejected,
@@ -271,6 +274,8 @@ deno_core::extension!(deno_node,
     ops::require::op_require_read_package_scope<P>,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
+    ops::util::op_node_guess_handle_type,
+    ops::crypto::op_node_create_private_key,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -375,7 +380,7 @@ deno_core::extension!(deno_node,
     "internal/constants.ts",
     "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
-    "internal/crypto/_randomFill.ts",
+    "internal/crypto/_randomFill.mjs",
     "internal/crypto/_randomInt.ts",
     "internal/crypto/certificate.ts",
     "internal/crypto/cipher.ts",
@@ -491,7 +496,7 @@ deno_core::extension!(deno_node,
     "timers.ts" with_specifier "node:timers",
     "timers/promises.ts" with_specifier "node:timers/promises",
     "tls.ts" with_specifier "node:tls",
-    "tty.ts" with_specifier "node:tty",
+    "tty.js" with_specifier "node:tty",
     "url.ts" with_specifier "node:url",
     "util.ts" with_specifier "node:util",
     "util/types.ts" with_specifier "node:util/types",

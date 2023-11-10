@@ -4,11 +4,13 @@ use aes_kw::KekAes128;
 use aes_kw::KekAes192;
 use aes_kw::KekAes256;
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::ToJsBuffer;
 
 use deno_core::unsync::spawn_blocking;
@@ -36,16 +38,18 @@ use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
+use rsa::signature::SignatureEncoding;
+use rsa::signature::Signer;
+use rsa::signature::Verifier;
+use rsa::traits::SignatureScheme;
+use rsa::Pss;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 use sha1::Sha1;
+use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
-use signature::RandomizedSigner;
-use signature::Signer;
-use signature::Verifier;
-use std::convert::TryFrom;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
@@ -116,24 +120,26 @@ deno_core::extension!(deno_crypto,
   },
 );
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_base64url_decode(
-  data: String,
+  #[string] data: String,
 ) -> Result<ToJsBuffer, AnyError> {
-  let data: Vec<u8> = base64::decode_config(data, base64::URL_SAFE_NO_PAD)?;
+  let data: Vec<u8> = BASE64_URL_SAFE_NO_PAD.decode(data)?;
   Ok(data.into())
 }
 
-#[op]
-pub fn op_crypto_base64url_encode(data: JsBuffer) -> String {
-  let data: String = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
+#[op2]
+#[string]
+pub fn op_crypto_base64url_encode(#[buffer] data: JsBuffer) -> String {
+  let data: String = BASE64_URL_SAFE_NO_PAD.encode(data);
   data
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
-  out: &mut [u8],
+  #[buffer] out: &mut [u8],
 ) -> Result<(), AnyError> {
   if out.len() > 65536 {
     return Err(
@@ -186,10 +192,11 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_crypto_sign_key(
-  args: SignArg,
-  zero_copy: JsBuffer,
+  #[serde] args: SignArg,
+  #[buffer] zero_copy: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let data = &*zero_copy;
   let algorithm = args.algorithm;
@@ -203,26 +210,25 @@ pub async fn op_crypto_sign_key(
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let signing_key = SigningKey::<Sha1>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha1>::new(private_key);
           signing_key.sign(data)
         }
         CryptoHash::Sha256 => {
-          let signing_key = SigningKey::<Sha256>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha256>::new(private_key);
           signing_key.sign(data)
         }
         CryptoHash::Sha384 => {
-          let signing_key = SigningKey::<Sha384>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha384>::new(private_key);
           signing_key.sign(data)
         }
         CryptoHash::Sha512 => {
-          let signing_key = SigningKey::<Sha512>::new_with_prefix(private_key);
+          let signing_key = SigningKey::<Sha512>::new(private_key);
           signing_key.sign(data)
         }
       }
       .to_vec()
     }
     Algorithm::RsaPss => {
-      use rsa::pss::SigningKey;
       let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
 
       let salt_len = args
@@ -230,30 +236,30 @@ pub async fn op_crypto_sign_key(
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
 
-      let rng = OsRng;
+      let mut rng = OsRng;
       match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let signing_key =
-            SigningKey::<Sha1>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          let signing_key = Pss::new_with_salt::<Sha1>(salt_len);
+          let hashed = Sha1::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
         CryptoHash::Sha256 => {
-          let signing_key =
-            SigningKey::<Sha256>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          let signing_key = Pss::new_with_salt::<Sha256>(salt_len);
+          let hashed = Sha256::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
         CryptoHash::Sha384 => {
-          let signing_key =
-            SigningKey::<Sha384>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          let signing_key = Pss::new_with_salt::<Sha384>(salt_len);
+          let hashed = Sha384::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
         CryptoHash::Sha512 => {
-          let signing_key =
-            SigningKey::<Sha512>::new_with_salt_len(private_key, salt_len);
-          signing_key.sign_with_rng(rng, data)
+          let signing_key = Pss::new_with_salt::<Sha512>(salt_len);
+          let hashed = Sha512::digest(data);
+          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
         }
       }
       .to_vec()
@@ -262,7 +268,8 @@ pub async fn op_crypto_sign_key(
       let curve: &EcdsaSigningAlgorithm =
         args.named_curve.ok_or_else(not_supported)?.try_into()?;
 
-      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data)?;
+      let rng = RingRand::SystemRandom::new();
+      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
       if let Some(hash) = args.hash {
@@ -272,7 +279,6 @@ pub async fn op_crypto_sign_key(
         }
       };
 
-      let rng = RingRand::SystemRandom::new();
       let signature = key_pair.sign(&rng, data)?;
 
       // Signature data as buffer.
@@ -297,15 +303,16 @@ pub async fn op_crypto_sign_key(
 pub struct VerifyArg {
   key: KeyData,
   algorithm: Algorithm,
+  salt_length: Option<u32>,
   hash: Option<CryptoHash>,
   signature: JsBuffer,
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_crypto_verify_key(
-  args: VerifyArg,
-  zero_copy: JsBuffer,
+  #[serde] args: VerifyArg,
+  #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, AnyError> {
   let data = &*zero_copy;
   let algorithm = args.algorithm;
@@ -315,57 +322,61 @@ pub async fn op_crypto_verify_key(
       use rsa::pkcs1v15::Signature;
       use rsa::pkcs1v15::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
-      let signature: Signature = args.signature.to_vec().into();
+      let signature: Signature = args.signature.as_ref().try_into()?;
       match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let verifying_key = VerifyingKey::<Sha1>::new_with_prefix(public_key);
+          let verifying_key = VerifyingKey::<Sha1>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let verifying_key =
-            VerifyingKey::<Sha256>::new_with_prefix(public_key);
+          let verifying_key = VerifyingKey::<Sha256>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let verifying_key =
-            VerifyingKey::<Sha384>::new_with_prefix(public_key);
+          let verifying_key = VerifyingKey::<Sha384>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let verifying_key =
-            VerifyingKey::<Sha512>::new_with_prefix(public_key);
+          let verifying_key = VerifyingKey::<Sha512>::new(public_key);
           verifying_key.verify(data, &signature).is_ok()
         }
       }
     }
     Algorithm::RsaPss => {
-      use rsa::pss::Signature;
-      use rsa::pss::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
-      let signature: Signature = args.signature.to_vec().into();
+      let signature = args.signature.as_ref();
+
+      let salt_len = args
+        .salt_length
+        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
+        as usize;
 
       match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let verifying_key: VerifyingKey<Sha1> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha1>(salt_len);
+          let hashed = Sha1::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let verifying_key: VerifyingKey<Sha256> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha256>(salt_len);
+          let hashed = Sha256::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let verifying_key: VerifyingKey<Sha384> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha384>(salt_len);
+          let hashed = Sha384::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let verifying_key: VerifyingKey<Sha512> = public_key.into();
-          verifying_key.verify(data, &signature).is_ok()
+          let pss = Pss::new_with_salt::<Sha512>(salt_len);
+          let hashed = Sha512::digest(data);
+          pss.verify(&public_key, &hashed, signature).is_ok()
         }
       }
     }
@@ -384,7 +395,9 @@ pub async fn op_crypto_verify_key(
 
       let public_key_bytes = match args.key.r#type {
         KeyType::Private => {
-          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data)?;
+          let rng = RingRand::SystemRandom::new();
+          private_key =
+            EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
 
           private_key.public_key().as_ref()
         }
@@ -418,10 +431,11 @@ pub struct DeriveKeyArg {
   info: Option<JsBuffer>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_crypto_derive_bits(
-  args: DeriveKeyArg,
-  zero_copy: Option<JsBuffer>,
+  #[serde] args: DeriveKeyArg,
+  #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
@@ -583,7 +597,8 @@ fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
   Ok(public_key)
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
@@ -599,10 +614,11 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   Ok(uuid.to_string())
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_crypto_subtle_digest(
-  algorithm: CryptoHash,
-  data: JsBuffer,
+  #[serde] algorithm: CryptoHash,
+  #[buffer] data: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
@@ -622,10 +638,11 @@ pub struct WrapUnwrapKeyArg {
   algorithm: Algorithm,
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_wrap_key(
-  args: WrapUnwrapKeyArg,
-  data: JsBuffer,
+  #[serde] args: WrapUnwrapKeyArg,
+  #[buffer] data: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
 
@@ -651,10 +668,11 @@ pub fn op_crypto_wrap_key(
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_unwrap_key(
-  args: WrapUnwrapKeyArg,
-  data: JsBuffer,
+  #[serde] args: WrapUnwrapKeyArg,
+  #[buffer] data: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {

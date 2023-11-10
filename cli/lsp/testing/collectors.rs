@@ -479,12 +479,12 @@ impl Visit for TestCollector {
       ns_prop_ident: &ast::Ident,
       member_expr: &ast::MemberExpr,
     ) {
-      if ns_prop_ident.sym.to_string() == "test" {
+      if ns_prop_ident.sym == "test" {
         let ast::Expr::Ident(ident) = member_expr.obj.as_ref() else {
           return;
         };
 
-        if ident.sym.to_string() != "Deno" {
+        if ident.sym != "Deno" {
           return;
         }
 
@@ -563,7 +563,7 @@ impl Visit for TestCollector {
       match init.as_ref() {
         // Identify destructured assignments of `test` from `Deno`
         ast::Expr::Ident(ident) => {
-          if ident.sym.to_string() != "Deno" {
+          if ident.sym != "Deno" {
             continue;
           }
 
@@ -584,7 +584,7 @@ impl Visit for TestCollector {
                   continue;
                 };
 
-                if key_ident.sym.to_string() == "test" {
+                if key_ident.sym == "test" {
                   if let ast::Pat::Ident(value_ident) = &prop.value.as_ref() {
                     self.vars.insert(value_ident.id.sym.to_string());
                   }
@@ -600,7 +600,7 @@ impl Visit for TestCollector {
             continue;
           };
 
-          if obj_ident.sym.to_string() != "Deno" {
+          if obj_ident.sym != "Deno" {
             continue;
           };
 
@@ -608,7 +608,7 @@ impl Visit for TestCollector {
             continue;
           };
 
-          if prop_ident.sym.to_string() != "test" {
+          if prop_ident.sym != "test" {
             continue;
           }
 

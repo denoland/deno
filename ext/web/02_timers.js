@@ -16,7 +16,6 @@ const {
   PromisePrototypeThen,
   SafeArrayIterator,
   SafeMap,
-  SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypeError,
   indirectEval,
@@ -75,7 +74,7 @@ function handleTimerMacrotask() {
  * The keys in this map correspond to the key ID's in the spec's map of active
  * timers. The values are the timeout's cancel rid.
  *
- * @type {Map<number, { cancelRid: number, isRef: boolean, promiseId: number }>}
+ * @type {Map<number, { cancelRid: number, isRef: boolean, promise: Promise<void> }>}
  */
 const activeTimers = new SafeMap();
 
@@ -114,7 +113,7 @@ function initializeTimer(
     // https://github.com/whatwg/html/issues/7358
     id = nextId++;
     const cancelRid = ops.op_timer_handle();
-    timerInfo = { cancelRid, isRef: true, promiseId: -1 };
+    timerInfo = { cancelRid, isRef: true, promise: null };
 
     // Step 4 in "run steps after a timeout".
     MapPrototypeSet(activeTimers, id, timerInfo);
@@ -216,7 +215,7 @@ const scheduledTimers = { head: null, tail: null };
  * @param { {action: () => void, nestingLevel: number}[] } task Will be run
  * after the timeout, if it hasn't been cancelled.
  * @param {number} millis
- * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
+ * @param {{ cancelRid: number, isRef: boolean, promise: Promise<void> }} timerInfo
  */
 function runAfterTimeout(task, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
@@ -230,9 +229,9 @@ function runAfterTimeout(task, millis, timerInfo) {
   } else {
     sleepPromise = op_sleep(millis, cancelRid);
   }
-  timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
+  timerInfo.promise = sleepPromise;
   if (!timerInfo.isRef) {
-    core.unrefOp(timerInfo.promiseId);
+    core.unrefOpPromise(timerInfo.promise);
   }
 
   /** @type {ScheduledTimer} */
@@ -376,7 +375,7 @@ function refTimer(id) {
     return;
   }
   timerInfo.isRef = true;
-  core.refOp(timerInfo.promiseId);
+  core.refOpPromise(timerInfo.promise);
 }
 
 function unrefTimer(id) {
@@ -385,7 +384,7 @@ function unrefTimer(id) {
     return;
   }
   timerInfo.isRef = false;
-  core.unrefOp(timerInfo.promiseId);
+  core.unrefOpPromise(timerInfo.promise);
 }
 
 export {

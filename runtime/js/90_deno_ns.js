@@ -2,6 +2,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
+
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
 import * as console from "ext:deno_console/01_console.js";
@@ -23,6 +24,7 @@ import * as tty from "ext:runtime/40_tty.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "ext:runtime/40_http.js";
 import * as kv from "ext:deno_kv/01_db.ts";
+import * as cron from "ext:deno_cron/01_cron.ts";
 
 const denoNs = {
   metrics: core.metrics,
@@ -152,6 +154,62 @@ const denoNs = {
   ChildProcess: process.ChildProcess,
 };
 
+// NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
+const denoNsUnstableById = {
+  // BroadcastChannel is always available?
+  // 1: {},
+
+  // FFI
+  2: {
+    dlopen: ffi.dlopen,
+    UnsafeCallback: ffi.UnsafeCallback,
+    UnsafePointer: ffi.UnsafePointer,
+    UnsafePointerView: ffi.UnsafePointerView,
+    UnsafeFnPointer: ffi.UnsafeFnPointer,
+  },
+
+  // FS
+  3: {
+    flock: fs.flock,
+    flockSync: fs.flockSync,
+    funlock: fs.funlock,
+    funlockSync: fs.funlockSync,
+    umask: fs.umask,
+  },
+
+  // KV
+  4: {
+    openKv: kv.openKv,
+    AtomicOperation: kv.AtomicOperation,
+    Kv: kv.Kv,
+    KvU64: kv.KvU64,
+    KvListIterator: kv.KvListIterator,
+  },
+
+  // net
+  5: {
+    listenDatagram: net.createListenDatagram(
+      ops.op_net_listen_udp,
+      ops.op_net_listen_unixpacket,
+    ),
+  },
+
+  // HTTP
+  6: {
+    HttpClient: httpClient.HttpClient,
+    createHttpClient: httpClient.createHttpClient,
+    // TODO(bartlomieju): why is it needed?
+    http,
+    upgradeHttp: http.upgradeHttp,
+  },
+  // Worker options
+  // 7: {}
+
+  8: {
+    cron: cron.cron,
+  },
+};
+
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
   listenDatagram: net.createListenDatagram(
@@ -178,6 +236,7 @@ const denoNsUnstable = {
   Kv: kv.Kv,
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,
+  cron: cron.cron,
 };
 
-export { denoNs, denoNsUnstable };
+export { denoNs, denoNsUnstable, denoNsUnstableById };
