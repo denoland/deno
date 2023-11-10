@@ -8,6 +8,30 @@ https://github.com/denoland/deno_install
 
 ### 1.38.1 / 2023.11.10
 
+- feat(ext/kv): increase checks limit (#21055)
+- fix small Deno.createHttpClient typo in lib.deno.unstable.d.ts (#21115)
+- fix(byonm): correct resolution for scoped packages (#21083)
+- fix(core/types): `Promise.withResolvers`: Unmark callback param as optional
+  (#21085)
+- fix(cron): update Deno.cron doc example (#21078)
+- fix(doc): `deno doc --lint mod.ts` should output how many files checked
+  (#21084)
+- fix(doc): require source files if --html or --lint used (#21072)
+- fix(ext): use `String#toWellFormed` in ext/webidl and ext/node (#21054)
+- fix(ext/fetch): re-align return type in op_fetch docstring (#21098)
+- fix(ext/http): Throwing Error if the return value of Deno.serve handler is not
+  a Response class (#21099)
+- fix(node): cjs export analysis should probe for json files (#21113)
+- fix(node): implement createPrivateKey (#20981)
+- fix(node): inspect ancestor directories when resolving cjs re-exports during
+  analysis (#21104)
+- fix(node): use closest package.json to resolve package.json imports (#21075)
+- fix(node/child_process): properly normalize stdio for 'spawnSync' (#21103)
+- fix(node/http): socket.setTimeout (#20930)
+- fix(test) reduce queue persistence test time from 60 secs to 6 secs (#21142)
+- perf: lazy `atexit` setup (#21053)
+- perf: remove knowledge of promise IDs from deno (#21132)
+
 ### 1.38.0 / 2023.11.01
 
 - feat(cron) implement Deno.cron() (#21019)
