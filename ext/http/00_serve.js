@@ -44,7 +44,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   Symbol,
-  SymbolFor,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
@@ -642,7 +641,6 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
 function serveHttpOn(context, callback) {
   let ref = true;
   let currentPromise = null;
-  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
@@ -666,7 +664,7 @@ function serveHttpOn(context, callback) {
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
-          core.unrefOp(currentPromise[promiseIdSymbol]);
+          core.unrefOpPromise(currentPromise);
         }
         req = await currentPromise;
         currentPromise = null;
@@ -708,13 +706,13 @@ function serveHttpOn(context, callback) {
     ref() {
       ref = true;
       if (currentPromise) {
-        core.refOp(currentPromise[promiseIdSymbol]);
+        core.refOpPromise(currentPromise);
       }
     },
     unref() {
       ref = false;
       if (currentPromise) {
-        core.unrefOp(currentPromise[promiseIdSymbol]);
+        core.unrefOpPromise(currentPromise);
       }
     },
     [SymbolAsyncDispose]() {

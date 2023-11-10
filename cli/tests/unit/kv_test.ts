@@ -1741,6 +1741,12 @@ Deno.test({
       db.close();
       await listener;
 
+      // Wait at least MESSAGE_DEADLINE_TIMEOUT before reopening the database.
+      // This ensures that inflight messages are requeued immediately after
+      // the database is reopened.
+      // https://github.com/denoland/denokv/blob/efb98a1357d37291a225ed5cf1fc4ecc7c737fab/sqlite/backend.rs#L120
+      await sleep(6000);
+
       // Now reopen the database.
       db = await Deno.openKv(filename);
 
