@@ -75,7 +75,9 @@ pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
 
 pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String;
+  fn get_npm_process_state(&self) -> String {
+    String::from("")
+  }
 
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
