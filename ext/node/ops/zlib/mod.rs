@@ -1,15 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
-use libz_sys::*;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
+use zlib::*;
 
 mod alloc;
 pub mod brotli;
