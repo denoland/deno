@@ -668,6 +668,9 @@ impl CliFactory {
   ) -> Result<CliMainWorkerOptions, AnyError> {
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
+      // This optimization is only available for "run" subcommand
+      // because we need to register new ops for testing and jupyter
+      // integration.
       skip_op_registration: self.options.sub_command().is_run(),
       log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
       coverage_dir: self.options.coverage_dir(),
