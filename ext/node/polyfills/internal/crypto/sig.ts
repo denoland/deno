@@ -19,7 +19,10 @@ import type {
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  getKeyMaterial,
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
@@ -87,9 +90,9 @@ export class SignImpl extends Writable {
       keyType = "rsa";
       keyFormat = "pem";
     } else {
-      // TODO(kt3k): Add support for the case when privateKey is a KeyObject,
-      // CryptoKey, etc
-      notImplemented("crypto.Sign.prototype.sign with non BinaryLike input");
+      keyData = getKeyMaterial(privateKey);
+      keyType = "rsa";
+      keyFormat = "pem";
     }
     const ret = Buffer.from(ops.op_node_sign(
       this.hash.digest(),

@@ -707,3 +707,17 @@ Deno.test(function spawnSyncUndefinedValueInEnvVar() {
   assertEquals(ret.status, 0);
   assertEquals(ret.stdout.toString("utf-8").trim(), "BAZ");
 });
+
+Deno.test(function spawnSyncStdioUndefined() {
+  const ret = spawnSync(
+    `"${Deno.execPath()}" eval "console.log('hello');console.error('world')"`,
+    {
+      stdio: [undefined, undefined, undefined],
+      shell: true,
+    },
+  );
+
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.toString("utf-8").trim(), "hello");
+  assertEquals(ret.stderr.toString("utf-8").trim(), "world");
+});

@@ -2,6 +2,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
+const internals = globalThis.__bootstrap.internals;
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -105,6 +106,8 @@ const env = {
 function execPath() {
   return ops.op_exec_path();
 }
+
+internals.setExitHandler = setExitHandler;
 
 export {
   env,
