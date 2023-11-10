@@ -366,7 +366,7 @@ class Request {
     // 30.
     this[_signal] = abortSignal.createDependentAbortSignal(signals, prefix);
 
-    // 30.
+    // 31.
     this[_headers] = headersFromHeaderList(request.headerList, "request");
 
     // 33.
