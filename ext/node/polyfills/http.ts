@@ -1758,8 +1758,8 @@ export function get(...args: any[]) {
 
 export {
   Agent,
-  globalAgent,
   ClientRequest,
+  globalAgent,
   IncomingMessageForServer as IncomingMessage,
   METHODS,
   OutgoingMessage,

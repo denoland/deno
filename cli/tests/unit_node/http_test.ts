@@ -835,4 +835,3 @@ Deno.test("[node/https] node:https exports globalAgent", async () => {
     "node:https must export 'globalAgent' on module default export",
   );
 });
-
