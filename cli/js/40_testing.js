@@ -8,7 +8,6 @@ const {
   setExitHandler,
   Console,
   serializePermissions,
-  setTimeout,
 } = internals;
 
 const primordials = globalThis.__bootstrap.primordials;

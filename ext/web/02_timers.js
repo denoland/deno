@@ -3,7 +3,6 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
-const internals = globalThis.__bootstrap.internals;
 const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -388,8 +387,6 @@ function unrefTimer(id) {
   timerInfo.isRef = false;
   core.unrefOp(timerInfo.promiseId);
 }
-
-internals.setTimeout = setTimeout;
 
 export {
   clearInterval,
