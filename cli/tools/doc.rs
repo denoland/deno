@@ -264,7 +264,7 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
     for (line, diagnostics_by_col) in diagnostics_by_lc {
       for (col, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          log::warn!("{}", diagnostic.kind);
+          log::warn!("{}", diagnostic.message());
         }
         log::warn!(
           "    at {}:{}:{}\n",
@@ -276,7 +276,7 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
     }
   }
   bail!(
-    "Found {} documentation diagnostic{}.",
+    "Found {} documentation lint error{}.",
     colors::bold(diagnostics.len().to_string()),
     if diagnostics.len() == 1 { "" } else { "s" }
   );
