@@ -1249,7 +1249,7 @@ function createTestContext(desc) {
 
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
-        if (!Function.prototype.isPrototypeOf(maybeFn)) {
+        if (!Object.prototype.isPrototypeOf.call(Function.prototype, maybeFn)) {
           throw new TypeError("Expected function for second argument.");
         }
         stepDesc = {
