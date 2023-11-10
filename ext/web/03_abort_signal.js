@@ -81,46 +81,7 @@ class AbortSignal extends EventTarget {
   static any(signals) {
     const prefix = "Failed to call 'AbortSignal.any'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    signals = webidl.converters["sequence<AbortSignal>"](
-      signals,
-      prefix,
-      "Argument 1",
-    );
-
-    const resultSignal = new AbortSignal(illegalConstructorKey);
-    for (let i = 0; i < signals.length; ++i) {
-      const signal = signals[i];
-      if (signal[abortReason] !== undefined) {
-        resultSignal[abortReason] = signal[abortReason];
-        return resultSignal;
-      }
-    }
-
-    resultSignal[dependent] = true;
-    resultSignal[sourceSignals] = new WeakRefSet();
-    for (let i = 0; i < signals.length; ++i) {
-      const signal = signals[i];
-      if (!signal[dependent]) {
-        signal[dependentSignals] ??= new WeakRefSet();
-        resultSignal[sourceSignals].add(signal);
-        signal[dependentSignals].add(resultSignal);
-      } else {
-        const sourceSignalArray = signal[sourceSignals].toArray();
-        for (let j = 0; j < sourceSignalArray.length; ++j) {
-          const sourceSignal = sourceSignalArray[j];
-          assert(sourceSignal[abortReason] === undefined);
-          assert(!sourceSignal[dependent]);
-
-          if (resultSignal[sourceSignals].has(sourceSignal)) {
-            continue;
-          }
-          resultSignal[sourceSignals].add(sourceSignal);
-          sourceSignal[dependentSignals].add(resultSignal);
-        }
-      }
-    }
-
-    return resultSignal;
+    return createDependentAbortSignal(signals, prefix);
   }
 
   static abort(reason = undefined) {
@@ -316,15 +277,47 @@ function newSignal() {
   return new AbortSignal(illegalConstructorKey);
 }
 
-function follow(followingSignal, parentSignal) {
-  if (followingSignal.aborted) {
-    return;
+function createDependentAbortSignal(signals, prefix) {
+  signals = webidl.converters["sequence<AbortSignal>"](
+    signals,
+    prefix,
+    "Argument 1",
+  );
+
+  const resultSignal = new AbortSignal(illegalConstructorKey);
+  for (let i = 0; i < signals.length; ++i) {
+    const signal = signals[i];
+    if (signal[abortReason] !== undefined) {
+      resultSignal[abortReason] = signal[abortReason];
+      return resultSignal;
+    }
   }
-  if (parentSignal.aborted) {
-    followingSignal[signalAbort](parentSignal.reason);
-  } else {
-    parentSignal[add](() => followingSignal[signalAbort](parentSignal.reason));
+
+  resultSignal[dependent] = true;
+  resultSignal[sourceSignals] = new WeakRefSet();
+  for (let i = 0; i < signals.length; ++i) {
+    const signal = signals[i];
+    if (!signal[dependent]) {
+      signal[dependentSignals] ??= new WeakRefSet();
+      resultSignal[sourceSignals].add(signal);
+      signal[dependentSignals].add(resultSignal);
+    } else {
+      const sourceSignalArray = signal[sourceSignals].toArray();
+      for (let j = 0; j < sourceSignalArray.length; ++j) {
+        const sourceSignal = sourceSignalArray[j];
+        assert(sourceSignal[abortReason] === undefined);
+        assert(!sourceSignal[dependent]);
+
+        if (resultSignal[sourceSignals].has(sourceSignal)) {
+          continue;
+        }
+        resultSignal[sourceSignals].add(sourceSignal);
+        sourceSignal[dependentSignals].add(resultSignal);
+      }
+    }
   }
+
+  return resultSignal;
 }
 
 export {
@@ -332,7 +325,7 @@ export {
   AbortSignal,
   AbortSignalPrototype,
   add,
-  follow,
+  createDependentAbortSignal,
   newSignal,
   remove,
   signalAbort,
