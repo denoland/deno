@@ -1060,7 +1060,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.6.0"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8630ff46b8b1c0fc9ddffcaa179bdf30990bf6e9e119baabc2378acc72f08e3"
 dependencies = [
  "anyhow",
  "indexmap 2.0.2",
