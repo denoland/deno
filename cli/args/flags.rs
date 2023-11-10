@@ -417,6 +417,7 @@ pub struct Flags {
   pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
+  pub strace_ops: Option<Vec<String>>,
   pub unstable: bool,
   pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
@@ -2688,6 +2689,7 @@ fn runtime_args(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
+    .arg(strace_ops_arg())
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -2834,6 +2836,17 @@ fn enable_testing_features_arg() -> Arg {
     .long("enable-testing-features-do-not-use")
     .help("INTERNAL: Enable internal features used during integration testing")
     .action(ArgAction::SetTrue)
+    .hide(true)
+}
+
+fn strace_ops_arg() -> Arg {
+  Arg::new("strace-ops")
+    .long("strace-ops")
+    .num_args(0..)
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_name("OPS")
+    .help("Trace low-level op calls")
     .hide(true)
 }
 
@@ -3802,6 +3815,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.no_prompt = true;
   }
 }
+
 fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -3833,6 +3847,7 @@ fn runtime_args_parse(
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  strace_ops_parse(flags, matches);
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3897,6 +3912,12 @@ fn enable_testing_features_arg_parse(
 ) {
   if matches.get_flag("enable-testing-features-do-not-use") {
     flags.enable_testing_features = true
+  }
+}
+
+fn strace_ops_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(patterns) = matches.remove_many::<String>("strace-ops") {
+    flags.strace_ops = Some(patterns.collect());
   }
 }
 
@@ -5397,6 +5418,19 @@ mod tests {
         allow_hrtime: true,
         ..Flags::default()
       }
+    );
+  }
+
+  #[test]
+  fn repl_strace_ops() {
+    // Lightly test this undocumented flag
+    let r = flags_from_vec(svec!["deno", "repl", "--strace-ops"]);
+    assert_eq!(r.unwrap().strace_ops, Some(vec![]));
+    let r =
+      flags_from_vec(svec!["deno", "repl", "--strace-ops=http,websocket"]);
+    assert_eq!(
+      r.unwrap().strace_ops,
+      Some(vec!["http".to_string(), "websocket".to_string()])
     );
   }
 
