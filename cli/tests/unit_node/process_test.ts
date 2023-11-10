@@ -728,6 +728,14 @@ Deno.test("process.getuid", () => {
   }
 });
 
+Deno.test("process.geteuid", () => {
+  if (Deno.build.os === "windows") {
+    assertEquals(process.geteuid, undefined);
+  } else {
+    assert(typeof process.geteuid?.() === "number");
+  }
+});
+
 Deno.test({
   name: "process.exit",
   async fn() {

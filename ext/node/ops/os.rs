@@ -52,6 +52,25 @@ where
   Ok(deno_whoami::username())
 }
 
+#[op2(fast)]
+pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("geteuid", "node:os.geteuid()")?;
+  }
+
+  let euid = if cfg!(unix) {
+    // SAFETY: Call to libc geteuid.
+    unsafe { libc::geteuid() }
+  } else {
+    0
+  };
+  Ok(euid)
+}
+
 #[cfg(unix)]
 mod priority {
   use super::*;
