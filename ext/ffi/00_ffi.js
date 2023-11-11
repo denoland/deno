@@ -32,7 +32,6 @@ const {
   SafeMap,
   SafeArrayIterator,
   SafeWeakMap,
-  SymbolFor,
 } = primordials;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
@@ -52,8 +51,6 @@ function getBufferSourceByteLength(source) {
   }
   return ArrayBufferPrototypeGetByteLength(source);
 }
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
-
 const U32_BUFFER = new Uint32Array(2);
 const U64_BUFFER = new BigUint64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
 const I64_BUFFER = new BigInt64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
@@ -422,7 +419,7 @@ class UnsafeCallback {
     if (this.#refcount++ === 0) {
       if (this.#refpromise) {
         // Re-refing
-        core.refOp(this.#refpromise[promiseIdSymbol]);
+        core.refOpPromise(this.#refpromise);
       } else {
         this.#refpromise = core.opAsync(
           "op_ffi_unsafe_callback_ref",
@@ -437,7 +434,7 @@ class UnsafeCallback {
     // Only decrement refcount if it is positive, and only
     // unref the callback if refcount reaches zero.
     if (this.#refcount > 0 && --this.#refcount === 0) {
-      core.unrefOp(this.#refpromise[promiseIdSymbol]);
+      core.unrefOpPromise(this.#refpromise);
     }
     return this.#refcount;
   }

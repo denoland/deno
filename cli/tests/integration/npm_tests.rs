@@ -2227,17 +2227,9 @@ pub fn byonm_cjs_esm_packages() {
     .use_temp_cwd()
     .build();
   let dir = test_context.temp_dir();
-  let run_npm = |args: &str| {
-    test_context
-      .new_command()
-      .name("npm")
-      .args(args)
-      .run()
-      .skip_output_check();
-  };
 
-  run_npm("init -y");
-  run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
+  test_context.run_npm("init -y");
+  test_context.run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
 
   dir.write(
     "main.ts",
@@ -2346,12 +2338,7 @@ pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
     "import '@denotest/conditional-exports-strict/test';",
   );
 
-  test_context
-    .new_command()
-    .name("npm")
-    .args("install")
-    .run()
-    .skip_output_check();
+  test_context.run_npm("install");
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
@@ -2395,12 +2382,7 @@ pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
     "import 'npm:@denotest/conditional-exports-strict/test';",
   );
 
-  test_context
-    .new_command()
-    .name("npm")
-    .args("install")
-    .run()
-    .skip_output_check();
+  test_context.run_npm("install");
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
@@ -2415,14 +2397,7 @@ pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 pub fn byonm_npm_workspaces() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
-  dir.write(
-    "deno.json",
-    r#"{
-    "unstable": [
-      "byonm"
-    ]
-  }"#,
-  );
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
 
   dir.write(
     "package.json",
@@ -2487,12 +2462,7 @@ console.log(add(1, 2));
 "#,
   );
 
-  test_context
-    .new_command()
-    .name("npm")
-    .args("install")
-    .run()
-    .skip_output_check();
+  test_context.run_npm("install");
 
   let output = test_context
     .new_command()
@@ -2504,4 +2474,182 @@ console.log(add(1, 2));
     .args("check ./project-b/main.ts")
     .run();
   output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+}
+
+#[test]
+pub fn cjs_export_analysis_require_re_export() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
+  );
+  dir.write(
+    "main.js",
+    "import { value1, value2 } from 'my-package';\nconsole.log(value1);\nconsole.log(value2)\n",
+  );
+
+  let node_modules_dir = dir.path().join("node_modules");
+
+  // create a package at node_modules/.multipart/name/nested without a package.json
+  {
+    let pkg_dir = node_modules_dir
+      .join(".multipart")
+      .join("name")
+      .join("nested");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("index.js").write("module.exports.value1 = 5;");
+  }
+  // create a package at node_modules/.multipart/other with a package.json
+  {
+    let pkg_dir = node_modules_dir.join(".multipart").join("other");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("index.js").write("module.exports.value2 = 6;");
+  }
+  // create a package at node_modules/my-package that requires them both
+  {
+    let pkg_dir = node_modules_dir.join("my-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "my-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir
+    .join("index.js")
+    .write("module.exports = { ...require('.multipart/name/nested/index'), ...require('.multipart/other/index.js') }");
+  }
+
+  // the cjs export analysis was previously failing, but it should
+  // resolve these exports similar to require
+  let output = test_context
+    .new_command()
+    .args("run --allow-read main.js")
+    .run();
+  output.assert_matches_text("5\n6\n");
+}
+
+#[test]
+pub fn cjs_rexport_analysis_json() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
+  );
+  dir.write(
+    "main.js",
+    "import data from 'my-package';\nconsole.log(data);\n",
+  );
+
+  let node_modules_dir = dir.path().join("node_modules");
+
+  // create a package that has a json file at index.json and data.json then folder/index.json
+  {
+    let pkg_dir = node_modules_dir.join("data-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "data-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir.join("index.json").write(r#"{ "value": 2 }"#);
+    pkg_dir.join("data.json").write(r#"{ "value": 3 }"#);
+    let folder = pkg_dir.join("folder");
+    folder.create_dir_all();
+    folder.join("index.json").write(r#"{ "value": 4 }"#);
+  }
+  // create a package at node_modules/my-package that re-exports a json file
+  {
+    let pkg_dir = node_modules_dir.join("my-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "my-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir.join("data.json").write(r#"{ "value": 1 }"#);
+    pkg_dir.join("index.js").write(
+      "module.exports = {
+  data1: require('./data'),
+  data2: require('data-package'),
+  data3: require('data-package/data'),
+  data4: require('data-package/folder'),
+};",
+    );
+  }
+
+  let output = test_context
+    .new_command()
+    .args("run --allow-read main.js")
+    .run();
+  output.assert_matches_text(
+    "{
+  data1: { value: 1 },
+  data2: { value: 2 },
+  data3: { value: 3 },
+  data4: { value: 4 }
+}
+",
+  );
+}
+
+itest!(imports_package_json {
+  args: "run --node-modules-dir=false npm/imports_package_json/main.js",
+  output: "npm/imports_package_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(imports_package_json_import_not_defined {
+  args:
+    "run --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
+  output: "npm/imports_package_json/import_not_defined.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(imports_package_json_sub_path_import_not_defined {
+  args:
+    "run --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
+  output: "npm/imports_package_json/sub_path_import_not_defined.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(different_nested_dep_node_modules_dir_false {
+  args: "run --quiet --node-modules-dir=false npm/different_nested_dep/main.js",
+  output: "npm/different_nested_dep/main.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(different_nested_dep_node_modules_dir_true {
+  args: "run --quiet --node-modules-dir=true main.js",
+  output: "npm/different_nested_dep/main.out",
+  copy_temp_dir: Some("npm/different_nested_dep/"),
+  cwd: Some("npm/different_nested_dep/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+#[test]
+pub fn different_nested_dep_byonm() {
+  let test_context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("npm/different_nested_dep")
+    .cwd("npm/different_nested_dep/")
+    .build();
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run --unstable-byonm main.js")
+    .run();
+  output.assert_matches_file("npm/different_nested_dep/main.out");
 }

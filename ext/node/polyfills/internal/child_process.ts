@@ -835,7 +835,12 @@ export function spawnSync(
     maxBuffer,
     windowsVerbatimArguments = false,
   } = options;
-  const normalizedStdio = normalizeStdioOption(stdio);
+  const [
+    _stdin_ = "pipe", // TODO(bartlomieju): use this?
+    stdout_ = "pipe",
+    stderr_ = "pipe",
+    _channel, // TODO(kt3k): handle this correctly
+  ] = normalizeStdioOption(stdio);
   [command, args] = buildCommand(command, args ?? [], shell);
 
   const result: SpawnSyncResult = {};
@@ -844,8 +849,8 @@ export function spawnSync(
       args,
       cwd,
       env: mapValues(env, (value) => value.toString()),
-      stdout: toDenoStdio(normalizedStdio[1]),
-      stderr: toDenoStdio(normalizedStdio[2]),
+      stdout: toDenoStdio(stdout_),
+      stderr: toDenoStdio(stderr_),
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,

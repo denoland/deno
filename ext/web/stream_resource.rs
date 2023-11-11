@@ -2,6 +2,7 @@
 use bytes::BytesMut;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::external;
 use deno_core::op2;
 use deno_core::serde_v8::V8Slice;
 use deno_core::unsync::TaskQueue;
@@ -9,6 +10,7 @@ use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::ExternalPointer;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcLike;
@@ -290,17 +292,6 @@ impl BoundedBufferChannel {
     self.inner.borrow_mut()
   }
 
-  pub fn into_raw(self) -> *const BoundedBufferChannel {
-    Rc::into_raw(self.inner) as _
-  }
-
-  pub unsafe fn clone_from_raw(ptr: *const BoundedBufferChannel) -> Self {
-    let rc = Rc::from_raw(ptr as *const RefCell<BoundedBufferChannelInner>);
-    let clone = rc.clone();
-    std::mem::forget(rc);
-    std::mem::transmute(clone)
-  }
-
   pub fn read(&self, limit: usize) -> Result<Option<BufView>, AnyError> {
     self.inner().read(limit)
   }
@@ -460,19 +451,24 @@ pub fn op_readable_stream_resource_get_sink(
   else {
     return std::ptr::null();
   };
-  resource.channel.clone().into_raw() as _
+  ExternalPointer::new(resource.channel.clone()).into_raw()
 }
+
+external!(BoundedBufferChannel, "stream resource channel");
 
 fn get_sender(sender: *const c_void) -> BoundedBufferChannel {
   // SAFETY: We know this is a valid v8::External
-  unsafe { BoundedBufferChannel::clone_from_raw(sender as _) }
+  unsafe {
+    ExternalPointer::<BoundedBufferChannel>::from_raw(sender)
+      .unsafely_deref()
+      .clone()
+  }
 }
 
 fn drop_sender(sender: *const c_void) {
   // SAFETY: We know this is a valid v8::External
   unsafe {
-    assert!(!sender.is_null());
-    _ = Rc::from_raw(sender as *mut RefCell<BoundedBufferChannelInner>);
+    ExternalPointer::<BoundedBufferChannel>::from_raw(sender).unsafely_take();
   }
 }
 

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::cdp;
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
@@ -37,7 +38,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
-use super::cdp;
 use super::channel::RustylineSyncMessageSender;
 use super::session::REPL_INTERNALS_NAME;
 

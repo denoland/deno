@@ -924,7 +924,7 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some()
+    self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
   }
 
   pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
@@ -1137,6 +1137,14 @@ impl CliOptions {
     }
   }
 
+  pub fn enable_op_summary_metrics(&self) -> bool {
+    self.flags.enable_op_summary_metrics
+      || matches!(
+        self.flags.subcommand,
+        DenoSubcommand::Test(_) | DenoSubcommand::Repl(_)
+      )
+  }
+
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
   }
@@ -1235,6 +1243,10 @@ impl CliOptions {
 
   pub fn sub_command(&self) -> &DenoSubcommand {
     &self.flags.subcommand
+  }
+
+  pub fn strace_ops(&self) -> &Option<Vec<String>> {
+    &self.flags.strace_ops
   }
 
   pub fn type_check_mode(&self) -> TypeCheckMode {

@@ -9,6 +9,7 @@ use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
 use rand::rngs::OsRng;
 use rand::RngCore;
+use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
 
@@ -62,7 +63,7 @@ pub fn op_crypto_import_spki_x25519(
   #[buffer] out: &mut [u8],
 ) -> bool {
   // 2-3.
-  let pk_info = match spki::SubjectPublicKeyInfo::from_der(key_data) {
+  let pk_info = match spki::SubjectPublicKeyInfoRef::try_from(key_data) {
     Ok(pk_info) => pk_info,
     Err(_) => return false,
   };
@@ -75,7 +76,7 @@ pub fn op_crypto_import_spki_x25519(
   if pk_info.algorithm.parameters.is_some() {
     return false;
   }
-  out.copy_from_slice(pk_info.subject_public_key);
+  out.copy_from_slice(pk_info.subject_public_key.raw_bytes());
   true
 }
 
@@ -114,16 +115,16 @@ pub fn op_crypto_export_spki_x25519(
   #[buffer] pubkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   let key_info = spki::SubjectPublicKeyInfo {
-    algorithm: spki::AlgorithmIdentifier {
+    algorithm: spki::AlgorithmIdentifierRef {
       // id-X25519
       oid: X25519_OID,
       parameters: None,
     },
-    subject_public_key: pubkey,
+    subject_public_key: BitString::from_bytes(pubkey)?,
   };
   Ok(
     key_info
-      .to_vec()
+      .to_der()
       .map_err(|_| {
         custom_error("DOMExceptionOperationError", "Failed to export key")
       })?
