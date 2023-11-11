@@ -19,10 +19,6 @@ deno_core::extension!(deno_jupyter,
   ops = [
     op_jupyter_broadcast,
   ],
-  esm = [
-    dir "js",
-    "40_jupyter.js",
-  ],
   options = {
     sender: mpsc::UnboundedSender<StdioMsg>,
   },

@@ -36,9 +36,8 @@
  * ```
  */
 
-const core = globalThis.Deno.core;
-
-const internals = globalThis.__bootstrap.internals;
+const internals = Deno[Deno.internal];
+const core = internals.core;
 
 const $display = Symbol.for("Jupyter.display");
 
