@@ -925,6 +925,7 @@ dependencies = [
  "junction",
  "lazy-regex",
  "libc",
+ "libz-sys",
  "log",
  "lsp-types",
  "monch",
@@ -1552,6 +1553,7 @@ dependencies = [
  "encoding_rs",
  "fastwebsockets",
  "filetime",
+ "flate2",
  "fs3",
  "fwdansi",
  "http",
@@ -2338,7 +2340,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6c98ee8095e9d1dcbf2fcc6d95acccb90d1c81db1e44725c6a984b1dbdfb010"
 dependencies = [
  "crc32fast",
- "libz-ng-sys",
+ "libz-sys",
  "miniz_oxide",
 ]
 
@@ -3133,22 +3135,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "libz-ng-sys"
-version = "1.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dd9f43e75536a46ee0f92b758f6b63846e594e86638c61a9251338a65baea63"
-dependencies = [
- "cmake",
- "libc",
-]
-
-[[package]]
 name = "libz-sys"
 version = "1.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d97137b25e321a73eef1418d1d5d2eda4d77e12813f8e6dead84bc52c5870a7b"
 dependencies = [
  "cc",
+ "cmake",
  "libc",
  "pkg-config",
  "vcpkg",

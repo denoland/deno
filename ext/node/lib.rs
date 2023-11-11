@@ -18,6 +18,8 @@ use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use once_cell::sync::Lazy;
 
+extern crate libz_sys as zlib;
+
 pub mod analyze;
 pub mod errors;
 mod global;
