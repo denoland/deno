@@ -5,7 +5,6 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
-  deferred,
   delay,
   execCode,
   execCode2,
@@ -795,10 +794,10 @@ Deno.test(
   async function netCloseWriteSuccess() {
     const addr = { hostname: "127.0.0.1", port: listenPort };
     const listener = Deno.listen(addr);
-    const closeDeferred = deferred();
+    const { promise: closePromise, resolve } = Promise.withResolvers<void>();
     listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
-      await closeDeferred;
+      await closePromise;
       conn.close();
     });
     const conn = await Deno.connect(addr);
@@ -815,7 +814,7 @@ Deno.test(
     await assertRejects(async () => {
       await conn.write(new Uint8Array([1, 2, 3]));
     });
-    closeDeferred.resolve();
+    resolve();
     listener.close();
     conn.close();
   },

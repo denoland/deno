@@ -13,7 +13,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafePromiseAll,
-  SymbolFor,
   Symbol,
 } = primordials;
 import { FsFile } from "ext:deno_fs/30_fs.js";
@@ -148,7 +147,6 @@ function run({
 }
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 function spawnChildInner(opFn, command, apiName, {
   args = [],
@@ -203,7 +201,7 @@ function collectOutput(readableStream) {
 
 class ChildProcess {
   #rid;
-  #waitPromiseId;
+  #waitPromise;
   #waitComplete = false;
 
   #pid;
@@ -266,7 +264,7 @@ class ChildProcess {
     signal?.[abortSignal.add](onAbort);
 
     const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
-    this.#waitPromiseId = waitPromise[promiseIdSymbol];
+    this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
       signal?.[abortSignal.remove](onAbort);
       this.#waitComplete = true;
@@ -333,13 +331,13 @@ class ChildProcess {
   }
 
   ref() {
-    core.refOp(this.#waitPromiseId);
+    core.refOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
   }
 
   unref() {
-    core.unrefOp(this.#waitPromiseId);
+    core.unrefOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
   }

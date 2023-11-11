@@ -813,8 +813,46 @@ declare namespace Deno {
     permissions?: PermissionOptions;
   }
 
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   *
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test({
+   *   name: "example test",
+   *   fn() {
+   *     assertEquals("world", "world");
+   *   },
+   * });
+   *
+   * Deno.test({
+   *   name: "example ignored test",
+   *   ignore: Deno.build.os === "windows",
+   *   fn() {
+   *     // This test is ignored only on Windows machines
+   *   },
+   * });
+   *
+   * Deno.test({
+   *   name: "example async test",
+   *   async fn() {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   }
+   * });
+   * ```
+   *
+   * @category Testing
+   */
   export const test: DenoTest;
 
+  /**
+   * @category Testing
+   */
   interface DenoTest {
     /** Register a test which will be run when `deno test` is used on the command
      * line and the containing module looks like a test module.
@@ -4300,6 +4338,8 @@ declare namespace Deno {
      * status. */
     output(): Promise<CommandOutput>;
     /** Kills the process with given {@linkcode Deno.Signal}.
+     *
+     * Defaults to `SIGTERM` if no signal is provided.
      *
      * @param [signo="SIGTERM"]
      */

@@ -83,7 +83,16 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
-  fn in_npm_package_at_path(&self, path: &Path) -> bool {
+  fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
+    let specifier =
+      match ModuleSpecifier::from_directory_path(path.to_path_buf().clean()) {
+        Ok(p) => p,
+        Err(_) => return false,
+      };
+    self.in_npm_package(&specifier)
+  }
+
+  fn in_npm_package_at_file_path(&self, path: &Path) -> bool {
     let specifier =
       match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
@@ -239,6 +248,7 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
+    ops::os::op_geteuid<P>,
     op_node_build_os,
     op_is_any_arraybuffer,
     op_node_is_promise_rejected,
@@ -265,6 +275,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::crypto::op_node_create_private_key,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

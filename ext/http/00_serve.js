@@ -10,6 +10,7 @@ import { Event } from "ext:deno_web/02_event.js";
 import {
   fromInnerResponse,
   newInnerResponse,
+  ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
@@ -43,7 +44,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   Symbol,
-  SymbolFor,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
@@ -449,15 +449,26 @@ function mapToCallback(context, callback, onError) {
         fromInnerRequest(innerRequest, signal, "immutable"),
         new ServeHandlerInfo(innerRequest),
       );
+
+      // Throwing Error if the handler return value is not a Response class
+      if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+        throw TypeError(
+          "Return value from serve handler must be a response or a promise resolving to a response",
+        );
+      }
     } catch (error) {
       try {
         response = await onError(error);
+        if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+          throw TypeError(
+            "Return value from onError handler must be a response or a promise resolving to a response",
+          );
+        }
       } catch (error) {
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
     }
-
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
@@ -630,7 +641,6 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
 function serveHttpOn(context, callback) {
   let ref = true;
   let currentPromise = null;
-  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
@@ -654,7 +664,7 @@ function serveHttpOn(context, callback) {
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
-          core.unrefOp(currentPromise[promiseIdSymbol]);
+          core.unrefOpPromise(currentPromise);
         }
         req = await currentPromise;
         currentPromise = null;
@@ -696,13 +706,13 @@ function serveHttpOn(context, callback) {
     ref() {
       ref = true;
       if (currentPromise) {
-        core.refOp(currentPromise[promiseIdSymbol]);
+        core.refOpPromise(currentPromise);
       }
     },
     unref() {
       ref = false;
       if (currentPromise) {
-        core.unrefOp(currentPromise[promiseIdSymbol]);
+        core.unrefOpPromise(currentPromise);
       }
     },
     [SymbolAsyncDispose]() {

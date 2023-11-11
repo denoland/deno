@@ -209,6 +209,14 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[util] toUSVString",
+  fn() {
+    assertEquals(util.toUSVString("foo"), "foo");
+    assertEquals(util.toUSVString("bar\ud801"), "bar\ufffd");
+  },
+});
+
+Deno.test({
   name: "[util] isDate",
   fn() {
     // Test verifies the method is exposed. See _util/_util_types_test for details

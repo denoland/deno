@@ -69,7 +69,7 @@ fn specifiers_in_lockfile() {
 
   temp_dir.write(
     "main.ts",
-    r#"import version from "jsr:@denotest/no_module_graph@0.1/mod.ts";
+    r#"import version from "jsr:@denotest/no_module_graph@0.1";
 
 console.log(version);"#,
   );

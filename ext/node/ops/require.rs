@@ -209,7 +209,7 @@ pub fn op_require_is_deno_dir_package(
   #[string] path: String,
 ) -> bool {
   let resolver = state.borrow::<NpmResolverRc>();
-  resolver.in_npm_package_at_path(&PathBuf::from(path))
+  resolver.in_npm_package_at_file_path(&PathBuf::from(path))
 }
 
 #[op2]
@@ -484,7 +484,7 @@ where
   let permissions = state.borrow::<P>();
 
   let pkg_path = if npm_resolver
-    .in_npm_package_at_path(&PathBuf::from(&modules_path))
+    .in_npm_package_at_file_path(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
   {
     modules_path

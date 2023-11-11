@@ -31,8 +31,8 @@ Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
 
 Deno.test(async function websocketH2SendSmallPacket() {
   const promise = deferred();
-  const ws = new WebSocket(new URL("wss://localhost:4248/"));
-  assertEquals(ws.url, "wss://localhost:4248/");
+  const ws = new WebSocket(new URL("wss://localhost:4249/"));
+  assertEquals(ws.url, "wss://localhost:4249/");
   let messageCount = 0;
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {
@@ -53,8 +53,8 @@ Deno.test(async function websocketH2SendSmallPacket() {
 
 Deno.test(async function websocketH2SendLargePacket() {
   const promise = deferred();
-  const ws = new WebSocket(new URL("wss://localhost:4248/"));
-  assertEquals(ws.url, "wss://localhost:4248/");
+  const ws = new WebSocket(new URL("wss://localhost:4249/"));
+  assertEquals(ws.url, "wss://localhost:4249/");
   let messageCount = 0;
   ws.onerror = (e) => promise.reject(e);
   ws.onopen = () => {

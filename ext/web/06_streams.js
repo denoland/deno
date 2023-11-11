@@ -967,7 +967,7 @@ function readableStreamForRid(rid, autoClose = true) {
   return stream;
 }
 
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+const promiseSymbol = SymbolFor("__promise");
 const _isUnref = Symbol("isUnref");
 /**
  * Create a new ReadableStream object that is backed by a Resource that
@@ -981,7 +981,7 @@ const _isUnref = Symbol("isUnref");
  */
 function readableStreamForRidUnrefable(rid) {
   const stream = new ReadableStream(_brand);
-  stream[promiseIdSymbol] = undefined;
+  stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
   stream[_resourceBackingUnrefable] = { rid, autoClose: true };
   const underlyingSource = {
@@ -990,10 +990,10 @@ function readableStreamForRidUnrefable(rid) {
       const v = controller.byobRequest.view;
       try {
         const promise = core.read(rid, v);
-        const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
-        if (stream[_isUnref]) core.unrefOp(promiseId);
+        stream[promiseSymbol] = promise;
+        if (stream[_isUnref]) core.unrefOpPromise(promise);
         const bytesRead = await promise;
-        stream[promiseIdSymbol] = undefined;
+        stream[promiseSymbol] = undefined;
         if (bytesRead === 0) {
           core.tryClose(rid);
           controller.close();
@@ -1030,8 +1030,8 @@ function readableStreamForRidUnrefableRef(stream) {
     throw new TypeError("Not an unrefable stream");
   }
   stream[_isUnref] = false;
-  if (stream[promiseIdSymbol] !== undefined) {
-    core.refOp(stream[promiseIdSymbol]);
+  if (stream[promiseSymbol] !== undefined) {
+    core.refOpPromise(stream[promiseSymbol]);
   }
 }
 
@@ -1040,8 +1040,8 @@ function readableStreamForRidUnrefableUnref(stream) {
     throw new TypeError("Not an unrefable stream");
   }
   stream[_isUnref] = true;
-  if (stream[promiseIdSymbol] !== undefined) {
-    core.unrefOp(stream[promiseIdSymbol]);
+  if (stream[promiseSymbol] !== undefined) {
+    core.unrefOpPromise(stream[promiseSymbol]);
   }
 }
 
@@ -1064,10 +1064,11 @@ async function readableStreamCollectIntoUint8Array(stream) {
       readableStreamDisturb(stream);
       const promise = core.opAsync("op_read_all", resourceBacking.rid);
       if (readableStreamIsUnrefable(stream)) {
-        const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
-        if (stream[_isUnref]) core.unrefOp(promiseId);
+        stream[promiseSymbol] = promise;
+        if (stream[_isUnref]) core.unrefOpPromise(promise);
       }
       const buf = await promise;
+      stream[promiseSymbol] = undefined;
       readableStreamThrowIfErrored(stream);
       readableStreamClose(stream);
       return buf;
