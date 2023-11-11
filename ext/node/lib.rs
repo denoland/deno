@@ -74,7 +74,11 @@ impl NodePermissions for AllowAllNodePermissions {
 pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
 
 pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
-  /// Gets the state of npm for the process.
+  /// Gets a string containing the serialized npm state of the process.
+  ///
+  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
+  /// variable when doing a `child_process.fork`. The implementor can then check this environment
+  /// variable on startup to repopulate the internal npm state.
   fn get_npm_process_state(&self) -> String {
     // This method is only used in the CLI.
     String::new()
