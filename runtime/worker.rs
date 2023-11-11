@@ -260,7 +260,7 @@ impl MainWorker {
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
     let mut worker = Self::from_options(main_module, permissions, options);
-    worker.bootstrap(&bootstrap_options);
+    worker.bootstrap(bootstrap_options);
     worker
   }
 
@@ -376,6 +376,7 @@ impl MainWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -449,7 +450,6 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       op_state.borrow_mut().put(inspector);
     }
-
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
@@ -481,7 +481,8 @@ impl MainWorker {
     }
   }
 
-  pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+  pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    self.js_runtime.op_state().borrow_mut().put(options.clone());
     let scope = &mut self.js_runtime.handle_scope();
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();

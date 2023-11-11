@@ -608,6 +608,7 @@ impl WebWorker {
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+    self.js_runtime.op_state().borrow_mut().put(options.clone());
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {

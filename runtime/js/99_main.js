@@ -50,7 +50,7 @@ import {
   getNoColor,
   inspectArgs,
   quoteString,
-  setNoColor,
+  setNoColorFn,
   wrapConsole,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
@@ -67,9 +67,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
   mainRuntimeGlobalProperties,
-  setLanguage,
-  setNumCpus,
-  setUserAgent,
+  makeLazy,
   unstableWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
@@ -241,6 +239,11 @@ function opMainModule() {
   return ops.op_main_module();
 }
 
+const opArgs = makeLazy(() => ops.op_bootstrap_args());
+const opPid = makeLazy(() => ops.op_bootstrap_pid());
+const opPpid = makeLazy(() => ops.op_ppid());
+setNoColorFn(() => ops.op_bootstrap_no_color());
+
 function formatException(error) {
   if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
     return null;
@@ -327,10 +330,6 @@ function runtimeStart(
   v8Version,
   tsVersion,
   target,
-  logLevel,
-  noColor,
-  isTty,
-  source,
 ) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
@@ -343,8 +342,6 @@ function runtimeStart(
     tsVersion,
   );
   core.setBuildInfo(target);
-  util.setLogLevel(logLevel, source);
-  setNoColor(noColor || !isTty);
 }
 
 const pendingRejections = [];
@@ -461,25 +458,16 @@ function bootstrapMainRuntime(runtimeOptions) {
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: args,
-    1: cpuCount,
-    2: logLevel,
-    3: denoVersion,
-    4: locale,
-    5: location_,
-    6: noColor,
-    7: isTty,
-    8: tsVersion,
-    9: unstableFlag,
-    10: unstableFeatures,
-    11: pid,
-    12: target,
-    13: v8Version,
-    14: userAgent,
-    15: inspectFlag,
-    // 16: enableTestingFeaturesFlag
-    17: hasNodeModulesDir,
-    18: maybeBinaryNpmCommandName,
+    0: denoVersion,
+    1: location_,
+    2: tsVersion,
+    3: unstableFlag,
+    4: unstableFeatures,
+    5: target,
+    6: v8Version,
+    7: inspectFlag,
+    8: hasNodeModulesDir,
+    9: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -538,27 +526,13 @@ function bootstrapMainRuntime(runtimeOptions) {
     v8Version,
     tsVersion,
     target,
-    logLevel,
-    noColor,
-    isTty,
   );
 
-  setNumCpus(cpuCount);
-  setUserAgent(userAgent);
-  setLanguage(locale);
-
-  let ppid = undefined;
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.readOnly(pid),
-    ppid: util.getterOnly(() => {
-      // lazy because it's expensive
-      if (ppid === undefined) {
-        ppid = ops.op_ppid();
-      }
-      return ppid;
-    }),
-    noColor: util.readOnly(noColor),
-    args: util.readOnly(ObjectFreeze(args)),
+    pid: util.getterOnly(opPid),
+    ppid: util.getterOnly(opPpid),
+    noColor: util.getterOnly(getNoColor),
+    args: util.getterOnly(opArgs),
     mainModule: util.getterOnly(opMainModule),
   });
 
@@ -593,8 +567,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
-  util.log("args", args);
-
   if (nodeBootstrap) {
     nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
   }
@@ -612,25 +584,15 @@ function bootstrapWorkerRuntime(
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: args,
-    1: cpuCount,
-    2: logLevel,
-    3: denoVersion,
-    4: locale,
-    5: location_,
-    6: noColor,
-    7: isTty,
-    8: tsVersion,
-    9: unstableFlag,
-    10: unstableFeatures,
-    11: pid,
-    12: target,
-    13: v8Version,
-    14: userAgent,
-    // 15: inspectFlag,
-    16: enableTestingFeaturesFlag,
-    17: hasNodeModulesDir,
-    18: maybeBinaryNpmCommandName,
+    0: denoVersion,
+    1: location_,
+    2: tsVersion,
+    3: unstableFlag,
+    4: unstableFeatures,
+    5: target,
+    6: v8Version,
+    8: hasNodeModulesDir,
+    9: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -686,17 +648,10 @@ function bootstrapWorkerRuntime(
     v8Version,
     tsVersion,
     target,
-    logLevel,
-    noColor,
-    isTty,
     internalName ?? name,
   );
 
   location.setLocationHref(location_);
-
-  setNumCpus(cpuCount);
-  setUserAgent(userAgent);
-  setLanguage(locale);
 
   globalThis.pollForMessages = pollForMessages;
 
@@ -710,9 +665,9 @@ function bootstrapWorkerRuntime(
     }
   }
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.readOnly(pid),
-    noColor: util.readOnly(noColor),
-    args: util.readOnly(ObjectFreeze(args)),
+    pid: util.getterOnly(opPid),
+    noColor: util.getterOnly(getNoColor),
+    args: util.getterOnly(opArgs),
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
