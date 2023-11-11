@@ -396,7 +396,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
       "deno:runtime".parse().unwrap(),
     ),
     deno_runtime::ops::worker_host::deno_worker_host::init_ops(
-      Arc::new(|_| panic!("not supported in this build.")),
+      Arc::new(|_| unreachable!("not used in snapshot.")),
       None,
     ),
     deno_runtime::ops::fs_events::deno_fs_events::init_ops(),
