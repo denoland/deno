@@ -465,8 +465,8 @@ function bootstrapMainRuntime(runtimeOptions) {
     5: target,
     6: v8Version,
     7: inspectFlag,
-    8: hasNodeModulesDir,
-    9: maybeBinaryNpmCommandName,
+    9: hasNodeModulesDir,
+    10: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -590,8 +590,9 @@ function bootstrapWorkerRuntime(
     4: unstableFeatures,
     5: target,
     6: v8Version,
-    8: hasNodeModulesDir,
-    9: maybeBinaryNpmCommandName,
+    8: enableTestingFeaturesFlag,
+    9: hasNodeModulesDir,
+    10: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());

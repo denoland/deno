@@ -226,7 +226,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return numCpus;
+      return numCpus();
     },
   },
   userAgent: {
@@ -234,7 +234,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return userAgent;
+      return userAgent();
     },
   },
   language: {
@@ -242,7 +242,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return language;
+      return language();
     },
   },
   languages: {
@@ -250,7 +250,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return [language];
+      return [language()];
     },
   },
 });
