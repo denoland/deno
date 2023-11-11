@@ -464,7 +464,6 @@ impl WebWorker {
         options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::deno_web_worker::init_ops_and_esm(),
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
@@ -482,6 +481,7 @@ impl WebWorker {
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
+      ops::web_worker::deno_web_worker::init_ops_and_esm(),
     ];
 
     for extension in &mut extensions {
