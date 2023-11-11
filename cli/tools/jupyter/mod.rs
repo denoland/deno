@@ -90,7 +90,7 @@ pub async fn kernel(
       main_module.clone(),
       permissions,
       vec![
-        ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),
+        ops::jupyter::deno_jupyter::init_ops_and_esm(stdio_tx.clone()),
         ops::testing::deno_test::init_ops(test_event_sender.clone()),
       ],
       // FIXME(nayeemrmn): Test output capturing currently doesn't work.
