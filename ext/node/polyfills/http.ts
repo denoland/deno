@@ -1764,6 +1764,7 @@ export function get(...args: any[]) {
 export {
   Agent,
   ClientRequest,
+  globalAgent,
   IncomingMessageForServer as IncomingMessage,
   METHODS,
   OutgoingMessage,
@@ -1771,6 +1772,7 @@ export {
 };
 export default {
   Agent,
+  globalAgent,
   ClientRequest,
   STATUS_CODES,
   METHODS,
