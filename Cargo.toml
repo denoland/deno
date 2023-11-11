@@ -40,40 +40,41 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.31.2", features = ["transpiling"] }
-deno_core = { version = "0.228.0" }
+deno_core = { version = "0.229.0" }
 
-deno_runtime = { version = "0.130.0", path = "./runtime" }
-napi_sym = { version = "0.52.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.116.0", path = "./bench_util" }
+deno_runtime = { version = "0.131.0", path = "./runtime" }
+napi_sym = { version = "0.53.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.117.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
 denokv_proto = "0.2.1"
-denokv_sqlite = "0.2.1"
+# denokv_sqlite brings in bundled sqlite if we don't disable the default features
+denokv_sqlite = { default-features = false, version = "0.2.1" }
 denokv_remote = "0.2.3"
 
 # exts
-deno_broadcast_channel = { version = "0.116.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.54.0", path = "./ext/cache" }
-deno_console = { version = "0.122.0", path = "./ext/console" }
-deno_cron = { version = "0.2.0", path = "./ext/cron" }
-deno_crypto = { version = "0.136.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.146.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.109.0", path = "./ext/ffi" }
-deno_fs = { version = "0.32.0", path = "./ext/fs" }
-deno_http = { version = "0.117.0", path = "./ext/http" }
-deno_io = { version = "0.32.0", path = "./ext/io" }
-deno_net = { version = "0.114.0", path = "./ext/net" }
-deno_node = { version = "0.59.0", path = "./ext/node" }
-deno_kv = { version = "0.30.0", path = "./ext/kv" }
-deno_tls = { version = "0.109.0", path = "./ext/tls" }
-deno_url = { version = "0.122.0", path = "./ext/url" }
-deno_web = { version = "0.153.0", path = "./ext/web" }
-deno_webidl = { version = "0.122.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.127.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.117.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.52.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.117.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.55.0", path = "./ext/cache" }
+deno_console = { version = "0.123.0", path = "./ext/console" }
+deno_cron = { version = "0.3.0", path = "./ext/cron" }
+deno_crypto = { version = "0.137.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.147.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.110.0", path = "./ext/ffi" }
+deno_fs = { version = "0.33.0", path = "./ext/fs" }
+deno_http = { version = "0.118.0", path = "./ext/http" }
+deno_io = { version = "0.33.0", path = "./ext/io" }
+deno_net = { version = "0.115.0", path = "./ext/net" }
+deno_node = { version = "0.60.0", path = "./ext/node" }
+deno_kv = { version = "0.31.0", path = "./ext/kv" }
+deno_tls = { version = "0.110.0", path = "./ext/tls" }
+deno_url = { version = "0.123.0", path = "./ext/url" }
+deno_web = { version = "0.154.0", path = "./ext/web" }
+deno_webidl = { version = "0.123.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.128.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.118.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.53.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -95,7 +96,7 @@ encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
 fastwebsockets = "=0.5.0"
 filetime = "0.2.16"
-flate2 = { version = "1.0.26", features = ["zlib-ng"], default-features = false }
+flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
@@ -106,6 +107,7 @@ httparse = "1.8.0"
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 libc = "0.2.126"
+libz-sys = { version = "1.1", default-features = false }
 log = "=0.4.20"
 lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
@@ -138,7 +140,7 @@ serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.16"
 sha2 = { version = "0.10.8", features = ["oid"] }
-signature = "=1.6.4"
+signature = "2.1"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }

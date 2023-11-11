@@ -19,6 +19,8 @@ use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use once_cell::sync::Lazy;
 
+extern crate libz_sys as zlib;
+
 pub mod analyze;
 pub mod errors;
 mod global;
@@ -266,6 +268,7 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
+    ops::os::op_geteuid<P>,
     op_node_build_os,
     op_is_any_arraybuffer,
     op_node_is_promise_rejected,
@@ -293,6 +296,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::crypto::op_node_create_private_key,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

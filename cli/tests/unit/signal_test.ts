@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, deferred, delay } from "./test_util.ts";
+import { assertEquals, assertThrows, delay } from "./test_util.ts";
 
 Deno.test(
   { ignore: Deno.build.os !== "windows" },
@@ -110,7 +110,7 @@ Deno.test(
     permissions: { run: true },
   },
   async function signalListenerTest() {
-    const resolvable = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     let c = 0;
     const listener = () => {
       c += 1;
@@ -124,10 +124,10 @@ Deno.test(
       }
       await delay(20);
       Deno.removeSignalListener("SIGUSR1", listener);
-      resolvable.resolve();
+      resolve();
     });
 
-    await resolvable;
+    await promise;
     assertEquals(c, 3);
   },
 );
@@ -138,7 +138,7 @@ Deno.test(
     permissions: { run: true },
   },
   async function multipleSignalListenerTest() {
-    const resolvable = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     let c = "";
     const listener0 = () => {
       c += "0";
@@ -169,10 +169,10 @@ Deno.test(
       }
       await delay(20);
       Deno.removeSignalListener("SIGUSR2", listener0);
-      resolvable.resolve();
+      resolve();
     });
 
-    await resolvable;
+    await promise;
     // The first 3 events are handled by both handlers
     // The last 3 events are handled only by handler0
     assertEquals(c, "010101000");

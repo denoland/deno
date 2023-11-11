@@ -680,6 +680,7 @@ impl CliFactory {
       hmr: self.options.has_hmr(),
       inspect_brk: self.options.inspect_brk().is_some(),
       inspect_wait: self.options.inspect_wait().is_some(),
+      strace_ops: self.options.strace_ops().clone(),
       is_inspecting: self.options.is_inspecting(),
       is_npm_main: self.options.is_npm_main(),
       location: self.options.location_flag().clone(),
