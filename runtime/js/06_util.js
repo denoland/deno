@@ -16,7 +16,7 @@ const LogLevel = {
   Debug: 4,
 };
 
-let logSource = "JS";
+const logSource = "JS";
 
 let logLevel_ = null;
 function logLevel() {

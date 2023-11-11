@@ -26,7 +26,6 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
-  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
