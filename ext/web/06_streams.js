@@ -6681,6 +6681,10 @@ webidl.converters.Transformer = webidl
       converter: webidl.converters.Function,
     },
     {
+      key: "cancel",
+      converter: webidl.converters.Function,
+    },
+    {
       key: "readableType",
       converter: webidl.converters.any,
     },

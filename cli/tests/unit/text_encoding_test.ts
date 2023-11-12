@@ -319,3 +319,20 @@ Deno.test(function binaryEncode() {
     assertEquals(Array.from(bytes), decodeBinary(binaryString));
   }
 });
+
+Deno.test(
+  { permissions: { read: true } },
+  async function textDecoderStreamCleansUpOnCancel() {
+    const filename = "cli/tests/testdata/assets/hello.txt";
+    const file = await Deno.open(filename);
+    const readable = file.readable.pipeThrough(new TextDecoderStream());
+    const chunks = [];
+    for await (const chunk of readable) {
+      chunks.push(chunk);
+      // breaking out of the loop prevents normal shutdown at end of async iterator values and triggers the cancel method of the stream instead
+      break;
+    }
+    assertEquals(chunks.length, 1);
+    assertEquals(chunks[0].length, 12);
+  },
+);
