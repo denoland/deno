@@ -202,7 +202,10 @@ fn installer_test_remote_module_run() {
 
 #[test]
 fn check_local_by_default() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let temp_dir = context.temp_dir();
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
@@ -223,7 +226,10 @@ fn check_local_by_default() {
 
 #[test]
 fn check_local_by_default2() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let temp_dir = context.temp_dir();
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
