@@ -70,7 +70,7 @@ fn xdg_cache_home_dir() {
     .run()
     .assert_matches_text("")
     .assert_exit_code(0);
-  assert!(temp_dir.path().read_dir().count() > 0);
+  assert!(deno_dir.path().read_dir().count() > 0);
 }
 
 itest!(check_local_by_default {
