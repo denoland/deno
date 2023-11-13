@@ -199,14 +199,18 @@ impl HttpRecord {
     let inflight = Rc::strong_count(&server_state);
     http_trace!(self, "HttpRecord::recycle inflight={}", inflight);
 
+    // TODO(mmastrac): we never recover the pooled memory here, and we could likely be shuttling
+    // the to-drop objects off to another thread.
+
     // Keep a buffer of allocations on hand to be reused by incoming requests.
-    // Estimated target size is 8 + 1/8 the number of inflight requests.
-    let target = 8 + (inflight >> 3);
-    if target > server_state_mut.pool.len() {
+    // Estimated target size is 16 + 1/8 the number of inflight requests.
+    let target = 16 + (inflight >> 3);
+    let pool = &mut server_state_mut.pool;
+    if target > pool.len() {
       headers.clear();
-      server_state_mut.pool.push((self, headers));
-    } else {
-      server_state_mut.pool.truncate(target);
+      pool.push((self, headers));
+    } else if target < pool.len() - 8 {
+      pool.truncate(target);
     }
   }
 
