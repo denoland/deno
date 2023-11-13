@@ -406,6 +406,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_runtime::ops::signal::deno_signal::init_ops(),
     deno_runtime::ops::tty::deno_tty::init_ops(),
     deno_runtime::ops::http::deno_http_runtime::init_ops(),
+    deno_runtime::ops::bootstrap::deno_bootstrap::init_ops(),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 
