@@ -6908,6 +6908,9 @@
         }
       },
       "embedded-content": {
+        "the-canvas-element": {
+          "imagedata.html": true
+        },
         "the-iframe-element": {
           "cross-origin-to-whom-part-2.window.html": false,
           "cross-origin-to-whom.window.html": false,

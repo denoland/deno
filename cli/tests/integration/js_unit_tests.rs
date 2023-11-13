@@ -43,6 +43,7 @@ util::unit_test_factory!(
     globals_test,
     headers_test,
     http_test,
+    image_data_test,
     internals_test,
     intl_test,
     io_test,

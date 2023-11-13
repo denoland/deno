@@ -296,3 +296,6 @@ declare var location: Location;
 
 /** @category Web APIs */
 declare var name: string;
+
+/** @category Web APIs */
+declare var ImageData: any;
