@@ -107,35 +107,19 @@ impl Default for BootstrapOptions {
 /// Keep this in sync with `99_main.js`.
 #[derive(Serialize)]
 struct BootstrapV8<'a>(
-  // args
-  &'a Vec<String>,
-  // cpu_count
-  i32,
-  // log_level
-  i32,
   // runtime_version
-  &'a str,
-  // locale
   &'a str,
   // location
   Option<&'a str>,
-  // no_color
-  bool,
-  // is_tty
-  bool,
   // ts_version
   &'a str,
   // unstable
   bool,
   // granular unstable flags
   &'a [i32],
-  // process_id
-  i32,
   // env!("TARGET")
   &'a str,
   // v8_version
-  &'a str,
-  // user_agent
   &'a str,
   // inspect
   bool,
@@ -157,21 +141,13 @@ impl BootstrapOptions {
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
     let bootstrap = BootstrapV8(
-      &self.args,
-      self.cpu_count as _,
-      self.log_level as _,
       &self.runtime_version,
-      &self.locale,
       self.location.as_ref().map(|l| l.as_str()),
-      self.no_color,
-      self.is_tty,
       &self.ts_version,
       self.unstable,
       self.unstable_features.as_ref(),
-      std::process::id() as _,
       env!("TARGET"),
       deno_core::v8_version(),
-      &self.user_agent,
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,

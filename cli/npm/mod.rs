@@ -83,9 +83,6 @@ pub trait CliNpmResolver: NpmResolver {
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String;
-
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.
   fn check_state_hash(&self) -> Option<u64>;
