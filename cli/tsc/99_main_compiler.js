@@ -515,9 +515,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.CompilerOptions} */
-  let compilationSettings = {};
-
   /** @type {ts.LanguageService} */
   let languageService;
 
@@ -709,7 +706,17 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
-      return compilationSettings;
+      const tsConfig = normalizeConfig(ops.op_ts_config());
+      const { options, errors } = ts
+        .convertCompilerOptionsFromJson(tsConfig, "");
+      Object.assign(options, {
+        allowNonTsExtensions: true,
+        allowImportingTsExtensions: true,
+      });
+      if (errors.length > 0 && logDebug) {
+        debug(ts.formatDiagnostics(errors, host));
+      }
+      return options;
     },
     getScriptFileNames() {
       if (logDebug) {
@@ -993,20 +1000,6 @@ delete Object.prototype.__proto__;
     switch (method) {
       case "$restart": {
         serverRestart();
-        return respond(id, true);
-      }
-      case "$configure": {
-        const config = normalizeConfig(args[0]);
-        const { options, errors } = ts
-          .convertCompilerOptionsFromJson(config, "");
-        Object.assign(options, {
-          allowNonTsExtensions: true,
-          allowImportingTsExtensions: true,
-        });
-        if (errors.length > 0 && logDebug) {
-          debug(ts.formatDiagnostics(errors, host));
-        }
-        compilationSettings = options;
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {

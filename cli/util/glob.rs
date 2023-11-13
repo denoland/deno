@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::anyhow::Context;
@@ -29,44 +28,6 @@ pub fn glob(pattern: &str) -> Result<glob::Paths, AnyError> {
     .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))
 }
 
-pub struct GlobPattern(glob::Pattern);
-
-impl GlobPattern {
-  pub fn new_if_pattern(pattern: &str) -> Result<Option<Self>, AnyError> {
-    if !is_glob_pattern(pattern) {
-      return Ok(None);
-    }
-    Self::new(pattern).map(Some)
-  }
-
-  pub fn new(pattern: &str) -> Result<Self, AnyError> {
-    let pattern = glob::Pattern::new(pattern)
-      .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))?;
-    Ok(Self(pattern))
-  }
-
-  pub fn matches_path(&self, path: &Path) -> bool {
-    self.0.matches_path(path)
-  }
-}
-
-pub struct GlobSet(Vec<GlobPattern>);
-
-impl GlobSet {
-  pub fn new(matchers: Vec<GlobPattern>) -> Self {
-    Self(matchers)
-  }
-
-  pub fn matches_path(&self, path: &Path) -> bool {
-    for pattern in &self.0 {
-      if pattern.matches_path(path) {
-        return true;
-      }
-    }
-    false
-  }
-}
-
 pub fn is_glob_pattern(path: &str) -> bool {
   path.chars().any(|c| matches!(c, '*' | '?'))
 }
@@ -87,22 +48,5 @@ fn match_options() -> glob::MatchOptions {
     require_literal_separator: true,
     // true because it copies with sh does—these files are considered "hidden"
     require_literal_leading_dot: true,
-  }
-}
-
-#[cfg(test)]
-mod test {
-  use super::*;
-
-  #[test]
-  pub fn glob_set_matches_path() {
-    let glob_set = GlobSet::new(vec![
-      GlobPattern::new("foo/bar").unwrap(),
-      GlobPattern::new("foo/baz").unwrap(),
-    ]);
-
-    assert!(glob_set.matches_path(Path::new("foo/bar")));
-    assert!(glob_set.matches_path(Path::new("foo/baz")));
-    assert!(!glob_set.matches_path(Path::new("foo/qux")));
   }
 }

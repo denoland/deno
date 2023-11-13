@@ -177,6 +177,14 @@ impl CliGraphResolver {
     self
   }
 
+  pub fn get_node_resolver(&self) -> Option<&Arc<NodeResolver>> {
+    self.node_resolver.as_ref()
+  }
+
+  pub fn get_npm_resolver(&self) -> Option<&Arc<dyn CliNpmResolver>> {
+    self.npm_resolver.as_ref()
+  }
+
   pub fn found_package_json_dep(&self) -> bool {
     self.found_package_json_dep_flag.is_raised()
   }

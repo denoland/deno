@@ -99,32 +99,6 @@ fn lsp_tsconfig_types() {
 }
 
 #[test]
-fn lsp_tsconfig_bad_config_path() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder
-      .set_config("bad_tsconfig.json")
-      .set_maybe_root_uri(None);
-  });
-  let (method, maybe_params) = client.read_notification();
-  assert_eq!(method, "window/showMessage");
-  assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
-    typ: lsp::MessageType::WARNING,
-    message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
-  }));
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Deno.args);\n"
-    }
-  }));
-  assert_eq!(diagnostics.all().len(), 0);
-}
-
-#[test]
 fn lsp_triple_slash_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -254,13 +228,14 @@ fn lsp_import_map_remote() {
 #[test]
 fn lsp_import_map_data_url() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
   });
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import example from \"example\";\n"
@@ -496,7 +471,7 @@ fn lsp_import_map_config_file_auto_discovered() {
     }]
   }));
   client.wait_until_stderr_line(|line| {
-    line.contains("Auto-resolved configuration file:")
+    line.contains("  Resolved Deno configuration file:")
   });
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
@@ -557,7 +532,7 @@ fn lsp_import_map_config_file_auto_discovered() {
     }]
   }));
   client.wait_until_stderr_line(|line| {
-    line.contains("Auto-resolved configuration file:")
+    line.contains("  Resolved Deno configuration file:")
   });
   let res = client.write_request(
     "textDocument/hover",
@@ -625,7 +600,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 
   // this will discover the deno.json in the root
   let search_line = format!(
-    "Auto-resolved configuration file: \"{}\"",
+    "  Resolved Deno configuration file: \"{}\"",
     temp_dir.uri().join("deno.json").unwrap().as_str()
   );
   client.wait_until_stderr_line(|line| line.contains(&search_line));
@@ -700,7 +675,7 @@ fn lsp_format_vendor_path() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
@@ -710,7 +685,7 @@ fn lsp_format_vendor_path() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
     }),
   );
   assert!(temp_dir
@@ -6462,7 +6437,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.did_open(
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts",
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": concat!(
@@ -6487,7 +6462,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
           "npm:chalk@~5",
           "http://localhost:4545/subdir/print_hello.ts",
         ],
-        "file:///a/file.ts",
+        temp_dir.uri().join("file.ts").unwrap(),
       ],
     }),
   );
@@ -6495,14 +6470,14 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with path
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/a.ts",
+      "uri": temp_dir.uri().join("a.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "getClie",
     }
   }));
   let list = client.get_completion_list(
-    "file:///a/a.ts",
+    temp_dir.uri().join("a.ts").unwrap(),
     (0, 7),
     json!({ "triggerKind": 1 }),
   );
@@ -6543,20 +6518,23 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix with path
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/b.ts",
+      "uri": temp_dir.uri().join("b.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "getClient",
     }
   }));
   let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/b.ts", "deno-ts")
+    .messages_with_file_and_source(
+      temp_dir.uri().join("b.ts").unwrap().as_str(),
+      "deno-ts",
+    )
     .diagnostics;
   let res = client.write_request(
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": "file:///a/b.ts"
+        "uri": temp_dir.uri().join("b.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -6588,7 +6566,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": "file:///a/b.ts",
+              "uri": temp_dir.uri().join("b.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -6606,7 +6584,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import without path
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/c.ts",
+      "uri": temp_dir.uri().join("c.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "chal",
@@ -6614,7 +6592,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
 
   let list = client.get_completion_list(
-    "file:///a/c.ts",
+    temp_dir.uri().join("c.ts").unwrap(),
     (0, 4),
     json!({ "triggerKind": 1 }),
   );
@@ -6653,20 +6631,23 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix without path
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/d.ts",
+      "uri": temp_dir.uri().join("d.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "chalk",
     }
   }));
   let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/d.ts", "deno-ts")
+    .messages_with_file_and_source(
+      temp_dir.uri().join("d.ts").unwrap().as_str(),
+      "deno-ts",
+    )
     .diagnostics;
   let res = client.write_request(
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": "file:///a/d.ts"
+        "uri": temp_dir.uri().join("d.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -6698,7 +6679,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": "file:///a/d.ts",
+              "uri": temp_dir.uri().join("d.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -6716,7 +6697,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with http import map
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/e.ts",
+      "uri": temp_dir.uri().join("e.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "printH",
@@ -6724,7 +6705,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
 
   let list = client.get_completion_list(
-    "file:///a/e.ts",
+    temp_dir.uri().join("e.ts").unwrap(),
     (0, 6),
     json!({ "triggerKind": 1 }),
   );
@@ -6763,20 +6744,23 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix with http import
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/f.ts",
+      "uri": temp_dir.uri().join("f.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "printHello",
     }
   }));
   let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/f.ts", "deno-ts")
+    .messages_with_file_and_source(
+      temp_dir.uri().join("f.ts").unwrap().as_str(),
+      "deno-ts",
+    )
     .diagnostics;
   let res = client.write_request(
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": "file:///a/f.ts"
+        "uri": temp_dir.uri().join("f.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -6808,7 +6792,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": "file:///a/f.ts",
+              "uri": temp_dir.uri().join("f.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -8315,9 +8299,7 @@ fn lsp_performance() {
       "update_diagnostics_deps",
       "update_diagnostics_lint",
       "update_diagnostics_ts",
-      "update_import_map",
       "update_registries",
-      "update_tsconfig",
     ]
   );
   client.shutdown();
@@ -8749,7 +8731,7 @@ fn lsp_format_with_config() {
     .did_open(
       json!({
         "textDocument": {
-          "uri": "file:///a/file.ts",
+          "uri": temp_dir.uri().join("file.ts").unwrap(),
           "languageId": "typescript",
           "version": 1,
           "text": "export async function someVeryLongFunctionName() {\nconst response = fetch(\"http://localhost:4545/some/non/existent/path.json\");\nconsole.log(response.text());\nconsole.log(\"finished!\")\n}"
@@ -8762,7 +8744,7 @@ fn lsp_format_with_config() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts"
+        "uri": temp_dir.uri().join("file.ts").unwrap()
       },
       "options": {
         "tabSize": 2,
@@ -9394,7 +9376,7 @@ fn lsp_lint_with_config() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"

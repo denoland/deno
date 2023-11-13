@@ -643,6 +643,7 @@ mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
+  use crate::lsp::cache::LspCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::npm::NpmSearchApi;
@@ -685,10 +686,7 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
-    ));
+    let cache = Arc::new(LspCache::new(location, &Default::default()));
     let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
