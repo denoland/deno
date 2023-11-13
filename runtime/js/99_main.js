@@ -66,7 +66,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
   mainRuntimeGlobalProperties,
-  makeLazy,
+  memoizeLazy,
   unstableWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
@@ -238,9 +238,9 @@ function opMainModule() {
   return ops.op_main_module();
 }
 
-const opArgs = makeLazy(() => ops.op_bootstrap_args());
-const opPid = makeLazy(() => ops.op_bootstrap_pid());
-const opPpid = makeLazy(() => ops.op_ppid());
+const opArgs = memoizeLazy(() => ops.op_bootstrap_args());
+const opPid = memoizeLazy(() => ops.op_bootstrap_pid());
+const opPpid = memoizeLazy(() => ops.op_ppid());
 setNoColorFn(() => ops.op_bootstrap_no_color());
 
 function formatException(error) {

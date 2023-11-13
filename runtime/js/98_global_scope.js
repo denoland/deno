@@ -158,7 +158,7 @@ class Navigator {
 
 const navigator = webidl.createBranded(Navigator);
 
-function makeLazy(f) {
+function memoizeLazy(f) {
   let v_ = null;
   return () => {
     if (v_ === null) {
@@ -168,9 +168,9 @@ function makeLazy(f) {
   };
 }
 
-const numCpus = makeLazy(() => ops.op_bootstrap_numcpus());
-const userAgent = makeLazy(() => ops.op_bootstrap_user_agent());
-const language = makeLazy(() => ops.op_bootstrap_language());
+const numCpus = memoizeLazy(() => ops.op_bootstrap_numcpus());
+const userAgent = memoizeLazy(() => ops.op_bootstrap_user_agent());
+const language = memoizeLazy(() => ops.op_bootstrap_language());
 
 ObjectDefineProperties(Navigator.prototype, {
   hardwareConcurrency: {
