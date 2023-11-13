@@ -1494,7 +1494,6 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
   const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
   if (isKeyValue) {
     // Mark entry iterators as such.
