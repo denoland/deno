@@ -92,6 +92,7 @@ pub struct CliMainWorkerOptions {
   pub hmr: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
+  pub strace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   pub is_npm_main: bool,
   pub location: Option<Url>,
@@ -100,6 +101,7 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
 }
 
@@ -527,7 +529,7 @@ impl CliMainWorkerFactory {
         .join(checksum::gen(&[key.as_bytes()]))
     });
 
-    let mut extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let mut extensions = ops::cli_exts();
     extensions.append(&mut custom_extensions);
 
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -580,6 +582,7 @@ impl CliMainWorkerFactory {
       maybe_inspector_server,
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
+      strace_ops: shared.options.strace_ops.clone(),
       module_loader,
       fs: shared.fs.clone(),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
@@ -594,6 +597,7 @@ impl CliMainWorkerFactory {
       ),
       stdio,
       feature_checker,
+      skip_op_registration: shared.options.skip_op_registration,
     };
 
     let worker = MainWorker::bootstrap_from_options(
@@ -704,7 +708,7 @@ fn create_web_worker_callback(
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 
-    let extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let extensions = ops::cli_exts();
 
     let maybe_storage_key = shared
       .storage_key_resolver

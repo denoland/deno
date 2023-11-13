@@ -43,14 +43,15 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  PromisePrototypeThen,
   Symbol,
-  SymbolFor,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
 
 const {
+  op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
@@ -118,11 +119,11 @@ function upgradeHttpRaw(req, conn) {
 
 function addTrailers(resp, headerList) {
   const inner = toInnerResponse(resp);
-  op_http_set_response_trailers(inner.slabId, headerList);
+  op_http_set_response_trailers(inner.external, headerList);
 }
 
 class InnerRequest {
-  #slabId;
+  #external;
   #context;
   #methodAndUri;
   #streamRid;
@@ -130,14 +131,14 @@ class InnerRequest {
   #upgraded;
   #urlValue;
 
-  constructor(slabId, context) {
-    this.#slabId = slabId;
+  constructor(external, context) {
+    this.#external = external;
     this.#context = context;
     this.#upgraded = false;
   }
 
   close() {
-    this.#slabId = undefined;
+    this.#external = null;
   }
 
   get [_upgraded]() {
@@ -148,7 +149,7 @@ class InnerRequest {
     if (this.#upgraded) {
       throw new Deno.errors.Http("already upgraded");
     }
-    if (this.#slabId === undefined) {
+    if (this.#external === null) {
       throw new Deno.errors.Http("already closed");
     }
 
@@ -160,7 +161,7 @@ class InnerRequest {
 
     // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
-      const slabId = this.#slabId;
+      const external = this.#external;
       const underlyingConn = originalArgs[0];
 
       this.url();
@@ -169,7 +170,7 @@ class InnerRequest {
 
       this.#upgraded = () => {};
 
-      const upgradeRid = op_http_upgrade_raw(slabId);
+      const upgradeRid = op_http_upgrade_raw(external);
 
       const conn = new TcpConn(
         upgradeRid,
@@ -185,7 +186,7 @@ class InnerRequest {
       const response = originalArgs[0];
       const ws = originalArgs[1];
 
-      const slabId = this.#slabId;
+      const external = this.#external;
 
       this.url();
       this.headerList;
@@ -195,15 +196,16 @@ class InnerRequest {
       this.#upgraded = () => {
         goAhead.resolve();
       };
+      const wsPromise = op_http_upgrade_websocket_next(
+        external,
+        response.headerList,
+      );
 
       // Start the upgrade in the background.
       (async () => {
         try {
           // Returns the upgraded websocket connection
-          const wsRid = await op_http_upgrade_websocket_next(
-            slabId,
-            response.headerList,
-          );
+          const wsRid = await wsPromise;
 
           // We have to wait for the go-ahead signal
           await goAhead;
@@ -237,12 +239,12 @@ class InnerRequest {
     }
 
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === undefined) {
+      if (this.#external === null) {
         throw new TypeError("request closed");
       }
       // TODO(mmastrac): This is quite slow as we're serializing a large number of values. We may want to consider
       // splitting this up into multiple ops.
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
 
     const path = this.#methodAndUri[2];
@@ -282,10 +284,10 @@ class InnerRequest {
       };
     }
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === undefined) {
+      if (this.#external === null) {
         throw new TypeError("request closed");
       }
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
     return {
       transport: "tcp",
@@ -296,16 +298,16 @@ class InnerRequest {
 
   get method() {
     if (this.#methodAndUri === undefined) {
-      if (this.#slabId === undefined) {
+      if (this.#external === null) {
         throw new TypeError("request closed");
       }
-      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
     return this.#methodAndUri[0];
   }
 
   get body() {
-    if (this.#slabId === undefined) {
+    if (this.#external === null) {
       throw new TypeError("request closed");
     }
     if (this.#body !== undefined) {
@@ -317,25 +319,25 @@ class InnerRequest {
       this.#body = null;
       return null;
     }
-    this.#streamRid = op_http_read_request_body(this.#slabId);
+    this.#streamRid = op_http_read_request_body(this.#external);
     this.#body = new InnerBody(readableStreamForRid(this.#streamRid, false));
     return this.#body;
   }
 
   get headerList() {
-    if (this.#slabId === undefined) {
+    if (this.#external === null) {
       throw new TypeError("request closed");
     }
     const headers = [];
-    const reqHeaders = op_http_get_request_headers(this.#slabId);
+    const reqHeaders = op_http_get_request_headers(this.#external);
     for (let i = 0; i < reqHeaders.length; i += 2) {
       ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
     }
     return headers;
   }
 
-  get slabId() {
-    return this.#slabId;
+  get external() {
+    return this.#external;
   }
 }
 
@@ -386,9 +388,10 @@ class ServeHandlerInfo {
   }
 }
 
-function fastSyncResponseOrStream(req, respBody, status) {
+function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
+    innerRequest?.close();
     op_http_set_promise_complete(req, status);
     return;
   }
@@ -397,36 +400,43 @@ function fastSyncResponseOrStream(req, respBody, status) {
   const body = stream.body;
 
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
+    innerRequest?.close();
     op_http_set_response_body_bytes(req, body, status);
     return;
   }
 
   if (typeof body === "string") {
+    innerRequest?.close();
     op_http_set_response_body_text(req, body, status);
     return;
   }
 
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
+    innerRequest?.close();
     throw TypeError("invalid response");
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
+  let rid, autoClose;
   if (resourceBacking) {
-    op_http_set_response_body_resource(
-      req,
-      resourceBacking.rid,
-      resourceBacking.autoClose,
-      status,
-    );
+    rid = resourceBacking.rid;
+    autoClose = resourceBacking.autoClose;
   } else {
-    const rid = resourceForReadableStream(stream);
+    rid = resourceForReadableStream(stream);
+    autoClose = true;
+  }
+  PromisePrototypeThen(
     op_http_set_response_body_resource(
       req,
       rid,
-      true,
+      autoClose,
       status,
-    );
-  }
+    ),
+    () => {
+      innerRequest?.close();
+      op_http_close_after_finish(req);
+    },
+  );
 }
 
 /**
@@ -484,8 +494,8 @@ function mapToCallback(context, callback, onError) {
     // Did everything shut down while we were waiting?
     if (context.closed) {
       // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
-      op_http_set_promise_complete(req, 503);
       innerRequest?.close();
+      op_http_set_promise_complete(req, 503);
       return;
     }
 
@@ -499,8 +509,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    fastSyncResponseOrStream(req, inner.body, status);
-    innerRequest?.close();
+    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 }
 
@@ -642,7 +651,6 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
 function serveHttpOn(context, callback) {
   let ref = true;
   let currentPromise = null;
-  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
@@ -661,12 +669,12 @@ function serveHttpOn(context, callback) {
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
-        while ((req = op_http_try_wait(rid)) !== -1) {
+        while ((req = op_http_try_wait(rid)) !== null) {
           PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
-          core.unrefOp(currentPromise[promiseIdSymbol]);
+          core.unrefOpPromise(currentPromise);
         }
         req = await currentPromise;
         currentPromise = null;
@@ -679,7 +687,7 @@ function serveHttpOn(context, callback) {
         }
         throw new Deno.errors.Http(error);
       }
-      if (req === -1) {
+      if (req === null) {
         break;
       }
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
@@ -708,13 +716,13 @@ function serveHttpOn(context, callback) {
     ref() {
       ref = true;
       if (currentPromise) {
-        core.refOp(currentPromise[promiseIdSymbol]);
+        core.refOpPromise(currentPromise);
       }
     },
     unref() {
       ref = false;
       if (currentPromise) {
-        core.unrefOp(currentPromise[promiseIdSymbol]);
+        core.unrefOpPromise(currentPromise);
       }
     },
     [SymbolAsyncDispose]() {

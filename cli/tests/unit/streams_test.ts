@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, Deferred, deferred, fail } from "./test_util.ts";
+import { assertEquals, fail } from "./test_util.ts";
 
 const {
   core,
@@ -11,8 +11,10 @@ const LOREM =
   "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
 
 // Hello world, with optional close
-// deno-lint-ignore no-explicit-any
-function helloWorldStream(close?: boolean, completion?: Deferred<any>) {
+function helloWorldStream(
+  close?: boolean,
+  cancelResolve?: (value: unknown) => void,
+) {
   return new ReadableStream({
     start(controller) {
       controller.enqueue("hello, world");
@@ -21,7 +23,9 @@ function helloWorldStream(close?: boolean, completion?: Deferred<any>) {
       }
     },
     cancel(reason) {
-      completion?.resolve(reason);
+      if (cancelResolve != undefined) {
+        cancelResolve(reason);
+      }
     },
   }).pipeThrough(new TextEncoderStream());
 }
@@ -61,8 +65,7 @@ function longStream() {
 }
 
 // Long stream with Lorem Ipsum text.
-// deno-lint-ignore no-explicit-any
-function longAsyncStream(completion?: Deferred<any>) {
+function longAsyncStream(cancelResolve?: (value: unknown) => void) {
   let currentTimeout: number | undefined = undefined;
   return new ReadableStream({
     async start(controller) {
@@ -74,7 +77,9 @@ function longAsyncStream(completion?: Deferred<any>) {
       controller.close();
     },
     cancel(reason) {
-      completion?.resolve(reason);
+      if (cancelResolve != undefined) {
+        cancelResolve(reason);
+      }
       if (currentTimeout !== undefined) {
         clearTimeout(currentTimeout);
       }
@@ -185,40 +190,44 @@ Deno.test(async function readableStream() {
 
 // Close the stream after reading everything
 Deno.test(async function readableStreamClose() {
-  const cancel = deferred();
-  const rid = resourceForReadableStream(helloWorldStream(false, cancel));
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(helloWorldStream(false, cancelResolve));
   const buffer = new Uint8Array(1024);
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 12);
   core.ops.op_close(rid);
-  assertEquals(await cancel, "resource closed");
+  assertEquals(await cancelPromise, "resource closed");
 });
 
 // Close the stream without reading everything
 Deno.test(async function readableStreamClosePartialRead() {
-  const cancel = deferred();
-  const rid = resourceForReadableStream(helloWorldStream(false, cancel));
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(helloWorldStream(false, cancelResolve));
   const buffer = new Uint8Array(5);
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 5);
   core.ops.op_close(rid);
-  assertEquals(await cancel, "resource closed");
+  assertEquals(await cancelPromise, "resource closed");
 });
 
 // Close the stream without reading anything
 Deno.test(async function readableStreamCloseWithoutRead() {
-  const cancel = deferred();
-  const rid = resourceForReadableStream(helloWorldStream(false, cancel));
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(helloWorldStream(false, cancelResolve));
   core.ops.op_close(rid);
-  assertEquals(await cancel, "resource closed");
+  assertEquals(await cancelPromise, "resource closed");
 });
 
 // Close the stream without reading anything
 Deno.test(async function readableStreamCloseWithoutRead2() {
-  const cancel = deferred();
-  const rid = resourceForReadableStream(longAsyncStream(cancel));
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(longAsyncStream(cancelResolve));
   core.ops.op_close(rid);
-  assertEquals(await cancel, "resource closed");
+  assertEquals(await cancelPromise, "resource closed");
 });
 
 Deno.test(async function readableStreamPartial() {
@@ -432,7 +441,8 @@ function createStreamTest(
 
 Deno.test(async function readableStreamWithAggressiveResourceClose() {
   let first = true;
-  const reasonPromise = deferred();
+  const { promise: reasonPromise, resolve: reasonResolve } = Promise
+    .withResolvers();
   const rid = resourceForReadableStream(
     new ReadableStream({
       pull(controller) {
@@ -446,7 +456,7 @@ Deno.test(async function readableStreamWithAggressiveResourceClose() {
         }
       },
       cancel(reason) {
-        reasonPromise.resolve(reason);
+        reasonResolve(reason);
       },
     }),
   );

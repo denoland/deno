@@ -36,6 +36,8 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
       | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
       ModuleError::Missing(_, _)
       | ModuleError::MissingDynamic(_, _)
+      | ModuleError::MissingWorkspaceMemberExports { .. }
+      | ModuleError::UnknownExport { .. }
       | ModuleError::UnknownPackage { .. }
       | ModuleError::UnknownPackageReq { .. } => "NotFound",
     },

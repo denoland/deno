@@ -3180,6 +3180,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
+      if let Err(err) = ls.update_tsconfig().await {
+        ls.client.show_message(MessageType::WARNING, err);
+      }
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
