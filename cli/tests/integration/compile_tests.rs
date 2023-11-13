@@ -553,8 +553,7 @@ fn check_local_by_default2() {
       "compile",
       "--output",
       &exe.to_string_lossy(),
-      
-        "./compile/check_local_by_default2.ts"
+      "./compile/check_local_by_default2.ts"
     ])
     .run()
     .assert_matches_text(
@@ -579,7 +578,7 @@ fn workers_basic() {
       "--no-check",
       "--output",
       &exe.to_string_lossy(),
-        "./compile/workers/basic.ts"
+      "./compile/workers/basic.ts",
     ])
     .run()
     .skip_output_check()
@@ -668,7 +667,7 @@ fn dynamic_import() {
       "compile",
       "--output",
       &exe.to_string_lossy(),
-      "./compile/dynamic_imports/main.ts"
+      "./compile/dynamic_imports/main.ts",
     ])
     .run()
     .skip_output_check()
