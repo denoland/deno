@@ -1883,11 +1883,12 @@ fn lsp_exclude_config() {
 #[test]
 fn lsp_hover_unstable_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       // IMPORTANT: If you change this API due to stabilization, also change it
@@ -1899,7 +1900,7 @@ fn lsp_hover_unstable_disabled() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts"
+        "uri": temp_dir.uri().join("file.ts").unwrap()
       },
       "position": { "line": 0, "character": 14 }
     }),
@@ -1926,13 +1927,14 @@ fn lsp_hover_unstable_disabled() {
 #[test]
 fn lsp_hover_unstable_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_unstable(true);
   });
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "type _ = Deno.ForeignLibraryInterface;\n"
@@ -1942,7 +1944,7 @@ fn lsp_hover_unstable_enabled() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts"
+        "uri": temp_dir.uri().join("file.ts").unwrap()
       },
       "position": { "line": 0, "character": 14 }
     }),
