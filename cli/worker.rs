@@ -417,6 +417,7 @@ impl CliMainWorkerFactory {
         permissions,
         vec![],
         Default::default(),
+        false,
       )
       .await
   }
@@ -427,6 +428,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     mut custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
+    is_test_or_jupyter: bool,
   ) -> Result<CliMainWorker, AnyError> {
     let shared = &self.shared;
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
@@ -598,11 +600,18 @@ impl CliMainWorkerFactory {
       feature_checker,
     };
 
-    let worker = MainWorker::bootstrap_from_options(
+    let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
       permissions,
       options,
     );
+
+    if is_test_or_jupyter {
+      worker.js_runtime.execute_script_static(
+        "40_jupyter.js",
+        include_str!("js/40_jupyter.js"),
+      )?;
+    }
 
     Ok(CliMainWorker {
       main_module,

@@ -173,6 +173,7 @@ async fn bench_specifier(
       PermissionsContainer::new(permissions),
       vec![ops::bench::deno_bench::init_ops(sender.clone())],
       Default::default(),
+      false,
     )
     .await?;
 

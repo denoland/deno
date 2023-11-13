@@ -99,13 +99,10 @@ pub async fn kernel(
         stdout,
         stderr,
       },
+      true,
     )
     .await?;
   worker.setup_repl().await?;
-  worker.execute_script_static(
-    "40_jupyter.js",
-    include_str!("../../js/40_jupyter.js"),
-  )?;
   worker.execute_script_static(
     located_script_name!(),
     "Deno[Deno.internal].enableJupyter();",

@@ -128,6 +128,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
         test_event_sender.clone(),
       )],
       Default::default(),
+      false,
     )
     .await?;
   worker.setup_repl().await?;
