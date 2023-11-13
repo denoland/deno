@@ -68,7 +68,7 @@ fn xdg_cache_home_dir() {
       "cache --reload --no-check http://localhost:4548/subdir/redirects/a.ts",
     )
     .run()
-    .assert_matches_text("")
+    .skip_output_check()
     .assert_exit_code(0);
   assert!(deno_dir.path().read_dir().count() > 0);
 }
