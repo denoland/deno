@@ -136,6 +136,7 @@ const {
   WeakSetPrototypeHas,
   isNaN,
 } = primordials;
+import { previewEntries } from "ext:deno_node/internal_binding/util.ts";
 
 let noColor = () => false;
 
@@ -1493,9 +1494,7 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
-  const { 0: entries, 1: isKeyValue } = value;
+  const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
   if (isKeyValue) {
     // Mark entry iterators as such.
     braces[0] = StringPrototypeReplace(
@@ -1704,16 +1703,12 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const entries = previewEntries(value);
-  const entries = value;
+  const entries = previewEntries(value);
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const entries = previewEntries(value);
-  const entries = value;
+  const entries = previewEntries(value);
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
