@@ -326,9 +326,7 @@ Deno.test(function binaryEncode() {
 });
 
 Deno.test(
-  {
-    permissions: { read: true },
-  },
+  { permissions: { read: true } },
   async function textDecoderStreamCleansUpOnCancel() {
     let cancelled = false;
     const readable = new ReadableStream({
