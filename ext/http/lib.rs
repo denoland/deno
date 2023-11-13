@@ -86,7 +86,7 @@ mod reader_stream;
 mod request_body;
 mod request_properties;
 mod response_body;
-mod slab;
+mod service;
 mod websocket_upgrade;
 
 pub use request_properties::DefaultHttpPropertyExtractor;

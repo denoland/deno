@@ -1285,6 +1285,7 @@ dependencies = [
  "flate2",
  "fly-accept-encoding",
  "http",
+ "http-body-util",
  "httparse",
  "hyper 0.14.27",
  "hyper 1.0.0-rc.4",
@@ -1298,7 +1299,6 @@ dependencies = [
  "ring",
  "scopeguard",
  "serde",
- "slab",
  "smallvec",
  "thiserror",
  "tokio",
@@ -2714,6 +2714,19 @@ checksum = "951dfc2e32ac02d67c90c0d65bd27009a635dc9b381a2cc7d284ab01e3a0150d"
 dependencies = [
  "bytes",
  "http",
+]
+
+[[package]]
+name = "http-body-util"
+version = "0.1.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08ef12f041acdd397010e5fb6433270c147d3b8b2d0a840cd7fff8e531dca5c8"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http",
+ "http-body 1.0.0-rc.2",
+ "pin-project-lite",
 ]
 
 [[package]]
