@@ -1,0 +1,8 @@
+Missing JSDoc comment.
+    at file:///[WILDCARD]/referenced_private_types.ts:5:1
+
+Type 'MyClass.prototype.prop' references type 'MyInterface' which is not exported from a root module.
+Missing JSDoc comment.
+    at file:///[WILDCARD]/referenced_private_types.ts:6:3
+
+error: Found 3 documentation lint errors.

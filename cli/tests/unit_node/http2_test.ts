@@ -63,6 +63,52 @@ for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   });
 }
 
+Deno.test(`[node/http2 client createConnection]`, {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const url = "http://127.0.0.1:4246";
+  const createConnPromise = deferred();
+  // Create a server to respond to the HTTP2 requests
+  const client = http2.connect(url, {
+    createConnection() {
+      const socket = net.connect({ host: "127.0.0.1", port: 4246 });
+
+      socket.on("connect", () => {
+        createConnPromise.resolve();
+      });
+
+      return socket;
+    },
+  });
+  client.on("error", (err) => console.error(err));
+
+  const req = client.request({ ":method": "POST", ":path": "/" });
+
+  let receivedData = "";
+
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+  req.end();
+
+  const endPromise = deferred();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await createConnPromise;
+  await endPromise;
+  assertEquals(receivedData, "hello world\n");
+});
+
 // TODO(bartlomieju): reenable sanitizers
 Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
   const server = http2.createServer();

@@ -192,7 +192,7 @@ class TextDecoder {
   }
 }
 
-webidl.configurePrototype(TextDecoder);
+webidl.configureInterface(TextDecoder);
 const TextDecoderPrototype = TextDecoder.prototype;
 
 class TextEncoder {
@@ -251,7 +251,7 @@ class TextEncoder {
 
 const encodeIntoBuf = new Uint32Array(2);
 
-webidl.configurePrototype(TextEncoder);
+webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;
 
 class TextDecoderStream {
@@ -301,6 +301,14 @@ class TextDecoderStream {
           return PromiseReject(err);
         }
       },
+      cancel: (_reason) => {
+        try {
+          const _ = this.#decoder.decode();
+          return PromiseResolve();
+        } catch (err) {
+          return PromiseReject(err);
+        }
+      },
     });
     this[webidl.brand] = webidl.brand;
   }
@@ -336,7 +344,7 @@ class TextDecoderStream {
   }
 }
 
-webidl.configurePrototype(TextDecoderStream);
+webidl.configureInterface(TextDecoderStream);
 const TextDecoderStreamPrototype = TextDecoderStream.prototype;
 
 class TextEncoderStream {
@@ -409,7 +417,7 @@ class TextEncoderStream {
   }
 }
 
-webidl.configurePrototype(TextEncoderStream);
+webidl.configureInterface(TextEncoderStream);
 const TextEncoderStreamPrototype = TextEncoderStream.prototype;
 
 webidl.converters.TextDecoderOptions = webidl.createDictionaryConverter(

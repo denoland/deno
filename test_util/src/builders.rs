@@ -212,6 +212,15 @@ impl TestContext {
     builder.deno_exe(&self.deno_exe).set_test_context(self);
     builder
   }
+
+  pub fn run_npm(&self, args: impl AsRef<str>) {
+    self
+      .new_command()
+      .name("npm")
+      .args(args)
+      .run()
+      .skip_output_check();
+  }
 }
 
 pub struct TestCommandBuilder {
@@ -227,7 +236,7 @@ pub struct TestCommandBuilder {
 }
 
 impl TestCommandBuilder {
-  pub fn command_name(mut self, name: impl AsRef<OsStr>) -> Self {
+  pub fn name(mut self, name: impl AsRef<OsStr>) -> Self {
     self.command_name = name.as_ref().to_string_lossy().to_string();
     self
   }
@@ -306,7 +315,11 @@ impl TestCommandBuilder {
   }
 
   fn build_command_path(&self) -> PathRef {
-    let command_name = &self.command_name;
+    let command_name = if cfg!(windows) && self.command_name == "npm" {
+      "npm.cmd"
+    } else {
+      &self.command_name
+    };
     if command_name == "deno" {
       deno_exe_path()
     } else {
@@ -407,11 +420,11 @@ impl TestCommandBuilder {
       command.env_clear();
     }
     command.env("DENO_DIR", self.context.deno_dir.path());
-    let envs = self.build_envs();
+    let mut envs = self.build_envs();
     if !envs.contains_key("NPM_CONFIG_REGISTRY") {
-      command.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
+      envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
     }
-    command.envs(self.build_envs());
+    command.envs(envs);
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
 
@@ -527,6 +540,7 @@ impl Drop for TestCommandOutput {
 
     // now ensure the exit code was asserted
     if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
+      self.print_output();
       panic!(
         "The non-zero exit code of the command was not asserted: {:?}",
         self.exit_code,

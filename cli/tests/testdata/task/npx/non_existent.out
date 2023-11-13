@@ -1,3 +1,2 @@
-Warning Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in an upcoming release.
 Task non-existent npx this-command-should-not-exist-for-you
 npx: could not resolve command 'this-command-should-not-exist-for-you'

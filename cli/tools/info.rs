@@ -15,7 +15,6 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
@@ -508,8 +507,7 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleGraphError::ModuleError(ModuleError::Missing(_, _)) = *err
-        {
+        if let ModuleError::Missing(_, _) = *err {
           writeln!(
             writer,
             "{} module could not be found",
@@ -648,39 +646,40 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_error_info(
     &mut self,
-    err: &ModuleGraphError,
+    err: &ModuleError,
     specifier: &ModuleSpecifier,
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::ModuleError(err) => match err {
-        ModuleError::InvalidTypeAssertion { .. } => {
-          self.build_error_msg(specifier, "(invalid import attribute)")
-        }
-        ModuleError::LoadingErr(_, _, _) => {
-          self.build_error_msg(specifier, "(loading error)")
-        }
-        ModuleError::ParseErr(_, _) => {
-          self.build_error_msg(specifier, "(parsing error)")
-        }
-        ModuleError::UnsupportedImportAttributeType { .. } => {
-          self.build_error_msg(specifier, "(unsupported import attribute)")
-        }
-        ModuleError::UnsupportedMediaType { .. } => {
-          self.build_error_msg(specifier, "(unsupported)")
-        }
-        ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
-          self.build_error_msg(specifier, "(missing)")
-        }
-        ModuleError::UnknownPackage { .. } => {
-          self.build_error_msg(specifier, "(unknown package)")
-        }
-        ModuleError::UnknownPackageReq { .. } => {
-          self.build_error_msg(specifier, "(unknown package constraint)")
-        }
-      },
-      ModuleGraphError::ResolutionError(_) => {
-        self.build_error_msg(specifier, "(resolution error)")
+      ModuleError::InvalidTypeAssertion { .. } => {
+        self.build_error_msg(specifier, "(invalid import attribute)")
+      }
+      ModuleError::LoadingErr(_, _, _) => {
+        self.build_error_msg(specifier, "(loading error)")
+      }
+      ModuleError::ParseErr(_, _) => {
+        self.build_error_msg(specifier, "(parsing error)")
+      }
+      ModuleError::UnsupportedImportAttributeType { .. } => {
+        self.build_error_msg(specifier, "(unsupported import attribute)")
+      }
+      ModuleError::UnsupportedMediaType { .. } => {
+        self.build_error_msg(specifier, "(unsupported)")
+      }
+      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+        self.build_error_msg(specifier, "(missing)")
+      }
+      ModuleError::MissingWorkspaceMemberExports { .. } => {
+        self.build_error_msg(specifier, "(missing exports)")
+      }
+      ModuleError::UnknownExport { .. } => {
+        self.build_error_msg(specifier, "(unknown export)")
+      }
+      ModuleError::UnknownPackage { .. } => {
+        self.build_error_msg(specifier, "(unknown package)")
+      }
+      ModuleError::UnknownPackageReq { .. } => {
+        self.build_error_msg(specifier, "(unknown package constraint)")
       }
     }
   }

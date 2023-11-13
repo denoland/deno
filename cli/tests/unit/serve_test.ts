@@ -48,7 +48,12 @@ function onListen<T>(
 async function makeServer(
   handler: (req: Request) => Response | Promise<Response>,
 ): Promise<
-  { finished: Promise<void>; abort: () => void; shutdown: () => Promise<void> }
+  {
+    finished: Promise<void>;
+    abort: () => void;
+    shutdown: () => Promise<void>;
+    [Symbol.asyncDispose](): PromiseLike<void>;
+  }
 > {
   const ac = new AbortController();
   const listeningPromise = deferred();
@@ -68,6 +73,9 @@ async function makeServer(
     },
     async shutdown() {
       await server.shutdown();
+    },
+    [Symbol.asyncDispose]() {
+      return server[Symbol.asyncDispose]();
     },
   };
 }
@@ -293,6 +301,42 @@ Deno.test(
     assertEquals((await (await f).text()).length, 1048576);
     await s;
     await finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerExplicitResourceManagement() {
+    let dataPromise;
+
+    {
+      await using _server = await makeServer(async (_req) => {
+        return new Response((await makeTempFile(1024 * 1024)).readable);
+      });
+
+      const resp = await fetch(`http://localhost:${servePort}`);
+      dataPromise = resp.arrayBuffer();
+    }
+
+    assertEquals((await dataPromise).byteLength, 1048576);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerExplicitResourceManagementManualClose() {
+    await using server = await makeServer(async (_req) => {
+      return new Response((await makeTempFile(1024 * 1024)).readable);
+    });
+
+    const resp = await fetch(`http://localhost:${servePort}`);
+
+    const [_, data] = await Promise.all([
+      server.shutdown(),
+      resp.arrayBuffer(),
+    ]);
+
+    assertEquals(data.byteLength, 1048576);
   },
 );
 
@@ -3717,6 +3761,17 @@ async function curlRequestWithStdErr(args: string[]) {
   return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
 }
 
+Deno.test("Deno.Server is not thenable", async () => {
+  // deno-lint-ignore require-await
+  async function serveTest() {
+    const server = Deno.serve({ port: servePort }, (_) => new Response(""));
+    assert(!("then" in server));
+    return server;
+  }
+  const server = await serveTest();
+  await server.shutdown();
+});
+
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
@@ -3748,5 +3803,72 @@ Deno.test(
     );
     ac.abort();
     await server.finished;
+  },
+);
+
+// serve Handler must return Response class or promise that resolves Response class
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeCallbackReturn() {
+    const d = deferred();
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(listeningPromise),
+        signal: ac.signal,
+        onError: (error) => {
+          assert(error instanceof TypeError);
+          assert(
+            error.message ===
+              "Return value from serve handler must be a response or a promise resolving to a response",
+          );
+          d.resolve();
+          return new Response("Customized Internal Error from onError");
+        },
+      },
+      () => {
+        // Trick the typechecker
+        return <Response> <unknown> undefined;
+      },
+    );
+    await listeningPromise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    await d;
+    ac.abort();
+    await server.finished;
+    assert(respText === "Customized Internal Error from onError");
+  },
+);
+
+// onError Handler must return Response class or promise that resolves Response class
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeErrorCallbackReturn() {
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(listeningPromise),
+        signal: ac.signal,
+        onError: () => {
+          // Trick the typechecker
+          return <Response> <unknown> undefined;
+        },
+      },
+      () => {
+        // Trick the typechecker
+        return <Response> <unknown> undefined;
+      },
+    );
+    await listeningPromise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    ac.abort();
+    await server.finished;
+    assert(respText === "Internal Server Error");
   },
 );

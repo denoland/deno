@@ -44,6 +44,7 @@ pub struct BootstrapOptions {
   pub args: Vec<String>,
   pub cpu_count: usize,
   pub log_level: WorkerLogLevel,
+  pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
@@ -54,7 +55,10 @@ pub struct BootstrapOptions {
   pub runtime_version: String,
   /// Sets `Deno.version.typescript` in JS runtime.
   pub ts_version: String,
+  // --unstable flag, deprecated
   pub unstable: bool,
+  // --unstable-* flags
+  pub unstable_features: Vec<i32>,
   pub user_agent: String,
   pub inspect: bool,
   pub has_node_modules_dir: bool,
@@ -76,12 +80,14 @@ impl Default for BootstrapOptions {
       cpu_count,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
+      enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),
       ts_version: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
       unstable: Default::default(),
+      unstable_features: Default::default(),
       inspect: Default::default(),
       args: Default::default(),
       has_node_modules_dir: Default::default(),
@@ -101,33 +107,19 @@ impl Default for BootstrapOptions {
 /// Keep this in sync with `99_main.js`.
 #[derive(Serialize)]
 struct BootstrapV8<'a>(
-  // args
-  &'a Vec<String>,
-  // cpu_count
-  i32,
-  // log_level
-  i32,
   // runtime_version
-  &'a str,
-  // locale
   &'a str,
   // location
   Option<&'a str>,
-  // no_color
-  bool,
-  // is_tty
-  bool,
   // ts_version
   &'a str,
   // unstable
   bool,
-  // process_id
-  i32,
+  // granular unstable flags
+  &'a [i32],
   // env!("TARGET")
   &'a str,
   // v8_version
-  &'a str,
-  // user_agent
   &'a str,
   // inspect
   bool,
@@ -149,20 +141,13 @@ impl BootstrapOptions {
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
     let bootstrap = BootstrapV8(
-      &self.args,
-      self.cpu_count as _,
-      self.log_level as _,
       &self.runtime_version,
-      &self.locale,
       self.location.as_ref().map(|l| l.as_str()),
-      self.no_color,
-      self.is_tty,
       &self.ts_version,
       self.unstable,
-      std::process::id() as _,
+      self.unstable_features.as_ref(),
       env!("TARGET"),
       deno_core::v8_version(),
-      &self.user_agent,
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,

@@ -5,19 +5,18 @@ import {
   assertNotStrictEquals,
   assertStringIncludes,
   assertThrows,
-  deferred,
 } from "./test_util.ts";
 
 Deno.test({ permissions: { hrtime: false } }, async function performanceNow() {
-  const resolvable = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   const start = performance.now();
   let totalTime = 0;
   setTimeout(() => {
     const end = performance.now();
     totalTime = end - start;
-    resolvable.resolve();
+    resolve();
   }, 10);
-  await resolvable;
+  await promise;
   assert(totalTime >= 10);
 });
 

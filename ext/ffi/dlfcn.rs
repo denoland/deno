@@ -14,7 +14,7 @@ use deno_core::v8;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use dlopen::raw::Library;
+use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 use std::borrow::Cow;
@@ -148,7 +148,7 @@ where
   permissions.check_partial(Some(&PathBuf::from(&path)))?;
 
   let lib = Library::open(&path).map_err(|e| {
-    dlopen::Error::OpeningLibraryError(std::io::Error::new(
+    dlopen2::Error::OpeningLibraryError(std::io::Error::new(
       std::io::ErrorKind::Other,
       format_error(e, path),
     ))
@@ -342,7 +342,7 @@ fn make_sync_fn<'s>(
 
 // `path` is only used on Windows.
 #[allow(unused_variables)]
-pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
+pub(crate) fn format_error(e: dlopen2::Error, path: String) -> String {
   match e {
     #[cfg(target_os = "windows")]
     // This calls FormatMessageW with library path
@@ -351,7 +351,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
     // flag without any arguments.
     //
     // https://github.com/denoland/deno/issues/11632
-    dlopen::Error::OpeningLibraryError(e) => {
+    dlopen2::Error::OpeningLibraryError(e) => {
       use std::ffi::OsStr;
       use std::os::windows::ffi::OsStrExt;
       use winapi::shared::minwindef::DWORD;
@@ -432,7 +432,7 @@ mod tests {
     use super::format_error;
 
     // BAD_EXE_FORMAT
-    let err = dlopen::Error::OpeningLibraryError(
+    let err = dlopen2::Error::OpeningLibraryError(
       std::io::Error::from_raw_os_error(0x000000C1),
     );
     assert_eq!(

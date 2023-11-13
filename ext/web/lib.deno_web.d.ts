@@ -184,7 +184,7 @@ declare interface EventTarget {
     listener: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions,
   ): void;
-  /** Dispatches a synthetic event event to target and returns true if either
+  /** Dispatches a synthetic event to event target and returns true if either
    * event's cancelable attribute value is false or its preventDefault() method
    * was not invoked, and false otherwise. */
   dispatchEvent(event: Event): boolean;
@@ -442,6 +442,7 @@ declare var AbortSignal: {
   readonly prototype: AbortSignal;
   new (): never;
   abort(reason?: any): AbortSignal;
+  any(signals: AbortSignal[]): AbortSignal;
   timeout(milliseconds: number): AbortSignal;
 };
 
@@ -933,6 +934,7 @@ declare interface Transformer<I = any, O = any> {
   readableType?: undefined;
   start?: TransformStreamDefaultControllerCallback<O>;
   transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  cancel?: (reason: any) => Promise<void>;
   writableType?: undefined;
 }
 

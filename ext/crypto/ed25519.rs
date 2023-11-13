@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -8,6 +11,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use ring::signature::Ed25519KeyPair;
 use ring::signature::KeyPair;
+use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
 
@@ -62,7 +66,7 @@ pub fn op_crypto_import_spki_ed25519(
   #[buffer] out: &mut [u8],
 ) -> bool {
   // 2-3.
-  let pk_info = match spki::SubjectPublicKeyInfo::from_der(key_data) {
+  let pk_info = match spki::SubjectPublicKeyInfoRef::try_from(key_data) {
     Ok(pk_info) => pk_info,
     Err(_) => return false,
   };
@@ -75,7 +79,7 @@ pub fn op_crypto_import_spki_ed25519(
   if pk_info.algorithm.parameters.is_some() {
     return false;
   }
-  out.copy_from_slice(pk_info.subject_public_key);
+  out.copy_from_slice(pk_info.subject_public_key.raw_bytes());
   true
 }
 
@@ -114,14 +118,21 @@ pub fn op_crypto_export_spki_ed25519(
   #[buffer] pubkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   let key_info = spki::SubjectPublicKeyInfo {
-    algorithm: spki::AlgorithmIdentifier {
+    algorithm: spki::AlgorithmIdentifierOwned {
       // id-Ed25519
       oid: ED25519_OID,
       parameters: None,
     },
-    subject_public_key: pubkey,
+    subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(key_info.to_vec()?.into())
+  Ok(
+    key_info
+      .to_der()
+      .map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Failed to export key")
+      })?
+      .into(),
+  )
 }
 
 #[op2]
@@ -129,10 +140,12 @@ pub fn op_crypto_export_spki_ed25519(
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
+  use rsa::pkcs1::der::Encode;
+
   // This should probably use OneAsymmetricKey instead
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
     public_key: None,
-    algorithm: rsa::pkcs8::AlgorithmIdentifier {
+    algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
       // id-Ed25519
       oid: ED25519_OID,
       parameters: None,
@@ -140,7 +153,9 @@ pub fn op_crypto_export_pkcs8_ed25519(
     private_key: pkey, // OCTET STRING
   };
 
-  Ok(pk_info.to_vec()?.into())
+  let mut buf = Vec::new();
+  pk_info.encode_to_vec(&mut buf)?;
+  Ok(buf.into())
 }
 
 // 'x' from Section 2 of RFC 8037
@@ -151,8 +166,5 @@ pub fn op_crypto_jwk_x_ed25519(
   #[buffer] pkey: &[u8],
 ) -> Result<String, AnyError> {
   let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
-  Ok(base64::encode_config(
-    pair.public_key().as_ref(),
-    base64::URL_SAFE_NO_PAD,
-  ))
+  Ok(BASE64_URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()))
 }

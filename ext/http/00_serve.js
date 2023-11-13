@@ -10,6 +10,7 @@ import { Event } from "ext:deno_web/02_event.js";
 import {
   fromInnerResponse,
   newInnerResponse,
+  ResponsePrototype,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
@@ -36,14 +37,13 @@ import {
 } from "ext:deno_web/06_streams.js";
 import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
+import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 const {
   ArrayPrototypePush,
-  Error,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   Symbol,
-  SymbolFor,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
@@ -344,6 +344,7 @@ class CallbackContext {
   fallbackHost;
   serverRid;
   closed;
+  /** @type {Promise<void> | undefined} */
   closing;
   listener;
 
@@ -436,8 +437,6 @@ function fastSyncResponseOrStream(req, respBody, status) {
  */
 function mapToCallback(context, callback, onError) {
   const signal = context.abortController.signal;
-  const hasCallback = callback.length > 0;
-  const hasOneCallback = callback.length === 1;
 
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
@@ -445,29 +444,31 @@ function mapToCallback(context, callback, onError) {
     let innerRequest;
     let response;
     try {
-      if (hasCallback) {
-        innerRequest = new InnerRequest(req, context);
-        const request = fromInnerRequest(innerRequest, signal, "immutable");
-        if (hasOneCallback) {
-          response = await callback(request);
-        } else {
-          response = await callback(
-            request,
-            new ServeHandlerInfo(innerRequest),
-          );
-        }
-      } else {
-        response = await callback();
+      innerRequest = new InnerRequest(req, context);
+      response = await callback(
+        fromInnerRequest(innerRequest, signal, "immutable"),
+        new ServeHandlerInfo(innerRequest),
+      );
+
+      // Throwing Error if the handler return value is not a Response class
+      if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+        throw TypeError(
+          "Return value from serve handler must be a response or a promise resolving to a response",
+        );
       }
     } catch (error) {
       try {
         response = await onError(error);
+        if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+          throw TypeError(
+            "Return value from onError handler must be a response or a promise resolving to a response",
+          );
+        }
       } catch (error) {
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();
       }
     }
-
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
@@ -640,7 +641,6 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
 function serveHttpOn(context, callback) {
   let ref = true;
   let currentPromise = null;
-  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
@@ -664,7 +664,7 @@ function serveHttpOn(context, callback) {
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
-          core.unrefOp(currentPromise[promiseIdSymbol]);
+          core.unrefOpPromise(currentPromise);
         }
         req = await currentPromise;
         currentPromise = null;
@@ -683,39 +683,40 @@ function serveHttpOn(context, callback) {
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
-    if (!context.closed && !context.closing) {
-      context.closed = true;
-      await op_http_close(rid, false);
+    if (!context.closing && !context.closed) {
+      context.closing = op_http_close(rid, false);
       context.close();
     }
+
+    await context.closing;
+    context.close();
+    context.closed = true;
   })();
 
   return {
     finished,
     async shutdown() {
-      if (!context.closed && !context.closing) {
+      if (!context.closing && !context.closed) {
         // Shut this HTTP server down gracefully
-        context.closing = true;
-        await op_http_close(context.serverRid, true);
-        context.closed = true;
+        context.closing = op_http_close(context.serverRid, true);
       }
-    },
-    then() {
-      throw new Error(
-        "Deno.serve no longer returns a promise. await server.finished instead of server.",
-      );
+      await context.closing;
+      context.closed = true;
     },
     ref() {
       ref = true;
       if (currentPromise) {
-        core.refOp(currentPromise[promiseIdSymbol]);
+        core.refOpPromise(currentPromise);
       }
     },
     unref() {
       ref = false;
       if (currentPromise) {
-        core.unrefOp(currentPromise[promiseIdSymbol]);
+        core.unrefOpPromise(currentPromise);
       }
+    },
+    [SymbolAsyncDispose]() {
+      return this.shutdown();
     },
   };
 }

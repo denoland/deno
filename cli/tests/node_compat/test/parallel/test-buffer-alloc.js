@@ -13,11 +13,11 @@ const assert = require('assert');
 
 const SlowBuffer = require('buffer').SlowBuffer;
 
-// Verify the maximum Uint8Array size. There is no concrete limit by spec. The
-// internal limits should be updated if this fails.
+// Verify the maximum Uint8Array size.
+// (see https://github.com/tc39/ecma262/pull/3052).
 assert.throws(
-  () => new Uint8Array(2 ** 32 + 1),
-  { message: 'Invalid typed array length: 4294967297' }
+  () => new Uint8Array(2 ** 53),
+  { message: 'Invalid typed array length: 9007199254740992' }
 );
 
 const b = Buffer.allocUnsafe(1024);

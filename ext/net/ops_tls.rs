@@ -47,6 +47,7 @@ use deno_tls::rustls::PrivateKey;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::ServerConnection;
 use deno_tls::rustls::ServerName;
+use deno_tls::SocketUse;
 use io::Error;
 use io::Read;
 use io::Write;
@@ -839,6 +840,7 @@ where
     ca_certs,
     unsafely_ignore_certificate_errors,
     None,
+    SocketUse::GeneralSsl,
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
@@ -938,6 +940,7 @@ where
     ca_certs,
     unsafely_ignore_certificate_errors,
     cert_chain_and_key,
+    SocketUse::GeneralSsl,
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {

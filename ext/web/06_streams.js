@@ -218,6 +218,50 @@ function uponPromise(promise, onFulfilled, onRejected) {
   );
 }
 
+class Queue {
+  #head = null;
+  #tail = null;
+  #size = 0;
+
+  enqueue(value) {
+    const node = { value, next: null };
+    if (this.#head === null) {
+      this.#head = node;
+      this.#tail = node;
+    } else {
+      this.#tail.next = node;
+      this.#tail = node;
+    }
+    return ++this.#size;
+  }
+
+  dequeue() {
+    const node = this.#head;
+    if (node === null) {
+      return null;
+    }
+
+    if (this.#head === this.#tail) {
+      this.#tail = null;
+    }
+    this.#head = this.#head.next;
+    this.#size--;
+    return node.value;
+  }
+
+  peek() {
+    if (this.#head === null) {
+      return null;
+    }
+
+    return this.#head.value;
+  }
+
+  get size() {
+    return this.#size;
+  }
+}
+
 /**
  * @param {ArrayBufferLike} O
  * @returns {boolean}
@@ -317,6 +361,7 @@ const _controller = Symbol("[[controller]]");
 const _detached = Symbol("[[Detached]]");
 const _disturbed = Symbol("[[disturbed]]");
 const _errorSteps = Symbol("[[ErrorSteps]]");
+const _finishPromise = Symbol("[[finishPromise]]");
 const _flushAlgorithm = Symbol("[[flushAlgorithm]]");
 const _globalObject = Symbol("[[globalObject]]");
 const _highWaterMark = Symbol("[[highWaterMark]]");
@@ -350,6 +395,17 @@ const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
 const _writer = Symbol("[[writer]]");
 const _writeRequests = Symbol("[[writeRequests]]");
+const _brand = webidl.brand;
+
+function noop() {}
+async function noopAsync() {}
+const _defaultStartAlgorithm = noop;
+const _defaultWriteAlgorithm = noopAsync;
+const _defaultCloseAlgorithm = noopAsync;
+const _defaultAbortAlgorithm = noopAsync;
+const _defaultPullAlgorithm = noopAsync;
+const _defaultFlushAlgorithm = noopAsync;
+const _defaultCancelAlgorithm = noopAsync;
 
 /**
  * @template R
@@ -357,7 +413,9 @@ const _writeRequests = Symbol("[[writeRequests]]");
  * @returns {ReadableStreamDefaultReader<R>}
  */
 function acquireReadableStreamDefaultReader(stream) {
-  return new ReadableStreamDefaultReader(stream);
+  const reader = new ReadableStreamDefaultReader(_brand);
+  setUpReadableStreamDefaultReader(reader, stream);
+  return reader;
 }
 
 /**
@@ -366,7 +424,7 @@ function acquireReadableStreamDefaultReader(stream) {
  * @returns {ReadableStreamBYOBReader<R>}
  */
 function acquireReadableStreamBYOBReader(stream) {
-  const reader = webidl.createBranded(ReadableStreamBYOBReader);
+  const reader = new ReadableStreamBYOBReader(_brand);
   setUpReadableStreamBYOBReader(reader, stream);
   return reader;
 }
@@ -398,9 +456,9 @@ function createReadableStream(
 ) {
   assert(isNonNegativeNumber(highWaterMark));
   /** @type {ReadableStream} */
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   initializeReadableStream(stream);
-  const controller = webidl.createBranded(ReadableStreamDefaultController);
+  const controller = new ReadableStreamDefaultController(_brand);
   setUpReadableStreamDefaultController(
     stream,
     controller,
@@ -432,9 +490,9 @@ function createWritableStream(
   sizeAlgorithm,
 ) {
   assert(isNonNegativeNumber(highWaterMark));
-  const stream = webidl.createBranded(WritableStream);
+  const stream = new WritableStream(_brand);
   initializeWritableStream(stream);
-  const controller = webidl.createBranded(WritableStreamDefaultController);
+  const controller = new WritableStreamDefaultController(_brand);
   setUpWritableStreamDefaultController(
     stream,
     controller,
@@ -454,19 +512,15 @@ function createWritableStream(
  * @returns {T}
  */
 function dequeueValue(container) {
-  assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
-  );
-  assert(container[_queue].length);
-  const valueWithSize = ArrayPrototypeShift(container[_queue]);
+  assert(container[_queue] && typeof container[_queueTotalSize] === "number");
+  assert(container[_queue].size);
+  const valueWithSize = container[_queue].dequeue();
   container[_queueTotalSize] -= valueWithSize.size;
   if (container[_queueTotalSize] < 0) {
     container[_queueTotalSize] = 0;
   }
   return valueWithSize.value;
 }
-
 /**
  * @template T
  * @param {{ [_queue]: Array<ValueWithSize<T | _close>>, [_queueTotalSize]: number }} container
@@ -475,17 +529,14 @@ function dequeueValue(container) {
  * @returns {void}
  */
 function enqueueValueWithSize(container, value, size) {
-  assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
-  );
+  assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   if (isNonNegativeNumber(size) === false) {
     throw RangeError("chunk size isn't a positive number");
   }
   if (size === Infinity) {
     throw RangeError("chunk size is invalid");
   }
-  ArrayPrototypePush(container[_queue], { value, size });
+  container[_queue].enqueue({ value, size });
   container[_queueTotalSize] += size;
 }
 
@@ -536,9 +587,9 @@ function createReadableByteStream(
   pullAlgorithm,
   cancelAlgorithm,
 ) {
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   initializeReadableStream(stream);
-  const controller = webidl.createBranded(ReadableByteStreamController);
+  const controller = new ReadableByteStreamController(_brand);
   setUpReadableByteStreamController(
     stream,
     controller,
@@ -609,8 +660,7 @@ function initializeTransformStream(
   }
 
   function cancelAlgorithm(reason) {
-    transformStreamErrorWritableAndUnblockWrite(stream, reason);
-    return resolvePromiseWith(undefined);
+    return transformStreamDefaultSourceCancelAlgorithm(stream, reason);
   }
 
   stream[_readable] = createReadableStream(
@@ -646,16 +696,7 @@ function initializeWritableStream(stream) {
  * @returns {v is number}
  */
 function isNonNegativeNumber(v) {
-  if (typeof v !== "number") {
-    return false;
-  }
-  if (NumberIsNaN(v)) {
-    return false;
-  }
-  if (v < 0) {
-    return false;
-  }
-  return true;
+  return typeof v === "number" && v >= 0;
 }
 
 /**
@@ -663,8 +704,7 @@ function isNonNegativeNumber(v) {
  * @returns {value is ReadableStream}
  */
 function isReadableStream(value) {
-  return !(typeof value !== "object" || value === null ||
-    !ReflectHas(value, _controller));
+  return !(typeof value !== "object" || value === null || !value[_controller]);
 }
 
 /**
@@ -672,10 +712,7 @@ function isReadableStream(value) {
  * @returns {boolean}
  */
 function isReadableStreamLocked(stream) {
-  if (stream[_reader] === undefined) {
-    return false;
-  }
-  return true;
+  return stream[_reader] !== undefined;
 }
 
 /**
@@ -684,7 +721,7 @@ function isReadableStreamLocked(stream) {
  */
 function isReadableStreamDefaultReader(value) {
   return !(typeof value !== "object" || value === null ||
-    !ReflectHas(value, _readRequests));
+    !value[_readRequests]);
 }
 
 /**
@@ -873,7 +910,7 @@ const _original = Symbol("[[original]]");
  * @returns {ReadableStream<Uint8Array>}
  */
 function readableStreamForRid(rid, autoClose = true) {
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -930,7 +967,7 @@ function readableStreamForRid(rid, autoClose = true) {
   return stream;
 }
 
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+const promiseSymbol = SymbolFor("__promise");
 const _isUnref = Symbol("isUnref");
 /**
  * Create a new ReadableStream object that is backed by a Resource that
@@ -943,8 +980,8 @@ const _isUnref = Symbol("isUnref");
  * @returns {ReadableStream<Uint8Array>}
  */
 function readableStreamForRidUnrefable(rid) {
-  const stream = webidl.createBranded(ReadableStream);
-  stream[promiseIdSymbol] = undefined;
+  const stream = new ReadableStream(_brand);
+  stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
   stream[_resourceBackingUnrefable] = { rid, autoClose: true };
   const underlyingSource = {
@@ -953,10 +990,10 @@ function readableStreamForRidUnrefable(rid) {
       const v = controller.byobRequest.view;
       try {
         const promise = core.read(rid, v);
-        const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
-        if (stream[_isUnref]) core.unrefOp(promiseId);
+        stream[promiseSymbol] = promise;
+        if (stream[_isUnref]) core.unrefOpPromise(promise);
         const bytesRead = await promise;
-        stream[promiseIdSymbol] = undefined;
+        stream[promiseSymbol] = undefined;
         if (bytesRead === 0) {
           core.tryClose(rid);
           controller.close();
@@ -993,8 +1030,8 @@ function readableStreamForRidUnrefableRef(stream) {
     throw new TypeError("Not an unrefable stream");
   }
   stream[_isUnref] = false;
-  if (stream[promiseIdSymbol] !== undefined) {
-    core.refOp(stream[promiseIdSymbol]);
+  if (stream[promiseSymbol] !== undefined) {
+    core.refOpPromise(stream[promiseSymbol]);
   }
 }
 
@@ -1003,8 +1040,8 @@ function readableStreamForRidUnrefableUnref(stream) {
     throw new TypeError("Not an unrefable stream");
   }
   stream[_isUnref] = true;
-  if (stream[promiseIdSymbol] !== undefined) {
-    core.unrefOp(stream[promiseIdSymbol]);
+  if (stream[promiseSymbol] !== undefined) {
+    core.unrefOpPromise(stream[promiseSymbol]);
   }
 }
 
@@ -1027,10 +1064,11 @@ async function readableStreamCollectIntoUint8Array(stream) {
       readableStreamDisturb(stream);
       const promise = core.opAsync("op_read_all", resourceBacking.rid);
       if (readableStreamIsUnrefable(stream)) {
-        const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
-        if (stream[_isUnref]) core.unrefOp(promiseId);
+        stream[promiseSymbol] = promise;
+        if (stream[_isUnref]) core.unrefOpPromise(promise);
       }
       const buf = await promise;
+      stream[promiseSymbol] = undefined;
       readableStreamThrowIfErrored(stream);
       readableStreamClose(stream);
       return buf;
@@ -1094,7 +1132,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * @returns {ReadableStream<Uint8Array>}
  */
 function writableStreamForRid(rid, autoClose = true) {
-  const stream = webidl.createBranded(WritableStream);
+  const stream = new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -1173,11 +1211,11 @@ function isWritableStreamLocked(stream) {
  */
 function peekQueueValue(container) {
   assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
+    container[_queue] &&
+      typeof container[_queueTotalSize] === "number",
   );
-  assert(container[_queue].length);
-  const valueWithSize = container[_queue][0];
+  assert(container[_queue].size);
+  const valueWithSize = container[_queue].peek();
   return valueWithSize.value;
 }
 
@@ -1349,7 +1387,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
         byteLength,
       );
     } else {
-      assert(controller[_queue].length === 0);
+      assert(controller[_queue].size === 0);
       if (controller[_pendingPullIntos].length !== 0) {
         assert(controller[_pendingPullIntos][0].readerType === "default");
         readableByteStreamControllerShiftPendingPullInto(controller);
@@ -1396,7 +1434,7 @@ function readableByteStreamControllerEnqueueChunkToQueue(
   byteOffset,
   byteLength,
 ) {
-  ArrayPrototypePush(controller[_queue], { buffer, byteOffset, byteLength });
+  controller[_queue].enqueue({ buffer, byteOffset, byteLength });
   controller[_queueTotalSize] += byteLength;
 }
 
@@ -1478,7 +1516,7 @@ function readableByteStreamControllerGetBYOBRequest(controller) {
       // deno-lint-ignore prefer-primordials
       firstDescriptor.byteLength - firstDescriptor.bytesFilled,
     );
-    const byobRequest = webidl.createBranded(ReadableStreamBYOBRequest);
+    const byobRequest = new ReadableStreamBYOBRequest(_brand);
     byobRequest[_controller] = controller;
     byobRequest[_view] = view;
     controller[_byobRequest] = byobRequest;
@@ -1506,7 +1544,7 @@ function readableByteStreamControllerGetDesiredSize(controller) {
  * @returns {void}
  */
 function resetQueue(container) {
-  container[_queue] = [];
+  container[_queue] = new Queue();
   container[_queueTotalSize] = 0;
 }
 
@@ -1566,7 +1604,7 @@ function readableByteStreamControllerShouldCallPull(controller) {
 function readableStreamAddReadRequest(stream, readRequest) {
   assert(isReadableStreamDefaultReader(stream[_reader]));
   assert(stream[_state] === "readable");
-  ArrayPrototypePush(stream[_reader][_readRequests], readRequest);
+  stream[_reader][_readRequests].enqueue(readRequest);
 }
 
 /**
@@ -1589,7 +1627,7 @@ function readableStreamAddReadIntoRequest(stream, readRequest) {
 function readableStreamCancel(stream, reason) {
   stream[_disturbed] = true;
   if (stream[_state] === "closed") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (stream[_state] === "errored") {
     return PromiseReject(stream[_storedError]);
@@ -1606,7 +1644,7 @@ function readableStreamCancel(stream, reason) {
   }
   /** @type {Promise<void>} */
   const sourceCancelPromise = stream[_controller][_cancelSteps](reason);
-  return PromisePrototypeThen(sourceCancelPromise, () => undefined);
+  return PromisePrototypeThen(sourceCancelPromise, noop);
 }
 
 /**
@@ -1625,9 +1663,8 @@ function readableStreamClose(stream) {
   if (isReadableStreamDefaultReader(reader)) {
     /** @type {Array<ReadRequest<R>>} */
     const readRequests = reader[_readRequests];
-    reader[_readRequests] = [];
-    for (let i = 0; i < readRequests.length; ++i) {
-      const readRequest = readRequests[i];
+    while (readRequests.size !== 0) {
+      const readRequest = readRequests.dequeue();
       readRequest.closeSteps();
     }
   }
@@ -1678,11 +1715,7 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
  */
 function readableStreamDefaultControllerCanCloseOrEnqueue(controller) {
   const state = controller[_stream][_state];
-  if (controller[_closeRequested] === false && state === "readable") {
-    return true;
-  } else {
-    return false;
-  }
+  return controller[_closeRequested] === false && state === "readable";
 }
 
 /** @param {ReadableStreamDefaultController<any>} controller */
@@ -1701,7 +1734,7 @@ function readableStreamDefaultControllerClose(controller) {
   }
   const stream = controller[_stream];
   controller[_closeRequested] = true;
-  if (controller[_queue].length === 0) {
+  if (controller[_queue].size === 0) {
     readableStreamDefaultControllerClearAlgorithms(controller);
     readableStreamClose(stream);
   }
@@ -1787,7 +1820,6 @@ function readableStreamDefaultcontrollerHasBackpressure(controller) {
  * @returns {boolean}
  */
 function readableStreamDefaultcontrollerShouldCallPull(controller) {
-  const stream = controller[_stream];
   if (
     readableStreamDefaultControllerCanCloseOrEnqueue(controller) === false
   ) {
@@ -1796,6 +1828,7 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
   if (controller[_started] === false) {
     return false;
   }
+  const stream = controller[_stream];
   if (
     isReadableStreamLocked(stream) &&
     readableStreamGetNumReadRequests(stream) > 0
@@ -1805,10 +1838,11 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
   const desiredSize = readableStreamDefaultControllerGetDesiredSize(
     controller,
   );
-  assert(desiredSize !== null);
+
   if (desiredSize > 0) {
     return true;
   }
+  assert(desiredSize !== null);
   return false;
 }
 
@@ -1850,9 +1884,8 @@ function readableStreamBYOBReaderRelease(reader) {
  */
 function readableStreamDefaultReaderErrorReadRequests(reader, e) {
   const readRequests = reader[_readRequests];
-  reader[_readRequests] = [];
-  for (let i = 0; i < readRequests.length; ++i) {
-    const readRequest = readRequests[i];
+  while (readRequests.size !== 0) {
+    const readRequest = readRequests.dequeue();
     readRequest.errorSteps(e);
   }
 }
@@ -1891,11 +1924,11 @@ function readableByteStreamControllerProcessReadRequestsUsingQueue(
 ) {
   const reader = controller[_stream][_reader];
   assert(isReadableStreamDefaultReader(reader));
-  while (reader[_readRequests].length !== 0) {
+  while (reader[_readRequests].size !== 0) {
     if (controller[_queueTotalSize] === 0) {
       return;
     }
-    const readRequest = ArrayPrototypeShift(reader[_readRequests]);
+    const readRequest = reader[_readRequests].dequeue();
     readableByteStreamControllerFillReadRequestFromQueue(
       controller,
       readRequest,
@@ -2338,7 +2371,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   }
   const queue = controller[_queue];
   while (totalBytesToCopyRemaining > 0) {
-    const headOfQueue = queue[0];
+    const headOfQueue = queue.peek();
     const bytesToCopy = MathMin(
       totalBytesToCopyRemaining,
       // deno-lint-ignore prefer-primordials
@@ -2365,7 +2398,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
 
     // deno-lint-ignore prefer-primordials
     if (headOfQueue.byteLength === bytesToCopy) {
-      ArrayPrototypeShift(queue);
+      queue.dequeue();
     } else {
       headOfQueue.byteOffset += bytesToCopy;
       headOfQueue.byteLength -= bytesToCopy;
@@ -2396,7 +2429,7 @@ function readableByteStreamControllerFillReadRequestFromQueue(
   readRequest,
 ) {
   assert(controller[_queueTotalSize] > 0);
-  const entry = ArrayPrototypeShift(controller[_queue]);
+  const entry = controller[_queue].dequeue();
   // deno-lint-ignore prefer-primordials
   controller[_queueTotalSize] -= entry.byteLength;
   readableByteStreamControllerHandleQueueDrain(controller);
@@ -2538,9 +2571,9 @@ function readableStreamFulfillReadRequest(stream, chunk, done) {
   assert(readableStreamHasDefaultReader(stream) === true);
   /** @type {ReadableStreamDefaultReader<R>} */
   const reader = stream[_reader];
-  assert(reader[_readRequests].length);
+  assert(reader[_readRequests].size);
   /** @type {ReadRequest<R>} */
-  const readRequest = ArrayPrototypeShift(reader[_readRequests]);
+  const readRequest = reader[_readRequests].dequeue();
   if (done) {
     readRequest.closeSteps();
   } else {
@@ -2563,7 +2596,7 @@ function readableStreamGetNumReadIntoRequests(stream) {
  */
 function readableStreamGetNumReadRequests(stream) {
   assert(readableStreamHasDefaultReader(stream) === true);
-  return stream[_reader][_readRequests].length;
+  return stream[_reader][_readRequests].size;
 }
 
 /**
@@ -2633,7 +2666,7 @@ function readableStreamPipeTo(
   const writer = acquireWritableStreamDefaultWriter(dest);
   source[_disturbed] = true;
   let shuttingDown = false;
-  let currentWrite = resolvePromiseWith(undefined);
+  let currentWrite = PromiseResolve(undefined);
   /** @type {Deferred<void>} */
   const promise = new Deferred();
   /** @type {() => void} */
@@ -2648,7 +2681,7 @@ function readableStreamPipeTo(
           if (dest[_state] === "writable") {
             return writableStreamAbort(dest, error);
           } else {
-            return resolvePromiseWith(undefined);
+            return PromiseResolve(undefined);
           }
         });
       }
@@ -2657,7 +2690,7 @@ function readableStreamPipeTo(
           if (source[_state] === "readable") {
             return readableStreamCancel(source, error);
           } else {
-            return resolvePromiseWith(undefined);
+            return PromiseResolve(undefined);
           }
         });
       }
@@ -2692,7 +2725,7 @@ function readableStreamPipeTo(
   /** @returns {Promise<boolean>} */
   function pipeStep() {
     if (shuttingDown === true) {
-      return resolvePromiseWith(true);
+      return PromiseResolve(true);
     }
 
     return transformPromiseWith(writer[_readyPromise].promise, () => {
@@ -3009,7 +3042,7 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
   function pullAlgorithm() {
     if (reading === true) {
       readAgain = true;
-      return resolvePromiseWith(undefined);
+      return PromiseResolve(undefined);
     }
     reading = true;
     /** @type {ReadRequest<R>} */
@@ -3085,7 +3118,7 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
       },
     };
     readableStreamDefaultReaderRead(reader, readRequest);
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
 
   /**
@@ -3261,7 +3294,7 @@ function readableByteStreamTee(stream) {
 
   function pullWithBYOBReader(view, forBranch2) {
     if (isReadableStreamDefaultReader(reader)) {
-      assert(reader[_readRequests].length === 0);
+      assert(reader[_readRequests].size === 0);
       readableStreamDefaultReaderRelease(reader);
       reader = acquireReadableStreamBYOBReader(stream);
       forwardReaderError(reader);
@@ -3470,7 +3503,7 @@ function setUpReadableByteStreamController(
   controller[_pendingPullIntos] = [];
   stream[_controller] = controller;
   const startResult = startAlgorithm();
-  const startPromise = resolvePromiseWith(startResult);
+  const startPromise = PromiseResolve(startResult);
   setPromiseIsHandledToTrue(
     PromisePrototypeThen(
       startPromise,
@@ -3499,13 +3532,13 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   underlyingSourceDict,
   highWaterMark,
 ) {
-  const controller = webidl.createBranded(ReadableByteStreamController);
+  const controller = new ReadableByteStreamController(_brand);
   /** @type {() => void} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => resolvePromiseWith(undefined);
+  let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason: any) => Promise<void>} */
-  let cancelAlgorithm = (_reason) => resolvePromiseWith(undefined);
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
@@ -3586,7 +3619,7 @@ function setUpReadableStreamDefaultController(
   controller[_cancelAlgorithm] = cancelAlgorithm;
   stream[_controller] = controller;
   const startResult = startAlgorithm(controller);
-  const startPromise = resolvePromiseWith(startResult);
+  const startPromise = PromiseResolve(startResult);
   uponPromise(startPromise, () => {
     controller[_started] = true;
     assert(controller[_pulling] === false);
@@ -3612,13 +3645,13 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
   highWaterMark,
   sizeAlgorithm,
 ) {
-  const controller = webidl.createBranded(ReadableStreamDefaultController);
+  const controller = new ReadableStreamDefaultController(_brand);
   /** @type {() => Promise<void>} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => resolvePromiseWith(undefined);
+  let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
-  let cancelAlgorithm = () => resolvePromiseWith(undefined);
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
@@ -3693,7 +3726,7 @@ function setUpReadableStreamDefaultReader(reader, stream) {
     throw new TypeError("ReadableStream is locked.");
   }
   readableStreamReaderGenericInitialize(reader, stream);
-  reader[_readRequests] = [];
+  reader[_readRequests] = new Queue();
 }
 
 /**
@@ -3702,12 +3735,14 @@ function setUpReadableStreamDefaultReader(reader, stream) {
  * @param {TransformStreamDefaultController<O>} controller
  * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm
  * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm
+ * @param {(reason: any) => Promise<void>} cancelAlgorithm
  */
 function setUpTransformStreamDefaultController(
   stream,
   controller,
   transformAlgorithm,
   flushAlgorithm,
+  cancelAlgorithm,
 ) {
   assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
   assert(stream[_controller] === undefined);
@@ -3715,6 +3750,7 @@ function setUpTransformStreamDefaultController(
   stream[_controller] = controller;
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
+  controller[_cancelAlgorithm] = cancelAlgorithm;
 }
 
 /**
@@ -3730,7 +3766,7 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   transformerDict,
 ) {
   /** @type {TransformStreamDefaultController<O>} */
-  const controller = webidl.createBranded(TransformStreamDefaultController);
+  const controller = new TransformStreamDefaultController(_brand);
   /** @type {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} */
   let transformAlgorithm = (chunk) => {
     try {
@@ -3738,10 +3774,11 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     } catch (e) {
       return PromiseReject(e);
     }
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   };
   /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
-  let flushAlgorithm = () => resolvePromiseWith(undefined);
+  let flushAlgorithm = _defaultFlushAlgorithm;
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
     transformAlgorithm = (chunk, controller) =>
       webidl.invokeCallbackFunction(
@@ -3764,11 +3801,23 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         true,
       );
   }
+  if (transformerDict.cancel !== undefined) {
+    cancelAlgorithm = (reason) =>
+      webidl.invokeCallbackFunction(
+        transformerDict.cancel,
+        [reason],
+        transformer,
+        webidl.converters["Promise<undefined>"],
+        "Failed to call 'cancelAlgorithm' on 'TransformStreamDefaultController'",
+        true,
+      );
+  }
   setUpTransformStreamDefaultController(
     stream,
     controller,
     transformAlgorithm,
     flushAlgorithm,
+    cancelAlgorithm,
   );
 }
 
@@ -3837,14 +3886,14 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
   highWaterMark,
   sizeAlgorithm,
 ) {
-  const controller = webidl.createBranded(WritableStreamDefaultController);
+  const controller = new WritableStreamDefaultController(_brand);
   /** @type {(controller: WritableStreamDefaultController<W>) => any} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} */
-  let writeAlgorithm = () => resolvePromiseWith(undefined);
-  let closeAlgorithm = () => resolvePromiseWith(undefined);
+  let writeAlgorithm = _defaultWriteAlgorithm;
+  let closeAlgorithm = _defaultCloseAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
-  let abortAlgorithm = () => resolvePromiseWith(undefined);
+  let abortAlgorithm = _defaultAbortAlgorithm;
 
   if (underlyingSinkDict.start !== undefined) {
     startAlgorithm = () =>
@@ -3950,6 +3999,7 @@ function setUpWritableStreamDefaultWriter(writer, stream) {
 function transformStreamDefaultControllerClearAlgorithms(controller) {
   controller[_transformAlgorithm] = undefined;
   controller[_flushAlgorithm] = undefined;
+  controller[_cancelAlgorithm] = undefined;
 }
 
 /**
@@ -4019,13 +4069,33 @@ function transformStreamDefaultControllerTerminate(controller) {
 }
 
 /**
- * @param {TransformStream} stream
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
  * @param {any=} reason
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
-  transformStreamError(stream, reason);
-  return resolvePromiseWith(undefined);
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (readable[_state] === "errored") {
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerError(readable[_controller], reason);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4035,21 +4105,26 @@ function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkCloseAlgorithm(stream) {
-  const readable = stream[_readable];
   const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
   const flushPromise = controller[_flushAlgorithm](controller);
   transformStreamDefaultControllerClearAlgorithms(controller);
-  return transformPromiseWith(flushPromise, () => {
+  transformPromiseWith(flushPromise, () => {
     if (readable[_state] === "errored") {
-      throw readable[_storedError];
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerClose(readable[_controller]);
+      controller[_finishPromise].resolve(undefined);
     }
-    readableStreamDefaultControllerClose(
-      /** @type {ReadableStreamDefaultController} */ readable[_controller],
-    );
   }, (r) => {
-    transformStreamError(stream, r);
-    throw readable[_storedError];
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
   });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4079,6 +4154,41 @@ function transformStreamDefaultSinkWriteAlgorithm(stream, chunk) {
     });
   }
   return transformStreamDefaultControllerPerformTransform(controller, chunk);
+}
+
+/**
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
+ * @param {any=} reason
+ * @returns {Promise<void>}
+ */
+function transformStreamDefaultSourceCancelAlgorithm(stream, reason) {
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const writable = stream[_writable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (writable[_state] === "errored") {
+      controller[_finishPromise].reject(writable[_storedError]);
+    } else {
+      writableStreamDefaultControllerErrorIfNeeded(
+        writable[_controller],
+        reason,
+      );
+      transformStreamUnblockWrite(stream);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    writableStreamDefaultControllerErrorIfNeeded(writable[_controller], r);
+    transformStreamUnblockWrite(stream);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4116,9 +4226,7 @@ function transformStreamErrorWritableAndUnblockWrite(stream, e) {
     stream[_writable][_controller],
     e,
   );
-  if (stream[_backpressure] === true) {
-    transformStreamSetBackpressure(stream, false);
-  }
+  transformStreamUnblockWrite(stream);
 }
 
 /**
@@ -4135,6 +4243,15 @@ function transformStreamSetBackpressure(stream, backpressure) {
 }
 
 /**
+ * @param {TransformStream} stream
+ */
+function transformStreamUnblockWrite(stream) {
+  if (stream[_backpressure] === true) {
+    transformStreamSetBackpressure(stream, false);
+  }
+}
+
+/**
  * @param {WritableStream} stream
  * @param {any=} reason
  * @returns {Promise<void>}
@@ -4142,11 +4259,11 @@ function transformStreamSetBackpressure(stream, backpressure) {
 function writableStreamAbort(stream, reason) {
   const state = stream[_state];
   if (state === "closed" || state === "errored") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   stream[_controller][_signal][signalAbort](reason);
   if (state === "closed" || state === "errored") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (stream[_pendingAbortRequest] !== undefined) {
     return stream[_pendingAbortRequest].deferred.promise;
@@ -4256,7 +4373,7 @@ function writableStreamDefaultControllerAdvanceQueueIfNeeded(controller) {
     writableStreamFinishErroring(stream);
     return;
   }
-  if (controller[_queue].length === 0) {
+  if (controller[_queue].size === 0) {
     return;
   }
   const value = peekQueueValue(controller);
@@ -4342,7 +4459,7 @@ function writableStreamDefaultControllerProcessClose(controller) {
   const stream = controller[_stream];
   writableStreamMarkCloseRequestInFlight(stream);
   dequeueValue(controller);
-  assert(controller[_queue].length === 0);
+  assert(controller[_queue].size === 0);
   const sinkClosePromise = controller[_closeAlgorithm]();
   writableStreamDefaultControllerClearAlgorithms(controller);
   uponPromise(sinkClosePromise, () => {
@@ -4442,7 +4559,7 @@ function writableStreamDefaultWriterCloseWithErrorPropagation(writer) {
   if (
     writableStreamCloseQueuedOrInFlight(stream) === true || state === "closed"
   ) {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (state === "errored") {
     return PromiseReject(stream[_storedError]);
@@ -4746,6 +4863,35 @@ const asyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
 const _iteratorNext = Symbol("[[iteratorNext]]");
 const _iteratorFinished = Symbol("[[iteratorFinished]]");
 
+class ReadableStreamAsyncIteratorReadRequest {
+  #reader;
+  #promise;
+
+  constructor(reader, promise) {
+    this.#reader = reader;
+    this.#promise = promise;
+  }
+
+  chunkSteps(chunk) {
+    this.#reader[_iteratorNext] = null;
+    this.#promise.resolve({ value: chunk, done: false });
+  }
+
+  closeSteps() {
+    this.#reader[_iteratorNext] = null;
+    this.#reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.#reader);
+    this.#promise.resolve({ value: undefined, done: true });
+  }
+
+  errorSteps(e) {
+    this.#reader[_iteratorNext] = null;
+    this.#reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.#reader);
+    this.#promise.reject(e);
+  }
+}
+
 /** @type {AsyncIterator<unknown>} */
 const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
   /** @returns {Promise<IteratorResult<unknown>>} */
@@ -4767,41 +4913,21 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
 
       /** @type {Deferred<IteratorResult<any>>} */
       const promise = new Deferred();
-      /** @type {ReadRequest} */
-      const readRequest = {
-        chunkSteps(chunk) {
-          promise.resolve({ value: chunk, done: false });
-        },
-        closeSteps() {
-          readableStreamDefaultReaderRelease(reader);
-          promise.resolve({ value: undefined, done: true });
-        },
-        errorSteps(e) {
-          readableStreamDefaultReaderRelease(reader);
-          promise.reject(e);
-        },
-      };
+      // internal values (_iteratorNext & _iteratorFinished) are modified inside
+      // ReadableStreamAsyncIteratorReadRequest methods
+      // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
+      const readRequest = new ReadableStreamAsyncIteratorReadRequest(
+        reader,
+        promise,
+      );
 
       readableStreamDefaultReaderRead(reader, readRequest);
-      return PromisePrototypeThen(promise.promise, (result) => {
-        reader[_iteratorNext] = null;
-        if (result.done === true) {
-          reader[_iteratorFinished] = true;
-          return { value: undefined, done: true };
-        }
-        return result;
-      }, (reason) => {
-        reader[_iteratorNext] = null;
-        reader[_iteratorFinished] = true;
-        throw reason;
-      });
+      return PromisePrototypeThen(promise.promise);
     }
 
-    reader[_iteratorNext] = reader[_iteratorNext]
+    return reader[_iteratorNext] = reader[_iteratorNext]
       ? PromisePrototypeThen(reader[_iteratorNext], nextSteps, nextSteps)
       : nextSteps();
-
-    return reader[_iteratorNext];
   },
   /**
    * @param {unknown} arg
@@ -4819,7 +4945,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       if (reader[_stream] === undefined) {
         return PromiseResolve({ value: undefined, done: true });
       }
-      assert(reader[_readRequests].length === 0);
+      assert(reader[_readRequests].size === 0);
       if (this[_preventCancel] === false) {
         const result = readableStreamReaderGenericCancel(reader, arg);
         readableStreamDefaultReaderRelease(reader);
@@ -4845,7 +4971,7 @@ class ByteLengthQueuingStrategy {
     const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
@@ -4878,7 +5004,7 @@ class ByteLengthQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(ByteLengthQueuingStrategy);
+webidl.configureInterface(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
@@ -4899,7 +5025,7 @@ class CountQueuingStrategy {
     const prefix = "Failed to construct 'CountQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
@@ -4932,7 +5058,7 @@ class CountQueuingStrategy {
   }
 }
 
-webidl.configurePrototype(CountQueuingStrategy);
+webidl.configureInterface(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
@@ -4997,34 +5123,36 @@ class ReadableStream {
    * @param {QueuingStrategy<R>=} strategy
    */
   constructor(underlyingSource = undefined, strategy = undefined) {
+    if (underlyingSource === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'ReadableStream'";
-    if (underlyingSource !== undefined) {
-      underlyingSource = webidl.converters.object(
+    underlyingSource = underlyingSource !== undefined
+      ? webidl.converters.object(
         underlyingSource,
         prefix,
         "Argument 1",
-      );
-    } else {
-      underlyingSource = null;
-    }
-    if (strategy !== undefined) {
-      strategy = webidl.converters.QueuingStrategy(
+      )
+      : null;
+    strategy = strategy !== undefined
+      ? webidl.converters.QueuingStrategy(
         strategy,
         prefix,
         "Argument 2",
-      );
-    } else {
-      strategy = {};
-    }
-    this[webidl.brand] = webidl.brand;
-    let underlyingSourceDict = {};
-    if (underlyingSource !== undefined) {
-      underlyingSourceDict = webidl.converters.UnderlyingSource(
+      )
+      : {};
+
+    const underlyingSourceDict = underlyingSource !== undefined
+      ? webidl.converters.UnderlyingSource(
         underlyingSource,
         prefix,
         "underlyingSource",
-      );
-    }
+      )
+      : {};
+    this[_brand] = _brand;
+
     initializeReadableStream(this);
     if (underlyingSourceDict.type === "bytes") {
       if (strategy.size !== undefined) {
@@ -5041,7 +5169,6 @@ class ReadableStream {
         highWaterMark,
       );
     } else {
-      assert(!(ReflectHas(underlyingSourceDict, "type")));
       const sizeAlgorithm = extractSizeAlgorithm(strategy);
       const highWaterMark = extractHighWaterMark(strategy, 1);
       setUpReadableStreamDefaultControllerFromUnderlyingSource(
@@ -5064,7 +5191,7 @@ class ReadableStream {
 
     const iterator = getIterator(asyncIterable, true);
 
-    const stream = createReadableStream(() => undefined, async () => {
+    const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
       const res = await iterator.next();
       if (typeof res !== "object") {
@@ -5237,19 +5364,23 @@ class ReadableStream {
    * @param {ReadableStreamIteratorOptions=} options
    * @returns {AsyncIterableIterator<R>}
    */
-  values(options = {}) {
+  values(options = undefined) {
     webidl.assertBranded(this, ReadableStreamPrototype);
-    const prefix = "Failed to execute 'values' on 'ReadableStream'";
-    options = webidl.converters.ReadableStreamIteratorOptions(
-      options,
-      prefix,
-      "Argument 1",
-    );
+    let preventCancel = false;
+    if (options !== undefined) {
+      const prefix = "Failed to execute 'values' on 'ReadableStream'";
+      options = webidl.converters.ReadableStreamIteratorOptions(
+        options,
+        prefix,
+        "Argument 1",
+      );
+      preventCancel = options.preventCancel;
+    }
     /** @type {AsyncIterableIterator<R>} */
     const iterator = ObjectCreate(readableStreamAsyncIteratorPrototype);
     const reader = acquireReadableStreamDefaultReader(this);
     iterator[_reader] = reader;
-    iterator[_preventCancel] = options.preventCancel;
+    iterator[_preventCancel] = preventCancel;
     return iterator;
   }
 
@@ -5266,7 +5397,7 @@ ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
   configurable: true,
 });
 
-webidl.configurePrototype(ReadableStream);
+webidl.configureInterface(ReadableStream);
 const ReadableStreamPrototype = ReadableStream.prototype;
 
 function errorReadableStream(stream, e) {
@@ -5284,10 +5415,14 @@ class ReadableStreamDefaultReader {
 
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
+    if (stream === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpReadableStreamDefaultReader(this, stream);
   }
 
@@ -5366,7 +5501,7 @@ class ReadableStreamDefaultReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultReader);
+webidl.configureInterface(ReadableStreamDefaultReader);
 const ReadableStreamDefaultReaderPrototype =
   ReadableStreamDefaultReader.prototype;
 
@@ -5381,10 +5516,14 @@ class ReadableStreamBYOBReader {
 
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
+    if (stream === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'ReadableStreamBYOBReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpReadableStreamBYOBReader(this, stream);
   }
 
@@ -5424,16 +5563,19 @@ class ReadableStreamBYOBReader {
         new TypeError("view must have non-zero byteLength"),
       );
     }
+
     if (getArrayBufferByteLength(buffer) === 0) {
+      if (isDetachedBuffer(buffer)) {
+        return PromiseReject(
+          new TypeError("view's buffer has been detached"),
+        );
+      }
+
       return PromiseReject(
         new TypeError("view's buffer must have non-zero byteLength"),
       );
     }
-    if (isDetachedBuffer(buffer)) {
-      return PromiseReject(
-        new TypeError("view's buffer has been detached"),
-      );
-    }
+
     if (options.min === 0) {
       return PromiseReject(new TypeError("options.min must be non-zero"));
     }
@@ -5450,6 +5592,7 @@ class ReadableStreamBYOBReader {
         );
       }
     }
+
     if (this[_stream] === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
@@ -5518,7 +5661,7 @@ class ReadableStreamBYOBReader {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBReader);
+webidl.configureInterface(ReadableStreamBYOBReader);
 const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 
 class ReadableStreamBYOBRequest {
@@ -5533,8 +5676,11 @@ class ReadableStreamBYOBRequest {
     return this[_view];
   }
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   respond(bytesWritten) {
@@ -5598,7 +5744,7 @@ class ReadableStreamBYOBRequest {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBRequest);
+webidl.configureInterface(ReadableStreamBYOBRequest);
 const ReadableStreamBYOBRequestPrototype = ReadableStreamBYOBRequest.prototype;
 
 class ReadableByteStreamController {
@@ -5629,8 +5775,11 @@ class ReadableByteStreamController {
   /** @type {ReadableStream<ArrayBuffer>} */
   [_stream];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {ReadableStreamBYOBRequest | null} */
@@ -5795,7 +5944,7 @@ class ReadableByteStreamController {
   }
 }
 
-webidl.configurePrototype(ReadableByteStreamController);
+webidl.configureInterface(ReadableByteStreamController);
 const ReadableByteStreamControllerPrototype =
   ReadableByteStreamController.prototype;
 
@@ -5824,8 +5973,11 @@ class ReadableStreamDefaultController {
   /** @type {ReadableStream<R>} */
   [_stream];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {number | null} */
@@ -5898,9 +6050,9 @@ class ReadableStreamDefaultController {
    */
   [_pullSteps](readRequest) {
     const stream = this[_stream];
-    if (this[_queue].length) {
+    if (this[_queue].size) {
       const chunk = dequeueValue(this);
-      if (this[_closeRequested] && this[_queue].length === 0) {
+      if (this[_closeRequested] && this[_queue].size === 0) {
         readableStreamDefaultControllerClearAlgorithms(this);
         readableStreamClose(stream);
       } else {
@@ -5918,7 +6070,7 @@ class ReadableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultController);
+webidl.configureInterface(ReadableStreamDefaultController);
 const ReadableStreamDefaultControllerPrototype =
   ReadableStreamDefaultController.prototype;
 
@@ -5964,7 +6116,7 @@ class TransformStream {
       prefix,
       "Argument 3",
     );
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     if (transformer === undefined) {
       transformer = null;
     }
@@ -6036,11 +6188,15 @@ class TransformStream {
   }
 }
 
-webidl.configurePrototype(TransformStream);
+webidl.configureInterface(TransformStream);
 const TransformStreamPrototype = TransformStream.prototype;
 
 /** @template O */
 class TransformStreamDefaultController {
+  /** @type {(reason: any) => Promise<void>} */
+  [_cancelAlgorithm];
+  /** @type {Promise<void> | undefined} */
+  [_finishPromise];
   /** @type {(controller: this) => Promise<void>} */
   [_flushAlgorithm];
   /** @type {TransformStream<O>} */
@@ -6048,8 +6204,11 @@ class TransformStreamDefaultController {
   /** @type {(chunk: O, controller: this) => Promise<void>} */
   [_transformAlgorithm];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {number | null} */
@@ -6103,7 +6262,7 @@ class TransformStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(TransformStreamDefaultController);
+webidl.configureInterface(TransformStreamDefaultController);
 const TransformStreamDefaultControllerPrototype =
   TransformStreamDefaultController.prototype;
 
@@ -6136,7 +6295,11 @@ class WritableStream {
    * @param {UnderlyingSink<W>=} underlyingSink
    * @param {QueuingStrategy<W>=} strategy
    */
-  constructor(underlyingSink = undefined, strategy = {}) {
+  constructor(underlyingSink = undefined, strategy = undefined) {
+    if (underlyingSink === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'WritableStream'";
     if (underlyingSink !== undefined) {
       underlyingSink = webidl.converters.object(
@@ -6145,12 +6308,14 @@ class WritableStream {
         "Argument 1",
       );
     }
-    strategy = webidl.converters.QueuingStrategy(
-      strategy,
-      prefix,
-      "Argument 2",
-    );
-    this[webidl.brand] = webidl.brand;
+    strategy = strategy !== undefined
+      ? webidl.converters.QueuingStrategy(
+        strategy,
+        prefix,
+        "Argument 2",
+      )
+      : {};
+    this[_brand] = _brand;
     if (underlyingSink === undefined) {
       underlyingSink = null;
     }
@@ -6238,7 +6403,7 @@ class WritableStream {
   }
 }
 
-webidl.configurePrototype(WritableStream);
+webidl.configureInterface(WritableStream);
 const WritableStreamPrototype = WritableStream.prototype;
 
 /** @template W */
@@ -6259,7 +6424,7 @@ class WritableStreamDefaultWriter {
     const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.WritableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpWritableStreamDefaultWriter(this, stream);
   }
 
@@ -6384,7 +6549,7 @@ class WritableStreamDefaultWriter {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultWriter);
+webidl.configureInterface(WritableStreamDefaultWriter);
 const WritableStreamDefaultWriterPrototype =
   WritableStreamDefaultWriter.prototype;
 
@@ -6416,8 +6581,11 @@ class WritableStreamDefaultController {
     return this[_signal];
   }
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /**
@@ -6462,7 +6630,7 @@ class WritableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultController);
+webidl.configureInterface(WritableStreamDefaultController);
 const WritableStreamDefaultControllerPrototype =
   WritableStreamDefaultController.prototype;
 
@@ -6545,6 +6713,10 @@ webidl.converters.Transformer = webidl
     },
     {
       key: "flush",
+      converter: webidl.converters.Function,
+    },
+    {
+      key: "cancel",
       converter: webidl.converters.Function,
     },
     {

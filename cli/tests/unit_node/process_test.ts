@@ -259,6 +259,23 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.argv0",
+  fn() {
+    assertEquals(typeof process.argv0, "string");
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+    // Setting should be a noop
+    process.argv0 = "foobar";
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+  },
+});
+
+Deno.test({
   name: "process.execArgv",
   fn() {
     assert(Array.isArray(process.execArgv));
@@ -708,6 +725,14 @@ Deno.test("process.getuid", () => {
     assertEquals(process.getuid, undefined);
   } else {
     assertEquals(process.getuid?.(), Deno.uid());
+  }
+});
+
+Deno.test("process.geteuid", () => {
+  if (Deno.build.os === "windows") {
+    assertEquals(process.geteuid, undefined);
+  } else {
+    assert(typeof process.geteuid?.() === "number");
   }
 });
 

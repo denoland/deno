@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use libz_sys as sys;
-
 #[derive(Debug)]
 pub enum Error {
   BadArgument,
@@ -60,12 +58,12 @@ repr_i32! {
   #[derive(Clone, Copy, Debug, PartialEq, Default)]
   pub enum Flush {
     #[default]
-    None = sys::Z_NO_FLUSH,
-    Partial = sys::Z_PARTIAL_FLUSH,
-    Sync = sys::Z_SYNC_FLUSH,
-    Full = sys::Z_FULL_FLUSH,
-    Finish = sys::Z_FINISH,
-    Block = sys::Z_BLOCK,
-    Trees = sys::Z_TREES,
+    None = zlib::Z_NO_FLUSH,
+    Partial = zlib::Z_PARTIAL_FLUSH,
+    Sync = zlib::Z_SYNC_FLUSH,
+    Full = zlib::Z_FULL_FLUSH,
+    Finish = zlib::Z_FINISH,
+    Block = zlib::Z_BLOCK,
+    Trees = zlib::Z_TREES,
   }
 }

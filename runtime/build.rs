@@ -222,7 +222,10 @@ mod startup_snapshot {
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(deno_kv::sqlite::SqliteDbHandler::<
         Permissions,
-      >::new(None)),
+      >::new(None, None)),
+      deno_cron::deno_cron::init_ops_and_esm(
+        deno_cron::local::LocalCronHandler::new(),
+      ),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
@@ -247,6 +250,7 @@ mod startup_snapshot {
       extensions,
       compression_cb: None,
       with_runtime_cb: None,
+      skip_op_registration: false,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());

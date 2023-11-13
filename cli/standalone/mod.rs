@@ -35,6 +35,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::v8_set_flags;
+use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
@@ -424,6 +425,17 @@ pub async fn run(
 
     PermissionsContainer::new(Permissions::from_options(&permissions)?)
   };
+  let feature_checker = Arc::new({
+    let mut checker = FeatureChecker::default();
+    checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
+    // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
+    // of granular --unstable-* flags.
+    // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
+    if metadata.unstable {
+      checker.enable_legacy_unstable();
+    }
+    checker
+  });
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
     npm_resolver,
@@ -434,16 +446,23 @@ pub async fn run(
     fs,
     None,
     None,
+    None,
+    None,
+    feature_checker,
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,
       coverage_dir: None,
+      enable_op_summary_metrics: false,
       enable_testing_features: false,
       has_node_modules_dir,
+      hmr: false,
       inspect_brk: false,
       inspect_wait: false,
+      strace_ops: None,
       is_inspecting: false,
       is_npm_main: main_module.scheme() == "npm",
+      skip_op_registration: true,
       location: metadata.location,
       maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
         main_module,

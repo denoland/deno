@@ -448,7 +448,7 @@ impl NodeResolver {
   }
 
   /// Checks if the resolved file has a corresponding declaration file.
-  pub(super) fn path_to_declaration_path(
+  fn path_to_declaration_path(
     &self,
     path: PathBuf,
     referrer_kind: NodeModuleKind,
@@ -543,7 +543,7 @@ impl NodeResolver {
 
     let mut package_json_path = None;
     if let Some(package_config) =
-      self.get_package_scope_config(referrer, permissions)?
+      self.get_closest_package_json(referrer, permissions)?
     {
       if package_config.exists {
         package_json_path = Some(package_config.path.clone());
@@ -975,14 +975,14 @@ impl NodeResolver {
     permissions: &dyn NodePermissions,
   ) -> Result<Option<PathBuf>, AnyError> {
     let (package_name, package_subpath, _is_scoped) =
-      parse_package_name(specifier, referrer)?;
+      parse_npm_pkg_name(specifier, referrer)?;
 
-    // ResolveSelf
     let Some(package_config) =
-      self.get_package_scope_config(referrer, permissions)?
+      self.get_closest_package_json(referrer, permissions)?
     else {
       return Ok(None);
     };
+    // ResolveSelf
     if package_config.exists
       && package_config.name.as_ref() == Some(&package_name)
     {
@@ -1086,24 +1086,7 @@ impl NodeResolver {
     }
   }
 
-  pub(super) fn get_package_scope_config(
-    &self,
-    referrer: &ModuleSpecifier,
-    permissions: &dyn NodePermissions,
-  ) -> Result<Option<PackageJson>, AnyError> {
-    let Some(root_folder) = self
-      .npm_resolver
-      .resolve_package_folder_from_path(referrer)?
-    else {
-      return Ok(None);
-    };
-    let package_json_path = root_folder.join("package.json");
-    self
-      .load_package_json(permissions, package_json_path)
-      .map(Some)
-  }
-
-  pub(super) fn get_closest_package_json(
+  pub fn get_closest_package_json(
     &self,
     url: &ModuleSpecifier,
     permissions: &dyn NodePermissions,
@@ -1121,7 +1104,9 @@ impl NodeResolver {
     &self,
     url: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let file_path = url.to_file_path().unwrap();
+    let Ok(file_path) = url.to_file_path() else {
+      return Ok(None);
+    };
     let current_dir = deno_core::strip_unc_prefix(
       self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
@@ -1130,15 +1115,8 @@ impl NodeResolver {
     if self.fs.exists_sync(&package_json_path) {
       return Ok(Some(package_json_path));
     }
-    let Some(root_pkg_folder) =
-      self.npm_resolver.resolve_package_folder_from_path(
-        &ModuleSpecifier::from_directory_path(current_dir).unwrap(),
-      )?
-    else {
-      return Ok(None);
-    };
-    while current_dir.starts_with(&root_pkg_folder) {
-      current_dir = current_dir.parent().unwrap();
+    while let Some(parent) = current_dir.parent() {
+      current_dir = parent;
       let package_json_path = current_dir.join("package.json");
       if self.fs.exists_sync(&package_json_path) {
         return Ok(Some(package_json_path));
@@ -1378,7 +1356,9 @@ fn is_relative_specifier(specifier: &str) -> bool {
 /// Alternate `PathBuf::with_extension` that will handle known extensions
 /// more intelligently.
 fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
-  const NON_DECL_EXTS: &[&str] = &["cjs", "js", "json", "jsx", "mjs", "tsx"];
+  const NON_DECL_EXTS: &[&str] = &[
+    "cjs", "js", "json", "jsx", "mjs", "tsx", /* ex. types.d */ "d",
+  ];
   const DECL_EXTS: &[&str] = &["cts", "mts", "ts"];
 
   let file_name = match path.file_name() {
@@ -1483,7 +1463,7 @@ fn throw_exports_not_found(
   )
 }
 
-fn parse_package_name(
+pub fn parse_npm_pkg_name(
   specifier: &str,
   referrer: &ModuleSpecifier,
 ) -> Result<(String, String, bool), AnyError> {
@@ -1725,15 +1705,15 @@ mod tests {
     let dummy_referrer = Url::parse("http://example.com").unwrap();
 
     assert_eq!(
-      parse_package_name("fetch-blob", &dummy_referrer).unwrap(),
+      parse_npm_pkg_name("fetch-blob", &dummy_referrer).unwrap(),
       ("fetch-blob".to_string(), ".".to_string(), false)
     );
     assert_eq!(
-      parse_package_name("@vue/plugin-vue", &dummy_referrer).unwrap(),
+      parse_npm_pkg_name("@vue/plugin-vue", &dummy_referrer).unwrap(),
       ("@vue/plugin-vue".to_string(), ".".to_string(), true)
     );
     assert_eq!(
-      parse_package_name("@astrojs/prism/dist/highlighter", &dummy_referrer)
+      parse_npm_pkg_name("@astrojs/prism/dist/highlighter", &dummy_referrer)
         .unwrap(),
       (
         "@astrojs/prism".to_string(),

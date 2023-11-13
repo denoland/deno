@@ -409,27 +409,26 @@ pub async fn run_benchmarks_with_watch(
 ) -> Result<(), AnyError> {
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig {
-      job_name: "Bench".to_string(),
-      clear_screen: bench_flags
+    file_watcher::PrintConfig::new(
+      "Bench",
+      bench_flags
         .watch
         .as_ref()
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
-    },
-    move |flags, sender, changed_paths| {
+    ),
+    move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone())
-          .build_from_flags(flags)
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
           .await?;
         let cli_options = factory.cli_options();
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
-        let _ = sender.send(cli_options.watch_paths());
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
         if let Some(include) = &bench_options.files.include {
-          let _ = sender.send(include.clone());
+          let _ = watcher_communicator.watch_paths(include.clone());
         }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();

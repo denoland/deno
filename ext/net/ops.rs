@@ -1041,16 +1041,16 @@ mod tests {
       }
     );
 
+    let mut feature_checker = deno_core::FeatureChecker::default();
+    feature_checker.enable_legacy_unstable();
+
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
+      feature_checker: Some(Arc::new(feature_checker)),
       ..Default::default()
     });
 
     let conn_state = runtime.op_state();
-    conn_state
-      .borrow_mut()
-      .feature_checker
-      .enable_legacy_unstable();
 
     let server_addr: Vec<&str> = clone_addr.split(':').collect();
     let ip_addr = IpAddr {
