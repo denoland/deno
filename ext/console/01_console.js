@@ -1703,7 +1703,6 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
   const entries = previewEntries(value);
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
