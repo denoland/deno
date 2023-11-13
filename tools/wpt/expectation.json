@@ -2302,7 +2302,9 @@
       "AbortSignal.any.html": true,
       "AbortSignal.any.worker.html": true,
       "event.any.html": true,
-      "event.any.worker.html": true
+      "event.any.worker.html": true,
+      "abort-signal-any.any.html": true,
+      "abort-signal-any.any.worker.html": true
     },
     "events": {
       "AddEventListenerOptions-once.any.html": true,
@@ -2364,7 +2366,6 @@
       "EventTarget interface: operation addEventListener(DOMString, EventListener?, optional (AddEventListenerOptions or boolean))",
       "EventTarget interface: operation removeEventListener(DOMString, EventListener?, optional (EventListenerOptions or boolean))",
       "AbortController interface: operation abort(optional any)",
-      "AbortSignal interface: operation any(sequence<AbortSignal>)",
       "AbortSignal interface: attribute onabort",
       "NodeList interface: existence and properties of interface object",
       "NodeList interface object length",

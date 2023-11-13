@@ -4,6 +4,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { assert } from "ext:deno_web/00_infra.js";
 import {
   defineEventHandler,
   Event,
@@ -13,27 +14,76 @@ import {
 } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeEvery,
+  ArrayPrototypePush,
   SafeArrayIterator,
   SafeSet,
   SafeSetIterator,
+  SafeWeakRef,
+  SafeWeakSet,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
   TypeError,
+  WeakRefPrototypeDeref,
+  WeakSetPrototypeAdd,
+  WeakSetPrototypeHas,
 } = primordials;
 import { refTimer, setTimeout, unrefTimer } from "ext:deno_web/02_timers.js";
+
+// Since WeakSet is not a iterable, WeakRefSet class is provided to store and
+// iterate objects.
+// To create an AsyncIterable using GeneratorFunction in the internal code,
+// there are many primordial considerations, so we simply implement the
+// toArray method.
+class WeakRefSet {
+  #weakSet = new SafeWeakSet();
+  #refs = [];
+
+  add(value) {
+    if (WeakSetPrototypeHas(this.#weakSet, value)) {
+      return;
+    }
+    WeakSetPrototypeAdd(this.#weakSet, value);
+    ArrayPrototypePush(this.#refs, new SafeWeakRef(value));
+  }
+
+  has(value) {
+    return WeakSetPrototypeHas(this.#weakSet, value);
+  }
+
+  toArray() {
+    const ret = [];
+    for (let i = 0; i < this.#refs.length; ++i) {
+      const value = WeakRefPrototypeDeref(this.#refs[i]);
+      if (value !== undefined) {
+        ArrayPrototypePush(ret, value);
+      }
+    }
+    return ret;
+  }
+}
 
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");
 const remove = Symbol("[[remove]]");
 const abortReason = Symbol("[[abortReason]]");
 const abortAlgos = Symbol("[[abortAlgos]]");
+const dependent = Symbol("[[dependent]]");
+const sourceSignals = Symbol("[[sourceSignals]]");
+const dependentSignals = Symbol("[[dependentSignals]]");
 const signal = Symbol("[[signal]]");
 const timerId = Symbol("[[timerId]]");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 class AbortSignal extends EventTarget {
+  static any(signals) {
+    const prefix = "Failed to call 'AbortSignal.any'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    return createDependentAbortSignal(signals, prefix);
+  }
+
   static abort(reason = undefined) {
     if (reason !== undefined) {
       reason = webidl.converters.any(reason);
@@ -73,9 +123,7 @@ class AbortSignal extends EventTarget {
     if (this.aborted) {
       return;
     }
-    if (this[abortAlgos] === null) {
-      this[abortAlgos] = new SafeSet();
-    }
+    this[abortAlgos] ??= new SafeSet();
     SetPrototypeAdd(this[abortAlgos], algorithm);
   }
 
@@ -91,10 +139,18 @@ class AbortSignal extends EventTarget {
 
     const event = new Event("abort");
     setIsTrusted(event, true);
-    this.dispatchEvent(event);
+    super.dispatchEvent(event);
     if (algos !== null) {
       for (const algorithm of new SafeSetIterator(algos)) {
         algorithm();
+      }
+    }
+
+    if (this[dependentSignals] !== null) {
+      const dependentSignalArray = this[dependentSignals].toArray();
+      for (let i = 0; i < dependentSignalArray.length; ++i) {
+        const dependentSignal = dependentSignalArray[i];
+        dependentSignal[signalAbort](reason);
       }
     }
   }
@@ -104,12 +160,15 @@ class AbortSignal extends EventTarget {
   }
 
   constructor(key = null) {
-    if (key != illegalConstructorKey) {
+    if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
     }
     super();
     this[abortReason] = undefined;
     this[abortAlgos] = null;
+    this[dependent] = false;
+    this[sourceSignals] = null;
+    this[dependentSignals] = null;
     this[timerId] = null;
     this[webidl.brand] = webidl.brand;
   }
@@ -138,15 +197,45 @@ class AbortSignal extends EventTarget {
   // ops which would block the event loop.
   addEventListener(...args) {
     super.addEventListener(...new SafeArrayIterator(args));
-    if (this[timerId] !== null && listenerCount(this, "abort") > 0) {
-      refTimer(this[timerId]);
+    if (listenerCount(this, "abort") > 0) {
+      if (this[timerId] !== null) {
+        refTimer(this[timerId]);
+      } else if (this[sourceSignals] !== null) {
+        const sourceSignalArray = this[sourceSignals].toArray();
+        for (let i = 0; i < sourceSignalArray.length; ++i) {
+          const sourceSignal = sourceSignalArray[i];
+          if (sourceSignal[timerId] !== null) {
+            refTimer(sourceSignal[timerId]);
+          }
+        }
+      }
     }
   }
 
   removeEventListener(...args) {
     super.removeEventListener(...new SafeArrayIterator(args));
-    if (this[timerId] !== null && listenerCount(this, "abort") === 0) {
-      unrefTimer(this[timerId]);
+    if (listenerCount(this, "abort") === 0) {
+      if (this[timerId] !== null) {
+        unrefTimer(this[timerId]);
+      } else if (this[sourceSignals] !== null) {
+        const sourceSignalArray = this[sourceSignals].toArray();
+        for (let i = 0; i < sourceSignalArray.length; ++i) {
+          const sourceSignal = sourceSignalArray[i];
+          if (sourceSignal[timerId] !== null) {
+            // Check that all dependent signals of the timer signal do not have listeners
+            if (
+              ArrayPrototypeEvery(
+                sourceSignal[dependentSignals].toArray(),
+                (dependentSignal) =>
+                  dependentSignal === this ||
+                  listenerCount(dependentSignal, "abort") === 0,
+              )
+            ) {
+              unrefTimer(sourceSignal[timerId]);
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -176,24 +265,59 @@ class AbortController {
 webidl.configureInterface(AbortController);
 const AbortControllerPrototype = AbortController.prototype;
 
-webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(
+webidl.converters.AbortSignal = webidl.createInterfaceConverter(
   "AbortSignal",
   AbortSignal.prototype,
+);
+webidl.converters["sequence<AbortSignal>"] = webidl.createSequenceConverter(
+  webidl.converters.AbortSignal,
 );
 
 function newSignal() {
   return new AbortSignal(illegalConstructorKey);
 }
 
-function follow(followingSignal, parentSignal) {
-  if (followingSignal.aborted) {
-    return;
+function createDependentAbortSignal(signals, prefix) {
+  signals = webidl.converters["sequence<AbortSignal>"](
+    signals,
+    prefix,
+    "Argument 1",
+  );
+
+  const resultSignal = new AbortSignal(illegalConstructorKey);
+  for (let i = 0; i < signals.length; ++i) {
+    const signal = signals[i];
+    if (signal[abortReason] !== undefined) {
+      resultSignal[abortReason] = signal[abortReason];
+      return resultSignal;
+    }
   }
-  if (parentSignal.aborted) {
-    followingSignal[signalAbort](parentSignal.reason);
-  } else {
-    parentSignal[add](() => followingSignal[signalAbort](parentSignal.reason));
+
+  resultSignal[dependent] = true;
+  resultSignal[sourceSignals] = new WeakRefSet();
+  for (let i = 0; i < signals.length; ++i) {
+    const signal = signals[i];
+    if (!signal[dependent]) {
+      signal[dependentSignals] ??= new WeakRefSet();
+      resultSignal[sourceSignals].add(signal);
+      signal[dependentSignals].add(resultSignal);
+    } else {
+      const sourceSignalArray = signal[sourceSignals].toArray();
+      for (let j = 0; j < sourceSignalArray.length; ++j) {
+        const sourceSignal = sourceSignalArray[j];
+        assert(sourceSignal[abortReason] === undefined);
+        assert(!sourceSignal[dependent]);
+
+        if (resultSignal[sourceSignals].has(sourceSignal)) {
+          continue;
+        }
+        resultSignal[sourceSignals].add(sourceSignal);
+        sourceSignal[dependentSignals].add(resultSignal);
+      }
+    }
   }
+
+  return resultSignal;
 }
 
 export {
@@ -201,7 +325,7 @@ export {
   AbortSignal,
   AbortSignalPrototype,
   add,
-  follow,
+  createDependentAbortSignal,
   newSignal,
   remove,
   signalAbort,
