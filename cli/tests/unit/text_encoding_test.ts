@@ -330,16 +330,13 @@ Deno.test(
     permissions: { read: true },
   },
   async function textDecoderStreamCleansUpOnCancel() {
-    let timeout: number | undefined = undefined;
+    let cancelled = false;
     const readable = new ReadableStream({
       start: (controller) => {
         controller.enqueue(new Uint8Array(12));
-        // This will never be called
-        timeout = setTimeout(() => controller.close());
       },
       cancel: () => {
-        clearTimeout(timeout);
-        timeout = undefined;
+        cancelled = true;
       },
     }).pipeThrough(new TextDecoderStream());
     const chunks = [];
@@ -350,6 +347,6 @@ Deno.test(
     }
     assertEquals(chunks.length, 1);
     assertEquals(chunks[0].length, 12);
-    assertStrictEquals(timeout, undefined);
+    assertStrictEquals(cancelled, true);
   },
 );
