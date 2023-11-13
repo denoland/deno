@@ -285,7 +285,7 @@ const workerRuntimeGlobalProperties = {
 
 export {
   mainRuntimeGlobalProperties,
-  makeLazy,
+  memoizeLazy,
   unstableWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
