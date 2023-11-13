@@ -146,10 +146,6 @@ impl HttpRecord {
     request_info: HttpConnectionProperties,
     server_state: Rc<HttpServerState>,
   ) -> Rc<Self> {
-    #[cfg(feature = "__http_tracing")]
-    {
-      RECORD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    }
     let (request_parts, request_body) = request.into_parts();
     let body = ResponseBytes::default();
     let trailers = body.trailers();
@@ -178,6 +174,11 @@ impl HttpRecord {
       http_trace!(record, "HttpRecord::reuse");
       record
     } else {
+      #[cfg(feature = "__http_tracing")]
+      {
+        RECORD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+      }
+
       #[allow(clippy::let_and_return)]
       let record = Rc::new(Self(RefCell::new(Some(inner))));
       http_trace!(record, "HttpRecord::new");
