@@ -1708,7 +1708,6 @@ function formatWeakSet(ctx, value, recurseTimes) {
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
   const entries = previewEntries(value);
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
