@@ -1,5 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "./test_util.ts";
 
 Deno.test(function btoaSuccess() {
   const text = "hello world";
@@ -323,9 +328,15 @@ Deno.test(function binaryEncode() {
 Deno.test(
   { permissions: { read: true } },
   async function textDecoderStreamCleansUpOnCancel() {
-    const filename = "cli/tests/testdata/assets/hello.txt";
-    const file = await Deno.open(filename);
-    const readable = file.readable.pipeThrough(new TextDecoderStream());
+    let cancelled = false;
+    const readable = new ReadableStream({
+      start: (controller) => {
+        controller.enqueue(new Uint8Array(12));
+      },
+      cancel: () => {
+        cancelled = true;
+      },
+    }).pipeThrough(new TextDecoderStream());
     const chunks = [];
     for await (const chunk of readable) {
       chunks.push(chunk);
@@ -334,5 +345,6 @@ Deno.test(
     }
     assertEquals(chunks.length, 1);
     assertEquals(chunks[0].length, 12);
+    assertStrictEquals(cancelled, true);
   },
 );
