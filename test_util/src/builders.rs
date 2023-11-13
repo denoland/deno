@@ -561,8 +561,9 @@ impl TestCommandOutput {
     self
   }
 
-  pub fn skip_exit_code_check(&self) {
+  pub fn skip_exit_code_check(&self) -> &Self {
     *self.asserted_exit_code.borrow_mut() = true;
+    self
   }
 
   pub fn exit_code(&self) -> Option<i32> {

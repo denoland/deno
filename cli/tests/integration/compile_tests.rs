@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fs::File;
-use std::process::Command;
 use test_util as util;
-use test_util::TempDir;
 use util::assert_contains;
+use util::assert_not_contains;
+use util::TestContext;
 use util::TestContextBuilder;
 
 #[test]
@@ -49,72 +49,60 @@ fn compile_basic() {
 
 #[test]
 fn standalone_args() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
     dir.path().join("args")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/args.ts")
-    .arg("a")
-    .arg("b")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .arg("foo")
-    .arg("--bar")
-    .arg("--unstable")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"a\nb\nfoo\n--bar\n--unstable\n");
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/args.ts",
+      "a",
+      "b",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .name(&exe)
+    .args("foo --bar --unstable")
+    .run()
+    .assert_matches_text("a\nb\nfoo\n--bar\n--unstable\n")
+    .assert_exit_code(0);
 }
 
 #[test]
 fn standalone_error() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
     dir.path().join("error")
   };
-  let testdata_path = util::testdata_path();
-  let output = util::deno_cmd()
-    .current_dir(&testdata_path)
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/standalone_error.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(output.stdout, b"");
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  let stderr = util::strip_ansi_codes(&stderr).to_string();
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/standalone_error.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
+  let output = context.new_command().name(&exe).split_output().run();
+  output.assert_exit_code(1);
+  output.assert_stdout_matches_text("");
+  let stderr = output.stderr();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
   assert_contains!(stderr, "error: Uncaught Error: boom!");
@@ -128,111 +116,103 @@ fn standalone_error() {
 
 #[test]
 fn standalone_error_module_with_imports() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
     dir.path().join("error")
   };
-  let testdata_path = util::testdata_path();
-  let output = util::deno_cmd()
-    .current_dir(&testdata_path)
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/standalone_error_module_with_imports_1.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/standalone_error_module_with_imports_1.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
+  let output = context
+    .new_command()
+    .name(&exe)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(output.stdout, b"hello\n");
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  let stderr = util::strip_ansi_codes(&stderr).to_string();
+    .split_output()
+    .run();
+  output.assert_stdout_matches_text("hello\n");
+  let stderr = output.stderr();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
   assert_contains!(stderr, "error: Uncaught Error: boom!");
   assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at file://");
   assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
+  output.assert_exit_code(1);
 }
 
 #[test]
 fn standalone_load_datauri() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("load_datauri.exe")
   } else {
     dir.path().join("load_datauri")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/standalone_import_datauri.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello Deno!\n");
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/standalone_import_datauri.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .name(&exe)
+    .run()
+    .assert_matches_text("Hello Deno!\n")
+    .assert_exit_code(0);
 }
 
 // https://github.com/denoland/deno/issues/13704
 #[test]
 fn standalone_follow_redirects() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("follow_redirects.exe")
   } else {
     dir.path().join("follow_redirects")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/standalone_follow_redirects.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello\n");
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/standalone_follow_redirects.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .name(&exe)
+    .run()
+    .assert_matches_text("Hello\n")
+    .assert_exit_code(0);
 }
 
 #[test]
 fn compile_with_file_exists_error() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\")
   } else {
@@ -240,94 +220,80 @@ fn compile_with_file_exists_error() {
   };
   let file_path = dir.path().join("args");
   File::create(&file_path).unwrap();
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&output_path)
-    .arg("./compile/args.ts")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  let expected_stderr = format!(
-    concat!(
-      "Could not compile to file '{}' because its parent directory ",
-      "is an existing file. You can use the `--output <file-path>` flag to ",
-      "provide an alternative name.\n",
-    ),
-    file_path,
-  );
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_contains!(stderr, &expected_stderr);
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &output_path.to_string_lossy(),
+      "./compile/args.ts",
+    ])
+    .run()
+    .assert_matches_text(&format!(
+      concat!(
+        "[WILDCARD]error: Could not compile to file '{}' because its parent directory ",
+        "is an existing file. You can use the `--output <file-path>` flag to ",
+        "provide an alternative name.\n",
+      ),
+      file_path,
+    ))
+    .assert_exit_code(1);
 }
 
 #[test]
 fn compile_with_directory_exists_error() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
     dir.path().join("args")
   };
   std::fs::create_dir(&exe).unwrap();
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/args.ts")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  let expected_stderr = format!(
-    concat!(
-      "Could not compile to file '{}' because a directory exists with ",
-      "the same name. You can use the `--output <file-path>` flag to ",
-      "provide an alternative name."
-    ),
-    exe
-  );
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_contains!(stderr, &expected_stderr);
+  context.new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/args.ts"
+    ]).run()
+    .assert_matches_text(&format!(
+      concat!(
+        "[WILDCARD]error: Could not compile to file '{}' because a directory exists with ",
+        "the same name. You can use the `--output <file-path>` flag to ",
+        "provide an alternative name.\n"
+      ),
+      exe
+    ))
+    .assert_exit_code(1);
 }
 
 #[test]
 fn compile_with_conflict_file_exists_error() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
     dir.path().join("args")
   };
   std::fs::write(&exe, b"SHOULD NOT BE OVERWRITTEN").unwrap();
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/args.ts")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  let expected_stderr = format!(
-    concat!(
-      "Could not compile to file '{}' because the file already exists ",
-      "and cannot be overwritten. Please delete the existing file or ",
-      "use the `--output <file-path>` flag to provide an alternative name."
-    ),
-    exe
-  );
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_contains!(stderr, &expected_stderr);
+  context.new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/args.ts"
+    ]).run()
+    .assert_matches_text(&format!(
+      concat!(
+        "[WILDCARD]error: Could not compile to file '{}' because the file already exists ",
+        "and cannot be overwritten. Please delete the existing file or ",
+        "use the `--output <file-path>` flag to provide an alternative name.\n"
+      ),
+      exe
+    ))
+    .assert_exit_code(1);
   assert!(std::fs::read(&exe)
     .unwrap()
     .eq(b"SHOULD NOT BE OVERWRITTEN"));
@@ -335,354 +301,314 @@ fn compile_with_conflict_file_exists_error() {
 
 #[test]
 fn compile_and_overwrite_file() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
     dir.path().join("args")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/args.ts")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert!(&exe.exists());
 
-  let recompile_output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/args.ts")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(recompile_output.status.success());
+  // do this twice
+  for _ in 0..2 {
+    context
+      .new_command()
+      .args_vec([
+        "compile",
+        "--output",
+        &exe.to_string_lossy(),
+        "./compile/args.ts",
+      ])
+      .run()
+      .skip_output_check()
+      .assert_exit_code(0);
+    assert!(&exe.exists());
+  }
 }
 
 #[test]
 fn standalone_runtime_flags() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("flags.exe")
   } else {
     dir.path().join("flags")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--allow-read")
-    .arg("--seed")
-    .arg("1")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/standalone_runtime_flags.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  let stdout_str = String::from_utf8(output.stdout).unwrap();
-  assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
-  let stderr_str = String::from_utf8(output.stderr).unwrap();
-  assert_contains!(
-    util::strip_ansi_codes(&stderr_str),
-    "PermissionDenied: Requires write access"
-  );
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--allow-read",
+      "--seed",
+      "1",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/standalone_runtime_flags.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .name(&exe)
+    .split_output()
+    .run()
+    .assert_stdout_matches_text("0.147205063401058\n")
+    .assert_stderr_matches_text(
+      "[WILDCARD]PermissionDenied: Requires write access to[WILDCARD]",
+    )
+    .assert_exit_code(1);
 }
 
 #[test]
 fn standalone_ext_flag_ts() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("ext_flag_ts.exe")
   } else {
     dir.path().join("ext_flag_ts")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--ext")
-    .arg("ts")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./file_extensions/ts_without_extension")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let stdout_str = String::from_utf8(output.stdout).unwrap();
-  assert_eq!(
-    util::strip_ansi_codes(&stdout_str),
-    "executing typescript with no extension\n"
-  );
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--ext",
+      "ts",
+      "--output",
+      &exe.to_string_lossy(),
+      "./file_extensions/ts_without_extension",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .name(&exe)
+    .run()
+    .assert_matches_text("executing typescript with no extension\n")
+    .assert_exit_code(0);
 }
 
 #[test]
 fn standalone_ext_flag_js() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("ext_flag_js.exe")
   } else {
     dir.path().join("ext_flag_js")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--ext")
-    .arg("js")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./file_extensions/js_without_extension")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let stdout_str = String::from_utf8(output.stdout).unwrap();
-  assert_eq!(
-    util::strip_ansi_codes(&stdout_str),
-    "executing javascript with no extension\n"
-  );
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--ext",
+      "js",
+      "--output",
+      &exe.to_string_lossy(),
+      "./file_extensions/js_without_extension",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .name(&exe)
+    .run()
+    .assert_matches_text("executing javascript with no extension\n");
 }
 
 #[test]
 fn standalone_import_map() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("import_map.exe")
   } else {
     dir.path().join("import_map")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--allow-read")
-    .arg("--import-map")
-    .arg("compile/standalone_import_map.json")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/standalone_import_map.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--allow-read",
+      "--import-map",
+      "compile/standalone_import_map.json",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/standalone_import_map.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .name(&exe)
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
 }
 
 #[test]
 fn standalone_import_map_config_file() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("import_map.exe")
   } else {
     dir.path().join("import_map")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--allow-read")
-    .arg("--config")
-    .arg("compile/standalone_import_map_config.json")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./compile/standalone_import_map.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--allow-read",
+      "--config",
+      "compile/standalone_import_map_config.json",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/standalone_import_map.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  context
+    .new_command()
+    .name(&exe)
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
 }
 
 #[test]
 // https://github.com/denoland/deno/issues/12670
 fn skip_rebundle() {
-  let dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("hello_world.exe")
   } else {
     dir.path().join("hello_world")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./run/001_hello.js")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-
-  //no "Bundle testdata_path/run/001_hello.js" in output
-  assert!(!String::from_utf8(output.stderr).unwrap().contains("Bundle"));
-
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, "Hello World\n".as_bytes());
-}
-
-#[test]
-fn check_local_by_default() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
-  let exe = if cfg!(windows) {
-    dir.path().join("welcome.exe")
-  } else {
-    dir.path().join("welcome")
-  };
-  let status = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg(util::testdata_path().join("./compile/check_local_by_default.ts"))
-    .status()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
-fn check_local_by_default2() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
-  let exe = if cfg!(windows) {
-    dir.path().join("welcome.exe")
-  } else {
-    dir.path().join("welcome")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .env("NO_COLOR", "1")
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg(util::testdata_path().join("./compile/check_local_by_default2.ts"))
-    .output()
-    .unwrap();
-  assert!(!output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stdout.is_empty());
-  assert_contains!(
-    stderr,
-    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
-  );
-}
-
-#[test]
-fn workers_basic() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
-  let exe = if cfg!(windows) {
-    dir.path().join("basic.exe")
-  } else {
-    dir.path().join("basic")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--no-check")
-    .arg("--output")
-    .arg(&exe)
-    .arg(util::testdata_path().join("./compile/workers/basic.ts"))
-    .output()
-    .unwrap();
-  assert!(output.status.success());
-
-  let output = Command::new(&exe).output().unwrap();
-  assert!(output.status.success());
-  let expected = std::fs::read_to_string(
-    util::testdata_path().join("./compile/workers/basic.out"),
-  )
-  .unwrap();
-  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
-}
-
-#[test]
-fn workers_not_in_module_map() {
-  let context = TestContextBuilder::for_npm()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
-  let temp_dir = context.temp_dir();
-  let exe = if cfg!(windows) {
-    temp_dir.path().join("not_in_module_map.exe")
-  } else {
-    temp_dir.path().join("not_in_module_map")
-  };
-  let main_path =
-    util::testdata_path().join("./compile/workers/not_in_module_map.ts");
   let output = context
     .new_command()
     .args_vec([
       "compile",
       "--output",
       &exe.to_string_lossy(),
-      &main_path.to_string_lossy(),
+      "./run/001_hello.js",
+    ])
+    .run();
+
+  //no "Bundle testdata_path/run/001_hello.js" in output
+  assert_not_contains!(output.combined_output(), "Bundle");
+
+  context
+    .new_command()
+    .name(&exe)
+    .run()
+    .assert_matches_text("Hello World\n")
+    .assert_exit_code(0);
+}
+
+#[test]
+fn check_local_by_default() {
+  let context = TestContext::with_http_server();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/check_local_by_default.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+}
+
+#[test]
+fn check_local_by_default2() {
+  let context = TestContext::with_http_server();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      
+        "./compile/check_local_by_default2.ts"
+    ])
+    .run()
+    .assert_matches_text(
+      r#"[WILDCARD]error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.[WILDCARD]"#,
+    )
+    .assert_exit_code(1);
+}
+
+#[test]
+fn workers_basic() {
+  let context = TestContext::with_http_server();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("basic.exe")
+  } else {
+    dir.path().join("basic")
+  };
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--no-check",
+      "--output",
+      &exe.to_string_lossy(),
+        "./compile/workers/basic.ts"
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
+  context
+    .new_command()
+    .name(&exe)
+    .run()
+    .assert_matches_file("./compile/workers/basic.out")
+    .assert_exit_code(0);
+}
+
+#[test]
+fn workers_not_in_module_map() {
+  let context = TestContext::with_http_server();
+  let temp_dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    temp_dir.path().join("not_in_module_map.exe")
+  } else {
+    temp_dir.path().join("not_in_module_map")
+  };
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/workers/not_in_module_map.ts",
     ])
     .run();
   output.assert_exit_code(0);
@@ -698,92 +624,97 @@ fn workers_not_in_module_map() {
 
 #[test]
 fn workers_with_include_flag() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
+  let context = TestContext::with_http_server();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("workers_with_include_flag.exe")
   } else {
     dir.path().join("workers_with_include_flag")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--include")
-    .arg(util::testdata_path().join("./compile/workers/worker.ts"))
-    .arg("--output")
-    .arg(&exe)
-    .arg(util::testdata_path().join("./compile/workers/not_in_module_map.ts"))
-    .output()
-    .unwrap();
-  assert!(output.status.success());
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "--include",
+      "./compile/workers/worker.ts",
+      "./compile/workers/not_in_module_map.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
 
-  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
-  assert!(output.status.success());
-  let expected_stdout =
-    concat!("Hello from worker!\n", "Received 42\n", "Closing\n");
-  assert_eq!(&String::from_utf8(output.stdout).unwrap(), expected_stdout);
+  context
+    .new_command()
+    .name(&exe)
+    .env("NO_COLOR", "")
+    .run()
+    .assert_matches_text("Hello from worker!\nReceived 42\nClosing\n");
 }
 
 #[test]
 fn dynamic_import() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
+  let context = TestContext::with_http_server();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("dynamic_import.exe")
   } else {
     dir.path().join("dynamic_import")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg(util::testdata_path().join("./compile/dynamic_imports/main.ts"))
-    .output()
-    .unwrap();
-  assert!(output.status.success());
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/dynamic_imports/main.ts"
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
 
-  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
-  assert!(output.status.success());
-  let expected = std::fs::read_to_string(
-    util::testdata_path().join("./compile/dynamic_imports/main.out"),
-  )
-  .unwrap();
-  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+  context
+    .new_command()
+    .name(&exe)
+    .env("NO_COLOR", "")
+    .run()
+    .assert_matches_file("./compile/dynamic_imports/main.out")
+    .assert_exit_code(0);
 }
 
 #[test]
 fn dynamic_import_unanalyzable() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
+  let context = TestContext::with_http_server();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("dynamic_import_unanalyzable.exe")
   } else {
     dir.path().join("dynamic_import_unanalyzable")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--allow-read")
-    .arg("--include")
-    .arg(util::testdata_path().join("./compile/dynamic_imports/import1.ts"))
-    .arg("--output")
-    .arg(&exe)
-    .arg(
-      util::testdata_path()
-        .join("./compile/dynamic_imports/main_unanalyzable.ts"),
-    )
-    .output()
-    .unwrap();
-  assert!(output.status.success());
+  context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--allow-read",
+      "--include",
+      "./compile/dynamic_imports/import1.ts",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/dynamic_imports/main_unanalyzable.ts",
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
 
-  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
-  assert!(output.status.success());
-  let expected = std::fs::read_to_string(
-    util::testdata_path().join("./compile/dynamic_imports/main.out"),
-  )
-  .unwrap();
-  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+  context
+    .new_command()
+    .cwd(util::root_path().join("cli"))
+    .name(&exe)
+    .env("NO_COLOR", "")
+    .run()
+    .assert_matches_file("./compile/dynamic_imports/main.out")
+    .assert_exit_code(0);
 }
 
 #[test]
