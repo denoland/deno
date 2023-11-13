@@ -137,14 +137,14 @@ const {
   isNaN,
 } = primordials;
 
-let noColor = false;
+let noColor = () => false;
 
-function setNoColor(value) {
-  noColor = value;
+function setNoColorFn(fn) {
+  noColor = fn;
 }
 
 function getNoColor() {
-  return noColor;
+  return noColor();
 }
 
 function assert(cond, msg = "Assertion failed.") {
@@ -3646,7 +3646,7 @@ export {
   inspect,
   inspectArgs,
   quoteString,
-  setNoColor,
+  setNoColorFn,
   styles,
   wrapConsole,
 };
