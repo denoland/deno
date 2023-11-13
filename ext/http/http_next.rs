@@ -14,7 +14,7 @@ use crate::service::handle_request;
 use crate::service::http_trace;
 use crate::service::HttpRecord;
 use crate::service::HttpRequestBodyAutocloser;
-use crate::service::RefCount;
+use crate::service::HttpServerState;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
 use cache_control::CacheControl;
@@ -844,13 +844,13 @@ fn serve_https(
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
 ) -> JoinHandle<Result<(), AnyError>> {
   let HttpLifetime {
-    refcount,
+    server_state,
     connection_cancel_handle,
     listen_cancel_handle,
   } = lifetime;
 
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), refcount.clone(), tx.clone())
+    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
   });
   spawn(
     async {
@@ -881,13 +881,13 @@ fn serve_http(
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
 ) -> JoinHandle<Result<(), AnyError>> {
   let HttpLifetime {
-    refcount,
+    server_state,
     connection_cancel_handle,
     listen_cancel_handle,
   } = lifetime;
 
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), refcount.clone(), tx.clone())
+    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
   });
   spawn(
     serve_http2_autodetect(io, svc, listen_cancel_handle)
@@ -927,7 +927,7 @@ where
 struct HttpLifetime {
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
-  refcount: RefCount,
+  server_state: Rc<HttpServerState>,
 }
 
 struct HttpJoinHandle {
@@ -935,7 +935,7 @@ struct HttpJoinHandle {
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
   rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
-  refcount: RefCount,
+  server_state: Rc<HttpServerState>,
 }
 
 impl HttpJoinHandle {
@@ -945,7 +945,7 @@ impl HttpJoinHandle {
       connection_cancel_handle: CancelHandle::new_rc(),
       listen_cancel_handle: CancelHandle::new_rc(),
       rx: AsyncRefCell::new(rx),
-      refcount: RefCount::default(),
+      server_state: HttpServerState::new(),
     }
   }
 
@@ -953,7 +953,7 @@ impl HttpJoinHandle {
     HttpLifetime {
       connection_cancel_handle: self.connection_cancel_handle.clone(),
       listen_cancel_handle: self.listen_cancel_handle.clone(),
-      refcount: self.refcount.clone(),
+      server_state: self.server_state.clone(),
     }
   }
 
@@ -1194,15 +1194,14 @@ pub async fn op_http_close(
 
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
+    // Async spin on the server_state while we wait for everything to drain
+    while Rc::strong_count(&join_handle.server_state) > 1 {
+      tokio::time::sleep(Duration::from_millis(10)).await;
+    }
   } else {
     // In a forceful shutdown, we close everything
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
-  }
-
-  // Async spin on the refcount while we wait for everything to drain
-  while Rc::strong_count(&join_handle.refcount.0) > 1 {
-    tokio::time::sleep(Duration::from_millis(10)).await;
   }
 
   let mut join_handle = RcRef::map(&join_handle, |this| &this.join_handle)
