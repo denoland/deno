@@ -701,6 +701,7 @@ mod deprecated {
     #[string] signal: String,
     #[string] api_name: String,
   ) -> Result<(), AnyError> {
+    eprintln!("op kill {}", signal);
     state
       .borrow_mut::<PermissionsContainer>()
       .check_run_all(&api_name)?;

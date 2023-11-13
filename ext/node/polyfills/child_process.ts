@@ -124,7 +124,7 @@ export function fork(
   args = [
     "run",
     "--unstable", // TODO(kt3k): Remove when npm: is stable
-    "--node-modules-dir",
+    "--unstable-byonm",
     "-A",
     ...stringifiedV8Flags,
     ...execArgv,
@@ -153,6 +153,7 @@ export function fork(
       .op_npm_process_state(),
   });
 
+  console.log("fork in Deno", options.execPath, args, options);
   return spawn(options.execPath, args, options);
 }
 

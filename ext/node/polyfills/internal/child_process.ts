@@ -272,15 +272,21 @@ export class ChildProcess extends EventEmitter {
    * @param signal NOTE: this parameter is not yet implemented.
    */
   kill(signal?: number | string): boolean {
+    console.log("kill", signal);
     if (this.killed) {
       return this.killed;
     }
 
-    const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
+    const denoSignal = signal == null
+      ? "SIGTERM"
+      : signal === 0
+      ? 0
+      : toDenoSignal(signal);
     this.#closePipes();
     try {
       this.#process.kill(denoSignal);
     } catch (err) {
+      console.log("catch", err);
       const alreadyClosed = err instanceof TypeError ||
         err instanceof Deno.errors.PermissionDenied;
       if (!alreadyClosed) {
