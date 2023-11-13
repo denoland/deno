@@ -122,13 +122,15 @@ Deno.test(
         await delay(20);
         Deno.kill(Deno.pid, "SIGUSR1");
       }
-      await delay(20);
+      await promise;
       Deno.removeSignalListener("SIGUSR1", listener);
-      resolve();
     });
 
-    await promise;
-    assertEquals(c, 3);
+    // We'll get three signals eventually
+    while (c < 3) {
+      await delay(20);
+    }
+    resolve();
   },
 );
 
@@ -154,7 +156,9 @@ Deno.test(
         await delay(20);
         Deno.kill(Deno.pid, "SIGUSR2");
       }
-      await delay(20);
+      while (c.length < 6) {
+        await delay(20);
+      }
       Deno.removeSignalListener("SIGUSR2", listener1);
       // Sends SIGUSR2 3 times.
       for (const _ of Array(3)) {
@@ -167,7 +171,11 @@ Deno.test(
         await delay(20);
         Deno.kill(Deno.pid, "SIGUSR1");
       }
-      await delay(20);
+
+      while (c.length < 9) {
+        await delay(20);
+      }
+
       Deno.removeSignalListener("SIGUSR2", listener0);
       resolve();
     });
