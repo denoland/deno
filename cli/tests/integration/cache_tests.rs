@@ -60,17 +60,20 @@ itest!(ignore_require {
 fn xdg_cache_home_dir() {
   let context = TestContext::with_http_server();
   let deno_dir = context.temp_dir();
+  let xdg_cache_home = deno_dir.path().join("cache");
   context
     .new_command()
+    .env_remove("HOME")
+    .env_remove("DENO_DIR")
     .env_clear()
-    .env("XDG_CACHE_HOME", deno_dir.path())
+    .env("XDG_CACHE_HOME", &xdg_cache_home)
     .args(
       "cache --reload --no-check http://localhost:4548/subdir/redirects/a.ts",
     )
     .run()
     .skip_output_check()
     .assert_exit_code(0);
-  assert!(deno_dir.path().read_dir().count() > 0);
+  assert!(xdg_cache_home.read_dir().count() > 0);
 }
 
 itest!(check_local_by_default {
