@@ -206,7 +206,7 @@ pub struct ReplFlags {
   pub is_default_command: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
@@ -310,6 +310,10 @@ pub enum DenoSubcommand {
 impl DenoSubcommand {
   pub fn is_run(&self) -> bool {
     matches!(self, Self::Run(_))
+  }
+
+  pub fn is_test_or_jupyter(&self) -> bool {
+    matches!(self, Self::Test(_) | Self::Jupyter(_))
   }
 }
 
