@@ -6909,7 +6909,9 @@
       },
       "embedded-content": {
         "the-canvas-element": {
-          "imagedata.html": true
+          "imagedata.html": [
+            "ImageData(buffer, w, opt h), Uint8ClampedArray argument type check"
+          ]
         },
         "the-iframe-element": {
           "cross-origin-to-whom-part-2.window.html": false,
