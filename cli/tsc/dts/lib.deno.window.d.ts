@@ -38,6 +38,7 @@ declare interface Window extends EventTarget {
   sessionStorage: Storage;
   caches: CacheStorage;
   name: string;
+  ImageData: typeof ImageData;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -298,4 +299,29 @@ declare var location: Location;
 declare var name: string;
 
 /** @category Web APIs */
-declare var ImageData: any;
+type PredefinedColorSpace = "srgb" | "display-p3";
+
+/** @category Web APIs */
+interface ImageDataSettings {
+  readonly colorSpace?: PredefinedColorSpace;
+}
+
+/** @category Web APIs */
+interface ImageData {
+  readonly colorSpace: PredefinedColorSpace;
+  readonly data: Uint8ClampedArray;
+  readonly height: number;
+  readonly width: number;
+}
+
+/** @category Web APIs */
+declare var ImageData: {
+  prototype: ImageData;
+  new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
+  new (
+    data: Uint8ClampedArray,
+    sw: number,
+    sh?: number,
+    settings?: ImageDataSettings,
+  ): ImageData;
+};
