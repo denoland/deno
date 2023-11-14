@@ -11,6 +11,7 @@ import {
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { readAll } from "../../../test_util/std/streams/read_all.ts";
+import { writeAll } from "../../../test_util/std/streams/write_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
@@ -1276,8 +1277,8 @@ Deno.test(
     // Begin sending a 10mb blob over the TLS connection.
     const whole = new Uint8Array(10 << 20); // 10mb.
     whole.fill(42);
-    const sendPromise = conn1.write(whole);
-
+    const sendPromise = writeAll(conn1, whole);
+    console.log(1);
     // Set up the other end to receive half of the large blob.
     const half = new Uint8Array(whole.byteLength / 2);
     const receivePromise = readFull(conn2, half);
@@ -1285,16 +1286,19 @@ Deno.test(
     await conn1.handshake();
     await conn2.handshake();
 
+    console.log(2);
     // Finish receiving the first 5mb.
     assertEquals(await receivePromise, half.length);
+    console.log(3);
 
     // See that we can call `handshake()` in the middle of large reads and writes.
     await conn1.handshake();
     await conn2.handshake();
+    console.log(4);
 
     // Receive second half of large blob. Wait for the send promise and check it.
     assertEquals(await readFull(conn2, half), half.length);
-    assertEquals(await sendPromise, whole.length);
+    await sendPromise;
 
     await conn1.handshake();
     await conn2.handshake();
