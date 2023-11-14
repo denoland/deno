@@ -24,7 +24,7 @@ class ImageData {
   /** @type {'srgb' | 'display-p3'} */
   #colorSpace;
 
-  constructor(arg0, arg1, arg2, arg3) {
+  constructor(arg0, arg1, arg2 = undefined, arg3 = undefined) {
     webidl.requiredArguments(
       arguments.length,
       2,
