@@ -6,6 +6,7 @@
 
 const internals = globalThis.__bootstrap.internals;
 const { core } = globalThis.__bootstrap;
+const { ops } = core;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
@@ -652,6 +653,11 @@ class Process extends EventEmitter {
     return Deno.uid()!;
   }
 
+  /** This method is removed on Windows */
+  geteuid?(): number {
+    return ops.op_geteuid();
+  }
+
   // TODO(kt3k): Implement this when we added -e option to node compat mode
   _eval: string | undefined = undefined;
 
@@ -693,6 +699,7 @@ class Process extends EventEmitter {
 if (isWindows) {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
+  delete Process.prototype.geteuid;
 }
 
 /** https://nodejs.org/api/process.html#process_process */

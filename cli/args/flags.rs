@@ -163,7 +163,7 @@ pub struct InstallFlags {
   pub module_url: String,
   pub args: Vec<String>,
   pub name: Option<String>,
-  pub root: Option<PathBuf>,
+  pub root: Option<String>,
   pub force: bool,
 }
 
@@ -177,7 +177,7 @@ pub struct JupyterFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlags {
   pub name: String,
-  pub root: Option<PathBuf>,
+  pub root: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -307,6 +307,12 @@ pub enum DenoSubcommand {
   Vendor(VendorFlags),
 }
 
+impl DenoSubcommand {
+  pub fn is_run(&self) -> bool {
+    matches!(self, Self::Run(_))
+  }
+}
+
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
     DenoSubcommand::Repl(ReplFlags {
@@ -417,6 +423,7 @@ pub struct Flags {
   pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
+  pub strace_ops: Option<Vec<String>>,
   pub unstable: bool,
   pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
@@ -1755,7 +1762,6 @@ These must be added to the path manually if required.")
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath))
       .arg(
         Arg::new("force")
@@ -1815,7 +1821,6 @@ The installation root is determined, in order of precedence:
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath))
 )
 }
@@ -2688,6 +2693,7 @@ fn runtime_args(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
+    .arg(strace_ops_arg())
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -2834,6 +2840,17 @@ fn enable_testing_features_arg() -> Arg {
     .long("enable-testing-features-do-not-use")
     .help("INTERNAL: Enable internal features used during integration testing")
     .action(ArgAction::SetTrue)
+    .hide(true)
+}
+
+fn strace_ops_arg() -> Arg {
+  Arg::new("strace-ops")
+    .long("strace-ops")
+    .num_args(0..)
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_name("OPS")
+    .help("Trace low-level op calls")
     .hide(true)
 }
 
@@ -3388,7 +3405,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let root = matches.remove_one::<PathBuf>("root");
+  let root = matches.remove_one::<String>("root");
 
   let force = matches.get_flag("force");
   let name = matches.remove_one::<String>("name");
@@ -3419,7 +3436,7 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let root = matches.remove_one::<PathBuf>("root");
+  let root = matches.remove_one::<String>("root");
 
   let name = matches.remove_one::<String>("name").unwrap();
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
@@ -3802,6 +3819,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.no_prompt = true;
   }
 }
+
 fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -3833,6 +3851,7 @@ fn runtime_args_parse(
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  strace_ops_parse(flags, matches);
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3897,6 +3916,12 @@ fn enable_testing_features_arg_parse(
 ) {
   if matches.get_flag("enable-testing-features-do-not-use") {
     flags.enable_testing_features = true
+  }
+}
+
+fn strace_ops_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(patterns) = matches.remove_many::<String>("strace-ops") {
+    flags.strace_ops = Some(patterns.collect());
   }
 }
 
@@ -5401,6 +5426,19 @@ mod tests {
   }
 
   #[test]
+  fn repl_strace_ops() {
+    // Lightly test this undocumented flag
+    let r = flags_from_vec(svec!["deno", "repl", "--strace-ops"]);
+    assert_eq!(r.unwrap().strace_ops, Some(vec![]));
+    let r =
+      flags_from_vec(svec!["deno", "repl", "--strace-ops=http,websocket"]);
+    assert_eq!(
+      r.unwrap().strace_ops,
+      Some(vec!["http".to_string(), "websocket".to_string()])
+    );
+  }
+
+  #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
     let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
@@ -6321,7 +6359,7 @@ mod tests {
           name: Some("file_server".to_string()),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["foo", "bar"],
-          root: Some(PathBuf::from("/foo")),
+          root: Some("/foo".to_string()),
           force: true,
         }),
         import_map_path: Some("import_map.json".to_string()),

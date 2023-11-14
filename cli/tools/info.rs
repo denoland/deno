@@ -669,6 +669,12 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
       }
+      ModuleError::MissingWorkspaceMemberExports { .. } => {
+        self.build_error_msg(specifier, "(missing exports)")
+      }
+      ModuleError::UnknownExport { .. } => {
+        self.build_error_msg(specifier, "(unknown export)")
+      }
       ModuleError::UnknownPackage { .. } => {
         self.build_error_msg(specifier, "(unknown package)")
       }

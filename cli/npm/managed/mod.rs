@@ -492,6 +492,23 @@ impl ManagedCliNpmResolver {
 }
 
 impl NpmResolver for ManagedCliNpmResolver {
+  /// Gets the state of npm for the process.
+  fn get_npm_process_state(&self) -> String {
+    serde_json::to_string(&NpmProcessState {
+      kind: NpmProcessStateKind::Snapshot(
+        self
+          .resolution
+          .serialized_valid_snapshot()
+          .into_serialized(),
+      ),
+      local_node_modules_path: self
+        .fs_resolver
+        .node_modules_path()
+        .map(|p| p.to_string_lossy().to_string()),
+    })
+    .unwrap()
+  }
+
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -569,23 +586,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolve_pkg_id_from_pkg_req(req)?;
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
-  }
-
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      kind: NpmProcessStateKind::Snapshot(
-        self
-          .resolution
-          .serialized_valid_snapshot()
-          .into_serialized(),
-      ),
-      local_node_modules_path: self
-        .fs_resolver
-        .node_modules_path()
-        .map(|p| p.to_string_lossy().to_string()),
-    })
-    .unwrap()
   }
 
   fn check_state_hash(&self) -> Option<u64> {

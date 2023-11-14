@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
@@ -15,6 +16,7 @@ use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
+use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -27,6 +29,7 @@ use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
@@ -91,6 +94,9 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
+  /// Should op registration be skipped?
+  pub skip_op_registration: bool,
+
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
 
@@ -120,6 +126,8 @@ pub struct WorkerOptions {
   // If true, the worker will wait for inspector session before executing
   // user code.
   pub should_wait_for_inspector_session: bool,
+  /// If Some, print a low-level trace output for ops matching the given patterns.
+  pub strace_ops: Option<Vec<String>>,
 
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
@@ -155,10 +163,12 @@ impl Default for WorkerOptions {
       }),
       fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
+      skip_op_registration: false,
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
+      strace_ops: Default::default(),
       compiled_wasm_module_store: Default::default(),
       shared_array_buffer_store: Default::default(),
       maybe_inspector_server: Default::default(),
@@ -181,6 +191,71 @@ impl Default for WorkerOptions {
   }
 }
 
+fn create_op_metrics(
+  enable_op_summary_metrics: bool,
+  strace_ops: Option<Vec<String>>,
+) -> (
+  Option<Rc<OpMetricsSummaryTracker>>,
+  Option<OpMetricsFactoryFn>,
+) {
+  let mut op_summary_metrics = None;
+  let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
+  let now = Instant::now();
+  let max_len: Rc<std::cell::Cell<usize>> = Default::default();
+  if let Some(patterns) = strace_ops {
+    /// Match an op name against a list of patterns
+    fn matches_pattern(patterns: &[String], name: &str) -> bool {
+      let mut found_match = false;
+      let mut found_nomatch = false;
+      for pattern in patterns.iter() {
+        if let Some(pattern) = pattern.strip_prefix('-') {
+          if name.contains(pattern) {
+            return false;
+          }
+        } else if name.contains(pattern.as_str()) {
+          found_match = true;
+        } else {
+          found_nomatch = true;
+        }
+      }
+
+      found_match || !found_nomatch
+    }
+
+    op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
+      // If we don't match a requested pattern, or we match a negative pattern, bail
+      if !matches_pattern(&patterns, decl.name) {
+        return None;
+      }
+
+      max_len.set(max_len.get().max(decl.name.len()));
+      let max_len = max_len.clone();
+      Some(Rc::new(
+        move |op: &deno_core::_ops::OpCtx, event, source| {
+          eprintln!(
+            "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
+            now.elapsed().as_secs_f64(),
+            name = op.decl().name,
+            max_len = max_len.get()
+          );
+        },
+      ))
+    }));
+  }
+
+  if enable_op_summary_metrics {
+    let summary = Rc::new(OpMetricsSummaryTracker::default());
+    let summary_metrics = summary.clone().op_metrics_factory_fn(|_| true);
+    op_metrics_factory_fn = Some(match op_metrics_factory_fn {
+      Some(f) => merge_op_metrics(f, summary_metrics),
+      None => summary_metrics,
+    });
+    op_summary_metrics = Some(summary);
+  }
+
+  (op_summary_metrics, op_metrics_factory_fn)
+}
+
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -189,7 +264,7 @@ impl MainWorker {
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
     let mut worker = Self::from_options(main_module, permissions, options);
-    worker.bootstrap(&bootstrap_options);
+    worker.bootstrap(bootstrap_options);
     worker
   }
 
@@ -207,6 +282,12 @@ impl MainWorker {
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
+    );
+
+    // Get our op metrics
+    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
+      options.bootstrap.enable_op_summary_metrics,
+      options.strace_ops,
     );
 
     // Permissions: many ops depend on this
@@ -299,6 +380,7 @@ impl MainWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -325,18 +407,6 @@ impl MainWorker {
       }
     }
 
-    // Hook up the summary metrics if the user or subcommand requested them
-    let (op_summary_metrics, op_metrics_factory_fn) =
-      if options.bootstrap.enable_op_summary_metrics {
-        let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
-        (
-          Some(op_summary_metrics.clone()),
-          Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
-        )
-      } else {
-        (None, None)
-      };
-
     extensions.extend(std::mem::take(&mut options.extensions));
 
     #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
@@ -354,6 +424,7 @@ impl MainWorker {
         .or_else(crate::js::deno_isolate_init),
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
+      skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
@@ -384,7 +455,6 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       op_state.borrow_mut().put(inspector);
     }
-
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
@@ -416,7 +486,8 @@ impl MainWorker {
     }
   }
 
-  pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+  pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    self.js_runtime.op_state().borrow_mut().put(options.clone());
     let scope = &mut self.js_runtime.handle_scope();
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
