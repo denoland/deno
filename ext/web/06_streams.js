@@ -5926,6 +5926,7 @@ class ReadableByteStreamController {
         byteLength: autoAllocateChunkSize,
         bytesFilled: 0,
         elementSize: 1,
+        minimumFill: 1,
         viewConstructor: Uint8Array,
         readerType: "default",
       };
