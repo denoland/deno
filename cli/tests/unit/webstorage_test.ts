@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-explicit-any
 
-import { assert, assertThrows } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test({ permissions: "none" }, function webStoragesReassignable() {
   // Can reassign to web storages
@@ -21,7 +21,7 @@ Deno.test(function webstorageSizeLimit() {
     Error,
     "Exceeded maximum storage size",
   );
-  assert(localStorage.getItem("k") === null);
+  assertEquals(localStorage.getItem("k"), null);
   assertThrows(
     () => {
       localStorage.setItem("k".repeat(15 * 1024 * 1024), "v");
@@ -39,4 +39,14 @@ Deno.test(function webstorageSizeLimit() {
     Error,
     "Exceeded maximum storage size",
   );
+});
+
+Deno.test(function webstorageProxy() {
+  localStorage.clear();
+  localStorage.foo = "foo";
+  assertEquals(localStorage.foo, "foo");
+  const symbol = Symbol("bar");
+  localStorage[symbol as any] = "bar";
+  assertEquals(localStorage[symbol as any], "bar");
+  assertEquals(symbol in localStorage, true);
 });
