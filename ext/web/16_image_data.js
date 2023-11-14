@@ -22,14 +22,13 @@ class ImageData {
   /** @type {'srgb' | 'display-p3'} */
   #colorSpace;
 
-  constructor() {
+  constructor(arg0, arg1, arg2, arg3) {
     webidl.requiredArguments(
       arguments.length,
       2,
       'Failed to construct "ImageData"',
     );
 
-    const [arg0, arg1, arg2, arg3] = arguments;
     let sourceWidth;
     let sourceHeight;
     let data;
