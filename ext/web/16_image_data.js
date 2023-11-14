@@ -28,6 +28,7 @@ class ImageData {
       2,
       'Failed to construct "ImageData"',
     );
+    this[webidl.brand] = webidl.brand;
 
     let sourceWidth;
     let sourceHeight;
@@ -154,20 +155,26 @@ class ImageData {
   }
 
   get width() {
+    webidl.assertBranded(this, ImageDataPrototype);
     return this.#width;
   }
 
   get height() {
+    webidl.assertBranded(this, ImageDataPrototype);
     return this.#height;
   }
 
   get data() {
+    webidl.assertBranded(this, ImageDataPrototype);
     return this.#data;
   }
 
   get colorSpace() {
+    webidl.assertBranded(this, ImageDataPrototype);
     return this.#colorSpace;
   }
 }
+
+const ImageDataPrototype = ImageData.prototype;
 
 export { ImageData };
