@@ -46,6 +46,7 @@ use deno_semver::package::PackageReqReference;
 use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
+use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::emit::Emitter;
 use crate::errors;
@@ -107,6 +108,7 @@ pub struct CliMainWorkerOptions {
 
 struct SharedWorkerState {
   options: CliMainWorkerOptions,
+  subcommand: DenoSubcommand,
   storage_key_resolver: StorageKeyResolver,
   npm_resolver: Arc<dyn CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
@@ -372,6 +374,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
+    subcommand: DenoSubcommand,
     npm_resolver: Arc<dyn CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
@@ -388,6 +391,7 @@ impl CliMainWorkerFactory {
     Self {
       shared: Arc::new(SharedWorkerState {
         options,
+        subcommand,
         storage_key_resolver,
         npm_resolver,
         node_resolver,
@@ -600,11 +604,18 @@ impl CliMainWorkerFactory {
       skip_op_registration: shared.options.skip_op_registration,
     };
 
-    let worker = MainWorker::bootstrap_from_options(
+    let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
       permissions,
       options,
     );
+
+    if self.shared.subcommand.is_test_or_jupyter() {
+      worker.js_runtime.execute_script_static(
+        "40_jupyter.js",
+        include_str!("js/40_jupyter.js"),
+      )?;
+    }
 
     Ok(CliMainWorker {
       main_module,

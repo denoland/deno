@@ -634,6 +634,7 @@ impl CliFactory {
 
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
+      self.options.sub_command().clone(),
       npm_resolver.clone(),
       node_resolver.clone(),
       self.blob_store().clone(),
