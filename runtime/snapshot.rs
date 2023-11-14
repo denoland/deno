@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
-use crate::ops;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::snapshot_util::*;
@@ -222,9 +222,7 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
     deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
     runtime::init_ops_and_esm(),
-    ops::runtime::deno_runtime::init_ops(
-      "deno:runtime".parse().unwrap(),
-    ),
+    ops::runtime::deno_runtime::init_ops("deno:runtime".parse().unwrap()),
     ops::worker_host::deno_worker_host::init_ops(
       Arc::new(|_| unreachable!("not used in snapshot.")),
       None,
