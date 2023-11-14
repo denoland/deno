@@ -27,7 +27,6 @@ use crate::args::Flags;
 use crate::args::PublishFlags;
 
 mod tar;
-mod urls;
 
 struct OidcConfig {
   url: String,
@@ -227,6 +226,10 @@ async fn perform_publish(
 ) -> Result<(), AnyError> {
   let client = reqwest::Client::new();
 
+  let Ok(registry_url) = std::env::var("DENO_REGISTRY_URL") else {
+    bail!("DENO_REGISTRY_URL env var is required to publish");
+  };
+
   let authorization = match auth_method {
     AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
@@ -243,7 +246,7 @@ async fn perform_publish(
         .collect::<Vec<_>>();
 
       let response = client
-        .post(format!("{}/authorizations", urls::REGISTRY_URL))
+        .post(format!("{}/authorizations", registry_url))
         .json(&serde_json::json!({
           "challenge": challenge,
           "permissions": permissions,
@@ -272,7 +275,7 @@ async fn perform_publish(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}/authorizations/exchange", urls::REGISTRY_URL))
+          .post(format!("{}/authorizations/exchange", registry_url))
           .json(&serde_json::json!({
             "exchangeToken": auth.exchange_token,
             "verifier": verifier,
@@ -360,10 +363,7 @@ async fn perform_publish(
 
     let url = format!(
       "{}/scopes/{}/packages/{}/versions/{}",
-      urls::REGISTRY_URL,
-      package.scope,
-      package.package,
-      package.version
+      registry_url, package.scope, package.package, package.version
     );
 
     let response = client
@@ -387,7 +387,7 @@ async fn perform_publish(
     while task.status != "success" && task.status != "failure" {
       tokio::time::sleep(interval).await;
       let resp = client
-        .get(format!("{}/publish_status/{}", urls::REGISTRY_URL, task.id))
+        .get(format!("{}/publish_status/{}", registry_url, task.id))
         .send()
         .await
         .with_context(|| {
@@ -426,8 +426,8 @@ async fn perform_publish(
       package.version
     );
     println!(
-      "https://deno-registry-staging.net/@{}/{}/{}_meta.json",
-      package.scope, package.package, package.version
+      "{}/@{}/{}/{}_meta.json",
+      registry_url, package.scope, package.package, package.version
     );
   }
 
