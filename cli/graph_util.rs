@@ -749,6 +749,8 @@ fn workspace_member_config_try_into_workspace_member(
   Ok(deno_graph::WorkspaceMember {
     base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
     nv,
+    // TODO(bartlomieju):
+    exports: Default::default(),
   })
 }
 

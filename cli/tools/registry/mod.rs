@@ -25,7 +25,6 @@ use sha2::Digest;
 
 use crate::args::Flags;
 use crate::args::PublishFlags;
-use crate::factory::CliFactory;
 
 mod tar;
 mod urls;
@@ -499,51 +498,4 @@ pub async fn publish(
   }
 
   perform_publish(packages, auth_method).await
-}
-
-pub async fn deps_add(flags: Flags, specifier: String) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
-  let cli_options = factory.cli_options();
-
-  let name = specifier
-    .strip_prefix("deno:")
-    .unwrap_or_else(|| specifier.strip_prefix("npm:").unwrap_or(&specifier));
-
-  let (config_file_path, content) = if let Some(config_file) =
-    cli_options.maybe_config_file()
-  {
-    let Ok(path) = config_file.specifier.to_file_path() else {
-      bail!("Can't add a dependency to a remote configuration file");
-    };
-
-    let mut json = config_file.json.clone();
-    json.imports = Some(json.imports.unwrap_or_else(|| serde_json::json!({})));
-    json
-      .imports
-      .as_mut()
-      .unwrap()
-      .as_object_mut()
-      .unwrap()
-      .insert(name.to_string(), specifier.to_string().into());
-
-    let content = serde_json::to_string_pretty(&json).unwrap();
-    (path, content)
-  } else {
-    // Generate deno.json in initial_cwd
-    let path = cli_options.initial_cwd().join("./deno.json");
-    let mut json = serde_json::json!({
-      "imports": {}
-    });
-    json["imports"]
-      .as_object_mut()
-      .unwrap()
-      .insert(name.to_string(), specifier.to_string().into());
-
-    let content = serde_json::to_string_pretty(&json).unwrap();
-    (path, content)
-  };
-
-  std::fs::write(&config_file_path, content)?;
-  println!("Added '{}' to '{}'", name, &config_file_path.display());
-  Ok(())
 }

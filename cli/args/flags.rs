@@ -286,11 +286,6 @@ pub struct PublishFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DepsSubcommand {
-  Add(String),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -318,7 +313,6 @@ pub enum DenoSubcommand {
   Vendor(VendorFlags),
   // TODO:
   Publish(PublishFlags),
-  Deps(DepsSubcommand),
 }
 
 impl DenoSubcommand {
@@ -724,7 +718,7 @@ impl Flags {
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
       | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) | Publish(_) | Deps(_) => None,
+      | Vendor(_) | Publish(_) => None,
     }
   }
 
@@ -921,7 +915,6 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "vendor" => vendor_parse(&mut flags, &mut m),
       // TODO:
       "publish" => publish_parse(&mut flags, &mut m),
-      "deps" => deps_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
   } else {
@@ -1047,15 +1040,13 @@ fn clap_root() -> Command {
         .subcommand(uninstall_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
+        .subcommand(publish_subcommand())
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
         .subcommand(types_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand())
-        // TODO(bartlomieju):
-        .subcommand(publish_subcommand())
-        .subcommand(deps_subcommand())
     })
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
@@ -2326,17 +2317,6 @@ fn publish_subcommand() -> Command {
           )
           .value_name("TOKEN")
         ))
-}
-
-fn deps_subcommand() -> Command {
-  let add_subcommand = Command::new("add")
-    .about("Add a dependency")
-    .arg(Arg::new("name").required(true));
-
-  Command::new("deps")
-    .about("Dependency management tool")
-    .long_about("")
-    .subcommand(add_subcommand)
 }
 
 fn compile_args(app: Command) -> Command {
@@ -3764,20 +3744,6 @@ fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     directory: matches.remove_one::<PathBuf>("directory").unwrap(),
     token: matches.remove_one::<String>("token"),
   });
-}
-
-fn deps_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let deps_subcommand = match matches.remove_subcommand() {
-    Some((subcommand, mut m)) => match subcommand.as_str() {
-      "add" => {
-        let name = m.remove_one::<String>("name").unwrap();
-        DepsSubcommand::Add(name)
-      }
-      _ => unreachable!(),
-    },
-    None => unreachable!(),
-  };
-  flags.subcommand = DenoSubcommand::Deps(deps_subcommand);
 }
 
 fn compile_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
