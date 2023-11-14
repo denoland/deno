@@ -301,6 +301,14 @@ class TextDecoderStream {
           return PromiseReject(err);
         }
       },
+      cancel: (_reason) => {
+        try {
+          const _ = this.#decoder.decode();
+          return PromiseResolve();
+        } catch (err) {
+          return PromiseReject(err);
+        }
+      },
     });
     this[webidl.brand] = webidl.brand;
   }

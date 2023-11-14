@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, deferred } from "./test_util.ts";
+import { assertEquals, assertThrows } from "./test_util.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -151,12 +151,12 @@ Deno.test(async function basicTest() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
   let count = 0;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   const ac = new AbortController();
   const c = Deno.cron("abc", "*/20 * * * *", () => {
     count++;
     if (count > 5) {
-      promise.resolve();
+      resolve();
     }
   }, { signal: ac.signal });
   try {
@@ -172,19 +172,23 @@ Deno.test(async function multipleCrons() {
 
   let count0 = 0;
   let count1 = 0;
-  const promise0 = deferred();
-  const promise1 = deferred();
+  const { promise: promise0, resolve: resolve0 } = Promise.withResolvers<
+    void
+  >();
+  const { promise: promise1, resolve: resolve1 } = Promise.withResolvers<
+    void
+  >();
   const ac = new AbortController();
   const c0 = Deno.cron("abc", "*/20 * * * *", () => {
     count0++;
     if (count0 > 5) {
-      promise0.resolve();
+      resolve0();
     }
   }, { signal: ac.signal });
   const c1 = Deno.cron("xyz", "*/20 * * * *", () => {
     count1++;
     if (count1 > 5) {
-      promise1.resolve();
+      resolve1();
     }
   }, { signal: ac.signal });
   try {
@@ -201,11 +205,15 @@ Deno.test(async function overlappingExecutions() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
   let count = 0;
-  const promise0 = deferred();
-  const promise1 = deferred();
+  const { promise: promise0, resolve: resolve0 } = Promise.withResolvers<
+    void
+  >();
+  const { promise: promise1, resolve: resolve1 } = Promise.withResolvers<
+    void
+  >();
   const ac = new AbortController();
   const c = Deno.cron("abc", "*/20 * * * *", async () => {
-    promise0.resolve();
+    resolve0();
     count++;
     await promise1;
   }, { signal: ac.signal });
@@ -213,7 +221,7 @@ Deno.test(async function overlappingExecutions() {
     await promise0;
   } finally {
     await sleep(2000);
-    promise1.resolve();
+    resolve1();
     ac.abort();
     await c;
   }

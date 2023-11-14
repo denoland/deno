@@ -40,7 +40,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.31.2", features = ["transpiling"] }
-deno_core = { version = "0.229.0" }
+deno_core = { version = "0.230.0" }
 
 deno_runtime = { version = "0.131.0", path = "./runtime" }
 napi_sym = { version = "0.53.0", path = "./cli/napi/sym" }
@@ -50,7 +50,8 @@ deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
 denokv_proto = "0.2.1"
-denokv_sqlite = "0.2.1"
+# denokv_sqlite brings in bundled sqlite if we don't disable the default features
+denokv_sqlite = { default-features = false, version = "0.2.1" }
 denokv_remote = "0.2.3"
 
 # exts
@@ -95,7 +96,7 @@ encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
 fastwebsockets = "=0.5.0"
 filetime = "0.2.16"
-flate2 = { version = "1.0.26", features = ["zlib-ng"], default-features = false }
+flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
@@ -106,6 +107,7 @@ httparse = "1.8.0"
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 libc = "0.2.126"
+libz-sys = { version = "1.1", default-features = false }
 log = "=0.4.20"
 lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"

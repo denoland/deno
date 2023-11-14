@@ -925,6 +925,7 @@ dependencies = [
  "junction",
  "lazy-regex",
  "libc",
+ "libz-sys",
  "log",
  "lsp-types",
  "monch",
@@ -1084,9 +1085,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.229.0"
+version = "0.230.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bba7ed998f57ecd03640a82e6ddef281328b6d4c48c55e9e17cd906bab08020"
+checksum = "8f040a1d56091d209851d011d4882cb2367fceeb64ec630106ca89fad258430a"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1155,9 +1156,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.72.2"
+version = "0.73.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c00aff446bb7a0b9ef34418420650ee803e41251c034b9a944538dc80f1b65"
+checksum = "588c797bd98677e0174ccc3baba8fc2a177f4f91833d74bfdc1ef5d568053618"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1178,9 +1179,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.31.1"
+version = "0.31.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bad504e08884056bc559364364db9bc7308bd8cfda3679819656821eb7a5ce8"
+checksum = "b74248b5f2f1df9d657896f47baded6b93c904c71532eab1435e9f3f0d7bd4b7"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1245,9 +1246,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.59.2"
+version = "0.60.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "000084f91f8d5d7de1b8fe3caa9fd098618d60d202237da1e20ee84bd8180f12"
+checksum = "64069da5890ef2d9133199a62d712500529f079dc1bd3a3fe488e64e433ac8ea"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1284,6 +1285,7 @@ dependencies = [
  "flate2",
  "fly-accept-encoding",
  "http",
+ "http-body-util",
  "httparse",
  "hyper 0.14.27",
  "hyper 1.0.0-rc.4",
@@ -1297,7 +1299,6 @@ dependencies = [
  "ring",
  "scopeguard",
  "serde",
- "slab",
  "smallvec",
  "thiserror",
  "tokio",
@@ -1454,6 +1455,7 @@ dependencies = [
  "http",
  "idna 0.3.0",
  "indexmap 2.0.2",
+ "k256",
  "lazy-regex",
  "libc",
  "libz-sys",
@@ -1476,7 +1478,6 @@ dependencies = [
  "ripemd",
  "rsa",
  "scrypt",
- "secp256k1",
  "serde",
  "sha-1",
  "sha2",
@@ -1508,9 +1509,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.105.0"
+version = "0.106.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32976e42a50a1ac64d065a9219f5daf82a3ad6938da9d4aa3071890c08e1cd97"
+checksum = "215363aeee70b8ae4dca3557c7b85f48f2c231e798b23913c1d3901785ace01e"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1552,6 +1553,7 @@ dependencies = [
  "encoding_rs",
  "fastwebsockets",
  "filetime",
+ "flate2",
  "fs3",
  "fwdansi",
  "http",
@@ -2201,9 +2203,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.55.2"
+version = "0.55.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1039ee8563878c6578b7595b6020590e66fecc69c66150535f83dede4ce96d5e"
+checksum = "0bb98b2524f3d81760c4c86bca8ac2481a8093ef48578446a178544cdabd161f"
 dependencies = [
  "anyhow",
  "base64 0.21.4",
@@ -2338,7 +2340,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6c98ee8095e9d1dcbf2fcc6d95acccb90d1c81db1e44725c6a984b1dbdfb010"
 dependencies = [
  "crc32fast",
- "libz-ng-sys",
+ "libz-sys",
  "miniz_oxide",
 ]
 
@@ -2715,6 +2717,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-body-util"
+version = "0.1.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08ef12f041acdd397010e5fb6433270c147d3b8b2d0a840cd7fff8e531dca5c8"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http",
+ "http-body 1.0.0-rc.2",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "httparse"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3015,6 +3030,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "k256"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cadb76004ed8e97623117f3df85b17aaa6626ab0b0831e6573f104df16cd1bcc"
+dependencies = [
+ "cfg-if",
+ "ecdsa",
+ "elliptic-curve",
+ "once_cell",
+ "sha2",
+ "signature",
+]
+
+[[package]]
 name = "kqueue"
 version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3119,22 +3148,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "libz-ng-sys"
-version = "1.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dd9f43e75536a46ee0f92b758f6b63846e594e86638c61a9251338a65baea63"
-dependencies = [
- "cmake",
- "libc",
-]
-
-[[package]]
 name = "libz-sys"
 version = "1.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d97137b25e321a73eef1418d1d5d2eda4d77e12813f8e6dead84bc52c5870a7b"
 dependencies = [
  "cc",
+ "cmake",
  "libc",
  "pkg-config",
  "vcpkg",
@@ -4602,25 +4622,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "secp256k1"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2acea373acb8c21ecb5a23741452acd2593ed44ee3d343e72baaa143bc89d0d5"
-dependencies = [
- "rand",
- "secp256k1-sys",
-]
-
-[[package]]
-name = "secp256k1-sys"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09e67c467c38fd24bd5499dc9a18183b31575c12ee549197e3e20d57aa4fe3b7"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "security-framework"
 version = "2.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4740,9 +4741,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.138.0"
+version = "0.139.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "add36cea4acc8cbfa4a1614a9e985e1057fd6748b672c8b4c4496f889d25e539"
+checksum = "340328b061f990810dc28a444078da33da191003a031555dcd30c69314f03840"
 dependencies = [
  "bytes",
  "derive_more",

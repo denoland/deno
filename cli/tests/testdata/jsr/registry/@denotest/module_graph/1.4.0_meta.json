@@ -1,4 +1,8 @@
 {
+  "exports": {
+    ".": "./mod.ts",
+    "./other": "./other.ts"
+  },
   "moduleGraph1": {
     "/mod.ts": {
       "dependencies": [{

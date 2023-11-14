@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, deferred } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
 Deno.test(
   { permissions: { env: true, read: true } },
   async function workerEnvArrayPermissions() {
-    const promise = deferred<boolean[]>();
+    const { promise, resolve } = Promise.withResolvers<boolean[]>();
 
     const worker = new Worker(
       import.meta.resolve(
@@ -14,7 +14,7 @@ Deno.test(
     );
 
     worker.onmessage = ({ data }) => {
-      promise.resolve(data.permissions);
+      resolve(data.permissions);
     };
 
     worker.postMessage({
