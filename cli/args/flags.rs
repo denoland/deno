@@ -914,7 +914,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
       // TODO:
-      "publish" => publish_parse(&mut flags, &mut m),
+      "do-not-use-publish" => publish_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
   } else {
@@ -2299,24 +2299,25 @@ Remote modules and multiple modules may also be specified:
 }
 
 fn publish_subcommand() -> Command {
-  Command::new("publish")
-      .about("Publish a package to the Deno registry")
-      // TODO: .long_about()
-      .defer(|cmd| cmd
-      .arg(
-        Arg::new("directory")
-          .help("The directory to the package, or workspace of packages to publish")
-          .value_parser(value_parser!(PathBuf))
-          .value_hint(ValueHint::DirPath),
-      )
-      .arg(
-        Arg::new("token")
-          .long("token")
-          .help(
-            "Specify a token to use when authenting to the registry during publish",
-          )
-          .value_name("TOKEN")
-        ))
+  Command::new("do-not-use-publish")
+    .hide(true)
+    .about("Publish a package to the Deno registry")
+    // TODO: .long_about()
+    .defer(|cmd| cmd
+    .arg(
+      Arg::new("directory")
+        .help("The directory to the package, or workspace of packages to publish")
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::DirPath),
+    )
+    .arg(
+      Arg::new("token")
+        .long("token")
+        .help(
+          "Specify a token to use when authenting to the registry during publish",
+        )
+        .value_name("TOKEN")
+      ))
 }
 
 fn compile_args(app: Command) -> Command {
