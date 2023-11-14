@@ -89,8 +89,7 @@ impl TlsStreamResource {
   ) -> Result<usize, AnyError> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
-    let nread = rd.read(data).try_or_cancel(cancel_handle).await?;
-    Ok(nread)
+    Ok(rd.read(data).try_or_cancel(cancel_handle).await?)
   }
 
   pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {

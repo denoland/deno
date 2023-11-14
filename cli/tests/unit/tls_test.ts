@@ -547,7 +547,7 @@ async function sendAlotReceiveNothing(conn: Deno.Conn) {
   // Send 1 MB of data.
   const writeBuf = new Uint8Array(1 << 20 /* 1 MB */);
   writeBuf.fill(42);
-  await conn.write(writeBuf);
+  await writeAll(conn, writeBuf);
 
   // Send EOF.
   await conn.closeWrite();
@@ -624,7 +624,7 @@ async function sendReceiveEmptyBuf(conn: Deno.Conn) {
 
   await assertRejects(async () => {
     await conn.write(byteBuf);
-  }, Deno.errors.BrokenPipe);
+  }, Deno.errors.NotConnected);
 
   n = await conn.write(emptyBuf);
   assertStrictEquals(n, 0);
@@ -842,13 +842,9 @@ async function tlsWithTcpFailureTestImpl(
           tcpForwardingInterruptPromise2.resolve();
           break;
         case "shutdown":
-          // Receiving a TCP FIN packet without receiving a TLS CloseNotify
-          // alert is not the expected mode of operation, but it is not a
-          // problem either, so it should be treated as if the TLS session was
-          // gracefully closed.
           await Promise.all([
             tcpConn1.closeWrite(),
-            await receiveEof(tlsConn1),
+            await assertRejects(() => receiveEof(tlsConn1), Deno.errors.UnexpectedEof),
             await tlsConn1.closeWrite(),
             await receiveEof(tlsConn2),
           ]);
@@ -1037,8 +1033,8 @@ function createHttpsListener(port: number): Deno.Listener {
       );
 
       // Send response.
-      await conn.write(resHead);
-      await conn.write(resBody);
+      await writeAll(conn, resHead);
+      await writeAll(conn, resBody);
 
       // Close TCP connection.
       conn.close();
@@ -1047,12 +1043,12 @@ function createHttpsListener(port: number): Deno.Listener {
 }
 
 async function curl(url: string): Promise<string> {
-  const { success, code, stdout } = await new Deno.Command("curl", {
+  const { success, code, stdout, stderr } = await new Deno.Command("curl", {
     args: ["--insecure", url],
   }).output();
 
   if (!success) {
-    throw new Error(`curl ${url} failed: ${code}`);
+    throw new Error(`curl ${url} failed: ${code}:\n${new TextDecoder().decode(stderr)}`);
   }
   return new TextDecoder().decode(stdout);
 }
@@ -1278,7 +1274,6 @@ Deno.test(
     const whole = new Uint8Array(10 << 20); // 10mb.
     whole.fill(42);
     const sendPromise = writeAll(conn1, whole);
-    console.log(1);
     // Set up the other end to receive half of the large blob.
     const half = new Uint8Array(whole.byteLength / 2);
     const receivePromise = readFull(conn2, half);
@@ -1286,15 +1281,12 @@ Deno.test(
     await conn1.handshake();
     await conn2.handshake();
 
-    console.log(2);
     // Finish receiving the first 5mb.
     assertEquals(await receivePromise, half.length);
-    console.log(3);
 
     // See that we can call `handshake()` in the middle of large reads and writes.
     await conn1.handshake();
     await conn2.handshake();
-    console.log(4);
 
     // Receive second half of large blob. Wait for the send promise and check it.
     assertEquals(await readFull(conn2, half), half.length);
@@ -1356,7 +1348,7 @@ Deno.test(
       await assertRejects(
         () => conn.handshake(),
         Deno.errors.InvalidData,
-        "UnknownIssuer",
+        "invalid data",
       );
       conn.close();
     }
