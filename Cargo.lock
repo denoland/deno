@@ -1420,6 +1420,7 @@ dependencies = [
  "enum-as-inner",
  "log",
  "pin-project",
+ "rustls-tokio-stream",
  "serde",
  "socket2 0.5.4",
  "tokio",
@@ -4460,9 +4461,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-tokio-stream"
-version = "0.2.9"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55cae64d5219dfdd7f2d18dda421a2137ebdd63be6d0dc53d7836003f224f3d0"
+checksum = "84a48ebce7fb5fe9cafeec2221e359160de3fe3f01ad1f65cfc4a172d13565d1"
 dependencies = [
  "futures",
  "rustls",
