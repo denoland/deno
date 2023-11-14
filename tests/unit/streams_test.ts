@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "./test_util.ts";
+import { assertEquals, assertRejects, fail } from "./test_util.ts";
 
 const {
   core,
@@ -476,3 +476,47 @@ for (const packetCount of [1, 1024]) {
     assertEquals(await promise, "resource closed");
   });
 }
+
+Deno.test(async function compressionStreamWritableMayBeAborted() {
+  await Promise.all([
+    new CompressionStream("gzip").writable.getWriter().abort(),
+    new CompressionStream("deflate").writable.getWriter().abort(),
+    new CompressionStream("deflate-raw").writable.getWriter().abort(),
+  ]);
+});
+
+Deno.test(async function compressionStreamReadableMayBeCancelled() {
+  await Promise.all([
+    new CompressionStream("gzip").readable.getReader().cancel(),
+    new CompressionStream("deflate").readable.getReader().cancel(),
+    new CompressionStream("deflate-raw").readable.getReader().cancel(),
+  ]);
+});
+
+Deno.test(async function decompressionStreamWritableMayBeAborted() {
+  await Promise.all([
+    assertRejects(
+      async () => {
+        await new DecompressionStream("gzip").writable.getWriter().abort();
+      },
+      TypeError,
+      "corrupt gzip stream does not have a matching checksum",
+    ),
+    new DecompressionStream("deflate").writable.getWriter().abort(),
+    new DecompressionStream("deflate-raw").writable.getWriter().abort(),
+  ]);
+});
+
+Deno.test(async function decompressionStreamReadableMayBeCancelled() {
+  await Promise.all([
+    assertRejects(
+      async () => {
+        await new DecompressionStream("gzip").readable.getReader().cancel();
+      },
+      TypeError,
+      "corrupt gzip stream does not have a matching checksum",
+    ),
+    new DecompressionStream("deflate").readable.getReader().cancel(),
+    new DecompressionStream("deflate-raw").readable.getReader().cancel(),
+  ]);
+});

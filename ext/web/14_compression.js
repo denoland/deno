@@ -53,6 +53,9 @@ class CompressionStream {
         const output = op_compression_finish(rid);
         maybeEnqueue(controller, output);
       },
+      cancel: (_reason) => {
+        ops.op_compression_finish(rid);
+      },
     });
 
     this[webidl.brand] = webidl.brand;
@@ -111,6 +114,9 @@ class DecompressionStream {
       flush(controller) {
         const output = op_compression_finish(rid);
         maybeEnqueue(controller, output);
+      },
+      cancel: (_reason) => {
+        ops.op_compression_finish(rid);
       },
     });
 
