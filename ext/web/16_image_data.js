@@ -7,10 +7,13 @@ const {
   TypeError,
 } = primordials;
 
-webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter("PredefinedColorSpace", [
-  "srgb",
-  "display-p3",
-]);
+webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
+  "PredefinedColorSpace",
+  [
+    "srgb",
+    "display-p3",
+  ],
+);
 class ImageData {
   /** @type {number} */
   #width;
@@ -135,9 +138,13 @@ class ImageData {
 
     this.#width = sourceWidth;
     this.#height = sourceHeight;
-    this.#colorSpace = typeof settings !== "undefined" &&
-        typeof settings.colorSpace !== "undefined"
-      ? webidl.converters.PredefinedColorSpace(settings.colorSpace, "Failed to construct 'ImageData'", "colorSpace")
+    this.#colorSpace = webidl.type(settings) === "Object" &&
+        webidl.type(settings.colorSpace) !== "Undefined"
+      ? webidl.converters.PredefinedColorSpace(
+        settings.colorSpace,
+        "Failed to construct 'ImageData'",
+        "colorSpace",
+      )
       : "srgb";
     this.#data = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
   }
