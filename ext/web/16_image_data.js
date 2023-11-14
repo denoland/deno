@@ -5,7 +5,6 @@ import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   NumberIsNaN,
-  NumberParseInt,
   Uint8ClampedArray,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
@@ -39,6 +38,7 @@ class ImageData {
     let sourceHeight;
     let data;
     let settings;
+    const prefix = "Failed to construct 'ImageData'";
 
     // Overload: new ImageData(data, sw [, sh [, settings ] ])
     if (
@@ -47,13 +47,13 @@ class ImageData {
     ) {
       data = webidl.converters.Uint8ClampedArray(
         arg0,
-        "Failed to construct 'ImageData'",
+        prefix,
       );
       sourceWidth = webidl.type(arg1) !== "Undefined"
-        ? NumberParseInt(arg1, 10)
+        ? webidl.converters["unsigned long"](arg1, prefix, "Argument 2")
         : undefined;
       sourceHeight = webidl.type(arg2) !== "Undefined"
-        ? NumberParseInt(arg2, 10)
+        ? webidl.converters["unsigned long"](arg2, prefix, "Argument 3")
         : undefined;
       settings = arg3;
 
@@ -108,7 +108,7 @@ class ImageData {
           webidl.type(settings.colorSpace) !== "Undefined"
         ? webidl.converters.PredefinedColorSpace(
           settings.colorSpace,
-          "Failed to construct 'ImageData'",
+          prefix,
           "colorSpace",
         )
         : "srgb";
@@ -117,10 +117,10 @@ class ImageData {
 
     // Overload: new ImageData(sw, sh [, settings])
     sourceWidth = webidl.type(arg0) !== "Undefined"
-      ? NumberParseInt(arg0, 10)
+      ? webidl.converters["unsigned long"](arg0, prefix, "Argument 1")
       : undefined;
     sourceHeight = webidl.type(arg1) !== "Undefined"
-      ? NumberParseInt(arg1, 10)
+      ? webidl.converters["unsigned long"](arg1, prefix, "Argument 2")
       : undefined;
     settings = arg2;
 
@@ -144,7 +144,7 @@ class ImageData {
         webidl.type(settings.colorSpace) !== "Undefined"
       ? webidl.converters.PredefinedColorSpace(
         settings.colorSpace,
-        "Failed to construct 'ImageData'",
+        prefix,
         "colorSpace",
       )
       : "srgb";
