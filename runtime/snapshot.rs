@@ -2,6 +2,7 @@
 
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
+use crate::ops;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::snapshot_util::*;
@@ -221,21 +222,21 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
     deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
     runtime::init_ops_and_esm(),
-    crate::ops::runtime::deno_runtime::init_ops(
+    ops::runtime::deno_runtime::init_ops(
       "deno:runtime".parse().unwrap(),
     ),
-    crate::ops::worker_host::deno_worker_host::init_ops(
+    ops::worker_host::deno_worker_host::init_ops(
       Arc::new(|_| unreachable!("not used in snapshot.")),
       None,
     ),
-    crate::ops::fs_events::deno_fs_events::init_ops(),
-    crate::ops::os::deno_os::init_ops(Default::default()),
-    crate::ops::permissions::deno_permissions::init_ops(),
-    crate::ops::process::deno_process::init_ops(),
-    crate::ops::signal::deno_signal::init_ops(),
-    crate::ops::tty::deno_tty::init_ops(),
-    crate::ops::http::deno_http_runtime::init_ops(),
-    crate::ops::bootstrap::deno_bootstrap::init_ops(),
+    ops::fs_events::deno_fs_events::init_ops(),
+    ops::os::deno_os::init_ops(Default::default()),
+    ops::permissions::deno_permissions::init_ops(),
+    ops::process::deno_process::init_ops(),
+    ops::signal::deno_signal::init_ops(),
+    ops::tty::deno_tty::init_ops(),
+    ops::http::deno_http_runtime::init_ops(),
+    ops::bootstrap::deno_bootstrap::init_ops(),
   ];
 
   for extension in &mut extensions {
