@@ -4,7 +4,9 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  TypeError,
+  NumberIsNaN,
+  NumberParseInt,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
 webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
@@ -38,24 +40,23 @@ class ImageData {
     let settings;
 
     // Overload: new ImageData(data, sw [, sh [, settings ] ])
-    if (webidl.type(arg0) === "Object") {
-      data = arg0;
+    if (
+      arguments.length > 3 ||
+      TypedArrayPrototypeGetSymbolToStringTag(arg0) === "Uint8ClampedArray"
+    ) {
+      data = webidl.converters.Uint8ClampedArray(
+        arg0,
+        "Failed to construct 'ImageData'",
+      );
       sourceWidth = webidl.type(arg1) !== "Undefined"
-        ? parseInt(arg1, 10)
+        ? NumberParseInt(arg1, 10)
         : undefined;
       sourceHeight = webidl.type(arg2) !== "Undefined"
-        ? parseInt(arg2, 10)
+        ? NumberParseInt(arg2, 10)
         : undefined;
       settings = arg3;
 
-      if (!(data instanceof Uint8ClampedArray)) {
-        throw new TypeError(
-          "Failed to construct 'ImageData': The provided value is not an instance of Uint8ClampedArray.",
-          "TypeError",
-        );
-      }
-
-      if (Number.isNaN(sourceWidth) || sourceWidth < 1) {
+      if (NumberIsNaN(sourceWidth) || sourceWidth < 1) {
         throw new DOMException(
           "Failed to construct 'ImageData': The source width is zero or not a number.",
           "IndexSizeError",
@@ -64,7 +65,7 @@ class ImageData {
 
       if (
         webidl.type(sourceHeight) !== "Undefined" &&
-        (Number.isNaN(sourceHeight) ||
+        (NumberIsNaN(sourceHeight) ||
           sourceHeight < 1)
       ) {
         throw new DOMException(
@@ -115,21 +116,21 @@ class ImageData {
 
     // Overload: new ImageData(sw, sh [, settings])
     sourceWidth = webidl.type(arg0) !== "Undefined"
-      ? parseInt(arg0, 10)
+      ? NumberParseInt(arg0, 10)
       : undefined;
     sourceHeight = webidl.type(arg1) !== "Undefined"
-      ? parseInt(arg1, 10)
+      ? NumberParseInt(arg1, 10)
       : undefined;
     settings = arg2;
 
-    if (Number.isNaN(sourceWidth) || sourceWidth < 1) {
+    if (NumberIsNaN(sourceWidth) || sourceWidth < 1) {
       throw new DOMException(
         "Failed to construct 'ImageData': The source width is zero or not a number.",
         "IndexSizeError",
       );
     }
 
-    if (Number.isNaN(sourceWidth) || sourceHeight < 1) {
+    if (NumberIsNaN(sourceWidth) || sourceHeight < 1) {
       throw new DOMException(
         "Failed to construct 'ImageData': The source height is zero or not a number.",
         "IndexSizeError",
