@@ -711,14 +711,15 @@ function discoverTestsToRun(
             1,
           ) as ManifestTestVariation[]
         ) {
-          if (!path) continue;
-          const url = new URL(path, "http://web-platform.test:8000");
-          if (
-            !url.pathname.endsWith(".any.html") &&
-            !url.pathname.endsWith(".window.html") &&
-            !url.pathname.endsWith(".worker.html") &&
-            !url.pathname.endsWith(".worker-module.html")
-          ) {
+          // Test keys ending with .html include their html own boilerplate
+          // Test keys ending with .js will have the necessary boilerplate generated
+          // the path will contain the full path to the html test file
+          // See: https://web-platform-tests.org/writing-tests/testharness.html
+          if (!key.endsWith(".html") && !key.endsWith(".js")) continue;
+
+          const testHtmlPath = path ?? `${prefix}/${key}`;
+          const url = new URL(testHtmlPath, "http://web-platform.test:8000");
+          if (!url.pathname.endsWith(".html")) {
             continue;
           }
           // These tests require an HTTP2 compatible server.
