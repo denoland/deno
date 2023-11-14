@@ -113,6 +113,7 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
+use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
@@ -3191,10 +3192,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     lsp_log!("Server ready.");
 
-    if matches!(
-      env::var("DENO_NO_UPDATE_CHECK"),
-      Err(env::VarError::NotPresent)
-    ) {
+    if upgrade_check_enabled() {
       let http_client = self.0.read().await.http_client.clone();
       match check_for_upgrades_for_lsp(http_client).await {
         Ok(version_info) => {
@@ -3209,7 +3207,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
             },
           );
         }
-        Err(err) => error!("Failed to check for upgrades: {err}"),
+        Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
       }
     }
   }

@@ -186,11 +186,18 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   }
 }
 
+pub fn upgrade_check_enabled() -> bool {
+  matches!(
+    env::var("DENO_NO_UPDATE_CHECK"),
+    Err(env::VarError::NotPresent)
+  )
+}
+
 pub fn check_for_upgrades(
   http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
 ) {
-  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
+  if !upgrade_check_enabled() {
     return;
   }
 
@@ -242,6 +249,9 @@ pub fn check_for_upgrades(
 pub async fn check_for_upgrades_for_lsp(
   http_client: Arc<HttpClient>,
 ) -> Result<Option<(String, bool)>, AnyError> {
+  if !upgrade_check_enabled() {
+    return Ok(None);
+  }
   let is_canary = version::is_canary();
   let latest_version;
   let mut is_upgrade;

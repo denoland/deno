@@ -62,11 +62,13 @@ macro_rules! lsp_log {
 /// for downgrading these logs to another log level in the REPL.
 macro_rules! lsp_warn {
   ($($arg:tt)+) => (
-    let lsp_log_level = $crate::lsp::logging::lsp_warn_level();
-    if lsp_log_level == log::Level::Debug {
-      $crate::lsp::logging::lsp_debug!($($arg)+)
-    } else {
-      log::log!(lsp_log_level, $($arg)+)
+    {
+      let lsp_log_level = $crate::lsp::logging::lsp_warn_level();
+      if lsp_log_level == log::Level::Debug {
+        $crate::lsp::logging::lsp_debug!($($arg)+)
+      } else {
+        log::log!(lsp_log_level, $($arg)+)
+      }
     }
   )
 }
