@@ -99,7 +99,6 @@ pub async fn kernel(
         stdout,
         stderr,
       },
-      true,
     )
     .await?;
   worker.setup_repl().await?;

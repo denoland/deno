@@ -425,7 +425,6 @@ pub async fn test_specifier(
         stdout,
         stderr,
       },
-      true,
     )
     .await?;
 
