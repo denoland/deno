@@ -61,50 +61,30 @@ To grant permissions, set them before the script argument. For example:
     &cli_options.permissions_options(),
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
-    .await?;
 
-  let exit_code = worker.run().await?;
-  Ok(exit_code)
-}
+  // If file is stdin, save stdin contents to file fetcher cache
+  if run_flags.is_stdin() {
+    let file_fetcher = factory.file_fetcher()?;
+    let mut source = Vec::new();
+    std::io::stdin().read_to_end(&mut source)?;
 
-pub async fn run_from_stdin(
-  flags: Flags,
-  run_flags: RunFlags,
-) -> Result<i32, AnyError> {
-  if let Some(watch_flags) = run_flags.watch {
-    return run_with_watch(flags, watch_flags).await;
+    // Create a dummy source file.
+    let source_file = File {
+      maybe_types: None,
+      media_type: MediaType::TypeScript,
+      source: String::from_utf8(source)?.into(),
+      specifier: main_module.clone(),
+      maybe_headers: None,
+    };
+    // Save our fake file into file fetcher cache
+    // to allow module access by TS compiler
+    file_fetcher.insert_cached(source_file);
   }
 
-  let factory = CliFactory::from_flags(flags).await?;
-  let cli_options = factory.cli_options();
-  let main_module = cli_options.resolve_main_module()?;
-
-  maybe_npm_install(&factory).await?;
-
-  let file_fetcher = factory.file_fetcher()?;
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
-  )?);
-  let mut source = Vec::new();
-  std::io::stdin().read_to_end(&mut source)?;
-  // Create a dummy source file.
-  let source_file = File {
-    maybe_types: None,
-    media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?.into(),
-    specifier: main_module.clone(),
-    maybe_headers: None,
-  };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  file_fetcher.insert_cached(source_file);
-
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
+
   let exit_code = worker.run().await?;
   Ok(exit_code)
 }

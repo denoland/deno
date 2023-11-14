@@ -159,13 +159,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Repl(repl_flags) => {
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
-    DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
-      if run_flags.is_stdin() {
-        tools::run::run_from_stdin(flags, run_flags).await
-      } else {
-        tools::run::run_script(flags, run_flags).await
-      }
-    }),
+    DenoSubcommand::Run(run_flags) => {
+      spawn_subcommand(
+        async move { tools::run::run_script(flags, run_flags).await },
+      )
+    }
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags).await
     }),
