@@ -711,9 +711,9 @@ function discoverTestsToRun(
             1,
           ) as ManifestTestVariation[]
         ) {
-          // Test keys ending with .html include their html own boilerplate
-          // Test keys ending with .js will have the necessary boilerplate generated
-          // the path will contain the full path to the html test file
+          // Test keys ending with ".html" include their own html boilerplate.
+          // Test keys ending with ".js" will have the necessary boilerplate generated and
+          // the manifest path will contain the full path to the generated html test file.
           // See: https://web-platform-tests.org/writing-tests/testharness.html
           if (!key.endsWith(".html") && !key.endsWith(".js")) continue;
 
