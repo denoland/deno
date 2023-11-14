@@ -4,7 +4,6 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  NumberIsNaN,
   Uint8ClampedArray,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
@@ -57,18 +56,14 @@ class ImageData {
         : undefined;
       settings = arg3;
 
-      if (NumberIsNaN(sourceWidth) || sourceWidth < 1) {
+      if (sourceWidth < 1) {
         throw new DOMException(
           "Failed to construct 'ImageData': The source width is zero or not a number.",
           "IndexSizeError",
         );
       }
 
-      if (
-        webidl.type(sourceHeight) !== "Undefined" &&
-        (NumberIsNaN(sourceHeight) ||
-          sourceHeight < 1)
-      ) {
+      if (webidl.type(sourceHeight) !== "Undefined" && sourceHeight < 1) {
         throw new DOMException(
           "Failed to construct 'ImageData': The source height is zero or not a number.",
           "IndexSizeError",
@@ -124,14 +119,14 @@ class ImageData {
       : undefined;
     settings = arg2;
 
-    if (NumberIsNaN(sourceWidth) || sourceWidth < 1) {
+    if (sourceWidth < 1) {
       throw new DOMException(
         "Failed to construct 'ImageData': The source width is zero or not a number.",
         "IndexSizeError",
       );
     }
 
-    if (NumberIsNaN(sourceWidth) || sourceHeight < 1) {
+    if (sourceHeight < 1) {
       throw new DOMException(
         "Failed to construct 'ImageData': The source height is zero or not a number.",
         "IndexSizeError",
