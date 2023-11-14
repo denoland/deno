@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::io::Write;
+
 use flaky_test::flaky_test;
 use test_util as util;
 use test_util::assert_contains;
@@ -990,6 +992,49 @@ async fn run_watch_error_messages() {
 }
 
 #[tokio::test]
+async fn run_watch_stdin() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write("console.log('Hello world');");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("-")
+    .env("NO_COLOR", "1")
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  {
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
+      .write_all(format!("import '{}';", file_to_watch).as_bytes())
+      .unwrap();
+  }
+
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("Hello world", &mut stdout_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  file_to_watch.write("console.log('Goodbye')");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Goodbye", &mut stdout_lines).await;
+  wait_contains("Process finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
 async fn test_watch_basic() {
   let t = TempDir::new();
 
@@ -1725,7 +1770,7 @@ import { foo } from "./foo.jsx";
 let i = 0;
 setInterval(() => {
   console.log(i++, foo());
-}, 100);    
+}, 100);
 "#,
   );
   let file_to_watch2 = t.path().join("foo.jsx");
