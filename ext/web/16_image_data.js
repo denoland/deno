@@ -35,12 +35,12 @@ class ImageData {
     let settings;
 
     // Overload: new ImageData(data, sw [, sh [, settings ] ])
-    if (typeof arg0 === "object") {
+    if (webidl.type(arg0) === "Object") {
       data = arg0;
-      sourceWidth = typeof arg1 !== "undefined"
+      sourceWidth = webidl.type(arg1) !== "Undefined"
         ? parseInt(arg1, 10)
         : undefined;
-      sourceHeight = typeof arg2 !== "undefined"
+      sourceHeight = webidl.type(arg2) !== "Undefined"
         ? parseInt(arg2, 10)
         : undefined;
       settings = arg3;
@@ -60,8 +60,9 @@ class ImageData {
       }
 
       if (
-        typeof sourceHeight !== "undefined" && Number.isNaN(sourceWidth) ||
-        sourceHeight < 1
+        webidl.type(sourceHeight) !== "Undefined" &&
+        (Number.isNaN(sourceHeight) ||
+          sourceHeight < 1)
       ) {
         throw new DOMException(
           "Failed to construct 'ImageData': The source height is zero or not a number.",
@@ -84,7 +85,7 @@ class ImageData {
       }
 
       if (
-        typeof sourceHeight !== "undefined" &&
+        webidl.type(sourceHeight) !== "Undefined" &&
         (sourceWidth * sourceHeight * 4 !== data.length)
       ) {
         throw new DOMException(
@@ -94,20 +95,28 @@ class ImageData {
       }
 
       this.#width = sourceWidth;
-      this.#height = typeof sourceHeight === "undefined"
+      this.#height = webidl.type(sourceHeight) === "Undefined"
         ? data.length / 4 / sourceWidth
         : sourceHeight;
       this.#data = data;
-      this.#colorSpace = typeof settings !== "undefined" &&
-          typeof settings.colorSpace !== "undefined"
-        ? webidl.converters.PredefinedColorSpace(settings.colorSpace, "Failed to construct 'ImageData'", "colorSpace")
+      this.#colorSpace = webidl.type(settings) === "Object" &&
+          webidl.type(settings.colorSpace) !== "Undefined"
+        ? webidl.converters.PredefinedColorSpace(
+          settings.colorSpace,
+          "Failed to construct 'ImageData'",
+          "colorSpace",
+        )
         : "srgb";
       return;
     }
 
     // Overload: new ImageData(sw, sh [, settings])
-    sourceWidth = typeof arg0 !== "undefined" ? parseInt(arg0, 10) : undefined;
-    sourceHeight = typeof arg1 !== "undefined" ? parseInt(arg1, 10) : undefined;
+    sourceWidth = webidl.type(arg0) !== "Undefined"
+      ? parseInt(arg0, 10)
+      : undefined;
+    sourceHeight = webidl.type(arg1) !== "Undefined"
+      ? parseInt(arg1, 10)
+      : undefined;
     settings = arg2;
 
     if (Number.isNaN(sourceWidth) || sourceWidth < 1) {
