@@ -86,7 +86,7 @@ mod reader_stream;
 mod request_body;
 mod request_properties;
 mod response_body;
-mod slab;
+mod service;
 mod websocket_upgrade;
 
 pub use request_properties::DefaultHttpPropertyExtractor;
@@ -108,6 +108,7 @@ deno_core::extension!(
     op_http_write_headers,
     op_http_write_resource,
     op_http_write,
+    http_next::op_http_close_after_finish,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_get_request_method_and_url<HTTP>,
@@ -121,7 +122,6 @@ deno_core::extension!(
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_set_response_trailers,
-    http_next::op_http_track,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
     http_next::op_raw_write_vectored,
