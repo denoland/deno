@@ -7,11 +7,10 @@ const {
   TypeError,
 } = primordials;
 
-const PredefinedColorSpace = [
+webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter("PredefinedColorSpace", [
   "srgb",
   "display-p3",
-];
-
+]);
 class ImageData {
   /** @type {number} */
   #width;
@@ -94,16 +93,6 @@ class ImageData {
         );
       }
 
-      if (
-        typeof settings !== "undefined" &&
-        typeof settings.colorSpace !== "undefined" &&
-        !PredefinedColorSpace.includes(settings.colorSpace)
-      ) {
-        throw new TypeError(
-          `Failed to read the 'colorSpace' property from 'ImageDataSettings': The provided value '${settings.colorSpace}' is not a valid enum value of type PredefinedColorSpace.`,
-        );
-      }
-
       this.#width = sourceWidth;
       this.#height = typeof sourceHeight === "undefined"
         ? data.length / 4 / sourceWidth
@@ -111,7 +100,7 @@ class ImageData {
       this.#data = data;
       this.#colorSpace = typeof settings !== "undefined" &&
           typeof settings.colorSpace !== "undefined"
-        ? settings.colorSpace
+        ? webidl.converters.PredefinedColorSpace(settings.colorSpace, "Failed to construct 'ImageData'", "colorSpace")
         : "srgb";
       return;
     }
@@ -135,21 +124,11 @@ class ImageData {
       );
     }
 
-    if (
-      typeof settings !== "undefined" &&
-      typeof settings.colorSpace !== "undefined" &&
-      !PredefinedColorSpace.includes(settings.colorSpace)
-    ) {
-      throw new TypeError(
-        `Failed to read the 'colorSpace' property from 'ImageDataSettings': The provided value '${settings.colorSpace}' is not a valid enum value of type PredefinedColorSpace.`,
-      );
-    }
-
     this.#width = sourceWidth;
     this.#height = sourceHeight;
     this.#colorSpace = typeof settings !== "undefined" &&
         typeof settings.colorSpace !== "undefined"
-      ? settings.colorSpace
+      ? webidl.converters.PredefinedColorSpace(settings.colorSpace, "Failed to construct 'ImageData'", "colorSpace")
       : "srgb";
     this.#data = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
   }
