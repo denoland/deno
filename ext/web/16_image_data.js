@@ -6,6 +6,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   NumberIsNaN,
   NumberParseInt,
+  Uint8ClampedArray,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
