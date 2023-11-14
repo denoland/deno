@@ -79,6 +79,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
@@ -5580,13 +5581,13 @@ class ReadableStreamBYOBReader {
       return PromiseReject(new TypeError("options.min must be non-zero"));
     }
     if (TypedArrayPrototypeGetSymbolToStringTag(view) !== undefined) {
-      if (options.min > view.length) {
+      if (options.min > TypedArrayPrototypeGetLength(view)) {
         return PromiseReject(
           new RangeError("options.min must be smaller or equal to view's size"),
         );
       }
     } else {
-      if (options.min > view.byteLength) {
+      if (options.min > DataViewPrototypeGetByteLength(view)) {
         return PromiseReject(
           new RangeError("options.min must be smaller or equal to view's size"),
         );
