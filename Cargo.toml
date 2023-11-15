@@ -337,6 +337,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
-
-[patch.crates-io]
-import_map = { git = "https://github.com/denoland/import_map", branch = "synthetic_import_map", features = ["ext"] }

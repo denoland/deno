@@ -919,7 +919,7 @@ dependencies = [
  "hex",
  "http",
  "hyper 0.14.27",
- "import_map 0.16.0",
+ "import_map 0.17.0",
  "indexmap 2.0.2",
  "jsonc-parser",
  "junction",
@@ -2864,8 +2864,9 @@ dependencies = [
 
 [[package]]
 name = "import_map"
-version = "0.16.0"
-source = "git+https://github.com/denoland/import_map?branch=synthetic_import_map#e49bd976229dc5dc2da6772ddcd3e48a6287ce80"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e5bf51a0adfdc08afcb9e5a1c8f8c804227ec50d493c65e57e6d117d594bd1b"
 dependencies = [
  "indexmap 1.9.3",
  "log",
