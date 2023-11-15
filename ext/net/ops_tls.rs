@@ -60,8 +60,6 @@ pub use rustls_tokio_stream::TlsStream;
 
 pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
   NonZeroUsize::new(65536);
-pub(crate) const TLS_TCP_LINGER: Option<Duration> =
-  Some(Duration::from_millis(10_000));
 
 #[derive(Debug)]
 pub struct TlsStreamResource {
@@ -231,7 +229,6 @@ where
   }
 
   let tls_config = Arc::new(tls_config);
-  _ = tcp_stream.set_linger(TLS_TCP_LINGER);
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
     tls_config,
@@ -526,7 +523,6 @@ pub async fn op_net_accept_tls(
 
   let local_addr = tcp_stream.local_addr()?;
 
-  _ = tcp_stream.set_linger(TLS_TCP_LINGER);
   let tls_stream = TlsStream::new_server_side(
     tcp_stream,
     resource.tls_config.clone(),
