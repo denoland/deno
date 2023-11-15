@@ -1348,7 +1348,7 @@ Deno.test(
       await assertRejects(
         () => conn.handshake(),
         Deno.errors.InvalidData,
-        "invalid data",
+        "invalid peer certificate: UnknownIssuer",
       );
       conn.close();
     }
