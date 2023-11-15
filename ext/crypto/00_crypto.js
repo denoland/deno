@@ -349,14 +349,14 @@ class CryptoKey {
     return this[_algorithm];
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${
       inspect({
         type: this.type,
         extractable: this.extractable,
         algorithm: this.algorithm,
         usages: this.usages,
-      })
+      }, inspectOptions)
     }`;
   }
 }
@@ -4730,8 +4730,10 @@ class Crypto {
     return subtle;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({})}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({ subtle: this.subtle }, inspectOptions)
+    }`;
   }
 }
 

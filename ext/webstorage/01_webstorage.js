@@ -147,12 +147,15 @@ function createStorage(persistent) {
     },
   });
 
-  proxy[SymbolFor("Deno.customInspect")] = function (inspect) {
+  storage[SymbolFor("Deno.privateCustomInspect")] = function (
+    inspect,
+    inspectOptions,
+  ) {
     return `${this.constructor.name} ${
       inspect({
-        length: this.length,
         ...ObjectFromEntries(ObjectEntries(proxy)),
-      })
+        length: this.length,
+      }, inspectOptions)
     }`;
   };
 

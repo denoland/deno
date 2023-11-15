@@ -222,7 +222,7 @@ class URLPattern {
     return result;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `URLPattern ${
       inspect({
         protocol: this.protocol,
@@ -233,7 +233,7 @@ class URLPattern {
         pathname: this.pathname,
         search: this.search,
         hash: this.hash,
-      })
+      }, inspectOptions)
     }`;
   }
 }

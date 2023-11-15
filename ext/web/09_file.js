@@ -416,15 +416,18 @@ class Blob {
     return TypedArrayPrototypeGetBuffer(buf);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(BlobPrototype, this),
-      keys: [
-        "size",
-        "type",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(BlobPrototype, this),
+        keys: [
+          "size",
+          "type",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -536,16 +539,19 @@ class File extends Blob {
     return this[_LastModified];
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(FilePrototype, this),
-      keys: [
-        "name",
-        "size",
-        "type",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(FilePrototype, this),
+        keys: [
+          "name",
+          "size",
+          "type",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

@@ -441,13 +441,13 @@ class Headers {
     }
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     const headers = {};
     // deno-lint-ignore prefer-primordials
     for (const header of this) {
       headers[header[0]] = header[1];
     }
-    return `Headers ${inspect(headers)}`;
+    return `Headers ${inspect(headers, inspectOptions)}`;
   }
 }
 

@@ -131,19 +131,22 @@ class DOMException {
     return this[_code];
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
       return `DOMException: ${this[_message]}`;
     } else {
-      return inspect(createFilteredInspectProxy({
-        object: this,
-        evaluate: false,
-        keys: [
-          "message",
-          "name",
-          "code",
-        ],
-      }));
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: false,
+          keys: [
+            "message",
+            "name",
+            "code",
+          ],
+        }),
+        inspectOptions,
+      );
     }
   }
 }

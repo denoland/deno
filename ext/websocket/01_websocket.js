@@ -536,7 +536,7 @@ class WebSocket extends EventTarget {
     }
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${
       inspect({
         url: this.url,
@@ -545,7 +545,7 @@ class WebSocket extends EventTarget {
         protocol: this.protocol,
         binaryType: this.binaryType,
         bufferedAmount: this.bufferedAmount,
-      })
+      }, inspectOptions)
     }`;
   }
 }
