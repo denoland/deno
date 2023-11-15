@@ -241,7 +241,7 @@ function opMainModule() {
 const opArgs = memoizeLazy(() => ops.op_bootstrap_args());
 const opPid = memoizeLazy(() => ops.op_bootstrap_pid());
 const opPpid = memoizeLazy(() => ops.op_ppid());
-setNoColorFn(() => ops.op_bootstrap_no_color());
+setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
 
 function formatException(error) {
   if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
@@ -530,7 +530,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
     ppid: util.getterOnly(opPpid),
-    noColor: util.getterOnly(getNoColor),
+    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
     mainModule: util.getterOnly(opMainModule),
   });
@@ -666,7 +666,7 @@ function bootstrapWorkerRuntime(
   }
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
-    noColor: util.getterOnly(getNoColor),
+    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
   });
   // Setup `Deno` global - we're actually overriding already
