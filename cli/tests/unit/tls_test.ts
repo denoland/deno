@@ -844,7 +844,10 @@ async function tlsWithTcpFailureTestImpl(
         case "shutdown":
           await Promise.all([
             tcpConn1.closeWrite(),
-            await assertRejects(() => receiveEof(tlsConn1), Deno.errors.UnexpectedEof),
+            await assertRejects(
+              () => receiveEof(tlsConn1),
+              Deno.errors.UnexpectedEof,
+            ),
             await tlsConn1.closeWrite(),
             await receiveEof(tlsConn2),
           ]);
@@ -1048,7 +1051,9 @@ async function curl(url: string): Promise<string> {
   }).output();
 
   if (!success) {
-    throw new Error(`curl ${url} failed: ${code}:\n${new TextDecoder().decode(stderr)}`);
+    throw new Error(
+      `curl ${url} failed: ${code}:\n${new TextDecoder().decode(stderr)}`,
+    );
   }
   return new TextDecoder().decode(stdout);
 }

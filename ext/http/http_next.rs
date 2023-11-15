@@ -854,19 +854,11 @@ fn serve_https(
       // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
       // based on the prefix bytes
       let handshake = handshake.alpn;
-      if handshake
-        .as_ref()
-        .map(|v| v == TLS_ALPN_HTTP_2)
-        .unwrap_or_default()
-      {
+      if Some(TLS_ALPN_HTTP_2) == handshake.as_deref() {
         serve_http2_unconditional(io, svc, listen_cancel_handle)
           .await
           .map_err(|e| e.into())
-      } else if handshake
-        .as_ref()
-        .map(|v| v == TLS_ALPN_HTTP_11)
-        .unwrap_or_default()
-      {
+      } else if Some(TLS_ALPN_HTTP_11) == handshake.as_deref() {
         serve_http11_unconditional(io, svc, listen_cancel_handle)
           .await
           .map_err(|e| e.into())
