@@ -394,6 +394,10 @@ impl TempDir {
     self.target_path().join(path).create_dir_all()
   }
 
+  pub fn exists(&self, path: impl AsRef<Path>) -> bool {
+    self.target_path().join(path).exists()
+  }
+
   pub fn remove_file(&self, path: impl AsRef<Path>) {
     self.target_path().join(path).remove_file()
   }

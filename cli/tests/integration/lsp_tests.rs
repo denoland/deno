@@ -10618,6 +10618,55 @@ fn lsp_config_scopes_compiler_options_lib() {
 }
 
 #[test]
+fn lsp_config_scopes_node_modules_dir() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "nodeModulesDir": true,
+    })
+    .to_string(),
+  );
+  temp_dir.write("project1/file.ts", r#"import "npm:chalk";"#);
+  temp_dir.create_dir_all("project2");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "nodeModulesDir": true,
+    })
+    .to_string(),
+  );
+  temp_dir.write("project2/file.ts", r#"import "npm:color-name";"#);
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project1/file.ts").unwrap()],
+    }),
+  );
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project2/file.ts").unwrap()],
+    }),
+  );
+  client.change_configuration(json!({}));
+  assert!(temp_dir.exists("project1/node_modules/chalk"));
+  assert!(!temp_dir.exists("project1/node_modules/color-name"));
+  assert!(!temp_dir.exists("project2/node_modules/chalk"));
+  assert!(temp_dir.exists("project2/node_modules/color-name"));
+  client.shutdown();
+}
+
+#[test]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
