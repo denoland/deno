@@ -13,7 +13,7 @@ const conn = await listener.accept() as Deno.TlsConn;
 await assertRejects(
   () => conn.handshake(),
   Deno.errors.InvalidData,
-  "invalid data",
+  "peer doesn't support any known protocol",
 );
 conn.close();
 
