@@ -57,9 +57,9 @@ class MessageChannel {
     return this.#port2;
   }
 
-  [SymbolFor("Deno.inspect")](inspect) {
-    return `MessageChannel ${
-      inspect({ port1: this.port1, port2: this.port2 })
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({ port1: this.port1, port2: this.port2 }, inspectOptions)
     }`;
   }
 }
