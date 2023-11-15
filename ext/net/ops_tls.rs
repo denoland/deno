@@ -93,7 +93,6 @@ impl TlsStreamResource {
   }
 
   pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
-    self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
     let nwritten = wr.write(data).await?;
     wr.flush().await?;
@@ -101,7 +100,6 @@ impl TlsStreamResource {
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
-    self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
     wr.shutdown().await?;
     Ok(())
