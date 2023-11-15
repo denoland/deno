@@ -332,7 +332,6 @@ deno_core::extension!(
   esm = [
     dir "js",
     "40_testing.js",
-    "40_jupyter.js",
     "99_main.js"
   ],
   customizer = |ext: &mut deno_core::Extension| {
@@ -353,8 +352,23 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   use deno_runtime::deno_cron::local::LocalCronHandler;
   use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
   use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
+  use deno_runtime::ops::bootstrap::SnapshotOptions;
   use deno_runtime::permissions::PermissionsContainer;
   use std::sync::Arc;
+
+  // NOTE(bartlomieju): keep in sync with `cli/version.rs`.
+  // Ideally we could deduplicate that code.
+  fn deno_version() -> String {
+    if env::var("DENO_CANARY").is_ok() {
+      format!(
+        "{}+{}",
+        env!("CARGO_PKG_VERSION"),
+        git_commit_hash()[..7].to_string()
+      )
+    } else {
+      env!("CARGO_PKG_VERSION").to_string()
+    }
+  }
 
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
@@ -392,6 +406,28 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(fs.clone()),
     deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
     deno_runtime::runtime::init_ops(),
+    deno_runtime::ops::runtime::deno_runtime::init_ops(
+      "deno:runtime".parse().unwrap(),
+    ),
+    deno_runtime::ops::worker_host::deno_worker_host::init_ops(
+      Arc::new(|_| unreachable!("not used in snapshot.")),
+      None,
+    ),
+    deno_runtime::ops::fs_events::deno_fs_events::init_ops(),
+    deno_runtime::ops::os::deno_os::init_ops(Default::default()),
+    deno_runtime::ops::permissions::deno_permissions::init_ops(),
+    deno_runtime::ops::process::deno_process::init_ops(),
+    deno_runtime::ops::signal::deno_signal::init_ops(),
+    deno_runtime::ops::tty::deno_tty::init_ops(),
+    deno_runtime::ops::http::deno_http_runtime::init_ops(),
+    deno_runtime::ops::bootstrap::deno_bootstrap::init_ops(Some(
+      SnapshotOptions {
+        deno_version: deno_version(),
+        ts_version: ts::version(),
+        v8_version: deno_core::v8_version(),
+        target: std::env::var("TARGET").unwrap(),
+      },
+    )),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 

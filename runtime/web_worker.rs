@@ -464,7 +464,6 @@ impl WebWorker {
         options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::deno_web_worker::init_ops_and_esm(),
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
@@ -477,11 +476,13 @@ impl WebWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
+      ops::web_worker::deno_web_worker::init_ops_and_esm(),
     ];
 
     for extension in &mut extensions {
@@ -608,6 +609,7 @@ impl WebWorker {
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+    self.js_runtime.op_state().borrow_mut().put(options.clone());
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {

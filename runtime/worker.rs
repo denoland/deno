@@ -94,6 +94,9 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
+  /// Should op registration be skipped?
+  pub skip_op_registration: bool,
+
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
 
@@ -160,6 +163,7 @@ impl Default for WorkerOptions {
       }),
       fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
+      skip_op_registration: false,
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
@@ -260,7 +264,7 @@ impl MainWorker {
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
     let mut worker = Self::from_options(main_module, permissions, options);
-    worker.bootstrap(&bootstrap_options);
+    worker.bootstrap(bootstrap_options);
     worker
   }
 
@@ -376,6 +380,7 @@ impl MainWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -419,6 +424,7 @@ impl MainWorker {
         .or_else(crate::js::deno_isolate_init),
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
+      skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
@@ -449,7 +455,6 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       op_state.borrow_mut().put(inspector);
     }
-
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
@@ -481,7 +486,8 @@ impl MainWorker {
     }
   }
 
-  pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+  pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    self.js_runtime.op_state().borrow_mut().put(options.clone());
     let scope = &mut self.js_runtime.handle_scope();
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();

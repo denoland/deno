@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::io::Read;
 use std::io::Write;
@@ -200,6 +201,7 @@ impl TestContext {
       args_vec: Default::default(),
       stdin: Default::default(),
       envs: Default::default(),
+      envs_remove: Default::default(),
       env_clear: Default::default(),
       cwd: Default::default(),
       split_output: false,
@@ -229,6 +231,7 @@ pub struct TestCommandBuilder {
   args_vec: Vec<String>,
   stdin: Option<String>,
   envs: HashMap<String, String>,
+  envs_remove: HashSet<String>,
   env_clear: bool,
   cwd: Option<String>,
   split_output: bool,
@@ -277,6 +280,13 @@ impl TestCommandBuilder {
       key.as_ref().to_string_lossy().to_string(),
       value.as_ref().to_string_lossy().to_string(),
     );
+    self
+  }
+
+  pub fn env_remove(mut self, key: impl AsRef<OsStr>) -> Self {
+    self
+      .envs_remove
+      .insert(key.as_ref().to_string_lossy().to_string());
     self
   }
 
@@ -355,6 +365,13 @@ impl TestCommandBuilder {
 
   fn build_envs(&self) -> HashMap<String, String> {
     let mut envs = self.context.envs.clone();
+    envs.insert(
+      "DENO_DIR".to_string(),
+      self.context.deno_dir.path().to_string(),
+    );
+    for key in &self.envs_remove {
+      envs.remove(key);
+    }
     for (key, value) in &self.envs {
       envs.insert(key.to_string(), value.to_string());
     }
@@ -419,7 +436,6 @@ impl TestCommandBuilder {
     if self.env_clear {
       command.env_clear();
     }
-    command.env("DENO_DIR", self.context.deno_dir.path());
     let mut envs = self.build_envs();
     if !envs.contains_key("NPM_CONFIG_REGISTRY") {
       envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
@@ -561,8 +577,9 @@ impl TestCommandOutput {
     self
   }
 
-  pub fn skip_exit_code_check(&self) {
+  pub fn skip_exit_code_check(&self) -> &Self {
     *self.asserted_exit_code.borrow_mut() = true;
+    self
   }
 
   pub fn exit_code(&self) -> Option<i32> {
