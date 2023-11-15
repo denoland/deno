@@ -610,7 +610,14 @@ impl CliMainWorkerFactory {
       options,
     );
 
-    if self.shared.subcommand.is_test_or_jupyter() {
+    if self.shared.subcommand.needs_test() {
+      worker.js_runtime.execute_script_static(
+        "40_testing.js",
+        include_str!("js/40_testing.js"),
+      )?;
+    }
+
+    if self.shared.subcommand.is_jupyter() {
       worker.js_runtime.execute_script_static(
         "40_jupyter.js",
         include_str!("js/40_jupyter.js"),
