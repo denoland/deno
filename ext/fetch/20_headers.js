@@ -447,7 +447,7 @@ class Headers {
     for (const header of this) {
       headers[header[0]] = header[1];
     }
-    return `Headers ${inspect(headers, inspectOptions)}`;
+    return `${this.constructor.name} ${inspect(headers, inspectOptions)}`;
   }
 }
 

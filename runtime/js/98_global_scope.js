@@ -151,8 +151,15 @@ class Navigator {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({})}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({
+        hardwareConcurrency: this.hardwareConcurrency,
+        userAgent: this.userAgent,
+        language: this.language,
+        languages: this.languages,
+      }, inspectOptions)
+    }`;
   }
 }
 
@@ -213,8 +220,15 @@ class WorkerNavigator {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({})}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({
+        hardwareConcurrency: this.hardwareConcurrency,
+        userAgent: this.userAgent,
+        language: this.language,
+        languages: this.languages,
+      }, inspectOptions)
+    }`;
   }
 }
 

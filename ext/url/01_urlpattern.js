@@ -223,7 +223,7 @@ class URLPattern {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `URLPattern ${
+    return `${this.constructor.name} ${
       inspect({
         protocol: this.protocol,
         username: this.username,
