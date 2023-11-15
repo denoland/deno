@@ -1710,6 +1710,10 @@ class SubtleCrypto {
 
     return result;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  }
 }
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
 

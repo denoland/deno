@@ -30,6 +30,7 @@ const {
   SafeArrayIterator,
   SafeMap,
   Symbol,
+  SymbolFor,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -429,6 +430,16 @@ class FileReader extends EventTarget {
   }
   set onabort(value) {
     this.#setEventHandlerFor("abort", value);
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({
+        error: this.error,
+        readyState: this.readyState,
+        result: this.result,
+      }, inspectOptions)
+    }`;
   }
 }
 

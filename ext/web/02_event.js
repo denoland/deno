@@ -1047,6 +1047,10 @@ class EventTarget {
   getParent(_event) {
     return null;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  }
 }
 
 webidl.configureInterface(EventTarget);

@@ -9,6 +9,7 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  SymbolFor,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -60,6 +61,15 @@ class CompressionStream {
     webidl.assertBranded(this, CompressionStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect(
+        { readable: this.readable, writable: this.writable },
+        inspectOptions,
+      )
+    }`;
+  }
 }
 
 webidl.configureInterface(CompressionStream);
@@ -101,6 +111,15 @@ class DecompressionStream {
   get writable() {
     webidl.assertBranded(this, DecompressionStreamPrototype);
     return this.#transform.writable;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect(
+        { readable: this.readable, writable: this.writable },
+        inspectOptions,
+      )
+    }`;
   }
 }
 

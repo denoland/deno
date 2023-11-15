@@ -23,6 +23,7 @@ const {
   // SharedArrayBufferPrototype
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
+  SymbolFor,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -190,6 +191,16 @@ class TextDecoder {
       }
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({
+        encoding: this.encoding,
+        fatal: this.fatal,
+        ignoreBOM: this.ignoreBOM,
+      }, inspectOptions)
+    }`;
+  }
 }
 
 webidl.configureInterface(TextDecoder);
@@ -246,6 +257,12 @@ class TextEncoder {
       read: encodeIntoBuf[0],
       written: encodeIntoBuf[1],
     };
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({ name: this.encoding }, inspectOptions)
+    }`;
   }
 }
 
@@ -342,6 +359,18 @@ class TextDecoderStream {
     webidl.assertBranded(this, TextDecoderStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({
+        name: this.encoding,
+        fatal: this.fatal,
+        ignoreBOM: this.ignoreBOM,
+        readable: this.readable,
+        writable: this.writable,
+      }, inspectOptions)
+    }`;
+  }
 }
 
 webidl.configureInterface(TextDecoderStream);
@@ -414,6 +443,16 @@ class TextEncoderStream {
   get writable() {
     webidl.assertBranded(this, TextEncoderStreamPrototype);
     return this.#transform.writable;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({
+        name: this.encoding,
+        readable: this.readable,
+        writable: this.writable,
+      }, inspectOptions)
+    }`;
   }
 }
 

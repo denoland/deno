@@ -19,6 +19,7 @@ const {
   ArrayPrototypeSplice,
   PromisePrototypeThen,
   Symbol,
+  SymbolFor,
   Uint8Array,
 } = primordials;
 
@@ -140,6 +141,12 @@ class BroadcastChannel extends EventTarget {
     if (channels.length === 0) {
       ops.op_broadcast_unsubscribe(rid);
     }
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({ name: this.name }, inspectOptions)
+    }`;
   }
 }
 

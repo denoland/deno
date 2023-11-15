@@ -181,6 +181,10 @@ class MessagePort extends EventTarget {
       this[_id] = null;
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  }
 }
 
 defineEventHandler(MessagePort.prototype, "message", function (self) {

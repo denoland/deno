@@ -34,6 +34,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   Symbol,
+  SymbolFor,
 } = primordials;
 
 // Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
@@ -344,6 +345,16 @@ class EventSource extends EventTarget {
         }
       }
     }
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({
+        readyState: this.readyState,
+        url: this.url,
+        withCredentials: this.withCredentials,
+      }, inspectOptions)
+    }`;
   }
 }
 

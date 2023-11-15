@@ -24,6 +24,7 @@ const {
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
+  SymbolFor,
   TypeError,
   WeakRefPrototypeDeref,
   WeakSetPrototypeAdd,
@@ -238,6 +239,12 @@ class AbortSignal extends EventTarget {
       }
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({ aborted: this.aborted, reason: this.reason }, inspectOptions)
+    }`;
+  }
 }
 defineEventHandler(AbortSignal.prototype, "abort");
 
@@ -259,6 +266,12 @@ class AbortController {
   abort(reason) {
     webidl.assertBranded(this, AbortControllerPrototype);
     this[signal][signalAbort](reason);
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${
+      inspect({ signal: this.signal }, inspectOptions)
+    }`;
   }
 }
 
