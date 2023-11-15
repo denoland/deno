@@ -825,8 +825,6 @@ impl CliOptions {
     if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
       let base_import_map_config = ::import_map::ext::ImportMapConfig {
         base_url: self.maybe_config_file.as_ref().unwrap().specifier.clone(),
-        // Use None here?
-        scope_prefix: "".to_string(),
         import_map_value: workspace_config.base_import_map_value.clone(),
       };
       let children_configs = workspace_config
@@ -835,8 +833,7 @@ impl CliOptions {
         .map(|member| {
           let import_map_value = member.config_file.to_import_map_value();
           ::import_map::ext::ImportMapConfig {
-            base_url: Url::from_directory_path(member.path.clone()).unwrap(),
-            scope_prefix: member.member_name.to_string(),
+            base_url: member.config_file.specifier.clone(),
             import_map_value,
           }
         })

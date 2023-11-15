@@ -339,4 +339,5 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-import_map = { path = "../import_map/rs-lib" }
+import_map = { git = "https://github.com/denoland/import_map", branch = "synthetic_import_map" }
+deno_config = { git = "https://github.com/denoland/deno_config", branch = "workspaces" }

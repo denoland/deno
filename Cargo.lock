@@ -1062,8 +1062,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8630ff46b8b1c0fc9ddffcaa179bdf30990bf6e9e119baabc2378acc72f08e3"
+source = "git+https://github.com/denoland/deno_config?branch=workspaces#bf55b10f4a655698faf737807f8a807c3b63c5ea"
 dependencies = [
  "anyhow",
  "indexmap 2.0.2",
@@ -2865,6 +2864,7 @@ dependencies = [
 [[package]]
 name = "import_map"
 version = "0.16.0"
+source = "git+https://github.com/denoland/import_map?branch=synthetic_import_map#e49bd976229dc5dc2da6772ddcd3e48a6287ce80"
 dependencies = [
  "indexmap 1.9.3",
  "log",
