@@ -10525,6 +10525,99 @@ fn lsp_config_scopes_lint_config() {
 }
 
 #[test]
+fn lsp_config_scopes_compiler_options_lib() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.window"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("project2");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.worker"],
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        prompt("");
+        postMessage("");
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-ts")),
+    json!({
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 2, "character": 8 },
+          "end": { "line": 2, "character": 19 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'postMessage'.",
+      }],
+      "version": 1,
+    })
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+    }),
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        prompt("");
+        postMessage("");
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno-ts")),
+    json!({
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 8 },
+          "end": { "line": 1, "character": 14 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'prompt'.",
+      }],
+      "version": 1,
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
