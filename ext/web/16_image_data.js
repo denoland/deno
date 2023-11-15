@@ -44,17 +44,21 @@ class ImageData {
       arguments.length > 3 ||
       TypedArrayPrototypeGetSymbolToStringTag(arg0) === "Uint8ClampedArray"
     ) {
-      data = webidl.converters.Uint8ClampedArray(
-        arg0,
+      data = webidl.converters.Uint8ClampedArray(arg0, prefix, "Argument 1");
+      sourceWidth = webidl.converters["unsigned long"](
+        arg1,
         prefix,
+        "Argument 2",
       );
-      sourceWidth = webidl.type(arg1) !== "Undefined"
-        ? webidl.converters["unsigned long"](arg1, prefix, "Argument 2")
-        : undefined;
-      sourceHeight = webidl.type(arg2) !== "Undefined"
-        ? webidl.converters["unsigned long"](arg2, prefix, "Argument 3")
-        : undefined;
       settings = arg3;
+
+      if (webidl.type(arg2) !== "Undefined") {
+        sourceHeight = webidl.converters["unsigned long"](
+          arg2,
+          prefix,
+          "Argument 3",
+        );
+      }
 
       if (sourceWidth < 1) {
         throw new DOMException(
@@ -94,30 +98,41 @@ class ImageData {
         );
       }
 
-      this.#width = sourceWidth;
-      this.#height = webidl.type(sourceHeight) === "Undefined"
-        ? data.length / 4 / sourceWidth
-        : sourceHeight;
-      this.#data = data;
-      this.#colorSpace = webidl.type(settings) === "Object" &&
-          webidl.type(settings.colorSpace) !== "Undefined"
-        ? webidl.converters.PredefinedColorSpace(
+      if (webidl.type(sourceHeight) === "Undefined") {
+        this.#height = data.length / 4 / sourceWidth;
+      } else {
+        this.#height = sourceHeight;
+      }
+
+      if (
+        webidl.type(settings) === "Object" &&
+        webidl.type(settings.colorSpace) !== "Undefined"
+      ) {
+        this.#colorSpace = webidl.converters.PredefinedColorSpace(
           settings.colorSpace,
           prefix,
           "colorSpace",
-        )
-        : "srgb";
+        );
+      } else {
+        this.#colorSpace = "srgb";
+      }
+
+      this.#width = sourceWidth;
+      this.#data = data;
       return;
     }
 
     // Overload: new ImageData(sw, sh [, settings])
-    sourceWidth = webidl.type(arg0) !== "Undefined"
-      ? webidl.converters["unsigned long"](arg0, prefix, "Argument 1")
-      : undefined;
-    sourceHeight = webidl.type(arg1) !== "Undefined"
-      ? webidl.converters["unsigned long"](arg1, prefix, "Argument 2")
-      : undefined;
-    settings = arg2;
+    sourceWidth = webidl.converters["unsigned long"](
+      arg0,
+      prefix,
+      "Argument 1",
+    );
+    sourceHeight = webidl.converters["unsigned long"](
+      arg1,
+      prefix,
+      "Argument 2",
+    );
 
     if (sourceWidth < 1) {
       throw new DOMException(
@@ -133,16 +148,21 @@ class ImageData {
       );
     }
 
-    this.#width = sourceWidth;
-    this.#height = sourceHeight;
-    this.#colorSpace = webidl.type(settings) === "Object" &&
-        webidl.type(settings.colorSpace) !== "Undefined"
-      ? webidl.converters.PredefinedColorSpace(
+    if (
+      webidl.type(settings) === "Object" &&
+      webidl.type(settings.colorSpace) !== "Undefined"
+    ) {
+      this.#colorSpace = webidl.converters.PredefinedColorSpace(
         settings.colorSpace,
         prefix,
         "colorSpace",
-      )
-      : "srgb";
+      );
+    } else {
+      this.#colorSpace = "srgb";
+    }
+
+    this.#width = sourceWidth;
+    this.#height = sourceHeight;
     this.#data = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
   }
 
