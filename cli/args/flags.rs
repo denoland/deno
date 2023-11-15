@@ -319,7 +319,14 @@ impl DenoSubcommand {
 
   // Returns `true` if the subcommand depends on testing infrastructure.
   pub fn needs_test(&self) -> bool {
-    matches!(self, Self::Test(_) | Self::Jupyter(_) | Self::Repl(_) | Self::Bench(_) | Self::Lsp)
+    matches!(
+      self,
+      Self::Test(_)
+        | Self::Jupyter(_)
+        | Self::Repl(_)
+        | Self::Bench(_)
+        | Self::Lsp
+    )
   }
 }
 
