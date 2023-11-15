@@ -410,20 +410,21 @@ class URL {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    const object = {
-      href: this.href,
-      origin: this.origin,
-      protocol: this.protocol,
-      username: this.username,
-      password: this.password,
-      host: this.host,
-      hostname: this.hostname,
-      port: this.port,
-      pathname: this.pathname,
-      hash: this.hash,
-      search: this.search,
-    };
-    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
+    return `${this.constructor.name} ${
+      inspect({
+        href: this.href,
+        origin: this.origin,
+        protocol: this.protocol,
+        username: this.username,
+        password: this.password,
+        host: this.host,
+        hostname: this.hostname,
+        port: this.port,
+        pathname: this.pathname,
+        hash: this.hash,
+        search: this.search,
+      }, inspectOptions)
+    }`;
   }
 
   #updateSearchParams() {
