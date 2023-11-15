@@ -539,6 +539,8 @@ Deno.test(
   },
 );
 
+const largeAmount = 1 << 20 /* 1 MB */;
+
 async function sendAlotReceiveNothing(conn: Deno.Conn) {
   // Start receive op.
   const readBuf = new Uint8Array(1024);
@@ -549,7 +551,7 @@ async function sendAlotReceiveNothing(conn: Deno.Conn) {
   }, 10_000);
 
   // Send 1 MB of data.
-  const writeBuf = new Uint8Array(1 << 20 /* 1 MB */);
+  const writeBuf = new Uint8Array(largeAmount);
   writeBuf.fill(42);
   await writeAll(conn, writeBuf);
 
@@ -571,21 +573,25 @@ async function sendAlotReceiveNothing(conn: Deno.Conn) {
 async function receiveAlotSendNothing(conn: Deno.Conn) {
   const readBuf = new Uint8Array(1024);
   let n: number | null;
+  let nread = 0;
 
   const timeout = setTimeout(() => {
     throw new Error(
-      `Failed to read buffer in a reasonable amount of time (got ${n})`,
+      `Failed to read buffer in a reasonable amount of time (got ${nread}/${largeAmount})`,
     );
   }, 10_000);
 
   // Receive 1 MB of data.
-  for (let nread = 0; nread < 1 << 20 /* 1 MB */; nread += n!) {
-    n = await conn.read(readBuf);
-    assertStrictEquals(typeof n, "number");
-    assert(n! > 0);
-    assertStrictEquals(readBuf[0], 42);
+  try {
+    for (; nread < largeAmount; nread += n!) {
+      n = await conn.read(readBuf);
+      assertStrictEquals(typeof n, "number");
+      assert(n! > 0);
+      assertStrictEquals(readBuf[0], 42);
+    }
+  } catch (e) {
+    throw new Error(`Got an error (${e.message}) after reading ${nread}/${largeAmount} bytes`, { cause: e });
   }
-
   clearTimeout(timeout);
 
   // Close the connection, without sending anything at all.
