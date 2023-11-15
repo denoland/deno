@@ -5,10 +5,10 @@
 //
 // deno-lint-ignore-file
 {
-  const core = globalThis.Deno.core;
+  const internals = Deno[Deno.internal];
+  const core = internals.core;
   const ops = core.ops;
 
-  const internals = globalThis.__bootstrap.internals;
   const {
     setExitHandler,
     Console,
