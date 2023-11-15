@@ -74,9 +74,9 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
     let http_client = self.http_client.clone();
     async move {
       if version::is_canary() {
-        get_latest_canary_version(&http_client).await
+        get_latest_canary_version(&http_client, false).await
       } else {
-        get_latest_release_version(&http_client).await
+        get_latest_release_version(&http_client, false).await
       }
     }
     .boxed()
@@ -186,11 +186,18 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   }
 }
 
+pub fn upgrade_check_enabled() -> bool {
+  matches!(
+    env::var("DENO_NO_UPDATE_CHECK"),
+    Err(env::VarError::NotPresent)
+  )
+}
+
 pub fn check_for_upgrades(
   http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
 ) {
-  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
+  if !upgrade_check_enabled() {
     return;
   }
 
@@ -237,6 +244,32 @@ pub fn check_for_upgrades(
       update_checker.store_prompted();
     }
   }
+}
+
+pub async fn check_for_upgrades_for_lsp(
+  http_client: Arc<HttpClient>,
+) -> Result<Option<(String, bool)>, AnyError> {
+  if !upgrade_check_enabled() {
+    return Ok(None);
+  }
+  let is_canary = version::is_canary();
+  let latest_version;
+  let mut is_upgrade;
+  if is_canary {
+    latest_version = get_latest_canary_version(&http_client, true).await?;
+    is_upgrade = latest_version != version::GIT_COMMIT_HASH;
+  } else {
+    latest_version = get_latest_release_version(&http_client, true).await?;
+    is_upgrade = true;
+    if let Ok(current) = Version::parse_standard(version::deno()) {
+      if let Ok(latest) = Version::parse_standard(&latest_version) {
+        if current >= latest {
+          is_upgrade = false;
+        }
+      }
+    }
+  };
+  Ok(is_upgrade.then_some((latest_version, is_canary)))
 }
 
 async fn fetch_and_store_latest_version<
@@ -334,10 +367,10 @@ pub async fn upgrade(
     None => {
       let latest_version = if upgrade_flags.canary {
         log::info!("Looking up latest canary version");
-        get_latest_canary_version(client).await?
+        get_latest_canary_version(client, false).await?
       } else {
         log::info!("Looking up latest version");
-        get_latest_release_version(client).await?
+        get_latest_release_version(client, false).await?
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
@@ -448,20 +481,26 @@ pub async fn upgrade(
 
 async fn get_latest_release_version(
   client: &HttpClient,
+  for_lsp: bool,
 ) -> Result<String, AnyError> {
-  let text = client
-    .download_text("https://dl.deno.land/release-latest.txt")
-    .await?;
+  let mut url = "https://dl.deno.land/release-latest.txt".to_string();
+  if for_lsp {
+    url.push_str("?lsp");
+  }
+  let text = client.download_text(url).await?;
   let version = text.trim().to_string();
   Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(
   client: &HttpClient,
+  for_lsp: bool,
 ) -> Result<String, AnyError> {
-  let text = client
-    .download_text("https://dl.deno.land/canary-latest.txt")
-    .await?;
+  let mut url = "https://dl.deno.land/canary-latest.txt".to_string();
+  if for_lsp {
+    url.push_str("?lsp");
+  }
+  let text = client.download_text(url).await?;
   let version = text.trim().to_string();
   Ok(version)
 }

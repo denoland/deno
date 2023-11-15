@@ -57,28 +57,23 @@ itest!(ignore_require {
 // which is only used on linux.
 #[cfg(target_os = "linux")]
 #[test]
-fn relative_home_dir() {
-  use test_util as util;
-  use test_util::TempDir;
-
-  let deno_dir = TempDir::new();
-  let mut deno_cmd = util::deno_cmd();
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .env("XDG_CACHE_HOME", deno_dir.path())
+fn xdg_cache_home_dir() {
+  let context = TestContext::with_http_server();
+  let deno_dir = context.temp_dir();
+  let xdg_cache_home = deno_dir.path().join("cache");
+  context
+    .new_command()
     .env_remove("HOME")
     .env_remove("DENO_DIR")
-    .arg("cache")
-    .arg("--reload")
-    .arg("--no-check")
-    .arg("run/002_hello.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"");
+    .env_clear()
+    .env("XDG_CACHE_HOME", &xdg_cache_home)
+    .args(
+      "cache --reload --no-check http://localhost:4548/subdir/redirects/a.ts",
+    )
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  assert!(xdg_cache_home.read_dir().count() > 0);
 }
 
 itest!(check_local_by_default {
