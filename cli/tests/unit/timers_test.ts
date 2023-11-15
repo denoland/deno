@@ -3,20 +3,18 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
-  Deferred,
-  deferred,
   delay,
   execCode,
   unreachable,
 } from "./test_util.ts";
 
 Deno.test(async function functionParameterBindingSuccess() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let count = 0;
 
   const nullProto = (newCount: number) => {
     count = newCount;
-    promise.resolve();
+    resolve();
   };
 
   Reflect.setPrototypeOf(nullProto, null);
@@ -30,10 +28,11 @@ Deno.test(async function functionParameterBindingSuccess() {
 Deno.test(async function stringifyAndEvalNonFunctions() {
   // eval can only access global scope
   const global = globalThis as unknown as {
-    globalPromise: ReturnType<typeof deferred>;
+    globalPromise: ReturnType<typeof Promise.withResolvers<void>>;
     globalCount: number;
   };
-  global.globalPromise = deferred();
+
+  global.globalPromise = Promise.withResolvers<void>();
   global.globalCount = 0;
 
   const notAFunction =
@@ -42,7 +41,7 @@ Deno.test(async function stringifyAndEvalNonFunctions() {
 
   setTimeout(notAFunction, 500);
 
-  await global.globalPromise;
+  await global.globalPromise.promise;
 
   // count should be incremented
   assertEquals(global.globalCount, 1);
@@ -52,11 +51,11 @@ Deno.test(async function stringifyAndEvalNonFunctions() {
 });
 
 Deno.test(async function timeoutSuccess() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let count = 0;
   setTimeout(() => {
     count++;
-    promise.resolve();
+    resolve();
   }, 500);
   await promise;
   // count should increment
@@ -66,9 +65,9 @@ Deno.test(async function timeoutSuccess() {
 Deno.test(async function timeoutEvalNoScopeLeak() {
   // eval can only access global scope
   const global = globalThis as unknown as {
-    globalPromise: Deferred<Error>;
+    globalPromise: ReturnType<typeof Promise.withResolvers<Error>>;
   };
-  global.globalPromise = deferred();
+  global.globalPromise = Promise.withResolvers();
   setTimeout(
     `
     try {
@@ -79,16 +78,16 @@ Deno.test(async function timeoutEvalNoScopeLeak() {
     }` as unknown as () => void,
     0,
   );
-  const error = await global.globalPromise;
+  const error = await global.globalPromise.promise;
   assertEquals(error.name, "ReferenceError");
   Reflect.deleteProperty(global, "globalPromise");
 });
 
 Deno.test(async function evalPrimordial() {
   const global = globalThis as unknown as {
-    globalPromise: ReturnType<typeof deferred>;
+    globalPromise: ReturnType<typeof Promise.withResolvers<void>>;
   };
-  global.globalPromise = deferred();
+  global.globalPromise = Promise.withResolvers<void>();
   const originalEval = globalThis.eval;
   let wasCalled = false;
   globalThis.eval = (argument) => {
@@ -99,20 +98,20 @@ Deno.test(async function evalPrimordial() {
     "globalThis.globalPromise.resolve();" as unknown as () => void,
     0,
   );
-  await global.globalPromise;
+  await global.globalPromise.promise;
   assert(!wasCalled);
   Reflect.deleteProperty(global, "globalPromise");
   globalThis.eval = originalEval;
 });
 
 Deno.test(async function timeoutArgs() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   const arg = 1;
   let capturedArgs: unknown[] = [];
   setTimeout(
     function () {
       capturedArgs = [...arguments];
-      promise.resolve();
+      resolve();
     },
     10,
     arg,
@@ -165,13 +164,13 @@ Deno.test(async function timeoutCancelMultiple() {
 
 Deno.test(async function timeoutCancelInvalidSilentFail() {
   // Expect no panic
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let count = 0;
   const id = setTimeout(() => {
     count++;
     // Should have no effect
     clearTimeout(id);
-    promise.resolve();
+    resolve();
   }, 500);
   await promise;
   assertEquals(count, 1);
@@ -181,12 +180,12 @@ Deno.test(async function timeoutCancelInvalidSilentFail() {
 });
 
 Deno.test(async function intervalSuccess() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let count = 0;
   const id = setInterval(() => {
     count++;
     clearInterval(id);
-    promise.resolve();
+    resolve();
   }, 100);
   await promise;
   // Clear interval
@@ -230,7 +229,7 @@ Deno.test(function intervalCancelInvalidSilentFail() {
 });
 
 Deno.test(async function callbackTakesLongerThanInterval() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   let timeEndOfFirstCallback: number | undefined;
   const interval = setInterval(() => {
@@ -242,7 +241,7 @@ Deno.test(async function callbackTakesLongerThanInterval() {
       // Second callback
       assert(Date.now() - 100 >= timeEndOfFirstCallback);
       clearInterval(interval);
-      promise.resolve();
+      resolve();
     }
   }, 100);
 
@@ -251,10 +250,10 @@ Deno.test(async function callbackTakesLongerThanInterval() {
 
 // https://github.com/denoland/deno/issues/11398
 Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   setTimeout(() => {
-    promise.resolve();
+    resolve();
   }, 300);
 
   const interval = setInterval(() => {
@@ -268,12 +267,12 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
 
 // https://github.com/denoland/deno/issues/11398
 Deno.test(async function clearTimeoutAfterNextTimerIsDue2() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   const timeout1 = setTimeout(unreachable, 100);
 
   setTimeout(() => {
-    promise.resolve();
+    resolve();
   }, 200);
 
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
@@ -293,12 +292,12 @@ Deno.test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
 });
 
 Deno.test(async function timeoutCallbackThis() {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let capturedThis: unknown;
   const obj = {
     foo() {
       capturedThis = this;
-      promise.resolve();
+      resolve();
     },
   };
   setTimeout(obj.foo, 1);
@@ -322,10 +321,10 @@ Deno.test(async function timeoutBindThis() {
   ];
 
   for (const thisArg of thisCheckPassed) {
-    const resolvable = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     let hasThrown = 0;
     try {
-      setTimeout.call(thisArg, () => resolvable.resolve(), 1);
+      setTimeout.call(thisArg, () => resolve(), 1);
       hasThrown = 1;
     } catch (err) {
       if (err instanceof TypeError) {
@@ -334,7 +333,7 @@ Deno.test(async function timeoutBindThis() {
         hasThrown = 3;
       }
     }
-    await resolvable;
+    await promise;
     assertEquals(hasThrown, 1);
   }
 
@@ -414,12 +413,12 @@ Deno.test(function clearTimeoutAndClearIntervalNotBeEquals() {
 
 Deno.test(async function timerOrdering() {
   const array: number[] = [];
-  const donePromise = deferred();
+  const { promise: donePromise, resolve } = Promise.withResolvers<void>();
 
   function push(n: number) {
     array.push(n);
     if (array.length === 6) {
-      donePromise.resolve();
+      resolve();
     }
   }
 
@@ -444,13 +443,13 @@ Deno.test(async function timerOrdering() {
 Deno.test(async function timerBasicMicrotaskOrdering() {
   let s = "";
   let count = 0;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   setTimeout(() => {
     Promise.resolve().then(() => {
       count++;
       s += "de";
       if (count === 2) {
-        promise.resolve();
+        resolve();
       }
     });
   });
@@ -458,7 +457,7 @@ Deno.test(async function timerBasicMicrotaskOrdering() {
     count++;
     s += "no";
     if (count === 2) {
-      promise.resolve();
+      resolve();
     }
   });
   await promise;
@@ -467,7 +466,7 @@ Deno.test(async function timerBasicMicrotaskOrdering() {
 
 Deno.test(async function timerNestedMicrotaskOrdering() {
   let s = "";
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   s += "0";
   setTimeout(() => {
     s += "4";
@@ -476,7 +475,7 @@ Deno.test(async function timerNestedMicrotaskOrdering() {
       .then(() => {
         setTimeout(() => {
           s += "B";
-          promise.resolve();
+          resolve();
         });
       })
       .then(() => {
@@ -507,11 +506,11 @@ Deno.test(function testQueueMicrotask() {
 
 Deno.test(async function timerIgnoresDateOverride() {
   const OriginalDate = Date;
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   let hasThrown = 0;
   try {
     const overrideCalled: () => number = () => {
-      promise.reject("global Date override used over original Date object");
+      reject("global Date override used over original Date object");
       return 0;
     };
     const DateOverride = () => {
@@ -521,7 +520,9 @@ Deno.test(async function timerIgnoresDateOverride() {
     globalThis.Date.now = overrideCalled;
     globalThis.Date.UTC = overrideCalled;
     globalThis.Date.parse = overrideCalled;
-    queueMicrotask(promise.resolve);
+    queueMicrotask(() => {
+      resolve();
+    });
     await promise;
     hasThrown = 1;
   } catch (err) {
@@ -748,11 +749,11 @@ Deno.test({
 Deno.test({
   name: "regression for #20367",
   fn: async () => {
-    const promise = deferred<number>();
+    const { promise, resolve } = Promise.withResolvers<number>();
     const start = performance.now();
     setTimeout(() => {
       const end = performance.now();
-      promise.resolve(end - start);
+      resolve(end - start);
     }, 1000);
     clearTimeout(setTimeout(() => {}, 1000));
 

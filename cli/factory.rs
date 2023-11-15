@@ -634,6 +634,7 @@ impl CliFactory {
 
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
+      self.options.sub_command().clone(),
       npm_resolver.clone(),
       node_resolver.clone(),
       self.blob_store().clone(),
@@ -668,6 +669,10 @@ impl CliFactory {
   ) -> Result<CliMainWorkerOptions, AnyError> {
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
+      // This optimization is only available for "run" subcommand
+      // because we need to register new ops for testing and jupyter
+      // integration.
+      skip_op_registration: self.options.sub_command().is_run(),
       log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
       coverage_dir: self.options.coverage_dir(),
       enable_op_summary_metrics: self.options.enable_op_summary_metrics(),
@@ -676,6 +681,7 @@ impl CliFactory {
       hmr: self.options.has_hmr(),
       inspect_brk: self.options.inspect_brk().is_some(),
       inspect_wait: self.options.inspect_wait().is_some(),
+      strace_ops: self.options.strace_ops().clone(),
       is_inspecting: self.options.is_inspecting(),
       is_npm_main: self.options.is_npm_main(),
       location: self.options.location_flag().clone(),

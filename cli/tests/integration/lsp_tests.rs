@@ -1915,7 +1915,9 @@ fn lsp_hover_unstable_disabled() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "console.log(Deno.dlopen);\n"
+      // IMPORTANT: If you change this API due to stabilization, also change it
+      // in the enabled test below.
+      "text": "type _ = Deno.ForeignLibraryInterface;\n"
     }
   }));
   let res = client.write_request(
@@ -1924,7 +1926,7 @@ fn lsp_hover_unstable_disabled() {
       "textDocument": {
         "uri": "file:///a/file.ts"
       },
-      "position": { "line": 0, "character": 19 }
+      "position": { "line": 0, "character": 14 }
     }),
   );
   assert_eq!(
@@ -1933,12 +1935,13 @@ fn lsp_hover_unstable_disabled() {
       "contents": [
         {
           "language": "typescript",
-          "value": "any"
-        }
+          "value": "type Deno.ForeignLibraryInterface = /*unresolved*/ any",
+        },
+        "",
       ],
       "range": {
-        "start": { "line": 0, "character": 17 },
-        "end": { "line": 0, "character": 23 }
+        "start": { "line": 0, "character": 14 },
+        "end": { "line": 0, "character": 37 }
       }
     })
   );
@@ -1957,7 +1960,7 @@ fn lsp_hover_unstable_enabled() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "console.log(Deno.ppid);\n"
+      "text": "type _ = Deno.ForeignLibraryInterface;\n"
     }
   }));
   let res = client.write_request(
@@ -1966,7 +1969,7 @@ fn lsp_hover_unstable_enabled() {
       "textDocument": {
         "uri": "file:///a/file.ts"
       },
-      "position": { "line": 0, "character": 19 }
+      "position": { "line": 0, "character": 14 }
     }),
   );
   assert_eq!(
@@ -1975,14 +1978,14 @@ fn lsp_hover_unstable_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"const Deno.ppid: number"
+          "value":"interface Deno.ForeignLibraryInterface"
         },
-        "The process ID of parent process of this instance of the Deno CLI.\n\n```ts\nconsole.log(Deno.ppid);\n```",
-        "\n\n*@category* - Runtime Environment",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
+        "\n\n*@category* - FFI",
       ],
       "range":{
-        "start":{ "line":0, "character":17 },
-        "end":{ "line":0, "character":21 }
+        "start":{ "line":0, "character":14 },
+        "end":{ "line":0, "character":37 }
       }
     })
   );

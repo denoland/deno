@@ -438,6 +438,7 @@ pub async fn run(
   });
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
+    crate::args::DenoSubcommand::Run(Default::default()),
     npm_resolver,
     node_resolver,
     Default::default(),
@@ -459,8 +460,10 @@ pub async fn run(
       hmr: false,
       inspect_brk: false,
       inspect_wait: false,
+      strace_ops: None,
       is_inspecting: false,
       is_npm_main: main_module.scheme() == "npm",
+      skip_op_registration: true,
       location: metadata.location,
       maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
         main_module,

@@ -1245,6 +1245,10 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
+  pub fn strace_ops(&self) -> &Option<Vec<String>> {
+    &self.flags.strace_ops
+  }
+
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
   }

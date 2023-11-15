@@ -46,6 +46,7 @@ use deno_semver::package::PackageReqReference;
 use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
+use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::emit::Emitter;
 use crate::errors;
@@ -92,6 +93,7 @@ pub struct CliMainWorkerOptions {
   pub hmr: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
+  pub strace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   pub is_npm_main: bool,
   pub location: Option<Url>,
@@ -100,11 +102,13 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
 }
 
 struct SharedWorkerState {
   options: CliMainWorkerOptions,
+  subcommand: DenoSubcommand,
   storage_key_resolver: StorageKeyResolver,
   npm_resolver: Arc<dyn CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
@@ -370,6 +374,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
+    subcommand: DenoSubcommand,
     npm_resolver: Arc<dyn CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
@@ -386,6 +391,7 @@ impl CliMainWorkerFactory {
     Self {
       shared: Arc::new(SharedWorkerState {
         options,
+        subcommand,
         storage_key_resolver,
         npm_resolver,
         node_resolver,
@@ -527,7 +533,7 @@ impl CliMainWorkerFactory {
         .join(checksum::gen(&[key.as_bytes()]))
     });
 
-    let mut extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let mut extensions = ops::cli_exts();
     extensions.append(&mut custom_extensions);
 
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -580,6 +586,7 @@ impl CliMainWorkerFactory {
       maybe_inspector_server,
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
+      strace_ops: shared.options.strace_ops.clone(),
       module_loader,
       fs: shared.fs.clone(),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
@@ -594,13 +601,21 @@ impl CliMainWorkerFactory {
       ),
       stdio,
       feature_checker,
+      skip_op_registration: shared.options.skip_op_registration,
     };
 
-    let worker = MainWorker::bootstrap_from_options(
+    let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
       permissions,
       options,
     );
+
+    if self.shared.subcommand.is_test_or_jupyter() {
+      worker.js_runtime.execute_script_static(
+        "40_jupyter.js",
+        include_str!("js/40_jupyter.js"),
+      )?;
+    }
 
     Ok(CliMainWorker {
       main_module,
@@ -704,7 +719,7 @@ fn create_web_worker_callback(
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 
-    let extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let extensions = ops::cli_exts();
 
     let maybe_storage_key = shared
       .storage_key_resolver

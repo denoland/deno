@@ -112,6 +112,8 @@ use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
+use crate::tools::upgrade::check_for_upgrades_for_lsp;
+use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::specifier_to_file_path;
@@ -3180,12 +3182,34 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
+      if let Err(err) = ls.update_tsconfig().await {
+        ls.client.show_message(MessageType::WARNING, err);
+      }
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
     }
 
     lsp_log!("Server ready.");
+
+    if upgrade_check_enabled() {
+      let http_client = self.0.read().await.http_client.clone();
+      match check_for_upgrades_for_lsp(http_client).await {
+        Ok(version_info) => {
+          client.send_did_upgrade_check_notification(
+            lsp_custom::DidUpgradeCheckNotificationParams {
+              upgrade_available: version_info.map(
+                |(latest_version, is_canary)| lsp_custom::UpgradeAvailable {
+                  latest_version,
+                  is_canary,
+                },
+              ),
+            },
+          );
+        }
+        Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
+      }
+    }
   }
 
   async fn shutdown(&self) -> LspResult<()> {
