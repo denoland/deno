@@ -463,14 +463,13 @@ function bootstrapMainRuntime(runtimeOptions) {
   }
   const nodeBootstrap = globalThis.nodeBootstrap;
 
-  // location, unstable, node module dir
   const {
-    1: location_,
-    3: unstableFlag,
-    4: unstableFeatures,
-    7: inspectFlag,
-    9: hasNodeModulesDir,
-    10: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    3: inspectFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -587,12 +586,12 @@ function bootstrapWorkerRuntime(
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    1: location_,
-    3: unstableFlag,
-    4: unstableFeatures,
-    8: enableTestingFeaturesFlag,
-    9: hasNodeModulesDir,
-    10: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    4: enableTestingFeaturesFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
