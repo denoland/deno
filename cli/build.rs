@@ -352,8 +352,17 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   use deno_runtime::deno_cron::local::LocalCronHandler;
   use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
   use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
+  use deno_runtime::ops::bootstrap::SnapshotOptions;
   use deno_runtime::permissions::PermissionsContainer;
   use std::sync::Arc;
+
+  fn deno_version() -> String {
+    if env::var("DENO_CANARY").is_ok() {
+      format!("{}+{}", env!("CARGO_PKG_VERSION"), git_commit_hash())
+    } else {
+      env!("CARGO_PKG_VERSION").to_string()
+    }
+  }
 
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
@@ -405,7 +414,14 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_runtime::ops::signal::deno_signal::init_ops(),
     deno_runtime::ops::tty::deno_tty::init_ops(),
     deno_runtime::ops::http::deno_http_runtime::init_ops(),
-    deno_runtime::ops::bootstrap::deno_bootstrap::init_ops(),
+    deno_runtime::ops::bootstrap::deno_bootstrap::init_ops(Some(
+      SnapshotOptions {
+        deno_version: deno_version(),
+        ts_version: ts::version(),
+        v8_version: deno_core::v8_version(),
+        target: std::env::var("TARGET").unwrap(),
+      },
+    )),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 

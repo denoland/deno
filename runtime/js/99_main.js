@@ -450,20 +450,24 @@ const finalDenoNs = {
   ...denoNs,
 };
 
+const {
+  denoVersion,
+  tsVersion,
+  v8Version,
+  target,
+} = ops.op_snapshot_options();
+
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
   const nodeBootstrap = globalThis.nodeBootstrap;
 
+  // location, unstable, node module dir
   const {
-    0: denoVersion,
     1: location_,
-    2: tsVersion,
     3: unstableFlag,
     4: unstableFeatures,
-    5: target,
-    6: v8Version,
     7: inspectFlag,
     9: hasNodeModulesDir,
     10: maybeBinaryNpmCommandName,
@@ -583,13 +587,9 @@ function bootstrapWorkerRuntime(
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: denoVersion,
     1: location_,
-    2: tsVersion,
     3: unstableFlag,
     4: unstableFeatures,
-    5: target,
-    6: v8Version,
     8: enableTestingFeaturesFlag,
     9: hasNodeModulesDir,
     10: maybeBinaryNpmCommandName,
