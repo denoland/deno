@@ -60,7 +60,8 @@ pub use rustls_tokio_stream::TlsStream;
 
 pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
   NonZeroUsize::new(65536);
-pub(crate) const TLS_TCP_LINGER: Option<Duration> = Some(Duration::from_millis(10_000));
+pub(crate) const TLS_TCP_LINGER: Option<Duration> =
+  Some(Duration::from_millis(10_000));
 
 #[derive(Debug)]
 pub struct TlsStreamResource {
