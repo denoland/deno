@@ -590,7 +590,10 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
       assertStrictEquals(readBuf[0], 42);
     }
   } catch (e) {
-    throw new Error(`Got an error (${e.message}) after reading ${nread}/${largeAmount} bytes`, { cause: e });
+    throw new Error(
+      `Got an error (${e.message}) after reading ${nread}/${largeAmount} bytes`,
+      { cause: e },
+    );
   }
   clearTimeout(timeout);
 
