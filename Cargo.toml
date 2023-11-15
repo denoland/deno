@@ -338,4 +338,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-import_map = { path = "../import_map" }
+import_map = { path = "../import_map/rs-lib" }

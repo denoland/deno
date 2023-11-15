@@ -919,7 +919,7 @@ dependencies = [
  "hex",
  "http",
  "hyper 0.14.27",
- "import_map",
+ "import_map 0.16.0",
  "indexmap 2.0.2",
  "jsonc-parser",
  "junction",
@@ -1165,7 +1165,7 @@ dependencies = [
  "deno_graph",
  "futures",
  "html-escape",
- "import_map",
+ "import_map 0.15.0",
  "indexmap 2.0.2",
  "lazy_static",
  "regex",
@@ -1187,7 +1187,7 @@ dependencies = [
  "deno_graph",
  "escape8259",
  "futures",
- "import_map",
+ "import_map 0.15.0",
  "parking_lot 0.11.2",
  "url",
 ]
@@ -1254,7 +1254,7 @@ dependencies = [
  "deno_ast",
  "deno_semver",
  "futures",
- "import_map",
+ "import_map 0.15.0",
  "indexmap 2.0.2",
  "monch",
  "once_cell",
@@ -2836,8 +2836,21 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 [[package]]
 name = "import_map"
 version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "632089ec08bd62e807311104122fb26d5c911ab172e2b9864be154a575979e29"
 dependencies = [
  "cfg-if",
+ "indexmap 1.9.3",
+ "log",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "import_map"
+version = "0.16.0"
+dependencies = [
  "indexmap 1.9.3",
  "log",
  "serde",
