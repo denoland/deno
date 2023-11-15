@@ -10618,6 +10618,44 @@ fn lsp_config_scopes_compiler_options_lib() {
 }
 
 #[test]
+fn lsp_config_scopes_lockfile() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project1/file.ts", r#"import "npm:color-name";"#);
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  temp_dir.write("project2/file.ts", r#"import "npm:jsonfile";"#);
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project1/file.ts").unwrap()],
+    }),
+  );
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project2/file.ts").unwrap()],
+    }),
+  );
+  let lockfile1_content = temp_dir.read_to_string("project1/deno.lock");
+  let lockfile2_content = temp_dir.read_to_string("project2/deno.lock");
+  assert!(lockfile1_content.contains("color-name"));
+  assert!(!lockfile1_content.contains("jsonfile"));
+  assert!(!lockfile2_content.contains("color-name"));
+  assert!(lockfile2_content.contains("jsonfile"));
+  client.shutdown();
+}
+
+#[test]
 fn lsp_config_scopes_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
