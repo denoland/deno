@@ -544,10 +544,16 @@ async function sendAlotReceiveNothing(conn: Deno.Conn) {
   const readBuf = new Uint8Array(1024);
   const readPromise = conn.read(readBuf);
 
+  const timeout = setTimeout(() => {
+    throw new Error("Failed to send buffer in a reasonable amount of time");
+  }, 10_000);
+
   // Send 1 MB of data.
   const writeBuf = new Uint8Array(1 << 20 /* 1 MB */);
   writeBuf.fill(42);
   await writeAll(conn, writeBuf);
+
+  clearTimeout(timeout);
 
   // Send EOF.
   await conn.closeWrite();
@@ -566,6 +572,12 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
   const readBuf = new Uint8Array(1024);
   let n: number | null;
 
+  const timeout = setTimeout(() => {
+    throw new Error(
+      `Failed to read buffer in a reasonable amount of time (got ${n})`,
+    );
+  }, 10_000);
+
   // Receive 1 MB of data.
   for (let nread = 0; nread < 1 << 20 /* 1 MB */; nread += n!) {
     n = await conn.read(readBuf);
@@ -573,6 +585,8 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
     assert(n! > 0);
     assertStrictEquals(readBuf[0], 42);
   }
+
+  clearTimeout(timeout);
 
   // Close the connection, without sending anything at all.
   conn.close();
