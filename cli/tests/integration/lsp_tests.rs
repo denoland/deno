@@ -10656,6 +10656,126 @@ fn lsp_config_scopes_lockfile() {
 }
 
 #[test]
+fn lsp_config_scopes_package_json() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project1/package.json",
+    json!({
+      "dependencies": {
+        "color-name": "*",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "project1/file.ts",
+    r#"
+      import "color-name";
+      import "jsonfile";
+    "#,
+  );
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project2/package.json",
+    json!({
+      "dependencies": {
+        "jsonfile": "*",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "project2/file.ts",
+    r#"
+      import "color-name";
+      import "jsonfile";
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project1/file.ts").unwrap()],
+    }),
+  );
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project2/file.ts").unwrap()],
+    }),
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("project1/file.ts"),
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno")),
+    json!({
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 2, "character": 13 },
+          "end": { "line": 2, "character": 23 },
+        },
+        "severity": 1,
+        "code": "import-prefix-missing",
+        "source": "deno",
+        "message": "Relative import path \"jsonfile\" not prefixed with / or ./ or ../",
+      }],
+      "version": 1,
+    })
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+    }),
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("project2/file.ts"),
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno")),
+    json!({
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 13 },
+          "end": { "line": 1, "character": 25 },
+        },
+        "severity": 1,
+        "code": "import-prefix-missing",
+        "source": "deno",
+        "message": "Relative import path \"color-name\" not prefixed with / or ./ or ../",
+      }],
+      "version": 1,
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_config_scopes_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
