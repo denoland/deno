@@ -438,6 +438,7 @@ pub async fn run(
   });
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
+    crate::args::DenoSubcommand::Run(Default::default()),
     npm_resolver,
     node_resolver,
     Default::default(),
