@@ -360,7 +360,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   // Ideally we could deduplicate that code.
   fn deno_version() -> String {
     if env::var("DENO_CANARY").is_ok() {
-      format!("{}+{}", env!("CARGO_PKG_VERSION"), git_commit_hash())[..7]
+      format!("{}+{}", env!("CARGO_PKG_VERSION"), git_commit_hash()[..7])
     } else {
       env!("CARGO_PKG_VERSION").to_string()
     }
