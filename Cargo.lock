@@ -1719,7 +1719,7 @@ dependencies = [
 [[package]]
 name = "denokv_proto"
 version = "0.3.0"
-source = "git+https://github.com/denoland/denokv?rev=9189d8c#9189d8cf91564921f4b5c6def0084cc5b9a34ee4"
+source = "git+https://github.com/denoland/denokv?rev=b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4#b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1735,7 +1735,7 @@ dependencies = [
 [[package]]
 name = "denokv_remote"
 version = "0.3.0"
-source = "git+https://github.com/denoland/denokv?rev=9189d8c#9189d8cf91564921f4b5c6def0084cc5b9a34ee4"
+source = "git+https://github.com/denoland/denokv?rev=b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4#b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1759,7 +1759,7 @@ dependencies = [
 [[package]]
 name = "denokv_sqlite"
 version = "0.3.0"
-source = "git+https://github.com/denoland/denokv?rev=9189d8c#9189d8cf91564921f4b5c6def0084cc5b9a34ee4"
+source = "git+https://github.com/denoland/denokv?rev=b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4#b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1772,6 +1772,7 @@ dependencies = [
  "rand",
  "rusqlite",
  "serde_json",
+ "thiserror",
  "tokio",
  "uuid",
 ]

@@ -17,8 +17,8 @@ use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
 use deno_node::PathClean;
+pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteNotifier;
-pub use denokv_sqlite::TypeError;
 use rand::RngCore;
 use rand::SeedableRng;
 use rusqlite::OpenFlags;
@@ -94,14 +94,15 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
           (Some(path), _) => {
             let flags =
               OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
-            let resolved_path = canonicalize_path(&PathBuf::from(path))?;
+            let resolved_path = canonicalize_path(&PathBuf::from(path))
+              .map_err(anyhow::Error::from)?;
             (
               rusqlite::Connection::open_with_flags(path, flags)?,
               Some(resolved_path),
             )
           }
           (None, Some(path)) => {
-            std::fs::create_dir_all(path)?;
+            std::fs::create_dir_all(path).map_err(anyhow::Error::from)?;
             let path = path.join("kv.sqlite3");
             (rusqlite::Connection::open(path.clone())?, Some(path))
           }
@@ -109,7 +110,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 
         conn.pragma_update(None, "journal_mode", "wal")?;
 
-        Ok::<_, AnyError>((conn, notifier_key))
+        Ok::<_, SqliteBackendError>((conn, notifier_key))
       })
     })
     .await
