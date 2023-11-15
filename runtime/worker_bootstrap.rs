@@ -51,10 +51,6 @@ pub struct BootstrapOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub is_tty: bool,
-  /// Sets `Deno.version.deno` in JS runtime.
-  pub runtime_version: String,
-  /// Sets `Deno.version.typescript` in JS runtime.
-  pub ts_version: String,
   // --unstable flag, deprecated
   pub unstable: bool,
   // --unstable-* flags
@@ -71,11 +67,10 @@ impl Default for BootstrapOptions {
       .map(|p| p.get())
       .unwrap_or(1);
 
-    let runtime_version = env!("CARGO_PKG_VERSION").into();
+    let runtime_version = env!("CARGO_PKG_VERSION");
     let user_agent = format!("Deno/{runtime_version}");
 
     Self {
-      runtime_version,
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
@@ -83,7 +78,6 @@ impl Default for BootstrapOptions {
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),
-      ts_version: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
       unstable: Default::default(),
@@ -107,20 +101,12 @@ impl Default for BootstrapOptions {
 /// Keep this in sync with `99_main.js`.
 #[derive(Serialize)]
 struct BootstrapV8<'a>(
-  // runtime_version
-  &'a str,
   // location
   Option<&'a str>,
-  // ts_version
-  &'a str,
   // unstable
   bool,
   // granular unstable flags
   &'a [i32],
-  // env!("TARGET")
-  &'a str,
-  // v8_version
-  &'a str,
   // inspect
   bool,
   // enable_testing_features
@@ -141,13 +127,9 @@ impl BootstrapOptions {
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
     let bootstrap = BootstrapV8(
-      &self.runtime_version,
       self.location.as_ref().map(|l| l.as_str()),
-      &self.ts_version,
       self.unstable,
       self.unstable_features.as_ref(),
-      env!("TARGET"),
-      deno_core::v8_version(),
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,
