@@ -1,4 +1,4 @@
-[WILDCARD]Workspace config generated thi import map {
+[WILDCARD]Workspace config generated this import map {
   "imports": {
     "chalk": "npm:chalk"
   },

@@ -853,7 +853,7 @@ impl CliOptions {
       );
       if let Some((_import_map_url, import_map)) = maybe_import_map {
         log::debug!(
-          "Workspace config generated thi import map {}",
+          "Workspace config generated this import map {}",
           serde_json::to_string_pretty(&import_map).unwrap()
         );
         return import_map::import_map_from_value(
