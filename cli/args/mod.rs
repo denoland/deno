@@ -850,8 +850,8 @@ impl CliOptions {
         children_configs,
       );
       if let Some((_import_map_url, import_map)) = maybe_import_map {
-        eprintln!(
-          "import map from workspace config {}",
+        log::debug!(
+          "Workspace config generated thi import map {}",
           serde_json::to_string_pretty(&import_map).unwrap()
         );
         return import_map::import_map_from_value(

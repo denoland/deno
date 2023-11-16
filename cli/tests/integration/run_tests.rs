@@ -4759,3 +4759,12 @@ itest!(explicit_resource_management {
   args: "run --quiet --check run/explicit_resource_management/main.ts",
   output: "run/explicit_resource_management/main.out",
 });
+
+itest!(workspaces {
+  args: "run -L debug -A --unstable-workspaces workspaces/basic/main.ts",
+  output: "run/workspaces/basic/main.out",
+  cwd: Some("run/workspaces/basic/"),
+  copy_temp_dir: Some("run/workspaces/basic/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
