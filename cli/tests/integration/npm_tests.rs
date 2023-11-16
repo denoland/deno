@@ -2653,3 +2653,24 @@ pub fn different_nested_dep_byonm() {
     .run();
   output.assert_matches_file("npm/different_nested_dep/main.out");
 }
+
+#[test]
+pub fn run_cjs_in_node_modules_folder() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write("package.json", "{}");
+  temp_dir.write("deno.json", r#"{ "unstable": ["byonm"] }"#);
+  let pkg_dir = temp_dir.path().join("node_modules/package");
+  pkg_dir.create_dir_all();
+  pkg_dir
+    .join("package.json")
+    .write(r#"{ "name": "package" }"#);
+  pkg_dir
+    .join("main.js")
+    .write("console.log('hi'); module.exports = 'hi';");
+  test_context
+    .new_command()
+    .args("run node_modules/package/main.js")
+    .run()
+    .assert_matches_text("hi\n");
+}
