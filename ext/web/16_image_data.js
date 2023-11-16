@@ -192,7 +192,7 @@ class ImageData {
   [SymbolFor("Deno.privateCustomInspect")](inspect) {
     return inspect(createFilteredInspectProxy({
       object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ImageData.prototype, this),
+      evaluate: ObjectPrototypeIsPrototypeOf(ImageDataPrototype, this),
       keys: [
         "data",
         "width",
