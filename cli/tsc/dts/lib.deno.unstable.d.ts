@@ -1377,11 +1377,11 @@ declare namespace Deno {
    * }, () => {
    *   console.log("cron job executed");
    * });
+   * ```
    *
    * `schedule` is a Unix cron format expression, where time is specified
    * using UTC time zone.
    *
-   * ```
    * `backoffSchedule` option can be used to specify the retry policy for failed
    * executions. Each element in the array represents the number of milliseconds
    * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
