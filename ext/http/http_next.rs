@@ -850,15 +850,15 @@ fn serve_https(
   });
   spawn(
     async {
-      io.handshake().await?;
+      let handshake = io.handshake().await?;
       // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
       // based on the prefix bytes
-      let handshake = io.get_ref().1.alpn_protocol();
-      if handshake == Some(TLS_ALPN_HTTP_2) {
+      let handshake = handshake.alpn;
+      if Some(TLS_ALPN_HTTP_2) == handshake.as_deref() {
         serve_http2_unconditional(io, svc, listen_cancel_handle)
           .await
           .map_err(|e| e.into())
-      } else if handshake == Some(TLS_ALPN_HTTP_11) {
+      } else if Some(TLS_ALPN_HTTP_11) == handshake.as_deref() {
         serve_http11_unconditional(io, svc, listen_cancel_handle)
           .await
           .map_err(|e| e.into())
