@@ -276,7 +276,8 @@ fn main() {
     let snapshot_slice = &[];
     #[allow(clippy::needless_borrow)]
     #[allow(clippy::disallowed_methods)]
-    std::fs::write(runtime_snapshot_path.clone(), snapshot_slice).unwrap();
+    #[allow(clippy::needless_borrows_for_generic_args)]
+    std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 
   #[cfg(all(
