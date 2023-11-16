@@ -221,8 +221,8 @@ const denoNsUnstable = {
   createHttpClient: httpClient.createHttpClient,
   // TODO(bartlomieju): why is it needed?
   http,
+  createFfiToken: ffi.createFfiToken,
   dlopen: ffi.dlopen,
-  FfiToken: ffi.FfiToken,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
   UnsafePointerView: ffi.UnsafePointerView,

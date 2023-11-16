@@ -450,7 +450,7 @@ const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 let TOKEN_FINALIZATION_REGISTRY = null;
 const TOKEN_REGISTRY_CALLBACK = (heldValue) => core.close(heldValue);
 
-const createFfiApi = (path) => {
+const createFfiToken = (path) => {
   if (!TOKEN_FINALIZATION_REGISTRY) {
     TOKEN_FINALIZATION_REGISTRY = new FinalizationRegistry(
       TOKEN_REGISTRY_CALLBACK,
@@ -1043,8 +1043,8 @@ function dlopen(path, symbols) {
 }
 
 export {
+  createFfiToken,
   dlopen,
-  FfiToken,
   UnsafeCallback,
   UnsafeFnPointer,
   UnsafePointer,

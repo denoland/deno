@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::op2;
+use deno_core::serde_v8;
 use std::borrow::Cow;
 use std::ffi::c_void;
 use std::path::PathBuf;
@@ -8,7 +10,6 @@ use std::ptr::{self};
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::serde_v8::ExternalPointer;
 use deno_core::v8;
 use deno_core::OpState;
@@ -38,10 +39,12 @@ impl FfiTokenResource {
   }
 }
 
-#[op]
-pub fn op_ffi_create_token<FP>(
+#[op2]
+#[serde]
+pub fn op_ffi_create_token<'scope, FP>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, ExternalPointer), AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -69,54 +72,54 @@ fn check_token(
     .check(key)
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_ptr_create(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
-  ptr_number: usize,
+  #[bigint] ptr_number: usize,
 ) -> Result<*mut c_void, AnyError> {
   check_token(state, rid, key)?;
   Ok(ptr_number as *mut c_void)
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_ptr_equals(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_ptr_of(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_ptr_offset(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_u8(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<u32, AnyError> {
   check_token(state, rid, key)?;
 
@@ -130,13 +133,13 @@ pub fn op_ffi_token_read_u8(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_bool(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<bool, AnyError> {
   check_token(state, rid, key)?;
 
@@ -150,13 +153,13 @@ pub fn op_ffi_token_read_bool(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_i8(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<i32, AnyError> {
   check_token(state, rid, key)?;
 
@@ -170,13 +173,13 @@ pub fn op_ffi_token_read_i8(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_u16(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<u32, AnyError> {
   check_token(state, rid, key)?;
 
@@ -190,13 +193,13 @@ pub fn op_ffi_token_read_u16(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_i16(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<i32, AnyError> {
   check_token(state, rid, key)?;
 
@@ -210,13 +213,13 @@ pub fn op_ffi_token_read_i16(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_u32(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<u32, AnyError> {
   check_token(state, rid, key)?;
 
@@ -230,13 +233,13 @@ pub fn op_ffi_token_read_u32(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_i32(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<i32, AnyError> {
   check_token(state, rid, key)?;
 
@@ -250,13 +253,14 @@ pub fn op_ffi_token_read_i32(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
+#[bigint]
 pub fn op_ffi_token_read_u64(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<u64, AnyError> {
   check_token(state, rid, key)?;
 
@@ -270,13 +274,14 @@ pub fn op_ffi_token_read_u64(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
+#[bigint]
 pub fn op_ffi_token_read_i64(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<i64, AnyError> {
   check_token(state, rid, key)?;
 
@@ -290,13 +295,13 @@ pub fn op_ffi_token_read_i64(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_f32(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<f64, AnyError> {
   check_token(state, rid, key)?;
 
@@ -310,13 +315,13 @@ pub fn op_ffi_token_read_f32(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_f64(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<f64, AnyError> {
   check_token(state, rid, key)?;
 
@@ -330,13 +335,13 @@ pub fn op_ffi_token_read_f64(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_read_ptr(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
 ) -> Result<*mut c_void, AnyError> {
   check_token(state, rid, key)?;
 
@@ -351,200 +356,200 @@ pub fn op_ffi_token_read_ptr(
   })
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_bool(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: bool,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_u8(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: u8,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_i8(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: i8,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_u16(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: u16,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_i16(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: i16,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_u32(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: u32,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_i32(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: i32,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_f32(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: f32,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_f64(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: f64,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_write_ptr(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
   ptr: *mut c_void,
-  offset: isize,
+  #[number] offset: isize,
   value: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_cstr_read(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_get_buf(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_buf_copy_into(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_unsafe_callback_create(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_unsafe_callback_close(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_call_ptr_nonblocking(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_ffi_token_call_ptr(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   key: *mut c_void,
 ) -> Result<(), AnyError> {
   check_token(state, rid, key)?;
