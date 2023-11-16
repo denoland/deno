@@ -1283,19 +1283,16 @@ async fn test_watch_sigint() {
   use nix::sys::signal;
   use nix::sys::signal::Signal;
   use nix::unistd::Pid;
+  use util::TestContext;
 
-  let t = TempDir::new();
+  let context = TestContext::default();
+  let t = context.temp_dir();
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write(r#"Deno.test("foo", () => {});"#);
-  let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--watch")
-    .arg(&file_to_watch)
+  let mut child = context
+    .args_vec(["test", "--watch", &file_to_watch.to_string_lossy()])
     .env("NO_COLOR", "1")
-    .piped()
-    .spawn()
-    .unwrap();
+    .spawn_with_piped_output();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Test started", &mut stderr_lines).await;
   wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
