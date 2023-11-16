@@ -1,5 +1,5 @@
-import express from "express";
-import "./basic/foo/mod.ts";
-import "./basic/bar/mod.ts";
+import chalk from "chalk";
+import "./foo/mod.ts";
+import "./bar/mod.ts";
 
-console.log(express);
+console.log(chalk);

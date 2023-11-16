@@ -4,6 +4,6 @@
     "bar"
   ],
   "imports": {
-    "express": "npm:express@4"
+    "chalk": "npm:chalk"
   }
 }

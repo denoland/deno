@@ -4761,9 +4761,10 @@ itest!(explicit_resource_management {
 });
 
 itest!(workspaces {
-  args: "run -L debug -A --unstable-workspaces workspaces/basic/main.ts",
+  args: "run -L debug -A --unstable-workspaces main.ts",
   output: "run/workspaces/basic/main.out",
   cwd: Some("run/workspaces/basic/"),
+  copy_temp_dir: Some("run/workspaces/basic/"),
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
