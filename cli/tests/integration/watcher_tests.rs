@@ -1290,6 +1290,7 @@ async fn test_watch_sigint() {
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write(r#"Deno.test("foo", () => {});"#);
   let mut child = context
+    .new_command()
     .args_vec(["test", "--watch", &file_to_watch.to_string_lossy()])
     .env("NO_COLOR", "1")
     .spawn_with_piped_output();
