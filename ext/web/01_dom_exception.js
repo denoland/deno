@@ -133,7 +133,7 @@ class DOMException {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
-      return `DOMException: ${this[_message]}`;
+      return this[_error].stack;
     } else {
       return inspect(
         createFilteredInspectProxy({
