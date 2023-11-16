@@ -57,6 +57,7 @@ use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
+use super::documents::file_like_to_file_specifier;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
@@ -1392,13 +1393,14 @@ impl Inner {
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
+    let file_specifier = file_like_to_file_specifier(&specifier).into_owned();
     // skip formatting any files ignored by the config file
     if !self
       .config
       .tree
       .fmt_options_for_specifier(&specifier)
       .files
-      .matches_specifier(&specifier)
+      .matches_specifier(&file_specifier)
     {
       return Ok(None);
     }
@@ -1414,7 +1416,7 @@ impl Inner {
     {
       specifier = params.text_document.uri.clone();
     }
-    let file_path = specifier_to_file_path(&specifier).map_err(|err| {
+    let file_path = specifier_to_file_path(&file_specifier).map_err(|err| {
       error!("{}", err);
       LspError::invalid_request()
     })?;

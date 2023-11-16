@@ -3752,11 +3752,7 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
-    let mut specifier = if let Some(s) = file_like_to_file_specifier(original) {
-      s.to_string()
-    } else {
-      original.to_string()
-    };
+    let mut specifier = file_like_to_file_specifier(original).to_string();
     let media_type = if original.scheme() == "deno-notebook-cell" {
       MediaType::TypeScript
     } else {

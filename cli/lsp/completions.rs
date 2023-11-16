@@ -375,10 +375,7 @@ fn get_local_completions(
   current: &str,
   range: &lsp::Range,
 ) -> Option<Vec<lsp::CompletionItem>> {
-  let base = match file_like_to_file_specifier(base) {
-    Some(s) => s,
-    None => base.clone(),
-  };
+  let base = file_like_to_file_specifier(base);
 
   if base.scheme() != "file" {
     return None;
@@ -404,7 +401,7 @@ fn get_local_completions(
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
           let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
-          if entry_specifier == base {
+          if entry_specifier == *base {
             return None;
           }
           let full_text = relative_specifier(&base, &entry_specifier)?;

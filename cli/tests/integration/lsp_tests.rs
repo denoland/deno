@@ -10426,6 +10426,95 @@ fn lsp_config_scopes_fmt_config() {
 }
 
 #[test]
+fn lsp_config_scopes_fmt_config_untitled_files() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "fmt": {
+        "semiColons": false,
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("project2");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "fmt": {
+        "singleQuote": true,
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": format!("untitled://{}", temp_dir.path().join("project1/file.ts")),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": format!("untitled://{}", temp_dir.path().join("project1/file.ts")),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 15 },
+        "end": { "line": 0, "character": 16 },
+      },
+      "newText": "",
+    }])
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": format!("untitled://{}", temp_dir.path().join("project2/file.ts")),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(\"\");\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": format!("untitled://{}", temp_dir.path().join("project2/file.ts")),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 12 },
+        "end": { "line": 0, "character": 14 },
+      },
+      "newText": "''",
+    }])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_config_scopes_lint_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

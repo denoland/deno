@@ -40,6 +40,7 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -252,6 +253,10 @@ impl AssetOrDocument {
   }
 }
 
+pub fn is_file_like_specifier(specifier: &Url) -> bool {
+  matches!(specifier.scheme(), "untitled" | "deno-notebook-cell")
+}
+
 /// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
 /// ```rust
 /// assert_eq!(
@@ -260,7 +265,7 @@ impl AssetOrDocument {
 ///   ),
 ///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
 /// );
-pub fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
+pub fn file_like_to_file_specifier(specifier: &Url) -> Cow<'_, Url> {
   if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
     if let Ok(mut s) = ModuleSpecifier::parse(&format!(
       "file://{}",
@@ -269,10 +274,10 @@ pub fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
     )) {
       s.query_pairs_mut()
         .append_pair("scheme", specifier.scheme());
-      return Some(s);
+      return Cow::Owned(s);
     }
   }
-  None
+  Cow::Borrowed(specifier)
 }
 
 #[derive(Debug, Default)]
@@ -295,30 +300,24 @@ impl DocumentDependencies {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
     };
-    if file_like_to_file_specifier(&module.specifier).is_some() {
+    if is_file_like_specifier(&module.specifier) {
       for (_, dep) in &mut deps.deps {
         if let Resolution::Ok(resolved) = &mut dep.maybe_code {
-          if let Some(specifier) =
-            file_like_to_file_specifier(&resolved.specifier)
-          {
-            resolved.specifier = specifier;
-          }
+          let specifier =
+            file_like_to_file_specifier(&resolved.specifier).into_owned();
+          resolved.specifier = specifier;
         }
         if let Resolution::Ok(resolved) = &mut dep.maybe_type {
-          if let Some(specifier) =
-            file_like_to_file_specifier(&resolved.specifier)
-          {
-            resolved.specifier = specifier;
-          }
+          let specifier =
+            file_like_to_file_specifier(&resolved.specifier).into_owned();
+          resolved.specifier = specifier;
         }
       }
       if let Some(dep) = &mut deps.maybe_types_dependency {
         if let Resolution::Ok(resolved) = &mut dep.dependency {
-          if let Some(specifier) =
-            file_like_to_file_specifier(&resolved.specifier)
-          {
-            resolved.specifier = specifier;
-          }
+          let specifier =
+            file_like_to_file_specifier(&resolved.specifier).into_owned();
+          resolved.specifier = specifier;
         }
       }
     }
@@ -802,8 +801,7 @@ impl SpecifierResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Arc<dyn HttpCache> {
-    let specifier = file_like_to_file_specifier(specifier)
-      .unwrap_or_else(|| specifier.clone());
+    let specifier = file_like_to_file_specifier(specifier);
     if specifier.scheme() == "file" {
       return self.cache.for_specifier(&specifier);
     }
@@ -1451,8 +1449,7 @@ impl Documents {
         referrer: Option<&ModuleSpecifier>,
       ) {
         if !self.analyzed_specifiers.contains(dep) {
-          let dep_as_file =
-            file_like_to_file_specifier(dep).unwrap_or_else(|| dep.clone());
+          let dep_as_file = file_like_to_file_specifier(dep);
           let scope = self
             .scopes
             .iter()
