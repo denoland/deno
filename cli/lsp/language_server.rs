@@ -22,6 +22,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use indexmap::IndexSet;
 use log::error;
 use serde_json::from_value;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -1390,33 +1391,33 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let mut specifier = self
+    let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let file_specifier = file_like_to_file_specifier(&specifier).into_owned();
+    let document = match self.documents.get(&specifier) {
+      Some(doc) if doc.is_open() => doc,
+      _ => return Ok(None),
+    };
+    let mut specifier = file_like_to_file_specifier(&specifier);
     // skip formatting any files ignored by the config file
     if !self
       .config
       .tree
       .fmt_options_for_specifier(&specifier)
       .files
-      .matches_specifier(&file_specifier)
+      .matches_specifier(&specifier)
     {
       return Ok(None);
     }
-    let document = match self.documents.get(&specifier) {
-      Some(doc) if doc.is_open() => doc,
-      _ => return Ok(None),
-    };
     // Detect vendored paths. Vendor file URLs will normalize to their remote
     // counterparts, but for formatting we want to favour the file URL.
     // TODO(nayeemrmn): Implement `Document::file_resource_path()` or similar.
     if specifier.scheme() != "file"
       && params.text_document.uri.scheme() == "file"
     {
-      specifier = params.text_document.uri.clone();
+      specifier = Cow::Owned(params.text_document.uri.clone());
     }
-    let file_path = specifier_to_file_path(&file_specifier).map_err(|err| {
+    let file_path = specifier_to_file_path(&specifier).map_err(|err| {
       error!("{}", err);
       LspError::invalid_request()
     })?;

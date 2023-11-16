@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use super::documents::file_like_to_file_specifier;
+
 pub fn calculate_fs_version(
   cache: &Arc<dyn HttpCache>,
   specifier: &ModuleSpecifier,
@@ -185,6 +187,7 @@ impl LspCache {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Arc<dyn HttpCache> {
+    let specifier = file_like_to_file_specifier(specifier);
     self
       .vendor_caches_by_scope
       .iter()

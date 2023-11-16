@@ -1555,6 +1555,7 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
   ) -> &Arc<CliGraphResolver> {
+    let specifier = file_like_to_file_specifier(specifier);
     self
       .resolvers_by_scope
       .iter()
