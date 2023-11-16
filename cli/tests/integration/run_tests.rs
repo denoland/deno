@@ -4780,10 +4780,11 @@ itest!(workspaces_member_outside_root_dir {
 });
 
 itest!(workspaces_nested_member {
-  args: "run -L debug -A --unstable-workspaces main.ts",
+  args: "run -A --unstable-workspaces main.ts",
   output: "run/workspaces/nested_member/main.out",
   cwd: Some("run/workspaces/nested_member/"),
   copy_temp_dir: Some("run/workspaces/nested_member/"),
   envs: env_vars_for_npm_tests(),
   http_server: true,
+  exit_code: 1,
 });

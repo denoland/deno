@@ -1,1 +1,1 @@
-error: Workspace member '../other_folder' has no deno.json file[WILDCARD]
+error: Workspace member '../other_folder' is outside root configuration directory[WILDCARD]
