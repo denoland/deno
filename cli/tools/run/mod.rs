@@ -45,8 +45,8 @@ To grant permissions, set them before the script argument. For example:
   let http_client = factory.http_client();
   let cli_options = factory.cli_options();
 
-  // Run a background task that checks for available upgrades. If an earlier
-  // run of this background task found a new version of Deno.
+  // Run a background task that checks for available upgrades or output
+  // if an earlier run of this background task found a new version of Deno.
   super::upgrade::check_for_upgrades(
     http_client.clone(),
     deno_dir.upgrade_check_file_path(),
