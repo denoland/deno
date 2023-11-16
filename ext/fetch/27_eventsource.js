@@ -5,6 +5,7 @@
 const core = globalThis.Deno.core;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { URL } from "ext:deno_url/00_url.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
@@ -25,6 +26,7 @@ const {
   NumberIsFinite,
   NumberIsNaN,
   ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
   Promise,
   StringPrototypeEndsWith,
   StringPrototypeIncludes,
@@ -348,13 +350,18 @@ class EventSource extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        readyState: this.readyState,
-        url: this.url,
-        withCredentials: this.withCredentials,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(EventSourcePrototype, this),
+        keys: [
+          "readyState",
+          "url",
+          "withCredentials",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

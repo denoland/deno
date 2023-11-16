@@ -5379,9 +5379,17 @@ class ReadableStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ locked: this.locked }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamPrototype,
+          this,
+        ),
+        keys: ["locked"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5493,9 +5501,17 @@ class ReadableStreamDefaultReader {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ closed: this.closed }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamDefaultReaderPrototype,
+          this,
+        ),
+        keys: ["closed"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5632,9 +5648,17 @@ class ReadableStreamBYOBReader {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ closed: this.closed }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamBYOBReaderPrototype,
+          this,
+        ),
+        keys: ["closed"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -6165,12 +6189,17 @@ class TransformStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect(
-        { readable: this.readable, writable: this.writable },
-        inspectOptions,
-      )
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TransformStreamPrototype,
+          this,
+        ),
+        keys: ["readable", "writable"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -6388,9 +6417,17 @@ class WritableStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ locked: this.locked }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamPrototype,
+          this,
+        ),
+        keys: ["locked"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -6606,7 +6643,7 @@ class WritableStreamDefaultController {
           WritableStreamDefaultControllerPrototype,
           this,
         ),
-        keys: [],
+        keys: ["signal"],
       }),
       inspectOptions,
     );

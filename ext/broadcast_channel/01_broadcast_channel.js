@@ -5,6 +5,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   EventTarget,
@@ -17,6 +18,7 @@ const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSplice,
+  ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   Symbol,
   SymbolFor,
@@ -144,9 +146,14 @@ class BroadcastChannel extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ name: this.name }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(BroadcastChannelPrototype, this),
+        keys: ["name"],
+      }),
+      inspectOptions,
+    );
   }
 }
 

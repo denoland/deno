@@ -13,6 +13,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 import { forgivingBase64Encode } from "ext:deno_web/00_infra.js";
 import { EventTarget, ProgressEvent } from "ext:deno_web/02_event.js";
@@ -26,6 +27,7 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
   queueMicrotask,
   SafeArrayIterator,
   SafeMap,
@@ -433,13 +435,18 @@ class FileReader extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        error: this.error,
-        readyState: this.readyState,
-        result: this.result,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(FileReaderPrototype, this),
+        keys: [
+          "error",
+          "readyState",
+          "result",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

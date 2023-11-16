@@ -5,6 +5,7 @@ const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
   SymbolFor,
 } = primordials;
 
@@ -152,14 +153,19 @@ class Navigator {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        hardwareConcurrency: this.hardwareConcurrency,
-        userAgent: this.userAgent,
-        language: this.language,
-        languages: this.languages,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      console.createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(NavigatorPrototype, this),
+        keys: [
+          "hardwareConcurrency",
+          "userAgent",
+          "language",
+          "languages",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -221,14 +227,19 @@ class WorkerNavigator {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        hardwareConcurrency: this.hardwareConcurrency,
-        userAgent: this.userAgent,
-        language: this.language,
-        languages: this.languages,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      console.createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WorkerNavigatorPrototype, this),
+        keys: [
+          "hardwareConcurrency",
+          "userAgent",
+          "language",
+          "languages",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

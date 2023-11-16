@@ -5,6 +5,7 @@
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { assert } from "ext:deno_web/00_infra.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   Event,
@@ -16,6 +17,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,
+  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   SafeSet,
   SafeSetIterator,
@@ -241,9 +243,17 @@ class AbortSignal extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ aborted: this.aborted, reason: this.reason }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(AbortSignalPrototype, this),
+        keys: [
+          "aborted",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 defineEventHandler(AbortSignal.prototype, "abort");
@@ -269,9 +279,16 @@ class AbortController {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ signal: this.signal }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(AbortControllerPrototype, this),
+        keys: [
+          "signal",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

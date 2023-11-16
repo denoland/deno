@@ -27,6 +27,7 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
   ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
   Symbol,
   SymbolFor,
@@ -442,12 +443,16 @@ class Headers {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    const headers = {};
-    // deno-lint-ignore prefer-primordials
-    for (const header of this) {
-      headers[header[0]] = header[1];
+    if (ObjectPrototypeIsPrototypeOf(HeadersPrototype, this)) {
+      const headers = {};
+      // deno-lint-ignore prefer-primordials
+      for (const header of this) {
+        headers[header[0]] = header[1];
+      }
+      return `${this.constructor.name} ${inspect(headers, inspectOptions)}`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
     }
-    return `${this.constructor.name} ${inspect(headers, inspectOptions)}`;
   }
 }
 

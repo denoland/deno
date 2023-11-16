@@ -10,11 +10,13 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePop,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
+  ObjectPrototypeIsPrototypeOf,
   SafeRegExp,
   Symbol,
   SymbolFor,
@@ -223,18 +225,23 @@ class URLPattern {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        protocol: this.protocol,
-        username: this.username,
-        password: this.password,
-        hostname: this.hostname,
-        port: this.port,
-        pathname: this.pathname,
-        search: this.search,
-        hash: this.hash,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(URLPatternPrototype, this),
+        keys: [
+          "protocol",
+          "username",
+          "password",
+          "hostname",
+          "port",
+          "pathname",
+          "search",
+          "hash",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

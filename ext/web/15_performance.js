@@ -582,7 +582,7 @@ class Performance extends EventTarget {
       createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
-        keys: [],
+        keys: ["timeOrigin"],
       }),
       inspectOptions,
     );

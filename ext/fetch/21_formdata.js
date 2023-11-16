@@ -265,12 +265,16 @@ class FormData {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    const formData = {};
-    // deno-lint-ignore prefer-primordials
-    for (const data of this) {
-      formData[data[0]] = data[1];
+    if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, this)) {
+      const formData = {};
+      // deno-lint-ignore prefer-primordials
+      for (const data of this) {
+        formData[data[0]] = data[1];
+      }
+      return `${this.constructor.name} ${inspect(formData, inspectOptions)}`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
     }
-    return `${this.constructor.name} ${inspect(formData, inspectOptions)}`;
   }
 }
 

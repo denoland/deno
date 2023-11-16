@@ -12,6 +12,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   DataViewPrototypeGetBuffer,
@@ -193,13 +194,18 @@ class TextDecoder {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        encoding: this.encoding,
-        fatal: this.fatal,
-        ignoreBOM: this.ignoreBOM,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextDecoderPrototype, this),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -260,9 +266,14 @@ class TextEncoder {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({ name: this.encoding }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextEncoderPrototype, this),
+        keys: ["encoding"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -361,15 +372,23 @@ class TextDecoderStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        name: this.encoding,
-        fatal: this.fatal,
-        ignoreBOM: this.ignoreBOM,
-        readable: this.readable,
-        writable: this.writable,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextDecoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -446,13 +465,21 @@ class TextEncoderStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${
-      inspect({
-        name: this.encoding,
-        readable: this.readable,
-        writable: this.writable,
-      }, inspectOptions)
-    }`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextEncoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
