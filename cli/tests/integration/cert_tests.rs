@@ -197,7 +197,7 @@ printHello3();",
     .new_command()
     .args_vec(["run", "--quiet", "--check", &test.to_string_lossy()])
     .run()
-    .assert_matches_text("[WILDCARD]Hello")
+    .assert_matches_text("[WILDCARD]Hello\n")
     .assert_exit_code(0);
 }
 

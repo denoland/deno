@@ -2250,6 +2250,7 @@ fn dont_cache_on_check_fail() {
     .run();
   assert!(!output.stderr().is_empty());
   output.skip_stdout_check();
+  output.assert_exit_code(1);
 
   let output = context
     .new_command()
@@ -2258,6 +2259,7 @@ fn dont_cache_on_check_fail() {
     .run();
   assert!(!output.stderr().is_empty());
   output.skip_stdout_check();
+  output.assert_exit_code(1);
 }
 
 mod permissions {
