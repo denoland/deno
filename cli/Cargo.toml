@@ -51,11 +51,11 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = "=0.6.1"
-deno_config = "=0.6.2"
+deno_config = "=0.6.3"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.73.1", features = ["html"] }
-deno_emit = "=0.31.3"
-deno_graph = "=0.61.0"
+deno_doc = { version = "=0.73.2", features = ["html"] }
+deno_emit = "=0.31.4"
+deno_graph = "=0.61.1"
 deno_lint = { version = "=0.52.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "0.15.2"

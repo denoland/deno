@@ -919,7 +919,7 @@ dependencies = [
  "hex",
  "http",
  "hyper 0.14.27",
- "import_map 0.17.0",
+ "import_map",
  "indexmap 2.0.2",
  "jsonc-parser",
  "junction",
@@ -1061,9 +1061,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26bbf5c11a85bd9e7795c5daf7fc26203b64a9ea567c732cdd474d245f267a85"
+checksum = "2e93c12bd2b01fa7987c45438471c1f1e927d554878446909bad2129bcde9a1a"
 dependencies = [
  "anyhow",
  "indexmap 2.0.2",
@@ -1155,9 +1155,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.73.1"
+version = "0.73.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0caa44ce342fb69b449ae750f8bf66dea6730ce7a00cc4449766d47b8626faf9"
+checksum = "d2854646e9edfea295844b392ab64b7f4fb7b25b608c82d40a2c2d39655b71db"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1166,7 +1166,7 @@ dependencies = [
  "deno_graph",
  "futures",
  "html-escape",
- "import_map 0.15.0",
+ "import_map",
  "indexmap 2.0.2",
  "lazy_static",
  "regex",
@@ -1178,9 +1178,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.31.3"
+version = "0.31.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "193d738bbe06f950a7be3f852f0d940839bba6f4c2cb1d2019eb0d6c727f7b03"
+checksum = "f8910a6da498d0eb2a28d9ea613c47291a86377a85b3771dd90d624004814aeb"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1188,7 +1188,7 @@ dependencies = [
  "deno_graph",
  "escape8259",
  "futures",
- "import_map 0.15.0",
+ "import_map",
  "parking_lot 0.11.2",
  "url",
 ]
@@ -1245,9 +1245,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.61.0"
+version = "0.61.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bd6700dd3cec2a7763760168c952cc632246a1ae0fc52d6f297e2802b994e69"
+checksum = "076c0b611c10901456b78c837408b9c40fe0c3602e767307d986f46f0cc56b51"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1255,7 +1255,7 @@ dependencies = [
  "deno_ast",
  "deno_semver",
  "futures",
- "import_map 0.15.0",
+ "import_map",
  "indexmap 2.0.2",
  "monch",
  "once_cell",
@@ -2861,20 +2861,6 @@ name = "if_chain"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
-
-[[package]]
-name = "import_map"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632089ec08bd62e807311104122fb26d5c911ab172e2b9864be154a575979e29"
-dependencies = [
- "cfg-if",
- "indexmap 1.9.3",
- "log",
- "serde",
- "serde_json",
- "url",
-]
 
 [[package]]
 name = "import_map"
