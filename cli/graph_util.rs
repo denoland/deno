@@ -19,6 +19,7 @@ use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -735,7 +736,17 @@ pub fn workspace_config_to_workspace_members(
   workspace_config
     .members
     .iter()
-    .map(workspace_member_config_try_into_workspace_member)
+    .map(|member| {
+      workspace_member_config_try_into_workspace_member(member).with_context(
+        || {
+          format!(
+            "Failed to resolve configuration for '{}' workspace member at '{}'",
+            member.member_name,
+            member.config_file.specifier.as_str()
+          )
+        },
+      )
+    })
     .collect()
 }
 
