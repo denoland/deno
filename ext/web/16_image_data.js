@@ -2,10 +2,13 @@
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  Uint8ClampedArray,
+  ObjectPrototypeIsPrototypeOf,
+  SymbolFor,
   TypedArrayPrototypeGetSymbolToStringTag,
+  Uint8ClampedArray,
 } = primordials;
 
 webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
@@ -184,6 +187,19 @@ class ImageData {
   get colorSpace() {
     webidl.assertBranded(this, ImageDataPrototype);
     return this.#colorSpace;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect) {
+    return inspect(createFilteredInspectProxy({
+      object: this,
+      evaluate: ObjectPrototypeIsPrototypeOf(ImageData.prototype, this),
+      keys: [
+        "data",
+        "width",
+        "height",
+        "colorSpace",
+      ],
+    }));
   }
 }
 
