@@ -250,13 +250,12 @@ async fn listen_tls_alpn() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
     .unwrap();
-  let mut tls_stream = TlsStream::new_client_side(tcp_stream, cfg, hostname);
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
 
-  tls_stream.handshake().await.unwrap();
+  let handshake = tls_stream.handshake().await.unwrap();
 
-  let (_, rustls_connection) = tls_stream.get_ref();
-  let alpn = rustls_connection.alpn_protocol().unwrap();
-  assert_eq!(alpn, b"foobar");
+  assert_eq!(handshake.alpn, Some(b"foobar".to_vec()));
 
   let status = child.wait().unwrap();
   assert!(status.success());
@@ -300,12 +299,10 @@ async fn listen_tls_alpn_fail() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await
     .unwrap();
-  let mut tls_stream = TlsStream::new_client_side(tcp_stream, cfg, hostname);
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
 
   tls_stream.handshake().await.unwrap_err();
-
-  let (_, rustls_connection) = tls_stream.get_ref();
-  assert!(rustls_connection.alpn_protocol().is_none());
 
   let status = child.wait().unwrap();
   assert!(status.success());
