@@ -735,7 +735,7 @@ pub fn workspace_config_to_workspace_members(
   workspace_config
     .members
     .iter()
-    .map(|m| workspace_member_config_try_into_workspace_member(m))
+    .map(workspace_member_config_try_into_workspace_member)
     .collect()
 }
 
