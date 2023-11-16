@@ -6,8 +6,12 @@ const core = Deno.core;
 function cron(
   name: string,
   schedule: string,
-  handler: () => Promise<void> | void,
-  options?: { backoffSchedule?: number[]; signal?: AbortSignal },
+  handlerOrOptions1:
+    | (() => Promise<void> | void)
+    | ({ backoffSchedule?: number[]; signal?: AbortSignal }),
+  handlerOrOptions2?:
+    | (() => Promise<void> | void)
+    | ({ backoffSchedule?: number[]; signal?: AbortSignal }),
 ) {
   if (name === undefined) {
     throw new TypeError("Deno.cron requires a unique name");
@@ -15,7 +19,20 @@ function cron(
   if (schedule === undefined) {
     throw new TypeError("Deno.cron requires a valid schedule");
   }
-  if (handler === undefined) {
+
+  let handler: () => Promise<void> | void;
+  let options: { backoffSchedule?: number[]; signal?: AbortSignal } | undefined;
+
+  if (typeof handlerOrOptions1 === "function") {
+    handler = handlerOrOptions1;
+    if (typeof handlerOrOptions2 === "function") {
+      throw new TypeError("options must be an object");
+    }
+    options = handlerOrOptions2;
+  } else if (typeof handlerOrOptions2 === "function") {
+    handler = handlerOrOptions2;
+    options = handlerOrOptions1;
+  } else {
     throw new TypeError("Deno.cron requires a handler");
   }
 
