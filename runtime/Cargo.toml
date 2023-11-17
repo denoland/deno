@@ -2,11 +2,7 @@
 
 [package]
 name = "deno_runtime"
-<<<<<<< HEAD
-version = "0.131.0"
-=======
 version = "0.132.0"
->>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -66,10 +62,7 @@ deno_websocket.workspace = true
 deno_webstorage.workspace = true
 deno_napi.workspace = true
 flate2 = { workspace = true, features = ["default"] }
-<<<<<<< HEAD
-=======
 serde.workspace = true
->>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 
 [target.'cfg(windows)'.build-dependencies]
 winres.workspace = true

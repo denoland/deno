@@ -2,11 +2,7 @@
 
 [package]
 name = "deno_web"
-<<<<<<< HEAD
-version = "0.154.0"
-=======
 version = "0.155.0"
->>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,11 +19,7 @@ base64-simd = "0.8"
 bytes.workspace = true
 deno_core.workspace = true
 encoding_rs.workspace = true
-<<<<<<< HEAD
-flate2.workspace = true
-=======
 flate2 = { workspace = true, features = ["default"] }
->>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 futures.workspace = true
 serde = "1.0.149"
 tokio.workspace = true

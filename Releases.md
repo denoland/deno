@@ -6,8 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-<<<<<<< HEAD
-=======
 ### 1.38.2 / 2023.11.17
 
 - feat(ext/web): add `AbortSignal.any()` (#21087)
@@ -34,7 +32,6 @@ https://github.com/denoland/deno_install
 - perf: snapshot runtime ops (#21127)
 - perf: static bootstrap options in snapshot (#21213)
 
->>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 ### 1.38.1 / 2023.11.10
 
 - feat(ext/kv): increase checks limit (#21055)
