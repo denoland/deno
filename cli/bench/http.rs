@@ -108,19 +108,20 @@ fn run(
 
   // Wait for server to wake up.
   let now = Instant::now();
+  let addr = format!("127.0.0.1:{port}");
   while now.elapsed().as_secs() < 30 {
-    if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+    if TcpStream::connect(&addr).is_ok() {
       break;
     }
     std::thread::sleep(Duration::from_millis(10));
   }
-  TcpStream::connect(format!("127.0.0.1:{port}")).expect("Failed to connect to server in time");
+  TcpStream::connect(&addr).expect("Failed to connect to server in time");
   println!("Server took {} ms to start", now.elapsed().as_millis());
 
   let wrk = test_util::prebuilt_tool_path("wrk");
   assert!(wrk.is_file());
 
-  let addr = format!("http://127.0.0.1:{port}/");
+  let addr = format!("http://{addr}/");
   let wrk = wrk.to_string();
   let mut wrk_cmd = vec![wrk.as_str(), "-d", DURATION, "--latency", &addr];
 
