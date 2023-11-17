@@ -4481,15 +4481,18 @@ itest!(permission_args_quiet {
 // Regression test for https://github.com/denoland/deno/issues/16772
 #[test]
 fn file_fetcher_preserves_permissions() {
-  let _guard = util::http_server();
-  util::with_pty(&["repl", "--quiet"], |mut console| {
-    console.write_line(
+  let context = TestContext::with_http_server();
+  context
+    .new_command()
+    .args("repl --quiet")
+    .with_pty(|mut console| {
+      console.write_line(
       "const a = await import('http://localhost:4545/run/019_media_types.ts');",
     );
-    console.expect("Allow?");
-    console.write_line_raw("y");
-    console.expect_all(&["success", "true"]);
-  });
+      console.expect("Allow?");
+      console.write_line_raw("y");
+      console.expect_all(&["success", "true"]);
+    });
 }
 
 #[test]
@@ -4524,11 +4527,10 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 
 #[test]
 fn permission_prompt_strips_ansi_codes_and_control_chars() {
-  let _guard = util::http_server();
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
-      r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
-    );
+        r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
+      );
     // will be uppercase on windows
     let env_name = if cfg!(windows) {
       "DO YOU LIKE ICE CREAM? Y/N"
@@ -4756,4 +4758,33 @@ console.log(returnsHi());"#,
 itest!(explicit_resource_management {
   args: "run --quiet --check run/explicit_resource_management/main.ts",
   output: "run/explicit_resource_management/main.out",
+});
+
+itest!(workspaces_basic {
+  args: "run -L debug -A --unstable-workspaces main.ts",
+  output: "run/workspaces/basic/main.out",
+  cwd: Some("run/workspaces/basic/"),
+  copy_temp_dir: Some("run/workspaces/basic/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(workspaces_member_outside_root_dir {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/member_outside_root_dir/main.out",
+  cwd: Some("run/workspaces/member_outside_root_dir/"),
+  copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(workspaces_nested_member {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/nested_member/main.out",
+  cwd: Some("run/workspaces/nested_member/"),
+  copy_temp_dir: Some("run/workspaces/nested_member/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
 });

@@ -19,6 +19,7 @@ use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -735,7 +736,17 @@ pub fn workspace_config_to_workspace_members(
   workspace_config
     .members
     .iter()
-    .map(|m| workspace_member_config_try_into_workspace_member(m))
+    .map(|member| {
+      workspace_member_config_try_into_workspace_member(member).with_context(
+        || {
+          format!(
+            "Failed to resolve configuration for '{}' workspace member at '{}'",
+            member.member_name,
+            member.config_file.specifier.as_str()
+          )
+        },
+      )
+    })
     .collect()
 }
 
@@ -749,8 +760,13 @@ fn workspace_member_config_try_into_workspace_member(
   Ok(deno_graph::WorkspaceMember {
     base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
     nv,
-    // TODO(bartlomieju):
-    exports: Default::default(),
+    exports: config
+      .config_file
+      .to_exports_config()?
+      .into_map()
+      // todo(dsherret): deno_graph should use an IndexMap
+      .into_iter()
+      .collect(),
   })
 }
 

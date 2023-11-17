@@ -1,0 +1,21 @@
+[WILDCARD]Workspace config generated this import map {
+  "imports": {
+    "chalk": "npm:chalk"
+  },
+  "scopes": {
+    "./foo/": {
+      "~/": "./foo/",
+      "foo/": "./foo/bar/"
+    },
+    "./bar/": {
+      "@/": "./bar/",
+      "secret_mod/": "./bar/some_mod/"
+    }
+  }
+}
+[WILDCARD]
+hello from foo
+buzz from foo
+hello from bar
+buzz from bar
+[Function: chalk][WILDCARD]
