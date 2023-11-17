@@ -3640,22 +3640,22 @@ Deno.test(
   async function httpServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
-      { signal: ac.signal },
+      { port: servePort, signal: ac.signal },
       () => new Response("hello world!"),
     );
 
     assertEquals(
       "hello world!",
-      await curlRequest(["http://localhost:8000/path"]),
+      await curlRequest([`http://localhost:${servePort}/path`]),
     );
     assertEquals(
       "hello world!",
-      await curlRequest(["http://localhost:8000/path", "--http2"]),
+      await curlRequest([`http://localhost:${servePort}/path`, "--http2"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "http://localhost:8000/path",
+        `http://localhost:${servePort}/path`,
         "--http2",
         "--http2-prior-knowledge",
       ]),
@@ -3712,6 +3712,7 @@ Deno.test(
     const server = Deno.serve(
       {
         signal: ac.signal,
+        port: servePort,
         cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
         key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
       },
@@ -3720,16 +3721,20 @@ Deno.test(
 
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:8000/path", "-k"]),
-    );
-    assertEquals(
-      "hello world!",
-      await curlRequest(["https://localhost:8000/path", "-k", "--http2"]),
+      await curlRequest([`https://localhost:${servePort}/path`, "-k"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "https://localhost:8000/path",
+        `https://localhost:${servePort}/path`,
+        "-k",
+        "--http2",
+      ]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        `https://localhost:${servePort}/path`,
         "-k",
         "--http2",
         "--http2-prior-knowledge",
