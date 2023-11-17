@@ -353,6 +353,7 @@ const ci = {
             os: Runners.macosArm,
             job: "test",
             profile: "release",
+            skip_pr: true,
           }, {
             os: Runners.windows,
             job: "test",

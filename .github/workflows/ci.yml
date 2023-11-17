@@ -66,6 +66,8 @@ jobs:
           - os: macos-13-xlarge
             job: test
             profile: release
+            skip_pr: true
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''macos-13-xlarge'' }}'
             os_display_name: macos-aarch64
           - os: windows-2022
             job: test
