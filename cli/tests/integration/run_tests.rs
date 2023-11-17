@@ -331,8 +331,7 @@ itest!(webstorage_serialization {
 fn webstorage_location_shares_origin() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--location")
@@ -346,8 +345,7 @@ fn webstorage_location_shares_origin() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--location")
@@ -366,139 +364,69 @@ fn webstorage_location_shares_origin() {
 // storage persists against unique configuration files.
 #[test]
 fn webstorage_config_file() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--config")
-    .arg("run/webstorage/config_a.jsonc")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args(
+      "run --config run/webstorage/config_a.jsonc run/webstorage/fixture.ts",
+    )
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--config")
-    .arg("run/webstorage/config_b.jsonc")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args("run --config run/webstorage/config_b.jsonc run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--config")
-    .arg("run/webstorage/config_a.jsonc")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { hello: \"deno\", length: 1 }\n");
+  context
+    .new_command()
+    .args("run --config run/webstorage/config_a.jsonc run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // tests to ensure `--config` does not effect persisted storage when a
 // `--location` is provided.
 #[test]
 fn webstorage_location_precedes_config() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--location")
-    .arg("https://example.com/a.ts")
-    .arg("--config")
-    .arg("run/webstorage/config_a.jsonc")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context.new_command()
+    .args("run --location https://example.com/a.ts --config run/webstorage/config_a.jsonc run/webstorage/fixture.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--location")
-    .arg("https://example.com/b.ts")
-    .arg("--config")
-    .arg("run/webstorage/config_b.jsonc")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { hello: \"deno\", length: 1 }\n");
+  context.new_command()
+    .args("run --location https://example.com/b.ts --config run/webstorage/config_b.jsonc run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // test to ensure that when there isn't a configuration or location, that the
 // main module is used to determine how to persist storage data.
 #[test]
 fn webstorage_main_module() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args("run run/webstorage/fixture.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args("run run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { hello: \"deno\", length: 1 }\n");
+  context
+    .new_command()
+    .args("run run/webstorage/fixture.ts")
+    .run()
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 itest!(_075_import_local_query_hash {
@@ -2102,8 +2030,7 @@ fn no_validate_asm() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/no_validate_asm.js")
-    .stderr(Stdio::piped())
-    .stdout(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -2146,7 +2073,7 @@ console.log("executing typescript");
     .arg("--check")
     .arg("-")
     .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdin = p.stdin.as_mut().unwrap();
@@ -2171,7 +2098,7 @@ console.log("executing javascript");
     .arg("--check")
     .arg("-")
     .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdin = p.stdin.as_mut().unwrap();
@@ -2290,7 +2217,7 @@ fn rust_log() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/001_hello.js")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -2304,7 +2231,7 @@ fn rust_log() {
     .arg("run")
     .arg("run/001_hello.js")
     .env("RUST_LOG", "debug")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -2315,36 +2242,24 @@ fn rust_log() {
 
 #[test]
 fn dont_cache_on_check_fail() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("run --check=all --reload run/error_003_typescript.ts")
+    .split_output()
+    .run();
+  assert!(!output.stderr().is_empty());
+  output.skip_stdout_check();
+  output.assert_exit_code(1);
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--check=all")
-    .arg("--reload")
-    .arg("run/error_003_typescript.ts")
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(!output.stderr.is_empty());
-
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--check=all")
-    .arg("run/error_003_typescript.ts")
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(!output.stderr.is_empty());
+  let output = context
+    .new_command()
+    .args("run --check=all run/error_003_typescript.ts")
+    .split_output()
+    .run();
+  assert!(!output.stderr().is_empty());
+  output.skip_stdout_check();
+  output.assert_exit_code(1);
 }
 
 mod permissions {
@@ -2998,9 +2913,8 @@ fn issue12740() {
   let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
-  let mut deno_cmd = util::deno_cmd();
-  std::fs::write(&mod1_path, "").unwrap();
-  let status = deno_cmd
+  mod1_path.write("");
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
@@ -3011,9 +2925,9 @@ fn issue12740() {
     .wait()
     .unwrap();
   assert!(status.success());
-  std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
-  std::fs::write(mod2_path, "(").unwrap();
-  let status = deno_cmd
+  mod1_path.write("export { foo } from \"./mod2.ts\";");
+  mod2_path.write("(");
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
@@ -3032,11 +2946,10 @@ fn issue12807() {
   let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
-  let mut deno_cmd = util::deno_cmd();
   // With a fresh `DENO_DIR`, run a module with a dependency and a type error.
-  std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit('0');").unwrap();
-  std::fs::write(mod2_path, "console.log('Hello, world!');").unwrap();
-  let status = deno_cmd
+  mod1_path.write("import './mod2.ts'; Deno.exit('0');");
+  mod2_path.write("console.log('Hello, world!');");
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--check")
@@ -3050,7 +2963,7 @@ fn issue12807() {
   assert!(!status.success());
   // Fix the type error and run again.
   std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit(0);").unwrap();
-  let status = deno_cmd
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--check")
@@ -3508,7 +3421,7 @@ fn check_local_then_remote() {
     .arg("--check=all")
     .arg("run/remote_type_error/main.ts")
     .env("NO_COLOR", "1")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3598,20 +3511,18 @@ itest!(config_json_import {
 
 #[test]
 fn running_declaration_files() {
-  let temp_dir = TempDir::new();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
   let files = vec!["file.d.ts", "file.d.cts", "file.d.mts"];
 
   for file in files {
     temp_dir.write(file, "");
-    let mut deno_cmd = util::deno_cmd_with_deno_dir(&temp_dir);
-    let output = deno_cmd
-      .current_dir(temp_dir.path())
-      .args(["run", file])
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(output.status.success());
+    context
+      .new_command()
+      .args_vec(["run", file])
+      .run()
+      .skip_output_check()
+      .assert_exit_code(0);
   }
 }
 
@@ -3846,8 +3757,7 @@ fn basic_auth_tokens() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("http://127.0.0.1:4554/run/001_hello.js")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3869,8 +3779,7 @@ fn basic_auth_tokens() {
     .arg("run")
     .arg("http://127.0.0.1:4554/run/001_hello.js")
     .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3954,8 +3863,7 @@ async fn test_resolve_dns() {
       .arg("--check")
       .arg("--allow-net")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -3982,8 +3890,7 @@ async fn test_resolve_dns() {
       .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -4012,8 +3919,7 @@ async fn test_resolve_dns() {
       .arg("--check")
       .arg("--allow-net=deno.land")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -4034,8 +3940,7 @@ async fn test_resolve_dns() {
       .arg("run")
       .arg("--check")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -4062,7 +3967,7 @@ async fn http2_request_url() {
     .arg("--allow-read")
     .arg("./run/http2_request_url.ts")
     .arg("4506")
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdout = child.stdout.as_mut().unwrap();
@@ -4102,7 +4007,7 @@ fn set_raw_should_not_panic_on_no_tty() {
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())
     // stderr is piped so we can capture output.
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -4156,7 +4061,7 @@ fn broken_stdout() {
     .arg("eval")
     .arg("console.log(3.14)")
     .stdout(writer)
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -4305,7 +4210,7 @@ async fn websocketstream_ping() {
     .arg("--cert")
     .arg(root_ca)
     .arg(script)
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let server = tokio::net::TcpListener::bind("127.0.0.1:4513")
@@ -4350,7 +4255,7 @@ async fn websocket_server_multi_field_connection_header() {
     .arg("--cert")
     .arg(root_ca)
     .arg(script)
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
 
@@ -4405,7 +4310,7 @@ async fn websocket_server_idletimeout() {
     .arg("--cert")
     .arg(root_ca)
     .arg(script)
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
 
@@ -4758,4 +4663,33 @@ console.log(returnsHi());"#,
 itest!(explicit_resource_management {
   args: "run --quiet --check run/explicit_resource_management/main.ts",
   output: "run/explicit_resource_management/main.out",
+});
+
+itest!(workspaces_basic {
+  args: "run -L debug -A --unstable-workspaces main.ts",
+  output: "run/workspaces/basic/main.out",
+  cwd: Some("run/workspaces/basic/"),
+  copy_temp_dir: Some("run/workspaces/basic/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(workspaces_member_outside_root_dir {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/member_outside_root_dir/main.out",
+  cwd: Some("run/workspaces/member_outside_root_dir/"),
+  copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(workspaces_nested_member {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/nested_member/main.out",
+  cwd: Some("run/workspaces/nested_member/"),
+  copy_temp_dir: Some("run/workspaces/nested_member/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
 });

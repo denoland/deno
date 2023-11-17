@@ -174,8 +174,11 @@ impl RuntimeState {
             .map(move |name| (*ts, name.clone()))
             .collect::<Vec<_>>()
         })
-        .map(|(_, name)| {
-          (name.clone(), self.crons.get(&name).unwrap().next_tx.clone())
+        .filter_map(|(_, name)| {
+          self
+            .crons
+            .get(&name)
+            .map(|c| (name.clone(), c.next_tx.clone()))
         })
         .collect::<Vec<_>>()
     };
