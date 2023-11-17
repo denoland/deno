@@ -482,7 +482,7 @@ pub async fn publish(
 
   let mut packages = Vec::new();
 
-  let members = deno_json.json.members.clone();
+  let members = deno_json.json.workspaces.clone();
   if members.is_empty() {
     packages.push(prepare_publish(directory_path).await?);
   } else {
