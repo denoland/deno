@@ -2090,54 +2090,53 @@ mod tests {
       HashSet::from_iter(PUBLIC_HTTP_URLS.iter());
 
     // Rely on the randomization of hashset iteration
-    for url in urls {
-      // Relies on external http server with a valid mozilla root CA cert.
-      let url = Url::parse(url).unwrap();
-      eprintln!("Attempting to fetch {url}...");
+    let url = urls.into_iter().next().unwrap();
+    // Relies on external http server with a valid mozilla root CA cert.
+    let url = Url::parse(url).unwrap();
+    eprintln!("Attempting to fetch {url}...");
 
-      let client = HttpClient::from_client(
-        create_http_client(
-          version::get_user_agent(),
-          CreateHttpClientOptions {
-            root_cert_store: Some(root_cert_store),
-            ..Default::default()
-          },
-        )
-        .unwrap(),
-      );
-
-      let result = fetch_once(
-        &client,
-        FetchOnceArgs {
-          url,
-          maybe_accept: None,
-          maybe_etag: None,
-          maybe_auth_token: None,
-          maybe_progress_guard: None,
+    let client = HttpClient::from_client(
+      create_http_client(
+        version::get_user_agent(),
+        CreateHttpClientOptions {
+          root_cert_store: Some(root_cert_store),
+          ..Default::default()
         },
       )
-      .await;
+      .unwrap(),
+    );
 
-      match result {
-        Err(_) => {
-          eprintln!("Fetch error (expected): {result:?}");
-          return;
-        }
-        Ok(
-          FetchOnceResult::Code(..)
-          | FetchOnceResult::NotModified
-          | FetchOnceResult::Redirect(..),
-        ) => {
-          panic!("Should not have successfully fetched a URL");
-        }
-        Ok(
-          FetchOnceResult::RequestError(_) | FetchOnceResult::ServerError(_),
-        ) => {
-          eprintln!("HTTP error (expected): {result:?}");
-          return;
-        }
-      };
-    }
+    let result = fetch_once(
+      &client,
+      FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+        maybe_progress_guard: None,
+      },
+    )
+    .await;
+
+    match result {
+      Err(_) => {
+        eprintln!("Fetch error (expected): {result:?}");
+        return;
+      }
+      Ok(
+        FetchOnceResult::Code(..)
+        | FetchOnceResult::NotModified
+        | FetchOnceResult::Redirect(..),
+      ) => {
+        panic!("Should not have successfully fetched a URL");
+      }
+      Ok(
+        FetchOnceResult::RequestError(_) | FetchOnceResult::ServerError(_),
+      ) => {
+        eprintln!("HTTP error (expected): {result:?}");
+        return;
+      }
+    };
   }
 
   #[tokio::test]
