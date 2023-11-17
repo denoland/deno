@@ -4402,6 +4402,12 @@ fn file_fetcher_preserves_permissions() {
 
 #[test]
 fn stdio_streams_are_locked_in_permission_prompt() {
+  if !util::pty::Pty::is_supported() {
+    // Don't deal with the logic below if the with_pty
+    // block doesn't even run (ex. on Windows CI)
+    return;
+  }
+
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_copy_temp_dir("run/stdio_streams_are_locked_in_permission_prompt")
