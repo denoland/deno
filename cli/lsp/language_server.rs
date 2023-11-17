@@ -3115,7 +3115,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn initialized(&self, _: InitializedParams) {
     let mut registrations = Vec::with_capacity(2);
-    let client = {
+    let (client, http_client) = {
       let mut ls = self.0.write().await;
       if ls
         .config
@@ -3165,7 +3165,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         );
         ls.maybe_testing_server = Some(test_server);
       }
-      ls.client.clone()
+      (ls.client.clone(), ls.http_client.clone())
     };
 
     for registration in registrations {
@@ -3193,22 +3193,25 @@ impl tower_lsp::LanguageServer for LanguageServer {
     lsp_log!("Server ready.");
 
     if upgrade_check_enabled() {
-      let http_client = self.0.read().await.http_client.clone();
-      match check_for_upgrades_for_lsp(http_client).await {
-        Ok(version_info) => {
-          client.send_did_upgrade_check_notification(
-            lsp_custom::DidUpgradeCheckNotificationParams {
-              upgrade_available: version_info.map(
-                |(latest_version, is_canary)| lsp_custom::UpgradeAvailable {
-                  latest_version,
-                  is_canary,
-                },
-              ),
-            },
-          );
+      // spawn to avoid lsp send/sync requirement, but also just
+      // to ensure this initialized method returns quickly
+      spawn(async move {
+        match check_for_upgrades_for_lsp(http_client).await {
+          Ok(version_info) => {
+            client.send_did_upgrade_check_notification(
+              lsp_custom::DidUpgradeCheckNotificationParams {
+                upgrade_available: version_info.map(|info| {
+                  lsp_custom::UpgradeAvailable {
+                    latest_version: info.latest_version,
+                    is_canary: info.is_canary,
+                  }
+                }),
+              },
+            );
+          }
+          Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
         }
-        Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
-      }
+      });
     }
   }
 
