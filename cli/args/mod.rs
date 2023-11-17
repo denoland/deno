@@ -994,8 +994,6 @@ impl CliOptions {
       maybe_lockfile: self.maybe_lockfile.clone(),
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
-      // TODO(bartlomieju): fix me
-      maybe_workspace_config: None,
     }
   }
 

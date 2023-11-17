@@ -1,8 +1,0 @@
-{
-  "imports": {
-    "@std/fmt/": "deno:/@std/fmt/",
-    "express": "npm:express"
-  },
-  "name": "@luca/some_package",
-  "version": "0.0.7"
-}
