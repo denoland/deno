@@ -8,6 +8,7 @@ export {
   assertEquals,
   assertFalse,
   AssertionError,
+  assertIsError,
   assertMatch,
   assertNotEquals,
   assertNotStrictEquals,
