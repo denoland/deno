@@ -364,7 +364,7 @@ jobs:
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
-          (github.repository == 'denoland/deno'))))
+          github.repository == 'denoland/deno'))
         run: |-
           df -h
           cargo build --release --locked --all-targets

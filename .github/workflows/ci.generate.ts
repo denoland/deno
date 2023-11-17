@@ -611,7 +611,7 @@ const ci = {
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno')))",
+            "github.repository == 'denoland/deno')",
           ].join("\n"),
           run: [
             // output fs space before and after building
