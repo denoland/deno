@@ -513,7 +513,7 @@ const ci = {
             "./tools/install_prebuilt.js ld64.lld",
             "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
           ],
-          if: [`matrix.os == '${macosArmRunner}'`],
+          if: `matrix.os == '${macosArmRunner}'`,
         },
         {
           name: "Log versions",
