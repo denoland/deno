@@ -19,6 +19,7 @@ use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -269,6 +270,12 @@ impl ModuleGraphBuilder {
     options: CreateGraphOptions<'_>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
 
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
@@ -291,8 +298,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo(dsherret): workspace support
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;
@@ -312,6 +318,12 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -336,8 +348,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo(dsherret): workspace support
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;
@@ -717,6 +728,46 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
         .unwrap();
     }
   }
+}
+
+pub fn workspace_config_to_workspace_members(
+  workspace_config: &deno_config::WorkspaceConfig,
+) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+  workspace_config
+    .members
+    .iter()
+    .map(|member| {
+      workspace_member_config_try_into_workspace_member(member).with_context(
+        || {
+          format!(
+            "Failed to resolve configuration for '{}' workspace member at '{}'",
+            member.member_name,
+            member.config_file.specifier.as_str()
+          )
+        },
+      )
+    })
+    .collect()
+}
+
+fn workspace_member_config_try_into_workspace_member(
+  config: &deno_config::WorkspaceMemberConfig,
+) -> Result<deno_graph::WorkspaceMember, AnyError> {
+  let nv = deno_semver::package::PackageNv {
+    name: config.package_name.clone(),
+    version: deno_semver::Version::parse_standard(&config.package_version)?,
+  };
+  Ok(deno_graph::WorkspaceMember {
+    base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
+    nv,
+    exports: config
+      .config_file
+      .to_exports_config()?
+      .into_map()
+      // todo(dsherret): deno_graph should use an IndexMap
+      .into_iter()
+      .collect(),
+  })
 }
 
 #[cfg(test)]
