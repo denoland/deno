@@ -10450,10 +10450,28 @@ fn lsp_config_scopes_fmt_config_untitled_files() {
     .to_string(),
   );
   let mut client = context.new_lsp_command().build();
+  let untitled1_specifier = Url::parse(
+    &temp_dir
+      .uri()
+      .join("project1/file.ts")
+      .unwrap()
+      .as_str()
+      .replace("file:///", "untitled:///"),
+  )
+  .unwrap();
+  let untitled2_specifier = Url::parse(
+    &temp_dir
+      .uri()
+      .join("project2/file.ts")
+      .unwrap()
+      .as_str()
+      .replace("file:///", "untitled:///"),
+  )
+  .unwrap();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": format!("untitled://{}", temp_dir.path().join("project1/file.ts")),
+      "uri": &untitled1_specifier,
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(\"\");\n",
@@ -10463,7 +10481,7 @@ fn lsp_config_scopes_fmt_config_untitled_files() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": format!("untitled://{}", temp_dir.path().join("project1/file.ts")),
+        "uri": &untitled1_specifier,
       },
       "options": {
         "tabSize": 2,
@@ -10483,7 +10501,7 @@ fn lsp_config_scopes_fmt_config_untitled_files() {
   );
   client.did_open(json!({
     "textDocument": {
-      "uri": format!("untitled://{}", temp_dir.path().join("project2/file.ts")),
+      "uri": &untitled2_specifier,
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(\"\");\n",
@@ -10493,7 +10511,7 @@ fn lsp_config_scopes_fmt_config_untitled_files() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": format!("untitled://{}", temp_dir.path().join("project2/file.ts")),
+        "uri": &untitled2_specifier,
       },
       "options": {
         "tabSize": 2,
