@@ -2014,7 +2014,7 @@ mod tests {
     }
   }
 
-  static PUBLIC_HTTPS_URLS: &[&'static str] = &[
+  static PUBLIC_HTTPS_URLS: &[&str] = &[
     "https://deno.com/",
     "https://example.com/",
     "https://github.com/",
@@ -2074,10 +2074,10 @@ mod tests {
     }
 
     // Use 1.1.1.1 and 8.8.8.8 as our last-ditch internet check
-    if std::net::TcpStream::connect("8.8.8.8:80").is_err() {
-      if std::net::TcpStream::connect("1.1.1.1:80").is_err() {
-        return;
-      }
+    if std::net::TcpStream::connect("8.8.8.8:80").is_err()
+      && std::net::TcpStream::connect("1.1.1.1:80").is_err()
+    {
+      return;
     }
 
     panic!("None of the expected public URLs were available but internet appears to be available");
