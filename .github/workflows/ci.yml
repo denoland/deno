@@ -63,6 +63,10 @@ jobs:
             skip_pr: true
             runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''macos-12'' }}'
             os_display_name: macos-x86_64
+          - os: macos-13-xlarge
+            job: test
+            profile: release
+            os_display_name: macos-aarch64
           - os: windows-2022
             job: test
             profile: debug
@@ -360,9 +364,7 @@ jobs:
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
-          (github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/')))))
+          (github.repository == 'denoland/deno'))))
         run: |-
           df -h
           cargo build --release --locked --all-targets
@@ -388,23 +390,30 @@ jobs:
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           ./deno types > lib.deno.d.ts
-      - name: Pre-release (mac)
+      - name: Pre-release (mac intel)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'macOS') &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.os == 'macos-12' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
+          github.repository == 'denoland/deno')
         run: |-
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
+      - name: Pre-release (mac aarch64)
+        if: |-
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.os == 'macos-13-xlarge' &&
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno')
+        run: |-
+          cd target/release
+          zip -r deno-aarch64-apple-darwin.zip deno
       - name: Pre-release (windows)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'windows') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
+          github.repository == 'denoland/deno')
         shell: pwsh
         run: Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
       - name: Upload canary to dl.deno.land (unix)
@@ -440,7 +449,7 @@ jobs:
       - name: Test debug (fast)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
-          !startsWith(matrix.os, 'ubuntu'))
+          (startsWith(github.ref, 'refs/tags/') || !startsWith(matrix.os, 'ubuntu')))
         run: |-
           cargo test --locked --lib
           cargo test --locked --test '*'
@@ -451,7 +460,7 @@ jobs:
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'release' &&
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))))
+          !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked
       - name: Check deno binary
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
