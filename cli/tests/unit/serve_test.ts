@@ -3742,12 +3742,15 @@ Deno.test(
 );
 
 async function curlRequest(args: string[]) {
-  const { success, stdout } = await new Deno.Command("curl", {
+  const { success, stdout, stderr } = await new Deno.Command("curl", {
     args,
     stdout: "piped",
-    stderr: "null",
+    stderr: "piped",
   }).output();
-  assert(success);
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
+  );
   return new TextDecoder().decode(stdout);
 }
 
@@ -3757,7 +3760,10 @@ async function curlRequestWithStdErr(args: string[]) {
     stdout: "piped",
     stderr: "piped",
   }).output();
-  assert(success);
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
+  );
   return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
 }
 
