@@ -4406,28 +4406,52 @@ fn stdio_streams_are_locked_in_permission_prompt() {
     .use_http_server()
     .use_copy_temp_dir("run/stdio_streams_are_locked_in_permission_prompt")
     .build();
-  context
-    .new_command()
-    .args("repl --allow-read")
-    .with_pty(|mut console| {
-      console.write_line(r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/run/stdio_streams_are_locked_in_permission_prompt/worker.js";"#);
-      console.expect("undefined");
-      // ensure this file exists
-      console.write_line(r#"const _file = Deno.readTextFileSync("./run/stdio_streams_are_locked_in_permission_prompt/worker.js");"#);
-      console.expect("undefined");
-      console.write_line(r#"new Worker(url, { type: "module" }); await Deno.writeTextFile("./text.txt", "some code");"#);
-      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
-      std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
-      console.write_line_raw("invalid");
-      console.expect("Unrecognized option.");
-      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
-      console.write_line_raw("y");
-      console.expect("Granted write access to");
+  let mut passed_test = false;
+  let mut i = 0;
+  while !passed_test {
+    i += 1;
+    if i > 5 {
+      panic!("Output happened before permission prompt too many times");
+    }
 
-      // this output should now be shown below and not above
-      let expected_output = r#"Are you sure you want to continue?"#;
-      console.expect(expected_output);
-    });
+    context
+      .new_command()
+      .args("repl --allow-read")
+      .with_pty(|mut console| {
+        let malicious_output = r#"Are you sure you want to continue?"#;
+
+        console.write_line(r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/run/stdio_streams_are_locked_in_permission_prompt/worker.js";"#);
+        console.expect("undefined");
+        // ensure this file exists
+        console.write_line(r#"const _file = Deno.readTextFileSync("./run/stdio_streams_are_locked_in_permission_prompt/worker.js");"#);
+        console.expect("undefined");
+        console.write_line(r#"new Worker(url, { type: "module" }); await Deno.writeTextFile("./text.txt", "some code");"#);
+        console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
+
+        // Due to the main thread being slow, it may occur that the worker thread outputs
+        // before the permission prompt is shown. This is not a bug and just a timing issue
+        // when dealing with multiple threads. If this occurs, detect such a case and then
+        // retry running the test.
+        if let Some(malicious_index) = console.all_output().find(malicious_output) {
+          let prompt_index = console.all_output().find("Allow?").unwrap();
+          // Ensure the malicious output is shown before the prompt as we
+          // expect in this scenario. If not, that would indicate a bug.
+          assert!(malicious_index < prompt_index);
+          return;
+        }
+
+        std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
+        console.write_line_raw("invalid");
+        console.expect("Unrecognized option.");
+        console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
+        console.write_line_raw("y");
+        console.expect("Granted write access to");
+
+        // this output should now be shown below and not above
+        console.expect(malicious_output);
+        passed_test = true;
+      });
+  }
 }
 
 #[test]
