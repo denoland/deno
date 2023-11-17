@@ -5,15 +5,14 @@ import {
   assert,
   assertEquals,
 } from "../../../test_util/std/testing/asserts.ts";
-import { Deferred, deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import * as http from "node:http";
 
 Deno.test("[node/net] close event emits after error event", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
   const events: ("error" | "close")[] = [];
-  const errorEmitted = deferred();
-  const closeEmitted = deferred();
+  const errorEmitted = Promise.withResolvers<void>();
+  const closeEmitted = Promise.withResolvers<void>();
   socket.once("error", () => {
     events.push("error");
     errorEmitted.resolve();
@@ -22,14 +21,14 @@ Deno.test("[node/net] close event emits after error event", async () => {
     events.push("close");
     closeEmitted.resolve();
   });
-  await Promise.all([errorEmitted, closeEmitted]);
+  await Promise.all([errorEmitted.promise, closeEmitted.promise]);
 
   // `error` happens before `close`
   assertEquals(events, ["error", "close"]);
 });
 
 Deno.test("[node/net] the port is available immediately after close callback", async () => {
-  const p = deferred();
+  const deferred = Promise.withResolvers<void>();
 
   // This simulates what get-port@5.1.1 does.
   const getAvailablePort = (port: number) =>
@@ -48,11 +47,11 @@ Deno.test("[node/net] the port is available immediately after close callback", a
   const port = await getAvailablePort(5555);
 
   const httpServer = http.createServer();
-  httpServer.on("error", (e) => p.reject(e));
+  httpServer.on("error", (e) => deferred.reject(e));
   httpServer.listen(port, () => {
-    httpServer.close(() => p.resolve());
+    httpServer.close(() => deferred.resolve());
   });
-  await p;
+  await deferred.promise;
 });
 
 Deno.test("[node/net] net.connect().unref() works", async () => {
@@ -100,16 +99,16 @@ Deno.test({
 });
 
 Deno.test("[node/net] connection event has socket value", async () => {
-  const p = deferred();
-  const p2 = deferred();
+  const deferred = Promise.withResolvers<void>();
+  const deferred2 = Promise.withResolvers<void>();
 
   const server = net.createServer();
-  server.on("error", p.reject);
+  server.on("error", deferred.reject);
   server.on("connection", (socket) => {
     assert(socket !== undefined);
     socket.end();
     server.close(() => {
-      p.resolve();
+      deferred.resolve();
     });
   });
   server.listen(async () => {
@@ -125,10 +124,10 @@ Deno.test("[node/net] connection event has socket value", async () => {
       //
     }
 
-    p2.resolve();
+    deferred2.resolve();
   });
 
-  await Promise.all([p, p2]);
+  await Promise.all([deferred.promise, deferred2.promise]);
 });
 
 /// We need to make sure that any shared buffers are never used concurrently by two reads.
@@ -137,17 +136,19 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
   const socketCount = 9;
 
   class TestSocket {
-    dataReceived: Deferred<undefined> = deferred();
+    dataReceived: ReturnType<typeof Promise.withResolvers<void>> = Promise
+      .withResolvers<void>();
     events: string[] = [];
     socket: net.Socket | undefined;
   }
 
-  const finished = deferred();
-  const serverSocketsClosed: Deferred<undefined>[] = [];
+  const finished = Promise.withResolvers<void>();
+  const serverSocketsClosed: ReturnType<typeof Promise.withResolvers<void>>[] =
+    [];
   const server = net.createServer();
   server.on("connection", (socket) => {
     assert(socket !== undefined);
-    const i = serverSocketsClosed.push(deferred());
+    const i = serverSocketsClosed.push(Promise.withResolvers<void>());
     socket.on("data", (data) => {
       socket.write(new TextDecoder().decode(data));
     });
@@ -194,8 +195,8 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
     });
   });
 
-  await finished;
-  await Promise.all(serverSocketsClosed);
+  await finished.promise;
+  await Promise.all(serverSocketsClosed.map(({ promise }) => promise));
 
   for (let i = 0; i < socketCount; i++) {
     assertEquals(sockets[i].events, [`${i}`.repeat(3), `${i}`.repeat(3)]);

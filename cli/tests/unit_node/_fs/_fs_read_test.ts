@@ -10,7 +10,6 @@ import { open, openSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import * as path from "../../../../test_util/std/path/mod.ts";
 import { closeSync } from "node:fs";
-import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 async function readTest(
   testData: string,

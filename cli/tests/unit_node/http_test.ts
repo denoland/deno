@@ -9,7 +9,6 @@ import {
   fail,
 } from "../../../test_util/std/testing/asserts.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -28,14 +27,14 @@ Deno.test("[node/http listen]", async () => {
   }
 
   {
-    const promise = deferred<void>();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const server = http.createServer();
 
     server.listen(() => {
       server.close();
     });
     server.on("close", () => {
-      promise.resolve();
+      resolve();
     });
 
     await promise;
