@@ -7,7 +7,6 @@
   [`denoland/deno_std`](https://github.com/denoland/deno_std/),
   [`denoland/dotcom`](https://github.com/denoland/dotcom/),
   [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
-  [`denoland/manual`](https://github.com/denoland/manual/)
 
 **During this process `main` branch (or any other branch that you're creating
 release from) should be frozen and no commits should land until the release is
