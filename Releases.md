@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+<<<<<<< HEAD
+=======
+### 1.38.2 / 2023.11.17
+
+- feat(ext/web): add `AbortSignal.any()` (#21087)
+- feat(lsp): upgrade check on init and notification (#21105)
+- fix(cli): Allow executable name start with digit (#21214)
+- fix(doc): issue discovering re-exports of re-exports sometimes (#21223)
+- fix(ext/node): Re-enable alloc max size test (#21059)
+- fix(ext/node): add APIs perf_hook.performance (#21192)
+- fix(ext/node): implement process.geteuid (#21151)
+- fix(ext/web): Prevent TextDecoderStream resource leak on stream cancellation
+  (#21074)
+- fix(ext/web): webstorage has trap for symbol (#21090)
+- fix(install): should work with non-existent relative root (#21161)
+- fix(lsp): update tsconfig after refreshing settings on init (#21170)
+- fix(node/http): export globalAgent (#21081)
+- fix(npm): support cjs entrypoint in node_modules folder (#21224)
+- fix(runtime): fix Deno.noColor when stdout is not tty (#21208)
+- fix: improve `deno doc --lint` error messages (#21156)
+- fix: use short git hash for deno version (#21218)
+- perf(cli): strace mode for ops (undocumented) (#21131)
+- perf(ext/http): Object pooling for HttpRecord and HeaderMap (#20809)
+- perf: lazy bootstrap options - first pass (#21164)
+- perf: move jupyter esm out of main snapshot (#21163)
+- perf: snapshot runtime ops (#21127)
+- perf: static bootstrap options in snapshot (#21213)
+
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 ### 1.38.1 / 2023.11.10
 
 - feat(ext/kv): increase checks limit (#21055)

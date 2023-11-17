@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_broadcast_channel"
+<<<<<<< HEAD
 version = "0.117.0"
+=======
+version = "0.118.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

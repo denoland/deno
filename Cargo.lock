@@ -870,7 +870,11 @@ dependencies = [
 
 [[package]]
 name = "deno"
+<<<<<<< HEAD
 version = "1.38.1"
+=======
+version = "1.38.2"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "async-trait",
  "base32",
@@ -1010,7 +1014,11 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
+<<<<<<< HEAD
 version = "0.117.0"
+=======
+version = "0.118.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "bencher",
  "deno_core",
@@ -1020,7 +1028,11 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
+<<<<<<< HEAD
 version = "0.117.0"
+=======
+version = "0.118.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1030,7 +1042,11 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
+<<<<<<< HEAD
 version = "0.55.0"
+=======
+version = "0.56.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1077,7 +1093,11 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
+<<<<<<< HEAD
 version = "0.123.0"
+=======
+version = "0.124.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_core",
 ]
@@ -1109,7 +1129,11 @@ dependencies = [
 
 [[package]]
 name = "deno_cron"
+<<<<<<< HEAD
 version = "0.3.0"
+=======
+version = "0.4.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1122,7 +1146,11 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
+<<<<<<< HEAD
 version = "0.137.0"
+=======
+version = "0.138.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1195,7 +1223,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
+<<<<<<< HEAD
 version = "0.147.0"
+=======
+version = "0.148.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "bytes",
  "data-url",
@@ -1211,7 +1243,11 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
+<<<<<<< HEAD
 version = "0.110.0"
+=======
+version = "0.111.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_core",
  "dlopen2",
@@ -1227,7 +1263,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
+<<<<<<< HEAD
 version = "0.33.0"
+=======
+version = "0.34.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1269,7 +1309,11 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
+<<<<<<< HEAD
 version = "0.118.0"
+=======
+version = "0.119.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1306,7 +1350,11 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
+<<<<<<< HEAD
 version = "0.33.0"
+=======
+version = "0.34.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1319,7 +1367,11 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
+<<<<<<< HEAD
 version = "0.31.0"
+=======
+version = "0.32.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1391,7 +1443,11 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
+<<<<<<< HEAD
 version = "0.53.0"
+=======
+version = "0.54.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_core",
  "libloading",
@@ -1412,7 +1468,11 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
+<<<<<<< HEAD
 version = "0.115.0"
+=======
+version = "0.116.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1429,7 +1489,11 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
+<<<<<<< HEAD
 version = "0.60.0"
+=======
+version = "0.61.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -1524,7 +1588,11 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
+<<<<<<< HEAD
 version = "0.131.0"
+=======
+version = "0.132.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "console_static_text",
  "deno_ast",
@@ -1610,7 +1678,11 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
+<<<<<<< HEAD
 version = "0.110.0"
+=======
+version = "0.111.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -1642,7 +1714,11 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
+<<<<<<< HEAD
 version = "0.123.0"
+=======
+version = "0.124.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1653,7 +1729,11 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
+<<<<<<< HEAD
 version = "0.154.0"
+=======
+version = "0.155.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1674,7 +1754,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
+<<<<<<< HEAD
 version = "0.123.0"
+=======
+version = "0.124.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1682,7 +1766,11 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
+<<<<<<< HEAD
 version = "0.128.0"
+=======
+version = "0.129.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "bytes",
  "deno_core",
@@ -1700,7 +1788,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
+<<<<<<< HEAD
 version = "0.118.0"
+=======
+version = "0.119.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "deno_core",
  "deno_web",
@@ -3363,7 +3455,11 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
+<<<<<<< HEAD
 version = "0.53.0"
+=======
+version = "0.54.0"
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
 dependencies = [
  "proc-macro2",
  "quote",

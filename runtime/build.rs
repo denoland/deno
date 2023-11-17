@@ -13,13 +13,42 @@ mod startup_snapshot {
   use super::*;
   use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
+<<<<<<< HEAD
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
+=======
+  use deno_core::op2;
+  use deno_core::snapshot_util::*;
+  use deno_core::Extension;
+  use deno_core::OpState;
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
   use deno_http::DefaultHttpPropertyExtractor;
   use shared::maybe_transpile_source;
   use shared::runtime;
   use std::path::Path;
 
+<<<<<<< HEAD
+=======
+  // Keep in sync with `runtime/ops/bootstrap.rs`
+  #[derive(serde::Serialize, Default)]
+  #[serde(rename_all = "camelCase")]
+  pub struct SnapshotOptions {
+    pub deno_version: String,
+    pub ts_version: String,
+    pub v8_version: &'static str,
+    pub target: String,
+  }
+
+  // TODO(@littledivy): Remove this once we get rid of deno_runtime snapshots.
+  #[op2]
+  #[serde]
+  pub fn op_snapshot_options(_: &mut OpState) -> SnapshotOptions {
+    SnapshotOptions::default()
+  }
+
+  deno_core::extension!(snapshot, ops = [op_snapshot_options],);
+
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
   #[derive(Clone)]
   struct Permissions;
 
@@ -232,6 +261,10 @@ mod startup_snapshot {
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
       deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
       runtime::init_ops_and_esm(),
+<<<<<<< HEAD
+=======
+      snapshot::init_ops_and_esm(),
+>>>>>>> 118be11e8 (fix(runtime): snapshot options op missing during snapshot (#21235))
     ];
 
     for extension in &mut extensions {
