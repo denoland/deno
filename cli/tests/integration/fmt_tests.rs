@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
 use util::assert_contains;
 use util::PathRef;
 use util::TestContext;
@@ -91,25 +90,17 @@ fn fmt_test() {
 }
 
 #[test]
-fn fmt_stdin_error() {
-  use std::io::Write;
-  let mut deno = util::deno_cmd()
+fn fmt_stdin_syntax_error() {
+  let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("-")
-    .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
-  let stdin = deno.stdin.as_mut().unwrap();
-  let invalid_js = b"import { example }";
-  stdin.write_all(invalid_js).unwrap();
-  let output = deno.wait_with_output().unwrap();
-  // Error message might change. Just check stdout empty, stderr not.
-  assert!(output.stdout.is_empty());
-  assert!(!output.stderr.is_empty());
-  assert!(!output.status.success());
+    .set_stdin_text("import { example }")
+    .split_output()
+    .run();
+  assert!(output.stdout().is_empty());
+  assert!(!output.stderr().is_empty());
+  output.assert_exit_code(1);
 }
 
 #[test]
@@ -132,7 +123,8 @@ fn fmt_auto_ignore_git_and_node_modules() {
     bad_json_path.write("bad json\n");
   }
 
-  let temp_dir = TempDir::new();
+  let context = TestContext::default();
+  let temp_dir = context.temp_dir();
   let t = temp_dir.path().join("target");
   let nest_git = t.join("nest").join(".git");
   let git_dir = t.join(".git");
@@ -147,7 +139,6 @@ fn fmt_auto_ignore_git_and_node_modules() {
   create_bad_json(nest_node_modules);
   create_bad_json(node_modules_dir);
 
-  let context = TestContext::default();
   let output = context
     .new_command()
     .cwd(t)
