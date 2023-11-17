@@ -150,7 +150,11 @@ class BroadcastChannel extends EventTarget {
       createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(BroadcastChannelPrototype, this),
-        keys: ["name"],
+        keys: [
+          "name",
+          "onmessage",
+          "onmessageerror",
+        ],
       }),
       inspectOptions,
     );

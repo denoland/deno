@@ -192,7 +192,17 @@ class MessagePort extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessagePortPrototype, this),
+        keys: [
+          "onmessage",
+          "onmessageerror",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

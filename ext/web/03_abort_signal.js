@@ -250,6 +250,7 @@ class AbortSignal extends EventTarget {
         keys: [
           "aborted",
           "reason",
+          "onabort",
         ],
       }),
       inspectOptions,
