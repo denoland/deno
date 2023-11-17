@@ -9,11 +9,8 @@ https://github.com/denoland/deno_install
 ### 1.38.2 / 2023.11.17
 
 - Revert "fix(ext/console): fix inspecting iterators error. (#20720)" (#21191)
-- feat(ext/cron) modify Deno.cron API to make handler arg last (#21225)
-- feat(ext/net): use rustls_tokio_stream (#21205)
 - feat(ext/web): add `AbortSignal.any()` (#21087)
 - feat(lsp): upgrade check on init and notification (#21105)
-- feat(unstable): Workspaces support (#20410)
 - fix(cli): Allow executable name start with digit (#21214)
 - fix(doc): issue discovering re-exports of re-exports sometimes (#21223)
 - fix(ext/console): fix inspecting iterators error. (#20720)
