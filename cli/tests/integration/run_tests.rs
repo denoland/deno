@@ -4759,3 +4759,32 @@ itest!(explicit_resource_management {
   args: "run --quiet --check run/explicit_resource_management/main.ts",
   output: "run/explicit_resource_management/main.out",
 });
+
+itest!(workspaces_basic {
+  args: "run -L debug -A --unstable-workspaces main.ts",
+  output: "run/workspaces/basic/main.out",
+  cwd: Some("run/workspaces/basic/"),
+  copy_temp_dir: Some("run/workspaces/basic/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(workspaces_member_outside_root_dir {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/member_outside_root_dir/main.out",
+  cwd: Some("run/workspaces/member_outside_root_dir/"),
+  copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(workspaces_nested_member {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/nested_member/main.out",
+  cwd: Some("run/workspaces/nested_member/"),
+  copy_temp_dir: Some("run/workspaces/nested_member/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
