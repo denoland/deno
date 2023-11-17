@@ -214,7 +214,9 @@ export async function downloadPrebuilt(toolName) {
     });
 
     if (compressed.has(toolName)) {
-      await resp.body.pipeThrough(new DecompressionStream("gzip")).pipeTo(file.writable);
+      await resp.body.pipeThrough(new DecompressionStream("gzip")).pipeTo(
+        file.writable,
+      );
     } else {
       await resp.body.pipeTo(file.writable);
     }
