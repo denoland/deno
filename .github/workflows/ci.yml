@@ -299,9 +299,9 @@ jobs:
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
       - name: Install aarch64 lld
-        run:
-          - ./tools/install_prebuilt.js ld64.lld
-          - echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
+        run: |-
+          ./tools/install_prebuilt.js ld64.lld
+          echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.os == ''macos-13-xlarge'')'
       - name: Log versions
         run: |-
