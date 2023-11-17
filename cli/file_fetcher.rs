@@ -2014,7 +2014,7 @@ mod tests {
     }
   }
 
-  static PUBLIC_HTTP_URLS: &[&'static str] = &[
+  static PUBLIC_HTTPS_URLS: &[&'static str] = &[
     "https://deno.com/",
     "https://example.com/",
     "https://github.com/",
@@ -2026,7 +2026,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_with_default_certificate_store() {
     let urls: HashSet<_, RandomState> =
-      HashSet::from_iter(PUBLIC_HTTP_URLS.iter());
+      HashSet::from_iter(PUBLIC_HTTPS_URLS.iter());
 
     // Rely on the randomization of hashset iteration
     for url in urls {
@@ -2074,8 +2074,8 @@ mod tests {
     }
 
     // Use 1.1.1.1 and 8.8.8.8 as our last-ditch internet check
-    if let Err(_) = std::net::TcpStream::connect("8.8.8.8:80") {
-      if let Err(_) = std::net::TcpStream::connect("1.1.1.1:80") {
+    if std::net::TcpStream::connect("8.8.8.8:80").is_err() {
+      if std::net::TcpStream::connect("1.1.1.1:80").is_err() {
         return;
       }
     }
@@ -2087,7 +2087,7 @@ mod tests {
   async fn test_fetch_with_empty_certificate_store() {
     let root_cert_store = RootCertStore::empty();
     let urls: HashSet<_, RandomState> =
-      HashSet::from_iter(PUBLIC_HTTP_URLS.iter());
+      HashSet::from_iter(PUBLIC_HTTPS_URLS.iter());
 
     // Rely on the randomization of hashset iteration
     let url = urls.into_iter().next().unwrap();
