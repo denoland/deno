@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::fs::File;
 use test_util as util;
 use util::assert_contains;
 use util::assert_not_contains;
@@ -219,7 +218,7 @@ fn compile_with_file_exists_error() {
     dir.path().join("args/")
   };
   let file_path = dir.path().join("args");
-  File::create(&file_path).unwrap();
+  file_path.write("");
   context
     .new_command()
     .args_vec([
@@ -294,9 +293,7 @@ fn compile_with_conflict_file_exists_error() {
       exe
     ))
     .assert_exit_code(1);
-  assert!(std::fs::read(&exe)
-    .unwrap()
-    .eq(b"SHOULD NOT BE OVERWRITTEN"));
+  exe.assert_matches_text("SHOULD NOT BE OVERWRITTEN");
 }
 
 #[test]
