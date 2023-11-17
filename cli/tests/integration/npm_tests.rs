@@ -4,7 +4,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
-use std::process::Stdio;
 use test_util as util;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
@@ -508,8 +507,7 @@ fn cached_only_after_first_run() {
     .arg("npm/cached_only_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -528,8 +526,7 @@ fn cached_only_after_first_run() {
     .arg("npm/cached_only_after_first_run/main2.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -551,8 +548,7 @@ fn cached_only_after_first_run() {
     .arg("npm/cached_only_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -578,8 +574,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -598,8 +593,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -618,8 +612,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -638,8 +631,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -658,8 +650,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -685,8 +676,7 @@ fn no_npm_after_first_run() {
     .arg("npm/no_npm_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -707,8 +697,7 @@ fn no_npm_after_first_run() {
     .arg("npm/no_npm_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -727,8 +716,7 @@ fn no_npm_after_first_run() {
     .arg("npm/no_npm_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -1273,8 +1261,7 @@ fn lock_file_missing_top_level_package() {
     .arg("-A")
     .arg("main.ts")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -1511,8 +1498,7 @@ fn lock_file_lock_write() {
     .arg("--quiet")
     .arg("npm:cowsay@1.5.0")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -1563,8 +1549,7 @@ fn auto_discover_lock_file() {
     .arg("npm:@denotest/bin/cli-esm")
     .arg("test")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();

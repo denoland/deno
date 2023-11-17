@@ -8,7 +8,6 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::fs;
-use std::process::Stdio;
 use test_util::assert_starts_with;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
@@ -7116,8 +7115,7 @@ fn lsp_npm_specifier_unopened_file() {
     .arg("--quiet")
     .arg("other.ts")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();

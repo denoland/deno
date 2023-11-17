@@ -4,10 +4,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::io::Read;
 use std::io::Write;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
@@ -375,6 +379,11 @@ impl TestCommandBuilder {
     for (key, value) in &self.envs {
       envs.insert(key.to_string(), value.to_string());
     }
+    if !envs.contains_key("NPM_CONFIG_REGISTRY")
+      && !self.envs_remove.contains("NPM_CONFIG_REGISTRY")
+    {
+      envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
+    }
     envs
   }
 
@@ -409,26 +418,33 @@ impl TestCommandBuilder {
 
   #[track_caller]
   pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
-    }
-
-    fn sanitize_output(text: String, args: &[String]) -> String {
-      let mut text = strip_ansi_codes(&text).to_string();
-      // deno test's output capturing flushes with a zero-width space in order to
-      // synchronize the output pipes. Occasionally this zero width space
-      // might end up in the output so strip it from the output comparison here.
-      if args.first().map(|s| s.as_str()) == Some("test") {
-        text = text.replace('\u{200B}', "");
-      }
-      text
-    }
-
-    let cwd = self.build_cwd();
     let args = self.build_args();
+    let mut command = self.start_build_command(&args);
+
+    if self.split_output {
+      command = command.split_output();
+    }
+
+    if let Some(input) = &self.stdin {
+      command = command.set_stdin_text(input.clone());
+    }
+    command = command.set_testdata_dir(&self.context.testdata_dir);
+
+    command.run()
+  }
+
+  pub fn spawn_with_piped_output(&self) -> DenoChild {
+    self
+      .start_build_command(&self.build_args())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped())
+      .spawn()
+      .unwrap()
+  }
+
+  fn start_build_command(&self, args: &[String]) -> DenoCmd {
     let mut command = Command::new(self.build_command_path());
+    let cwd = self.build_cwd();
 
     println!("command {} {}", self.command_name, args.join(" "));
     println!("command cwd {}", cwd);
@@ -436,14 +452,173 @@ impl TestCommandBuilder {
     if self.env_clear {
       command.env_clear();
     }
-    let mut envs = self.build_envs();
-    if !envs.contains_key("NPM_CONFIG_REGISTRY") {
-      envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
-    }
+    let envs = self.build_envs();
     command.envs(envs);
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
+    DenoCmd::new_raw(self.context.temp_dir.clone(), command)
+  }
+}
 
+pub struct DenoCmd {
+  deno_dir: TempDir,
+  cmd: Command,
+  stdin_text: Option<String>,
+  split_output: bool,
+  testdata_dir: Option<PathRef>,
+}
+
+impl DenoCmd {
+  pub fn new_raw(deno_dir: TempDir, cmd: Command) -> Self {
+    Self {
+      deno_dir,
+      cmd,
+      stdin_text: None,
+      split_output: false,
+      testdata_dir: None,
+    }
+  }
+
+  pub fn args<I, S>(mut self, args: I) -> Self
+  where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.args(args);
+    self
+  }
+
+  pub fn arg<S>(mut self, arg: S) -> Self
+  where
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.arg(arg);
+    self
+  }
+
+  pub fn envs<I, K, V>(mut self, vars: I) -> Self
+  where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.envs(vars);
+    self
+  }
+
+  pub fn env<K, V>(mut self, key: K, val: V) -> Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env(key, val);
+    self
+  }
+
+  pub fn env_remove<K>(mut self, key: K) -> Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env_remove(key);
+    self
+  }
+
+  pub fn stdin<T: Into<Stdio>>(mut self, cfg: T) -> Self {
+    self.cmd.stdin(cfg);
+    self
+  }
+
+  pub fn stdout<T: Into<Stdio>>(mut self, cfg: T) -> Self {
+    self.cmd.stdout(cfg);
+    self
+  }
+
+  pub fn stderr<T: Into<Stdio>>(mut self, cfg: T) -> Self {
+    self.cmd.stderr(cfg);
+    self
+  }
+
+  pub fn current_dir<P: AsRef<Path>>(mut self, dir: P) -> Self {
+    self.cmd.current_dir(dir);
+    self
+  }
+
+  pub fn output(mut self) -> Result<std::process::Output, std::io::Error> {
+    self.cmd.output()
+  }
+
+  pub fn status(mut self) -> Result<std::process::ExitStatus, std::io::Error> {
+    self.cmd.status()
+  }
+
+  pub fn stdin_piped(self) -> Self {
+    self.stdin(std::process::Stdio::piped())
+  }
+
+  pub fn stdout_piped(self) -> Self {
+    self.stdout(std::process::Stdio::piped())
+  }
+
+  pub fn stderr_piped(self) -> Self {
+    self.stderr(std::process::Stdio::piped())
+  }
+
+  pub fn piped_output(self) -> Self {
+    self.stdout_piped().stderr_piped()
+  }
+
+  pub fn set_stdin_text(mut self, text: impl AsRef<str>) -> Self {
+    self.stdin_text = Some(text.as_ref().to_string());
+    self.stdin_piped()
+  }
+
+  pub fn set_testdata_dir(mut self, dir: impl AsRef<Path>) -> Self {
+    self.testdata_dir = Some(PathRef::new(dir));
+    self
+  }
+
+  pub fn split_output(mut self) -> Self {
+    self.split_output = true;
+    self
+  }
+
+  pub fn spawn(mut self) -> Result<DenoChild, std::io::Error> {
+    let mut child = DenoChild {
+      _deno_dir: self.deno_dir.clone(),
+      child: self.cmd.spawn()?,
+    };
+
+    if let Some(input) = &self.stdin_text {
+      let mut p_stdin = child.stdin.take().unwrap();
+      write!(p_stdin, "{input}").unwrap();
+    }
+
+    Ok(child)
+  }
+
+  pub fn run(self) -> TestCommandOutput {
+    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
+      let mut output = String::new();
+      pipe.read_to_string(&mut output).unwrap();
+      output
+    }
+
+    fn sanitize_output(text: String, args: &[OsString]) -> String {
+      let mut text = strip_ansi_codes(&text).to_string();
+      // deno test's output capturing flushes with a zero-width space in order to
+      // synchronize the output pipes. Occasionally this zero width space
+      // might end up in the output so strip it from the output comparison here.
+      if args.first().and_then(|s| s.to_str()) == Some("test") {
+        text = text.replace('\u{200B}', "");
+      }
+      text
+    }
+
+    let mut command = self.cmd;
+    let args = command
+      .get_args()
+      .map(ToOwned::to_owned)
+      .collect::<Vec<_>>();
     let (combined_reader, std_out_err_handle) = if self.split_output {
       let (stdout_reader, stdout_writer) = pipe().unwrap();
       let (stderr_reader, stderr_writer) = pipe().unwrap();
@@ -465,7 +640,7 @@ impl TestCommandBuilder {
 
     let mut process = command.spawn().expect("Failed spawning command");
 
-    if let Some(input) = &self.stdin {
+    if let Some(input) = &self.stdin_text {
       let mut p_stdin = process.stdin.take().unwrap();
       write!(p_stdin, "{input}").unwrap();
     }
@@ -500,13 +675,40 @@ impl TestCommandBuilder {
       signal,
       combined,
       std_out_err,
-      testdata_dir: self.context.testdata_dir.clone(),
+      testdata_dir: self.testdata_dir.unwrap_or_else(testdata_path),
       asserted_exit_code: RefCell::new(false),
       asserted_stdout: RefCell::new(false),
       asserted_stderr: RefCell::new(false),
       asserted_combined: RefCell::new(false),
-      _test_context: self.context.clone(),
+      _temp_dir: self.deno_dir.clone(),
     }
+  }
+}
+
+pub struct DenoChild {
+  // keep alive for the duration of the use of this struct
+  _deno_dir: TempDir,
+  child: Child,
+}
+
+impl Deref for DenoChild {
+  type Target = Child;
+  fn deref(&self) -> &Child {
+    &self.child
+  }
+}
+
+impl DerefMut for DenoChild {
+  fn deref_mut(&mut self) -> &mut Child {
+    &mut self.child
+  }
+}
+
+impl DenoChild {
+  pub fn wait_with_output(
+    self,
+  ) -> Result<std::process::Output, std::io::Error> {
+    self.child.wait_with_output()
   }
 }
 
@@ -521,7 +723,7 @@ pub struct TestCommandOutput {
   asserted_combined: RefCell<bool>,
   asserted_exit_code: RefCell<bool>,
   // keep alive for the duration of the output reference
-  _test_context: TestContext,
+  _temp_dir: TempDir,
 }
 
 impl Drop for TestCommandOutput {
@@ -572,7 +774,17 @@ impl TestCommandOutput {
 
   pub fn skip_output_check(&self) -> &Self {
     *self.asserted_combined.borrow_mut() = true;
+    self.skip_stdout_check();
+    self.skip_stderr_check();
+    self
+  }
+
+  pub fn skip_stdout_check(&self) -> &Self {
     *self.asserted_stdout.borrow_mut() = true;
+    self
+  }
+
+  pub fn skip_stderr_check(&self) -> &Self {
     *self.asserted_stderr.borrow_mut() = true;
     self
   }

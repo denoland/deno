@@ -1456,7 +1456,7 @@ impl Config {
   pub fn new() -> Self {
     Self {
       client_capabilities: ClientCapabilities::default(),
-      /// Root provided by the initialization parameters.
+      // Root provided by the initialization parameters.
       settings: Default::default(),
       workspace_folders: vec![],
       tree: Default::default(),
