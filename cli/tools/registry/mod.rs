@@ -35,7 +35,6 @@ struct OidcConfig {
 
 enum AuthMethod {
   Interactive,
-  Token(String),
   Oidc(OidcConfig),
 }
 
@@ -305,7 +304,6 @@ async fn perform_publish(
         }
       }
     }
-    AuthMethod::Token(token) => format!("Bearer {}", token),
     AuthMethod::Oidc(oidc_config) => {
       let permissions = packages
         .iter()
@@ -454,16 +452,13 @@ pub async fn publish(
   _flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let auth_method = match publish_flags.token {
-    Some(token) => AuthMethod::Token(token),
-    None => match get_gh_oidc_env_vars() {
-      Some(Ok((url, token))) => AuthMethod::Oidc(OidcConfig { url, token }),
-      Some(Err(err)) => return Err(err),
-      None if std::io::stdin().is_terminal() => AuthMethod::Interactive,
-      None => {
-        bail!("No means to authenticate. Please pass a token to `--token`.")
-      }
-    },
+  let auth_method = match get_gh_oidc_env_vars() {
+    Some(Ok((url, token))) => AuthMethod::Oidc(OidcConfig { url, token }),
+    Some(Err(err)) => return Err(err),
+    None if std::io::stdin().is_terminal() => AuthMethod::Interactive,
+    None => {
+      bail!("No means to authenticate. Please pass a token to `--token`.")
+    }
   };
 
   let initial_cwd =

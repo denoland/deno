@@ -282,7 +282,6 @@ pub struct VendorFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
   pub directory: PathBuf,
-  pub token: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2318,21 +2317,17 @@ fn publish_subcommand() -> Command {
     .hide(true)
     .about("Publish a package to the Deno registry")
     // TODO: .long_about()
-    .defer(|cmd| cmd
-    .arg(
-      Arg::new("directory")
-        .help("The directory to the package, or workspace of packages to publish")
-        .value_parser(value_parser!(PathBuf))
-        .value_hint(ValueHint::DirPath),
-    )
-    .arg(
-      Arg::new("token")
-        .long("token")
-        .help(
-          "Specify a token to use when authenting to the registry during publish",
-        )
-        .value_name("TOKEN")
-      ))
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("directory")
+          .help(
+            "The directory to the package, or workspace of packages to publish",
+          )
+          .value_parser(value_parser!(PathBuf))
+          .value_hint(ValueHint::DirPath)
+          .required(true),
+      )
+    })
 }
 
 fn compile_args(app: Command) -> Command {
@@ -3758,7 +3753,6 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     directory: matches.remove_one::<PathBuf>("directory").unwrap(),
-    token: matches.remove_one::<String>("token"),
   });
 }
 
