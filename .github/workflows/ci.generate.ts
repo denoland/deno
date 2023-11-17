@@ -508,6 +508,13 @@ const ci = {
           ...sysRootStep,
         },
         {
+          name: "Install aarch64 lld",
+          run: [
+            "./tools/install_prebuilt.js ld64.lld",
+            "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+          ]
+        },
+        {
           name: "Log versions",
           run: [
             "python --version",
