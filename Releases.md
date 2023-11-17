@@ -8,12 +8,10 @@ https://github.com/denoland/deno_install
 
 ### 1.38.2 / 2023.11.17
 
-- Revert "fix(ext/console): fix inspecting iterators error. (#20720)" (#21191)
 - feat(ext/web): add `AbortSignal.any()` (#21087)
 - feat(lsp): upgrade check on init and notification (#21105)
 - fix(cli): Allow executable name start with digit (#21214)
 - fix(doc): issue discovering re-exports of re-exports sometimes (#21223)
-- fix(ext/console): fix inspecting iterators error. (#20720)
 - fix(ext/node): Re-enable alloc max size test (#21059)
 - fix(ext/node): add APIs perf_hook.performance (#21192)
 - fix(ext/node): implement process.geteuid (#21151)
