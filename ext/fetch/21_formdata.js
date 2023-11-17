@@ -26,6 +26,7 @@ const {
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
+  ObjectFromEntries,
   ObjectPrototypeIsPrototypeOf,
   SafeMap,
   SafeRegExp,
@@ -266,12 +267,9 @@ class FormData {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, this)) {
-      const formData = {};
-      // deno-lint-ignore prefer-primordials
-      for (const data of this) {
-        formData[data[0]] = data[1];
-      }
-      return `${this.constructor.name} ${inspect(formData, inspectOptions)}`;
+      return `${this.constructor.name} ${
+        inspect(ObjectFromEntries(this), inspectOptions)
+      }`;
     } else {
       return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
     }
