@@ -52,6 +52,8 @@ jobs:
         shell: bash
     strategy:
       matrix:
+        exclude:
+          - skip: true
         include:
           - os: macos-12
             job: test
@@ -60,7 +62,6 @@ jobs:
           - os: macos-12
             job: test
             profile: release
-            skip_pr: true
             skip: '${{ github.event_name == ''pull_request'' }}'
             runner: '${{ (github.event_name == ''pull_request'') && ''ubuntu-22.04'' || ''macos-12'' }}'
             os_display_name: macos-x86_64
@@ -77,7 +78,6 @@ jobs:
           - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
-            skip_pr: true
             skip: '${{ github.event_name == ''pull_request'' }}'
             runner: '${{ (github.event_name == ''pull_request'') && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             os_display_name: windows-x86_64
@@ -91,7 +91,6 @@ jobs:
             job: bench
             profile: release
             use_sysroot: true
-            skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
             skip: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
             runner: '${{ (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'')) && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             os_display_name: ubuntu-x86_64

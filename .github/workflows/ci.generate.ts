@@ -271,6 +271,7 @@ function handleMatrixItems(items: {
         item.skip = "${{ github.event_name == 'pull_request' && " +
           removeSurroundingExpression(item.skip_pr.toString()) + " }}";
       }
+      delete item.skip_pr;
     }
 
     if (typeof item.skip === "string") {
@@ -351,6 +352,9 @@ const ci = {
       },
       strategy: {
         matrix: {
+          exclude: [{
+            skip: true
+          }],
           include: handleMatrixItems([{
             os: Runners.macos,
             job: "test",
