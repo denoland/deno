@@ -2135,7 +2135,7 @@ fn top_level_install_package_json_explicit_opt_in() {
   let output = test_context
     .new_command()
     .args("run -")
-    .stdin("console.log(5)")
+    .stdin_text("console.log(5)")
     .run();
   output.assert_matches_text(concat!(
     "Initialize @denotest/esm-basic@1.0.0\n",
