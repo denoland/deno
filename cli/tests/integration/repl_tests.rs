@@ -1064,6 +1064,7 @@ fn package_json_uncached_no_error() {
     console.write_line("getValue()");
     console.expect("42")
   });
+  assert!(temp_dir.path().join("node_modules").exists());
 }
 
 #[test]
