@@ -3635,8 +3635,12 @@ function isProhibitedForTrailer(key: string): boolean {
   return s.has(key.toLowerCase());
 }
 
+// TODO(mmastrac): curl on Windows CI stopped supporting --http2?
 Deno.test(
-  { permissions: { net: true, run: true } },
+  {
+    permissions: { net: true, run: true },
+    ignore: Deno.build.os === "windows",
+  },
   async function httpServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
@@ -3705,8 +3709,16 @@ Deno.test(
   },
 );
 
+// TODO(mmastrac): curl on CI stopped supporting --http2?
 Deno.test(
-  { permissions: { net: true, run: true, read: true } },
+  {
+    permissions: {
+      net: true,
+      run: true,
+      read: true,
+    },
+    ignore: Deno.build.os === "windows",
+  },
   async function httpsServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
