@@ -982,6 +982,7 @@ const ci = {
               "target/release/deno-x86_64-pc-windows-msvc.zip",
               "target/release/deno-x86_64-unknown-linux-gnu.zip",
               "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/deno-aarch64-apple-darwin.zip",
               "target/release/deno_src.tar.gz",
               "target/release/lib.deno.d.ts",
             ].join("\n"),
