@@ -476,7 +476,7 @@ const createFfiToken = (path) => {
     }
 
     static create(value) {
-      return ops.op_ffi_token_ptr_create(rid, ptr, value);
+      return ops.op_ffi_token_ptr_create(token, value);
     }
 
     static equals(pointer, other) {
@@ -485,22 +485,25 @@ const createFfiToken = (path) => {
       } else if (pointer === null || other === null) {
         return false;
       }
-      return ops.op_ffi_token_ptr_equals(rid, ptr, pointer);
+      return ops.op_ffi_token_ptr_equals(token, pointer, other);
     }
 
     static of(buffer) {
       let pointer;
       if (ArrayBufferIsView(buffer)) {
         if (buffer.length === 0) {
-          pointer = ops.op_ffi_token_ptr_of_exact(buffer);
+          pointer = ops.op_ffi_token_ptr_of_exact(token, buffer);
         } else {
-          pointer = ops.op_ffi_token_ptr_of(buffer);
+          pointer = ops.op_ffi_token_ptr_of(token, buffer);
         }
       } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
         if (buffer.length === 0) {
-          pointer = ops.op_ffi_token_ptr_of_exact(new Uint8Array(buffer));
+          pointer = ops.op_ffi_token_ptr_of_exact(
+            token,
+            new Uint8Array(buffer),
+          );
         } else {
-          pointer = ops.op_ffi_token_ptr_of(new Uint8Array(buffer));
+          pointer = ops.op_ffi_token_ptr_of(token, new Uint8Array(buffer));
         }
       } else {
         throw new TypeError(
@@ -514,7 +517,7 @@ const createFfiToken = (path) => {
     }
 
     static offset(pointer, offset) {
-      return ops.op_ffi_token_ptr_offset(token, rid, pointer, offset);
+      return ops.op_ffi_token_ptr_offset(token, pointer, offset);
     }
 
     static value(pointer) {
@@ -888,8 +891,7 @@ const createFfiToken = (path) => {
       }
       const { 0: cbRid, 1: cbPointer } = ops
         .op_ffi_token_unsafe_callback_create(
-          rid,
-          ptr,
+          token,
           definition,
           callback,
         );
