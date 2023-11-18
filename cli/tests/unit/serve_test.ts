@@ -2727,73 +2727,81 @@ Deno.test(
   },
 );
 
-for (const url of ["text", "file", "stream"]) {
-  // Ensure that we don't panic when the incoming TCP request was dropped
-  // https://github.com/denoland/deno/issues/20315 and that we correctly
-  // close/cancel the response
-  Deno.test({
-    permissions: { read: true, write: true, net: true },
-    name: `httpServerTcpCancellation_${url}`,
-    fn: async function () {
-      const ac = new AbortController();
-      const streamCancelled = url == "stream" ? deferred() : undefined;
-      const listeningPromise = deferred();
-      const waitForAbort = deferred();
-      const waitForRequest = deferred();
-      const server = Deno.serve({
-        port: servePort,
-        signal: ac.signal,
-        onListen: onListen(listeningPromise),
-        handler: async (req: Request) => {
-          let respBody = null;
-          if (req.url.includes("/text")) {
-            respBody = "text";
-          } else if (req.url.includes("/file")) {
-            respBody = (await makeTempFile(1024)).readable;
-          } else if (req.url.includes("/stream")) {
-            respBody = new ReadableStream({
-              start(controller) {
-                controller.enqueue(new Uint8Array([1]));
-              },
-              cancel(reason) {
-                streamCancelled!.resolve(reason);
-              },
-            });
-          } else {
-            fail();
-          }
-          waitForRequest.resolve();
-          await waitForAbort;
-          // Allocate the request body
-          req.body;
-          return new Response(respBody);
-        },
-      });
+for (const delay of ["delay", "nodelay"]) {
+  for (const url of ["text", "file", "stream"]) {
+    // Ensure that we don't panic when the incoming TCP request was dropped
+    // https://github.com/denoland/deno/issues/20315 and that we correctly
+    // close/cancel the response
+    Deno.test({
+      permissions: { read: true, write: true, net: true },
+      name: `httpServerTcpCancellation_${url}_${delay}`,
+      fn: async function () {
+        const ac = new AbortController();
+        const streamCancelled = url == "stream" ? deferred() : undefined;
+        const listeningPromise = deferred();
+        const waitForAbort = deferred();
+        const waitForRequest = deferred();
+        const server = Deno.serve({
+          port: servePort,
+          signal: ac.signal,
+          onListen: onListen(listeningPromise),
+          handler: async (req: Request) => {
+            let respBody = null;
+            if (req.url.includes("/text")) {
+              respBody = "text";
+            } else if (req.url.includes("/file")) {
+              respBody = (await makeTempFile(1024)).readable;
+            } else if (req.url.includes("/stream")) {
+              respBody = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new Uint8Array([1]));
+                },
+                cancel(reason) {
+                  streamCancelled!.resolve(reason);
+                },
+              });
+            } else {
+              fail();
+            }
+            waitForRequest.resolve();
+            await waitForAbort;
 
-      await listeningPromise;
+            if (delay == "delay") {
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+            // Allocate the request body
+            req.body;
+            return new Response(respBody);
+          },
+        });
 
-      // Create a POST request and drop it once the server has received it
-      const conn = await Deno.connect({ port: servePort });
-      const writer = conn.writable.getWriter();
-      await writer.write(new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`));
-      await waitForRequest;
-      await writer.close();
+        await listeningPromise;
 
-      waitForAbort.resolve();
+        // Create a POST request and drop it once the server has received it
+        const conn = await Deno.connect({ port: servePort });
+        const writer = conn.writable.getWriter();
+        await writer.write(
+          new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`),
+        );
+        await waitForRequest;
+        await writer.close();
 
-      // Wait for cancellation before we shut the server down
-      if (streamCancelled !== undefined) {
-        await streamCancelled;
-      }
+        waitForAbort.resolve();
 
-      // Since the handler has a chance of creating resources or running async
-      // ops, we need to use a graceful shutdown here to ensure they have fully
-      // drained.
-      await server.shutdown();
+        // Wait for cancellation before we shut the server down
+        if (streamCancelled !== undefined) {
+          await streamCancelled;
+        }
 
-      await server.finished;
-    },
-  });
+        // Since the handler has a chance of creating resources or running async
+        // ops, we need to use a graceful shutdown here to ensure they have fully
+        // drained.
+        await server.shutdown();
+
+        await server.finished;
+      },
+    });
+  }
 }
 
 Deno.test(
