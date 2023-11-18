@@ -1062,9 +1062,10 @@ fn package_json_uncached_no_error() {
     console.write_line("setValue(12 + 30);");
     console.expect("undefined");
     console.write_line("getValue()");
-    console.expect("42")
+    console.expect("42");
+
+    assert!(temp_dir.path().join("node_modules").exists());
   });
-  assert!(temp_dir.path().join("node_modules").exists());
 }
 
 #[test]
