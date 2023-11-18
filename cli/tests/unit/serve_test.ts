@@ -3716,8 +3716,8 @@ Deno.test(
       net: true,
       run: true,
       read: true,
-      ignore: Deno.build.os === "windows",
     },
+    ignore: Deno.build.os === "windows",
   },
   async function httpsServeCurlH2C() {
     const ac = new AbortController();
