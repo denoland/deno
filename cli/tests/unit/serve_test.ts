@@ -3635,27 +3635,31 @@ function isProhibitedForTrailer(key: string): boolean {
   return s.has(key.toLowerCase());
 }
 
+// TODO(mmastrac): curl on Windows CI stopped supporting --http2?
 Deno.test(
-  { permissions: { net: true, run: true } },
+  {
+    permissions: { net: true, run: true },
+    ignore: Deno.build.os === "windows",
+  },
   async function httpServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
-      { signal: ac.signal },
+      { port: servePort, signal: ac.signal },
       () => new Response("hello world!"),
     );
 
     assertEquals(
       "hello world!",
-      await curlRequest(["http://localhost:8000/path"]),
+      await curlRequest([`http://localhost:${servePort}/path`]),
     );
     assertEquals(
       "hello world!",
-      await curlRequest(["http://localhost:8000/path", "--http2"]),
+      await curlRequest([`http://localhost:${servePort}/path`, "--http2"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "http://localhost:8000/path",
+        `http://localhost:${servePort}/path`,
         "--http2",
         "--http2-prior-knowledge",
       ]),
@@ -3705,13 +3709,22 @@ Deno.test(
   },
 );
 
+// TODO(mmastrac): curl on CI stopped supporting --http2?
 Deno.test(
-  { permissions: { net: true, run: true, read: true } },
+  {
+    permissions: {
+      net: true,
+      run: true,
+      read: true,
+    },
+    ignore: Deno.build.os === "windows",
+  },
   async function httpsServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
       {
         signal: ac.signal,
+        port: servePort,
         cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
         key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
       },
@@ -3720,16 +3733,20 @@ Deno.test(
 
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:8000/path", "-k"]),
-    );
-    assertEquals(
-      "hello world!",
-      await curlRequest(["https://localhost:8000/path", "-k", "--http2"]),
+      await curlRequest([`https://localhost:${servePort}/path`, "-k"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "https://localhost:8000/path",
+        `https://localhost:${servePort}/path`,
+        "-k",
+        "--http2",
+      ]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        `https://localhost:${servePort}/path`,
         "-k",
         "--http2",
         "--http2-prior-knowledge",
@@ -3742,12 +3759,15 @@ Deno.test(
 );
 
 async function curlRequest(args: string[]) {
-  const { success, stdout } = await new Deno.Command("curl", {
+  const { success, stdout, stderr } = await new Deno.Command("curl", {
     args,
     stdout: "piped",
-    stderr: "null",
+    stderr: "piped",
   }).output();
-  assert(success);
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
+  );
   return new TextDecoder().decode(stdout);
 }
 
@@ -3757,7 +3777,10 @@ async function curlRequestWithStdErr(args: string[]) {
     stdout: "piped",
     stderr: "piped",
   }).output();
-  assert(success);
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
+  );
   return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
 }
 
