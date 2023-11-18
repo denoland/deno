@@ -716,6 +716,8 @@ pub async fn op_http_set_response_body_resource(
     }
   };
 
+  *http.needs_close_after_finish() = true;
+
   set_response(
     http.clone(),
     resource.size_hint().1.map(|s| s as usize),
@@ -726,7 +728,6 @@ pub async fn op_http_set_response_body_resource(
     },
   );
 
-  *http.needs_close_after_finish() = true;
   http.response_body_finished().await;
   Ok(())
 }
