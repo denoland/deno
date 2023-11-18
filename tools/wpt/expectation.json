@@ -3197,12 +3197,8 @@
       "construct-byob-request.any.worker.html": true,
       "general.any.html": true,
       "general.any.worker.html": true,
-      "non-transferable-buffers.any.html": [
-        "ReadableStream with byte source: fill() with a non-transferable buffer"
-      ],
-      "non-transferable-buffers.any.worker.html": [
-        "ReadableStream with byte source: fill() with a non-transferable buffer"
-      ],
+      "non-transferable-buffers.any.html": true,
+      "non-transferable-buffers.any.worker.html": true,
       "tee.any.html": true,
       "tee.any.worker.html": true,
       "respond-after-enqueue.any.html": true,
