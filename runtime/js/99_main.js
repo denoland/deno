@@ -241,7 +241,7 @@ function opMainModule() {
 const opArgs = memoizeLazy(() => ops.op_bootstrap_args());
 const opPid = memoizeLazy(() => ops.op_bootstrap_pid());
 const opPpid = memoizeLazy(() => ops.op_ppid());
-setNoColorFn(() => ops.op_bootstrap_no_color());
+setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
 
 function formatException(error) {
   if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
@@ -450,6 +450,13 @@ const finalDenoNs = {
   ...denoNs,
 };
 
+const {
+  denoVersion,
+  tsVersion,
+  v8Version,
+  target,
+} = ops.op_snapshot_options();
+
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
@@ -457,16 +464,12 @@ function bootstrapMainRuntime(runtimeOptions) {
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: denoVersion,
-    1: location_,
-    2: tsVersion,
-    3: unstableFlag,
-    4: unstableFeatures,
-    5: target,
-    6: v8Version,
-    7: inspectFlag,
-    9: hasNodeModulesDir,
-    10: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    3: inspectFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -530,7 +533,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
     ppid: util.getterOnly(opPpid),
-    noColor: util.getterOnly(getNoColor),
+    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
     mainModule: util.getterOnly(opMainModule),
   });
@@ -583,16 +586,12 @@ function bootstrapWorkerRuntime(
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: denoVersion,
-    1: location_,
-    2: tsVersion,
-    3: unstableFlag,
-    4: unstableFeatures,
-    5: target,
-    6: v8Version,
-    8: enableTestingFeaturesFlag,
-    9: hasNodeModulesDir,
-    10: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    4: enableTestingFeaturesFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -666,7 +665,7 @@ function bootstrapWorkerRuntime(
   }
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
-    noColor: util.getterOnly(getNoColor),
+    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
     args: util.getterOnly(opArgs),
   });
   // Setup `Deno` global - we're actually overriding already

@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::io::BufRead;
 use std::io::BufReader;
-use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 use test_util as util;
@@ -112,8 +111,7 @@ util::unit_test_factory!(
 fn js_unit_test(test: String) {
   let _g = util::http_server();
 
-  let mut deno = util::deno_cmd();
-  let deno = deno
+  let deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
@@ -130,8 +128,7 @@ fn js_unit_test(test: String) {
   let mut deno = deno
     .arg("-A")
     .arg(util::tests_path().join("unit").join(format!("{test}.ts")))
-    .stderr(Stdio::piped())
-    .stdout(Stdio::piped())
+    .piped_output()
     .spawn()
     .expect("failed to spawn script");
 

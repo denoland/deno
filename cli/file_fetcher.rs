@@ -732,8 +732,11 @@ mod tests {
   use deno_core::url::Url;
   use deno_runtime::deno_fetch::create_http_client;
   use deno_runtime::deno_fetch::CreateHttpClientOptions;
+  use deno_runtime::deno_tls::rustls::RootCertStore;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
+  use std::collections::hash_map::RandomState;
+  use std::collections::HashSet;
   use std::fs::read;
   use test_util::TempDir;
 
@@ -2011,15 +2014,94 @@ mod tests {
     }
   }
 
+  static PUBLIC_HTTPS_URLS: &[&str] = &[
+    "https://deno.com/",
+    "https://example.com/",
+    "https://github.com/",
+    "https://www.w3.org/",
+  ];
+
+  /// This test depends on external servers, so we need to be careful to avoid mistaking an offline machine with a
+  /// test failure.
   #[tokio::test]
   async fn test_fetch_with_default_certificate_store() {
-    let _http_server_guard = test_util::http_server();
+    let urls: HashSet<_, RandomState> =
+      HashSet::from_iter(PUBLIC_HTTPS_URLS.iter());
+
+    // Rely on the randomization of hashset iteration
+    for url in urls {
+      // Relies on external http server with a valid mozilla root CA cert.
+      let url = Url::parse(url).unwrap();
+      eprintln!("Attempting to fetch {url}...");
+
+      let client = HttpClient::from_client(
+        create_http_client(
+          version::get_user_agent(),
+          CreateHttpClientOptions::default(),
+        )
+        .unwrap(),
+      );
+
+      let result = fetch_once(
+        &client,
+        FetchOnceArgs {
+          url,
+          maybe_accept: None,
+          maybe_etag: None,
+          maybe_auth_token: None,
+          maybe_progress_guard: None,
+        },
+      )
+      .await;
+
+      match result {
+        Err(_) => {
+          eprintln!("Fetch error: {result:?}");
+          continue;
+        }
+        Ok(
+          FetchOnceResult::Code(..)
+          | FetchOnceResult::NotModified
+          | FetchOnceResult::Redirect(..),
+        ) => return,
+        Ok(
+          FetchOnceResult::RequestError(_) | FetchOnceResult::ServerError(_),
+        ) => {
+          eprintln!("HTTP error: {result:?}");
+          continue;
+        }
+      };
+    }
+
+    // Use 1.1.1.1 and 8.8.8.8 as our last-ditch internet check
+    if std::net::TcpStream::connect("8.8.8.8:80").is_err()
+      && std::net::TcpStream::connect("1.1.1.1:80").is_err()
+    {
+      return;
+    }
+
+    panic!("None of the expected public URLs were available but internet appears to be available");
+  }
+
+  #[tokio::test]
+  async fn test_fetch_with_empty_certificate_store() {
+    let root_cert_store = RootCertStore::empty();
+    let urls: HashSet<_, RandomState> =
+      HashSet::from_iter(PUBLIC_HTTPS_URLS.iter());
+
+    // Rely on the randomization of hashset iteration
+    let url = urls.into_iter().next().unwrap();
     // Relies on external http server with a valid mozilla root CA cert.
-    let url = Url::parse("https://deno.land/x").unwrap();
+    let url = Url::parse(url).unwrap();
+    eprintln!("Attempting to fetch {url}...");
+
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        CreateHttpClientOptions::default(),
+        CreateHttpClientOptions {
+          root_cert_store: Some(root_cert_store),
+          ..Default::default()
+        },
       )
       .unwrap(),
     );
@@ -2036,55 +2118,25 @@ mod tests {
     )
     .await;
 
-    println!("{result:?}");
-    if let Ok(FetchOnceResult::Code(body, _headers)) = result {
-      assert!(!body.is_empty());
-    } else {
-      panic!();
-    }
-  }
-
-  // TODO(@justinmchase): Windows should verify certs too and fail to make this request without ca certs
-  #[cfg(not(windows))]
-  #[tokio::test]
-  #[ignore] // https://github.com/denoland/deno/issues/12561
-  async fn test_fetch_with_empty_certificate_store() {
-    use deno_runtime::deno_tls::rustls::RootCertStore;
-    use deno_runtime::deno_tls::RootCertStoreProvider;
-
-    struct ValueRootCertStoreProvider(RootCertStore);
-
-    impl RootCertStoreProvider for ValueRootCertStoreProvider {
-      fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
-        Ok(&self.0)
+    match result {
+      Err(_) => {
+        eprintln!("Fetch error (expected): {result:?}");
+        return;
       }
-    }
-
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server with a valid mozilla root CA cert.
-    let url = Url::parse("https://deno.land").unwrap();
-    let client = HttpClient::new(
-      // no certs loaded at all
-      Some(Arc::new(ValueRootCertStoreProvider(RootCertStore::empty()))),
-      None,
-    );
-
-    let result = fetch_once(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-
-    if let Ok(FetchOnceResult::Code(_body, _headers)) = result {
-      // This test is expected to fail since to CA certs have been loaded
-      panic!();
-    }
+      Ok(
+        FetchOnceResult::Code(..)
+        | FetchOnceResult::NotModified
+        | FetchOnceResult::Redirect(..),
+      ) => {
+        panic!("Should not have successfully fetched a URL");
+      }
+      Ok(
+        FetchOnceResult::RequestError(_) | FetchOnceResult::ServerError(_),
+      ) => {
+        eprintln!("HTTP error (expected): {result:?}");
+        return;
+      }
+    };
   }
 
   #[tokio::test]
