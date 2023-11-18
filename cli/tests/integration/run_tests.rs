@@ -2089,10 +2089,7 @@ console.log("executing javascript");
 "#;
 
   let mut p = util::deno_cmd()
-    .arg("run")
-    .args(["--ext", "js"])
-    .arg("--check")
-    .arg("-")
+    .args("run --ext js --check -")
     .stdin(std::process::Stdio::piped())
     .stdout_piped()
     .spawn()

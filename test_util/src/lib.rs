@@ -84,7 +84,6 @@ pub mod pty;
 
 pub use builders::DenoChild;
 pub use builders::DenoCmd;
-pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
@@ -2099,7 +2098,7 @@ pub fn run_and_collect_output_with_args(
   need_http_server: bool,
 ) -> (String, String) {
   let mut deno_process_builder = deno_cmd()
-    .args(args)
+    .args_vec(args)
     .current_dir(testdata_path())
     .stdin(Stdio::piped())
     .piped_output();
@@ -2145,7 +2144,7 @@ pub fn deno_cmd() -> DenoCmd {
 }
 
 pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
-  DenoCmd::new_raw(deno_dir.clone())
+  DenoCmd::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
 }
@@ -2224,7 +2223,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder = command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
-      command_builder = command_builder.stdin(input);
+      command_builder = command_builder.stdin_text(input);
     }
     for (key, value) in &self.envs {
       command_builder = command_builder.env(key, value);
@@ -2233,7 +2232,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder = command_builder.env_clear();
     }
     if let Some(cwd) = &self.cwd {
-      command_builder = command_builder.cwd(cwd);
+      command_builder = command_builder.current_dir(cwd);
     }
 
     command_builder.run()

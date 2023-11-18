@@ -706,7 +706,7 @@ fn dynamic_import_unanalyzable() {
 
   context
     .new_command()
-    .cwd(util::root_path().join("cli"))
+    .current_dir(util::root_path().join("cli"))
     .name(&exe)
     .env("NO_COLOR", "")
     .run()

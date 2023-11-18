@@ -198,12 +198,10 @@ impl TestContext {
     &self.temp_dir
   }
 
-  pub fn new_command(&self) -> TestCommandBuilder {
-    TestCommandBuilder {
-      cmd: DenoCmd::new_raw(self.deno_dir.clone()),
-    }
-    .envs(self.envs.clone())
-    .cwd(&self.cwd)
+  pub fn new_command(&self) -> DenoCmd {
+    DenoCmd::new(self.deno_dir.clone())
+      .envs(self.envs.clone())
+      .current_dir(&self.cwd)
   }
 
   pub fn new_lsp_command(&self) -> LspClientBuilder {
@@ -219,89 +217,6 @@ impl TestContext {
       .args(args)
       .run()
       .skip_output_check();
-  }
-}
-
-pub struct TestCommandBuilder {
-  cmd: DenoCmd,
-}
-
-impl TestCommandBuilder {
-  pub fn name(mut self, name: impl AsRef<OsStr>) -> Self {
-    self.cmd = self.cmd.name(name);
-    self
-  }
-
-  pub fn args(mut self, text: impl AsRef<str>) -> Self {
-    self.cmd = self.cmd.args_text(text);
-    self
-  }
-
-  pub fn args_vec<I, S>(mut self, args: I) -> Self
-  where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd = self.cmd.args(args);
-    self
-  }
-
-  pub fn stdin(mut self, text: impl AsRef<str>) -> Self {
-    self.cmd = self.cmd.stdin_text(text);
-    self
-  }
-
-  /// Splits the output into stdout and stderr rather than having them combined.
-  pub fn split_output(mut self) -> Self {
-    self.cmd = self.cmd.split_output();
-    self
-  }
-
-  pub fn env(
-    mut self,
-    key: impl AsRef<OsStr>,
-    value: impl AsRef<OsStr>,
-  ) -> Self {
-    self.cmd = self.cmd.env(key, value);
-    self
-  }
-
-  pub fn env_remove(mut self, key: impl AsRef<OsStr>) -> Self {
-    self.cmd = self.cmd.env_remove(key);
-    self
-  }
-
-  pub fn envs<I, K, V>(mut self, vars: I) -> Self
-  where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<std::ffi::OsStr>,
-    V: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd = self.cmd.envs(vars);
-    self
-  }
-
-  pub fn env_clear(mut self) -> Self {
-    self.cmd = self.cmd.env_clear();
-    self
-  }
-
-  pub fn cwd(mut self, cwd: impl AsRef<OsStr>) -> Self {
-    self.cmd = self.cmd.current_dir(cwd);
-    self
-  }
-
-  pub fn with_pty(&self, action: impl FnMut(Pty)) {
-    self.cmd.with_pty(action)
-  }
-
-  #[track_caller]
-  pub fn run(&self) -> TestCommandOutput {
-    self.cmd.run()
-  }
-
-  pub fn spawn_with_piped_output(&self) -> DenoChild {
-    self.cmd.spawn_with_piped_output()
   }
 }
 
@@ -357,7 +272,7 @@ pub struct DenoCmd {
 }
 
 impl DenoCmd {
-  pub fn new_raw(deno_dir: TempDir) -> Self {
+  pub fn new(deno_dir: TempDir) -> Self {
     Self {
       deno_dir,
       stdin: None,
@@ -380,12 +295,12 @@ impl DenoCmd {
     self
   }
 
-  pub fn args_text(mut self, args: impl AsRef<str>) -> Self {
+  pub fn args(mut self, args: impl AsRef<str>) -> Self {
     self.args_text = args.as_ref().to_string();
     self
   }
 
-  pub fn args<I, S>(mut self, args: I) -> Self
+  pub fn args_vec<I, S>(mut self, args: I) -> Self
   where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
