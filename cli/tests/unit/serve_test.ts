@@ -3708,7 +3708,7 @@ Deno.test(
 
 // TODO(mmastrac): curl on CI stopped supporting --http2? Or never did?
 Deno.test(
-  { permissions: { net: true, run: true, read: true } },
+  { permissions: { net: true, run: true, read: true, ignore: true } },
   async function httpsServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
