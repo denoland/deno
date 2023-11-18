@@ -28,7 +28,6 @@ const {
   BigInt64Array,
   BigUint64Array,
   Function,
-  FunctionPrototypeBind,
   ReflectHas,
   PromisePrototypeThen,
   MathMax,
@@ -476,6 +475,10 @@ const createFfiToken = (path) => {
       throw new TypeError("TokenizedPointer is not a constructor");
     }
 
+    static create(value) {
+      return ops.op_ffi_token_ptr_create(rid, ptr, value);
+    }
+
     static equals(pointer, other) {
       if (pointer === other) {
         return true;
@@ -485,12 +488,25 @@ const createFfiToken = (path) => {
       return ops.op_ffi_token_ptr_equals(rid, ptr, pointer);
     }
 
-    static create(value) {
-      return ops.op_ffi_token_ptr_create(rid, ptr, value);
-    }
-
     static of(buffer) {
-      const pointer = ops.op_ffi_token_ptr_of(rid, ptr, buffer);
+      let pointer;
+      if (ArrayBufferIsView(buffer)) {
+        if (buffer.length === 0) {
+          pointer = ops.op_ffi_token_ptr_of_exact(buffer);
+        } else {
+          pointer = ops.op_ffi_token_ptr_of(buffer);
+        }
+      } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
+        if (buffer.length === 0) {
+          pointer = ops.op_ffi_token_ptr_of_exact(new Uint8Array(buffer));
+        } else {
+          pointer = ops.op_ffi_token_ptr_of(new Uint8Array(buffer));
+        }
+      } else {
+        throw new TypeError(
+          "Expected ArrayBuffer, ArrayBufferView or UnsafeCallbackPrototype",
+        );
+      }
       if (pointer) {
         POINTER_TO_BUFFER_WEAK_MAP.set(pointer, buffer);
       }
@@ -498,12 +514,11 @@ const createFfiToken = (path) => {
     }
 
     static offset(pointer, offset) {
-      return ops.op_ffi_token_ptr_offset(rid, ptr, value, offset);
+      return ops.op_ffi_token_ptr_offset(token, rid, pointer, offset);
     }
 
     static value(pointer) {
-      ops.op_ffi_token_ptr_value(pointer, OUT_BUFFER);
-      return OUT_BUFFER_64[0];
+      return ops.op_ffi_token_ptr_value(token, pointer);
     }
   }
 
@@ -920,7 +935,7 @@ const createFfiToken = (path) => {
 
     close() {
       this.#refcount = 0;
-      ops.op_ffi_token_unsafe_callback_close(this.#rid);
+      ops.op_ffi_unsafe_callback_close(this.#rid);
       this.#pointer = null;
     }
   }
@@ -954,6 +969,7 @@ const createFfiToken = (path) => {
         if (this.#structSize === null) {
           return core.opAsync(
             "op_ffi_token_call_ptr_nonblocking",
+            token,
             this.#pointer,
             this.#definition,
             parameters,
@@ -963,6 +979,7 @@ const createFfiToken = (path) => {
           return PromisePrototypeThen(
             core.opAsync(
               "op_ffi_token_call_ptr_nonblocking",
+              token,
               this.#pointer,
               this.#definition,
               parameters,
@@ -974,6 +991,7 @@ const createFfiToken = (path) => {
       } else {
         if (this.#structSize === null) {
           return ops.op_ffi_token_call_ptr(
+            token,
             this.#pointer,
             this.#definition,
             parameters,
@@ -981,6 +999,7 @@ const createFfiToken = (path) => {
         } else {
           const buffer = new Uint8Array(this.#structSize);
           ops.op_ffi_token_call_ptr(
+            token,
             this.#pointer,
             this.#definition,
             parameters,
@@ -992,7 +1011,12 @@ const createFfiToken = (path) => {
     }
   }
 
+  const close = () => ops.op_ffi_token_close(token);
+  ObjectSetPrototypeOf(close, null);
+  ObjectFreeze(close);
+
   return {
+    close,
     TokenizedCallback,
     TokenizedFnPointer,
     TokenizedPointer,
