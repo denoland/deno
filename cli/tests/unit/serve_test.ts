@@ -3638,7 +3638,8 @@ function isProhibitedForTrailer(key: string): boolean {
 // TODO(mmastrac): curl on Windows CI stopped supporting --http2?
 Deno.test(
   {
-    permissions: { net: true, run: true, ignore: Deno.build.os === "windows" },
+    permissions: { net: true, run: true },
+    ignore: Deno.build.os === "windows",
   },
   async function httpServeCurlH2C() {
     const ac = new AbortController();
