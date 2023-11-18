@@ -203,7 +203,7 @@ function skipJobsIfPrAndMarkedSkip(
   return steps.map((s) =>
     withCondition(
       s,
-      "!(github.event_name == 'pull_request' && matrix.skip_pr)",
+      "!(matrix.skip)",
     )
   );
 }
@@ -239,6 +239,7 @@ function removeSurroundingExpression(text: string) {
 
 function handleMatrixItems(items: {
   skip_pr?: string | true;
+  skip?: string;
   os: string;
   profile?: string;
   job?: string;
@@ -260,12 +261,21 @@ function handleMatrixItems(items: {
   }
 
   return items.map((item) => {
-    // use a free "ubuntu" runner on jobs that are skipped on pull requests
+    // use a free "ubuntu" runner on jobs that are skipped
+
+    // skip_pr is shorthand for skip = github.event_name == 'pull_request'.
     if (item.skip_pr != null) {
-      let text = "${{ github.event_name == 'pull_request' && ";
-      if (typeof item.skip_pr === "string") {
-        text += removeSurroundingExpression(item.skip_pr.toString()) + " && ";
+      if (item.skip_pr === true) {
+        item.skip = "${{ github.event_name == 'pull_request' }}";
+      } else if (typeof item.skip_pr === "string") {
+        item.skip = "${{ github.event_name == 'pull_request' && " +
+          removeSurroundingExpression(item.skip_pr.toString()) + " }}";
       }
+    }
+
+    if (typeof item.skip === "string") {
+      let text = "${{ (";
+      text += removeSurroundingExpression(item.skip.toString()) + ") && ";
       text += `'${Runners.ubuntu}' || ${
         removeSurroundingExpression(item.os)
       } }}`;
@@ -273,6 +283,7 @@ function handleMatrixItems(items: {
       // deno-lint-ignore no-explicit-any
       (item as any).runner = text;
     }
+
     return {
       ...item,
       os_display_name: getOsDisplayName(item.os),
@@ -353,7 +364,9 @@ const ci = {
             os: Runners.macosArm,
             job: "test",
             profile: "release",
-            skip_pr: true,
+            // TODO(mmastrac): We don't want to run this M1 runner on every main commit because of the expense.
+            skip:
+              "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           }, {
             os: Runners.windows,
             job: "test",
