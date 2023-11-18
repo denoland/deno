@@ -95,7 +95,7 @@ fn fmt_stdin_syntax_error() {
     .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("-")
-    .set_stdin_text("import { example }")
+    .stdin_text("import { example }")
     .split_output()
     .run();
   assert!(output.stdout().is_empty());

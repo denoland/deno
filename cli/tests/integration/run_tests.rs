@@ -908,11 +908,7 @@ fn lock_no_declaration_files() {
     .run();
   output.assert_matches_file("lockfile/no_dts/main.cache.out");
   let lockfile = context.temp_dir().path().join("deno.lock");
-  lockfile.assert_matches_file(
-    context
-      .testdata_path()
-      .join("lockfile/no_dts/deno.lock.out"),
-  );
+  lockfile.assert_matches_file("lockfile/no_dts/deno.lock.out");
 }
 
 #[test]

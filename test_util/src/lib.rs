@@ -2145,12 +2145,9 @@ pub fn deno_cmd() -> DenoCmd {
 }
 
 pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
-  let exe_path = deno_exe_path();
-  assert!(exe_path.exists());
-  let mut cmd = Command::new(exe_path);
-  cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
-  DenoCmd::new_raw(deno_dir.clone(), cmd)
+  DenoCmd::new_raw(deno_dir.clone())
+    .env("DENO_DIR", deno_dir.path())
+    .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
 }
 
 pub fn run_powershell_script_file(
