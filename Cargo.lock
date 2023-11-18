@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.119.0"
+version = "0.120.0"
 dependencies = [
  "async-compression",
  "async-trait",
