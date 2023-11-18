@@ -189,17 +189,20 @@ class ImageData {
     return this.#colorSpace;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ImageDataPrototype, this),
-      keys: [
-        "data",
-        "width",
-        "height",
-        "colorSpace",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ImageDataPrototype, this),
+        keys: [
+          "data",
+          "width",
+          "height",
+          "colorSpace",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
