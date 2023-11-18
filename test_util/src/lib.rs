@@ -83,7 +83,7 @@ mod npm;
 pub mod pty;
 
 pub use builders::DenoChild;
-pub use builders::DenoCmd;
+pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
@@ -2138,13 +2138,13 @@ pub fn new_deno_dir() -> TempDir {
   TempDir::new()
 }
 
-pub fn deno_cmd() -> DenoCmd {
+pub fn deno_cmd() -> TestCommandBuilder {
   let deno_dir = new_deno_dir();
   deno_cmd_with_deno_dir(&deno_dir)
 }
 
-pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
-  DenoCmd::new(deno_dir.clone())
+pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
+  TestCommandBuilder::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
 }

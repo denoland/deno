@@ -198,8 +198,8 @@ impl TestContext {
     &self.temp_dir
   }
 
-  pub fn new_command(&self) -> DenoCmd {
-    DenoCmd::new(self.deno_dir.clone())
+  pub fn new_command(&self) -> TestCommandBuilder {
+    TestCommandBuilder::new(self.deno_dir.clone())
       .envs(self.envs.clone())
       .current_dir(&self.cwd)
   }
@@ -253,25 +253,23 @@ impl StdioContainer {
 }
 
 #[derive(Clone)]
-pub struct DenoCmd {
+pub struct TestCommandBuilder {
   deno_dir: TempDir,
   stdin: Option<StdioContainer>,
   stdout: Option<StdioContainer>,
   stderr: Option<StdioContainer>,
-
   stdin_text: Option<String>,
-  split_output: bool,
-
+  command_name: String,
   cwd: Option<PathRef>,
   envs: HashMap<String, String>,
   envs_remove: HashSet<String>,
   env_clear: bool,
-  command_name: String,
   args_text: String,
   args_vec: Vec<String>,
+  split_output: bool,
 }
 
-impl DenoCmd {
+impl TestCommandBuilder {
   pub fn new(deno_dir: TempDir) -> Self {
     Self {
       deno_dir,
