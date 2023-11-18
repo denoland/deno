@@ -52,8 +52,6 @@ jobs:
         shell: bash
     strategy:
       matrix:
-        exclude:
-          - skip: true
         include:
           - os: macos-12
             job: test

@@ -352,9 +352,6 @@ const ci = {
       },
       strategy: {
         matrix: {
-          exclude: [{
-            skip: true
-          }],
           include: handleMatrixItems([{
             os: Runners.macos,
             job: "test",
