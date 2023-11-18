@@ -104,7 +104,7 @@ where
   Ok(ptr.wrapping_offset(offset))
 }
 
-unsafe extern "C" fn noop_deleter_callback(
+pub(crate) unsafe extern "C" fn noop_deleter_callback(
   _data: *mut c_void,
   _byte_length: usize,
   _deleter_data: *mut c_void,

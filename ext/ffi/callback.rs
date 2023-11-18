@@ -533,20 +533,12 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op2]
-pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
+pub(crate) fn unsafe_callback_create<'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
-  #[serde] args: RegisterCallbackArgs,
+  args: RegisterCallbackArgs,
   cb: v8::Local<v8::Function>,
-) -> Result<v8::Local<'scope, v8::Value>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafeCallback");
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_partial(None)?;
-
+) -> Result<v8::Local<'scope, v8::Value>, AnyError> {
   let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();
     if value == 0 {
@@ -619,6 +611,23 @@ where
   let array_value: v8::Local<v8::Value> = array.into();
 
   Ok(array_value)
+}
+
+#[op2]
+pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
+  state: &mut OpState,
+  scope: &mut v8::HandleScope<'scope>,
+  #[serde] args: RegisterCallbackArgs,
+  cb: v8::Local<v8::Function>,
+) -> Result<v8::Local<'scope, v8::Value>, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafeCallback");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check_partial(None)?;
+
+  unsafe_callback_create(state, scope, args, cb)
 }
 
 #[op2]

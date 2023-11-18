@@ -272,26 +272,13 @@ fn ffi_call(
   }
 }
 
-#[op2(async)]
-#[serde]
-pub fn op_ffi_call_ptr_nonblocking<FP>(
+pub(crate) fn call_ptr_nonblocking(
   scope: &mut v8::HandleScope,
-  state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
-  #[serde] def: ForeignFunction,
+  def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
-  {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial(None)?;
-  };
-
+) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError> {
   let symbol = PtrSymbol::new(pointer, &def)?;
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
@@ -315,6 +302,29 @@ where
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
     Ok(result)
   })
+}
+
+#[op2(async)]
+#[serde]
+pub fn op_ffi_call_ptr_nonblocking<FP>(
+  scope: &mut v8::HandleScope,
+  state: Rc<RefCell<OpState>>,
+  pointer: *mut c_void,
+  #[serde] def: ForeignFunction,
+  parameters: v8::Local<v8::Array>,
+  out_buffer: Option<v8::Local<v8::TypedArray>>,
+) -> Result<impl Future<Output = Result<FfiValue, AnyError>>, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(&state.borrow(), "Deno.UnsafeFnPointer#call");
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_partial(None)?;
+  };
+
+  call_ptr_nonblocking(scope, pointer, def, parameters, out_buffer)
 }
 
 /// A non-blocking FFI call.
@@ -368,6 +378,30 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
+pub(crate) fn call_ptr(
+  scope: &mut v8::HandleScope,
+  pointer: *mut c_void,
+  def: ForeignFunction,
+  parameters: v8::Local<v8::Array>,
+  out_buffer: Option<v8::Local<v8::TypedArray>>,
+) -> Result<FfiValue, AnyError> {
+  let symbol = PtrSymbol::new(pointer, &def)?;
+  let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
+
+  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
+
+  let result = ffi_call(
+    call_args,
+    &symbol.cif,
+    symbol.ptr,
+    &def.parameters,
+    def.result.clone(),
+    out_buffer_ptr,
+  )?;
+  // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+  Ok(result)
+}
+
 #[op2]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
@@ -388,19 +422,5 @@ where
     permissions.check_partial(None)?;
   };
 
-  let symbol = PtrSymbol::new(pointer, &def)?;
-  let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
-
-  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
-
-  let result = ffi_call(
-    call_args,
-    &symbol.cif,
-    symbol.ptr,
-    &def.parameters,
-    def.result.clone(),
-    out_buffer_ptr,
-  )?;
-  // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-  Ok(result)
+  call_ptr(scope, pointer, def, parameters, out_buffer)
 }
