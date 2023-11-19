@@ -21,14 +21,12 @@ Deno.test({
       { type: "module", name: "tsWorker" },
     );
 
-    // deno-lint-ignore no-explicit-any
-    const deferred1 = Promise.withResolvers<any>();
+    const deferred1 = Promise.withResolvers<string>();
     jsWorker.onmessage = (e) => {
       deferred1.resolve(e.data);
     };
 
-    // deno-lint-ignore no-explicit-any
-    const deferred2 = Promise.withResolvers<any>();
+    const deferred2 = Promise.withResolvers<string>();
     tsWorker.onmessage = (e) => {
       deferred2.resolve(e.data);
     };
@@ -50,8 +48,7 @@ Deno.test({
       { type: "module", name: "tsWorker" },
     );
 
-    // deno-lint-ignore no-explicit-any
-    const { promise, resolve } = Promise.withResolvers<any>();
+    const { promise, resolve } = Promise.withResolvers<string>();
     tsWorker.onmessage = (e) => {
       resolve(e.data);
     };
@@ -710,8 +707,7 @@ Deno.test({
     };
 
     worker.postMessage("START");
-    // deno-lint-ignore no-explicit-any
-    const data = await promise as any;
+    const data = await promise;
     // self field should reference itself (circular ref)
     assert(data === data.self);
     // fields a and b refer to the same array
@@ -738,8 +734,7 @@ Deno.test({
       "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
-    // deno-lint-ignore no-explicit-any
-    const { promise, resolve } = Promise.withResolvers<any>();
+    const { promise, resolve } = Promise.withResolvers<string>();
     w.onmessage = (e) => {
       resolve(e.data);
     };
@@ -795,7 +790,7 @@ Deno.test({
       deferred1.resolve([e.data, e.ports.length]);
       const port1 = e.ports[0];
       port1.onmessage = (e) => {
-        deferred1.resolve(e.data);
+        deferred2.resolve(e.data);
         port1.close();
         worker.postMessage("3", [channel.port1]);
       };
