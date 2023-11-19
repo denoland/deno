@@ -1,7 +1,71 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 const core = globalThis.Deno.core;
-const ops = core.ops;
+const {
+  op_ffi_buf_copy_into,
+  op_ffi_call_ptr,
+  op_ffi_create_token,
+  op_ffi_cstr_read,
+  op_ffi_get_buf,
+  op_ffi_get_static,
+  op_ffi_load,
+  op_ffi_ptr_create,
+  op_ffi_ptr_equals,
+  op_ffi_ptr_of_exact,
+  op_ffi_ptr_of,
+  op_ffi_ptr_offset,
+  op_ffi_ptr_value,
+  op_ffi_read_bool,
+  op_ffi_read_f32,
+  op_ffi_read_f64,
+  op_ffi_read_i16,
+  op_ffi_read_i32,
+  op_ffi_read_i64,
+  op_ffi_read_i8,
+  op_ffi_read_ptr,
+  op_ffi_read_u16,
+  op_ffi_read_u32,
+  op_ffi_read_u64,
+  op_ffi_read_u8,
+  op_ffi_token_buf_copy_into,
+  op_ffi_token_call_ptr,
+  op_ffi_token_close,
+  op_ffi_token_cstr_read,
+  op_ffi_token_get_buf,
+  op_ffi_token_ptr_create,
+  op_ffi_token_ptr_equals,
+  op_ffi_token_ptr_of_exact,
+  op_ffi_token_ptr_of,
+  op_ffi_token_ptr_offset,
+  op_ffi_token_ptr_value,
+  op_ffi_token_read_bool,
+  op_ffi_token_read_f32,
+  op_ffi_token_read_f64,
+  op_ffi_token_read_i16,
+  op_ffi_token_read_i32,
+  op_ffi_token_read_i64,
+  op_ffi_token_read_i8,
+  op_ffi_token_read_ptr,
+  op_ffi_token_read_u16,
+  op_ffi_token_read_u32,
+  op_ffi_token_read_u64,
+  op_ffi_token_read_u8,
+  op_ffi_token_unsafe_callback_create,
+  op_ffi_token_write_bool,
+  op_ffi_token_write_f32,
+  op_ffi_token_write_f64,
+  op_ffi_token_write_i16,
+  op_ffi_token_write_i32,
+  op_ffi_token_write_i64,
+  op_ffi_token_write_i8,
+  op_ffi_token_write_ptr,
+  op_ffi_token_write_u16,
+  op_ffi_token_write_u32,
+  op_ffi_token_write_u64,
+  op_ffi_token_write_u8,
+  op_ffi_unsafe_callback_close,
+  op_ffi_unsafe_callback_create,
+} = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferIsView,
@@ -65,56 +129,56 @@ class UnsafePointerView {
   }
 
   getBool(offset = 0) {
-    return ops.op_ffi_read_bool(
+    return op_ffi_read_bool(
       this.pointer,
       offset,
     );
   }
 
   getUint8(offset = 0) {
-    return ops.op_ffi_read_u8(
+    return op_ffi_read_u8(
       this.pointer,
       offset,
     );
   }
 
   getInt8(offset = 0) {
-    return ops.op_ffi_read_i8(
+    return op_ffi_read_i8(
       this.pointer,
       offset,
     );
   }
 
   getUint16(offset = 0) {
-    return ops.op_ffi_read_u16(
+    return op_ffi_read_u16(
       this.pointer,
       offset,
     );
   }
 
   getInt16(offset = 0) {
-    return ops.op_ffi_read_i16(
+    return op_ffi_read_i16(
       this.pointer,
       offset,
     );
   }
 
   getUint32(offset = 0) {
-    return ops.op_ffi_read_u32(
+    return op_ffi_read_u32(
       this.pointer,
       offset,
     );
   }
 
   getInt32(offset = 0) {
-    return ops.op_ffi_read_i32(
+    return op_ffi_read_i32(
       this.pointer,
       offset,
     );
   }
 
   getBigUint64(offset = 0) {
-    ops.op_ffi_read_u64(
+    op_ffi_read_u64(
       this.pointer,
       offset,
       U32_BUFFER,
@@ -123,7 +187,7 @@ class UnsafePointerView {
   }
 
   getBigInt64(offset = 0) {
-    ops.op_ffi_read_i64(
+    op_ffi_read_i64(
       this.pointer,
       offset,
       U32_BUFFER,
@@ -132,42 +196,42 @@ class UnsafePointerView {
   }
 
   getFloat32(offset = 0) {
-    return ops.op_ffi_read_f32(
+    return op_ffi_read_f32(
       this.pointer,
       offset,
     );
   }
 
   getFloat64(offset = 0) {
-    return ops.op_ffi_read_f64(
+    return op_ffi_read_f64(
       this.pointer,
       offset,
     );
   }
 
   getPointer(offset = 0) {
-    return ops.op_ffi_read_ptr(
+    return op_ffi_read_ptr(
       this.pointer,
       offset,
     );
   }
 
   getCString(offset = 0) {
-    return ops.op_ffi_cstr_read(
+    return op_ffi_cstr_read(
       this.pointer,
       offset,
     );
   }
 
   static getCString(pointer, offset = 0) {
-    return ops.op_ffi_cstr_read(
+    return op_ffi_cstr_read(
       pointer,
       offset,
     );
   }
 
   getArrayBuffer(byteLength, offset = 0) {
-    return ops.op_ffi_get_buf(
+    return op_ffi_get_buf(
       this.pointer,
       offset,
       byteLength,
@@ -175,7 +239,7 @@ class UnsafePointerView {
   }
 
   static getArrayBuffer(pointer, byteLength, offset = 0) {
-    return ops.op_ffi_get_buf(
+    return op_ffi_get_buf(
       pointer,
       offset,
       byteLength,
@@ -183,7 +247,7 @@ class UnsafePointerView {
   }
 
   copyInto(destination, offset = 0) {
-    ops.op_ffi_buf_copy_into(
+    op_ffi_buf_copy_into(
       this.pointer,
       offset,
       destination,
@@ -192,7 +256,7 @@ class UnsafePointerView {
   }
 
   static copyInto(pointer, destination, offset = 0) {
-    ops.op_ffi_buf_copy_into(
+    op_ffi_buf_copy_into(
       pointer,
       offset,
       destination,
@@ -208,14 +272,14 @@ const OUT_BUFFER_64 = new BigInt64Array(
 const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
   static create(value) {
-    return ops.op_ffi_ptr_create(value);
+    return op_ffi_ptr_create(value);
   }
 
   static equals(a, b) {
     if (a === null || b === null) {
       return a === b;
     }
-    return ops.op_ffi_ptr_equals(a, b);
+    return op_ffi_ptr_equals(a, b);
   }
 
   static of(value) {
@@ -225,15 +289,15 @@ class UnsafePointer {
     let pointer;
     if (ArrayBufferIsView(value)) {
       if (value.length === 0) {
-        pointer = ops.op_ffi_ptr_of_exact(value);
+        pointer = op_ffi_ptr_of_exact(value);
       } else {
-        pointer = ops.op_ffi_ptr_of(value);
+        pointer = op_ffi_ptr_of(value);
       }
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
       if (value.length === 0) {
-        pointer = ops.op_ffi_ptr_of_exact(new Uint8Array(value));
+        pointer = op_ffi_ptr_of_exact(new Uint8Array(value));
       } else {
-        pointer = ops.op_ffi_ptr_of(new Uint8Array(value));
+        pointer = op_ffi_ptr_of(new Uint8Array(value));
       }
     } else {
       throw new TypeError(
@@ -247,14 +311,14 @@ class UnsafePointer {
   }
 
   static offset(value, offset) {
-    return ops.op_ffi_ptr_offset(value, offset);
+    return op_ffi_ptr_offset(value, offset);
   }
 
   static value(value) {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       value = value.pointer;
     }
-    ops.op_ffi_ptr_value(value, OUT_BUFFER);
+    op_ffi_ptr_value(value, OUT_BUFFER);
     const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
     if (NumberIsSafeInteger(result)) {
       return result;
@@ -300,14 +364,14 @@ class UnsafeFnPointer {
       }
     } else {
       if (this.#structSize === null) {
-        return ops.op_ffi_call_ptr(
+        return op_ffi_call_ptr(
           this.pointer,
           this.definition,
           parameters,
         );
       } else {
         const buffer = new Uint8Array(this.#structSize);
-        ops.op_ffi_call_ptr(
+        op_ffi_call_ptr(
           this.pointer,
           this.definition,
           parameters,
@@ -401,7 +465,7 @@ class UnsafeCallback {
         "Invalid UnsafeCallback, cannot be nonblocking",
       );
     }
-    const { 0: rid, 1: pointer } = ops.op_ffi_unsafe_callback_create(
+    const { 0: rid, 1: pointer } = op_ffi_unsafe_callback_create(
       definition,
       callback,
     );
@@ -444,14 +508,14 @@ class UnsafeCallback {
 
   close() {
     this.#refcount = 0;
-    ops.op_ffi_unsafe_callback_close(this.#rid);
+    op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
 const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 
 const createFfiToken = (path) => {
-  const token = ops.op_ffi_create_token(path);
+  const token = op_ffi_create_token(path);
   const tokenInUse = {
     status: true,
   };
@@ -485,7 +549,7 @@ const createFfiToken = (path) => {
 
     static create(value) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_ptr_create(token, value);
+      return op_ffi_token_ptr_create(token, value);
     }
 
     static equals(pointer, other) {
@@ -495,7 +559,7 @@ const createFfiToken = (path) => {
       } else if (pointer === null || other === null) {
         return false;
       }
-      return ops.op_ffi_token_ptr_equals(token, pointer, other);
+      return op_ffi_token_ptr_equals(token, pointer, other);
     }
 
     static of(buffer) {
@@ -503,18 +567,18 @@ const createFfiToken = (path) => {
       let pointer;
       if (ArrayBufferIsView(buffer)) {
         if (buffer.length === 0) {
-          pointer = ops.op_ffi_token_ptr_of_exact(token, buffer);
+          pointer = op_ffi_token_ptr_of_exact(token, buffer);
         } else {
-          pointer = ops.op_ffi_token_ptr_of(token, buffer);
+          pointer = op_ffi_token_ptr_of(token, buffer);
         }
       } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
         if (buffer.length === 0) {
-          pointer = ops.op_ffi_token_ptr_of_exact(
+          pointer = op_ffi_token_ptr_of_exact(
             token,
             new Uint8Array(buffer),
           );
         } else {
-          pointer = ops.op_ffi_token_ptr_of(token, new Uint8Array(buffer));
+          pointer = op_ffi_token_ptr_of(token, new Uint8Array(buffer));
         }
       } else {
         throw new TypeError(
@@ -529,12 +593,12 @@ const createFfiToken = (path) => {
 
     static offset(pointer, offset) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_ptr_offset(token, pointer, offset);
+      return op_ffi_token_ptr_offset(token, pointer, offset);
     }
 
     static value(pointer) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_ptr_value(token, pointer);
+      return op_ffi_token_ptr_value(token, pointer);
     }
   }
 
@@ -617,7 +681,7 @@ const createFfiToken = (path) => {
 
     getBool(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_bool(
+      return op_ffi_token_read_bool(
         token,
         this.#ptr,
         offset,
@@ -626,7 +690,7 @@ const createFfiToken = (path) => {
 
     getUint8(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_u8(
+      return op_ffi_token_read_u8(
         token,
         this.#ptr,
         offset,
@@ -635,7 +699,7 @@ const createFfiToken = (path) => {
 
     getInt8(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_i8(
+      return op_ffi_token_read_i8(
         token,
         this.#ptr,
         offset,
@@ -644,7 +708,7 @@ const createFfiToken = (path) => {
 
     getUint16(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_u16(
+      return op_ffi_token_read_u16(
         token,
         this.#ptr,
         offset,
@@ -653,7 +717,7 @@ const createFfiToken = (path) => {
 
     getInt16(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_i16(
+      return op_ffi_token_read_i16(
         token,
         this.#ptr,
         offset,
@@ -662,7 +726,7 @@ const createFfiToken = (path) => {
 
     getUint32(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_u32(
+      return op_ffi_token_read_u32(
         token,
         this.#ptr,
         offset,
@@ -671,7 +735,7 @@ const createFfiToken = (path) => {
 
     getInt32(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_i32(
+      return op_ffi_token_read_i32(
         token,
         this.#ptr,
         offset,
@@ -680,7 +744,7 @@ const createFfiToken = (path) => {
 
     getBigUint64(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_u64(
+      return op_ffi_token_read_u64(
         token,
         this.#ptr,
         offset,
@@ -689,7 +753,7 @@ const createFfiToken = (path) => {
 
     getBigInt64(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_i64(
+      return op_ffi_token_read_i64(
         token,
         this.#ptr,
         offset,
@@ -698,7 +762,7 @@ const createFfiToken = (path) => {
 
     getFloat32(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_f32(
+      return op_ffi_token_read_f32(
         token,
         this.#ptr,
         offset,
@@ -707,7 +771,7 @@ const createFfiToken = (path) => {
 
     getFloat64(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_f64(
+      return op_ffi_token_read_f64(
         token,
         this.#ptr,
         offset,
@@ -716,7 +780,7 @@ const createFfiToken = (path) => {
 
     getPointer(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_read_ptr(
+      return op_ffi_token_read_ptr(
         token,
         this.#ptr,
         offset,
@@ -725,7 +789,7 @@ const createFfiToken = (path) => {
 
     setBool(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_bool(
+      op_ffi_token_write_bool(
         token,
         this.#ptr,
         offset,
@@ -735,7 +799,7 @@ const createFfiToken = (path) => {
 
     setUint8(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_u8(
+      op_ffi_token_write_u8(
         token,
         this.#ptr,
         offset,
@@ -745,7 +809,7 @@ const createFfiToken = (path) => {
 
     setInt8(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_i8(
+      op_ffi_token_write_i8(
         token,
         this.#ptr,
         offset,
@@ -755,7 +819,7 @@ const createFfiToken = (path) => {
 
     setUint16(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_u16(
+      op_ffi_token_write_u16(
         token,
         this.#ptr,
         offset,
@@ -765,7 +829,7 @@ const createFfiToken = (path) => {
 
     setInt16(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_i16(
+      op_ffi_token_write_i16(
         token,
         this.#ptr,
         offset,
@@ -775,7 +839,7 @@ const createFfiToken = (path) => {
 
     setUint32(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_u32(
+      op_ffi_token_write_u32(
         token,
         this.#ptr,
         offset,
@@ -785,7 +849,7 @@ const createFfiToken = (path) => {
 
     setInt32(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_i32(
+      op_ffi_token_write_i32(
         token,
         this.#ptr,
         offset,
@@ -795,7 +859,7 @@ const createFfiToken = (path) => {
 
     setBigUint64(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_u64(
+      op_ffi_token_write_u64(
         token,
         this.#ptr,
         offset,
@@ -805,7 +869,7 @@ const createFfiToken = (path) => {
 
     setBigInt64(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_i64(
+      op_ffi_token_write_i64(
         token,
         this.#ptr,
         offset,
@@ -815,7 +879,7 @@ const createFfiToken = (path) => {
 
     setFloat32(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_f32(
+      op_ffi_token_write_f32(
         token,
         this.#ptr,
         offset,
@@ -825,7 +889,7 @@ const createFfiToken = (path) => {
 
     setFloat64(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_f64(
+      op_ffi_token_write_f64(
         token,
         this.#ptr,
         offset,
@@ -835,7 +899,7 @@ const createFfiToken = (path) => {
 
     setPointer(value, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_write_ptr(
+      op_ffi_token_write_ptr(
         token,
         this.#ptr,
         offset,
@@ -845,7 +909,7 @@ const createFfiToken = (path) => {
 
     getCString(offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_cstr_read(
+      return op_ffi_token_cstr_read(
         token,
         this.#ptr,
         offset,
@@ -854,7 +918,7 @@ const createFfiToken = (path) => {
 
     getArrayBuffer(byteLength, offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_get_buf(
+      return op_ffi_token_get_buf(
         token,
         this.#ptr,
         offset,
@@ -864,7 +928,7 @@ const createFfiToken = (path) => {
 
     copyInto(destination, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_buf_copy_into(
+      op_ffi_token_buf_copy_into(
         token,
         this.#ptr,
         offset,
@@ -875,7 +939,7 @@ const createFfiToken = (path) => {
 
     static getCString(pointer, offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_cstr_read(
+      return op_ffi_token_cstr_read(
         token,
         pointer,
         offset,
@@ -884,7 +948,7 @@ const createFfiToken = (path) => {
 
     static getArrayBuffer(pointer, byteLength, offset = 0) {
       assertTokenIsUsable();
-      return ops.op_ffi_token_get_buf(
+      return op_ffi_token_get_buf(
         token,
         pointer,
         offset,
@@ -894,7 +958,7 @@ const createFfiToken = (path) => {
 
     static copyInto(pointer, destination, offset = 0) {
       assertTokenIsUsable();
-      ops.op_ffi_token_buf_copy_into(
+      op_ffi_token_buf_copy_into(
         token,
         pointer,
         offset,
@@ -934,12 +998,11 @@ const createFfiToken = (path) => {
           "Invalid TokenizedCallback, cannot be nonblocking",
         );
       }
-      const { 0: cbRid, 1: cbPointer } = ops
-        .op_ffi_token_unsafe_callback_create(
-          token,
-          definition,
-          callback,
-        );
+      const { 0: cbRid, 1: cbPointer } = op_ffi_token_unsafe_callback_create(
+        token,
+        definition,
+        callback,
+      );
       this.#refcount = 0;
       this.#rid = cbRid;
       this.#pointer = cbPointer;
@@ -983,7 +1046,7 @@ const createFfiToken = (path) => {
 
     close() {
       this.#refcount = 0;
-      ops.op_ffi_unsafe_callback_close(this.#rid);
+      op_ffi_unsafe_callback_close(this.#rid);
       this.#pointer = null;
     }
   }
@@ -1040,7 +1103,7 @@ const createFfiToken = (path) => {
         }
       } else {
         if (this.#structSize === null) {
-          return ops.op_ffi_token_call_ptr(
+          return op_ffi_token_call_ptr(
             token,
             this.#pointer,
             this.#definition,
@@ -1048,7 +1111,7 @@ const createFfiToken = (path) => {
           );
         } else {
           const buffer = new Uint8Array(this.#structSize);
-          ops.op_ffi_token_call_ptr(
+          op_ffi_token_call_ptr(
             token,
             this.#pointer,
             this.#definition,
@@ -1065,7 +1128,7 @@ const createFfiToken = (path) => {
     if (tokenInUse.status === false) {
       return;
     }
-    ops.op_ffi_token_close(token);
+    op_ffi_token_close(token);
     tokenInUse.status = false;
   };
   ObjectSetPrototypeOf(close, null);
@@ -1085,7 +1148,7 @@ class DynamicLibrary {
   symbols = {};
 
   constructor(path, symbols) {
-    ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
+    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
       if (!ObjectHasOwn(symbols, symbol)) {
         continue;
@@ -1106,7 +1169,7 @@ class DynamicLibrary {
         }
 
         const name = symbols[symbol].name || symbol;
-        const value = ops.op_ffi_get_static(
+        const value = op_ffi_get_static(
           this.#rid,
           name,
           type,
