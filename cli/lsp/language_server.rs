@@ -30,6 +30,12 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::thread;
+use sysinfo::Pid;
+use sysinfo::ProcessExt;
+use sysinfo::ProcessRefreshKind;
+use sysinfo::System;
+use sysinfo::SystemExt;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -3108,6 +3114,44 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
+    // CPU watchdog thread. Kill the process if it uses more than 90% CPU across
+    // an interval of time. We gate this heuristically by the window capability
+    // to avoid using it in the REPL's language server.
+    if params.capabilities.window.is_some() {
+      thread::spawn(|| {
+        lsp_log!("  Starting server CPU watchdog thread");
+        // VSCode will stop restarting the language server if it crashes 5 times
+        // in 3 minutes (1 per 36 seconds). We start with the below delay so
+        // this crash cannot occur more frequently than that.
+        thread::sleep(std::time::Duration::from_secs(17));
+        let pid = Pid::from(std::process::id() as usize);
+        let mut system = System::default();
+        system
+          .refresh_process_specifics(pid, ProcessRefreshKind::new().with_cpu());
+        let mut cpu_overuse_count = 0;
+        loop {
+          thread::sleep(std::time::Duration::from_secs(10));
+          system.refresh_process_specifics(
+            pid,
+            ProcessRefreshKind::new().with_cpu(),
+          );
+          let Some(process) = system.process(pid) else {
+            continue;
+          };
+          if process.cpu_usage() > 90.0 {
+            cpu_overuse_count += 1;
+            if cpu_overuse_count >= 2 {
+              lsp_warn!("CPU utilization by the server exceeded 90% across an interval of 10 seconds. Exiting the process.");
+              std::process::exit(0);
+            } else {
+              lsp_warn!("CPU utilization by the server exceeded 90%.");
+            }
+          } else {
+            cpu_overuse_count = 0;
+          }
+        }
+      });
+    }
     let mut language_server = self.0.write().await;
     language_server.diagnostics_server.start();
     language_server.initialize(params).await

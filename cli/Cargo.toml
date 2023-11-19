@@ -118,6 +118,7 @@ rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true
 shell-escape = "=0.1.5"
+sysinfo = "=0.29.10"
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"
