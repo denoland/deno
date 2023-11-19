@@ -40,7 +40,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.31.5", features = ["transpiling"] }
-deno_core = { version = "0.230.0" }
+deno_core = { version = "0.231.0" }
 
 deno_runtime = { version = "0.132.0", path = "./runtime" }
 napi_sym = { version = "0.54.0", path = "./cli/napi/sym" }
@@ -63,7 +63,7 @@ deno_crypto = { version = "0.138.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.148.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.111.0", path = "./ext/ffi" }
 deno_fs = { version = "0.34.0", path = "./ext/fs" }
-deno_http = { version = "0.119.0", path = "./ext/http" }
+deno_http = { version = "0.120.0", path = "./ext/http" }
 deno_io = { version = "0.34.0", path = "./ext/io" }
 deno_net = { version = "0.116.0", path = "./ext/net" }
 deno_node = { version = "0.61.0", path = "./ext/node" }

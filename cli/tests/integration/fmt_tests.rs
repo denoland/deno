@@ -31,7 +31,7 @@ fn fmt_test() {
 
   let output = context
     .new_command()
-    .cwd(&testdata_fmt_dir)
+    .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       format!(
@@ -50,7 +50,7 @@ fn fmt_test() {
   // Check without ignore.
   let output = context
     .new_command()
-    .cwd(&testdata_fmt_dir)
+    .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       "--check".to_string(),
@@ -66,7 +66,7 @@ fn fmt_test() {
   // Format the source file.
   let output = context
     .new_command()
-    .cwd(&testdata_fmt_dir)
+    .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       badly_formatted_js.to_string(),
@@ -95,7 +95,7 @@ fn fmt_stdin_syntax_error() {
     .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("-")
-    .set_stdin_text("import { example }")
+    .stdin_text("import { example }")
     .split_output()
     .run();
   assert!(output.stdout().is_empty());
@@ -141,7 +141,7 @@ fn fmt_auto_ignore_git_and_node_modules() {
 
   let output = context
     .new_command()
-    .cwd(t)
+    .current_dir(t)
     .env("NO_COLOR", "1")
     .args("fmt")
     .run();

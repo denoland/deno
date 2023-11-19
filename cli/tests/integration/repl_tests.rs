@@ -890,7 +890,7 @@ fn repl_with_quiet_flag() {
 #[test]
 fn repl_unit_tests() {
   util::with_pty(&["repl"], |mut console| {
-    console.write_line(
+    console.write_line_raw(
       "\
         console.log('Hello from outside of test!'); \
         Deno.test('test1', async (t) => { \
@@ -912,11 +912,11 @@ fn repl_unit_tests() {
     console.expect("  step1 ... ok (");
     console.expect("test1 ... ok (");
     console.expect("test2 ... FAILED (");
-    console.expect(" ERRORS ");
+    console.expect("ERRORS");
     console.expect("test2 => <anonymous>:6:6");
     console.expect("error: Error: some message");
     console.expect("   at <anonymous>:7:9");
-    console.expect(" FAILURES ");
+    console.expect("FAILURES");
     console.expect("test2 => <anonymous>:6:6");
     console.expect("FAILED | 1 passed (1 step) | 1 failed (");
     console.expect("undefined");
@@ -1058,11 +1058,13 @@ fn package_json_uncached_no_error() {
     // should support getting the package now though
     console
       .write_line("import { getValue, setValue } from '@denotest/esm-basic';");
-    console.expect_all(&["undefined", "Initialize"]);
+    console.expect_all(&["undefined", "Download"]);
     console.write_line("setValue(12 + 30);");
     console.expect("undefined");
     console.write_line("getValue()");
-    console.expect("42")
+    console.expect("42");
+
+    assert!(temp_dir.path().join("node_modules").exists());
   });
 }
 

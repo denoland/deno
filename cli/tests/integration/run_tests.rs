@@ -908,11 +908,7 @@ fn lock_no_declaration_files() {
     .run();
   output.assert_matches_file("lockfile/no_dts/main.cache.out");
   let lockfile = context.temp_dir().path().join("deno.lock");
-  lockfile.assert_matches_file(
-    context
-      .testdata_path()
-      .join("lockfile/no_dts/deno.lock.out"),
-  );
+  lockfile.assert_matches_file("lockfile/no_dts/deno.lock.out");
 }
 
 #[test]
@@ -2093,10 +2089,7 @@ console.log("executing javascript");
 "#;
 
   let mut p = util::deno_cmd()
-    .arg("run")
-    .args(["--ext", "js"])
-    .arg("--check")
-    .arg("-")
+    .args("run --ext js --check -")
     .stdin(std::process::Stdio::piped())
     .stdout_piped()
     .spawn()

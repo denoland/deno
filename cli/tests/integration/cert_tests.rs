@@ -9,6 +9,7 @@ use std::io::Cursor;
 use std::io::Read;
 use std::sync::Arc;
 use test_util as util;
+use util::testdata_path;
 use util::TestContext;
 
 itest_flaky!(cafile_url_imports {
@@ -75,7 +76,7 @@ fn cafile_env_fetch() {
   let module_url =
     Url::parse("https://localhost:5545/cert/cafile_url_imports.ts").unwrap();
   let context = TestContext::with_http_server();
-  let cafile = context.testdata_path().join("tls/RootCA.pem");
+  let cafile = testdata_path().join("tls/RootCA.pem");
 
   context
     .new_command()
@@ -91,7 +92,7 @@ fn cafile_fetch() {
   let module_url =
     Url::parse("http://localhost:4545/cert/cafile_url_imports.ts").unwrap();
   let context = TestContext::with_http_server();
-  let cafile = context.testdata_path().join("tls/RootCA.pem");
+  let cafile = testdata_path().join("tls/RootCA.pem");
   context
     .new_command()
     .args(format!("cache --quiet --cert {} {}", cafile, module_url,))

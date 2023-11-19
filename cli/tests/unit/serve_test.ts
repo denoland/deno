@@ -2727,73 +2727,81 @@ Deno.test(
   },
 );
 
-for (const url of ["text", "file", "stream"]) {
-  // Ensure that we don't panic when the incoming TCP request was dropped
-  // https://github.com/denoland/deno/issues/20315 and that we correctly
-  // close/cancel the response
-  Deno.test({
-    permissions: { read: true, write: true, net: true },
-    name: `httpServerTcpCancellation_${url}`,
-    fn: async function () {
-      const ac = new AbortController();
-      const streamCancelled = url == "stream" ? deferred() : undefined;
-      const listeningPromise = deferred();
-      const waitForAbort = deferred();
-      const waitForRequest = deferred();
-      const server = Deno.serve({
-        port: servePort,
-        signal: ac.signal,
-        onListen: onListen(listeningPromise),
-        handler: async (req: Request) => {
-          let respBody = null;
-          if (req.url.includes("/text")) {
-            respBody = "text";
-          } else if (req.url.includes("/file")) {
-            respBody = (await makeTempFile(1024)).readable;
-          } else if (req.url.includes("/stream")) {
-            respBody = new ReadableStream({
-              start(controller) {
-                controller.enqueue(new Uint8Array([1]));
-              },
-              cancel(reason) {
-                streamCancelled!.resolve(reason);
-              },
-            });
-          } else {
-            fail();
-          }
-          waitForRequest.resolve();
-          await waitForAbort;
-          // Allocate the request body
-          req.body;
-          return new Response(respBody);
-        },
-      });
+for (const delay of ["delay", "nodelay"]) {
+  for (const url of ["text", "file", "stream"]) {
+    // Ensure that we don't panic when the incoming TCP request was dropped
+    // https://github.com/denoland/deno/issues/20315 and that we correctly
+    // close/cancel the response
+    Deno.test({
+      permissions: { read: true, write: true, net: true },
+      name: `httpServerTcpCancellation_${url}_${delay}`,
+      fn: async function () {
+        const ac = new AbortController();
+        const streamCancelled = url == "stream" ? deferred() : undefined;
+        const listeningPromise = deferred();
+        const waitForAbort = deferred();
+        const waitForRequest = deferred();
+        const server = Deno.serve({
+          port: servePort,
+          signal: ac.signal,
+          onListen: onListen(listeningPromise),
+          handler: async (req: Request) => {
+            let respBody = null;
+            if (req.url.includes("/text")) {
+              respBody = "text";
+            } else if (req.url.includes("/file")) {
+              respBody = (await makeTempFile(1024)).readable;
+            } else if (req.url.includes("/stream")) {
+              respBody = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new Uint8Array([1]));
+                },
+                cancel(reason) {
+                  streamCancelled!.resolve(reason);
+                },
+              });
+            } else {
+              fail();
+            }
+            waitForRequest.resolve();
+            await waitForAbort;
 
-      await listeningPromise;
+            if (delay == "delay") {
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+            // Allocate the request body
+            req.body;
+            return new Response(respBody);
+          },
+        });
 
-      // Create a POST request and drop it once the server has received it
-      const conn = await Deno.connect({ port: servePort });
-      const writer = conn.writable.getWriter();
-      await writer.write(new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`));
-      await waitForRequest;
-      await writer.close();
+        await listeningPromise;
 
-      waitForAbort.resolve();
+        // Create a POST request and drop it once the server has received it
+        const conn = await Deno.connect({ port: servePort });
+        const writer = conn.writable.getWriter();
+        await writer.write(
+          new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`),
+        );
+        await waitForRequest;
+        await writer.close();
 
-      // Wait for cancellation before we shut the server down
-      if (streamCancelled !== undefined) {
-        await streamCancelled;
-      }
+        waitForAbort.resolve();
 
-      // Since the handler has a chance of creating resources or running async
-      // ops, we need to use a graceful shutdown here to ensure they have fully
-      // drained.
-      await server.shutdown();
+        // Wait for cancellation before we shut the server down
+        if (streamCancelled !== undefined) {
+          await streamCancelled;
+        }
 
-      await server.finished;
-    },
-  });
+        // Since the handler has a chance of creating resources or running async
+        // ops, we need to use a graceful shutdown here to ensure they have fully
+        // drained.
+        await server.shutdown();
+
+        await server.finished;
+      },
+    });
+  }
 }
 
 Deno.test(
@@ -3635,27 +3643,31 @@ function isProhibitedForTrailer(key: string): boolean {
   return s.has(key.toLowerCase());
 }
 
+// TODO(mmastrac): curl on Windows CI stopped supporting --http2?
 Deno.test(
-  { permissions: { net: true, run: true } },
+  {
+    permissions: { net: true, run: true },
+    ignore: Deno.build.os === "windows",
+  },
   async function httpServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
-      { signal: ac.signal },
+      { port: servePort, signal: ac.signal },
       () => new Response("hello world!"),
     );
 
     assertEquals(
       "hello world!",
-      await curlRequest(["http://localhost:8000/path"]),
+      await curlRequest([`http://localhost:${servePort}/path`]),
     );
     assertEquals(
       "hello world!",
-      await curlRequest(["http://localhost:8000/path", "--http2"]),
+      await curlRequest([`http://localhost:${servePort}/path`, "--http2"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "http://localhost:8000/path",
+        `http://localhost:${servePort}/path`,
         "--http2",
         "--http2-prior-knowledge",
       ]),
@@ -3705,13 +3717,22 @@ Deno.test(
   },
 );
 
+// TODO(mmastrac): curl on CI stopped supporting --http2?
 Deno.test(
-  { permissions: { net: true, run: true, read: true } },
+  {
+    permissions: {
+      net: true,
+      run: true,
+      read: true,
+    },
+    ignore: Deno.build.os === "windows",
+  },
   async function httpsServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
       {
         signal: ac.signal,
+        port: servePort,
         cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
         key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
       },
@@ -3720,16 +3741,20 @@ Deno.test(
 
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:8000/path", "-k"]),
-    );
-    assertEquals(
-      "hello world!",
-      await curlRequest(["https://localhost:8000/path", "-k", "--http2"]),
+      await curlRequest([`https://localhost:${servePort}/path`, "-k"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "https://localhost:8000/path",
+        `https://localhost:${servePort}/path`,
+        "-k",
+        "--http2",
+      ]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        `https://localhost:${servePort}/path`,
         "-k",
         "--http2",
         "--http2-prior-knowledge",
@@ -3742,12 +3767,15 @@ Deno.test(
 );
 
 async function curlRequest(args: string[]) {
-  const { success, stdout } = await new Deno.Command("curl", {
+  const { success, stdout, stderr } = await new Deno.Command("curl", {
     args,
     stdout: "piped",
-    stderr: "null",
+    stderr: "piped",
   }).output();
-  assert(success);
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
+  );
   return new TextDecoder().decode(stdout);
 }
 
@@ -3757,7 +3785,10 @@ async function curlRequestWithStdErr(args: string[]) {
     stdout: "piped",
     stderr: "piped",
   }).output();
-  assert(success);
+  assert(
+    success,
+    `Failed to cURL ${args}: stdout\n\n${stdout}\n\nstderr:\n\n${stderr}`,
+  );
   return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
 }
 

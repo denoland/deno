@@ -14,6 +14,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::assertions::assert_wildcard_match;
+use crate::testdata_path;
 
 /// Represents a path on the file system, which can be used
 /// to perform specific actions.
@@ -218,7 +219,7 @@ impl PathRef {
   }
 
   pub fn assert_matches_file(&self, wildcard_file: impl AsRef<Path>) -> &Self {
-    let wildcard_file = PathRef::new(wildcard_file);
+    let wildcard_file = testdata_path().join(wildcard_file);
     println!("output path {}", wildcard_file);
     let expected_text = wildcard_file.read_to_string();
     self.assert_matches_text(&expected_text)

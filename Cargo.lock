@@ -1084,9 +1084,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.230.0"
+version = "0.231.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f040a1d56091d209851d011d4882cb2367fceeb64ec630106ca89fad258430a"
+checksum = "ded4c4315763c3f49c01ecb62fbfd2a1b34ae772dbcf126a4a5cd39a254ed32f"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.119.0"
+version = "0.120.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1509,9 +1509,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.106.0"
+version = "0.107.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "215363aeee70b8ae4dca3557c7b85f48f2c231e798b23913c1d3901785ace01e"
+checksum = "aac7069b4313d06517e4439bce9eb4ec1444c855e0bef3a348ad5d60f0b685b0"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4739,9 +4739,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.139.0"
+version = "0.140.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "340328b061f990810dc28a444078da33da191003a031555dcd30c69314f03840"
+checksum = "8c4eae96d533cd757d11edd07b1ac51125df949efcb5750fc4dc7a4b9be1694e"
 dependencies = [
  "bytes",
  "derive_more",
