@@ -27,18 +27,30 @@ use crate::dlfcn::ForeignFunction;
 use crate::repr::noop_deleter_callback;
 use crate::FfiPermissions;
 
-struct FfiToken {}
+thread_local! {
+  static FFI_TOKEN_TABLE: RefCell<Vec<Option<*const c_void>>> = RefCell::new(vec![]);
+}
+
+struct FfiToken {
+  index: usize,
+}
 
 external!(FfiToken, "FFI token");
 
 #[inline(always)]
 fn check_token(token: *const c_void) {
-  let _ =
+  let &FfiToken {
+    index
+  } =
   // SAFETY: We do not use the reference at all. We deref only for the purpose of
   // making sure that the token pointer we got contained an FFI token and was not
   // some other pointer instead. If another pointer was passed, then crashing is okay
   // as it means that someone attempted to spoof FFI tokens.
     unsafe { ExternalPointer::<FfiToken>::from_raw(token).unsafely_deref() };
+  FFI_TOKEN_TABLE.with(|cell| {
+    let v = cell.borrow();
+    assert_eq!(v[index], Some(token));
+  })
 }
 
 #[op2(fast)]
@@ -53,16 +65,29 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial(Some(&PathBuf::from(&path)))?;
 
-  let token = ExternalPointer::new(FfiToken {});
+  let token = FFI_TOKEN_TABLE.with(|cell| {
+    let mut v = cell.borrow_mut();
+    let index = v.len();
+    let token: *const c_void =
+      ExternalPointer::new(FfiToken { index }).into_raw();
+    v.push(Some(token));
+    token
+  });
 
-  Ok(token.into_raw())
+  Ok(token)
 }
 
 #[op2(fast)]
 pub fn op_ffi_token_close(token: *const c_void) {
-  let _ =
-  // SAFETY: User initiated close of the token.
+  let FfiToken {
+    index
+  } =
+    // SAFETY: User initiated close of the token.
     unsafe { ExternalPointer::<FfiToken>::from_raw(token).unsafely_take() };
+  FFI_TOKEN_TABLE.with(|cell| {
+    let mut v = cell.borrow_mut();
+    v[index] = None;
+  });
 }
 
 #[op2(fast)]
