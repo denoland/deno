@@ -20,7 +20,12 @@ const dylib = Deno.dlopen(libPath, {
   },
 });
 
-const callback = new Deno.UnsafeCallback(
+const {
+  TokenizedCallback,
+  close,
+} = Deno.createFfiToken(libPath);
+
+const callback = new TokenizedCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback on worker thread");
@@ -35,6 +40,7 @@ self.addEventListener("message", ({ data }) => {
   } else if (data === "call") {
     dylib.symbols.call_stored_function();
   } else if (data === "unref") {
+    close();
     callback.close();
   }
   self.postMessage("done");

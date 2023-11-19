@@ -26,6 +26,10 @@ const dylib = Deno.dlopen(
   } as const,
 );
 
+const {
+  TokenizedCallback,
+} = Deno.createFfiToken(libPath);
+
 let retry = false;
 const tripleLogCallback = () => {
   console.log("Sync");
@@ -47,7 +51,7 @@ const tripleLogCallback = () => {
   }, 100);
 };
 
-const callback = Deno.UnsafeCallback.threadSafe(
+const callback = TokenizedCallback.threadSafe(
   {
     parameters: [],
     result: "void",

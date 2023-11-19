@@ -236,6 +236,11 @@ const dylib = Deno.dlopen(libPath, {
   },
 });
 
+const {
+  TokenizedPointer,
+  TokenizedPointerView,
+} = Deno.createFfiToken(libPath);
+
 const { nop } = dylib.symbols;
 Deno.bench("nop()", () => {
   nop();
@@ -251,7 +256,7 @@ Deno.bench("hash()", () => {
 const { ffi_string } = dylib.symbols;
 Deno.bench(
   "c string",
-  () => Deno.UnsafePointerView.getCString(ffi_string()),
+  () => TokenizedPointerView.getCString(ffi_string()),
 );
 
 const { add_u32 } = dylib.symbols;
@@ -626,62 +631,66 @@ Deno.bench("nop_many_parameters_nonblocking()", () => {
   );
 });
 
-Deno.bench("Deno.UnsafePointer.of", () => {
-  Deno.UnsafePointer.of(buffer);
+Deno.bench("TokenizedPointer.of", () => {
+  TokenizedPointer.of(buffer);
 });
 
 const cstringBuffer = new TextEncoder().encode("Best believe it!\0");
-const cstringPointerView = new Deno.UnsafePointerView(
-  Deno.UnsafePointer.of(cstringBuffer),
+const cstringPointerView = new TokenizedPointerView(
+  TokenizedPointer.of(cstringBuffer),
 );
-Deno.bench("Deno.UnsafePointerView#getCString", () => {
+Deno.bench("TokenizedPointerView#getCString", () => {
   cstringPointerView.getCString();
 });
 
-const bufferPointerView = new Deno.UnsafePointerView(
-  Deno.UnsafePointer.of(buffer),
+const bufferPointerView = new TokenizedPointerView(
+  TokenizedPointer.of(buffer),
 );
 
-Deno.bench("Deno.UnsafePointerView#getBool", () => {
+Deno.bench("TokenizedPointerView#getBool", () => {
   bufferPointerView.getBool();
 });
 
-Deno.bench("Deno.UnsafePointerView#getUint8", () => {
+Deno.bench("TokenizedPointerView#getUint8", () => {
   bufferPointerView.getUint8();
 });
 
-Deno.bench("Deno.UnsafePointerView#getInt8", () => {
+Deno.bench("TokenizedPointerView#getInt8", () => {
   bufferPointerView.getInt8();
 });
 
-Deno.bench("Deno.UnsafePointerView#getUint16", () => {
+Deno.bench("TokenizedPointerView#getUint16", () => {
   bufferPointerView.getUint16();
 });
 
-Deno.bench("Deno.UnsafePointerView#getInt16", () => {
+Deno.bench("TokenizedPointerView#getInt16", () => {
   bufferPointerView.getInt16();
 });
 
-Deno.bench("Deno.UnsafePointerView#getUint32", () => {
+Deno.bench("TokenizedPointerView#getUint32", () => {
   bufferPointerView.getUint32();
 });
 
-Deno.bench("Deno.UnsafePointerView#getInt32", () => {
+Deno.bench("TokenizedPointerView#getInt32", () => {
   bufferPointerView.getInt32();
 });
 
-Deno.bench("Deno.UnsafePointerView#getBigUint64", () => {
+Deno.bench("TokenizedPointerView#getBigUint64", () => {
   bufferPointerView.getBigUint64();
 });
 
-Deno.bench("Deno.UnsafePointerView#getBigInt64", () => {
+Deno.bench("TokenizedPointerView#getBigInt64", () => {
   bufferPointerView.getBigInt64();
 });
 
-Deno.bench("Deno.UnsafePointerView#getFloat32", () => {
+Deno.bench("TokenizedPointerView#getFloat32", () => {
   bufferPointerView.getFloat32();
 });
 
-Deno.bench("Deno.UnsafePointerView#getFloat64", () => {
+Deno.bench("TokenizedPointerView#getFloat64", () => {
   bufferPointerView.getFloat64();
+});
+
+Deno.bench("Deno.createFfiToken()", () => {
+  Deno.createFfiToken(libPath);
 });

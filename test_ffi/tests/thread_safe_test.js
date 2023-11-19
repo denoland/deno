@@ -9,8 +9,6 @@ const [libPrefix, libSuffix] = {
 }[Deno.build.os];
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
-const resourcesPre = Deno.resources();
-
 const dylib = Deno.dlopen(libPath, {
   store_function: {
     parameters: ["function"],
@@ -26,6 +24,11 @@ const dylib = Deno.dlopen(libPath, {
   },
 });
 
+const {
+  close,
+  TokenizedCallback,
+} = Deno.createFfiToken(libPath);
+
 let resolveWorker;
 let workerResponsePromise;
 
@@ -36,6 +39,7 @@ const worker = new Worker(
 
 worker.addEventListener("message", () => {
   if (resolveWorker) {
+    Deno.permissions.revokeSync({ name: "ffi" });
     resolveWorker();
   }
 });
@@ -50,7 +54,7 @@ const sendWorkerMessage = async (data) => {
 
 // Test step 1: Register main thread callback, trigger on worker thread
 
-const mainThreadCallback = new Deno.UnsafeCallback(
+const mainThreadCallback = new TokenizedCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback on main thread");
@@ -80,7 +84,7 @@ worker.terminate();
 // Test step 3: Register a callback that will be the only thing left keeping the isolate from exiting.
 // Rely on it to keep Deno running until the callback comes in and unrefs the callback, after which Deno should exit.
 
-const cleanupCallback = new Deno.UnsafeCallback(
+const cleanupCallback = new TokenizedCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback being called");
@@ -92,6 +96,7 @@ const cleanupCallback = new Deno.UnsafeCallback(
 cleanupCallback.ref();
 
 function cleanup() {
+  close();
   cleanupCallback.unref();
   dylib.symbols.store_function(null);
   mainThreadCallback.close();

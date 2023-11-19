@@ -424,6 +424,8 @@ declare namespace Deno {
    * A collection of static functions for interacting with pointer objects.
    *
    * @category FFI
+   *
+   * @deprecated Use `Deno.createFfiToken().TokenizedPointer`.
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
@@ -451,6 +453,8 @@ declare namespace Deno {
    * location (numbers, strings and raw bytes).
    *
    * @category FFI
+   *
+   * @deprecated Use `Deno.createFfiToken().TokenizedPointerView`.
    */
   export class UnsafePointerView {
     constructor(pointer: PointerObject);
@@ -534,6 +538,8 @@ declare namespace Deno {
    * as symbols.
    *
    * @category FFI
+   *
+   * @deprecated Use `Deno.createFfiToken().TokenizedFnPointer`.
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
@@ -600,6 +606,8 @@ declare namespace Deno {
    * called from foreign threads.
    *
    * @category FFI
+   *
+   * @deprecated Use `Deno.createFfiToken().TokenizedCallback`.
    */
   export class UnsafeCallback<
     Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
@@ -682,22 +690,22 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export class TokenizedPointer {
+  export interface TokenizedPointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create<T = unknown>(value: bigint): PointerValue<T>;
+    create<T = unknown>(value: bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
-    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
+    equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
-    static of<T = unknown>(
+    of<T = unknown>(
       value: BufferSource,
     ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
-    static offset<T = unknown>(
+    offset<T = unknown>(
       value: PointerObject,
       offset: number,
     ): PointerValue<T>;
     /** Get the numeric value of a pointer */
-    static value(value: PointerValue): bigint;
+    value(value: PointerValue): bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -709,9 +717,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export class TokenizedPointerView {
-    constructor(pointer: PointerObject);
-
+  export interface TokenizedPointerView {
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
     /** Gets an unsigned 8-bit integer at the specified byte offset from the
@@ -751,39 +757,39 @@ declare namespace Deno {
     getCString(offset?: number): string;
 
     /** Sets a boolean at the specified byte offset from the pointer. */
-    setBool(value: boolean, offset?: number);
+    setBool(value: boolean, offset?: number): void;
     /** Sets an unsigned 8-bit integer at the specified byte offset from the
      * pointer. */
-    setUint8(value: number, offset?: number);
+    setUint8(value: number, offset?: number): void;
     /** Sets a signed 8-bit integer at the specified byte offset from the
      * pointer. */
-    setInt8(value: number, offset?: number);
+    setInt8(value: number, offset?: number): void;
     /** Sets an unsigned 16-bit integer at the specified byte offset from the
      * pointer. */
-    setUint16(value: number, offset?: number);
+    setUint16(value: number, offset?: number): void;
     /** Sets a signed 16-bit integer at the specified byte offset from the
      * pointer. */
-    setInt16(value: number, offset?: number);
+    setInt16(value: number, offset?: number): void;
     /** Sets an unsigned 32-bit integer at the specified byte offset from the
      * pointer. */
-    setUint32(value: number, offset?: number);
+    setUint32(value: number, offset?: number): void;
     /** Sets a signed 32-bit integer at the specified byte offset from the
      * pointer. */
-    setInt32(value: number, offset?: number);
+    setInt32(value: number, offset?: number): void;
     /** Sets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    setBigUint64(value: bigint, offset?: number);
+    setBigUint64(value: bigint, offset?: number): void;
     /** Sets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    setBigInt64(value: bigint, offset?: number);
+    setBigInt64(value: bigint, offset?: number): void;
     /** Sets a signed 32-bit float at the specified byte offset from the
      * pointer. */
-    setFloat32(value, offset?: number);
+    setFloat32(value: number, offset?: number): void;
     /** Sets a signed 64-bit float at the specified byte offset from the
      * pointer. */
-    setFloat64(value, offset?: number);
+    setFloat64(value: number, offset?: number): void;
     /** Sets a pointer at the specified byte offset from the pointer */
-    setPointer<T = unknown>(value: PointerValue<T>, offset?: number);
+    setPointer<T = unknown>(value: PointerValue<T>, offset?: number): void;
 
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
@@ -794,16 +800,20 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     copyInto(destination: BufferSource, offset?: number): void;
+  }
+
+  interface TokenizedPointerViewConstructor {
+    new (pointer: PointerObject): TokenizedPointerView;
 
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
-    static getCString(
+    getCString(
       pointer: PointerObject,
       offset?: number,
     ): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
-    static getArrayBuffer(
+    getArrayBuffer(
       pointer: PointerObject,
       byteLength: number,
       offset?: number,
@@ -813,7 +823,7 @@ declare namespace Deno {
      * Length is determined from the typed array's `byteLength`.
      *
      * Also takes optional byte offset from the pointer. */
-    static copyInto(
+    copyInto(
       pointer: PointerObject,
       destination: BufferSource,
       offset?: number,
@@ -827,13 +837,21 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export class TokenizedFnPointer<Fn extends ForeignFunction> {
-    constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
-    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Const<Fn>);
-
+  export interface TokenizedFnPointer<Fn extends ForeignFunction> {
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
+  }
+
+  interface TokenizedFnPointerConstructor {
+    new <Fn extends ForeignFunction>(
+      pointer: PointerObject<Fn>,
+      definition: Const<Fn>,
+    ): TokenizedFnPointer<Fn>;
+    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
+    new <Fn extends ForeignFunction>(
+      pointer: PointerObject,
+      definition: Const<Fn>,
+    ): TokenizedFnPointer<Fn>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -859,36 +877,11 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export class TokenizedCallback<
+  export interface TokenizedCallback<
     Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
   > {
-    constructor(
-      definition: Const<Definition>,
-      callback: UnsafeCallbackFunction<
-        Definition["parameters"],
-        Definition["result"]
-      >,
-    );
-
     /** The pointer to the unsafe callback. */
     readonly pointer: PointerObject<Definition>;
-
-    /**
-     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
-     * wake up the Deno event loop when called from foreign threads.
-     *
-     * This also stops Deno's process from exiting while the callback still
-     * exists and is not unref'ed.
-     */
-    static threadSafe<
-      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
-    >(
-      definition: Const<Definition>,
-      callback: UnsafeCallbackFunction<
-        Definition["parameters"],
-        Definition["result"]
-      >,
-    ): TokenizedCallback<Definition>;
 
     /**
      * Increments the callback's reference counting and returns the new
@@ -927,19 +920,45 @@ declare namespace Deno {
     close(): void;
   }
 
+  interface TokenizedCallbackConstructor {
+    new <Definition extends UnsafeCallbackDefinition>(
+      definition: Const<Definition>,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    ): TokenizedCallback<Definition>;
+
+    /**
+     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
+     * wake up the Deno event loop when called from foreign threads.
+     *
+     * This also stops Deno's process from exiting while the callback still
+     * exists and is not unref'ed.
+     */
+    threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    >(
+      definition: Const<Definition>,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    ): TokenizedCallback<Definition>;
+  }
   interface FfiToken {
     /** **UNSTABLE**: New API, yet to be vetted.
      *
      * Closes the FFI token, revoking the snapshotted FFI permissions within.
      *
      * Continuing to use the tokenized APIs of this token after this will lead
-     * to a panic.
+     * to an error being thrown.
      */
     close: () => void;
-    TokenizedCallback: TokenizedCallback;
-    TokenizedFnPointer: TokenizedFnPointer;
+    TokenizedCallback: TokenizedCallbackConstructor;
+    TokenizedFnPointer: TokenizedFnPointerConstructor;
     TokenizedPointer: TokenizedPointer;
-    TokenizedPointerView: TokenizedPointerView;
+    TokenizedPointerView: TokenizedPointerViewConstructor;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

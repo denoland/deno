@@ -161,6 +161,7 @@ const denoNsUnstableById = {
 
   // FFI
   2: {
+    createFfiToken: ffi.createFfiToken,
     dlopen: ffi.dlopen,
     UnsafeCallback: ffi.UnsafeCallback,
     UnsafePointer: ffi.UnsafePointer,

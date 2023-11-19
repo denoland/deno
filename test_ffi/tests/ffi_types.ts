@@ -73,6 +73,11 @@ const remote = Deno.dlopen(
   },
 );
 
+const {
+  TokenizedCallback,
+  TokenizedFnPointer,
+} = Deno.createFfiToken("dummy_lib.so");
+
 Deno.dlopen(
   "dummy_lib_2.so",
   {
@@ -165,15 +170,15 @@ result2.then((_1: number | bigint) => {});
 const result3 = remote.symbols.method18();
 // @ts-expect-error: Invalid argument
 let r3_0: Deno.BufferSource = result3;
-let r3_1: null | Deno.UnsafePointer = result3;
+let r3_1: Deno.PointerValue = result3;
 
 const result4 = remote.symbols.method19();
 // @ts-expect-error: Invalid argument
 result4.then((_0: Deno.BufferSource) => {});
-result4.then((_1: null | Deno.UnsafePointer) => {});
+result4.then((_1: Deno.PointerValue) => {});
 
-const fnptr = new Deno.UnsafeFnPointer(
-  {} as Deno.PointerObject,
+const fnptr = new TokenizedFnPointer(
+  {} as Deno.PointerObject<{ parameters: ["u32", "pointer"]; result: "void" }>,
   {
     parameters: ["u32", "pointer"],
     result: "void",
@@ -183,7 +188,7 @@ const fnptr = new Deno.UnsafeFnPointer(
 fnptr.call(null, null);
 fnptr.call(0, null);
 
-const unsafe_callback_wrong1 = new Deno.UnsafeCallback(
+const unsafe_callback_wrong1 = new TokenizedCallback(
   {
     parameters: ["i8"],
     result: "void",
@@ -191,23 +196,23 @@ const unsafe_callback_wrong1 = new Deno.UnsafeCallback(
   // @ts-expect-error: i8 is not a pointer
   (_: bigint) => {},
 );
-const unsafe_callback_wrong2 = new Deno.UnsafeCallback(
+const unsafe_callback_wrong2 = new TokenizedCallback(
   {
     parameters: ["pointer"],
     result: "u64",
   },
   // @ts-expect-error: must return a number or bigint
-  (_: Deno.UnsafePointer) => {},
+  (_: Deno.PointerValue) => {},
 );
-const unsafe_callback_wrong3 = new Deno.UnsafeCallback(
+const unsafe_callback_wrong3 = new TokenizedCallback(
   {
     parameters: [],
     result: "void",
   },
   // @ts-expect-error: no parameters
-  (_: Deno.UnsafePointer) => {},
+  (_: Deno.PointerValue) => {},
 );
-const unsafe_callback_wrong4 = new Deno.UnsafeCallback(
+const unsafe_callback_wrong4 = new TokenizedCallback(
   {
     parameters: ["u64"],
     result: "void",
@@ -215,21 +220,21 @@ const unsafe_callback_wrong4 = new Deno.UnsafeCallback(
   // @ts-expect-error: Callback's 64bit parameters are either number or bigint
   (_: number) => {},
 );
-const unsafe_callback_right1 = new Deno.UnsafeCallback(
+const unsafe_callback_right1 = new TokenizedCallback(
   {
     parameters: ["u8", "u32", "pointer"],
     result: "void",
   },
   (_1: number, _2: number, _3: null | Deno.PointerValue) => {},
 );
-const unsafe_callback_right2 = new Deno.UnsafeCallback(
+const unsafe_callback_right2 = new TokenizedCallback(
   {
     parameters: [],
     result: "u8",
   },
   () => 3,
 );
-const unsafe_callback_right3 = new Deno.UnsafeCallback(
+const unsafe_callback_right3 = new TokenizedCallback(
   {
     parameters: [],
     result: "function",
@@ -237,14 +242,14 @@ const unsafe_callback_right3 = new Deno.UnsafeCallback(
   // Callbacks can return other callbacks' pointers, if really wanted.
   () => unsafe_callback_right2.pointer,
 );
-const unsafe_callback_right4 = new Deno.UnsafeCallback(
+const unsafe_callback_right4 = new TokenizedCallback(
   {
     parameters: ["u8", "u32", "pointer"],
     result: "u8",
   },
   (_1: number, _2: number, _3: null | Deno.PointerValue) => 3,
 );
-const unsafe_callback_right5 = new Deno.UnsafeCallback(
+const unsafe_callback_right5 = new TokenizedCallback(
   {
     parameters: ["u8", "i32", "pointer"],
     result: "void",
@@ -294,7 +299,7 @@ const static1_wrong: null = remote.symbols.static1;
 const static1_right: number | bigint = remote.symbols.static1;
 // @ts-expect-error: Invalid member type
 const static2_wrong: null = remote.symbols.static2;
-const static2_right: null | Deno.UnsafePointer = remote.symbols.static2;
+const static2_right: null | Deno.PointerObject = remote.symbols.static2;
 // @ts-expect-error: Invalid member type
 const static3_wrong: null = remote.symbols.static3;
 const static3_right: number | bigint = remote.symbols.static3;
