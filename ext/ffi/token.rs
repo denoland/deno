@@ -171,7 +171,6 @@ pub fn op_ffi_token_read_bool(
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
     ptr::read_unaligned::<bool>(ptr.offset(offset as isize) as *const bool)
-      as bool
   })
 }
 
@@ -191,7 +190,7 @@ pub fn op_ffi_token_read_u8(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<u8>(ptr.offset(offset as isize) as *const u8) as u8
+    ptr::read_unaligned::<u8>(ptr.offset(offset as isize) as *const u8)
   })
 }
 
@@ -211,7 +210,7 @@ pub fn op_ffi_token_read_i8(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<i8>(ptr.offset(offset as isize) as *const i8) as i8
+    ptr::read_unaligned::<i8>(ptr.offset(offset as isize) as *const i8)
   })
 }
 
@@ -231,7 +230,7 @@ pub fn op_ffi_token_read_u16(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<u16>(ptr.offset(offset as isize) as *const u16) as u16
+    ptr::read_unaligned::<u16>(ptr.offset(offset as isize) as *const u16)
   })
 }
 
@@ -251,7 +250,7 @@ pub fn op_ffi_token_read_i16(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<i16>(ptr.offset(offset as isize) as *const i16) as i16
+    ptr::read_unaligned::<i16>(ptr.offset(offset as isize) as *const i16)
   })
 }
 
@@ -271,7 +270,7 @@ pub fn op_ffi_token_read_u32(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<u32>(ptr.offset(offset as isize) as *const u32) as u32
+    ptr::read_unaligned::<u32>(ptr.offset(offset as isize) as *const u32)
   })
 }
 
@@ -291,7 +290,7 @@ pub fn op_ffi_token_read_i32(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<i32>(ptr.offset(offset as isize) as *const i32) as i32
+    ptr::read_unaligned::<i32>(ptr.offset(offset as isize) as *const i32)
   })
 }
 
@@ -312,7 +311,7 @@ pub fn op_ffi_token_read_u64(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<u64>(ptr.offset(offset as isize) as *const u64) as u64
+    ptr::read_unaligned::<u64>(ptr.offset(offset as isize) as *const u64)
   })
 }
 
@@ -333,7 +332,7 @@ pub fn op_ffi_token_read_i64(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<i64>(ptr.offset(offset as isize) as *const i64) as i64
+    ptr::read_unaligned::<i64>(ptr.offset(offset as isize) as *const i64)
   })
 }
 
@@ -353,7 +352,7 @@ pub fn op_ffi_token_read_f32(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<f32>(ptr.offset(offset as isize) as *const f32) as f32
+    ptr::read_unaligned::<f32>(ptr.offset(offset as isize) as *const f32)
   })
 }
 
@@ -373,7 +372,7 @@ pub fn op_ffi_token_read_f64(
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<f64>(ptr.offset(offset as isize) as *const f64) as f64
+    ptr::read_unaligned::<f64>(ptr.offset(offset as isize) as *const f64)
   })
 }
 
