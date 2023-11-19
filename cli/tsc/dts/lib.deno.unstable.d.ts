@@ -996,7 +996,7 @@ declare namespace Deno {
    *   TokenizedPointer: {
    *     of: getPointerOf,
    *   },
-   * } = Deno.createFfiToken(libPath);
+   * } = Deno.createFfiToken("./mylib.so");
    *
    * export class MyFfiClass {
    *   #pointer: Deno.PointerObject;
@@ -1004,7 +1004,7 @@ declare namespace Deno {
    *
    *   constructor() {
    *     this.#buffer = new Uint8Array(64);
-   *     this.#pointer = getPointerOf(this.#buffer);
+   *     this.#pointer = getPointerOf(this.#buffer)!;
    *   }
    * }
    * ```
