@@ -1136,7 +1136,7 @@ Deno.test(
   { permissions: { net: true } },
   async function droppedConnSenderNoPanic() {
     async function server() {
-      const listener = Deno.listen({ port: 8000 });
+      const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const http = Deno.serveHttp(conn);
       const evt = await http.nextRequest();
@@ -1151,7 +1151,7 @@ Deno.test(
 
     async function client() {
       try {
-        const resp = await fetch("http://127.0.0.1:8000/");
+        const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
         await resp.body?.cancel();
       } catch {
         // Ignore error

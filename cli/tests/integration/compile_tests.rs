@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::fs::File;
 use test_util as util;
 use util::assert_contains;
 use util::assert_not_contains;
+use util::testdata_path;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -219,7 +219,7 @@ fn compile_with_file_exists_error() {
     dir.path().join("args/")
   };
   let file_path = dir.path().join("args");
-  File::create(&file_path).unwrap();
+  file_path.write("");
   context
     .new_command()
     .args_vec([
@@ -294,9 +294,7 @@ fn compile_with_conflict_file_exists_error() {
       exe
     ))
     .assert_exit_code(1);
-  assert!(std::fs::read(&exe)
-    .unwrap()
-    .eq(b"SHOULD NOT BE OVERWRITTEN"));
+  exe.assert_matches_text("SHOULD NOT BE OVERWRITTEN");
 }
 
 #[test]
@@ -708,7 +706,7 @@ fn dynamic_import_unanalyzable() {
 
   context
     .new_command()
-    .cwd(util::root_path().join("cli"))
+    .current_dir(util::root_path().join("cli"))
     .name(&exe)
     .env("NO_COLOR", "")
     .run()
@@ -938,11 +936,10 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
   let temp_dir = context.temp_dir();
-  let testdata_path = context.testdata_path();
   let main_specifier = if opts.input_specifier.starts_with("npm:") {
     opts.input_specifier.to_string()
   } else {
-    testdata_path.join(opts.input_specifier).to_string()
+    testdata_path().join(opts.input_specifier).to_string()
   };
 
   let mut args = vec!["compile".to_string()];

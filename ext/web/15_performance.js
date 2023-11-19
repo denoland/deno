@@ -22,7 +22,6 @@ import { opNow } from "ext:deno_web/02_timers.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
-const customInspect = SymbolFor("Deno.customInspect");
 let performanceEntries = [];
 let timeOrigin;
 
@@ -196,20 +195,23 @@ class PerformanceEntry {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        PerformanceEntryPrototype,
-        this,
-      ),
-      keys: [
-        "name",
-        "entryType",
-        "startTime",
-        "duration",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceEntryPrototype,
+          this,
+        ),
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 webidl.configureInterface(PerformanceEntry);
@@ -265,18 +267,21 @@ class PerformanceMark extends PerformanceEntry {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMarkPrototype, this),
-      keys: [
-        "name",
-        "entryType",
-        "startTime",
-        "duration",
-        "detail",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMarkPrototype, this),
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+          "detail",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 webidl.configureInterface(PerformanceMark);
@@ -321,21 +326,24 @@ class PerformanceMeasure extends PerformanceEntry {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        PerformanceMeasurePrototype,
-        this,
-      ),
-      keys: [
-        "name",
-        "entryType",
-        "startTime",
-        "duration",
-        "detail",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceMeasurePrototype,
+          this,
+        ),
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+          "detail",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 webidl.configureInterface(PerformanceMeasure);
@@ -569,12 +577,15 @@ class Performance extends EventTarget {
     };
   }
 
-  [customInspect](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
-      keys: [],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
+        keys: ["timeOrigin"],
+      }),
+      inspectOptions,
+    );
   }
 }
 webidl.configureInterface(Performance);

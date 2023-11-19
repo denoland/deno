@@ -1671,12 +1671,67 @@ declare namespace Deno {
    * second, 5 seconds, and 10 seconds delay between each retry.
    *
    * @category Cron
+   * @deprecated Use other {@linkcode cron} overloads instead. This overload
+   * will be removed in the future.
    */
   export function cron(
     name: string,
     schedule: string,
     handler: () => Promise<void> | void,
-    options?: { backoffSchedule?: number[]; signal?: AbortSignal },
+    options: { backoffSchedule?: number[]; signal?: AbortSignal },
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` is a Unix cron format expression, where time is specified
+   * using UTC time zone.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string,
+    handler: () => Promise<void> | void,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", {
+   *   backoffSchedule: [10, 20]
+   * }, () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` is a Unix cron format expression, where time is specified
+   * using UTC time zone.
+   *
+   * `backoffSchedule` option can be used to specify the retry policy for failed
+   * executions. Each element in the array represents the number of milliseconds
+   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
+   * means that a failed execution will be retried at most 3 times, with 1
+   * second, 5 seconds, and 10 seconds delay between each retry.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string,
+    options: { backoffSchedule?: number[]; signal?: AbortSignal },
+    handler: () => Promise<void> | void,
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
