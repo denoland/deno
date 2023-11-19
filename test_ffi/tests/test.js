@@ -722,6 +722,10 @@ uint32Array[0] = 55; // MUTATES!
 assertEquals(uint32Array[0], 55);
 assertEquals(view.getUint32(), 55);
 
+view.setUint32(56);
+assertEquals(view.getUint32(), 56);
+view.setBool(true, 2);
+assertEquals(view.getBool(2), true);
 
 {
   // Test TokenizedPointer APIs
