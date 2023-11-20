@@ -1066,8 +1066,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.231.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ded4c4315763c3f49c01ecb62fbfd2a1b34ae772dbcf126a4a5cd39a254ed32f"
+source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#36240e80740303e409dfea495feb7fe293927648"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1491,8 +1490,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.107.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aac7069b4313d06517e4439bce9eb4ec1444c855e0bef3a348ad5d60f0b685b0"
+source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#36240e80740303e409dfea495feb7fe293927648"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4621,8 +4619,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.140.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c4eae96d533cd757d11edd07b1ac51125df949efcb5750fc4dc7a4b9be1694e"
+source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#36240e80740303e409dfea495feb7fe293927648"
 dependencies = [
  "bytes",
  "derive_more",
