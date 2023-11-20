@@ -8,6 +8,7 @@ const cmd = new Deno.Command("deno", {
   args: [
     "run",
     "-A",
+    "--no-config",
     "npm:dprint@0.43.0",
     subcommand,
     "--config=" + configFile,
