@@ -1955,9 +1955,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.88.3"
+version = "0.88.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c51dda57191fcc97f1da77927a29ecb6f5ec7133f705dcc7134533f3090681c"
+checksum = "3a5be6e2f026971bd4b75ed2b77203c4195587229818ddef23721f66a044907b"
 dependencies = [
  "anyhow",
  "deno_ast",
