@@ -53,7 +53,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_cache_dir = "=0.6.1"
 deno_config = "=0.6.4"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.73.2", features = ["html"] }
+deno_doc = { version = "=0.73.3", features = ["html"] }
 deno_emit = "=0.31.4"
 deno_graph = "=0.61.1"
 deno_lint = { version = "=0.52.2", features = ["docs"] }
