@@ -184,7 +184,7 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
       sockets[i].socket?.write(`${i}`.repeat(3));
     }
 
-    await Promise.all(sockets.map((socket) => socket.dataReceived));
+    await Promise.all(sockets.map((socket) => socket.dataReceived.promise));
 
     for (let i = 0; i < socketCount; i++) {
       sockets[i].socket?.end();

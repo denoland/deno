@@ -192,7 +192,7 @@ Deno.test({
 
 // TODO(uki00a): Remove this case once Node's `parallel/test-child-process-spawn-event.js` works.
 Deno.test("[child_process spawn] 'spawn' event", async () => {
-  const timeout = withTimeout();
+  const timeout = withTimeout<void>();
   const subprocess = spawn(Deno.execPath(), ["eval", "console.log('ok')"]);
 
   let didSpawn = false;
@@ -230,7 +230,7 @@ Deno.test("[child_process spawn] 'spawn' event", async () => {
   subprocess.on("close", mustBeCalledAfterSpawn());
 
   try {
-    await Promise.race([Promise.all(promises), timeout]);
+    await Promise.race([Promise.all(promises), timeout.promise]);
     timeout.resolve();
   } finally {
     subprocess.kill();
@@ -344,7 +344,7 @@ Deno.test({
       let envOutput = "";
 
       assert(env.stdout);
-      env.on("error", (err: Error) => promise.reject(err));
+      env.on("error", (err: Error) => deferred.reject(err));
       env.stdout.on("data", (data) => {
         envOutput += data;
       });

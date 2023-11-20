@@ -148,8 +148,8 @@ Deno.test("echo string tls", async () => {
   ws.onclose = () => {
     deferred2.resolve();
   };
-  await deferred1;
-  await deferred2;
+  await deferred1.promise;
+  await deferred2.promise;
 });
 
 Deno.test("websocket error", async () => {
