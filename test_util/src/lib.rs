@@ -1273,6 +1273,15 @@ async fn main_server(
           .unwrap(),
       )
     }
+    (&hyper::Method::GET, "/upgrade/sleep/release-latest.txt") => {
+      tokio::time::sleep(Duration::from_secs(45)).await;
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .body(Body::from("99999.99.99"))
+          .unwrap(),
+      );
+    }
     (&hyper::Method::GET, "/release-latest.txt") => {
       return Ok(
         Response::builder()

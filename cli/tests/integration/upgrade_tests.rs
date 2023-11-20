@@ -2,6 +2,7 @@
 
 use std::process::Command;
 use std::process::Stdio;
+use std::time::Instant;
 use test_util as util;
 use test_util::TempDir;
 use util::TestContextBuilder;
@@ -224,4 +225,31 @@ fn upgrade_prompt() {
     // - Version comes from the test server.
     pty.expect(" 99999.99.99 Run `deno upgrade` to install it.");
   });
+}
+
+#[test]
+fn upgrade_lsp_repl_sleeps() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .env(
+      "DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL",
+      "http://localhost:4545/upgrade/sleep",
+    )
+    .build();
+  let start_instant = Instant::now();
+  // ensure this works even though the upgrade check is taking
+  // a long time to complete
+  context
+    .new_command()
+    .args("repl")
+    .env_remove("DENO_NO_UPDATE_CHECK")
+    .with_pty(|mut pty| {
+      pty.write_line("123 + 456\n");
+      pty.expect("579");
+    });
+
+  // the test server will sleep for 45 seconds, so ensure this is less
+  let elapsed_secs = start_instant.elapsed().as_secs();
+  assert!(elapsed_secs < 30, "elapsed_secs: {}", elapsed_secs);
 }
