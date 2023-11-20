@@ -263,6 +263,9 @@ pub fn check_for_upgrades(
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
 
       fetch_and_store_latest_version(&env, &version_provider).await;
+
+      // text is used by the test suite
+      log::debug!("Finished upgrade checker.")
     });
   }
 
@@ -593,7 +596,16 @@ fn get_url(
     UpgradeCheckKind::Execution => "",
     UpgradeCheckKind::Lsp => "?lsp",
   };
-  format!("https://dl.deno.land/{}{}", file_name, query_param)
+  format!("{}/{}{}", base_upgrade_url(), file_name, query_param)
+}
+
+fn base_upgrade_url() -> Cow<'static, str> {
+  // this is used by the test suite
+  if let Ok(url) = env::var("DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL") {
+    Cow::Owned(url)
+  } else {
+    Cow::Borrowed("https://dl.deno.land")
+  }
 }
 
 async fn download_package(
