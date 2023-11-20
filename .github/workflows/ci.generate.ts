@@ -284,7 +284,9 @@ function handleMatrixItems(items: {
 
       // deno-lint-ignore no-explicit-any
       (item as any).runner = text;
-      item.skip = "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (" + removeSurroundingExpression(item.skip.toString()) + ") }}";
+      item.skip =
+        "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (" +
+        removeSurroundingExpression(item.skip.toString()) + ") }}";
     }
 
     return {
