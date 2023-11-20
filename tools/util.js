@@ -15,7 +15,6 @@ export { delay } from "../test_util/std/async/delay.ts";
 
 // [toolName] --version output
 const versions = {
-  "dprint": "dprint 0.40.0",
   "dlint": "dlint 0.51.0",
 };
 
