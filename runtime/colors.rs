@@ -22,8 +22,11 @@ use termcolor::BufferWriter;
 #[cfg(windows)]
 use termcolor::ColorChoice;
 
-static NO_COLOR: Lazy<bool> =
-  Lazy::new(|| std::env::var_os("NO_COLOR").is_some());
+static NO_COLOR: Lazy<bool> = Lazy::new(|| {
+  std::env::var_os("NO_COLOR")
+    .map(|v| !v.is_empty())
+    .unwrap_or(false)
+});
 
 static IS_TTY: Lazy<bool> = Lazy::new(|| std::io::stdout().is_terminal());
 
