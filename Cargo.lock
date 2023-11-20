@@ -1645,6 +1645,7 @@ name = "deno_url"
 version = "0.124.0"
 dependencies = [
  "deno_bench_util",
+ "deno_console",
  "deno_core",
  "deno_webidl",
  "serde",
