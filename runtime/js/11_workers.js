@@ -245,8 +245,6 @@ class Worker extends EventTarget {
   [SymbolToStringTag] = "Worker";
 }
 
-const WorkerPrototype = Worker.prototype;
-
 defineEventHandler(Worker.prototype, "error");
 defineEventHandler(Worker.prototype, "message");
 defineEventHandler(Worker.prototype, "messageerror");
