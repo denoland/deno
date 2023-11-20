@@ -24,3 +24,17 @@ Deno.test(
     assertEquals(output, "false\n");
   },
 );
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function denoNoColorTrueEmptyVar() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "console.log(Deno.noColor)"],
+      env: {
+        NO_COLOR: "",
+      },
+    }).output();
+    const output = new TextDecoder().decode(stdout);
+    assertEquals(output, "false\n");
+  },
+);
