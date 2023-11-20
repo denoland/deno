@@ -1,9 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 const core = globalThis.Deno.core;
+const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
   SymbolFor,
 } = primordials;
 
@@ -150,26 +152,38 @@ class Navigator {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({})}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      console.createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(NavigatorPrototype, this),
+        keys: [
+          "hardwareConcurrency",
+          "userAgent",
+          "language",
+          "languages",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
 const navigator = webidl.createBranded(Navigator);
 
-let numCpus, userAgent, language;
-
-function setNumCpus(val) {
-  numCpus = val;
+function memoizeLazy(f) {
+  let v_ = null;
+  return () => {
+    if (v_ === null) {
+      v_ = f();
+    }
+    return v_;
+  };
 }
 
-function setUserAgent(val) {
-  userAgent = val;
-}
-
-function setLanguage(val) {
-  language = val;
-}
+const numCpus = memoizeLazy(() => ops.op_bootstrap_numcpus());
+const userAgent = memoizeLazy(() => ops.op_bootstrap_user_agent());
+const language = memoizeLazy(() => ops.op_bootstrap_language());
 
 ObjectDefineProperties(Navigator.prototype, {
   hardwareConcurrency: {
@@ -177,7 +191,7 @@ ObjectDefineProperties(Navigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
-      return numCpus;
+      return numCpus();
     },
   },
   userAgent: {
@@ -185,7 +199,7 @@ ObjectDefineProperties(Navigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
-      return userAgent;
+      return userAgent();
     },
   },
   language: {
@@ -193,7 +207,7 @@ ObjectDefineProperties(Navigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
-      return language;
+      return language();
     },
   },
   languages: {
@@ -201,7 +215,7 @@ ObjectDefineProperties(Navigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
-      return [language];
+      return [language()];
     },
   },
 });
@@ -212,8 +226,20 @@ class WorkerNavigator {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({})}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      console.createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WorkerNavigatorPrototype, this),
+        keys: [
+          "hardwareConcurrency",
+          "userAgent",
+          "language",
+          "languages",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -225,7 +251,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return numCpus;
+      return numCpus();
     },
   },
   userAgent: {
@@ -233,7 +259,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return userAgent;
+      return userAgent();
     },
   },
   language: {
@@ -241,7 +267,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return language;
+      return language();
     },
   },
   languages: {
@@ -249,7 +275,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return [language];
+      return [language()];
     },
   },
 });
@@ -284,9 +310,7 @@ const workerRuntimeGlobalProperties = {
 
 export {
   mainRuntimeGlobalProperties,
-  setLanguage,
-  setNumCpus,
-  setUserAgent,
+  memoizeLazy,
   unstableWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,

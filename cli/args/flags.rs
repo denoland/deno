@@ -163,7 +163,7 @@ pub struct InstallFlags {
   pub module_url: String,
   pub args: Vec<String>,
   pub name: Option<String>,
-  pub root: Option<PathBuf>,
+  pub root: Option<String>,
   pub force: bool,
 }
 
@@ -177,7 +177,7 @@ pub struct JupyterFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlags {
   pub name: String,
-  pub root: Option<PathBuf>,
+  pub root: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -206,7 +206,7 @@ pub struct ReplFlags {
   pub is_default_command: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
@@ -310,6 +310,10 @@ pub enum DenoSubcommand {
 impl DenoSubcommand {
   pub fn is_run(&self) -> bool {
     matches!(self, Self::Run(_))
+  }
+
+  pub fn is_test_or_jupyter(&self) -> bool {
+    matches!(self, Self::Test(_) | Self::Jupyter(_))
   }
 }
 
@@ -427,6 +431,7 @@ pub struct Flags {
   pub unstable: bool,
   pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
+  pub unstable_workspaces: bool,
   pub unstable_features: Vec<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
@@ -867,6 +872,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   flags.unstable_bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_workspaces = matches.get_flag("unstable-workspaces");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -977,6 +983,15 @@ fn clap_root() -> Command {
         .long("unstable-byonm")
         .help("Enable unstable 'bring your own node_modules' feature")
         .env("DENO_UNSTABLE_BYONM")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-workspaces")
+        .long("unstable-workspaces")
+        .help("Enable unstable 'workspaces' feature")
+        .env("DENO_UNSTABLE_WORKSPACES")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
@@ -1762,7 +1777,6 @@ These must be added to the path manually if required.")
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath))
       .arg(
         Arg::new("force")
@@ -1822,7 +1836,6 @@ The installation root is determined, in order of precedence:
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath))
 )
 }
@@ -3407,7 +3420,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let root = matches.remove_one::<PathBuf>("root");
+  let root = matches.remove_one::<String>("root");
 
   let force = matches.get_flag("force");
   let name = matches.remove_one::<String>("name");
@@ -3438,7 +3451,7 @@ fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let root = matches.remove_one::<PathBuf>("root");
+  let root = matches.remove_one::<String>("root");
 
   let name = matches.remove_one::<String>("name").unwrap();
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
@@ -6361,7 +6374,7 @@ mod tests {
           name: Some("file_server".to_string()),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["foo", "bar"],
-          root: Some(PathBuf::from("/foo")),
+          root: Some("/foo".to_string()),
           force: true,
         }),
         import_map_path: Some("import_map.json".to_string()),

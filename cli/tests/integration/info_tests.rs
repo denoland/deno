@@ -11,7 +11,7 @@ fn info_with_compiled_source() {
 
   let output = context
     .new_command()
-    .cwd(util::testdata_path())
+    .current_dir(util::testdata_path())
     .args_vec(["cache", module_path])
     .run();
   output.assert_exit_code(0);
@@ -19,7 +19,7 @@ fn info_with_compiled_source() {
 
   let output = context
     .new_command()
-    .cwd(util::testdata_path())
+    .current_dir(util::testdata_path())
     .args_vec(["info", module_path])
     .split_output()
     .run();

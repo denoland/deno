@@ -442,6 +442,7 @@ declare var AbortSignal: {
   readonly prototype: AbortSignal;
   new (): never;
   abort(reason?: any): AbortSignal;
+  any(signals: AbortSignal[]): AbortSignal;
   timeout(milliseconds: number): AbortSignal;
 };
 
