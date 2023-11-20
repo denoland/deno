@@ -1066,7 +1066,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.231.0"
-source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#36240e80740303e409dfea495feb7fe293927648"
+source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#bc4d25989c701fbbd6df8c35aa2a839e757344c9"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1490,7 +1490,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.107.0"
-source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#36240e80740303e409dfea495feb7fe293927648"
+source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#bc4d25989c701fbbd6df8c35aa2a839e757344c9"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4619,7 +4619,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.140.0"
-source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#36240e80740303e409dfea495feb7fe293927648"
+source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#bc4d25989c701fbbd6df8c35aa2a839e757344c9"
 dependencies = [
  "bytes",
  "derive_more",
