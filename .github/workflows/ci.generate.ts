@@ -275,14 +275,16 @@ function handleMatrixItems(items: {
     }
 
     if (typeof item.skip === "string") {
-      let text = "${{ (";
-      text += removeSurroundingExpression(item.skip.toString()) + ") && ";
+      let text =
+        "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (";
+      text += removeSurroundingExpression(item.skip.toString()) + ")) && ";
       text += `'${Runners.ubuntu}' || ${
         removeSurroundingExpression(item.os)
       } }}`;
 
       // deno-lint-ignore no-explicit-any
       (item as any).runner = text;
+      item.skip = "${{ !contains(github.event.pull_request.labels.*.name, 'ci-full') && (" + removeSurroundingExpression(item.skip.toString()) + ") }}";
     }
 
     return {
@@ -526,9 +528,17 @@ const ci = {
           name: "Install aarch64 lld",
           run: [
             "./tools/install_prebuilt.js ld64.lld",
-            "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
           ].join("\n"),
           if: `matrix.os == '${macosArmRunner}'`,
+        },
+        {
+          name: "Install rust-codesign",
+          run: [
+            "./tools/install_prebuilt.js rcodesign",
+            "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+          ].join("\n"),
+          if:
+            `(matrix.os == '${macosArmRunner}' || matrix.os == '${macosX86Runner}')`,
         },
         {
           name: "Log versions",
@@ -681,6 +691,7 @@ const ci = {
             "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
+            "rcodesign sign target/release/deno",
             "cd target/release",
             "zip -r deno-x86_64-apple-darwin.zip deno",
           ]
@@ -695,6 +706,7 @@ const ci = {
             "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
+            "rcodesign sign target/release/deno",
             "cd target/release",
             "zip -r deno-aarch64-apple-darwin.zip deno",
           ]
