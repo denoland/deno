@@ -19,6 +19,7 @@ use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
+use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
@@ -369,24 +370,26 @@ pub fn op_node_sign(
   let (label, doc) =
     pkcs8::SecretDocument::from_pem(std::str::from_utf8(&key).unwrap())?;
 
-  let pk_info = match format {
+  let oid;
+  let pkey = match format {
     "pem" => {
-      if label != "PRIVATE KEY" {
-        pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?
-      } else if label != "RSA PRIVATE KEY" {
-        pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?
+      if label == "PRIVATE KEY" {
+        let pk_info = pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?;
+        oid = pk_info.algorithm.oid;
+        pk_info.private_key
+      } else if label == "RSA PRIVATE KEY" {
+        oid = RSA_ENCRYPTION_OID;
+        doc.as_bytes()
       } else {
         return Err(type_error("Invalid PEM label"));
       }
     }
     _ => return Err(type_error("Unsupported key format")),
   };
-
-  let alg = pk_info.algorithm.oid;
-  match alg {
+  match oid {
     RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
-      let key = RsaPrivateKey::try_from(pk_info)?;
+      let key = RsaPrivateKey::from_pkcs1_der(pkey)?;
       Ok(
         match digest_type {
           "sha224" => {
@@ -1349,8 +1352,6 @@ fn parse_private_key(
   format: &str,
   type_: &str,
 ) -> Result<pkcs8::SecretDocument, AnyError> {
-  use rsa::pkcs1::DecodeRsaPrivateKey;
-
   match format {
     "pem" => {
       let (label, doc) =
