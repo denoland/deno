@@ -24,13 +24,13 @@ fn compile_basic() {
         "compile",
         "--output",
         &exe.to_string_lossy(),
-        "https://github.com/denoland/denobyexample/raw/main/data/hello-world.ts",
+        "./welcome.ts",
       ])
       .run();
     output.assert_exit_code(0);
     output.skip_output_check();
     let output = context.new_command().name(&exe).run();
-    output.assert_matches_text("Hello, World!\n");
+    output.assert_matches_text("Welcome to Deno!\n");
   }
 
   // now ensure this works when the deno_dir is readonly
@@ -44,7 +44,7 @@ fn compile_basic() {
     .env("DENO_DIR", readonly_sub_dir)
     .name(exe)
     .run();
-  output.assert_matches_text("Hello, World!\n");
+  output.assert_matches_text("Welcome to Deno!\n");
 }
 
 #[test]
