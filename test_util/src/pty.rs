@@ -30,16 +30,58 @@ impl Pty {
     cwd: &Path,
     env_vars: Option<HashMap<String, String>>,
   ) -> Self {
-    let pty = create_pty(program, args, cwd, env_vars);
-    let mut pty = Self {
-      pty,
-      read_bytes: Vec::new(),
-      last_index: 0,
-    };
-    if args.is_empty() || args[0] == "repl" && !args.contains(&"--quiet") {
-      // wait for the repl to start up before writing to it
-      pty.expect("exit using ctrl+d, ctrl+c, or close()");
+    fn create(
+      program: &Path,
+      args: &[&str],
+      cwd: &Path,
+      env_vars: Option<HashMap<String, String>>,
+    ) -> Pty {
+      let pty = create_pty(program, args, cwd, env_vars);
+      Pty {
+        pty,
+        read_bytes: Vec::new(),
+        last_index: 0,
+      }
     }
+
+    let mut pty = create(program, args, cwd, env_vars.clone());
+
+    // in the case that someone is using the repl, wait for it to start up
+    if args.is_empty() || args[0] == "repl" && !args.contains(&"--quiet") {
+      // We found the repl was being flaky starting up on the CI and it's not clear why.
+      // The current theory is that the CI sometimes gets too busy and it takes longer
+      // than the timeout to start up sometimes. So in this case, try restarting
+      // a few times until we're able to startup.
+      let search_text = "exit using ctrl+d, ctrl+c, or close()";
+      let mut failed_count = 0;
+      let max_failures = 3;
+      while {
+        !pty.read_until_condition_or_timeout(|pty| {
+          pty.all_output().contains(search_text)
+        })
+      } {
+        failed_count += 1;
+        eprintln!(
+          concat!(
+            "Failed starting repl ({}/{}). Searching for: {}\n",
+            "------ FOUND TEXT ------\n",
+            "{:?}\n",
+            "---- END FOUND TEXT ----",
+          ),
+          failed_count,
+          max_failures,
+          search_text,
+          pty.all_output(),
+        );
+        if failed_count >= max_failures {
+          panic!("Failed to start repl too many times.");
+        }
+
+        // restart the executable
+        pty = create(program, args, cwd, env_vars.clone());
+      }
+    }
+
     pty
   }
 
@@ -176,17 +218,9 @@ impl Pty {
   }
 
   #[track_caller]
-  fn read_until_condition(
-    &mut self,
-    mut condition: impl FnMut(&mut Self) -> bool,
-  ) {
-    let timeout_time =
-      Instant::now().checked_add(Duration::from_secs(15)).unwrap();
-    while Instant::now() < timeout_time {
-      self.fill_more_bytes();
-      if condition(self) {
-        return;
-      }
+  fn read_until_condition(&mut self, condition: impl FnMut(&mut Self) -> bool) {
+    if self.read_until_condition_or_timeout(condition) {
+      return;
     }
 
     let text = self.next_text();
@@ -198,6 +232,22 @@ impl Pty {
     panic!("Timed out.")
   }
 
+  /// Reads until the specified condition returning `true` or times out returning `false`.
+  fn read_until_condition_or_timeout(
+    &mut self,
+    mut condition: impl FnMut(&mut Self) -> bool,
+  ) -> bool {
+    let timeout_time =
+      Instant::now().checked_add(Duration::from_secs(15)).unwrap();
+    while Instant::now() < timeout_time {
+      self.fill_more_bytes();
+      if condition(self) {
+        return true;
+      }
+    }
+    false
+  }
+
   fn next_text(&self) -> String {
     let text = String::from_utf8_lossy(&self.read_bytes).to_string();
     let text = strip_ansi_codes(&text);
@@ -206,10 +256,13 @@ impl Pty {
 
   fn fill_more_bytes(&mut self) {
     let mut buf = [0; 256];
-    if let Ok(count) = self.pty.read(&mut buf) {
-      self.read_bytes.extend(&buf[..count]);
-    } else {
-      std::thread::sleep(Duration::from_millis(10));
+    match self.pty.read(&mut buf) {
+      Ok(count) if count > 0 => {
+        self.read_bytes.extend(&buf[..count]);
+      }
+      _ => {
+        std::thread::sleep(Duration::from_millis(15));
+      }
     }
   }
 }
