@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.131.0"
+version = "0.132.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -62,6 +62,7 @@ deno_websocket.workspace = true
 deno_webstorage.workspace = true
 deno_napi.workspace = true
 flate2 = { workspace = true, features = ["default"] }
+serde.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres.workspace = true

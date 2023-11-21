@@ -12,6 +12,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   DataViewPrototypeGetBuffer,
@@ -23,6 +24,7 @@ const {
   // SharedArrayBufferPrototype
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
+  SymbolFor,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -190,6 +192,21 @@ class TextDecoder {
       }
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextDecoderPrototype, this),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
 webidl.configureInterface(TextDecoder);
@@ -246,6 +263,17 @@ class TextEncoder {
       read: encodeIntoBuf[0],
       written: encodeIntoBuf[1],
     };
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextEncoderPrototype, this),
+        keys: ["encoding"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -342,6 +370,26 @@ class TextDecoderStream {
     webidl.assertBranded(this, TextDecoderStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextDecoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
 webidl.configureInterface(TextDecoderStream);
@@ -414,6 +462,24 @@ class TextEncoderStream {
   get writable() {
     webidl.assertBranded(this, TextEncoderStreamPrototype);
     return this.#transform.writable;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextEncoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

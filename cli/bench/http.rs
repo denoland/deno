@@ -1,11 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
+use std::net::TcpStream;
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use std::time::Instant;
 
 use super::Result;
 
@@ -104,12 +106,22 @@ fn run(
     com.spawn()?
   };
 
-  std::thread::sleep(Duration::from_secs(5)); // wait for server to wake up. TODO racy.
+  // Wait for server to wake up.
+  let now = Instant::now();
+  let addr = format!("127.0.0.1:{port}");
+  while now.elapsed().as_secs() < 30 {
+    if TcpStream::connect(&addr).is_ok() {
+      break;
+    }
+    std::thread::sleep(Duration::from_millis(10));
+  }
+  TcpStream::connect(&addr).expect("Failed to connect to server in time");
+  println!("Server took {} ms to start", now.elapsed().as_millis());
 
   let wrk = test_util::prebuilt_tool_path("wrk");
   assert!(wrk.is_file());
 
-  let addr = format!("http://127.0.0.1:{port}/");
+  let addr = format!("http://{addr}/");
   let wrk = wrk.to_string();
   let mut wrk_cmd = vec![wrk.as_str(), "-d", DURATION, "--latency", &addr];
 

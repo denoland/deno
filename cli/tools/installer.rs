@@ -32,7 +32,7 @@ use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
 
 static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
-  RegexBuilder::new(r"^[a-z][\w-]*$")
+  RegexBuilder::new(r"^[a-z0-9][\w-]*$")
     .case_insensitive(true)
     .build()
     .expect("invalid regex")
