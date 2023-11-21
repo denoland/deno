@@ -46,6 +46,7 @@ use deno_semver::package::PackageReqReference;
 use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
+use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::emit::Emitter;
 use crate::errors;
@@ -101,11 +102,13 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub skip_op_registration: bool,
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
 }
 
 struct SharedWorkerState {
   options: CliMainWorkerOptions,
+  subcommand: DenoSubcommand,
   storage_key_resolver: StorageKeyResolver,
   npm_resolver: Arc<dyn CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
@@ -371,6 +374,7 @@ impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
+    subcommand: DenoSubcommand,
     npm_resolver: Arc<dyn CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
     blob_store: Arc<BlobStore>,
@@ -387,6 +391,7 @@ impl CliMainWorkerFactory {
     Self {
       shared: Arc::new(SharedWorkerState {
         options,
+        subcommand,
         storage_key_resolver,
         npm_resolver,
         node_resolver,
@@ -490,7 +495,9 @@ impl CliMainWorkerFactory {
       }
 
       (node_resolution.into_url(), is_main_cjs)
-    } else if shared.options.is_npm_main {
+    } else if shared.options.is_npm_main
+      || shared.node_resolver.in_npm_package(&main_module)
+    {
       let node_resolution =
         shared.node_resolver.url_to_node_resolution(main_module)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
@@ -528,7 +535,7 @@ impl CliMainWorkerFactory {
         .join(checksum::gen(&[key.as_bytes()]))
     });
 
-    let mut extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let mut extensions = ops::cli_exts();
     extensions.append(&mut custom_extensions);
 
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -554,8 +561,6 @@ impl CliMainWorkerFactory {
         location: shared.options.location.clone(),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),
-        runtime_version: version::deno().to_string(),
-        ts_version: version::TYPESCRIPT.to_string(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),
@@ -596,13 +601,21 @@ impl CliMainWorkerFactory {
       ),
       stdio,
       feature_checker,
+      skip_op_registration: shared.options.skip_op_registration,
     };
 
-    let worker = MainWorker::bootstrap_from_options(
+    let mut worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
       permissions,
       options,
     );
+
+    if self.shared.subcommand.is_test_or_jupyter() {
+      worker.js_runtime.execute_script_static(
+        "40_jupyter.js",
+        include_str!("js/40_jupyter.js"),
+      )?;
+    }
 
     Ok(CliMainWorker {
       main_module,
@@ -706,7 +719,7 @@ fn create_web_worker_callback(
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 
-    let extensions = ops::cli_exts(shared.npm_resolver.clone());
+    let extensions = ops::cli_exts();
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -742,8 +755,6 @@ fn create_web_worker_callback(
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),
-        runtime_version: version::deno().to_string(),
-        ts_version: version::TYPESCRIPT.to_string(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),

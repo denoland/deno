@@ -5,6 +5,7 @@
 const core = globalThis.Deno.core;
 import { URL } from "ext:deno_url/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
@@ -536,17 +537,26 @@ class WebSocket extends EventTarget {
     }
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        url: this.url,
-        readyState: this.readyState,
-        extensions: this.extensions,
-        protocol: this.protocol,
-        binaryType: this.binaryType,
-        bufferedAmount: this.bufferedAmount,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketPrototype, this),
+        keys: [
+          "url",
+          "readyState",
+          "extensions",
+          "protocol",
+          "binaryType",
+          "bufferedAmount",
+          "onmessage",
+          "onerror",
+          "onclose",
+          "onopen",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

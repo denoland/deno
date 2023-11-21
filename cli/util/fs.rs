@@ -206,8 +206,14 @@ pub fn canonicalize_path_maybe_not_exists_with_fs(
         return Ok(canonicalized_path);
       }
       Err(err) if err.kind() == ErrorKind::NotFound => {
-        names_stack.push(path.file_name().unwrap());
-        path = path.parent().unwrap();
+        names_stack.push(match path.file_name() {
+          Some(name) => name.to_owned(),
+          None => return Err(err),
+        });
+        path = match path.parent() {
+          Some(parent) => parent,
+          None => return Err(err),
+        };
       }
       Err(err) => return Err(err),
     }

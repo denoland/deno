@@ -65,8 +65,8 @@ fn op_http_start(
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| bad_resource("TLS stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.reunite(write_half);
-    let addr = tls_stream.get_ref().0.local_addr()?;
+    let tls_stream = read_half.unsplit(write_half);
+    let addr = tls_stream.local_addr()?;
     return http_create_conn_resource(state, tls_stream, addr, "https");
   }
 

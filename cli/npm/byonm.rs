@@ -82,6 +82,16 @@ impl ByonmCliNpmResolver {
 }
 
 impl NpmResolver for ByonmCliNpmResolver {
+  fn get_npm_process_state(&self) -> String {
+    serde_json::to_string(&NpmProcessState {
+      kind: NpmProcessStateKind::Byonm,
+      local_node_modules_path: Some(
+        self.root_node_modules_dir.to_string_lossy().to_string(),
+      ),
+    })
+    .unwrap()
+  }
+
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -246,16 +256,6 @@ impl CliNpmResolver for ByonmCliNpmResolver {
         .unwrap()
         .join("package.json"),
     )
-  }
-
-  fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      kind: NpmProcessStateKind::Byonm,
-      local_node_modules_path: Some(
-        self.root_node_modules_dir.to_string_lossy().to_string(),
-      ),
-    })
-    .unwrap()
   }
 
   fn check_state_hash(&self) -> Option<u64> {

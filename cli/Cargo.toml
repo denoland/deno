@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.38.1"
+version = "1.38.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -27,9 +27,12 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [features]
+default = ["__vendored_zlib_ng"]
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
 __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
+# Vendor zlib as zlib-ng
+__vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
@@ -39,6 +42,7 @@ serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true
 glibc_version = "0.1.2"
+flate2 = { workspace = true, features = ["default"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -47,18 +51,18 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = "=0.6.1"
-deno_config = "=0.5.0"
+deno_config = "=0.6.4"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.73.0", features = ["html"] }
-deno_emit = "=0.31.2"
-deno_graph = "=0.60.0"
+deno_doc = { version = "=0.73.3", features = ["html"] }
+deno_emit = "=0.31.4"
+deno_graph = "=0.61.1"
 deno_lint = { version = "=0.52.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "0.15.2"
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
 deno_semver = "0.5.1"
 deno_task_shell = "=0.14.0"
-eszip = "=0.55.3"
+eszip = "=0.55.4"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -79,22 +83,24 @@ dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.0"
 dprint-plugin-markdown = "=0.16.2"
-dprint-plugin-typescript = "=0.88.3"
+dprint-plugin-typescript = "=0.88.4"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 fastwebsockets.workspace = true
+# If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
 hex.workspace = true
 http.workspace = true
 hyper.workspace = true
-import_map = "=0.15.0"
+import_map = { version = "=0.17.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.21.1", features = ["serde"] }
 lazy-regex.workspace = true
 libc.workspace = true
+libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 monch.workspace = true

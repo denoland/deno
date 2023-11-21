@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.60.0"
+version = "0.61.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,7 +41,7 @@ indexmap.workspace = true
 k256 = "0.13.1"
 lazy-regex.workspace = true
 libc.workspace = true
-libz-sys = { version = "1.1.8", features = ["static"] }
+libz-sys.workspace = true
 md-5 = "0.10.5"
 md4 = "0.10.2"
 num-bigint.workspace = true
