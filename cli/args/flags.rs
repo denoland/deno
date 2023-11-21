@@ -431,6 +431,7 @@ pub struct Flags {
   pub unstable: bool,
   pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
+  pub unstable_workspaces: bool,
   pub unstable_features: Vec<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
@@ -809,7 +810,7 @@ To start the REPL:
 
 To execute a script:
 
-  deno run https://deno.land/std/examples/welcome.ts
+  deno run https://examples.deno.land/hello-world.ts
 
 To evaluate code in the shell:
 
@@ -871,6 +872,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   flags.unstable_bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_workspaces = matches.get_flag("unstable-workspaces");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -981,6 +983,15 @@ fn clap_root() -> Command {
         .long("unstable-byonm")
         .help("Enable unstable 'bring your own node_modules' feature")
         .env("DENO_UNSTABLE_BYONM")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-workspaces")
+        .long("unstable-workspaces")
+        .help("Enable unstable 'workspaces' feature")
+        .env("DENO_UNSTABLE_WORKSPACES")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
@@ -1998,7 +2009,7 @@ fn run_subcommand() -> Command {
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
 
-  deno run https://deno.land/std/examples/welcome.ts
+  deno run https://examples.deno.land/hello-world.ts
 
 Grant all permissions:
 
@@ -2014,7 +2025,7 @@ Grant permission to read allow-listed files from disk:
 
 Specifying the filename '-' to read the file from stdin.
 
-  curl https://deno.land/std/examples/welcome.ts | deno run -",
+  curl https://examples.deno.land/hello-world.ts | deno run -",
     )
 }
 

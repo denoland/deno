@@ -83,7 +83,7 @@ fn install_custom_dir_env_var() {
 
   context
     .new_command()
-    .cwd(util::root_path()) // different cwd
+    .current_dir(util::root_path()) // different cwd
     .args("install --check --name echo_test http://localhost:4545/echo.ts")
     .envs([
       ("HOME", temp_dir_str.as_str()),
@@ -124,7 +124,7 @@ fn installer_test_local_module_run() {
 
   context
     .new_command()
-    .cwd(util::root_path())
+    .current_dir(util::root_path())
     .args_vec([
       "install",
       "--name",
@@ -152,7 +152,7 @@ fn installer_test_local_module_run() {
   let output = context
     .new_command()
     .name(&file_path)
-    .cwd(temp_dir.path())
+    .current_dir(temp_dir.path())
     .args("foo")
     .env("PATH", util::target_dir())
     .run();
@@ -183,7 +183,7 @@ fn installer_test_remote_module_run() {
   let output = context
     .new_command()
     .name(&bin_file_path)
-    .cwd(root_dir)
+    .current_dir(root_dir)
     .args("foo")
     .env("PATH", util::target_dir())
     .run();
