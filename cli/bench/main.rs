@@ -314,7 +314,10 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 
 const BUNDLES: &[(&str, &str)] = &[
   ("file_server", "./test_util/std/http/file_server.ts"),
-  ("gist", "./test_util/std/examples/gist.ts"),
+  (
+    "gist",
+    "https://github.com/denoland/denobyexample/raw/main/data/hello-world.ts",
+  ),
 ];
 fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();

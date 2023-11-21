@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import {
   assertEquals,
   assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",

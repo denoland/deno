@@ -1,9 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
-import {
-  assert,
-  assertEquals,
-} from "../../../test_util/std/testing/asserts.ts";
+import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 
 Deno.test(async function foo() {
