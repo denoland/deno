@@ -181,6 +181,70 @@ pub struct StateSnapshot {
   pub npm: Option<StateNpmSnapshot>,
 }
 
+struct CpuUsageWatchdog {
+  pid: Pid,
+  system: System,
+  is_overusing: bool,
+  overuse_interval_count: usize,
+}
+
+impl CpuUsageWatchdog {
+  fn new() -> Self {
+    Self {
+      pid: Pid::from(std::process::id() as usize),
+      system: System::default(),
+      is_overusing: false,
+      overuse_interval_count: 0,
+    }
+  }
+
+  fn refresh_cpu_usage(&mut self) -> f32 {
+    self.system.refresh_process_specifics(
+      self.pid,
+      ProcessRefreshKind::new().with_cpu(),
+    );
+    if let Some(process) = self.system.process(self.pid) {
+      process.cpu_usage()
+    } else {
+      lsp_warn!("Failed to refresh CPU usage");
+      0.0
+    }
+  }
+
+  fn start(mut self) {
+    lsp_log!("  Starting server CPU watchdog thread");
+    thread::spawn(move || {
+      self.refresh_cpu_usage();
+      // VSCode will stop restarting the language server if it crashes 5 times
+      // in 3 minutes (1 per 36 seconds). We start with the below delay so
+      // this crash cannot occur more frequently than that.
+      thread::sleep(std::time::Duration::from_secs(7));
+      loop {
+        let cpu_usage = self.refresh_cpu_usage();
+        if self.is_overusing {
+          if cpu_usage > 90.0 {
+            self.overuse_interval_count += 1;
+            if self.overuse_interval_count >= 20 {
+              lsp_warn!("CPU utilization by the server exceeded 90% across an interval of 20 seconds. Exiting the process.");
+              std::process::exit(0);
+            }
+          } else {
+            self.is_overusing = false;
+            self.overuse_interval_count = 0;
+          }
+        } else if cpu_usage > 90.0 {
+          self.is_overusing = true;
+        }
+        if self.is_overusing {
+          thread::sleep(std::time::Duration::from_secs(1));
+        } else {
+          thread::sleep(std::time::Duration::from_secs(10));
+        }
+      }
+    });
+  }
+}
+
 #[derive(Debug)]
 pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
@@ -3118,39 +3182,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     // an interval of time. We gate this heuristically by the window capability
     // to avoid using it in the REPL's language server.
     if params.capabilities.window.is_some() {
-      thread::spawn(|| {
-        lsp_log!("  Starting server CPU watchdog thread");
-        // VSCode will stop restarting the language server if it crashes 5 times
-        // in 3 minutes (1 per 36 seconds). We start with the below delay so
-        // this crash cannot occur more frequently than that.
-        thread::sleep(std::time::Duration::from_secs(17));
-        let pid = Pid::from(std::process::id() as usize);
-        let mut system = System::default();
-        system
-          .refresh_process_specifics(pid, ProcessRefreshKind::new().with_cpu());
-        let mut cpu_overuse_count = 0;
-        loop {
-          thread::sleep(std::time::Duration::from_secs(10));
-          system.refresh_process_specifics(
-            pid,
-            ProcessRefreshKind::new().with_cpu(),
-          );
-          let Some(process) = system.process(pid) else {
-            continue;
-          };
-          if process.cpu_usage() > 90.0 {
-            cpu_overuse_count += 1;
-            if cpu_overuse_count >= 2 {
-              lsp_warn!("CPU utilization by the server exceeded 90% across an interval of 10 seconds. Exiting the process.");
-              std::process::exit(0);
-            } else {
-              lsp_warn!("CPU utilization by the server exceeded 90%.");
-            }
-          } else {
-            cpu_overuse_count = 0;
-          }
-        }
-      });
+      CpuUsageWatchdog::new().start();
     }
     let mut language_server = self.0.write().await;
     language_server.diagnostics_server.start();
