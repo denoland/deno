@@ -14,7 +14,10 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
+import {
+  AbortController,
+  createDependentAbortSignal,
+} from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -447,17 +450,22 @@ function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
 function mapToCallback(context, callback, onError) {
-  const signal = context.abortController.signal;
+  const contextSignal = context.abortController.signal;
 
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
     let response;
+    const abortController = new AbortController();
     try {
+      const dependentAbortSignal = createDependentAbortSignal([
+        abortController.signal,
+        contextSignal,
+      ], "");
       innerRequest = new InnerRequest(req, context);
       response = await callback(
-        fromInnerRequest(innerRequest, signal, "immutable"),
+        fromInnerRequest(innerRequest, dependentAbortSignal, "immutable"),
         new ServeHandlerInfo(innerRequest),
       );
 
