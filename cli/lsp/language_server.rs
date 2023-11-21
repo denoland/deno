@@ -10,6 +10,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
+use deno_core::v8::IsolateHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
@@ -182,6 +183,7 @@ pub struct StateSnapshot {
 }
 
 struct CpuUsageWatchdog {
+  ts_isolate_handle: IsolateHandle,
   pid: Pid,
   system: System,
   is_overusing: bool,
@@ -189,8 +191,9 @@ struct CpuUsageWatchdog {
 }
 
 impl CpuUsageWatchdog {
-  fn new() -> Self {
+  fn new(ts_isolate_handle: IsolateHandle) -> Self {
     Self {
+      ts_isolate_handle,
       pid: Pid::from(std::process::id() as usize),
       system: System::default(),
       is_overusing: false,
@@ -218,21 +221,28 @@ impl CpuUsageWatchdog {
       // VSCode will stop restarting the language server if it crashes 5 times
       // in 3 minutes (1 per 36 seconds). We start with the below delay so
       // this crash cannot occur more frequently than that.
-      thread::sleep(std::time::Duration::from_secs(7));
+      thread::sleep(std::time::Duration::from_secs(17));
       loop {
+        const USAGE_THRESHOLD: usize = 90;
+        const MAX_OVERUSE_PERIOD: usize = 20;
         let cpu_usage = self.refresh_cpu_usage();
         if self.is_overusing {
-          if cpu_usage > 90.0 {
+          if cpu_usage > USAGE_THRESHOLD as f32 {
             self.overuse_interval_count += 1;
-            if self.overuse_interval_count >= 20 {
-              lsp_warn!("CPU utilization by the server exceeded 90% across an interval of 20 seconds. Exiting the process.");
+            if self.overuse_interval_count >= MAX_OVERUSE_PERIOD {
+              lsp_warn!("CPU utilization by the server exceeded {USAGE_THRESHOLD}% for a period of {MAX_OVERUSE_PERIOD} seconds. Exiting the process.");
+              lsp_warn!("Terminating TS server...");
+              self.ts_isolate_handle.terminate_execution();
+              // Allow some time to display the ts server request error caused
+              // by this termination.
+              thread::sleep(std::time::Duration::from_secs(1));
               std::process::exit(0);
             }
           } else {
             self.is_overusing = false;
             self.overuse_interval_count = 0;
           }
-        } else if cpu_usage > 90.0 {
+        } else if cpu_usage > USAGE_THRESHOLD as f32 {
           self.is_overusing = true;
         }
         if self.is_overusing {
@@ -1196,6 +1206,13 @@ impl Inner {
   ) -> LspResult<InitializeResult> {
     lsp_log!("Starting Deno language server...");
     let mark = self.performance.mark("initialize", Some(&params));
+
+    // CPU watchdog thread. Kill the process if it uses more than 90% CPU across
+    // an interval of time. We gate this heuristically by the window capability
+    // to avoid using it in the REPL's language server.
+    if params.capabilities.window.is_some() {
+      CpuUsageWatchdog::new(self.ts_server.isolate_handle()).start();
+    }
 
     // exit this process when the parent is lost
     if let Some(parent_pid) = params.process_id {
@@ -3178,12 +3195,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    // CPU watchdog thread. Kill the process if it uses more than 90% CPU across
-    // an interval of time. We gate this heuristically by the window capability
-    // to avoid using it in the REPL's language server.
-    if params.capabilities.window.is_some() {
-      CpuUsageWatchdog::new().start();
-    }
     let mut language_server = self.0.write().await;
     language_server.diagnostics_server.start();
     language_server.initialize(params).await

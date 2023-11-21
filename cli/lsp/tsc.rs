@@ -47,6 +47,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::v8::IsolateHandle;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -211,6 +212,7 @@ fn normalize_diagnostic(
 pub struct TsServer {
   sender: mpsc::UnboundedSender<Request>,
   specifier_map: Arc<TscSpecifierMap>,
+  isolate_handle: IsolateHandle,
 }
 
 impl TsServer {
@@ -218,8 +220,12 @@ impl TsServer {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let (handle_tx, handle_rx) = std::sync::mpsc::channel();
     let _join_handle = thread::spawn(move || {
       let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
+      handle_tx
+        .send(ts_runtime.handle_scope().thread_safe_handle())
+        .unwrap();
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -237,11 +243,17 @@ impl TsServer {
         }
       })
     });
+    let isolate_handle = handle_rx.recv().unwrap();
 
     Self {
       sender: tx,
       specifier_map,
+      isolate_handle,
     }
+  }
+
+  pub fn isolate_handle(&self) -> IsolateHandle {
+    self.isolate_handle.clone()
   }
 
   pub async fn get_diagnostics(
