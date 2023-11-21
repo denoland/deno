@@ -38,7 +38,7 @@ impl Pty {
     };
     if args.is_empty() || args[0] == "repl" && !args.contains(&"--quiet") {
       // wait for the repl to start up before writing to it
-      pty.try_read_until_condition_with_timeout(
+      pty.read_until_condition_with_timeout(
         |pty| {
           pty
             .all_output()
@@ -186,9 +186,16 @@ impl Pty {
 
   #[track_caller]
   fn read_until_condition(&mut self, condition: impl FnMut(&mut Self) -> bool) {
-    if self
-      .try_read_until_condition_with_timeout(condition, Duration::from_secs(15))
-    {
+    self.read_until_condition_with_timeout(condition, Duration::from_secs(15));
+  }
+
+  #[track_caller]
+  fn read_until_condition_with_timeout(
+    &mut self,
+    condition: impl FnMut(&mut Self) -> bool,
+    timeout_duration: Duration,
+  ) {
+    if self.try_read_until_condition_with_timeout(condition, timeout_duration) {
       return;
     }
 
