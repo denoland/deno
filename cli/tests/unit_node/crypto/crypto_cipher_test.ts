@@ -6,7 +6,7 @@ import { buffer, text } from "node:stream/consumers";
 import {
   assertEquals,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
