@@ -39,7 +39,7 @@ Deno.test("stream.Writable does not change the order of items", async () => {
       write(chunk, _, cb) {
         chunks.push(chunk);
         cb();
-      }
+      },
     });
 
     for (const i of Array(20).keys()) {
@@ -49,7 +49,7 @@ Deno.test("stream.Writable does not change the order of items", async () => {
 
     if (chunks[0][0] !== 0) {
       // The first chunk is swapped with the later chunk.
-      fail("The first chunk is swapped")
+      fail("The first chunk is swapped");
     }
   }
 
@@ -57,4 +57,4 @@ Deno.test("stream.Writable does not change the order of items", async () => {
     // Run it multiple times to avoid flaky false negative.
     await test();
   }
-})
+});
