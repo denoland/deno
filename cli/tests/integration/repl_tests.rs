@@ -1093,3 +1093,18 @@ fn env_file() {
       assert_contains!(console.all_output(), "BAR",);
     });
 }
+
+// Regression test for https://github.com/denoland/deno/issues/20528
+#[test]
+fn pty_promise_was_collected_regression_test() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl"],
+    Some(vec!["new Uint8Array(64 * 1024 * 1024)"]),
+    None,
+    false,
+  );
+
+  assert_contains!(out, "Uint8Array(67108864)");
+  assert!(err.is_empty());
+}
