@@ -8,7 +8,6 @@ import {
   assertMatch,
   assertThrows,
 } from "../../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 Deno.test({
   name: "worker terminate",
@@ -22,20 +21,20 @@ Deno.test({
       { type: "module", name: "tsWorker" },
     );
 
-    const promise1 = deferred();
+    const deferred1 = Promise.withResolvers<string>();
     jsWorker.onmessage = (e) => {
-      promise1.resolve(e.data);
+      deferred1.resolve(e.data);
     };
 
-    const promise2 = deferred();
+    const deferred2 = Promise.withResolvers<string>();
     tsWorker.onmessage = (e) => {
-      promise2.resolve(e.data);
+      deferred2.resolve(e.data);
     };
 
     jsWorker.postMessage("Hello World");
-    assertEquals(await promise1, "Hello World");
+    assertEquals(await deferred1.promise, "Hello World");
     tsWorker.postMessage("Hello World");
-    assertEquals(await promise2, "Hello World");
+    assertEquals(await deferred2.promise, "Hello World");
     tsWorker.terminate();
     jsWorker.terminate();
   },
@@ -49,9 +48,9 @@ Deno.test({
       { type: "module", name: "tsWorker" },
     );
 
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     tsWorker.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
 
     tsWorker.postMessage("Hello World");
@@ -68,9 +67,10 @@ Deno.test({
       { type: "module", name: "nested" },
     );
 
-    const promise = deferred();
+    // deno-lint-ignore no-explicit-any
+    const { promise, resolve } = Promise.withResolvers<any>();
     nestedWorker.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
 
     nestedWorker.postMessage("Hello World");
@@ -87,11 +87,11 @@ Deno.test({
       { type: "module" },
     );
 
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     // deno-lint-ignore no-explicit-any
     throwingWorker.onerror = (e: any) => {
       e.preventDefault();
-      promise.resolve(e.message);
+      resolve(e.message);
     };
 
     assertMatch(await promise as string, /Uncaught Error: Thrown error/);
@@ -108,9 +108,9 @@ Deno.test({
       workerOptions,
     );
 
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     w.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
 
     w.postMessage("Hello, world!");
@@ -128,9 +128,9 @@ Deno.test({
       workerOptions,
     );
 
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     w.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
 
     w.postMessage("Hello, world!");
@@ -147,15 +147,15 @@ Deno.test({
       { type: "module" },
     );
 
-    const promise = deferred();
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
     // deno-lint-ignore no-explicit-any
     fetchingWorker.onerror = (e: any) => {
       e.preventDefault();
-      promise.reject(e.message);
+      reject(e.message);
     };
     // Defer promise.resolve() to allow worker to shut down
     fetchingWorker.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
 
     assertEquals(await promise, "Done!");
@@ -166,7 +166,7 @@ Deno.test({
 Deno.test({
   name: "worker terminate busy loop",
   fn: async function () {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<number>();
 
     const busyWorker = new Worker(
       import.meta.resolve("./busy_worker.js"),
@@ -183,7 +183,7 @@ Deno.test({
           throw new Error("unreachable");
         };
         setTimeout(() => {
-          promise.resolve(testResult);
+          resolve(testResult);
         }, 100);
       }
     };
@@ -198,7 +198,7 @@ Deno.test({
   fn: async function () {
     // See issue for details
     // https://github.com/denoland/deno/issues/4080
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
 
     const racyWorker = new Worker(
       import.meta.resolve("./racy_worker.js"),
@@ -207,7 +207,7 @@ Deno.test({
 
     racyWorker.onmessage = (_e) => {
       setTimeout(() => {
-        promise.resolve();
+        resolve();
       }, 100);
     };
 
@@ -222,8 +222,8 @@ Deno.test({
     let messageHandlersCalled = 0;
     let errorHandlersCalled = 0;
 
-    const promise1 = deferred();
-    const promise2 = deferred();
+    const deferred1 = Promise.withResolvers<void>();
+    const deferred2 = Promise.withResolvers<void>();
 
     const worker = new Worker(
       import.meta.resolve("./event_worker.js"),
@@ -238,7 +238,7 @@ Deno.test({
     });
     worker.addEventListener("message", (_e: Event) => {
       messageHandlersCalled++;
-      promise1.resolve();
+      deferred1.resolve();
     });
 
     worker.onerror = (e) => {
@@ -250,15 +250,15 @@ Deno.test({
     });
     worker.addEventListener("error", (_e: Event) => {
       errorHandlersCalled++;
-      promise2.resolve();
+      deferred2.resolve();
     });
 
     worker.postMessage("ping");
-    await promise1;
+    await deferred1.promise;
     assertEquals(messageHandlersCalled, 3);
 
     worker.postMessage("boom");
-    await promise2;
+    await deferred2.promise;
     assertEquals(errorHandlersCalled, 3);
     worker.terminate();
   },
@@ -272,9 +272,10 @@ Deno.test({
       { type: "module" },
     );
 
-    const promise = deferred();
+    // deno-lint-ignore no-explicit-any
+    const { promise, resolve } = Promise.withResolvers<any>();
     worker.onmessage = (e: MessageEvent) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
     worker.onerror = (_e) => {
       throw new Error("unreachable");
@@ -298,10 +299,10 @@ Deno.test({
       { type: "module", deno: { permissions: "inherit" } },
     );
 
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     denoWorker.onmessage = (e) => {
       denoWorker.terminate();
-      promise.resolve(e.data);
+      resolve(e.data);
     };
 
     denoWorker.postMessage("Hello World");
@@ -317,9 +318,9 @@ Deno.test({
       { type: "module" },
     );
 
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<boolean>();
     w.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
 
     w.postMessage(null);
@@ -331,7 +332,7 @@ Deno.test({
 Deno.test({
   name: "Worker event handler order",
   fn: async function () {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const w = new Worker(
       import.meta.resolve("./test_worker.ts"),
       { type: "module", name: "tsWorker" },
@@ -343,7 +344,7 @@ Deno.test({
     };
     w.addEventListener("message", () => arr.push(3));
     w.addEventListener("message", () => {
-      promise.resolve();
+      resolve();
     });
     w.postMessage("Hello World");
     await promise;
@@ -355,13 +356,13 @@ Deno.test({
 Deno.test({
   name: "Worker immediate close",
   fn: async function () {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const w = new Worker(
       import.meta.resolve("./immediately_close_worker.js"),
       { type: "module" },
     );
     setTimeout(() => {
-      promise.resolve();
+      resolve();
     }, 1000);
     await promise;
     w.terminate();
@@ -371,7 +372,7 @@ Deno.test({
 Deno.test({
   name: "Worker post undefined",
   fn: async function () {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const worker = new Worker(
       import.meta.resolve("./post_undefined.ts"),
       { type: "module" },
@@ -380,7 +381,7 @@ Deno.test({
     const handleWorkerMessage = (e: MessageEvent) => {
       console.log("main <- worker:", e.data);
       worker.terminate();
-      promise.resolve();
+      resolve();
     };
 
     worker.addEventListener("messageerror", () => console.log("message error"));
@@ -399,9 +400,9 @@ Deno.test("Worker inherits permissions", async function () {
     { type: "module", deno: { permissions: "inherit" } },
   );
 
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<boolean>();
   worker.onmessage = (e) => {
-    promise.resolve(e.data);
+    resolve(e.data);
   };
 
   worker.postMessage(null);
@@ -415,9 +416,9 @@ Deno.test("Worker limit children permissions", async function () {
     { type: "module", deno: { permissions: { read: false } } },
   );
 
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<boolean>();
   worker.onmessage = (e) => {
-    promise.resolve(e.data);
+    resolve(e.data);
   };
 
   worker.postMessage(null);
@@ -443,8 +444,9 @@ Deno.test("Worker limit children permissions granularly", async function () {
       },
     },
   );
-  const promise = deferred();
-  worker.onmessage = ({ data }) => promise.resolve(data);
+  // deno-lint-ignore no-explicit-any
+  const { promise, resolve } = Promise.withResolvers<any>();
+  worker.onmessage = ({ data }) => resolve(data);
   assertEquals(await promise, {
     envGlobal: "prompt",
     envFoo: "granted",
@@ -482,8 +484,9 @@ Deno.test("Nested worker limit children permissions", async function () {
     import.meta.resolve("./parent_read_check_worker.js"),
     { type: "module", deno: { permissions: "inherit" } },
   );
-  const promise = deferred();
-  worker.onmessage = ({ data }) => promise.resolve(data);
+  // deno-lint-ignore no-explicit-any
+  const { promise, resolve } = Promise.withResolvers<any>();
+  worker.onmessage = ({ data }) => resolve(data);
   assertEquals(await promise, {
     envGlobal: "prompt",
     envFoo: "prompt",
@@ -541,9 +544,9 @@ Deno.test("Worker with disabled permissions", async function () {
     { type: "module", deno: { permissions: "none" } },
   );
 
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<boolean>();
   worker.onmessage = (e) => {
-    promise.resolve(e.data);
+    resolve(e.data);
   };
 
   worker.postMessage(null);
@@ -557,9 +560,10 @@ Deno.test("Worker permissions are not inherited with empty permission object", a
     { type: "module", deno: { permissions: {} } },
   );
 
-  const promise = deferred();
+  // deno-lint-ignore no-explicit-any
+  const { promise, resolve } = Promise.withResolvers<any>();
   worker.onmessage = (e) => {
-    promise.resolve(e.data);
+    resolve(e.data);
   };
 
   worker.postMessage(null);
@@ -581,9 +585,10 @@ Deno.test("Worker permissions are not inherited with single specified permission
     { type: "module", deno: { permissions: { net: true } } },
   );
 
-  const promise = deferred();
+  // deno-lint-ignore no-explicit-any
+  const { promise, resolve } = Promise.withResolvers<any>();
   worker.onmessage = (e) => {
-    promise.resolve(e.data);
+    resolve(e.data);
   };
 
   worker.postMessage(null);
@@ -615,11 +620,11 @@ Deno.test("Worker with invalid permission arg", function () {
 Deno.test({
   name: "worker location",
   fn: async function () {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     const workerModuleHref = import.meta.resolve("./worker_location.ts");
     const w = new Worker(workerModuleHref, { type: "module" });
     w.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
     w.postMessage("Hello, world!");
     assertEquals(await promise, `${workerModuleHref}, true`);
@@ -635,9 +640,9 @@ Deno.test({
       "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     w.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
     w.postMessage("Hello, world!");
     assertEquals(await promise, "Hello, world!");
@@ -648,7 +653,7 @@ Deno.test({
 Deno.test({
   name: "Worker with top-level-await",
   fn: async function () {
-    const result = deferred();
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
     const worker = new Worker(
       import.meta.resolve("./worker_with_top_level_await.ts"),
       { type: "module" },
@@ -657,12 +662,12 @@ Deno.test({
       if (e.data == "ready") {
         worker.postMessage("trigger worker handler");
       } else if (e.data == "triggered worker handler") {
-        result.resolve();
+        resolve();
       } else {
-        result.reject(new Error("Handler didn't run during top-level delay."));
+        reject(new Error("Handler didn't run during top-level delay."));
       }
     };
-    await result;
+    await promise;
     worker.terminate();
   },
 });
@@ -670,15 +675,15 @@ Deno.test({
 Deno.test({
   name: "Worker with native HTTP",
   fn: async function () {
-    const result = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const worker = new Worker(
       import.meta.resolve("./http_worker.js"),
       { type: "module", deno: { permissions: "inherit" } },
     );
     worker.onmessage = () => {
-      result.resolve();
+      resolve();
     };
-    await result;
+    await promise;
 
     assert(worker);
     const response = await fetch("http://localhost:4506");
@@ -695,14 +700,14 @@ Deno.test({
       { type: "module" },
     );
 
-    const result = deferred();
+    // deno-lint-ignore no-explicit-any
+    const { promise, resolve } = Promise.withResolvers<any>();
     worker.onmessage = (e) => {
-      result.resolve(e.data);
+      resolve(e.data);
     };
 
     worker.postMessage("START");
-    // deno-lint-ignore no-explicit-any
-    const data = await result as any;
+    const data = await promise;
     // self field should reference itself (circular ref)
     assert(data === data.self);
     // fields a and b refer to the same array
@@ -729,9 +734,9 @@ Deno.test({
       "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<string>();
     w.onmessage = (e) => {
-      promise.resolve(e.data);
+      resolve(e.data);
     };
     w.postMessage("Hello, world!");
     assertEquals(await promise, "Hello, world!");
@@ -742,7 +747,7 @@ Deno.test({
 Deno.test({
   name: "worker SharedArrayBuffer",
   fn: async function () {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
       import.meta.resolve("./shared_array_buffer.ts"),
@@ -757,7 +762,7 @@ Deno.test({
     w.onmessage = () => {
       w.postMessage([sab1, sab2]);
       w.onmessage = () => {
-        promise.resolve();
+        resolve();
       };
     };
     await promise;
@@ -776,30 +781,31 @@ Deno.test({
     );
     const channel = new MessageChannel();
 
-    const promise1 = deferred();
-    const promise2 = deferred();
-    const promise3 = deferred();
-    const result = deferred();
+    // deno-lint-ignore no-explicit-any
+    const deferred1 = Promise.withResolvers<any>();
+    const deferred2 = Promise.withResolvers<boolean>();
+    const deferred3 = Promise.withResolvers<boolean>();
+    const result = Promise.withResolvers<void>();
     worker.onmessage = (e) => {
-      promise1.resolve([e.data, e.ports.length]);
+      deferred1.resolve([e.data, e.ports.length]);
       const port1 = e.ports[0];
       port1.onmessage = (e) => {
-        promise2.resolve(e.data);
+        deferred2.resolve(e.data);
         port1.close();
         worker.postMessage("3", [channel.port1]);
       };
       port1.postMessage("2");
     };
     channel.port2.onmessage = (e) => {
-      promise3.resolve(e.data);
+      deferred3.resolve(e.data);
       channel.port2.close();
       result.resolve();
     };
 
-    assertEquals(await promise1, ["1", 1]);
-    assertEquals(await promise2, true);
-    assertEquals(await promise3, true);
-    await result;
+    assertEquals(await deferred1.promise, ["1", 1]);
+    assertEquals(await deferred2.promise, true);
+    assertEquals(await deferred3.promise, true);
+    await result.promise;
     worker.terminate();
   },
 });
@@ -818,14 +824,15 @@ Deno.test({
 
     w.postMessage(null);
 
-    const memoryUsagePromise = deferred();
+    // deno-lint-ignore no-explicit-any
+    const { promise, resolve } = Promise.withResolvers<any>();
     w.onmessage = function (evt) {
-      memoryUsagePromise.resolve(evt.data);
+      resolve(evt.data);
     };
 
     assertEquals(
       Object.keys(
-        await memoryUsagePromise as unknown as Record<string, number>,
+        await promise as unknown as Record<string, number>,
       ),
       ["rss", "heapTotal", "heapUsed", "external"],
     );
