@@ -764,7 +764,7 @@ impl WebWorker {
           );
         } else {
           eprintln!("classic worker terminated unexpectedly");
-          return Poll::Ready(Ok(()));
+          Poll::Ready(Ok(()))
         }
       }
       Poll::Pending => Poll::Pending,
