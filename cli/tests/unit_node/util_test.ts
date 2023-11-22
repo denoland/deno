@@ -5,7 +5,7 @@ import {
   assertEquals,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/assert/mod.ts";
+} from "../../../test_util/std/testing/asserts.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import * as util from "node:util";
 

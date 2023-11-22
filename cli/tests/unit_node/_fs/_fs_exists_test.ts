@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   assertStringIncludes,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 import { exists, existsSync } from "node:fs";
 import { promisify } from "node:util";
 

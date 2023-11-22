@@ -19,7 +19,7 @@ export {
   fail,
   unimplemented,
   unreachable,
-} from "../../../test_util/std/assert/mod.ts";
+} from "../../../test_util/std/testing/asserts.ts";
 export { deferred } from "../../../test_util/std/async/deferred.ts";
 export type { Deferred } from "../../../test_util/std/async/deferred.ts";
 export { delay } from "../../../test_util/std/async/delay.ts";
