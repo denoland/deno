@@ -696,7 +696,7 @@ const ci = {
             "rcodesign sign target/release/deno " + 
               "--code-signature-flags=runtime " +
               "--p12-password='$APPLE_CODESIGN_PASSWORD' " + 
-              "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " + 
+              "--p12-file=<(echo $APPLE_CODESIGN_KEY) " + 
               "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "zip -r deno-x86_64-apple-darwin.zip deno",
