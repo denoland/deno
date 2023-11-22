@@ -10,7 +10,7 @@ import {
   assertInstanceOf,
   assertEquals,
   assertFalse,
-} from "../../test_util/std/testing/asserts.ts";
+} from "../../test_util/std/assert/mod.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {

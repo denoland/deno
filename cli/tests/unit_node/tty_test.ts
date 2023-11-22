@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-explicit-any
 
-import { assert } from "../../../test_util/std/testing/asserts.ts";
+import { assert } from "../../../test_util/std/assert/mod.ts";
 import { isatty } from "node:tty";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {

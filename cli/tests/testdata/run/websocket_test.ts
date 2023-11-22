@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertThrows,
   fail,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 Deno.test("invalid scheme", () => {
