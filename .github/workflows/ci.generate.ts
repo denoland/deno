@@ -692,12 +692,16 @@ const ci = {
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno'",
           ].join("\n"),
+          env: {
+            "APPLE_CODESIGN_KEY": "${{ secrets.APPLE_CODESIGN_KEY }}",
+            "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
+          },
           run: [
-            "rcodesign sign target/release/deno " + 
-              "--code-signature-flags=runtime " +
-              "--p12-password='$APPLE_CODESIGN_PASSWORD' " + 
-              "--p12-file=<(echo $APPLE_CODESIGN_KEY) " + 
-              "--entitlements-xml-file=cli/entitlements.plist",
+            "rcodesign sign target/release/deno " +
+            "--code-signature-flags=runtime " +
+            "--p12-password='$APPLE_CODESIGN_PASSWORD' " +
+            "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
+            "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "zip -r deno-x86_64-apple-darwin.zip deno",
           ]
