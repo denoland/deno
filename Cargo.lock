@@ -1065,8 +1065,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.231.0"
-source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#e98d4ed6fa1595c88972d3cbb86a8b71b2c9308f"
+version = "0.232.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "229ffd108e028b148a1a5a6122f771bc7c37094170226f44b8b93b3a9b79d114"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1489,8 +1490,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.107.0"
-source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#e98d4ed6fa1595c88972d3cbb86a8b71b2c9308f"
+version = "0.108.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7dde627916f8539f3f0d2e754dda40810c8ca4d655f2eaac1ef54785a12fd27"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1953,9 +1955,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.88.3"
+version = "0.88.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c51dda57191fcc97f1da77927a29ecb6f5ec7133f705dcc7134533f3090681c"
+checksum = "3a5be6e2f026971bd4b75ed2b77203c4195587229818ddef23721f66a044907b"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -4618,8 +4620,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.140.0"
-source = "git+https://github.com/bartlomieju/deno_core?branch=poll_event_loop_with_options#e98d4ed6fa1595c88972d3cbb86a8b71b2c9308f"
+version = "0.141.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc689cb316d67b200e9f7449ce76cceb7e483e0f828d1a9c3d057c4367b6c26e"
 dependencies = [
  "bytes",
  "derive_more",

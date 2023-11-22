@@ -3,7 +3,7 @@ import {
   assertEquals,
   assertThrows,
   fail,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { ftruncate, ftruncateSync } from "node:fs";
 
 Deno.test({
