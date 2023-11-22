@@ -4,7 +4,7 @@ import {
   assertFalse,
   assertMatch,
   assertStrictEquals,
-} from "../../../../test_util/std/assert/mod.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 import { read, readSync } from "node:fs";
 import { open, openSync } from "node:fs";
 import { Buffer } from "node:buffer";

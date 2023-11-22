@@ -19,7 +19,7 @@ export {
   fail,
   unimplemented,
   unreachable,
-} from "../../../test_util/std/assert/mod.ts";
+} from "../../../test_util/std/testing/asserts.ts";
 export { delay } from "../../../test_util/std/async/delay.ts";
 export { readLines } from "../../../test_util/std/io/read_lines.ts";
 export { parse as parseArgs } from "../../../test_util/std/flags/mod.ts";

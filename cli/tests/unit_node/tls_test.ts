@@ -3,7 +3,7 @@
 import {
   assertEquals,
   assertInstanceOf,
-} from "../../../test_util/std/assert/mod.ts";
+} from "../../../test_util/std/testing/asserts.ts";
 import { delay } from "../../../test_util/std/async/delay.ts";
 import { fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
 import { serveTls } from "../../../test_util/std/http/server.ts";
