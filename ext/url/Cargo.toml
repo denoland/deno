@@ -20,6 +20,7 @@ urlpattern = "0.2.0"
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+deno_console.workspace = true
 deno_webidl.workspace = true
 
 [[bench]]

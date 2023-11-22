@@ -4,7 +4,7 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { rm, rmSync } from "node:fs";
 import { closeSync, existsSync } from "node:fs";
 import { join } from "../../../../test_util/std/path/mod.ts";

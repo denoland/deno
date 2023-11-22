@@ -8,6 +8,7 @@ const {
   StringPrototypeSplit,
   StringPrototypeTrim,
   Symbol,
+  SymbolFor,
   TypeError,
 } = primordials;
 import {
@@ -58,6 +59,10 @@ class CacheStorage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await op_cache_storage_delete(cacheName);
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 
@@ -274,6 +279,10 @@ class Cache {
     // Step 5.4-5.5: don't apply in this context.
 
     return responses;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 

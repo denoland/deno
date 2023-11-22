@@ -408,21 +408,24 @@ class Response {
     return second;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
-      keys: [
-        "body",
-        "bodyUsed",
-        "headers",
-        "ok",
-        "redirected",
-        "status",
-        "statusText",
-        "url",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
+        keys: [
+          "body",
+          "bodyUsed",
+          "headers",
+          "ok",
+          "redirected",
+          "status",
+          "statusText",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

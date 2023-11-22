@@ -11,7 +11,7 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import { delay } from "../../../test_util/std/async/delay.ts";
@@ -364,6 +364,8 @@ Deno.test({
   name: "process.stdin readable with a TTY",
   // TODO(PolarETech): Run this test even in non tty environment
   ignore: !Deno.isatty(Deno.stdin.rid),
+  // stdin resource is present before the test starts.
+  sanitizeResources: false,
   async fn() {
     const { promise, resolve } = Promise.withResolvers<void>();
     const expected = ["foo", "bar", null, "end"];
