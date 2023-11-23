@@ -2,7 +2,7 @@
 
 use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
-use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
@@ -19,10 +19,9 @@ impl ImportMapUnfurler {
 
   pub fn unfurl(
     &self,
-    specifier: String,
+    url: &ModuleSpecifier,
     data: Vec<u8>,
   ) -> Result<Vec<u8>, AnyError> {
-    let url = Url::parse(&specifier)?;
     let media_type = MediaType::from_specifier(&url);
 
     match media_type {
@@ -51,7 +50,7 @@ impl ImportMapUnfurler {
 
     let text = String::from_utf8(data)?;
     let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier,
+      specifier: url.to_string(),
       text_info: deno_ast::SourceTextInfo::from_string(text),
       media_type,
       capture_tokens: false,
@@ -62,7 +61,7 @@ impl ImportMapUnfurler {
     let module_info = DefaultModuleAnalyzer::module_info(&parsed_source);
     let mut analyze_specifier =
       |specifier: &str, range: &deno_graph::PositionRange| {
-        let resolved = self.import_map.resolve(specifier, &url);
+        let resolved = self.import_map.resolve(specifier, url);
         if let Ok(resolved) = resolved {
           let new_text = if resolved.scheme() == "file" {
             format!("./{}", url.make_relative(&resolved).unwrap())
@@ -108,6 +107,17 @@ impl ImportMapUnfurler {
       .into_bytes(),
     )
   }
+
+  #[cfg(test)]
+  fn unfurl_to_string(
+    &self,
+    url: &ModuleSpecifier,
+    data: Vec<u8>,
+  ) -> Result<String, AnyError> {
+    let data = self.unfurl(url, data)?;
+    let content = String::from_utf8(data)?;
+    Ok(content)
+  }
 }
 
 fn to_range(
@@ -125,4 +135,62 @@ fn to_range(
     range.end -= 1;
   }
   range
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_ast::ModuleSpecifier;
+  use deno_core::serde_json::json;
+  use import_map::ImportMapWithDiagnostics;
+  use pretty_assertions::assert_eq;
+
+  #[test]
+  fn test_unfurling() {
+    let deno_json_url =
+      ModuleSpecifier::parse("file:///dev/deno.json").unwrap();
+    let value = json!({
+      "imports": {
+        "express": "npm:express@5",
+        "lib/": "./lib/",
+        "fizz": "./fizz/mod.ts"
+      }
+    });
+    let ImportMapWithDiagnostics { import_map, .. } =
+      import_map::parse_from_value(&deno_json_url, value).unwrap();
+    let unfurler = ImportMapUnfurler::new(import_map);
+
+    // Unfurling TS file should apply changes.
+    {
+      let source_code = r#"import express from "express";"
+import foo from "lib/foo.ts";
+import bar from "lib/bar.ts";
+import fizz from "fizz";
+"#;
+      let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
+      let unfurled_source = unfurler
+        .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
+        .unwrap();
+      let expected_source = r#"import express from "npm:express@5";"
+import foo from "./lib/foo.ts";
+import bar from "./lib/bar.ts";
+import fizz from "./fizz/mod.ts";
+"#;
+      assert_eq!(unfurled_source, expected_source);
+    }
+
+    // Unfurling file with "unknown" media type should leave it as is
+    {
+      let source_code = r#"import express from "express";"
+import foo from "lib/foo.ts";
+import bar from "lib/bar.ts";
+import fizz from "fizz";
+"#;
+      let specifier = ModuleSpecifier::parse("file:///dev/mod").unwrap();
+      let unfurled_source = unfurler
+        .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
+        .unwrap();
+      assert_eq!(unfurled_source, source_code);
+    }
+  }
 }

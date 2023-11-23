@@ -2,6 +2,7 @@
 
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use hyper::body::Bytes;
@@ -32,7 +33,7 @@ pub fn create_gzipped_tarball(
       let data = std::fs::read(entry.path())
         .with_context(|| format!("Unable to read file {:?}", entry.path()))?;
       let content = unfurler
-        .unfurl(url.to_string(), data)
+        .unfurl(&url, data)
         .with_context(|| format!("Unable to unfurl file {:?}", entry.path()))?;
       tar.add_file(relative_path, &content).with_context(|| {
         format!("Unable to add file to tarball {:?}", entry.path())
