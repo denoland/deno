@@ -718,7 +718,12 @@ const ci = {
             "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
-            "rcodesign sign target/release/deno",
+            'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
+            "rcodesign sign target/release/deno " +
+            "--code-signature-flags=runtime " +
+            '--p12-password="$APPLE_CODESIGN_PASSWORD" ' +
+            "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
+            "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "zip -r deno-aarch64-apple-darwin.zip deno",
           ]
