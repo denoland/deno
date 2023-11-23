@@ -15,4 +15,4 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-libloading = { version = "0.8" }
+libloading = { version = "0.7" }
