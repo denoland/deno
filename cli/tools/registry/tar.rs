@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use hyper::body::Bytes;
@@ -9,48 +11,48 @@ use tar::Header;
 
 use crate::util::import_map::ImportMapUnfurler;
 
-pub fn create_tarball(
+pub fn create_gzipped_tarball(
   dir: PathBuf,
   // TODO(bartlomieju): this is too specific, factor it out into a callback that
   // returns data
   unfurler: ImportMapUnfurler,
 ) -> Result<Bytes, AnyError> {
-  let mut tar = TarArchive::new();
+  let mut tar = TarGzArchive::new();
   let dir_url = Url::from_directory_path(&dir).unwrap();
 
-  // TODO(bartlomieju): this should be helper function and it should also
-  // exclude test/bench files when publishing.
-  for file in walkdir::WalkDir::new(dir).follow_links(false) {
-    let file = file?;
+  for entry in walkdir::WalkDir::new(dir).follow_links(false) {
+    let entry = entry?;
 
-    if file.file_type().is_dir() {
-      continue;
+    if entry.file_type().is_file() {
+      let url = Url::from_file_path(entry.path())
+        .map_err(|_| anyhow::anyhow!("Invalid file path {:?}", entry.path()))?;
+      let relative_path = dir_url
+        .make_relative(&url)
+        .expect("children can be relative to parent");
+      let data = std::fs::read(entry.path())
+        .with_context(|| format!("Unable to read file {:?}", entry.path()))?;
+      let content = unfurler
+        .unfurl(url.to_string(), data)
+        .with_context(|| format!("Unable to unfurl file {:?}", entry.path()))?;
+      tar.add_file(relative_path, &content).with_context(|| {
+        format!("Unable to add file to tarball {:?}", entry.path())
+      })?;
+    } else if entry.file_type().is_dir() {
+      // skip
+    } else {
+      bail!("Unsupported file type at path {:?}", entry.path());
     }
-
-    let path = file.path();
-
-    let url = Url::from_file_path(path).unwrap();
-    // TODO(bartlomieju): use the same functionality as in `deno test`/
-    // `deno bench` to match these
-    if url.as_str().contains("_test") || url.as_str().contains("_bench") {
-      continue;
-    }
-
-    let relative_path = dir_url.make_relative(&url).unwrap();
-    let data = std::fs::read(path)?;
-    let content = unfurler.unfurl(url.to_string(), data)?;
-    tar.add_file(relative_path, &content)?;
   }
 
-  let v = tar.finish()?;
+  let v = tar.finish().context("Unable to finish tarball")?;
   Ok(Bytes::from(v))
 }
 
-struct TarArchive {
+struct TarGzArchive {
   builder: tar::Builder<Vec<u8>>,
 }
 
-impl TarArchive {
+impl TarGzArchive {
   pub fn new() -> Self {
     Self {
       builder: tar::Builder::new(Vec::new()),

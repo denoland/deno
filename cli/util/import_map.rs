@@ -7,23 +7,14 @@ use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
 use import_map::ImportMap;
-use import_map::ImportMapWithDiagnostics;
 
 pub struct ImportMapUnfurler {
   import_map: ImportMap,
 }
 
 impl ImportMapUnfurler {
-  pub fn new(
-    import_map_base: Url,
-    import_map_text: String,
-  ) -> Result<Self, AnyError> {
-    let ImportMapWithDiagnostics {
-      diagnostics: _,
-      import_map,
-    } = import_map::parse_from_json(&import_map_base, &import_map_text)?;
-    // TODO(bartlomieju): surface diagnostics?
-    Ok(Self { import_map })
+  pub fn new(import_map: ImportMap) -> Self {
+    Self { import_map }
   }
 
   pub fn unfurl(

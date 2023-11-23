@@ -8,6 +8,7 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_config::ConfigFile;
 use deno_core::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -19,6 +20,7 @@ use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
+use import_map::ImportMapWithDiagnostics;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::Digest;
@@ -29,14 +31,15 @@ use crate::util::import_map::ImportMapUnfurler;
 
 mod tar;
 
+enum AuthMethod {
+  Interactive,
+  Token(String),
+  Oidc(OidcConfig),
+}
+
 struct OidcConfig {
   url: String,
   token: String,
-}
-
-enum AuthMethod {
-  Interactive,
-  Oidc(OidcConfig),
 }
 
 struct PreparedPublishPackage {
@@ -79,27 +82,33 @@ async fn prepare_publish(
     )
   })?;
 
-  if deno_json.json.name.is_none() || deno_json.json.version.is_none() {
-    bail!(
-      "{} is missing 'name' and 'version' fields",
-      deno_json_path.display()
-    );
-  }
-  let name = deno_json.json.name.unwrap();
+  let Some(version) = deno_json.json.version.clone() else {
+    bail!("{} is missing 'version' field", deno_json_path.display());
+  };
+  let Some(name) = deno_json.json.name.clone() else {
+    bail!("{} is missing 'name' field", deno_json_path.display());
+  };
+  let Some(name) = name.strip_prefix('@') else {
+    bail!("Invalid package name, use '@<scope_name>/<package_name> format");
+  };
+  let Some((scope, package_name)) = name.split_once('/') else {
+    bail!("Invalid package name, use '@<scope_name>/<package_name> format");
+  };
 
-  if !name.starts_with('@') || name.find('/').is_none() {
-    bail!("Invalid package name, user '@<scope_name>/<package_name> format");
-  }
-  let scope_and_package_name = name[1..].to_string();
-  let (scope, package_name) = scope_and_package_name.split_once('/').unwrap();
-  let version = deno_json.json.version.unwrap();
+  // TODO: support `importMap` field in deno.json
+  assert!(deno_json.to_import_map_path().is_none());
 
-  let unfurler = ImportMapUnfurler::new(
-    Url::from_file_path(&deno_json_path).unwrap(),
-    std::fs::read_to_string(&deno_json_path).unwrap(),
-  )?;
+  let deno_json_url = Url::from_file_path(&deno_json_path)
+    .map_err(|_| anyhow!("deno.json path is not a valid file URL"))?;
+  let ImportMapWithDiagnostics { import_map, .. } =
+    import_map::parse_from_value(
+      &deno_json_url,
+      deno_json.to_import_map_value(),
+    )?;
 
-  let tarball = tar::create_tarball(directory_path, unfurler)
+  let unfurler = ImportMapUnfurler::new(import_map);
+
+  let tarball = tar::create_gzipped_tarball(directory_path, unfurler)
     .context("Failed to create a tarball")?;
 
   let tarball_hash_bytes: Vec<u8> =
@@ -305,6 +314,7 @@ async fn perform_publish(
         }
       }
     }
+    AuthMethod::Token(token) => format!("Bearer {}", token),
     AuthMethod::Oidc(oidc_config) => {
       let permissions = packages
         .iter()
@@ -453,18 +463,20 @@ pub async fn publish(
   _flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let auth_method = match get_gh_oidc_env_vars() {
-    Some(Ok((url, token))) => AuthMethod::Oidc(OidcConfig { url, token }),
-    Some(Err(err)) => return Err(err),
-    None if std::io::stdin().is_terminal() => AuthMethod::Interactive,
-    None => {
-      bail!("No means to authenticate. Please pass a token to `--token`.")
-    }
+  let auth_method = match publish_flags.token {
+    Some(token) => AuthMethod::Token(token),
+    None => match get_gh_oidc_env_vars() {
+      Some(Ok((url, token))) => AuthMethod::Oidc(OidcConfig { url, token }),
+      Some(Err(err)) => return Err(err),
+      None if std::io::stdin().is_terminal() => AuthMethod::Interactive,
+      None => {
+        bail!("No means to authenticate. Pass a token to `--token`.")
+      }
+    },
   };
 
   let initial_cwd =
     std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-  // TODO: handle publishing without deno.json
 
   let directory_path = initial_cwd.join(publish_flags.directory);
   // TODO: doesn't handle jsonc

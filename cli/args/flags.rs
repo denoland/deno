@@ -282,6 +282,7 @@ pub struct VendorFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
   pub directory: PathBuf,
+  pub token: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2327,6 +2328,10 @@ fn publish_subcommand() -> Command {
           .value_hint(ValueHint::DirPath)
           .required(true),
       )
+      .arg(
+        Arg::new("token")
+          .help("The API token to use when publishing. If unset, interactive authentication will be used.")
+      )
     })
 }
 
@@ -3753,6 +3758,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     directory: matches.remove_one::<PathBuf>("directory").unwrap(),
+    token: matches.remove_one("token"),
   });
 }
 
