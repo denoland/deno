@@ -4,6 +4,7 @@ use std::io::Read;
 
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
@@ -15,10 +16,31 @@ use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
+use crate::file_fetcher::FileFetcher;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
+
+fn add_fake_stdin_module(
+  specifier: Url,
+  source: Vec<u8>,
+  file_fetcher: &FileFetcher,
+) -> Result<(), AnyError> {
+  // Create a dummy source file.
+  let source_file = File {
+    maybe_types: None,
+    media_type: MediaType::TypeScript,
+    source: String::from_utf8(source)?.into(),
+    specifier,
+    maybe_headers: None,
+  };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler
+  file_fetcher.insert_cached(source_file);
+
+  Ok(())
+}
 
 pub async fn run_script(
   flags: Flags,
@@ -67,18 +89,7 @@ To grant permissions, set them before the script argument. For example:
     let file_fetcher = factory.file_fetcher()?;
     let mut source = Vec::new();
     std::io::stdin().read_to_end(&mut source)?;
-
-    // Create a dummy source file.
-    let source_file = File {
-      maybe_types: None,
-      media_type: MediaType::TypeScript,
-      source: String::from_utf8(source)?.into(),
-      specifier: main_module.clone(),
-      maybe_headers: None,
-    };
-    // Save our fake file into file fetcher cache
-    // to allow module access by TS compiler
-    file_fetcher.insert_cached(source_file);
+    add_fake_stdin_module(main_module.clone(), source, file_fetcher)?;
   }
 
   let mut worker = worker_factory
@@ -129,17 +140,7 @@ async fn run_with_watch(
 
         if let Some(source) = stdin_source {
           let file_fetcher = factory.file_fetcher()?;
-          // Create a dummy source file.
-          let source_file = File {
-            maybe_types: None,
-            media_type: MediaType::TypeScript,
-            source: String::from_utf8(source)?.into(),
-            specifier: main_module.clone(),
-            maybe_headers: None,
-          };
-          // Save our fake file into file fetcher cache
-          // to allow module access by TS compiler
-          file_fetcher.insert_cached(source_file);
+          add_fake_stdin_module(main_module.clone(), source, file_fetcher)?;
         }
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
