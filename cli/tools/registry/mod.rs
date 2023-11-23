@@ -25,6 +25,7 @@ use sha2::Digest;
 
 use crate::args::Flags;
 use crate::args::PublishFlags;
+use crate::util::import_map::ImportMapUnfurler;
 
 mod tar;
 
@@ -93,7 +94,7 @@ async fn prepare_publish(
   let (scope, package_name) = scope_and_package_name.split_once('/').unwrap();
   let version = deno_json.json.version.unwrap();
 
-  let unfurler = tar::Unfurler::new(
+  let unfurler = ImportMapUnfurler::new(
     Url::from_file_path(&deno_json_path).unwrap(),
     std::fs::read_to_string(&deno_json_path).unwrap(),
   )?;
