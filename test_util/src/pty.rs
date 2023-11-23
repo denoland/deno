@@ -45,7 +45,7 @@ impl Pty {
             .contains("exit using ctrl+d, ctrl+c, or close()")
         },
         // it sometimes takes a while to startup on the CI, so use a longer timeout
-        Duration::from_secs(30),
+        Duration::from_secs(60),
       );
     }
 
