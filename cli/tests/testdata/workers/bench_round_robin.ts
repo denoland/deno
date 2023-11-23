@@ -5,13 +5,8 @@ const data = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
 const workerCount = 4;
 const cmdsPerWorker = 400;
 
-import {
-  Deferred,
-  deferred,
-} from "../../../../test_util/std/async/deferred.ts";
-
 function handleAsyncMsgFromWorker(
-  promiseTable: Map<number, Deferred<string>>,
+  promiseTable: Map<number, ReturnType<typeof Promise.withResolvers<string>>>,
   msg: { cmdId: number; data: string },
 ) {
   const promise = promiseTable.get(msg.cmdId);
@@ -22,15 +17,17 @@ function handleAsyncMsgFromWorker(
 }
 
 async function main() {
-  const workers: Array<[Map<number, Deferred<string>>, Worker]> = [];
+  const workers: Array<
+    [Map<number, ReturnType<typeof Promise.withResolvers<string>>>, Worker]
+  > = [];
   for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker(
       import.meta.resolve("./bench_worker.ts"),
       { type: "module" },
     );
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     worker.onmessage = (e) => {
-      if (e.data.cmdId === 0) promise.resolve();
+      if (e.data.cmdId === 0) resolve();
     };
     worker.postMessage({ cmdId: 0, action: 2 });
     await promise;
@@ -45,19 +42,19 @@ async function main() {
   for (const cmdId of Array(cmdsPerWorker).keys()) {
     const promises: Array<Promise<string>> = [];
     for (const [promiseTable, worker] of workers) {
-      const promise = deferred<string>();
-      promiseTable.set(cmdId, promise);
+      const deferred = Promise.withResolvers<string>();
+      promiseTable.set(cmdId, deferred);
       worker.postMessage({ cmdId: cmdId, action: 1, data });
-      promises.push(promise);
+      promises.push(deferred.promise);
     }
     for (const promise of promises) {
       await promise;
     }
   }
   for (const [, worker] of workers) {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     worker.onmessage = (e) => {
-      if (e.data.cmdId === 3) promise.resolve();
+      if (e.data.cmdId === 3) resolve();
     };
     worker.postMessage({ action: 3 });
     await promise;
