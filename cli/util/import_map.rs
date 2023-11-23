@@ -22,7 +22,7 @@ impl ImportMapUnfurler {
     url: &ModuleSpecifier,
     data: Vec<u8>,
   ) -> Result<Vec<u8>, AnyError> {
-    let media_type = MediaType::from_specifier(&url);
+    let media_type = MediaType::from_specifier(url);
 
     match media_type {
       MediaType::JavaScript

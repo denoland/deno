@@ -113,7 +113,7 @@ async fn prepare_publish(
 
   let tarball_hash_bytes: Vec<u8> =
     sha2::Sha256::digest(&tarball).iter().cloned().collect();
-  let mut tarball_hash = format!("sha256-");
+  let mut tarball_hash = "sha256-".to_string();
   for byte in tarball_hash_bytes {
     write!(&mut tarball_hash, "{:02x}", byte).unwrap();
   }
@@ -235,9 +235,7 @@ async fn perform_publish(
 ) -> Result<(), AnyError> {
   let client = reqwest::Client::new();
 
-  let Ok(registry_url) = std::env::var("DENO_REGISTRY_URL") else {
-    bail!("DENO_REGISTRY_URL env var is required to publish");
-  };
+  let registry_url = crate::cache::DENO_REGISTRY_URL.to_string();
 
   let authorization = match auth_method {
     AuthMethod::Interactive => {
