@@ -696,7 +696,9 @@ const ci = {
             "APPLE_CODESIGN_KEY": "${{ secrets.APPLE_CODESIGN_KEY }}",
             "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
           },
+          shell: "bash",
           run: [
+            'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
             "rcodesign sign target/release/deno " +
             "--code-signature-flags=runtime " +
             "--p12-password='$APPLE_CODESIGN_PASSWORD' " +
