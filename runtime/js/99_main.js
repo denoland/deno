@@ -1,9 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// Removes the `__proto__` for security reasons.
-// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-delete Object.prototype.__proto__;
-
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
@@ -14,6 +10,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -565,6 +562,12 @@ function bootstrapMainRuntime(runtimeOptions) {
     }
   }
 
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+    // Removes the `__proto__` for security reasons.
+    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+    delete Object.prototype.__proto__;
+  }
+
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
@@ -663,6 +666,13 @@ function bootstrapWorkerRuntime(
       ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
   }
+
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+    // Removes the `__proto__` for security reasons.
+    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+    delete Object.prototype.__proto__;
+  }
+
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
     noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),

@@ -306,6 +306,11 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     "Enable unstable Deno.cron API",
     8,
   ),
+  (
+    "unsafe-proto",
+    "Enable unsafe __proto__ support. This is a security risk.",
+    9,
+  ),
 ];
 
 pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
