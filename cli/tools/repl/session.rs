@@ -38,6 +38,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::LocalInspectorSession;
+use deno_core::PollEventLoopOptions;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::Position;
@@ -200,10 +201,15 @@ impl ReplSession {
     let mut session = worker.create_inspector_session().await;
 
     worker
+      .js_runtime
       .with_event_loop(
         session
           .post_message::<()>("Runtime.enable", None)
           .boxed_local(),
+        PollEventLoopOptions {
+          wait_for_inspector: false,
+          ..Default::default()
+        },
       )
       .await?;
 
@@ -291,7 +297,17 @@ impl ReplSession {
   ) -> Result<Value, AnyError> {
     self
       .worker
-      .with_event_loop(self.session.post_message(method, params).boxed_local())
+      .js_runtime
+      .with_event_loop(
+        self.session.post_message(method, params).boxed_local(),
+        PollEventLoopOptions {
+          wait_for_inspector: false,
+          // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
+          // message loop here, so that GC won't run. Otherwise, the resulting
+          // object might be GC'ed before we have a chance to inspect it.
+          pump_v8_message_loop: false,
+        },
+      )
       .await
   }
 

@@ -55,9 +55,6 @@ use std::io::Write;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::net::SocketAddrV6;
-use std::ops::Deref;
-use std::ops::DerefMut;
-use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -85,6 +82,7 @@ pub mod lsp;
 mod npm;
 pub mod pty;
 
+pub use builders::DenoChild;
 pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
@@ -2099,15 +2097,13 @@ pub fn run_and_collect_output_with_args(
   envs: Option<Vec<(String, String)>>,
   need_http_server: bool,
 ) -> (String, String) {
-  let mut deno_process_builder = deno_cmd();
-  deno_process_builder
-    .args(args)
-    .current_dir(&testdata_path())
+  let mut deno_process_builder = deno_cmd()
+    .args_vec(args)
+    .current_dir(testdata_path())
     .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    .piped_output();
   if let Some(envs) = envs {
-    deno_process_builder.envs(envs);
+    deno_process_builder = deno_process_builder.envs(envs);
   }
   let _http_guard = if need_http_server {
     Some(http_server())
@@ -2142,135 +2138,15 @@ pub fn new_deno_dir() -> TempDir {
   TempDir::new()
 }
 
-/// Because we need to keep the [`TempDir`] alive for the entire run of this command,
-/// we have to effectively reproduce the entire builder-pattern object for [`Command`].
-pub struct DenoCmd {
-  _deno_dir: TempDir,
-  cmd: Command,
-}
-
-impl DenoCmd {
-  pub fn args<I, S>(&mut self, args: I) -> &mut Self
-  where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.args(args);
-    self
-  }
-
-  pub fn arg<S>(&mut self, arg: S) -> &mut Self
-  where
-    S: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.arg(arg);
-    self
-  }
-
-  pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
-  where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<std::ffi::OsStr>,
-    V: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.envs(vars);
-    self
-  }
-
-  pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
-  where
-    K: AsRef<std::ffi::OsStr>,
-    V: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.env(key, val);
-    self
-  }
-
-  pub fn env_remove<K>(&mut self, key: K) -> &mut Self
-  where
-    K: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.env_remove(key);
-    self
-  }
-
-  pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
-    self.cmd.stdin(cfg);
-    self
-  }
-
-  pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
-    self.cmd.stdout(cfg);
-    self
-  }
-
-  pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
-    self.cmd.stderr(cfg);
-    self
-  }
-
-  pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut Self {
-    self.cmd.current_dir(dir);
-    self
-  }
-
-  pub fn output(&mut self) -> Result<std::process::Output, std::io::Error> {
-    self.cmd.output()
-  }
-
-  pub fn status(&mut self) -> Result<std::process::ExitStatus, std::io::Error> {
-    self.cmd.status()
-  }
-
-  pub fn spawn(&mut self) -> Result<DenoChild, std::io::Error> {
-    Ok(DenoChild {
-      _deno_dir: self._deno_dir.clone(),
-      child: self.cmd.spawn()?,
-    })
-  }
-}
-
-/// We need to keep the [`TempDir`] around until the child has finished executing, so
-/// this acts as a RAII guard.
-pub struct DenoChild {
-  _deno_dir: TempDir,
-  child: Child,
-}
-
-impl Deref for DenoChild {
-  type Target = Child;
-  fn deref(&self) -> &Child {
-    &self.child
-  }
-}
-
-impl DerefMut for DenoChild {
-  fn deref_mut(&mut self) -> &mut Child {
-    &mut self.child
-  }
-}
-
-impl DenoChild {
-  pub fn wait_with_output(self) -> Result<Output, std::io::Error> {
-    self.child.wait_with_output()
-  }
-}
-
-pub fn deno_cmd() -> DenoCmd {
+pub fn deno_cmd() -> TestCommandBuilder {
   let deno_dir = new_deno_dir();
   deno_cmd_with_deno_dir(&deno_dir)
 }
 
-pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
-  let exe_path = deno_exe_path();
-  assert!(exe_path.exists());
-  let mut cmd = Command::new(exe_path);
-  cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
-  DenoCmd {
-    _deno_dir: deno_dir.clone(),
-    cmd,
-  }
+pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
+  TestCommandBuilder::new(deno_dir.clone())
+    .env("DENO_DIR", deno_dir.path())
+    .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
 }
 
 pub fn run_powershell_script_file(
@@ -2347,7 +2223,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder = command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
-      command_builder = command_builder.stdin(input);
+      command_builder = command_builder.stdin_text(input);
     }
     for (key, value) in &self.envs {
       command_builder = command_builder.env(key, value);
@@ -2356,7 +2232,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder = command_builder.env_clear();
     }
     if let Some(cwd) = &self.cwd {
-      command_builder = command_builder.cwd(cwd);
+      command_builder = command_builder.current_dir(cwd);
     }
 
     command_builder.run()

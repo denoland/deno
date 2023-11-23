@@ -30,6 +30,7 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -156,7 +157,7 @@ impl LspNpmConfigHash {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
+pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
 #[derive(Debug)]
 pub struct StateNpmSnapshot {
@@ -226,8 +227,11 @@ pub struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client) -> Self {
-    Self(Arc::new(tokio::sync::RwLock::new(Inner::new(client))))
+  pub fn new(client: Client, token: CancellationToken) -> Self {
+    Self(
+      Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
+      token,
+    )
   }
 
   /// Similar to `deno cache` on the command line, where modules will be cached
@@ -3115,7 +3119,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn initialized(&self, _: InitializedParams) {
     let mut registrations = Vec::with_capacity(2);
-    let client = {
+    let (client, http_client) = {
       let mut ls = self.0.write().await;
       if ls
         .config
@@ -3165,7 +3169,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         );
         ls.maybe_testing_server = Some(test_server);
       }
-      ls.client.clone()
+      (ls.client.clone(), ls.http_client.clone())
     };
 
     for registration in registrations {
@@ -3193,26 +3197,30 @@ impl tower_lsp::LanguageServer for LanguageServer {
     lsp_log!("Server ready.");
 
     if upgrade_check_enabled() {
-      let http_client = self.0.read().await.http_client.clone();
-      match check_for_upgrades_for_lsp(http_client).await {
-        Ok(version_info) => {
-          client.send_did_upgrade_check_notification(
-            lsp_custom::DidUpgradeCheckNotificationParams {
-              upgrade_available: version_info.map(
-                |(latest_version, is_canary)| lsp_custom::UpgradeAvailable {
-                  latest_version,
-                  is_canary,
-                },
-              ),
-            },
-          );
+      // spawn to avoid lsp send/sync requirement, but also just
+      // to ensure this initialized method returns quickly
+      spawn(async move {
+        match check_for_upgrades_for_lsp(http_client).await {
+          Ok(version_info) => {
+            client.send_did_upgrade_check_notification(
+              lsp_custom::DidUpgradeCheckNotificationParams {
+                upgrade_available: version_info.map(|info| {
+                  lsp_custom::UpgradeAvailable {
+                    latest_version: info.latest_version,
+                    is_canary: info.is_canary,
+                  }
+                }),
+              },
+            );
+          }
+          Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
         }
-        Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
-      }
+      });
     }
   }
 
   async fn shutdown(&self) -> LspResult<()> {
+    self.1.cancel();
     self.0.write().await.shutdown().await
   }
 

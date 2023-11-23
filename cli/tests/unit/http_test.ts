@@ -8,7 +8,6 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
-  deferred,
   delay,
   fail,
 } from "./test_util.ts";
@@ -592,9 +591,9 @@ Deno.test(
     let counter = 0;
 
     const deferreds = [
-      deferred(),
-      deferred(),
-      deferred(),
+      Promise.withResolvers<void>(),
+      Promise.withResolvers<void>(),
+      Promise.withResolvers<void>(),
     ];
 
     async function writeRequest(conn: Deno.Conn) {
@@ -639,7 +638,7 @@ Deno.test(
             return controller.close();
           }
 
-          await deferreds[counter - 1];
+          await deferreds[counter - 1].promise;
 
           controller.enqueue(`${counter}\n`);
           counter++;
@@ -795,13 +794,13 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
     await close;
   })();
 
-  const def = deferred();
+  const def = Promise.withResolvers<void>();
   const ws = new WebSocket(`ws://localhost:${listenPort}`);
   ws.onmessage = (m) => assertEquals(m.data, "foo");
   ws.onerror = () => fail();
   ws.onclose = () => def.resolve();
   ws.onopen = () => ws.send("foo");
-  await def;
+  await def.promise;
   await promise;
 });
 
@@ -1136,7 +1135,7 @@ Deno.test(
   { permissions: { net: true } },
   async function droppedConnSenderNoPanic() {
     async function server() {
-      const listener = Deno.listen({ port: 8000 });
+      const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const http = Deno.serveHttp(conn);
       const evt = await http.nextRequest();
@@ -1151,7 +1150,7 @@ Deno.test(
 
     async function client() {
       try {
-        const resp = await fetch("http://127.0.0.1:8000/");
+        const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
         await resp.body?.cancel();
       } catch {
         // Ignore error
@@ -2287,7 +2286,7 @@ Deno.test("upgradeHttp unix", {
   ignore: Deno.build.os === "windows",
 }, async () => {
   const filePath = tmpUnixSocketPath();
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   async function client() {
     const unixConn = await Deno.connect({ path: filePath, transport: "unix" });
@@ -2303,7 +2302,7 @@ Deno.test("upgradeHttp unix", {
         ),
       );
       unixConn.close();
-      promise.resolve();
+      resolve();
     }, 500);
     await promise;
   }

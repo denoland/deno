@@ -482,30 +482,12 @@ function test_fill_buffer(fillValue, arr) {
 test_fill_buffer(0, [2, 3, 4]);
 test_fill_buffer(5, [2, 7, 3, 2, 1]);
 
-// Test non blocking calls
-
-function deferred() {
-  let methods;
-  const promise = new Promise((resolve, reject) => {
-    methods = {
-      async resolve(value) {
-        await value;
-        resolve(value);
-      },
-      reject(reason) {
-        reject(reason);
-      },
-    };
-  });
-  return Object.assign(promise, methods);
-}
-
-const promise = deferred();
+const deferred = Promise.withResolvers();
 const buffer3 = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
-  promise.resolve();
+  deferred.resolve();
 });
-await promise;
+await deferred.promise;
 
 let start = performance.now();
 dylib.symbols.sleep_blocking(100);

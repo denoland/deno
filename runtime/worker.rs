@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
@@ -15,7 +14,6 @@ use deno_cache::SqliteBackedCache;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::futures::Future;
 use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
@@ -380,7 +378,16 @@ impl MainWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm({
+        #[cfg(feature = "__runtime_js_sources")]
+        {
+          Some(Default::default())
+        }
+        #[cfg(not(feature = "__runtime_js_sources"))]
+        {
+          None
+        }
+      }),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -604,24 +611,6 @@ impl MainWorker {
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
     self.js_runtime.run_event_loop(wait_for_inspector).await
-  }
-
-  /// A utility function that runs provided future concurrently with the event loop.
-  ///
-  /// Useful when using a local inspector session.
-  pub async fn with_event_loop<'a, T>(
-    &mut self,
-    mut fut: Pin<Box<dyn Future<Output = T> + 'a>>,
-  ) -> T {
-    loop {
-      tokio::select! {
-        biased;
-        result = &mut fut => {
-          return result;
-        }
-        _ = self.run_event_loop(false) => {}
-      };
-    }
   }
 
   /// Return exit code set by the executed code (either in main worker

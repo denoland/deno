@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { deferred } from "../test_util/std/async/deferred.ts";
 import {
   dirname,
   fromFileUrl,
@@ -15,9 +14,10 @@ export { delay } from "../test_util/std/async/delay.ts";
 
 // [toolName] --version output
 const versions = {
-  "dprint": "dprint 0.40.0",
   "dlint": "dlint 0.51.0",
 };
+
+const compressed = new Set(["ld64.lld"]);
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
@@ -176,15 +176,15 @@ export function getPrebuiltToolPath(toolName) {
 }
 
 const downloadUrl =
-  `https://raw.githubusercontent.com/denoland/deno_third_party/69ffd968c0c435f5f9dbba713a92b4fb6a3e2301/prebuilt/${platformDirName}`;
+  `https://raw.githubusercontent.com/denoland/deno_third_party/1fd66ef78ab40841db833d4a1efd5c5597faf066/prebuilt/${platformDirName}`;
 
 export async function downloadPrebuilt(toolName) {
   // Ensure only one download per tool happens at a time
   if (DOWNLOAD_TASKS[toolName]) {
-    return await DOWNLOAD_TASKS[toolName];
+    return await DOWNLOAD_TASKS[toolName].promise;
   }
 
-  const downloadPromise = DOWNLOAD_TASKS[toolName] = deferred();
+  const downloadDeferred = DOWNLOAD_TASKS[toolName] = Promise.withResolvers();
   const spinner = wait({
     text: "Downloading prebuilt tool: " + toolName,
     interval: 1000,
@@ -195,7 +195,10 @@ export async function downloadPrebuilt(toolName) {
   try {
     await Deno.mkdir(PREBUILT_TOOL_DIR, { recursive: true });
 
-    const url = `${downloadUrl}/${toolName}${executableSuffix}`;
+    let url = `${downloadUrl}/${toolName}${executableSuffix}`;
+    if (compressed.has(toolName)) {
+      url += ".gz";
+    }
 
     const resp = await fetch(url);
     if (!resp.ok) {
@@ -208,7 +211,13 @@ export async function downloadPrebuilt(toolName) {
       mode: 0o755,
     });
 
-    await resp.body.pipeTo(file.writable);
+    if (compressed.has(toolName)) {
+      await resp.body.pipeThrough(new DecompressionStream("gzip")).pipeTo(
+        file.writable,
+      );
+    } else {
+      await resp.body.pipeTo(file.writable);
+    }
     spinner.text = `Checking prebuilt tool: ${toolName}`;
     await sanityCheckPrebuiltFile(tempFile);
     if (!await verifyVersion(toolName, tempFile)) {
@@ -220,12 +229,12 @@ export async function downloadPrebuilt(toolName) {
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
     spinner.fail();
-    downloadPromise.reject(e);
+    downloadDeferred.reject(e);
     throw e;
   }
 
   spinner.succeed();
-  downloadPromise.resolve(null);
+  downloadDeferred.resolve(null);
 }
 
 export async function verifyVersion(toolName, toolPath) {

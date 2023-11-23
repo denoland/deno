@@ -44,6 +44,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
@@ -467,7 +468,14 @@ pub async fn test_specifier(
 
   if let Some(coverage_collector) = coverage_collector.as_mut() {
     worker
-      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .js_runtime
+      .with_event_loop(
+        coverage_collector.stop_collecting().boxed_local(),
+        PollEventLoopOptions {
+          wait_for_inspector: false,
+          ..Default::default()
+        },
+      )
       .await?;
   }
   Ok(())
