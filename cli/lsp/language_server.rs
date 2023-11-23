@@ -37,6 +37,7 @@ use sysinfo::ProcessExt;
 use sysinfo::ProcessRefreshKind;
 use sysinfo::System;
 use sysinfo::SystemExt;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -163,7 +164,7 @@ impl LspNpmConfigHash {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
+pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
 #[derive(Debug)]
 pub struct StateNpmSnapshot {
@@ -306,8 +307,11 @@ pub struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client) -> Self {
-    Self(Arc::new(tokio::sync::RwLock::new(Inner::new(client))))
+  pub fn new(client: Client, token: CancellationToken) -> Self {
+    Self(
+      Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
+      token,
+    )
   }
 
   /// Similar to `deno cache` on the command line, where modules will be cached
@@ -3303,6 +3307,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn shutdown(&self) -> LspResult<()> {
+    self.1.cancel();
     self.0.write().await.shutdown().await
   }
 

@@ -19,6 +19,7 @@ use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
+use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_lockfile::Lockfile;
@@ -209,13 +210,27 @@ impl CliMainWorker {
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
         .worker
-        .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+        .js_runtime
+        .with_event_loop(
+          coverage_collector.stop_collecting().boxed_local(),
+          PollEventLoopOptions {
+            wait_for_inspector: false,
+            ..Default::default()
+          },
+        )
         .await?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       self
         .worker
-        .with_event_loop(hmr_runner.stop().boxed_local())
+        .js_runtime
+        .with_event_loop(
+          hmr_runner.stop().boxed_local(),
+          PollEventLoopOptions {
+            wait_for_inspector: false,
+            ..Default::default()
+          },
+        )
         .await?;
     }
 
@@ -324,7 +339,14 @@ impl CliMainWorker {
         tools::coverage::CoverageCollector::new(coverage_dir, session);
       self
         .worker
-        .with_event_loop(coverage_collector.start_collecting().boxed_local())
+        .js_runtime
+        .with_event_loop(
+          coverage_collector.start_collecting().boxed_local(),
+          PollEventLoopOptions {
+            wait_for_inspector: false,
+            ..Default::default()
+          },
+        )
         .await?;
       Ok(Some(coverage_collector))
     } else {
@@ -348,7 +370,14 @@ impl CliMainWorker {
 
     self
       .worker
-      .with_event_loop(hmr_runner.start().boxed_local())
+      .js_runtime
+      .with_event_loop(
+        hmr_runner.start().boxed_local(),
+        PollEventLoopOptions {
+          wait_for_inspector: false,
+          ..Default::default()
+        },
+      )
       .await?;
 
     Ok(Some(hmr_runner))
