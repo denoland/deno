@@ -1669,9 +1669,11 @@ var require_destroy = __commonJS({
         }
       }
       try {
-        stream._construct(onConstruct);
+        stream._construct((err) => {
+          nextTick(onConstruct, err);
+        });
       } catch (err) {
-        onConstruct(err);
+        nextTick(onConstruct, err);
       }
     }
     function emitConstructNT(stream) {
