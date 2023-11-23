@@ -34,6 +34,7 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
+      "--no-config".to_string(),
       format!(
         "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json}",
       ),
@@ -53,6 +54,7 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
+      "--no-config".to_string(),
       "--check".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
@@ -69,6 +71,7 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
+      "--no-config".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
@@ -94,6 +97,7 @@ fn fmt_stdin_syntax_error() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("fmt")
+    .arg("--no-config")
     .arg("-")
     .stdin_text("import { example }")
     .split_output()
@@ -109,7 +113,7 @@ fn fmt_ignore_unexplicit_files() {
   let output = context
     .new_command()
     .env("NO_COLOR", "1")
-    .args("fmt --check --ignore=./")
+    .args("fmt --no-config --check --ignore=./")
     .run();
 
   output.assert_exit_code(1);
@@ -143,7 +147,7 @@ fn fmt_auto_ignore_git_and_node_modules() {
     .new_command()
     .current_dir(t)
     .env("NO_COLOR", "1")
-    .args("fmt")
+    .args("fmt --no-config")
     .run();
 
   output.assert_exit_code(1);
@@ -151,61 +155,62 @@ fn fmt_auto_ignore_git_and_node_modules() {
 }
 
 itest!(fmt_quiet_check_fmt_dir {
-  args: "fmt --check --quiet fmt/regular/",
+  args: "fmt --no-config --check --quiet fmt/regular/",
   output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(fmt_check_formatted_files {
-  args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
+  args: "fmt --no-config --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
   output: "fmt/expected_fmt_check_formatted_files.out",
   exit_code: 0,
 });
 
 itest!(fmt_check_ignore {
-  args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",
+  args:
+    "fmt --no-config --check --ignore=fmt/regular/formatted1.js fmt/regular/",
   output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
 });
 
 itest!(fmt_check_parse_error {
-  args: "fmt --check fmt/parse_error/parse_error.ts",
+  args: "fmt --no-config --check fmt/parse_error/parse_error.ts",
   output: "fmt/fmt_check_parse_error.out",
   exit_code: 1,
 });
 
 itest!(fmt_check_invalid_data {
-  args: "fmt --check fmt/invalid_data.json",
+  args: "fmt --no-config --check fmt/invalid_data.json",
   output: "fmt/invalid_data.out",
   exit_code: 1,
 });
 
 itest!(fmt_stdin {
-  args: "fmt -",
+  args: "fmt --no-config -",
   input: Some("const a = 1\n"),
   output_str: Some("const a = 1;\n"),
 });
 
 itest!(fmt_stdin_markdown {
-  args: "fmt --ext=md -",
+  args: "fmt --no-config --ext=md -",
   input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"),
   output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"),
 });
 
 itest!(fmt_stdin_json {
-  args: "fmt --ext=json -",
+  args: "fmt --no-config --ext=json -",
   input: Some("{    \"key\":   \"value\"}"),
   output_str: Some("{ \"key\": \"value\" }\n"),
 });
 
 itest!(fmt_stdin_check_formatted {
-  args: "fmt --check -",
+  args: "fmt --no-config --check -",
   input: Some("const a = 1;\n"),
   output_str: Some(""),
 });
 
 itest!(fmt_stdin_check_not_formatted {
-  args: "fmt --check -",
+  args: "fmt --no-config --check -",
   input: Some("const a = 1\n"),
   output_str: Some("Not formatted stdin\n"),
 });
@@ -222,7 +227,7 @@ itest!(fmt_with_deprecated_config {
 });
 
 itest!(fmt_with_config_default {
-  args: "fmt fmt/with_config/subdir",
+  args: "fmt --no-config fmt/with_config/subdir",
   output: "fmt/fmt_with_config.out",
 });
 
