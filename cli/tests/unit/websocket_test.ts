@@ -1,11 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-  deferred,
-  fail,
-} from "./test_util.ts";
+import { assert, assertEquals, assertThrows, fail } from "./test_util.ts";
 
 const servePort = 4248;
 const serveUrl = `ws://localhost:${servePort}/`;
@@ -18,23 +12,23 @@ Deno.test({ permissions: "none" }, function websocketPermissionless() {
 });
 
 Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("ws://localhost:4242/"));
   assertEquals(ws.url, "ws://localhost:4242/");
-  ws.onerror = (e) => promise.reject(e);
+  ws.onerror = (e) => reject(e);
   ws.onopen = () => ws.close();
   ws.onclose = () => {
-    promise.resolve();
+    resolve();
   };
   await promise;
 });
 
 Deno.test(async function websocketH2SendSmallPacket() {
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("wss://localhost:4249/"));
   assertEquals(ws.url, "wss://localhost:4249/");
   let messageCount = 0;
-  ws.onerror = (e) => promise.reject(e);
+  ws.onerror = (e) => reject(e);
   ws.onopen = () => {
     ws.send("a".repeat(16));
     ws.send("a".repeat(16));
@@ -46,17 +40,17 @@ Deno.test(async function websocketH2SendSmallPacket() {
     }
   };
   ws.onclose = () => {
-    promise.resolve();
+    resolve();
   };
   await promise;
 });
 
 Deno.test(async function websocketH2SendLargePacket() {
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("wss://localhost:4249/"));
   assertEquals(ws.url, "wss://localhost:4249/");
   let messageCount = 0;
-  ws.onerror = (e) => promise.reject(e);
+  ws.onerror = (e) => reject(e);
   ws.onopen = () => {
     ws.send("a".repeat(65000));
     ws.send("a".repeat(65000));
@@ -68,16 +62,16 @@ Deno.test(async function websocketH2SendLargePacket() {
     }
   };
   ws.onclose = () => {
-    promise.resolve();
+    resolve();
   };
   await promise;
 });
 
 Deno.test(async function websocketSendLargePacket() {
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
   assertEquals(ws.url, "wss://localhost:4243/");
-  ws.onerror = (e) => promise.reject(e);
+  ws.onerror = (e) => reject(e);
   ws.onopen = () => {
     ws.send("a".repeat(65000));
   };
@@ -85,17 +79,17 @@ Deno.test(async function websocketSendLargePacket() {
     ws.close();
   };
   ws.onclose = () => {
-    promise.resolve();
+    resolve();
   };
   await promise;
 });
 
 Deno.test(async function websocketSendLargeBinaryPacket() {
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
   ws.binaryType = "arraybuffer";
   assertEquals(ws.url, "wss://localhost:4243/");
-  ws.onerror = (e) => promise.reject(e);
+  ws.onerror = (e) => reject(e);
   ws.onopen = () => {
     ws.send(new Uint8Array(65000));
   };
@@ -104,17 +98,17 @@ Deno.test(async function websocketSendLargeBinaryPacket() {
     ws.close();
   };
   ws.onclose = () => {
-    promise.resolve();
+    resolve();
   };
   await promise;
 });
 
 Deno.test(async function websocketSendLargeBlobPacket() {
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("wss://localhost:4243/"));
   ws.binaryType = "arraybuffer";
   assertEquals(ws.url, "wss://localhost:4243/");
-  ws.onerror = (e) => promise.reject(e);
+  ws.onerror = (e) => reject(e);
   ws.onopen = () => {
     ws.send(new Blob(["a".repeat(65000)]));
   };
@@ -123,7 +117,7 @@ Deno.test(async function websocketSendLargeBlobPacket() {
     ws.close();
   };
   ws.onclose = () => {
-    promise.resolve();
+    resolve();
   };
   await promise;
 });
@@ -131,15 +125,15 @@ Deno.test(async function websocketSendLargeBlobPacket() {
 // https://github.com/denoland/deno/pull/17762
 // https://github.com/denoland/deno/issues/17761
 Deno.test(async function websocketPingPong() {
-  const promise = deferred();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket("ws://localhost:4245/");
   assertEquals(ws.url, "ws://localhost:4245/");
-  ws.onerror = (e) => promise.reject(e);
+  ws.onerror = (e) => reject(e);
   ws.onmessage = (e) => {
     ws.send(e.data);
   };
   ws.onclose = () => {
-    promise.resolve();
+    resolve();
   };
   await promise;
   ws.close();
@@ -147,7 +141,7 @@ Deno.test(async function websocketPingPong() {
 
 // TODO(mmastrac): This requires us to ignore bad certs
 // Deno.test(async function websocketSecureConnect() {
-//   const promise = deferred();
+//   const { promise, resolve } = Promise.withResolvers<void>();
 //   const ws = new WebSocket("wss://localhost:4243/");
 //   assertEquals(ws.url, "wss://localhost:4243/");
 //   ws.onerror = (error) => {
@@ -156,7 +150,7 @@ Deno.test(async function websocketPingPong() {
 //   };
 //   ws.onopen = () => ws.close();
 //   ws.onclose = () => {
-//     promise.resolve();
+//     resolve();
 //   };
 //   await promise;
 // });
@@ -166,7 +160,7 @@ Deno.test(
   { sanitizeOps: false, sanitizeResources: false },
   async function websocketWriteLock() {
     const ac = new AbortController();
-    const listeningPromise = deferred();
+    const listeningDeferred = Promise.withResolvers<void>();
 
     const server = Deno.serve({
       handler: (req) => {
@@ -181,13 +175,13 @@ Deno.test(
         return response;
       },
       signal: ac.signal,
-      onListen: () => listeningPromise.resolve(),
+      onListen: () => listeningDeferred.resolve(),
       hostname: "localhost",
       port: servePort,
     });
 
-    await listeningPromise;
-    const promise = deferred();
+    await listeningDeferred.promise;
+    const deferred = Promise.withResolvers<void>();
     const ws = new WebSocket(serveUrl);
     assertEquals(ws.url, serveUrl);
     ws.onerror = () => fail();
@@ -196,13 +190,13 @@ Deno.test(
       setTimeout(() => {
         ws.send(e.data);
       }, 1000);
-      promise.resolve();
+      deferred.resolve();
     };
     ws.onclose = () => {
-      promise.resolve();
+      deferred.resolve();
     };
 
-    await Promise.all([promise, server.finished]);
+    await Promise.all([deferred.promise, server.finished]);
     ws.close();
   },
 );
@@ -212,10 +206,10 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async function websocketDoubleClose() {
-  const promise = deferred();
+  const deferred = Promise.withResolvers<void>();
 
   const ac = new AbortController();
-  const listeningPromise = deferred();
+  const listeningDeferred = Promise.withResolvers<void>();
 
   const server = Deno.serve({
     handler: (req) => {
@@ -233,12 +227,12 @@ Deno.test({
       return response;
     },
     signal: ac.signal,
-    onListen: () => listeningPromise.resolve(),
+    onListen: () => listeningDeferred.resolve(),
     hostname: "localhost",
     port: servePort,
   });
 
-  await listeningPromise;
+  await listeningDeferred.promise;
 
   const ws = new WebSocket(serveUrl);
   assertEquals(ws.url, serveUrl);
@@ -247,9 +241,9 @@ Deno.test({
     if (m.data == "Hello") ws.send("bye");
   };
   ws.onclose = () => {
-    promise.resolve();
+    deferred.resolve();
   };
-  await Promise.all([promise, server.finished]);
+  await Promise.all([deferred.promise, server.finished]);
 });
 
 // https://github.com/denoland/deno/issues/19483
@@ -257,10 +251,10 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async function websocketCloseFlushes() {
-  const promise = deferred();
+  const deferred = Promise.withResolvers<void>();
 
   const ac = new AbortController();
-  const listeningPromise = deferred();
+  const listeningDeferred = Promise.withResolvers<void>();
 
   const server = Deno.serve({
     handler: (req) => {
@@ -275,12 +269,12 @@ Deno.test({
       return response;
     },
     signal: ac.signal,
-    onListen: () => listeningPromise.resolve(),
+    onListen: () => listeningDeferred.resolve(),
     hostname: "localhost",
     port: servePort,
   });
 
-  await listeningPromise;
+  await listeningDeferred.promise;
 
   const ws = new WebSocket(serveUrl);
   assertEquals(ws.url, serveUrl);
@@ -295,9 +289,9 @@ Deno.test({
     }
   };
   ws.onclose = () => {
-    promise.resolve();
+    deferred.resolve();
   };
-  await Promise.all([promise, server.finished]);
+  await Promise.all([deferred.promise, server.finished]);
 
   assert(seenBye);
 });
