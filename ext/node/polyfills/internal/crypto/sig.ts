@@ -20,7 +20,6 @@ import type {
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
-  getKeyMaterial,
   KeyObject,
   prepareAsymmetricKey,
 } from "ext:deno_node/internal/crypto/keys.ts";

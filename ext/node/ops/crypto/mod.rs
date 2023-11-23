@@ -364,7 +364,7 @@ pub fn op_node_sign(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[serde] key: StringOrBuffer,
-  #[string] type_: &str,
+  #[string] _type: &str,
   #[string] format: &str,
 ) -> Result<ToJsBuffer, AnyError> {
   let (label, doc) =
