@@ -259,7 +259,7 @@ impl HttpClient {
     result
   }
 
-  fn client(&self) -> Result<&reqwest::Client, AnyError> {
+  pub(crate) fn client(&self) -> Result<&reqwest::Client, AnyError> {
     self.cell.get_or_try_init(|| {
       create_http_client(
         get_user_agent(),
