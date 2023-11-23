@@ -312,11 +312,6 @@ impl DenoSubcommand {
     matches!(self, Self::Run(_))
   }
 
-  // Returns `true` if the subcommand is a "deno jupyter".
-  pub fn is_jupyter(&self) -> bool {
-    matches!(self, Self::Jupyter(_))
-  }
-
   // Returns `true` if the subcommand depends on testing infrastructure.
   pub fn needs_test(&self) -> bool {
     matches!(
