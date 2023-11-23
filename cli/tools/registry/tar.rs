@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -41,7 +40,7 @@ pub fn create_gzipped_tarball(
     } else if entry.file_type().is_dir() {
       // skip
     } else {
-      bail!("Unsupported file type at path {:?}", entry.path());
+      log::warn!("Unsupported file type at path {:?}", entry.path());
     }
   }
 

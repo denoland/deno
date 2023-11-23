@@ -281,7 +281,7 @@ pub struct VendorFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
-  pub directory: PathBuf,
+  pub directory: String,
   pub token: Option<String>,
 }
 
@@ -2324,7 +2324,6 @@ fn publish_subcommand() -> Command {
           .help(
             "The directory to the package, or workspace of packages to publish",
           )
-          .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath)
           .required(true),
       )
@@ -3757,7 +3756,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
-    directory: matches.remove_one::<PathBuf>("directory").unwrap(),
+    directory: matches.remove_one::<String>("directory").unwrap(),
     token: matches.remove_one("token"),
   });
 }

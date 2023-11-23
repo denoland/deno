@@ -2,7 +2,9 @@
 
 use std::fmt::Write;
 use std::io::IsTerminal;
+use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
@@ -27,6 +29,8 @@ use sha2::Digest;
 
 use crate::args::Flags;
 use crate::args::PublishFlags;
+use crate::factory::CliFactory;
+use crate::http_util::HttpClient;
 use crate::util::import_map::ImportMapUnfurler;
 
 mod tar;
@@ -66,10 +70,9 @@ pub struct PublishingTask {
 }
 
 async fn prepare_publish(
+  initial_cwd: &Path,
   directory: PathBuf,
 ) -> Result<PreparedPublishPackage, AnyError> {
-  let initial_cwd =
-    std::env::current_dir().with_context(|| "Failed getting cwd.")?;
   // TODO: handle publishing without deno.json
 
   let directory_path = initial_cwd.join(directory);
@@ -77,7 +80,7 @@ async fn prepare_publish(
   let deno_json_path = directory_path.join("deno.json");
   let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
     format!(
-      "Failed to read deno.json file at {}",
+      "Failed to read deno configuration file at {}",
       deno_json_path.display()
     )
   })?;
@@ -230,11 +233,11 @@ struct OidcTokenResponse {
 }
 
 async fn perform_publish(
+  http_client: &Arc<HttpClient>,
   packages: Vec<PreparedPublishPackage>,
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
-  let client = reqwest::Client::new();
-
+  let client = http_client.client()?;
   let registry_url = crate::cache::DENO_REGISTRY_URL.to_string();
 
   let authorization = match auth_method {
@@ -458,9 +461,11 @@ fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
 }
 
 pub async fn publish(
-  _flags: Flags,
+  flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
+  let cli_factory = CliFactory::from_flags(flags).await?;
+
   let auth_method = match publish_flags.token {
     Some(token) => AuthMethod::Token(token),
     None => match get_gh_oidc_env_vars() {
@@ -486,16 +491,17 @@ pub async fn publish(
     )
   })?;
 
-  let mut packages = Vec::new();
+  let mut packages =
+    Vec::with_capacity(std::cmp::max(1, deno_json.json.workspaces.len()));
 
-  let members = deno_json.json.workspaces.clone();
+  let members = &deno_json.json.workspaces;
   if members.is_empty() {
-    packages.push(prepare_publish(directory_path).await?);
+    packages.push(prepare_publish(&initial_cwd, directory_path).await?);
   } else {
     println!("Publishing a workspace...");
     for member in members {
       let member_dir = directory_path.join(member);
-      packages.push(prepare_publish(member_dir).await?);
+      packages.push(prepare_publish(&initial_cwd, member_dir).await?);
     }
   }
 
@@ -503,5 +509,5 @@ pub async fn publish(
     bail!("No packages to publish");
   }
 
-  perform_publish(packages, auth_method).await
+  perform_publish(cli_factory.http_client(), packages, auth_method).await
 }
