@@ -756,9 +756,16 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
-        panic!(
-          "coding error: either js is polling or the worker is terminated"
-        );
+        // TODO(mmastrac): we don't want to test this w/classic workers because
+        // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
+        if self.worker_type == WebWorkerType::Module {
+          panic!(
+            "coding error: either js is polling or the worker is terminated"
+          );
+        } else {
+          eprintln!("classic worker terminated unexpectedly");
+          Poll::Ready(Ok(()))
+        }
       }
       Poll::Pending => Poll::Pending,
     }

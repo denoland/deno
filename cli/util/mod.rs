@@ -9,6 +9,7 @@ pub mod draw_thread;
 pub mod file_watcher;
 pub mod fs;
 pub mod glob;
+pub mod import_map;
 pub mod logger;
 pub mod path;
 pub mod progress_bar;
