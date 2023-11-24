@@ -144,7 +144,7 @@ verify on GitHub that everything looks correct.
 
 - [ ] Run
       https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
-      this will open a PR.
+      to automatically open a PR.
   - [ ] Merge the PR.
 
 - [ ] For minor releases: make sure https://github.com/mdn/browser-compat-data
@@ -162,7 +162,7 @@ script generates the symbols based on the latest tags.
 
 - [ ] Run the release workflow in the apiland_scripts repo on the main branch:
       https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
-  - [ ] I verify the workflow ran successfully.
+  - [ ] verify the workflow ran successfully.
 
   <details>
      <summary>Failure Steps</summary>
