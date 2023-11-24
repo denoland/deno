@@ -264,7 +264,7 @@ impl LspUrlMap {
 ///   file_like_to_file_specifier(
 ///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
 ///   ),
-///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
+///   Some(Url::parse("file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc").unwrap()),
 /// );
 fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
   if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
@@ -275,6 +275,7 @@ fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
     )) {
       s.query_pairs_mut()
         .append_pair("scheme", specifier.scheme());
+      s.set_path(&format!("{}.ts", s.path()));
       return Some(s);
     }
   }
@@ -413,5 +414,29 @@ mod tests {
     let fixture = resolve_url("deno:/status.md").unwrap();
     let actual = map.normalize_url(&fixture, LspUrlKind::File);
     assert_eq!(actual, fixture);
+  }
+
+  #[test]
+  fn test_file_like_to_file_specifier() {
+    assert_eq!(
+      file_like_to_file_specifier(
+        &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+      ),
+      Some(
+        Url::parse(
+          "file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc"
+        )
+        .unwrap()
+      ),
+    );
+    assert_eq!(
+      file_like_to_file_specifier(
+        &Url::parse("untitled:/path/to/file.ipynb#123").unwrap(),
+      ),
+      Some(
+        Url::parse("file:///path/to/file.ipynb.ts?scheme=untitled#123")
+          .unwrap()
+      ),
+    );
   }
 }
