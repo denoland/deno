@@ -131,34 +131,10 @@ verify on GitHub that everything looks correct.
   The CI pipeline will create a release draft on GitHub
   (https://github.com/denoland/deno/releases).
 
-- [ ] Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release
-      draft and to https://console.cloud.google.com/storage/browser/dl.deno.land
-
-  Send the following commands:
-
-  ```
-  git fetch upstream $BRANCH_NAME && git checkout -B $BRANCH_NAME upstream/$BRANCH_NAME
-  cargo build --release
-  cd target/release
-  set DENO_VERSION (./deno -V)
-  echo "Built $DENO_VERSION"
-  test $DENO_VERSION = "deno $VERSION"; or begin; echo "Version didn't match!!!"; exit 1; end
-  zip -r deno-aarch64-apple-darwin.zip deno
-  ```
-
-  And ask them to upload to these links:
-
-  - https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION
-  - https://github.com/denoland/deno/releases/
-
 - ⛔ Verify that:
   - [ ] There are 8 assets on the release draft.
   - [ ] There are 4 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
-  - [ ] The aarch64 Mac build was built from the correct branch AFTER the
-        version bump and has the same version as the release when doing
-        `deno -V` (ask someone with an M1 Mac to verify this if you don't have
-        one).
 
 - [ ] Publish the release on Github
 

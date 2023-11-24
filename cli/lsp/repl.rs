@@ -61,8 +61,10 @@ impl ReplLanguageServer {
     super::logging::set_lsp_log_level(log::Level::Debug);
     super::logging::set_lsp_warn_level(log::Level::Debug);
 
-    let language_server =
-      super::language_server::LanguageServer::new(Client::new_for_repl());
+    let language_server = super::language_server::LanguageServer::new(
+      Client::new_for_repl(),
+      Default::default(),
+    );
 
     let cwd_uri = get_cwd_uri()?;
 
