@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.38.3 / 2023.11.24
+
+- Revert "chore: update to `std@0.207.0` (#21284)" (#21295)
+- feat(unstable): tar up directory with deno.json  (#21228)
+- fix(ext,runtime): add missing custom inspections (#21219)
+- fix(ext/http): avoid lockup in graceful shutdown (#21253)
+- fix(ext/http): fix crash in dropped Deno.serve requests (#21252)
+- fix(ext/node): fix node:stream.Writable (#21297)
+- fix(ext/node): handle closing process.stdin more than once (#21267)
+- fix(ext/url): add deno_console dependency for bench (#21266)
+- fix(fmt): maintain parens for jsx in member expr (#21280)
+- fix(lsp): force shutdown after a timeout (#21251)
+- fix(runtime): fix for panic in classic workers (#21300)
+- fix(swc): support jsx pragma when hashbang present (#21317)
+- fix: 'Promise was collected' error in REPL/jupyter (#21272)
+- fix: Deno.noColor should not be true when NO_COLOR is empty string (#21275)
+
 ### 1.38.2 / 2023.11.17
 
 - feat(ext/web): add `AbortSignal.any()` (#21087)
