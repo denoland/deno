@@ -4,7 +4,7 @@
 // namespace.
 //
 // deno-lint-ignore-file
-{
+(() => {
   const internals = Deno[Deno.internal];
   const core = internals.core;
   const ops = core.ops;
@@ -1373,4 +1373,4 @@
 
   globalThis.Deno.bench = bench;
   globalThis.Deno.test = test;
-}
+})();
