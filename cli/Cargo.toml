@@ -84,6 +84,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.1"
 dprint-plugin-markdown = "=0.16.3"
 dprint-plugin-typescript = "=0.88.5"
+dprint-plugin-jupyter = "=0.1.1"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"

@@ -29,14 +29,10 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
 use log::debug;
 use log::info;
 use log::warn;
-use serde::Deserialize;
-use serde::Serialize;
-use std::collections::BTreeMap;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -49,57 +45,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::cache::IncrementalCache;
-
-/// Representation of a Jupyter Notebook file.
-/// To preserve the structure of file, extra fields are stored in `extra` field.
-///
-/// See <https://nbformat.readthedocs.io/en/latest/format_description.html>
-#[derive(Serialize, Deserialize)]
-struct Ipynb {
-  cells: Vec<Cell>,
-  metadata: Metadata,
-
-  #[serde(flatten)]
-  extra: BTreeMap<String, serde_json::Value>,
-}
-
-impl Ipynb {
-  fn is_typescript(&self) -> bool {
-    self.metadata.language_info.name == "typescript"
-  }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Cell {
-  cell_type: String,
-  source: Source,
-
-  #[serde(flatten)]
-  extra: BTreeMap<String, serde_json::Value>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum Source {
-  String(String),
-  Array(Vec<String>),
-}
-
-#[derive(Serialize, Deserialize)]
-struct Metadata {
-  language_info: LanguageInfo,
-
-  #[serde(flatten)]
-  extra: BTreeMap<String, serde_json::Value>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct LanguageInfo {
-  name: String,
-
-  #[serde(flatten)]
-  extra: BTreeMap<String, serde_json::Value>,
-}
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
@@ -278,63 +223,6 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
-/// Formats IPYNB files.
-///
-/// attempt to format `code` cells if metadata indicates it's TypeScript.
-fn format_ipynb(
-  ipynb: Ipynb,
-  fmt_options: &FmtOptionsConfig,
-) -> Result<Option<String>, AnyError> {
-  fn source_from(text: String) -> Source {
-    Source::Array(text.split_inclusive('\n').map(|x| x.into()).collect())
-  }
-
-  let is_typescript = ipynb.is_typescript();
-  let cells: Vec<Result<Cell, Cell>> = ipynb
-    .cells
-    .into_iter()
-    .map(|cell| {
-      let source = match cell.source {
-        Source::String(text) => text,
-        Source::Array(texts) => texts.join(""),
-      };
-
-      let formatted = match cell.cell_type.as_str() {
-        "code" if is_typescript => Some("temp.ts"),
-        "markdown" => Some("temp.md"),
-        _ => None,
-      }
-      .map(|path| format_file(&PathBuf::from(path), &source, fmt_options))
-      .unwrap_or(Ok(None));
-
-      match formatted {
-        Ok(Some(text)) => Ok(Cell {
-          source: source_from(text),
-          ..cell
-        }),
-        _ => Err(Cell {
-          source: source_from(source),
-          ..cell
-        }),
-      }
-    })
-    .collect();
-
-  let already_formatted = cells.iter().all(|cell| cell.is_err());
-
-  if already_formatted {
-    return Ok(None);
-  }
-  let cells = cells
-    .into_iter()
-    .map(|cell| cell.unwrap_or_else(|cell| cell))
-    .collect::<Vec<_>>();
-
-  let result = serde_json::to_string_pretty(&Ipynb { cells, ..ipynb });
-
-  Ok(result.map(Some)?)
-}
-
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON,  MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
@@ -348,10 +236,12 @@ pub fn format_file(
       format_markdown(file_text, fmt_options)
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
-    "ipynb" => {
-      let ipynb = serde_json::from_str::<Ipynb>(file_text)?;
-      format_ipynb(ipynb, fmt_options)
-    }
+    "ipynb" => dprint_plugin_jupyter::format_text(
+      file_text,
+      |file_path: &Path, file_text: String| {
+        format_file(file_path, &file_text, fmt_options)
+      },
+    ),
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(file_path, file_text, &config)
