@@ -8,6 +8,7 @@ use deno_core::ResourceId;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+// The Wasm streaming compilation pipeline.
 pub fn handle_wasm_streaming(
   state: Rc<RefCell<OpState>>,
   scope: &mut v8::HandleScope,
@@ -23,38 +24,44 @@ pub fn handle_wasm_streaming(
     }
     Err(e) => {
       // 2.8
-      wasm_streaming.abort(None);
+      let err = v8::String::new(scope, &e.to_string()).unwrap();
+      wasm_streaming.abort(Some(err.into()));
       return;
     }
   };
 
   wasm_streaming.set_url(&url);
 
-  tokio::task::spawn_local(async move {
+  deno_core::unsync::spawn(async move {
+    let view = deno_core::BufMutView::new(65536);
     loop {
       let resource = state.borrow().resource_table.get_any(rid);
       let resource = match resource {
         Ok(r) => r,
         Err(_) => {
+          /* TODO(littledivy): propgate err */
           wasm_streaming.abort(None);
           return;
         }
       };
 
-      let bytes = match resource.read(65536).await {
+      let (bytes, view) = match resource.read_byob(view).await {
         Ok(bytes) => bytes,
         Err(e) => {
+          println!("error reading wasm resource: {}", e);
+          /* TODO(littledivy): propgate err */
           wasm_streaming.abort(None);
           return;
         }
       };
-      if bytes.is_empty() {
+      if bytes == 0 {
         break;
       }
 
-      wasm_streaming.on_bytes_received(&bytes);
+      wasm_streaming.on_bytes_received(&view);
     }
 
+    /* XXX: crashes here if module compilation fails */
     wasm_streaming.finish();
   });
 }
@@ -150,10 +157,9 @@ fn call_method<'a>(
   let function: v8::Local<v8::Function> = function.try_into()?;
   let arg = v8::String::new(scope, arg)
     .ok_or_else(|| type_error("Failed to create arg."))?;
-  let this = v8::undefined(scope).into();
   Ok(
     function
-      .call(scope, this, &[arg.into()])
+      .call(scope, obj, &[arg.into()])
       .ok_or_else(|| type_error("Failed to call."))?
       .to_rust_string_lossy(scope),
   )

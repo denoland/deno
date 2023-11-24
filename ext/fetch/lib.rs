@@ -70,6 +70,7 @@ pub use data_url;
 pub use reqwest;
 
 pub use fs_fetch_handler::FsFetchHandler;
+pub use wasm_streaming::handle_wasm_streaming;
 
 #[derive(Clone)]
 pub struct Options {

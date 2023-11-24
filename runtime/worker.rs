@@ -501,6 +501,9 @@ impl MainWorker {
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
     bootstrap_fn.call(scope, undefined.into(), &[args]).unwrap();
+
+    // Set Wasm streaming callback
+    deno_core::set_wasm_streaming_callback(scope, deno_fetch::handle_wasm_streaming);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)

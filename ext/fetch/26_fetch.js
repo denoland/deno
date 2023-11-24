@@ -96,6 +96,8 @@ function opFetchSend(rid) {
  */
 function createResponseBodyStream(responseBodyRid, terminator) {
   const readable = readableStreamForRid(responseBodyRid);
+  // internal, used by wasm streaming
+  readable.rid = responseBodyRid;
 
   function onAbort() {
     errorReadableStream(readable, terminator.reason);
