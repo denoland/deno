@@ -138,12 +138,14 @@ verify on GitHub that everything looks correct.
 
 - [ ] Publish the release on Github
 
-- [ ] Update https://github.com/denoland/dotcom/blob/main/versions.json, open a
-      PR and merge.
+- [ ] Update https://github.com/denoland/dotcom/blob/main/versions.json and open
+      a PR
+  - [ ] Merge the PR.
 
 - [ ] Run
       https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
-      and merge the PR.
+      this will open a PR.
+  - [ ] Merge the PR.
 
 - [ ] For minor releases: make sure https://github.com/mdn/browser-compat-data
       has been updated to reflect Web API changes in this release. Usually done
@@ -160,6 +162,7 @@ script generates the symbols based on the latest tags.
 
 - [ ] Run the release workflow in the apiland_scripts repo on the main branch:
       https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
+  - [ ] I verify the workflow ran successfully.
 
   <details>
      <summary>Failure Steps</summary>
