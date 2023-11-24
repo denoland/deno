@@ -357,7 +357,7 @@ fn webstorage_location_shares_origin() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+  assert_eq!(output.stdout, b"Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // test to ensure that when a --config file is set, but no --location, that
@@ -384,7 +384,7 @@ fn webstorage_config_file() {
     .new_command()
     .args("run --config run/webstorage/config_a.jsonc run/webstorage/logger.ts")
     .run()
-    .assert_matches_text("Storage { length: 1, hello: \"deno\" }\n");
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // tests to ensure `--config` does not effect persisted storage when a
@@ -401,7 +401,7 @@ fn webstorage_location_precedes_config() {
   context.new_command()
     .args("run --location https://example.com/b.ts --config run/webstorage/config_b.jsonc run/webstorage/logger.ts")
     .run()
-    .assert_matches_text("Storage { length: 1, hello: \"deno\" }\n");
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // test to ensure that when there isn't a configuration or location, that the
@@ -426,7 +426,7 @@ fn webstorage_main_module() {
     .new_command()
     .args("run run/webstorage/fixture.ts")
     .run()
-    .assert_matches_text("Storage { length: 1, hello: \"deno\" }\n");
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 itest!(_075_import_local_query_hash {
