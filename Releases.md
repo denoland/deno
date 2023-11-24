@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.38.3 / 2023.11.24
 
-- Revert "chore: update to `std@0.207.0` (#21284)" (#21295)
 - feat(unstable): tar up directory with deno.json  (#21228)
 - fix(ext,runtime): add missing custom inspections (#21219)
 - fix(ext/http): avoid lockup in graceful shutdown (#21253)
