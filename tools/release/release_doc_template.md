@@ -162,7 +162,7 @@ script generates the symbols based on the latest tags.
 
 - [ ] Run the release workflow in the apiland_scripts repo on the main branch:
       https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
-  - [ ] verify the workflow ran successfully.
+  - [ ] Verify the workflow ran successfully.
 
   <details>
      <summary>Failure Steps</summary>
