@@ -204,6 +204,10 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
+    // TODO:
+    DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
+      tools::registry::publish(flags, publish_flags).await
+    }),
   };
 
   handle.await?

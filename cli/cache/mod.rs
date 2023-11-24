@@ -165,7 +165,7 @@ impl FetchCacher {
   }
 }
 
-static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
+pub(crate) static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
   let env_var_name = "DENO_REGISTRY_URL";
   if let Ok(registry_url) = std::env::var(env_var_name) {
     // ensure there is a trailing slash for the directory
