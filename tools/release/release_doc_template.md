@@ -139,7 +139,7 @@ verify on GitHub that everything looks correct.
 - [ ] Publish the release on Github
 
 - [ ] Update https://github.com/denoland/dotcom/blob/main/versions.json and open
-      a PR
+      a PR.
   - [ ] Merge the PR.
 
 - [ ] Run
