@@ -6,8 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-<<<<<<< HEAD
-=======
 ### 1.38.3 / 2023.11.24
 
 - feat(unstable): tar up directory with deno.json  (#21228)
@@ -24,7 +22,6 @@ https://github.com/denoland/deno_install
 - fix: 'Promise was collected' error in REPL/jupyter (#21272)
 - fix: Deno.noColor should not be true when NO_COLOR is empty string (#21275)
 
->>>>>>> 3193e9391 (1.38.3 (#21319))
 ### 1.38.2 / 2023.11.17
 
 - feat(ext/web): add `AbortSignal.any()` (#21087)

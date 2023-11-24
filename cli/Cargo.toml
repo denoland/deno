@@ -2,11 +2,7 @@
 
 [package]
 name = "deno"
-<<<<<<< HEAD
-version = "1.38.2"
-=======
 version = "1.38.3"
->>>>>>> 3193e9391 (1.38.3 (#21319))
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -65,11 +61,7 @@ deno_lockfile.workspace = true
 deno_npm = "0.15.2"
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
 deno_semver = "0.5.1"
-<<<<<<< HEAD
-deno_task_shell = "=0.14.2"
-=======
 deno_task_shell = "=0.14.0"
->>>>>>> 3193e9391 (1.38.3 (#21319))
 eszip = "=0.55.4"
 napi_sym.workspace = true
 
