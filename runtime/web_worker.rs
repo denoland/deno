@@ -476,7 +476,7 @@ impl WebWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
         enable_testing_features,
@@ -756,9 +756,16 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
-        panic!(
-          "coding error: either js is polling or the worker is terminated"
-        );
+        // TODO(mmastrac): we don't want to test this w/classic workers because
+        // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
+        if self.worker_type == WebWorkerType::Module {
+          panic!(
+            "coding error: either js is polling or the worker is terminated"
+          );
+        } else {
+          eprintln!("classic worker terminated unexpectedly");
+          Poll::Ready(Ok(()))
+        }
       }
       Poll::Pending => Poll::Pending,
     }

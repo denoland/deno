@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.118.0"
+version = "0.121.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -40,7 +40,7 @@ memmem.workspace = true
 mime = "0.3.16"
 once_cell.workspace = true
 percent-encoding.workspace = true
-phf = { version = "0.10", features = ["macros"] }
+phf = { version = "0.11", features = ["macros"] }
 pin-project.workspace = true
 ring.workspace = true
 scopeguard.workspace = true

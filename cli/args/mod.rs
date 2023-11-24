@@ -29,6 +29,7 @@ pub use deno_config::TsConfig;
 pub use deno_config::TsConfigForEmit;
 pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
+pub use deno_config::WorkspaceConfig;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -619,6 +620,7 @@ pub struct CliOptions {
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
+  maybe_workspace_config: Option<WorkspaceConfig>,
 }
 
 impl CliOptions {
@@ -652,6 +654,20 @@ impl CliOptions {
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder =
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
+    let maybe_workspace_config =
+      if let Some(config_file) = maybe_config_file.as_ref() {
+        config_file.to_workspace_config()?
+      } else {
+        None
+      };
+
+    // TODO(bartlomieju): remove in v1.39 or v1.40.
+    if let Some(wsconfig) = &maybe_workspace_config {
+      if !wsconfig.members.is_empty() && !flags.unstable_workspaces {
+        eprintln!("Use of unstable 'workspaces' feature. The --unstable-workspaces flags must be provided.");
+        std::process::exit(70);
+      }
+    }
 
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
@@ -668,6 +684,7 @@ impl CliOptions {
       maybe_node_modules_folder,
       maybe_vendor_folder,
       overrides: Default::default(),
+      maybe_workspace_config,
     })
   }
 
@@ -813,6 +830,41 @@ impl CliOptions {
     &self,
     file_fetcher: &FileFetcher,
   ) -> Result<Option<ImportMap>, AnyError> {
+    if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
+      let base_import_map_config = ::import_map::ext::ImportMapConfig {
+        base_url: self.maybe_config_file.as_ref().unwrap().specifier.clone(),
+        import_map_value: workspace_config.base_import_map_value.clone(),
+      };
+      let children_configs = workspace_config
+        .members
+        .iter()
+        .map(|member| {
+          let import_map_value = member.config_file.to_import_map_value();
+          ::import_map::ext::ImportMapConfig {
+            base_url: member.config_file.specifier.clone(),
+            import_map_value,
+          }
+        })
+        .collect();
+
+      let maybe_import_map = ::import_map::ext::create_synthetic_import_map(
+        base_import_map_config,
+        children_configs,
+      );
+      if let Some((_import_map_url, import_map)) = maybe_import_map {
+        log::debug!(
+          "Workspace config generated this import map {}",
+          serde_json::to_string_pretty(&import_map).unwrap()
+        );
+        return import_map::import_map_from_value(
+          // TODO(bartlomieju): maybe should be stored on the workspace config?
+          &self.maybe_config_file.as_ref().unwrap().specifier,
+          import_map,
+        )
+        .map(Some);
+      }
+    }
+
     let import_map_specifier = match self.resolve_import_map_specifier()? {
       Some(specifier) => specifier,
       None => return Ok(None),
@@ -940,6 +992,7 @@ impl CliOptions {
       maybe_config_file: self.maybe_config_file.clone(),
       maybe_package_json: self.maybe_package_json.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
+      maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
     }
   }
@@ -1035,6 +1088,10 @@ impl CliOptions {
 
   pub fn maybe_config_file(&self) -> &Option<ConfigFile> {
     &self.maybe_config_file
+  }
+
+  pub fn maybe_workspace_config(&self) -> &Option<WorkspaceConfig> {
+    &self.maybe_workspace_config
   }
 
   pub fn maybe_package_json(&self) -> &Option<PackageJson> {

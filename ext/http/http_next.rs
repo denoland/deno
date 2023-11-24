@@ -10,15 +10,18 @@ use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytesInner;
 use crate::service::handle_request;
+use crate::service::http_general_trace;
 use crate::service::http_trace;
 use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
+use crate::service::SignallingRc;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
@@ -716,6 +719,8 @@ pub async fn op_http_set_response_body_resource(
     }
   };
 
+  *http.needs_close_after_finish() = true;
+
   set_response(
     http.clone(),
     resource.size_hint().1.map(|s| s as usize),
@@ -726,7 +731,6 @@ pub async fn op_http_set_response_body_resource(
     },
   );
 
-  *http.needs_close_after_finish() = true;
   http.response_body_finished().await;
   Ok(())
 }
@@ -850,15 +854,15 @@ fn serve_https(
   });
   spawn(
     async {
-      io.handshake().await?;
+      let handshake = io.handshake().await?;
       // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
       // based on the prefix bytes
-      let handshake = io.get_ref().1.alpn_protocol();
-      if handshake == Some(TLS_ALPN_HTTP_2) {
+      let handshake = handshake.alpn;
+      if Some(TLS_ALPN_HTTP_2) == handshake.as_deref() {
         serve_http2_unconditional(io, svc, listen_cancel_handle)
           .await
           .map_err(|e| e.into())
-      } else if handshake == Some(TLS_ALPN_HTTP_11) {
+      } else if Some(TLS_ALPN_HTTP_11) == handshake.as_deref() {
         serve_http11_unconditional(io, svc, listen_cancel_handle)
           .await
           .map_err(|e| e.into())
@@ -923,7 +927,7 @@ where
 struct HttpLifetime {
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
-  server_state: Rc<HttpServerState>,
+  server_state: SignallingRc<HttpServerState>,
 }
 
 struct HttpJoinHandle {
@@ -931,7 +935,7 @@ struct HttpJoinHandle {
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
   rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
-  server_state: Rc<HttpServerState>,
+  server_state: SignallingRc<HttpServerState>,
 }
 
 impl HttpJoinHandle {
@@ -1178,6 +1182,7 @@ pub async fn op_http_close(
     .take::<HttpJoinHandle>(rid)?;
 
   if graceful {
+    http_general_trace!("graceful shutdown");
     // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
     // once we phase out `check_or_exit_with_legacy_fallback`
     state
@@ -1190,14 +1195,17 @@ pub async fn op_http_close(
 
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
-    join_handle.server_state.drain().await;
+    poll_fn(|cx| join_handle.server_state.poll_complete(cx)).await;
   } else {
+    http_general_trace!("forceful shutdown");
     // In a forceful shutdown, we close everything
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
     // Give streaming responses a tick to close
     tokio::task::yield_now().await;
   }
+
+  http_general_trace!("awaiting shutdown");
 
   let mut join_handle = RcRef::map(&join_handle, |this| &this.join_handle)
     .borrow_mut()

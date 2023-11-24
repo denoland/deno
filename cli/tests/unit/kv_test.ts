@@ -6,8 +6,6 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
-  Deferred,
-  deferred,
 } from "./test_util.ts";
 import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
 
@@ -1404,11 +1402,11 @@ async function _typeCheckingTests() {
 }
 
 queueTest("basic listenQueue and enqueue", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
   try {
     const res = await db.enqueue("test");
@@ -1426,17 +1424,19 @@ for (const { name, value } of VALUE_CASES) {
   queueTest(`listenQueue and enqueue ${name}`, async (db) => {
     const numEnqueues = 10;
     let count = 0;
-    const promises: Deferred<unknown>[] = [];
+    const deferreds: ReturnType<typeof Promise.withResolvers<unknown>>[] = [];
     const listeners: Promise<void>[] = [];
     listeners.push(db.listenQueue((msg: unknown) => {
-      promises[count++].resolve(msg);
+      deferreds[count++].resolve(msg);
     }));
     try {
       for (let i = 0; i < numEnqueues; i++) {
-        promises.push(deferred());
+        deferreds.push(Promise.withResolvers<unknown>());
         await db.enqueue(value);
       }
-      const dequeuedMessages = await Promise.all(promises);
+      const dequeuedMessages = await Promise.all(
+        deferreds.map(({ promise }) => promise),
+      );
       for (let i = 0; i < numEnqueues; i++) {
         assertEquals(dequeuedMessages[i], value);
       }
@@ -1450,17 +1450,17 @@ for (const { name, value } of VALUE_CASES) {
 }
 
 queueTest("queue mixed types", async (db) => {
-  let promise: Deferred<void>;
+  let deferred: ReturnType<typeof Promise.withResolvers<void>>;
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg: unknown) => {
     dequeuedMessage = msg;
-    promise.resolve();
+    deferred.resolve();
   });
   try {
     for (const item of VALUE_CASES) {
-      promise = deferred();
+      deferred = Promise.withResolvers<void>();
       await db.enqueue(item.value);
-      await promise;
+      await deferred.promise;
       assertEquals(dequeuedMessage, item.value);
     }
   } finally {
@@ -1471,12 +1471,12 @@ queueTest("queue mixed types", async (db) => {
 
 queueTest("queue delay", async (db) => {
   let dequeueTime: number | undefined;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeueTime = Date.now();
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
   try {
     const enqueueTime = Date.now();
@@ -1493,12 +1493,12 @@ queueTest("queue delay", async (db) => {
 
 queueTest("queue delay with atomic", async (db) => {
   let dequeueTime: number | undefined;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeueTime = Date.now();
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
   try {
     const enqueueTime = Date.now();
@@ -1520,14 +1520,14 @@ queueTest("queue delay with atomic", async (db) => {
 queueTest("queue delay and now", async (db) => {
   let count = 0;
   let dequeueTime: number | undefined;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     count += 1;
     if (count == 2) {
       dequeueTime = Date.now();
       dequeuedMessage = msg;
-      promise.resolve();
+      resolve();
     }
   });
   try {
@@ -1564,12 +1564,12 @@ dbTest("queue large delay", async (db) => {
 });
 
 queueTest("listenQueue with async callback", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue(async (msg) => {
     dequeuedMessage = msg;
     await sleep(100);
-    promise.resolve();
+    resolve();
   });
   try {
     await db.enqueue("test");
@@ -1603,20 +1603,20 @@ queueTest("queue retries", async (db) => {
 queueTest("multiple listenQueues", async (db) => {
   const numListens = 10;
   let count = 0;
-  const promises: Deferred<void>[] = [];
+  const deferreds: ReturnType<typeof Promise.withResolvers<void>>[] = [];
   const dequeuedMessages: unknown[] = [];
   const listeners: Promise<void>[] = [];
   for (let i = 0; i < numListens; i++) {
     listeners.push(db.listenQueue((msg) => {
       dequeuedMessages.push(msg);
-      promises[count++].resolve();
+      deferreds[count++].resolve();
     }));
   }
   try {
     for (let i = 0; i < numListens; i++) {
-      promises.push(deferred());
+      deferreds.push(Promise.withResolvers<void>());
       await db.enqueue("msg_" + i);
-      await promises[i];
+      await deferreds[i].promise;
       const msg = dequeuedMessages[i];
       assertEquals("msg_" + i, msg);
     }
@@ -1629,11 +1629,11 @@ queueTest("multiple listenQueues", async (db) => {
 });
 
 queueTest("enqueue with atomic", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
 
   try {
@@ -1661,7 +1661,7 @@ queueTest("enqueue with atomic", async (db) => {
 });
 
 queueTest("enqueue with atomic nonce", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
 
   const nonce = crypto.randomUUID();
@@ -1672,7 +1672,7 @@ queueTest("enqueue with atomic nonce", async (db) => {
     const nonceValue = await db.get(["nonces", nonce]);
     if (nonceValue.versionstamp === null) {
       dequeuedMessage = message.msg;
-      promise.resolve();
+      resolve();
       return;
     }
 
@@ -1720,13 +1720,13 @@ Deno.test({
       let db: Deno.Kv = await Deno.openKv(filename);
 
       let count = 0;
-      let promise = deferred();
+      let deferred = Promise.withResolvers<void>();
 
       // Register long-running handler.
       let listener = db.listenQueue(async (_msg) => {
         count += 1;
         if (count == 3) {
-          promise.resolve();
+          deferred.resolve();
         }
         await new Promise(() => {});
       });
@@ -1735,7 +1735,7 @@ Deno.test({
       await db.enqueue("msg0");
       await db.enqueue("msg1");
       await db.enqueue("msg2");
-      await promise;
+      await deferred.promise;
 
       // Close the database and wait for the listener to finish.
       db.close();
@@ -1751,18 +1751,18 @@ Deno.test({
       db = await Deno.openKv(filename);
 
       count = 0;
-      promise = deferred();
+      deferred = Promise.withResolvers<void>();
 
       // Register a handler that will complete quickly.
       listener = db.listenQueue((_msg) => {
         count += 1;
         if (count == 3) {
-          promise.resolve();
+          deferred.resolve();
         }
       });
 
       // Wait for the handlers to finish.
-      await promise;
+      await deferred.promise;
       assertEquals(3, count);
       db.close();
       await listener;
@@ -1789,7 +1789,7 @@ Deno.test({
       let db: Deno.Kv = await Deno.openKv(filename);
 
       let count = 0;
-      let promise = deferred();
+      let deferred = Promise.withResolvers<void>();
 
       // Register long-running handler.
       let listener = db.listenQueue((_msg) => {});
@@ -1807,18 +1807,18 @@ Deno.test({
       db = await Deno.openKv(filename);
 
       count = 0;
-      promise = deferred();
+      deferred = Promise.withResolvers<void>();
 
       // Register a handler that will complete quickly.
       listener = db.listenQueue((_msg) => {
         count += 1;
         if (count == 3) {
-          promise.resolve();
+          deferred.resolve();
         }
       });
 
       // Wait for the handlers to finish.
-      await promise;
+      await deferred.promise;
       assertEquals(3, count);
       db.close();
       await listener;
@@ -1839,11 +1839,11 @@ Deno.test({
     try {
       const db0 = await Deno.openKv(filename);
       const db1 = await Deno.openKv(filename);
-      const promise = deferred();
+      const { promise, resolve } = Promise.withResolvers<void>();
       let dequeuedMessage: unknown = null;
       const listener = db0.listenQueue((msg) => {
         dequeuedMessage = msg;
-        promise.resolve();
+        resolve();
       });
       try {
         const res = await db1.enqueue("test");
