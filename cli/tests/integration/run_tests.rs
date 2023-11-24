@@ -3519,6 +3519,11 @@ fn running_declaration_files() {
   }
 }
 
+itest!(test_and_bench_are_noops_in_run {
+  args: "run run/test_and_bench_in_run.js",
+  output_str: Some(""),
+});
+
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
   args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",

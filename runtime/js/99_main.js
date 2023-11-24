@@ -448,6 +448,11 @@ const finalDenoNs = {
   resources: core.resources,
   close: core.close,
   ...denoNs,
+  // Deno.test and Deno.bench are noops here, but kept for compatibility; so
+  // that they don't cause errors when used outside of `deno test`/`deno bench`
+  // contexts.
+  test: () => {},
+  bench: () => {},
 };
 
 const {
