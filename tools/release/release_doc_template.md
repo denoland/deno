@@ -6,8 +6,13 @@
   [`denoland/deno`](https://github.com/denoland/deno/),
   [`denoland/deno_std`](https://github.com/denoland/deno_std/),
   [`denoland/dotcom`](https://github.com/denoland/dotcom/),
+<<<<<<< HEAD
   [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
   [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
+=======
+  [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
+  [`denoland/manual`](https://github.com/denoland/manual/)
+>>>>>>> 3193e9391 (1.38.3 (#21319))
 
 **During this process `main` branch (or any other branch that you're creating
 release from) should be frozen and no commits should land until the release is
