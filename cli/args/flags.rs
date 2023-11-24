@@ -2329,7 +2329,8 @@ fn publish_subcommand() -> Command {
       )
       .arg(
         Arg::new("token")
-          .help("The API token to use when publishing. If unset, interactive authentication will be used.")
+          .long("token")
+          .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
     })
 }
