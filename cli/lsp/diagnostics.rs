@@ -1653,14 +1653,27 @@ let c: number = "a";
     let (snapshot, _) = setup(
       &temp_dir,
       &[
-        ("file:///std/testing/asserts.ts", "export function assert() {}", 1, LanguageId::TypeScript),
-        ("file:///a/file.ts", "import { assert } from \"../std/testing/asserts.ts\";\n\nassert();\n", 1, LanguageId::TypeScript),
+        (
+          "file:///std/assert/mod.ts",
+          "export function assert() {}",
+          1,
+          LanguageId::TypeScript,
+        ),
+        (
+          "file:///a/file.ts",
+          "import { assert } from \"../std/assert/mod.ts\";\n\nassert();\n",
+          1,
+          LanguageId::TypeScript,
+        ),
       ],
-      Some(("file:///a/import-map.json", r#"{
+      Some((
+        "file:///a/import-map.json",
+        r#"{
         "imports": {
           "/~/std/": "../std/"
         }
-      }"#)),
+      }"#,
+      )),
     );
     let config = mock_config();
     let token = CancellationToken::new();
@@ -1668,7 +1681,7 @@ let c: number = "a";
     assert_eq!(actual.len(), 2);
     for record in actual {
       match record.specifier.as_str() {
-        "file:///std/testing/asserts.ts" => {
+        "file:///std/assert/mod.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
         }
         "file:///a/file.ts" => assert_eq!(
@@ -1682,16 +1695,16 @@ let c: number = "a";
                 },
                 "end": {
                   "line": 0,
-                  "character": 50
+                  "character": 45
                 }
               },
               "severity": 4,
               "code": "import-map-remap",
               "source": "deno",
-              "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+              "message": "The import specifier can be remapped to \"/~/std/assert/mod.ts\" which will resolve it via the active import map.",
               "data": {
-                "from": "../std/testing/asserts.ts",
-                "to": "/~/std/testing/asserts.ts"
+                "from": "../std/assert/mod.ts",
+                "to": "/~/std/assert/mod.ts"
               }
             }
           ])
@@ -1712,10 +1725,10 @@ let c: number = "a";
       severity: Some(lsp::DiagnosticSeverity::HINT),
       code: Some(lsp::NumberOrString::String("import-map-remap".to_string())),
       source: Some("deno".to_string()),
-      message: "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.".to_string(),
+      message: "The import specifier can be remapped to \"/~/std/assert/mod.ts\" which will resolve it via the active import map.".to_string(),
       data: Some(json!({
-        "from": "../std/testing/asserts.ts",
-        "to": "/~/std/testing/asserts.ts"
+        "from": "../std/assert/mod.ts",
+        "to": "/~/std/assert/mod.ts"
       })),
       ..Default::default()
     });
@@ -1724,7 +1737,7 @@ let c: number = "a";
     assert_eq!(
       json!(actual),
       json!({
-        "title": "Update \"../std/testing/asserts.ts\" to \"/~/std/testing/asserts.ts\" to use import map.",
+        "title": "Update \"../std/assert/mod.ts\" to \"/~/std/assert/mod.ts\" to use import map.",
         "kind": "quickfix",
         "diagnostics": [
           {
@@ -1741,10 +1754,10 @@ let c: number = "a";
             "severity": 4,
             "code": "import-map-remap",
             "source": "deno",
-            "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+            "message": "The import specifier can be remapped to \"/~/std/assert/mod.ts\" which will resolve it via the active import map.",
             "data": {
-              "from": "../std/testing/asserts.ts",
-              "to": "/~/std/testing/asserts.ts"
+              "from": "../std/assert/mod.ts",
+              "to": "/~/std/assert/mod.ts"
             }
           }
         ],
@@ -1762,7 +1775,7 @@ let c: number = "a";
                     "character": 50
                   }
                 },
-                "newText": "\"/~/std/testing/asserts.ts\""
+                "newText": "\"/~/std/assert/mod.ts\""
               }
             ]
           }

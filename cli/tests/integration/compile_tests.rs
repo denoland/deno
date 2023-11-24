@@ -24,7 +24,7 @@ fn compile_basic() {
         "compile",
         "--output",
         &exe.to_string_lossy(),
-        "../../../test_util/std/examples/welcome.ts",
+        "../../../cli/tests/testdata/welcome.ts",
       ])
       .run();
     output.assert_exit_code(0);
