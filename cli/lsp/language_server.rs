@@ -10,8 +10,10 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
+use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
+use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
@@ -56,7 +58,6 @@ use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
-use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
@@ -1736,12 +1737,12 @@ impl Inner {
               .map(|ext| file_path.with_extension(ext))
               .unwrap_or(file_path);
             // it's not a js/ts file, so attempt to format its contents
-            format_file(&file_path, &document.content(), &fmt_options)
+            format_file(&file_path, &document.text(), &fmt_options)
           }
         };
         match format_result {
           Ok(Some(new_text)) => Some(text::get_edits(
-            &document.content(),
+            &document.text(),
             &new_text,
             document.line_index().as_ref(),
           )),
@@ -3773,5 +3774,25 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(contents)
+  }
+}
+
+fn to_hover_text(result: &Resolution) -> String {
+  match result {
+    Resolution::Ok(resolved) => {
+      let specifier = &resolved.specifier;
+      match specifier.scheme() {
+        "data" => "_(a data url)_".to_string(),
+        "blob" => "_(a blob url)_".to_string(),
+        _ => format!(
+          "{}&#8203;{}",
+          &specifier[..url::Position::AfterScheme],
+          &specifier[url::Position::AfterScheme..],
+        )
+        .replace('@', "&#8203;@"),
+      }
+    }
+    Resolution::Err(_) => "_[errored]_".to_string(),
+    Resolution::None => "_[missing]_".to_string(),
   }
 }

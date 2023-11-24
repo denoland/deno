@@ -60,14 +60,19 @@ impl Utf16Char {
   }
 }
 
+/// Contains information about the line and character position of text content.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct LineIndex {
+  /// The starting point of each line in the text content in bytes, when the encoding is UTF-8.
   utf8_offsets: Vec<TextSize>,
+  /// Start and end position of each UTF-16 character in the text content, by line.
   utf16_lines: HashMap<u32, Vec<Utf16Char>>,
+  /// The starting point of each line in the text content in bytes, when the encoding is UTF-16.
   utf16_offsets: Vec<TextSize>,
 }
 
 impl LineIndex {
+  /// Extract line and character information from a string slice.
   pub fn new(text: &str) -> LineIndex {
     let mut utf16_lines = HashMap::new();
     let mut utf16_chars = Vec::new();
