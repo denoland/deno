@@ -571,6 +571,9 @@ impl Default for CpuUsageState {
   }
 }
 
+// SAFETY: Only used on the LSP CPU watchdog thread after init.
+unsafe impl Send for CpuUsageState {}
+
 impl CpuUsageState {
   pub fn refresh_cpu_usage(&mut self) -> f32 {
     let pid = std::process::id();
