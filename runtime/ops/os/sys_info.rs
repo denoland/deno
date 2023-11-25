@@ -433,10 +433,9 @@ impl ProcessorCpuLoadInfo {
         &mut cpu_load as *mut _ as *mut _,
         &mut info_size,
       ) != 0
+        || cpu_count < 1
+        || cpu_load.is_null()
       {
-        // host_processor_info failed, not updating CPU ticks usage...
-        None
-      } else if cpu_count < 1 || cpu_load.is_null() {
         None
       } else {
         Some(Self {
