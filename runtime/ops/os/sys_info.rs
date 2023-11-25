@@ -548,6 +548,7 @@ pub struct CpuUsageState {
   cpu_usage: f32,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for CpuUsageState {
   fn default() -> Self {
     #[cfg(target_vendor = "apple")]
