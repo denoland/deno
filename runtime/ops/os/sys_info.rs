@@ -598,7 +598,7 @@ impl CpuUsageState {
       let mut thread_info =
         unsafe { std::mem::zeroed::<libc::proc_threadinfo>() };
       let (user_time, system_time) = if libc::proc_pidinfo(
-        pid.0,
+        pid,
         libc::PROC_PIDTHREADINFO,
         0,
         &mut thread_info as *mut libc::proc_threadinfo as *mut libc::c_void,
