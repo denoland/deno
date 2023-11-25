@@ -548,8 +548,8 @@ pub struct CpuUsageState {
   cpu_usage: f32,
 }
 
-impl CpuUsageState {
-  pub fn new() -> Self {
+impl Default for CpuUsageState {
+  fn default() -> Self {
     #[cfg(target_vendor = "apple")]
     // SAFETY: Vendored code.
     let port = unsafe { libc::mach_host_self() };
@@ -568,7 +568,9 @@ impl CpuUsageState {
       cpu_usage: 0.0,
     }
   }
+}
 
+impl CpuUsageState {
   pub fn refresh_cpu_usage(&mut self) -> f32 {
     let pid = std::process::id();
     #[cfg(not(target_vendor = "apple"))]
