@@ -424,6 +424,7 @@ impl ProcessorCpuLoadInfo {
     let mut cpu_count = 0;
     let mut cpu_load: libc::processor_cpu_load_info_t = std::ptr::null_mut();
 
+    // SAFETY: Vendored code.
     unsafe {
       if libc::host_processor_info(
         port,
@@ -458,6 +459,7 @@ struct SystemTimeInfo {
 #[cfg(target_vendor = "apple")]
 impl SystemTimeInfo {
   fn new(port: libc::mach_port_t) -> Option<Self> {
+    // SAFETY: Vendored code.
     unsafe {
       let clock_ticks_per_sec = libc::sysconf(libc::_SC_CLK_TCK);
 
@@ -496,6 +498,7 @@ impl SystemTimeInfo {
     };
     let cpu_count =
       std::cmp::min(self.old_cpu_info.cpu_count, new_cpu_info.cpu_count);
+    // SAFETY: Vendored code.
     unsafe {
       for i in 0..cpu_count {
         let new_load: &libc::processor_cpu_load_info =
@@ -548,7 +551,8 @@ pub struct CpuUsageState {
 impl CpuUsageState {
   pub fn new() -> Self {
     #[cfg(target_vendor = "apple")]
-    let port = libc::mach_host_self();
+    // SAFETY: Vendored code.
+    let port = unsafe { libc::mach_host_self() };
     Self {
       #[cfg(not(target_vendor = "apple"))]
       system: Default::default(),
@@ -585,23 +589,29 @@ impl CpuUsageState {
     {
       // SAFETY: This will be written below.
       let mut task_info = unsafe { std::mem::zeroed::<libc::proc_taskinfo>() };
-      libc::proc_pidinfo(
-        pid as _,
-        libc::PROC_PIDTASKINFO,
-        0,
-        &mut task_info as *mut libc::proc_taskinfo as *mut libc::c_void,
-        std::mem::size_of::<libc::proc_taskinfo>() as _,
-      );
+      // SAFETY: Vendored code.
+      unsafe {
+        libc::proc_pidinfo(
+          pid as _,
+          libc::PROC_PIDTASKINFO,
+          0,
+          &mut task_info as *mut libc::proc_taskinfo as *mut libc::c_void,
+          std::mem::size_of::<libc::proc_taskinfo>() as _,
+        )
+      };
       // SAFETY: This will be written below.
       let mut thread_info =
         unsafe { std::mem::zeroed::<libc::proc_threadinfo>() };
-      let (user_time, system_time) = if libc::proc_pidinfo(
-        pid as _,
-        libc::PROC_PIDTHREADINFO,
-        0,
-        &mut thread_info as *mut libc::proc_threadinfo as *mut libc::c_void,
-        std::mem::size_of::<libc::proc_threadinfo>() as _,
-      ) != 0
+      // SAFETY: Vendored code.
+      let (user_time, system_time) = if unsafe {
+        libc::proc_pidinfo(
+          pid as _,
+          libc::PROC_PIDTHREADINFO,
+          0,
+          &mut thread_info as *mut libc::proc_threadinfo as *mut libc::c_void,
+          std::mem::size_of::<libc::proc_threadinfo>() as _,
+        )
+      } != 0
       {
         (thread_info.pth_user_time, thread_info.pth_system_time)
       } else {
@@ -632,6 +642,7 @@ impl CpuUsageState {
         self.old_stime = task_info.pti_total_system;
         self.old_utime = task_info.pti_total_user;
       } else {
+        // SAFETY: Vendored code.
         unsafe {
           // This is the "backup way" of CPU computation.
           #[allow(deprecated)]
