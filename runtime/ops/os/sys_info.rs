@@ -539,7 +539,7 @@ pub struct CpuUsageState {
   #[cfg(target_vendor = "apple")]
   port: libc::mach_port_t,
   #[cfg(target_vendor = "apple")]
-  clock_info: Option<SystemTimeInfo>,
+  clock_info: Option<deno_core::parking_lot::Mutex<SystemTimeInfo>>,
   #[cfg(target_vendor = "apple")]
   old_utime: u64,
   #[cfg(target_vendor = "apple")]
@@ -560,7 +560,8 @@ impl Default for CpuUsageState {
       #[cfg(target_vendor = "apple")]
       port,
       #[cfg(target_vendor = "apple")]
-      clock_info: SystemTimeInfo::new(port),
+      clock_info: SystemTimeInfo::new(port)
+        .map(deno_core::parking_lot::Mutex::new),
       #[cfg(target_vendor = "apple")]
       old_utime: 0,
       #[cfg(target_vendor = "apple")]
@@ -623,7 +624,7 @@ impl CpuUsageState {
       let time_interval = self
         .clock_info
         .as_mut()
-        .map(|c| c.get_time_interval(self.port));
+        .map(|c| c.lock().get_time_interval(self.port));
       if let Some(time_interval) = time_interval {
         let total_existing_time = self.old_stime.saturating_add(self.old_utime);
         let mut updated_cpu_usage = false;
