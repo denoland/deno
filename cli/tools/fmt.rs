@@ -223,7 +223,7 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON,  MD, or IPYNB file.
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
