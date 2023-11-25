@@ -466,9 +466,7 @@ impl SystemTimeInfo {
       #[allow(deprecated)]
       if libc::mach_timebase_info(&mut info) != libc::KERN_SUCCESS {
         // mach_timebase_info failed, using default value of 1
-        #[allow(deprecated)]
         info.numer = 1;
-        #[allow(deprecated)]
         info.denom = 1;
       }
 
@@ -521,7 +519,7 @@ impl SystemTimeInfo {
         std::time::Duration::from_millis(200);
       let base_interval = total as f64 / cpu_count as f64 * self.clock_per_sec;
       let smallest =
-        crate::MINIMUM_CPU_UPDATE_INTERVAL.as_secs_f64() * 1_000_000_000.0;
+        MINIMUM_CPU_UPDATE_INTERVAL.as_secs_f64() * 1_000_000_000.0;
       if base_interval < smallest {
         smallest
       } else {
