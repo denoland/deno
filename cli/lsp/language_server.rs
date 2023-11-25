@@ -186,6 +186,9 @@ struct CpuUsageWatchdog {
   overuse_interval_count: usize,
 }
 
+// SAFETY: Only used on the watchdog thread after init.
+unsafe impl Send for CpuUsageWatchdog {}
+
 impl CpuUsageWatchdog {
   fn new(ts_isolate_handle: IsolateHandle) -> Self {
     Self {
