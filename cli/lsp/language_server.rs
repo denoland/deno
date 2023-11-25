@@ -189,7 +189,7 @@ struct CpuUsageWatchdog {
 impl CpuUsageWatchdog {
   fn new(ts_isolate_handle: IsolateHandle) -> Self {
     Self {
-      state: CpuUsageState::default(),
+      state: CpuUsageState::new(),
       ts_isolate_handle,
       is_overusing: false,
       overuse_interval_count: 0,

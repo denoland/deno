@@ -410,6 +410,7 @@ pub fn os_uptime() -> u64 {
 }
 
 #[cfg(target_vendor = "apple")]
+#[derive(Debug)]
 struct ProcessorCpuLoadInfo {
   cpu_load: libc::processor_cpu_load_info_t,
   cpu_count: libc::natural_t,
@@ -421,7 +422,7 @@ impl ProcessorCpuLoadInfo {
     let mut info_size =
       std::mem::size_of::<libc::processor_cpu_load_info_t>() as _;
     let mut cpu_count = 0;
-    let mut cpu_load: libc::processor_cpu_load_info_t = null_mut();
+    let mut cpu_load: libc::processor_cpu_load_info_t = std::ptr::null_mut();
 
     unsafe {
       if libc::host_processor_info(
@@ -447,6 +448,7 @@ impl ProcessorCpuLoadInfo {
 }
 
 #[cfg(target_vendor = "apple")]
+#[derive(Debug)]
 struct SystemTimeInfo {
   timebase_to_ns: f64,
   clock_per_sec: f64,
@@ -459,10 +461,14 @@ impl SystemTimeInfo {
     unsafe {
       let clock_ticks_per_sec = libc::sysconf(libc::_SC_CLK_TCK);
 
+      #[allow(deprecated)]
       let mut info = libc::mach_timebase_info_data_t { numer: 0, denom: 0 };
+      #[allow(deprecated)]
       if libc::mach_timebase_info(&mut info) != libc::KERN_SUCCESS {
         // mach_timebase_info failed, using default value of 1
+        #[allow(deprecated)]
         info.numer = 1;
+        #[allow(deprecated)]
         info.denom = 1;
       }
 
@@ -476,6 +482,7 @@ impl SystemTimeInfo {
 
       let nano_per_seconds = 1_000_000_000.;
       Some(Self {
+        #[allow(deprecated)]
         timebase_to_ns: info.numer as f64 / info.denom as f64,
         clock_per_sec: nano_per_seconds / clock_ticks_per_sec as f64,
         old_cpu_info,
@@ -510,6 +517,8 @@ impl SystemTimeInfo {
 
       // Now we convert the ticks to nanoseconds (if the interval is less than
       // `MINIMUM_CPU_UPDATE_INTERVAL`, we replace it with it instead):
+      const MINIMUM_CPU_UPDATE_INTERVAL: std::time::Duration =
+        std::time::Duration::from_millis(200);
       let base_interval = total as f64 / cpu_count as f64 * self.clock_per_sec;
       let smallest =
         crate::MINIMUM_CPU_UPDATE_INTERVAL.as_secs_f64() * 1_000_000_000.0;
@@ -522,7 +531,7 @@ impl SystemTimeInfo {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CpuUsageState {
   #[cfg(not(target_vendor = "apple"))]
   system: System,
@@ -600,8 +609,10 @@ impl CpuUsageState {
       } else {
         return 0.0;
       };
-      let time_interval =
-        self.clock_info.as_mut().map(|c| c.get_time_interval(port));
+      let time_interval = self
+        .clock_info
+        .as_mut()
+        .map(|c| c.get_time_interval(self.port));
       if let Some(time_interval) = time_interval {
         let total_existing_time = self.old_stime.saturating_add(self.old_utime);
         let mut updated_cpu_usage = false;
@@ -625,6 +636,7 @@ impl CpuUsageState {
       } else {
         unsafe {
           // This is the "backup way" of CPU computation.
+          #[allow(deprecated)]
           let time = libc::mach_absolute_time();
           let task_time = user_time
             .saturating_add(system_time)
