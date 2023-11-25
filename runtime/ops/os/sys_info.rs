@@ -1,6 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+#[cfg(target_vendor = "apple")]
+use libc;
 #[cfg(target_family = "windows")]
 use std::sync::Once;
+#[cfg(not(target_vendor = "apple"))]
+use sysinfo::Pid;
+#[cfg(not(target_vendor = "apple"))]
+use sysinfo::ProcessExt;
+#[cfg(not(target_vendor = "apple"))]
+use sysinfo::ProcessRefreshKind;
+#[cfg(not(target_vendor = "apple"))]
+use sysinfo::System;
+#[cfg(not(target_vendor = "apple"))]
+use sysinfo::SystemExt;
 
 type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
@@ -395,4 +407,250 @@ pub fn os_uptime() -> u64 {
   }
 
   uptime
+}
+
+#[cfg(target_vendor = "apple")]
+struct ProcessorCpuLoadInfo {
+  cpu_load: libc::processor_cpu_load_info_t,
+  cpu_count: libc::natural_t,
+}
+
+#[cfg(target_vendor = "apple")]
+impl ProcessorCpuLoadInfo {
+  fn new(port: libc::mach_port_t) -> Option<Self> {
+    let mut info_size =
+      std::mem::size_of::<libc::processor_cpu_load_info_t>() as _;
+    let mut cpu_count = 0;
+    let mut cpu_load: libc::processor_cpu_load_info_t = null_mut();
+
+    unsafe {
+      if libc::host_processor_info(
+        port,
+        libc::PROCESSOR_CPU_LOAD_INFO,
+        &mut cpu_count,
+        &mut cpu_load as *mut _ as *mut _,
+        &mut info_size,
+      ) != 0
+      {
+        // host_processor_info failed, not updating CPU ticks usage...
+        None
+      } else if cpu_count < 1 || cpu_load.is_null() {
+        None
+      } else {
+        Some(Self {
+          cpu_load,
+          cpu_count,
+        })
+      }
+    }
+  }
+}
+
+#[cfg(target_vendor = "apple")]
+struct SystemTimeInfo {
+  timebase_to_ns: f64,
+  clock_per_sec: f64,
+  old_cpu_info: ProcessorCpuLoadInfo,
+}
+
+#[cfg(target_vendor = "apple")]
+impl SystemTimeInfo {
+  fn new(port: libc::mach_port_t) -> Option<Self> {
+    unsafe {
+      let clock_ticks_per_sec = libc::sysconf(libc::_SC_CLK_TCK);
+
+      let mut info = libc::mach_timebase_info_data_t { numer: 0, denom: 0 };
+      if libc::mach_timebase_info(&mut info) != libc::KERN_SUCCESS {
+        // mach_timebase_info failed, using default value of 1
+        info.numer = 1;
+        info.denom = 1;
+      }
+
+      let old_cpu_info = match ProcessorCpuLoadInfo::new(port) {
+        Some(cpu_info) => cpu_info,
+        None => {
+          // host_processor_info failed, using old CPU tick measure system
+          return None;
+        }
+      };
+
+      let nano_per_seconds = 1_000_000_000.;
+      Some(Self {
+        timebase_to_ns: info.numer as f64 / info.denom as f64,
+        clock_per_sec: nano_per_seconds / clock_ticks_per_sec as f64,
+        old_cpu_info,
+      })
+    }
+  }
+
+  pub fn get_time_interval(&mut self, port: libc::mach_port_t) -> f64 {
+    let mut total = 0;
+    let new_cpu_info = match ProcessorCpuLoadInfo::new(port) {
+      Some(cpu_info) => cpu_info,
+      None => return 0.,
+    };
+    let cpu_count =
+      std::cmp::min(self.old_cpu_info.cpu_count, new_cpu_info.cpu_count);
+    unsafe {
+      for i in 0..cpu_count {
+        let new_load: &libc::processor_cpu_load_info =
+          &*new_cpu_info.cpu_load.offset(i as _);
+        let old_load: &libc::processor_cpu_load_info =
+          &*self.old_cpu_info.cpu_load.offset(i as _);
+        for (new, old) in
+          new_load.cpu_ticks.iter().zip(old_load.cpu_ticks.iter())
+        {
+          if new > old {
+            total += new.saturating_sub(*old);
+          }
+        }
+      }
+
+      self.old_cpu_info = new_cpu_info;
+
+      // Now we convert the ticks to nanoseconds (if the interval is less than
+      // `MINIMUM_CPU_UPDATE_INTERVAL`, we replace it with it instead):
+      let base_interval = total as f64 / cpu_count as f64 * self.clock_per_sec;
+      let smallest =
+        crate::MINIMUM_CPU_UPDATE_INTERVAL.as_secs_f64() * 1_000_000_000.0;
+      if base_interval < smallest {
+        smallest
+      } else {
+        base_interval / self.timebase_to_ns
+      }
+    }
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct CpuUsageState {
+  #[cfg(not(target_vendor = "apple"))]
+  system: System,
+  #[cfg(target_vendor = "apple")]
+  port: libc::mach_port_t,
+  #[cfg(target_vendor = "apple")]
+  clock_info: Option<SystemTimeInfo>,
+  #[cfg(target_vendor = "apple")]
+  old_utime: u64,
+  #[cfg(target_vendor = "apple")]
+  old_stime: u64,
+  #[cfg(target_vendor = "apple")]
+  cpu_usage: f32,
+}
+
+impl CpuUsageState {
+  pub fn new() -> Self {
+    #[cfg(target_vendor = "apple")]
+    let port = libc::mach_host_self();
+    Self {
+      #[cfg(not(target_vendor = "apple"))]
+      system: Default::default(),
+      #[cfg(target_vendor = "apple")]
+      port,
+      #[cfg(target_vendor = "apple")]
+      clock_info: SystemTimeInfo::new(port),
+      #[cfg(target_vendor = "apple")]
+      old_utime: 0,
+      #[cfg(target_vendor = "apple")]
+      old_stime: 0,
+      #[cfg(target_vendor = "apple")]
+      cpu_usage: 0.0,
+    }
+  }
+
+  pub fn refresh_cpu_usage(&mut self) -> f32 {
+    let pid = std::process::id();
+    #[cfg(not(target_vendor = "apple"))]
+    {
+      let pid = Pid::from(pid as usize);
+      self
+        .system
+        .refresh_process_specifics(pid, ProcessRefreshKind::new().with_cpu());
+      if let Some(process) = self.system.process(pid) {
+        process.cpu_usage()
+      } else {
+        0.0
+      }
+    }
+    // This code path and its dependencies are vendored from `sysinfo`, to avoid
+    // a shared library dependency introduced by that crate on macos.
+    #[cfg(target_vendor = "apple")]
+    {
+      // SAFETY: This will be written below.
+      let mut task_info = unsafe { std::mem::zeroed::<libc::proc_taskinfo>() };
+      libc::proc_pidinfo(
+        pid as _,
+        libc::PROC_PIDTASKINFO,
+        0,
+        &mut task_info as *mut libc::proc_taskinfo as *mut libc::c_void,
+        std::mem::size_of::<libc::proc_taskinfo>() as _,
+      );
+      // SAFETY: This will be written below.
+      let mut thread_info =
+        unsafe { std::mem::zeroed::<libc::proc_threadinfo>() };
+      let (user_time, system_time) = if libc::proc_pidinfo(
+        pid.0,
+        libc::PROC_PIDTHREADINFO,
+        0,
+        &mut thread_info as *mut libc::proc_threadinfo as *mut libc::c_void,
+        std::mem::size_of::<libc::proc_threadinfo>() as _,
+      ) != 0
+      {
+        (thread_info.pth_user_time, thread_info.pth_system_time)
+      } else {
+        return 0.0;
+      };
+      let time_interval =
+        self.clock_info.as_mut().map(|c| c.get_time_interval(port));
+      if let Some(time_interval) = time_interval {
+        let total_existing_time = self.old_stime.saturating_add(self.old_utime);
+        let mut updated_cpu_usage = false;
+        if time_interval > 0.000001 && total_existing_time > 0 {
+          let total_current_time = task_info
+            .pti_total_system
+            .saturating_add(task_info.pti_total_user);
+          let total_time_diff =
+            total_current_time.saturating_sub(total_existing_time);
+          if total_time_diff > 0 {
+            self.cpu_usage =
+              (total_time_diff as f64 / time_interval * 100.) as f32;
+            updated_cpu_usage = true;
+          }
+        }
+        if !updated_cpu_usage {
+          self.cpu_usage = 0.0;
+        }
+        self.old_stime = task_info.pti_total_system;
+        self.old_utime = task_info.pti_total_user;
+      } else {
+        unsafe {
+          // This is the "backup way" of CPU computation.
+          let time = libc::mach_absolute_time();
+          let task_time = user_time
+            .saturating_add(system_time)
+            .saturating_add(task_info.pti_total_user)
+            .saturating_add(task_info.pti_total_system);
+
+          let system_time_delta = if task_time < self.old_utime {
+            task_time
+          } else {
+            task_time.saturating_sub(self.old_utime)
+          };
+          let time_delta = if time < self.old_stime {
+            time
+          } else {
+            time.saturating_sub(self.old_stime)
+          };
+          self.old_utime = task_time;
+          self.old_stime = time;
+          self.cpu_usage = if time_delta == 0 {
+            0f32
+          } else {
+            (system_time_delta as f64 * 100f64 / time_delta as f64) as f32
+          };
+        }
+      }
+      self.cpu_usage
+    }
+  }
 }

@@ -35,6 +35,8 @@ pub mod tokio_util;
 pub mod web_worker;
 pub mod worker;
 
+pub use ops::os::sys_info;
+
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
 pub use worker_bootstrap::WorkerLogLevel;

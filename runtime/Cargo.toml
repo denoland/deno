@@ -123,6 +123,9 @@ ntapi = "0.4.0"
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
+[target.'cfg(not(target_vendor = "apple"))'.dependencies]
+sysinfo = "=0.29.10"
+
 [dev-dependencies]
 # Used in benchmark
 test_util.workspace = true

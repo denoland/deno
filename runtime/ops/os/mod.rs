@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+pub mod sys_info;
+
 use super::utils::into_string;
 use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
@@ -14,8 +16,6 @@ use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-
-mod sys_info;
 
 deno_core::ops!(
   deno_ops,

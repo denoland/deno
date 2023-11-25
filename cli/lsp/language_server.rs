@@ -20,6 +20,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::sys_info::CpuUsageState;
 use import_map::ImportMap;
 use indexmap::IndexSet;
 use log::error;
@@ -32,11 +33,6 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use sysinfo::Pid;
-use sysinfo::ProcessExt;
-use sysinfo::ProcessRefreshKind;
-use sysinfo::System;
-use sysinfo::SystemExt;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
@@ -184,9 +180,8 @@ pub struct StateSnapshot {
 }
 
 struct CpuUsageWatchdog {
+  state: CpuUsageState,
   ts_isolate_handle: IsolateHandle,
-  pid: Pid,
-  system: System,
   is_overusing: bool,
   overuse_interval_count: usize,
 }
@@ -194,31 +189,17 @@ struct CpuUsageWatchdog {
 impl CpuUsageWatchdog {
   fn new(ts_isolate_handle: IsolateHandle) -> Self {
     Self {
+      state: CpuUsageState::default(),
       ts_isolate_handle,
-      pid: Pid::from(std::process::id() as usize),
-      system: System::default(),
       is_overusing: false,
       overuse_interval_count: 0,
-    }
-  }
-
-  fn refresh_cpu_usage(&mut self) -> f32 {
-    self.system.refresh_process_specifics(
-      self.pid,
-      ProcessRefreshKind::new().with_cpu(),
-    );
-    if let Some(process) = self.system.process(self.pid) {
-      process.cpu_usage()
-    } else {
-      lsp_warn!("Failed to refresh CPU usage");
-      0.0
     }
   }
 
   fn start(mut self) {
     lsp_log!("  Starting server CPU watchdog thread");
     thread::spawn(move || {
-      self.refresh_cpu_usage();
+      self.state.refresh_cpu_usage();
       // VSCode will stop restarting the language server if it crashes 5 times
       // in 3 minutes (1 per 36 seconds). We start with the below delay so
       // this crash cannot occur more frequently than that.
@@ -226,7 +207,7 @@ impl CpuUsageWatchdog {
       loop {
         const USAGE_THRESHOLD: usize = 90;
         const MAX_OVERUSE_PERIOD: usize = 20;
-        let cpu_usage = self.refresh_cpu_usage();
+        let cpu_usage = self.state.refresh_cpu_usage();
         if self.is_overusing {
           if cpu_usage > USAGE_THRESHOLD as f32 {
             self.overuse_interval_count += 1;
