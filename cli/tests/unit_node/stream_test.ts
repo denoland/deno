@@ -1,9 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assert, fail } from "../../../test_util/std/testing/asserts.ts";
+import { assert } from "../../../test_util/std/testing/asserts.ts";
 import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
 import { pipeline } from "node:stream/promises";
-import { Writable } from "node:stream";
 import { createReadStream, createWriteStream } from "node:fs";
 
 Deno.test("stream/promises pipeline", async () => {
