@@ -261,7 +261,17 @@ fn ffi_callback_errors_test() {
   println!("{:?}", output.status);
   assert!(output.status.success());
 
-  let expected = "";
+  let expected = "\
+    CallCase: SyncSelf\n\
+    Throwing errors from an UnsafeCallback called from a synchronous UnsafeFnPointer works. Terribly excellent.\n\
+    CallCase: SyncFfi\n\
+    0\n\
+    Throwing errors from an UnsafeCallback called from a synchronous FFI symbol works. Terribly excellent.\n\
+    CallCase: AsyncSelf\n\
+    CallCase: AsyncSyncFfi\n\
+    0\n\
+    Calling\n\
+    CallCase: AsyncFfi";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

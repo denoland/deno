@@ -36,11 +36,26 @@ globalThis.addEventListener("error", (data) => {
   console.log("Unhandled error");
   data.preventDefault();
 });
+globalThis.onerror = (data) => {
+  console.log("Unhandled error");
+  if (typeof data !== "string") {
+    data.preventDefault();
+  }
+};
 
 globalThis.addEventListener("unhandledrejection", (data) => {
   console.log("KEKKONEN");
   data.preventDefault();
 });
+
+const timer = setTimeout(() => {
+  console.error(
+    "Test failed, final callback did not get picked up by Deno event loop",
+  );
+  Deno.exit(-1);
+}, 5_000);
+
+Deno.unrefTimer(timer);
 
 enum CallCase {
   SyncSelf,
@@ -76,16 +91,6 @@ try {
   );
 }
 
-try {
-  const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
-    ...THROW_CB_DEFINITION,
-    nonblocking: true,
-  });
-  await fnPointer.call(CallCase.AsyncSelf);
-} catch (_err) {
-  console.log("What's this error here?");
-}
-
 dylib.symbols.store_function_2(cb.pointer);
 try {
   dylib.symbols.call_stored_function_2(CallCase.SyncFfi);
@@ -96,16 +101,41 @@ try {
 }
 
 try {
+  const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
+    ...THROW_CB_DEFINITION,
+    nonblocking: true,
+  });
+  await fnPointer.call(CallCase.AsyncSelf);
+} catch (err) {
+  throw new Error(
+    "Nonblocking UnsafeFnPointer should not be threading through a JS error thrown on the other side of the call",
+    {
+      cause: err,
+    },
+  );
+}
+
+try {
   await dylib.symbols.call_stored_function_2_from_other_thread(
     CallCase.AsyncSyncFfi,
   );
 } catch (err) {
-  console.log("This should not throw", err);
+  throw new Error(
+    "Nonblocking symbol call should not be threading through a JS error thrown on the other side of the call",
+    {
+      cause: err,
+    },
+  );
 }
 try {
   // Ref the callback to make sure we do not exit before the call is done.
   cb.ref();
   dylib.symbols.call_stored_function_2_thread_safe(CallCase.AsyncFfi);
 } catch (err) {
-  console.log("This shouldn't throw either", err);
+  throw new Error(
+    "Blocking symbol call should not be travelling 1.5 seconds forward in time to figure out that it call will trigger a JS error to be thrown",
+    {
+      cause: err,
+    },
+  );
 }
