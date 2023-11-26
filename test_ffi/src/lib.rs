@@ -266,6 +266,7 @@ pub extern "C" fn call_stored_function_2_thread_safe() {
       if STORED_FUNCTION_2.is_none() {
         return;
       }
+      println!("Calling");
       STORED_FUNCTION_2.unwrap();
     }
   });

@@ -33,27 +33,29 @@ const dylib = Deno.dlopen(
 );
 
 globalThis.addEventListener("error", (data) => {
-  data.preventDefault();
   console.log("Unhandled error");
+  data.preventDefault();
 });
 
 globalThis.addEventListener("unhandledrejection", (data) => {
+  console.log("KEKKONEN");
   data.preventDefault();
-  console.log("Unhandled rejection");
 });
 
-const enum CallCase {
+enum CallCase {
   SyncSelf,
   SyncFfi,
   AsyncSelf,
   AsyncSyncFfi,
   AsyncFfi,
 }
-
 type U8CallCase = Deno.NativeU8Enum<CallCase>;
 
 const throwCb = (c: CallCase): number => {
-  console.log("CallCase:", c);
+  if (c === CallCase.AsyncFfi) {
+    cb.unref();
+  }
+  console.log("CallCase:", CallCase[c]);
   throw new Error("Error");
 };
 
@@ -74,19 +76,21 @@ try {
   );
 }
 
-{
+try {
   const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
     ...THROW_CB_DEFINITION,
     nonblocking: true,
   });
-  fnPointer.call(CallCase.AsyncSelf);
+  await fnPointer.call(CallCase.AsyncSelf);
+} catch (_err) {
+  console.log("What's this error here?");
 }
 
 dylib.symbols.store_function_2(cb.pointer);
 try {
   dylib.symbols.call_stored_function_2(CallCase.SyncFfi);
 } catch (_err) {
-  throw new Error(
+  console.log(
     "Throwing errors from an UnsafeCallback called from a synchronous FFI symbol works. Terribly excellent.",
   );
 }
@@ -99,6 +103,8 @@ try {
   console.log("This should not throw", err);
 }
 try {
+  // Ref the callback to make sure we do not exit before the call is done.
+  cb.ref();
   dylib.symbols.call_stored_function_2_thread_safe(CallCase.AsyncFfi);
 } catch (err) {
   console.log("This shouldn't throw either", err);
