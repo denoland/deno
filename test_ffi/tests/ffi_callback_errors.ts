@@ -67,10 +67,10 @@ enum CallCase {
 type U8CallCase = Deno.NativeU8Enum<CallCase>;
 
 const throwCb = (c: CallCase): number => {
+  console.log("CallCase:", CallCase[c]);
   if (c === CallCase.AsyncFfi) {
     cb.unref();
   }
-  console.log("CallCase:", CallCase[c]);
   throw new Error("Error");
 };
 

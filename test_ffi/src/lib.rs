@@ -259,7 +259,7 @@ pub extern "C" fn call_stored_function_thread_safe_and_log() {
 }
 
 #[no_mangle]
-pub extern "C" fn call_stored_function_2_thread_safe() {
+pub extern "C" fn call_stored_function_2_thread_safe(arg: u8) {
   std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_millis(1500));
     unsafe {
@@ -267,7 +267,7 @@ pub extern "C" fn call_stored_function_2_thread_safe() {
         return;
       }
       println!("Calling");
-      STORED_FUNCTION_2.unwrap();
+      STORED_FUNCTION_2.unwrap()(arg);
     }
   });
 }
