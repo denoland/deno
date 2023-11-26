@@ -280,6 +280,12 @@ pub struct VendorFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublishFlags {
+  pub directory: String,
+  pub token: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -305,6 +311,8 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
+  // TODO:
+  Publish(PublishFlags),
 }
 
 impl DenoSubcommand {
@@ -312,8 +320,16 @@ impl DenoSubcommand {
     matches!(self, Self::Run(_))
   }
 
-  pub fn is_test_or_jupyter(&self) -> bool {
-    matches!(self, Self::Test(_) | Self::Jupyter(_))
+  // Returns `true` if the subcommand depends on testing infrastructure.
+  pub fn needs_test(&self) -> bool {
+    matches!(
+      self,
+      Self::Test(_)
+        | Self::Jupyter(_)
+        | Self::Repl(_)
+        | Self::Bench(_)
+        | Self::Lsp
+    )
   }
 }
 
@@ -715,7 +731,7 @@ impl Flags {
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
       | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) => None,
+      | Vendor(_) | Publish(_) => None,
     }
   }
 
@@ -828,45 +844,11 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   if matches.get_flag("unstable") {
     flags.unstable = true;
   }
-  if matches.get_flag("unstable-broadcast-channel") {
-    flags.unstable_features.push(
-      deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME.to_string(),
-    );
-  }
-  if matches.get_flag("unstable-ffi") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-fs") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-http") {
-    flags
-      .unstable_features
-      .push(deno_runtime::ops::http::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-kv") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-net") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_net::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-worker-options") {
-    flags
-      .unstable_features
-      .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-cron") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME.to_string());
+
+  for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+    if matches.get_flag(&format!("unstable-{}", name)) {
+      flags.unstable_features.push(name.to_string());
+    }
   }
 
   flags.unstable_bare_node_builtins =
@@ -911,6 +893,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
+      // TODO:
+      "do-not-use-publish" => publish_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
   } else {
@@ -1045,6 +1029,7 @@ fn clap_root() -> Command {
         .subcommand(uninstall_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
+        .subcommand(publish_subcommand())
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
@@ -2300,6 +2285,28 @@ Remote modules and multiple modules may also be specified:
       .arg(vendor_arg())
       .arg(reload_arg())
       .arg(ca_file_arg()))
+}
+
+fn publish_subcommand() -> Command {
+  Command::new("do-not-use-publish")
+    .hide(true)
+    .about("Publish a package to the Deno registry")
+    // TODO: .long_about()
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("directory")
+          .help(
+            "The directory to the package, or workspace of packages to publish",
+          )
+          .value_hint(ValueHint::DirPath)
+          .required(true),
+      )
+      .arg(
+        Arg::new("token")
+          .long("token")
+          .help("The API token to use when publishing. If unset, interactive authentication is be used")
+      )
+    })
 }
 
 fn compile_args(app: Command) -> Command {
@@ -3719,6 +3726,13 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .unwrap_or_default(),
     output_path: matches.remove_one::<PathBuf>("output"),
     force: matches.get_flag("force"),
+  });
+}
+
+fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Publish(PublishFlags {
+    directory: matches.remove_one::<String>("directory").unwrap(),
+    token: matches.remove_one("token"),
   });
 }
 

@@ -263,6 +263,9 @@ pub fn check_for_upgrades(
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
 
       fetch_and_store_latest_version(&env, &version_provider).await;
+
+      // text is used by the test suite
+      log::debug!("Finished upgrade checker.")
     });
   }
 
@@ -597,7 +600,7 @@ fn get_url(
 }
 
 fn base_upgrade_url() -> Cow<'static, str> {
-  // this is used to get the current version
+  // this is used by the test suite
   if let Ok(url) = env::var("DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL") {
     Cow::Owned(url)
   } else {

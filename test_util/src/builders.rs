@@ -32,6 +32,37 @@ use crate::testdata_path;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
+// Gives the developer a nice error message if they have a deno configuration
+// file that will be auto-discovered by the tests and cause a lot of failures.
+static HAS_DENO_JSON_IN_WORKING_DIR_ERR: once_cell::sync::Lazy<Option<String>> =
+  once_cell::sync::Lazy::new(|| {
+    let testdata_path = testdata_path();
+    let mut current_dir = testdata_path.as_path();
+    let deno_json_names = ["deno.json", "deno.jsonc"];
+    loop {
+      for name in deno_json_names {
+        let deno_json_path = current_dir.join(name);
+        if deno_json_path.exists() {
+          return Some(format!(
+            concat!(
+              "Found deno configuration file at {}. The test suite relies on ",
+              "a deno.json not existing in any ancestor directory. Please ",
+              "delete this file so the tests won't auto-discover it.",
+            ),
+            deno_json_path.display(),
+          ));
+        }
+      }
+      if let Some(parent) = current_dir.parent() {
+        current_dir = parent;
+      } else {
+        break;
+      }
+    }
+
+    None
+  });
+
 #[derive(Default)]
 pub struct TestContextBuilder {
   use_http_server: bool,
@@ -121,6 +152,10 @@ impl TestContextBuilder {
   }
 
   pub fn build(&self) -> TestContext {
+    if let Some(err) = &*HAS_DENO_JSON_IN_WORKING_DIR_ERR {
+      panic!("{}", err);
+    }
+
     let temp_dir_path = self
       .temp_dir_path
       .clone()
@@ -634,6 +669,9 @@ impl TestCommandBuilder {
     }
     if !envs.contains_key("NPM_CONFIG_REGISTRY") {
       envs.insert("NPM_CONFIG_REGISTRY".to_string(), npm_registry_unset_url());
+    }
+    if !envs.contains_key("DENO_NO_UPDATE_CHECK") {
+      envs.insert("DENO_NO_UPDATE_CHECK".to_string(), "1".to_string());
     }
     for key in &self.envs_remove {
       envs.remove(key);
