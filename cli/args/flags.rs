@@ -320,8 +320,16 @@ impl DenoSubcommand {
     matches!(self, Self::Run(_))
   }
 
-  pub fn is_test_or_jupyter(&self) -> bool {
-    matches!(self, Self::Test(_) | Self::Jupyter(_))
+  // Returns `true` if the subcommand depends on testing infrastructure.
+  pub fn needs_test(&self) -> bool {
+    matches!(
+      self,
+      Self::Test(_)
+        | Self::Jupyter(_)
+        | Self::Repl(_)
+        | Self::Bench(_)
+        | Self::Lsp
+    )
   }
 }
 
@@ -836,45 +844,11 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   if matches.get_flag("unstable") {
     flags.unstable = true;
   }
-  if matches.get_flag("unstable-broadcast-channel") {
-    flags.unstable_features.push(
-      deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME.to_string(),
-    );
-  }
-  if matches.get_flag("unstable-ffi") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-fs") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-http") {
-    flags
-      .unstable_features
-      .push(deno_runtime::ops::http::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-kv") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-net") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_net::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-worker-options") {
-    flags
-      .unstable_features
-      .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME.to_string());
-  }
-  if matches.get_flag("unstable-cron") {
-    flags
-      .unstable_features
-      .push(deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME.to_string());
+
+  for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
+    if matches.get_flag(&format!("unstable-{}", name)) {
+      flags.unstable_features.push(name.to_string());
+    }
   }
 
   flags.unstable_bare_node_builtins =
@@ -2329,7 +2303,8 @@ fn publish_subcommand() -> Command {
       )
       .arg(
         Arg::new("token")
-          .help("The API token to use when publishing. If unset, interactive authentication will be used.")
+          .long("token")
+          .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
     })
 }

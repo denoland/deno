@@ -4716,3 +4716,17 @@ itest!(workspaces_nested_member {
   http_server: true,
   exit_code: 1,
 });
+
+itest!(unsafe_proto {
+  args: "run -A run/unsafe_proto/main.js",
+  output: "run/unsafe_proto/main.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+itest!(unsafe_proto_flag {
+  args: "run -A --unstable-unsafe-proto run/unsafe_proto/main.js",
+  output: "run/unsafe_proto/main_with_unsafe_proto_flag.out",
+  http_server: false,
+  exit_code: 0,
+});

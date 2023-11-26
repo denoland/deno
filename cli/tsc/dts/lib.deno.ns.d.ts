@@ -4312,7 +4312,7 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
-  export class ChildProcess implements Disposable {
+  export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array>;
     get stdout(): ReadableStream<Uint8Array>;
     get stderr(): ReadableStream<Uint8Array>;
@@ -4338,7 +4338,7 @@ declare namespace Deno {
      * process from exiting. */
     unref(): void;
 
-    [Symbol.dispose](): void;
+    [Symbol.asyncDispose](): Promise<void>;
   }
 
   /**
