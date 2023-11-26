@@ -33,6 +33,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsSummaryTracker;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -711,6 +712,11 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
+    let poll_options = PollEventLoopOptions {
+      wait_for_inspector: false,
+      ..Default::default()
+    };
+
     tokio::select! {
       biased;
 
@@ -722,7 +728,7 @@ impl WebWorker {
         maybe_result.unwrap_or(Ok(()))
       }
 
-      event_loop_result = self.run_event_loop(false) => {
+      event_loop_result = self.run_event_loop(poll_options) => {
         if self.internal_handle.is_terminated() {
            return Ok(());
         }
@@ -736,7 +742,7 @@ impl WebWorker {
   fn poll_event_loop(
     &mut self,
     cx: &mut Context,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.terminate_if_needed() {
@@ -745,7 +751,7 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
-    match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
+    match self.js_runtime.poll_event_loop2(cx, poll_options) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {
@@ -773,9 +779,9 @@ impl WebWorker {
 
   pub async fn run_event_loop(
     &mut self,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    poll_fn(|cx| self.poll_event_loop(cx, poll_options)).await
   }
 
   // Starts polling for messages from worker host from JavaScript.
@@ -851,7 +857,12 @@ pub fn run_web_worker(
     }
 
     let result = if result.is_ok() {
-      worker.run_event_loop(true).await
+      worker
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+          ..Default::default()
+        })
+        .await
     } else {
       result
     };
