@@ -859,9 +859,6 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> Option<&LanguageWorkspaceSettings> {
     let workspace_settings = self.workspace_settings_for_specifier(specifier);
-    if specifier.scheme() == "deno-notebook-cell" {
-      return Some(&workspace_settings.typescript);
-    }
     match MediaType::from_specifier(specifier) {
       MediaType::JavaScript
       | MediaType::Jsx

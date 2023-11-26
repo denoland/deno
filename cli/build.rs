@@ -331,7 +331,6 @@ deno_core::extension!(
   esm_entry_point = "ext:cli/99_main.js",
   esm = [
     dir "js",
-    "40_testing.js",
     "99_main.js"
   ],
   customizer = |ext: &mut deno_core::Extension| {
