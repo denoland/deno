@@ -28,7 +28,6 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::atomic;
 use std::sync::atomic::AtomicU32;
-use std::sync::mpsc::sync_channel;
 use std::task::Poll;
 
 static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -171,14 +170,9 @@ unsafe extern "C" fn deno_ffi_callback(
         info: NonNull::from(info),
       };
 
-      let (response_sender, response_receiver) = sync_channel::<()>(0);
-      async_work_sender.spawn(move |scope| {
-        // Create a nested handlescope so we don't poison the main scope if something throws
-        let mut scope = v8::HandleScope::new(scope);
-        args.run(&mut scope);
-        response_sender.send(()).unwrap();
+      async_work_sender.spawn_blocking(move |scope| {
+        args.run(scope);
       });
-      response_receiver.recv().unwrap();
     }
   });
 }
