@@ -5,7 +5,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFind,
   ObjectEntries,
-  ObjectPrototypeHasOwnProperty: ObjectHasOwn,
+  ObjectHasOwn,
   StringPrototypeCharAt,
   StringPrototypeIncludes,
   StringPrototypeStartsWith,

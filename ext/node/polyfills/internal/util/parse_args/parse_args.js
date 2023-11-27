@@ -10,7 +10,7 @@ const {
   ArrayPrototypeSlice,
   ArrayPrototypePush,
   ArrayPrototypeUnshiftApply,
-  ObjectPrototypeHasOwnProperty: ObjectHasOwn,
+  ObjectHasOwn,
   ObjectEntries,
   StringPrototypeCharAt,
   StringPrototypeIndexOf,
