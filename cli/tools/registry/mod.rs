@@ -256,7 +256,7 @@ async fn perform_publish(
         .collect::<Vec<_>>();
 
       let response = client
-        .post(format!("{}/authorizations", registry_url))
+        .post(format!("{}authorizations", registry_url))
         .json(&serde_json::json!({
           "challenge": challenge,
           "permissions": permissions,
@@ -285,7 +285,7 @@ async fn perform_publish(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}/authorizations/exchange", registry_url))
+          .post(format!("{}authorizations/exchange", registry_url))
           .json(&serde_json::json!({
             "exchangeToken": auth.exchange_token,
             "verifier": verifier,
@@ -372,7 +372,7 @@ async fn perform_publish(
     );
 
     let url = format!(
-      "{}/scopes/{}/packages/{}/versions/{}",
+      "{}scopes/{}/packages/{}/versions/{}",
       registry_url, package.scope, package.package, package.version
     );
 
@@ -397,7 +397,7 @@ async fn perform_publish(
     while task.status != "success" && task.status != "failure" {
       tokio::time::sleep(interval).await;
       let resp = client
-        .get(format!("{}/publish_status/{}", registry_url, task.id))
+        .get(format!("{}publish_status/{}", registry_url, task.id))
         .send()
         .await
         .with_context(|| {
