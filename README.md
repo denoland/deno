@@ -72,7 +72,7 @@ deno run --allow-net server.ts
 This should start a local web server on
 [http://localhost:8000](http://localhost:8000).
 
-Learm more about writing and running Deno programs
+Learn more about writing and running Deno programs
 [in the docs](https://docs.deno.com/runtime/manual).
 
 ## Additional resources
