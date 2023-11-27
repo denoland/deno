@@ -693,13 +693,13 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        maybe_result
       }
 
       event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+        
+        receiver.await
       }
     }
   }
@@ -722,10 +722,7 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
-        // If `None` is returned it means that runtime was destroyed before
-        // evaluation was complete. This can happen in Web Worker when `self.close()`
-        // is called at top level.
-        maybe_result.unwrap_or(Ok(()))
+        maybe_result
       }
 
       event_loop_result = self.run_event_loop(poll_options) => {
@@ -733,8 +730,8 @@ impl WebWorker {
            return Ok(());
         }
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.unwrap_or(Ok(()))
+        
+        receiver.await
       }
     }
   }
