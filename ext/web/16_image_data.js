@@ -64,6 +64,13 @@ class ImageData {
         );
       }
 
+      if (dataLength === 0) {
+        throw new DOMException(
+          "Failed to construct 'ImageData': The input data has zero elements.",
+          "InvalidStateError",
+        );
+      }
+
       if (dataLength % 4 !== 0) {
         throw new DOMException(
           "Failed to construct 'ImageData': The input data length is not a multiple of 4.",
