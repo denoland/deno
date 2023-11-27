@@ -63,7 +63,7 @@ deno_crypto = { version = "0.139.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.149.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.112.0", path = "./ext/ffi" }
 deno_fs = { version = "0.35.0", path = "./ext/fs" }
-deno_http = { version = "0.121.0", path = "./ext/http" }
+deno_http = { version = "0.122.0", path = "./ext/http" }
 deno_io = { version = "0.35.0", path = "./ext/io" }
 deno_net = { version = "0.117.0", path = "./ext/net" }
 deno_node = { version = "0.62.0", path = "./ext/node" }
