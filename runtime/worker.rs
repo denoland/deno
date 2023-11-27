@@ -553,7 +553,7 @@ impl MainWorker {
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        
+
         receiver.await
       }
     }
