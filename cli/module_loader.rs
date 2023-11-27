@@ -155,6 +155,7 @@ impl ModuleLoadPreparer {
         deno_graph::BuildOptions {
           is_dynamic,
           imports: maybe_imports,
+          file_system: Some(&deno_graph::source::RealFileSystem),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),

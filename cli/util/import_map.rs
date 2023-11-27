@@ -4,6 +4,7 @@ use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
+use deno_graph::DependencyDescriptor;
 use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
 use import_map::ImportMap;
@@ -75,7 +76,20 @@ impl ImportMapUnfurler {
         }
       };
     for dep in &module_info.dependencies {
-      analyze_specifier(&dep.specifier, &dep.specifier_range);
+      match dep {
+        DependencyDescriptor::Static(dep) => {
+          analyze_specifier(&dep.specifier, &dep.specifier_range);
+        }
+        DependencyDescriptor::Dynamic(dep) => match &dep.argument {
+          deno_graph::DynamicArgument::String(arg) => {
+            analyze_specifier(arg, &dep.argument_range);
+          }
+          deno_graph::DynamicArgument::Template(_) => todo!(),
+          deno_graph::DynamicArgument::Expr => {
+            log::warn!("Dynamic import was not unfurled.")
+          }
+        },
+      }
     }
     for ts_ref in &module_info.ts_references {
       let specifier_with_range = match ts_ref {

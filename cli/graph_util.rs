@@ -295,6 +295,7 @@ impl ModuleGraphBuilder {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
+          file_system: Some(&deno_graph::source::RealFileSystem),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
@@ -344,6 +345,7 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
+          file_system: Some(&deno_graph::source::RealFileSystem),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
@@ -768,6 +770,75 @@ fn workspace_member_config_try_into_workspace_member(
       .into_iter()
       .collect(),
   })
+}
+
+pub struct DenoGraphFsAdapter<'a>(&'a dyn deno_runtime::deno_fs::FileSystem);
+
+impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
+  fn read_dir(
+    &self,
+    dir_url: &deno_graph::ModuleSpecifier,
+  ) -> Vec<deno_graph::source::DirEntry> {
+    use deno_core::anyhow;
+    use deno_graph::source::DirEntry;
+    use deno_graph::source::DirEntryKind;
+
+    let dir_path = match dir_url.to_file_path() {
+      Ok(path) => path,
+      Err(()) => {
+        return vec![DirEntry {
+          kind: DirEntryKind::Error(anyhow::anyhow!(
+            "Failed converting url to path."
+          )),
+          url: dir_url.clone(),
+        }]
+      }
+    };
+    let entries = match self.0.read_dir_sync(&dir_path) {
+      Ok(dir) => dir,
+      Err(err)
+        if matches!(
+          err.kind(),
+          std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+        ) =>
+      {
+        return vec![];
+      }
+      Err(err) => {
+        return vec![DirEntry {
+          kind: DirEntryKind::Error(
+            anyhow::Error::from(err)
+              .context("Failed to read directory.".to_string()),
+          ),
+          url: dir_url.clone(),
+        }];
+      }
+    };
+    let mut dir_entries = Vec::with_capacity(entries.len());
+    for entry in entries {
+      let entry_path = dir_path.join(&entry.name);
+      dir_entries.push(if entry.is_directory {
+        DirEntry {
+          kind: DirEntryKind::File,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_file {
+        DirEntry {
+          kind: DirEntryKind::Dir,
+          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_symlink {
+        DirEntry {
+          kind: DirEntryKind::Symlink,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else {
+        continue;
+      });
+    }
+
+    dir_entries
+  }
 }
 
 #[cfg(test)]

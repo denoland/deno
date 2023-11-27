@@ -1743,12 +1743,17 @@ fn analyze_module(
 ) -> ModuleResult {
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
-      deno_graph::GraphKind::All,
-      specifier,
-      maybe_headers,
-      parsed_source,
-      Some(resolver),
-      Some(npm_resolver),
+      deno_graph::ParseModuleFromAstOptions {
+        graph_kind: deno_graph::GraphKind::All,
+        specifier: specifier,
+        maybe_headers: maybe_headers,
+        parsed_source: parsed_source,
+        // use a null file system because there's no need to bother resolving
+        // dynamic imports like import(`./dir/${something}`) in the LSP
+        file_system: &deno_graph::source::NullFileSystem,
+        maybe_resolver: Some(resolver),
+        maybe_npm_resolver: Some(npm_resolver),
+      },
     )),
     Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
       deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
