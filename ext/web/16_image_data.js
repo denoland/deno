@@ -72,7 +72,11 @@ class ImageData {
         );
       }
 
-      settings = webidl.converters["ImageDataSettings"](arg3, prefix, "Argument 4");
+      settings = webidl.converters["ImageDataSettings"](
+        arg3,
+        prefix,
+        "Argument 4",
+      );
 
       if (dataLength === 0) {
         throw new DOMException(
@@ -143,7 +147,11 @@ class ImageData {
       "Argument 2",
     );
 
-    settings = webidl.converters["ImageDataSettings"](arg2, prefix, "Argument 3");
+    settings = webidl.converters["ImageDataSettings"](
+      arg2,
+      prefix,
+      "Argument 3",
+    );
 
     if (sourceWidth < 1) {
       throw new DOMException(
