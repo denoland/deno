@@ -32,3 +32,22 @@ Deno.test(
     assertEquals(imageData.colorSpace, "display-p3");
   },
 );
+
+Deno.test(
+  async function imageDataUsedInWorker() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const url = import.meta.resolve(
+      "../testdata/workers/image_data_worker.ts",
+    );
+    const expectedData = 16;
+
+    const worker = new Worker(url, { type: "module" });
+    worker.onmessage = function (e) {
+      assertEquals(expectedData, e.data);
+      worker.terminate();
+      resolve();
+    };
+
+    await promise;
+  },
+);
