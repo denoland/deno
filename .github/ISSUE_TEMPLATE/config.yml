@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: 💡 Community Feature Requets
-    url: https://discord.com/deno
-    about: Suggest an idea, feature or enhancement in the Ideas Discord forum.
-  - name: 💬 Ask a Question, Discuss and learn how others are using Deno
+  - name: 💬 Discord
     url: https://discord.com/deno
     about: Join our Discord server for questions, support requests, or just to chat.
+- name: Deploy Feedback
+  url: https://github.com/denoland/deploy_feedback/
+  about: Provide feature requests or bug reports about the Deno Deploy edge runtime.

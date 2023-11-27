@@ -1,25 +1,8 @@
-name: 💡 Deno CLI Feature request
-description: Suggest an idea, feature or enhancement
-labels: [enhancement]
-body:
-  - type: markdown
-    attributes:
-      value: |
-        Thank you for submitting an idea. It helps make Deno better.
+---
+name: 💡 Feature Request
+about: Suggest a feature for the Deno CLI.
+title: ''
+labels: ''
+assignees: ''
 
-        This is only for the Deno CLI and the crates also found in this repository.
-
-        For community projects, please use the Ideas forum in [Discord](https://discord.com/deno).
-  - type: textarea
-    attributes:
-      label: What is the problem this feature would solve?
-    validations:
-      required: true
-  - type: textarea
-    attributes:
-      label: What is the feature you are proposing to solve the problem?
-    validations:
-      required: true
-  - type: textarea
-    attributes:
-      label: What alternatives have you considered?
+---
