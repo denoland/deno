@@ -553,8 +553,8 @@ impl MainWorker {
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result
+        
+        receiver.await
       }
     }
   }
