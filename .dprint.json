@@ -30,6 +30,7 @@
     "cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     "cli/tests/testdata/fmt/badly_formatted.json",
     "cli/tests/testdata/fmt/badly_formatted.md",
+    "cli/tests/testdata/fmt/badly_formatted.ipynb",
     "cli/tests/testdata/byte_order_mark.ts",
     "cli/tests/testdata/encoding",
     "cli/tests/testdata/fmt/",

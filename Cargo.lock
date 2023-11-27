@@ -884,6 +884,7 @@ dependencies = [
  "dissimilar",
  "dotenvy",
  "dprint-plugin-json",
+ "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
  "encoding_rs",
@@ -1938,6 +1939,19 @@ dependencies = [
  "jsonc-parser",
  "serde",
  "text_lines",
+]
+
+[[package]]
+name = "dprint-plugin-jupyter"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b65cf5dd43b15bf9dbb69a2d0e331106d6e3d33d8678d32385245993e8855c02"
+dependencies = [
+ "anyhow",
+ "dprint-core",
+ "jsonc-parser",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
