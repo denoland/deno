@@ -159,7 +159,7 @@ export function endianness(): "BE" | "LE" {
 
 /** Return free memory amount */
 export function freemem(): number {
-  return Deno.systemMemoryInfo().free;
+  return Deno.systemMemoryInfo().available;
 }
 
 /** Not yet implemented */

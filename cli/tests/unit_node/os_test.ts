@@ -289,3 +289,11 @@ Deno.test({
     await child.status;
   },
 });
+
+Deno.test({
+  name: "os.freemem() is equivalent of Deno.systemMemoryInfo().available",
+  fn() {
+    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().available);
+    assert(diff < 10_000);
+  },
+});
