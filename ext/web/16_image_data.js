@@ -19,6 +19,14 @@ webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
     "display-p3",
   ],
 );
+
+webidl.converters["ImageDataSettings"] = webidl.createDictionaryConverter(
+  "ImageDataSettings",
+  [
+    { key: "colorSpace", converter: webidl.converters["PredefinedColorSpace"] },
+  ],
+);
+
 class ImageData {
   /** @type {number} */
   #width;
@@ -63,6 +71,8 @@ class ImageData {
           "Argument 3",
         );
       }
+
+      settings = webidl.converters["ImageDataSettings"](arg3, prefix, "Argument 4");
 
       if (dataLength === 0) {
         throw new DOMException(
@@ -110,24 +120,12 @@ class ImageData {
       }
 
       if (webidl.type(sourceHeight) === "Undefined") {
-        this.#height = data.length / 4 / sourceWidth;
+        this.#height = dataLength / 4 / sourceWidth;
       } else {
         this.#height = sourceHeight;
       }
 
-      if (
-        webidl.type(settings) === "Object" &&
-        webidl.type(settings.colorSpace) !== "Undefined"
-      ) {
-        this.#colorSpace = webidl.converters.PredefinedColorSpace(
-          settings.colorSpace,
-          prefix,
-          "colorSpace",
-        );
-      } else {
-        this.#colorSpace = "srgb";
-      }
-
+      this.#colorSpace = settings.colorSpace ?? "srgb";
       this.#width = sourceWidth;
       this.#data = data;
       return;
@@ -145,6 +143,8 @@ class ImageData {
       "Argument 2",
     );
 
+    settings = webidl.converters["ImageDataSettings"](arg2, prefix, "Argument 3");
+
     if (sourceWidth < 1) {
       throw new DOMException(
         "Failed to construct 'ImageData': The source width is zero or not a number.",
@@ -159,19 +159,7 @@ class ImageData {
       );
     }
 
-    if (
-      webidl.type(settings) === "Object" &&
-      webidl.type(settings.colorSpace) !== "Undefined"
-    ) {
-      this.#colorSpace = webidl.converters.PredefinedColorSpace(
-        settings.colorSpace,
-        prefix,
-        "colorSpace",
-      );
-    } else {
-      this.#colorSpace = "srgb";
-    }
-
+    this.#colorSpace = settings.colorSpace ?? "srgb";
     this.#width = sourceWidth;
     this.#height = sourceHeight;
     this.#data = new Uint8ClampedArray(sourceWidth * sourceHeight * 4);
