@@ -3,6 +3,7 @@
 mod args;
 mod auth_tokens;
 mod cache;
+mod cdp;
 mod deno_std;
 mod emit;
 mod errors;
@@ -95,7 +96,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::bundle::bundle(flags, bundle_flags).await
     }),
     DenoSubcommand::Doc(doc_flags) => {
-      spawn_subcommand(async { tools::doc::print_docs(flags, doc_flags).await })
+      spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
     DenoSubcommand::Eval(eval_flags) => spawn_subcommand(async {
       tools::run::eval_command(flags, eval_flags).await
@@ -203,6 +204,10 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
+    // TODO:
+    DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
+      tools::registry::publish(flags, publish_flags).await
+    }),
   };
 
   handle.await?
@@ -254,6 +259,75 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       std::process::exit(error_code);
     }
   }
+}
+
+// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js`.
+pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
+  // flag name
+  &str,
+  // help text
+  &str,
+  // id to enable it in runtime/99_main.js
+  i32,
+)] = &[
+  (
+    deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
+    "Enable unstable `BroadcastChannel` API",
+    1,
+  ),
+  (
+    deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
+    "Enable unstable FFI APIs",
+    2,
+  ),
+  (
+    deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
+    "Enable unstable file system APIs",
+    3,
+  ),
+  (
+    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Key-Value store APIs",
+    4,
+  ),
+  (
+    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
+    "Enable unstable net APIs",
+    5,
+  ),
+  (
+    deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
+    "Enable unstable HTTP APIs",
+    6,
+  ),
+  (
+    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Web Worker APIs",
+    7,
+  ),
+  (
+    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Deno.cron API",
+    8,
+  ),
+  (
+    "unsafe-proto",
+    "Enable unsafe __proto__ support. This is a security risk.",
+    9,
+  ),
+];
+
+pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
+  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
+  eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
+  std::process::exit(70);
+}
+
+#[allow(dead_code)]
+pub(crate) fn unstable_warn_cb(feature: &str) {
+  eprintln!(
+    "The `--unstable` flag is deprecated, use --unstable-{feature} instead."
+  );
 }
 
 pub fn main() {

@@ -5,6 +5,7 @@ use crate::args::Lockfile;
 use crate::args::TsTypeLib;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
+use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
@@ -13,18 +14,22 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
+use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -90,15 +95,23 @@ pub fn graph_valid(
     .errors()
     .flat_map(|error| {
       let is_root = match &error {
-        ModuleGraphError::ResolutionError(_) => false,
+        ModuleGraphError::ResolutionError(_)
+        | ModuleGraphError::TypesResolutionError(_) => false,
         ModuleGraphError::ModuleError(error) => {
           roots.contains(error.specifier())
         }
       };
-      let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
-        enhanced_resolution_error_message(err)
-      } else {
-        format!("{error}")
+      let mut message = match &error {
+        ModuleGraphError::ResolutionError(resolution_error) => {
+          enhanced_resolution_error_message(resolution_error)
+        }
+        ModuleGraphError::TypesResolutionError(resolution_error) => {
+          format!(
+            "Failed resolving types. {}",
+            enhanced_resolution_error_message(resolution_error,)
+          )
+        }
+        ModuleGraphError::ModuleError(_) => format!("{error}"),
       };
 
       if let Some(range) = error.maybe_range() {
@@ -123,14 +136,18 @@ pub fn graph_valid(
         }
 
         // ignore invalid downgrades and invalid local imports when vendoring
-        if let ModuleGraphError::ResolutionError(err) = &error {
-          if matches!(
-            err,
-            ResolutionError::InvalidDowngrade { .. }
-              | ResolutionError::InvalidLocalImport { .. }
-          ) {
-            return None;
+        match &error {
+          ModuleGraphError::ResolutionError(err)
+          | ModuleGraphError::TypesResolutionError(err) => {
+            if matches!(
+              err,
+              ResolutionError::InvalidDowngrade { .. }
+                | ResolutionError::InvalidLocalImport { .. }
+            ) {
+              return None;
+            }
           }
+          ModuleGraphError::ModuleError(_) => {}
         }
       }
 
@@ -168,10 +185,18 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   }
 }
 
+pub struct CreateGraphOptions<'a> {
+  pub graph_kind: GraphKind,
+  pub roots: Vec<ModuleSpecifier>,
+  pub loader: &'a mut dyn Loader,
+  pub analyzer: &'a dyn ModuleAnalyzer,
+}
+
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  module_info_cache: Arc<ModuleInfoCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -187,6 +212,7 @@ impl ModuleGraphBuilder {
     options: Arc<CliOptions>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
+    module_info_cache: Arc<ModuleInfoCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -199,6 +225,7 @@ impl ModuleGraphBuilder {
       options,
       resolver,
       npm_resolver,
+      module_info_cache,
       parsed_source_cache,
       lockfile,
       maybe_file_watcher_reporter,
@@ -209,38 +236,69 @@ impl ModuleGraphBuilder {
     }
   }
 
+  pub async fn create_graph(
+    &self,
+    graph_kind: GraphKind,
+    roots: Vec<ModuleSpecifier>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let mut cache = self.create_graph_loader();
+    self
+      .create_graph_with_loader(graph_kind, roots, &mut cache)
+      .await
+  }
+
   pub async fn create_graph_with_loader(
     &self,
     graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let store = self.parsed_source_cache.as_store();
+    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
+    self
+      .create_graph_with_options(CreateGraphOptions {
+        graph_kind,
+        roots,
+        loader,
+        analyzer: &analyzer,
+      })
+      .await
+  }
+
+  pub async fn create_graph_with_options(
+    &self,
+    options: CreateGraphOptions<'_>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
 
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let analyzer = self.parsed_source_cache.as_analyzer();
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
 
-    let mut graph = ModuleGraph::new(graph_kind);
+    let mut graph = ModuleGraph::new(options.graph_kind);
     self
       .build_graph_with_npm_resolution(
         &mut graph,
-        roots,
-        loader,
+        options.roots,
+        options.loader,
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&*analyzer),
+          module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo(dsherret): workspace support
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;
@@ -260,10 +318,17 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let analyzer = self.parsed_source_cache.as_analyzer();
+    let store = self.parsed_source_cache.as_store();
+    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
     let graph_kind = self.options.type_check_mode().as_graph_kind();
     let mut graph = ModuleGraph::new(graph_kind);
     let maybe_file_watcher_reporter = self
@@ -281,10 +346,9 @@ impl ModuleGraphBuilder {
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&*analyzer),
+          module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo(dsherret): workspace support
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;
@@ -421,21 +485,10 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
-      self.parsed_source_cache.clone(),
+      self.npm_resolver.clone(),
+      self.module_info_cache.clone(),
       permissions,
-      self.options.node_modules_dir_specifier(),
     )
-  }
-
-  pub async fn create_graph(
-    &self,
-    graph_kind: GraphKind,
-    roots: Vec<ModuleSpecifier>,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.create_graph_loader();
-    self
-      .create_graph_with_loader(graph_kind, roots, &mut cache)
-      .await
   }
 }
 
@@ -486,10 +539,14 @@ fn get_resolution_error_bare_specifier(
   {
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
-      error.downcast_ref::<ImportMapError>()
-    {
-      Some(specifier.as_str())
+    if let ResolveError::Other(error) = (*error).as_ref() {
+      if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
+        error.downcast_ref::<ImportMapError>()
+      {
+        Some(specifier.as_str())
+      } else {
+        None
+      }
     } else {
       None
     }
@@ -635,14 +692,14 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
 
 #[derive(Clone, Debug)]
 pub struct FileWatcherReporter {
-  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  watcher_communicator: Arc<WatcherCommunicator>,
   file_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl FileWatcherReporter {
-  pub fn new(sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>) -> Self {
+  pub fn new(watcher_communicator: Arc<WatcherCommunicator>) -> Self {
     Self {
-      sender,
+      watcher_communicator,
       file_paths: Default::default(),
     }
   }
@@ -665,9 +722,52 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
     }
 
     if modules_done == modules_total {
-      self.sender.send(file_paths.drain(..).collect()).unwrap();
+      self
+        .watcher_communicator
+        .watch_paths(file_paths.drain(..).collect())
+        .unwrap();
     }
   }
+}
+
+pub fn workspace_config_to_workspace_members(
+  workspace_config: &deno_config::WorkspaceConfig,
+) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+  workspace_config
+    .members
+    .iter()
+    .map(|member| {
+      workspace_member_config_try_into_workspace_member(member).with_context(
+        || {
+          format!(
+            "Failed to resolve configuration for '{}' workspace member at '{}'",
+            member.member_name,
+            member.config_file.specifier.as_str()
+          )
+        },
+      )
+    })
+    .collect()
+}
+
+fn workspace_member_config_try_into_workspace_member(
+  config: &deno_config::WorkspaceMemberConfig,
+) -> Result<deno_graph::WorkspaceMember, AnyError> {
+  let nv = deno_semver::package::PackageNv {
+    name: config.package_name.clone(),
+    version: deno_semver::Version::parse_standard(&config.package_version)?,
+  };
+  Ok(deno_graph::WorkspaceMember {
+    base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
+    nv,
+    exports: config
+      .config_file
+      .to_exports_config()?
+      .into_map()
+      // todo(dsherret): deno_graph should use an IndexMap
+      .into_iter()
+      .collect(),
+  })
 }
 
 #[cfg(test)]
@@ -675,6 +775,7 @@ mod test {
   use std::sync::Arc;
 
   use deno_ast::ModuleSpecifier;
+  use deno_graph::source::ResolveError;
   use deno_graph::Position;
   use deno_graph::Range;
   use deno_graph::ResolutionError;
@@ -692,7 +793,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(err.into()),
+        error: Arc::new(ResolveError::Other(err.into())),
         specifier: input.to_string(),
         range: Range {
           specifier,

@@ -5,7 +5,6 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
-  deferred,
   delay,
   execCode,
   execCode2,
@@ -795,10 +794,10 @@ Deno.test(
   async function netCloseWriteSuccess() {
     const addr = { hostname: "127.0.0.1", port: listenPort };
     const listener = Deno.listen(addr);
-    const closeDeferred = deferred();
+    const { promise: closePromise, resolve } = Promise.withResolvers<void>();
     listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
-      await closeDeferred;
+      await closePromise;
       conn.close();
     });
     const conn = await Deno.connect(addr);
@@ -815,7 +814,7 @@ Deno.test(
     await assertRejects(async () => {
       await conn.write(new Uint8Array([1, 2, 3]));
     });
-    closeDeferred.resolve();
+    resolve();
     listener.close();
     conn.close();
   },
@@ -1242,3 +1241,34 @@ Deno.test({
   const listener = Deno.listen({ hostname: "localhost", port: "0" });
   listener.close();
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function listenerExplicitResourceManagement() {
+    let done: Promise<Deno.errors.BadResource>;
+
+    {
+      using listener = Deno.listen({ port: listenPort });
+
+      done = assertRejects(
+        () => listener.accept(),
+        Deno.errors.BadResource,
+      );
+    }
+
+    await done;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function listenerExplicitResourceManagementManualClose() {
+    using listener = Deno.listen({ port: listenPort });
+    listener.close();
+    await assertRejects( // definitely closed
+      () => listener.accept(),
+      Deno.errors.BadResource,
+    );
+    // calling [Symbol.dispose] after manual close is a no-op
+  },
+);

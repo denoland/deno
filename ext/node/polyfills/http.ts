@@ -7,7 +7,7 @@
 
 const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
   _normalizeArgs,
   // createConnection,
@@ -289,6 +289,10 @@ class FakeSocket extends EventEmitter {
   end() {}
 
   destroy() {}
+
+  setTimeout(callback, timeout = 0, ...args) {
+    setTimeout(callback, timeout, args);
+  }
 }
 
 /** ClientRequest represents the http(s) request from the client */
@@ -1551,7 +1555,7 @@ export class ServerImpl extends EventEmitter {
   #server: Deno.Server;
   #unref = false;
   #ac?: AbortController;
-  #servePromise: Deferred<void>;
+  #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
   listening = false;
 
   constructor(opts, requestListener?: ServerHandler) {
@@ -1568,8 +1572,8 @@ export class ServerImpl extends EventEmitter {
 
     this._opts = opts;
 
-    this.#servePromise = deferred();
-    this.#servePromise.then(() => this.emit("close"));
+    this.#serveDeferred = Promise.withResolvers<void>();
+    this.#serveDeferred.promise.then(() => this.emit("close"));
     if (requestListener !== undefined) {
       this.on("request", requestListener);
     }
@@ -1655,7 +1659,7 @@ export class ServerImpl extends EventEmitter {
     if (this.#unref) {
       this.#server.unref();
     }
-    this.#server.finished.then(() => this.#servePromise!.resolve());
+    this.#server.finished.then(() => this.#serveDeferred!.resolve());
   }
 
   setTimeout() {
@@ -1695,7 +1699,7 @@ export class ServerImpl extends EventEmitter {
       this.#ac.abort();
       this.#ac = undefined;
     } else {
-      this.#servePromise!.resolve();
+      this.#serveDeferred!.resolve();
     }
 
     this.#server = undefined;
@@ -1759,6 +1763,7 @@ export function get(...args: any[]) {
 export {
   Agent,
   ClientRequest,
+  globalAgent,
   IncomingMessageForServer as IncomingMessage,
   METHODS,
   OutgoingMessage,
@@ -1766,6 +1771,7 @@ export {
 };
 export default {
   Agent,
+  globalAgent,
   ClientRequest,
   STATUS_CODES,
   METHODS,

@@ -2,7 +2,7 @@
 
 use super::client::Client;
 use super::config::ConfigSnapshot;
-use super::documents::cell_to_file_specifier;
+use super::config::WorkspaceSettings;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::lsp_custom;
@@ -52,12 +52,12 @@ pub struct CompletionItemData {
 /// a notification to the client.
 async fn check_auto_config_registry(
   url_str: &str,
-  config: &ConfigSnapshot,
+  workspace_settings: &WorkspaceSettings,
   client: &Client,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if config.settings.workspace.suggest.imports.auto_discover {
+  if workspace_settings.suggest.imports.auto_discover {
     if let Ok(specifier) = resolve_url(url_str) {
       let scheme = specifier.scheme();
       let path = &specifier[Position::BeforePath..];
@@ -67,11 +67,14 @@ async fn check_auto_config_registry(
       {
         // check to see if this origin is already explicitly set
         let in_config =
-          config.settings.workspace.suggest.imports.hosts.iter().any(
-            |(h, _)| {
+          workspace_settings
+            .suggest
+            .imports
+            .hosts
+            .iter()
+            .any(|(h, _)| {
               resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
-            },
-          );
+            });
         // if it isn't in the configuration, we will check to see if it supports
         // suggestions and send a notification to the client.
         if !in_config {
@@ -176,7 +179,13 @@ pub async fn get_import_completions(
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
-    check_auto_config_registry(&text, config, client, module_registries).await;
+    check_auto_config_registry(
+      &text,
+      config.workspace_settings_for_specifier(specifier),
+      client,
+      module_registries,
+    )
+    .await;
     let offset = if position.character > range.start.character {
       (position.character - range.start.character) as usize
     } else {
@@ -365,16 +374,11 @@ fn get_local_completions(
   current: &str,
   range: &lsp::Range,
 ) -> Option<Vec<lsp::CompletionItem>> {
-  let base = match cell_to_file_specifier(base) {
-    Some(s) => s,
-    None => base.clone(),
-  };
-
   if base.scheme() != "file" {
     return None;
   }
 
-  let mut base_path = specifier_to_file_path(&base).ok()?;
+  let mut base_path = specifier_to_file_path(base).ok()?;
   base_path.pop();
   let mut current_path = normalize_path(base_path.join(current));
   // if the current text does not end in a `/` then we are still selecting on
@@ -394,10 +398,10 @@ fn get_local_completions(
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
           let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
-          if entry_specifier == base {
+          if entry_specifier == *base {
             return None;
           }
-          let full_text = relative_specifier(&base, &entry_specifier)?;
+          let full_text = relative_specifier(base, &entry_specifier)?;
           // this weeds out situations where we are browsing in the parent, but
           // we want to filter out non-matches when the completion is manually
           // invoked by the user, but still allows for things like `../src/../`

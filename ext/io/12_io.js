@@ -241,7 +241,7 @@ class Stdin {
   }
 
   close() {
-    core.close(this.rid);
+    core.tryClose(this.rid);
   }
 
   get readable() {

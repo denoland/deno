@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+mod byonm;
 mod cache_dir;
 mod common;
 mod managed;
@@ -12,6 +13,8 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageReq;
 
+pub use self::byonm::ByonmCliNpmResolver;
+pub use self::byonm::CliNpmResolverByonmCreateOptions;
 pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
 pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -20,9 +23,7 @@ pub use self::managed::ManagedCliNpmResolver;
 
 pub enum CliNpmResolverCreateOptions {
   Managed(CliNpmResolverManagedCreateOptions),
-  // todo(dsherret): implement this
-  #[allow(dead_code)]
-  Byonm,
+  Byonm(CliNpmResolverByonmCreateOptions),
 }
 
 pub async fn create_cli_npm_resolver_for_lsp(
@@ -33,7 +34,7 @@ pub async fn create_cli_npm_resolver_for_lsp(
     Managed(options) => {
       managed::create_managed_npm_resolver_for_lsp(options).await
     }
-    Byonm => todo!(),
+    Byonm(options) => byonm::create_byonm_npm_resolver(options),
   }
 }
 
@@ -43,7 +44,7 @@ pub async fn create_cli_npm_resolver(
   use CliNpmResolverCreateOptions::*;
   match options {
     Managed(options) => managed::create_managed_npm_resolver(options).await,
-    Byonm => todo!(),
+    Byonm(options) => Ok(byonm::create_byonm_npm_resolver(options)),
   }
 }
 
@@ -76,25 +77,13 @@ pub trait CliNpmResolver: NpmResolver {
 
   fn root_node_modules_path(&self) -> Option<PathBuf>;
 
-  /// Resolve the root folder of the package the provided specifier is in.
-  fn resolve_pkg_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String;
-
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.
   fn check_state_hash(&self) -> Option<u64>;
 }
-
-// todo(#18967): implement this
-pub struct ByonmCliNpmResolver;

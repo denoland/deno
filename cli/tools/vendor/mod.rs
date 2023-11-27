@@ -62,7 +62,7 @@ pub async fn vendor(
       }
       .boxed_local()
     },
-    parsed_source_cache: factory.parsed_source_cache()?,
+    parsed_source_cache: factory.parsed_source_cache(),
     output_dir: &output_dir,
     maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
     maybe_lockfile: factory.maybe_lockfile().clone(),
@@ -355,7 +355,7 @@ fn update_config_text(
 
   let new_text = deno_ast::apply_text_changes(text, text_changes);
   modified_result.new_text = if should_format {
-    format_json(&new_text, fmt_options)
+    format_json(&PathBuf::from("deno.json"), &new_text, fmt_options)
       .ok()
       .map(|formatted_text| formatted_text.unwrap_or(new_text))
   } else {

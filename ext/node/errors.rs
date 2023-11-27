@@ -45,7 +45,6 @@ pub fn err_invalid_package_config(
   generic_error(msg)
 }
 
-#[allow(unused)]
 pub fn err_module_not_found(path: &str, base: &str, typ: &str) -> AnyError {
   generic_error(format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find {typ} \"{path}\" imported from \"{base}\""
@@ -138,11 +137,12 @@ pub fn err_package_import_not_defined(
   base: &str,
 ) -> AnyError {
   let mut msg = format!(
-    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{specifier}\" is not defined in"
+    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{specifier}\" is not defined"
   );
 
   if let Some(package_path) = package_path {
-    msg = format!("{msg} in package {package_path}package.json");
+    let pkg_json_path = PathBuf::from(package_path).join("package.json");
+    msg = format!("{} in package {}", msg, pkg_json_path.display());
   }
 
   msg = format!("{msg} imported from {base}");

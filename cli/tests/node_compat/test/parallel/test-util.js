@@ -161,8 +161,7 @@ assert.strictEqual(util.isFunction(function() {}), true);
 assert.strictEqual(util.isFunction(), false);
 assert.strictEqual(util.isFunction('string'), false);
 
-// TODO(wafuwafu13): Enable this when `toUSVString` is ready.
-// assert.strictEqual(util.toUSVString('string\ud801'), 'string\ufffd');
+assert.strictEqual(util.toUSVString('string\ud801'), 'string\ufffd');
 
 {
   assert.strictEqual(util.types.isNativeError(new Error()), true);

@@ -3,6 +3,8 @@
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
 use async_compression::Level;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -84,7 +86,7 @@ mod reader_stream;
 mod request_body;
 mod request_properties;
 mod response_body;
-mod slab;
+mod service;
 mod websocket_upgrade;
 
 pub use request_properties::DefaultHttpPropertyExtractor;
@@ -106,6 +108,7 @@ deno_core::extension!(
     op_http_write_headers,
     op_http_write_resource,
     op_http_write,
+    http_next::op_http_close_after_finish,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_get_request_method_and_url<HTTP>,
@@ -119,7 +122,6 @@ deno_core::extension!(
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_set_response_trailers,
-    http_next::op_http_track,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
     http_next::op_raw_write_vectored,
@@ -990,7 +992,7 @@ fn op_http_websocket_accept_header(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
-  Ok(base64::encode(digest))
+  Ok(BASE64_STANDARD.encode(digest))
 }
 
 #[op2(async)]

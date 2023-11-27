@@ -14,7 +14,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
 use tokio::sync::mpsc::unbounded_channel;
 
-pub(crate) mod cdp;
 mod channel;
 mod editor;
 mod session;

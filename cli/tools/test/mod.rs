@@ -44,6 +44,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
@@ -467,7 +468,14 @@ pub async fn test_specifier(
 
   if let Some(coverage_collector) = coverage_collector.as_mut() {
     worker
-      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .js_runtime
+      .with_event_loop(
+        coverage_collector.stop_collecting().boxed_local(),
+        PollEventLoopOptions {
+          wait_for_inspector: false,
+          ..Default::default()
+        },
+      )
       .await?;
   }
   Ok(())
@@ -1205,27 +1213,26 @@ pub async fn run_tests_with_watch(
 
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig {
-      job_name: "Test".to_string(),
-      clear_screen: test_flags
+    file_watcher::PrintConfig::new(
+      "Test",
+      test_flags
         .watch
         .as_ref()
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
-    },
-    move |flags, sender, changed_paths| {
+    ),
+    move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone())
-          .build_from_flags(flags)
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
           .await?;
         let cli_options = factory.cli_options();
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
-        let _ = sender.send(cli_options.watch_paths());
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
         if let Some(include) = &test_options.files.include {
-          let _ = sender.send(include.clone());
+          let _ = watcher_communicator.watch_paths(include.clone());
         }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();

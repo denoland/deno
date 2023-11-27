@@ -291,3 +291,17 @@ interface BigUint64Array {
 
   with(index: number, value: number): BigUint64Array;
 }
+
+// NOTE(bartlomieju): taken from https://github.com/microsoft/TypeScript/issues/50803#issuecomment-1249030430
+// while we wait for these types to officially ship
+interface ArrayConstructor {
+  fromAsync<T>(
+      iterableOrArrayLike: AsyncIterable<T> | Iterable<T | Promise<T>> | ArrayLike<T | Promise<T>>,
+  ): Promise<T[]>;
+  
+  fromAsync<T, U>(
+      iterableOrArrayLike: AsyncIterable<T> | Iterable<T> | ArrayLike<T>, 
+      mapFn: (value: Awaited<T>) => U, 
+      thisArg?: any,
+  ): Promise<Awaited<U>[]>;
+}

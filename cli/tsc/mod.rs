@@ -948,7 +948,7 @@ mod tests {
         .context("Unable to get CWD")
         .unwrap(),
     );
-    let mut op_state = OpState::new(1);
+    let mut op_state = OpState::new(None);
     op_state.put(state);
     op_state
   }

@@ -26,10 +26,12 @@ const {
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
+  ObjectFromEntries,
   ObjectPrototypeIsPrototypeOf,
   SafeMap,
   SafeRegExp,
   Symbol,
+  SymbolFor,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeTrim,
@@ -262,11 +264,21 @@ class FormData {
       ArrayPrototypePush(list, entry);
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, this)) {
+      return `${this.constructor.name} ${
+        inspect(ObjectFromEntries(this), inspectOptions)
+      }`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+    }
+  }
 }
 
 webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
-webidl.configurePrototype(FormData);
+webidl.configureInterface(FormData);
 const FormDataPrototype = FormData.prototype;
 
 const ESCAPE_FILENAME_PATTERN = new SafeRegExp(/\r?\n|\r/g);

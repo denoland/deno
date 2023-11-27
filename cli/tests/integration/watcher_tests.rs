@@ -217,8 +217,7 @@ async fn lint_watch_test() {
     .arg(&badly_linted)
     .arg("--watch")
     .arg("--unstable")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -275,8 +274,7 @@ async fn lint_watch_without_args_test() {
     .arg("lint")
     .arg("--watch")
     .arg("--unstable")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -330,8 +328,7 @@ async fn lint_all_files_on_each_change_test() {
     .arg(t.path())
     .arg("--watch")
     .arg("--unstable")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -369,8 +366,7 @@ async fn fmt_watch_test() {
     .arg(&badly_formatted)
     .arg("--watch")
     .arg("--unstable")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -425,8 +421,7 @@ async fn fmt_watch_without_args_test() {
     .arg("fmt")
     .arg("--watch")
     .arg("--unstable")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -482,8 +477,7 @@ async fn fmt_check_all_files_on_each_change_test() {
     .arg("--watch")
     .arg("--check")
     .arg("--unstable")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -522,8 +516,7 @@ async fn bundle_js_watch() {
     .arg("--watch")
     .arg("--unstable")
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -595,8 +588,7 @@ async fn bundle_watch_not_exit() {
     .arg("--watch")
     .arg("--unstable")
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
@@ -660,8 +652,7 @@ async fn run_watch_no_dynamic() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -750,8 +741,7 @@ async fn run_watch_external_watch_files() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -798,8 +788,7 @@ async fn run_watch_load_unload_events() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -851,8 +840,7 @@ async fn run_watch_not_exit() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -909,8 +897,7 @@ async fn run_watch_with_import_map_and_relative_paths() {
     .arg(&import_map_path)
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -941,8 +928,7 @@ async fn run_watch_with_ext_flag() {
     .arg("ts")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -975,8 +961,7 @@ async fn run_watch_error_messages() {
     .arg("--watch")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
@@ -1001,8 +986,7 @@ async fn test_watch_basic() {
     .arg("--no-check")
     .arg(t.path())
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1158,8 +1142,7 @@ async fn test_watch_doc() {
     .arg("--unstable")
     .arg(t.path())
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1207,8 +1190,7 @@ async fn test_watch_module_graph_error_referrer() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
@@ -1245,8 +1227,7 @@ async fn test_watch_unload_handler_error_on_drop() {
     .arg("--watch")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
@@ -1283,8 +1264,7 @@ async fn run_watch_blob_urls_reset() {
     .arg("--watch")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1303,20 +1283,17 @@ async fn test_watch_sigint() {
   use nix::sys::signal;
   use nix::sys::signal::Signal;
   use nix::unistd::Pid;
+  use util::TestContext;
 
-  let t = TempDir::new();
+  let context = TestContext::default();
+  let t = context.temp_dir();
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write(r#"Deno.test("foo", () => {});"#);
-  let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--watch")
-    .arg(&file_to_watch)
+  let mut child = context
+    .new_command()
+    .args_vec(["test", "--watch", &file_to_watch.to_string_lossy()])
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
+    .spawn_with_piped_output();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Test started", &mut stderr_lines).await;
   wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
@@ -1338,8 +1315,7 @@ async fn bench_watch_basic() {
     .arg("--no-check")
     .arg(t.path())
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1459,8 +1435,7 @@ async fn run_watch_reload_once() {
     .arg("--reload")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1499,8 +1474,7 @@ async fn test_watch_serve() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1551,8 +1525,7 @@ async fn run_watch_dynamic_imports() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1623,8 +1596,7 @@ async fn run_watch_inspect() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
@@ -1642,6 +1614,256 @@ async fn run_watch_inspect() {
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("Debugger listening", &mut stderr_lines).await;
   wait_contains("updated file", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_server() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+globalThis.state = { i: 0 };
+
+function bar() {
+  globalThis.state.i = 0;
+  console.log("got request", globalThis.state.i);
+}
+
+function handler(_req) {
+  bar();
+  return new Response("Hello world!");
+}
+
+Deno.serve({ port: 11111 }, handler);
+console.log("Listening...")
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("--allow-net")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("Listening...", &mut stdout_lines).await;
+
+  file_to_watch.write(
+    r#"
+globalThis.state = { i: 0 };
+
+function bar() {
+  globalThis.state.i = 0;
+  console.log("got request1", globalThis.state.i);
+}
+
+function handler(_req) {
+  bar();
+  return new Response("Hello world!");
+}
+
+Deno.serve({ port: 11111 }, handler);
+console.log("Listening...")
+    "#,
+  );
+
+  wait_contains("Failed to reload module", &mut stderr_lines).await;
+  wait_contains("File change detected", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_jsx() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);    
+"#,
+  );
+  let file_to_watch2 = t.path().join("foo.jsx");
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>Hello</h1>`;
+}
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("5 <h1>Hello</h1>", &mut stdout_lines).await;
+
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>Hello world</h1>`;
+}
+    "#,
+  );
+
+  wait_contains("Replaced changed module", &mut stderr_lines).await;
+  wait_contains("<h1>Hello world</h1>", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_uncaught_error() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);
+"#,
+  );
+  let file_to_watch2 = t.path().join("foo.jsx");
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  setTimeout(() => {
+    throw new Error("fail");
+  });
+  return `<h1>asd1</h1>`;
+}
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("<h1>asd1</h1>", &mut stdout_lines).await;
+  wait_contains("fail", &mut stderr_lines).await;
+
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>asd2</h1>`;
+}
+    "#,
+  );
+
+  wait_contains("Process failed", &mut stderr_lines).await;
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("<h1>asd2</h1>", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
+async fn run_hmr_unhandled_rejection() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+// deno-lint-ignore require-await
+async function rejection() {
+  throw new Error("boom!");
+}
+
+let i = 0;
+setInterval(() => {
+  if (i == 3) {
+    rejection();
+  }
+  console.log(i++, foo());
+}, 100);
+"#,
+  );
+  let file_to_watch2 = t.path().join("foo.jsx");
+  file_to_watch2.write(
+    r#"
+export function foo() {
+  return `<h1>asd1</h1>`;
+}
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("2 <h1>asd1</h1>", &mut stdout_lines).await;
+  wait_contains("boom", &mut stderr_lines).await;
+
+  file_to_watch.write(
+    r#"
+import { foo } from "./foo.jsx";
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);
+    "#,
+  );
+
+  wait_contains("Process failed", &mut stderr_lines).await;
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("<h1>asd1</h1>", &mut stdout_lines).await;
 
   check_alive_then_kill(child);
 }

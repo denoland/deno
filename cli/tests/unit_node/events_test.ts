@@ -1,12 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { deferred } from "../../../test_util/std/async/deferred.ts";
 import { EventEmitter } from "node:events";
 
 EventEmitter.captureRejections = true;
 
 Deno.test("regression #20441", async () => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   const ee = new EventEmitter();
 
@@ -20,7 +19,7 @@ Deno.test("regression #20441", async () => {
   });
 
   ee.on("error", function (_) {
-    promise.resolve();
+    resolve();
   });
 
   ee.emit("foo");

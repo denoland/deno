@@ -2,10 +2,32 @@
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use bytes::Bytes;
+use denokv_proto::datapath::AtomicWrite;
+use denokv_proto::datapath::AtomicWriteOutput;
+use denokv_proto::datapath::AtomicWriteStatus;
+use denokv_proto::datapath::ReadRangeOutput;
+use denokv_proto::datapath::SnapshotRead;
+use denokv_proto::datapath::SnapshotReadOutput;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+use futures::future::join3;
+use futures::future::poll_fn;
 use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
+use h2::server::Handshake;
+use h2::server::SendResponse;
+use h2::Reason;
+use h2::RecvStream;
+use https::get_tls_listener_stream;
+use https::SupportedHttpVersions;
 use hyper::header::HeaderValue;
 use hyper::http;
 use hyper::server::Server;
@@ -13,34 +35,26 @@ use hyper::service::make_service_fn;
 use hyper::service::service_fn;
 use hyper::upgrade::Upgraded;
 use hyper::Body;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use kv_remote::datapath::AtomicWrite;
-use kv_remote::datapath::AtomicWriteOutput;
-use kv_remote::datapath::AtomicWriteStatus;
-use kv_remote::datapath::ReadRangeOutput;
-use kv_remote::datapath::SnapshotRead;
-use kv_remote::datapath::SnapshotReadOutput;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
 use prost::Message;
 use pty::Pty;
 use regex::Regex;
-use rustls::Certificate;
-use rustls::PrivateKey;
+use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
 use std::io;
 use std::io::Write;
-use std::mem::replace;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
-use std::ops::Deref;
-use std::ops::DerefMut;
-use std::path::Path;
+use std::net::SocketAddrV6;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -48,29 +62,27 @@ use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 use std::result::Result;
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls;
-use tokio_rustls::server::TlsStream;
-use tokio_rustls::TlsAcceptor;
+use tokio::task::LocalSet;
 use url::Url;
 
 pub mod assertions;
 mod builders;
 pub mod factory;
 mod fs;
-mod kv_remote;
+mod https;
 pub mod lsp;
 mod npm;
 pub mod pty;
 
+pub use builders::DenoChild;
 pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
@@ -102,6 +114,7 @@ const H2_ONLY_PORT: u16 = 5549;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const WSS2_PORT: u16 = 4249;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
@@ -315,7 +328,7 @@ async fn basic_auth_redirect(
   {
     let credentials =
       format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
-    if auth == format!("Basic {}", base64::encode(credentials)) {
+    if auth == format!("Basic {}", BASE64_STANDARD.encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
@@ -385,10 +398,9 @@ where
   });
 }
 
-async fn run_ws_server(addr: &SocketAddr) {
-  let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: ws"); // Eye catcher for HttpServerCount
-  while let Ok((stream, _addr)) = listener.accept().await {
+async fn run_ws_server(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws", port).await;
+  while let Some(Ok(stream)) = tcp.next().await {
     spawn_ws_server(stream, |ws| Box::pin(echo_websocket_handler(ws)));
   }
 }
@@ -396,9 +408,6 @@ async fn run_ws_server(addr: &SocketAddr) {
 async fn ping_websocket_handler(
   ws: fastwebsockets::WebSocket<Upgraded>,
 ) -> Result<(), anyhow::Error> {
-  use fastwebsockets::Frame;
-  use fastwebsockets::OpCode;
-
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
   for i in 0..9 {
@@ -428,10 +437,9 @@ async fn ping_websocket_handler(
   Ok(())
 }
 
-async fn run_ws_ping_server(addr: &SocketAddr) {
-  let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: ws"); // Eye catcher for HttpServerCount
-  while let Ok((stream, _addr)) = listener.accept().await {
+async fn run_ws_ping_server(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws (ping)", port).await;
+  while let Some(Ok(stream)) = tcp.next().await {
     spawn_ws_server(stream, |ws| Box::pin(ping_websocket_handler(ws)));
   }
 }
@@ -448,126 +456,160 @@ async fn close_websocket_handler(
   Ok(())
 }
 
-async fn run_ws_close_server(addr: &SocketAddr) {
-  let listener = TcpListener::bind(addr).await.unwrap();
-  while let Ok((stream, _addr)) = listener.accept().await {
+async fn run_ws_close_server(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws (close)", port).await;
+  while let Some(Ok(stream)) = tcp.next().await {
     spawn_ws_server(stream, |ws| Box::pin(close_websocket_handler(ws)));
   }
 }
 
-#[derive(Default)]
-enum SupportedHttpVersions {
-  #[default]
-  All,
-  Http1Only,
-  Http2Only,
-}
-
-async fn get_tls_config(
-  cert: &str,
-  key: &str,
-  ca: &str,
-  http_versions: SupportedHttpVersions,
-) -> io::Result<Arc<rustls::ServerConfig>> {
-  let cert_path = testdata_path().join(cert);
-  let key_path = testdata_path().join(key);
-  let ca_path = testdata_path().join(ca);
-
-  let cert_file = std::fs::File::open(cert_path)?;
-  let key_file = std::fs::File::open(key_path)?;
-  let ca_file = std::fs::File::open(ca_path)?;
-
-  let certs: Vec<Certificate> = {
-    let mut cert_reader = io::BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut cert_reader)
-      .unwrap()
-      .into_iter()
-      .map(Certificate)
-      .collect()
-  };
-
-  let mut ca_cert_reader = io::BufReader::new(ca_file);
-  let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)
-    .expect("Cannot load CA certificate")
-    .remove(0);
-
-  let mut key_reader = io::BufReader::new(key_file);
-  let key = {
-    let pkcs8_key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    let rsa_key = rustls_pemfile::rsa_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    if !pkcs8_key.is_empty() {
-      Some(pkcs8_key[0].clone())
-    } else if !rsa_key.is_empty() {
-      Some(rsa_key[0].clone())
-    } else {
-      None
-    }
-  };
-
-  match key {
-    Some(key) => {
-      let mut root_cert_store = rustls::RootCertStore::empty();
-      root_cert_store.add(&rustls::Certificate(ca_cert)).unwrap();
-
-      // Allow (but do not require) client authentication.
-
-      let mut config = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_client_cert_verifier(Arc::new(
-          rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
-            root_cert_store,
-          ),
-        ))
-        .with_single_cert(certs, PrivateKey(key))
-        .map_err(|e| anyhow!("Error setting cert: {:?}", e))
-        .unwrap();
-
-      match http_versions {
-        SupportedHttpVersions::All => {
-          config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
-        }
-        SupportedHttpVersions::Http1Only => {}
-        SupportedHttpVersions::Http2Only => {
-          config.alpn_protocols = vec!["h2".into()];
-        }
-      }
-
-      Ok(Arc::new(config))
-    }
-    None => Err(io::Error::new(io::ErrorKind::Other, "Cannot find key")),
+async fn handle_wss_stream(
+  recv: Request<RecvStream>,
+  mut send: SendResponse<Bytes>,
+) -> Result<(), h2::Error> {
+  if recv.method() != Method::CONNECT {
+    eprintln!("wss2: refusing non-CONNECT stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
   }
+  let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
+    eprintln!("wss2: refusing no-:protocol stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  };
+  if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
+    eprintln!("wss2: refusing non-websocket stream");
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  }
+  let mut body = recv.into_body();
+  let mut response = Response::new(());
+  *response.status_mut() = StatusCode::OK;
+  let mut resp = send.send_response(response, false)?;
+  // Use a duplex stream to talk to fastwebsockets because it's just faster to implement
+  let (a, b) = tokio::io::duplex(65536);
+  let f1 = tokio::spawn(tokio::task::unconstrained(async move {
+    let ws = WebSocket::after_handshake(a, Role::Server);
+    let mut ws = FragmentCollector::new(ws);
+    loop {
+      let frame = ws.read_frame().await.unwrap();
+      if frame.opcode == OpCode::Close {
+        break;
+      }
+      ws.write_frame(frame).await.unwrap();
+    }
+  }));
+  let (mut br, mut bw) = tokio::io::split(b);
+  let f2 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let Some(Ok(data)) = poll_fn(|cx| body.poll_data(cx)).await else {
+        return;
+      };
+      body.flow_control().release_capacity(data.len()).unwrap();
+      let Ok(_) = bw.write_all(&data).await else {
+        break;
+      };
+    }
+  }));
+  let f3 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let mut buf = [0; 65536];
+      let n = br.read(&mut buf).await.unwrap();
+      if n == 0 {
+        break;
+      }
+      resp.reserve_capacity(n);
+      poll_fn(|cx| resp.poll_capacity(cx)).await;
+      resp
+        .send_data(Bytes::copy_from_slice(&buf[0..n]), false)
+        .unwrap();
+    }
+    resp.send_data(Bytes::new(), true).unwrap();
+  }));
+  _ = join3(f1, f2, f3).await;
+  Ok(())
 }
 
-async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
-  let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: wss"); // Eye catcher for HttpServerCount
-
-  while let Ok((stream, _addr)) = listener.accept().await {
-    let acceptor = tls_acceptor.clone();
+async fn run_wss2_server(port: u16) {
+  let mut tls = get_tls_listener_stream(
+    "wss2 (tls)",
+    port,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await;
+  while let Some(Ok(tls)) = tls.next().await {
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(tls_stream) => {
-          spawn_ws_server(tls_stream, |ws| {
-            Box::pin(echo_websocket_handler(ws))
-          });
-        }
+      let mut h2 = h2::server::Builder::new();
+      h2.enable_connect_protocol();
+      // Using Bytes is pretty alloc-heavy but this is a test server
+      let server: Handshake<_, Bytes> = h2.handshake(tls);
+      let mut server = match server.await {
+        Ok(server) => server,
         Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
+          println!("Failed to handshake h2: {e:?}");
+          return;
         }
+      };
+      loop {
+        let Some(conn) = server.accept().await else {
+          break;
+        };
+        let (recv, send) = match conn {
+          Ok(conn) => conn,
+          Err(e) => {
+            println!("Failed to accept a connection: {e:?}");
+            break;
+          }
+        };
+        tokio::spawn(handle_wss_stream(recv, send));
       }
     });
   }
+}
+
+async fn run_wss_server(port: u16) {
+  let mut tls = get_tls_listener_stream("wss", port, Default::default()).await;
+  while let Some(Ok(tls_stream)) = tls.next().await {
+    tokio::spawn(async move {
+      spawn_ws_server(tls_stream, |ws| Box::pin(echo_websocket_handler(ws)));
+    });
+  }
+}
+
+/// Returns a [`Stream`] of [`TcpStream`]s accepted from the given port.
+async fn get_tcp_listener_stream(
+  name: &'static str,
+  port: u16,
+) -> impl Stream<Item = Result<TcpStream, std::io::Error>> + Unpin + Send {
+  let host_and_port = &format!("localhost:{port}");
+
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result.map(|r| r.0), listener))
+    }
+    .boxed()
+  };
+
+  let mut addresses = vec![];
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| addresses.push(*address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
+  // Eye catcher for HttpServerCount
+  println!("ready: {name} on {:?}", addresses);
+
+  futures::stream::select_all(listeners)
 }
 
 /// This server responds with 'PASS' if client authentication was successful. Try it by running
@@ -576,62 +618,25 @@ async fn run_wss_server(addr: &SocketAddr) {
 ///        --cert cli/tests/testsdata/tls/localhost.crt \
 ///        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
 async fn run_tls_client_auth_server() {
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
-
-  // Listen on ALL addresses that localhost can resolves to.
-  let accept = |listener: tokio::net::TcpListener| {
-    async {
-      let result = listener.accept().await;
-      Some((result, listener))
-    }
-    .boxed()
-  };
-
-  let host_and_port = &format!("localhost:{TLS_CLIENT_AUTH_PORT}");
-
-  let listeners = tokio::net::lookup_host(host_and_port)
-    .await
-    .expect(host_and_port)
-    .inspect(|address| println!("{host_and_port} -> {address}"))
-    .map(tokio::net::TcpListener::bind)
-    .collect::<futures::stream::FuturesUnordered<_>>()
-    .collect::<Vec<_>>()
-    .await
-    .into_iter()
-    .map(|s| s.unwrap())
-    .map(|listener| futures::stream::unfold(listener, accept))
-    .collect::<Vec<_>>();
-
-  println!("ready: tls client auth"); // Eye catcher for HttpServerCount
-
-  let mut listeners = futures::stream::select_all(listeners);
-
-  while let Some(Ok((stream, _addr))) = listeners.next().await {
-    let acceptor = tls_acceptor.clone();
+  let mut tls = get_tls_listener_stream(
+    "tls client auth",
+    TLS_CLIENT_AUTH_PORT,
+    Default::default(),
+  )
+  .await;
+  while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(mut tls_stream) => {
-          let (_, tls_session) = tls_stream.get_mut();
-          // We only need to check for the presence of client certificates
-          // here. Rusttls ensures that they are valid and signed by the CA.
-          let response = match tls_session.peer_certificates() {
-            Some(_certs) => b"PASS",
-            None => b"FAIL",
-          };
-          tls_stream.write_all(response).await.unwrap();
-        }
-
-        Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
-        }
-      }
+      let Ok(handshake) = tls_stream.handshake().await else {
+        eprintln!("Failed to handshake");
+        return;
+      };
+      // We only need to check for the presence of client certificates
+      // here. Rusttls ensures that they are valid and signed by the CA.
+      let response = match handshake.has_peer_certificates {
+        true => b"PASS",
+        false => b"FAIL",
+      };
+      tls_stream.write_all(response).await.unwrap();
     });
   }
 }
@@ -640,55 +645,11 @@ async fn run_tls_client_auth_server() {
 /// test_server and
 ///   curl --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4553/
 async fn run_tls_server() {
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  let tls_acceptor = TlsAcceptor::from(tls_config);
-
-  // Listen on ALL addresses that localhost can resolves to.
-  let accept = |listener: tokio::net::TcpListener| {
-    async {
-      let result = listener.accept().await;
-      Some((result, listener))
-    }
-    .boxed()
-  };
-
-  let host_and_port = &format!("localhost:{TLS_PORT}");
-
-  let listeners = tokio::net::lookup_host(host_and_port)
-    .await
-    .expect(host_and_port)
-    .inspect(|address| println!("{host_and_port} -> {address}"))
-    .map(tokio::net::TcpListener::bind)
-    .collect::<futures::stream::FuturesUnordered<_>>()
-    .collect::<Vec<_>>()
-    .await
-    .into_iter()
-    .map(|s| s.unwrap())
-    .map(|listener| futures::stream::unfold(listener, accept))
-    .collect::<Vec<_>>();
-
-  println!("ready: tls"); // Eye catcher for HttpServerCount
-
-  let mut listeners = futures::stream::select_all(listeners);
-
-  while let Some(Ok((stream, _addr))) = listeners.next().await {
-    let acceptor = tls_acceptor.clone();
+  let mut tls =
+    get_tls_listener_stream("tls", TLS_PORT, Default::default()).await;
+  while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
-      match acceptor.accept(stream).await {
-        Ok(mut tls_stream) => {
-          tls_stream.write_all(b"PASS").await.unwrap();
-        }
-
-        Err(e) => {
-          eprintln!("TLS accept error: {e:?}");
-        }
-      }
+      tls_stream.write_all(b"PASS").await.unwrap();
     });
   }
 }
@@ -1202,7 +1163,7 @@ async fn main_server(
           .header("content-type", "application/json")
           .body(Body::from(
             serde_json::json!({
-              "version": 2,
+              "version": 1000,
               "databaseId": KV_DATABASE_ID,
               "endpoints": [
                 {
@@ -1264,9 +1225,7 @@ async fn main_server(
                 .map(|_| ReadRangeOutput { values: vec![] })
                 .collect(),
               read_disabled: false,
-              regions_if_read_disabled: vec![],
               read_is_strongly_consistent: true,
-              primary_if_not_strongly_consistent: "".into(),
             }
             .encode_to_vec(),
           ))
@@ -1307,24 +1266,62 @@ async fn main_server(
             AtomicWriteOutput {
               status: AtomicWriteStatus::AwSuccess.into(),
               versionstamp: vec![0u8; 10],
-              primary_if_write_disabled: "".into(),
+              failed_checks: vec![],
             }
             .encode_to_vec(),
           ))
           .unwrap(),
       )
     }
+    (&hyper::Method::GET, "/upgrade/sleep/release-latest.txt") => {
+      tokio::time::sleep(Duration::from_secs(95)).await;
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .body(Body::from("99999.99.99"))
+          .unwrap(),
+      );
+    }
+    (&hyper::Method::GET, "/upgrade/sleep/canary-latest.txt") => {
+      tokio::time::sleep(Duration::from_secs(95)).await;
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .unwrap(),
+      );
+    }
+    (&hyper::Method::GET, "/release-latest.txt") => {
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          // use a deno version that will never happen
+          .body(Body::from("99999.99.99"))
+          .unwrap(),
+      );
+    }
+    (&hyper::Method::GET, "/canary-latest.txt") => {
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .unwrap(),
+      );
+    }
     _ => {
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&req.uri().path()[1..]);
+      file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
       }
 
       // serve npm registry files
-      if let Some(suffix) =
-        req.uri().path().strip_prefix("/npm/registry/@denotest/")
+      if let Some(suffix) = req
+        .uri()
+        .path()
+        .strip_prefix("/npm/registry/@denotest/")
+        .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
       {
         // serve all requests to /npm/registry/@deno using the file system
         // at that path
@@ -1459,15 +1456,12 @@ async fn download_npm_registry_file(
 /// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs
 struct HyperAcceptor<'a> {
   acceptor: Pin<
-    Box<
-      dyn Stream<Item = io::Result<tokio_rustls::server::TlsStream<TcpStream>>>
-        + 'a,
-    >,
+    Box<dyn Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + 'a>,
   >,
 }
 
 impl hyper::server::accept::Accept for HyperAcceptor<'_> {
-  type Conn = tokio_rustls::server::TlsStream<TcpStream>;
+  type Conn = rustls_tokio_stream::TlsStream;
   type Error = io::Error;
 
   fn poll_accept(
@@ -1571,152 +1565,78 @@ async fn wrap_abs_redirect_server() {
 }
 
 async fn wrap_main_server() {
+  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+// necessary because on Windows the npm binary will resolve localhost to ::1
+async fn wrap_main_ipv6_server() {
+  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
+  let main_server_addr =
+    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, PORT, 0, 0));
+  wrap_main_server_for_addr(&main_server_addr).await
+}
+
+async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
   let main_server_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
-  let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
+  let main_server = Server::bind(main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
     eprintln!("HTTP server error: {e:?}");
   }
 }
 
 async fn wrap_main_https_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
-      }
-    }
-    .boxed();
-
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .serve(main_server_https_svc);
-
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
-  }
+  let tls =
+    get_tls_listener_stream("https", HTTPS_PORT, Default::default()).await;
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .serve(main_server_https_svc);
+  let _ = main_server_https.await;
 }
 
 async fn wrap_https_h1_only_tls_server() {
-  let main_server_https_addr =
-    SocketAddr::from(([127, 0, 0, 1], H1_ONLY_TLS_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(
-    cert_file,
-    key_file,
-    ca_cert_file,
+  let tls = get_tls_listener_stream(
+    "https (h1 only)",
+    H1_ONLY_TLS_PORT,
     SupportedHttpVersions::Http1Only,
   )
-  .await
-  .unwrap();
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
-      }
-    }
-    .boxed();
+  .await;
 
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .http1_only(true)
-    .serve(main_server_https_svc);
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .http1_only(true)
+  .serve(main_server_https_svc);
 
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
-  }
+  let _ = main_server_https.await;
 }
 
 async fn wrap_https_h2_only_tls_server() {
-  let main_server_https_addr =
-    SocketAddr::from(([127, 0, 0, 1], H2_ONLY_TLS_PORT));
-  let tls_config = create_tls_server_config().await;
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
-          let stream = tls_acceptor.accept(socket);
-          yield stream.await;
-      }
-    }
-    .boxed();
-
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .http2_only(true)
-    .serve(main_server_https_svc);
-
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
-  }
-}
-
-async fn create_tls_server_config() -> Arc<rustls::ServerConfig> {
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  get_tls_config(
-    cert_file,
-    key_file,
-    ca_cert_file,
+  let tls = get_tls_listener_stream(
+    "https (h2 only)",
+    H2_ONLY_TLS_PORT,
     SupportedHttpVersions::Http2Only,
   )
-  .await
-  .unwrap()
+  .await;
+
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .http2_only(true)
+  .serve(main_server_https_svc);
+
+  let _ = main_server_https.await;
 }
 
-async fn wrap_https_h1_only_server() {
+async fn wrap_http_h1_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
 
   let main_server_http_svc =
@@ -1727,7 +1647,7 @@ async fn wrap_https_h1_only_server() {
   let _ = main_server_http.await;
 }
 
-async fn wrap_https_h2_only_server() {
+async fn wrap_http_h2_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
 
   let main_server_http_svc =
@@ -1739,12 +1659,13 @@ async fn wrap_https_h2_only_server() {
 }
 
 async fn h2_grpc_server() {
-  let addr = SocketAddr::from(([127, 0, 0, 1], H2_GRPC_PORT));
-  let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-
-  let addr_tls = SocketAddr::from(([127, 0, 0, 1], H2S_GRPC_PORT));
-  let listener_tls = tokio::net::TcpListener::bind(addr_tls).await.unwrap();
-  let tls_config = create_tls_server_config().await;
+  let mut tcp = get_tcp_listener_stream("grpc", H2_GRPC_PORT).await;
+  let mut tls = get_tls_listener_stream(
+    "grpc (tls)",
+    H2S_GRPC_PORT,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await;
 
   async fn serve(socket: TcpStream) -> Result<(), anyhow::Error> {
     let mut connection = h2::server::handshake(socket).await?;
@@ -1759,9 +1680,7 @@ async fn h2_grpc_server() {
     Ok(())
   }
 
-  async fn serve_tls(
-    socket: TlsStream<TcpStream>,
-  ) -> Result<(), anyhow::Error> {
+  async fn serve_tls(socket: TlsStream) -> Result<(), anyhow::Error> {
     let mut connection = h2::server::handshake(socket).await?;
 
     while let Some(result) = connection.accept().await {
@@ -1809,87 +1728,54 @@ async fn h2_grpc_server() {
     Ok(())
   }
 
-  let http = tokio::spawn(async move {
-    loop {
-      if let Ok((socket, _peer_addr)) = listener.accept().await {
-        tokio::spawn(async move {
-          let _ = serve(socket).await;
-        });
-      }
+  let local_set = LocalSet::new();
+  local_set.spawn_local(async move {
+    while let Some(Ok(tcp)) = tcp.next().await {
+      tokio::spawn(async move {
+        let _ = serve(tcp).await;
+      });
     }
   });
 
-  let https = tokio::spawn(async move {
-    loop {
-      if let Ok((socket, _peer_addr)) = listener_tls.accept().await {
-        let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-        let tls = tls_acceptor.accept(socket).await.unwrap();
-        tokio::spawn(async move {
-          let _ = serve_tls(tls).await;
-        });
-      }
+  local_set.spawn_local(async move {
+    while let Some(Ok(tls)) = tls.next().await {
+      tokio::spawn(async move {
+        let _ = serve_tls(tls).await;
+      });
     }
   });
 
-  http.await.unwrap();
-  https.await.unwrap();
+  local_set.await;
 }
 
 async fn wrap_client_auth_https_server() {
-  let main_server_https_addr =
-    SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config =
-    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
-      .await
-      .unwrap();
-  loop {
-    let tcp = TcpListener::bind(&main_server_https_addr)
-      .await
-      .expect("Cannot bind TCP");
-    println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
-    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve clients.
-    let incoming_tls_stream = async_stream::stream! {
-      loop {
-          let (socket, _) = tcp.accept().await?;
+  let mut tls = get_tls_listener_stream(
+    "https_client_auth",
+    HTTPS_CLIENT_AUTH_PORT,
+    Default::default(),
+  )
+  .await;
 
-          match tls_acceptor.accept(socket).await {
-            Ok(mut tls_stream) => {
-              let (_, tls_session) = tls_stream.get_mut();
-              // We only need to check for the presence of client certificates
-              // here. Rusttls ensures that they are valid and signed by the CA.
-              match tls_session.peer_certificates() {
-                Some(_certs) => { yield Ok(tls_stream); },
-                None => { eprintln!("https_client_auth: no valid client certificate"); },
-              };
-            }
-
-            Err(e) => {
-              eprintln!("https-client-auth accept error: {e:?}");
-              yield Err(e);
-            }
-          }
-
-      }
+  let tls = async_stream::stream! {
+    while let Some(Ok(mut tls)) = tls.next().await {
+      let handshake = tls.handshake().await?;
+      // We only need to check for the presence of client certificates
+      // here. Rusttls ensures that they are valid and signed by the CA.
+      match handshake.has_peer_certificates {
+        true => { yield Ok(tls); },
+        false => { eprintln!("https_client_auth: no valid client certificate"); },
+      };
     }
-    .boxed();
+  };
 
-    let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_https = Server::builder(HyperAcceptor {
-      acceptor: incoming_tls_stream,
-    })
-    .serve(main_server_https_svc);
+  let main_server_https_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_https = Server::builder(HyperAcceptor {
+    acceptor: tls.boxed_local(),
+  })
+  .serve(main_server_https_svc);
 
-    //continue to prevent TLS error stopping the server
-    if main_server_https.await.is_err() {
-      continue;
-    }
-  }
+  let _ = main_server_https.await;
 }
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
@@ -1909,32 +1795,31 @@ pub async fn run_all_servers() {
   let basic_auth_redirect_server_fut = wrap_basic_auth_redirect_server();
   let abs_redirect_server_fut = wrap_abs_redirect_server();
 
-  let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
-  let ws_server_fut = run_ws_server(&ws_addr);
-  let ws_ping_addr = SocketAddr::from(([127, 0, 0, 1], WS_PING_PORT));
-  let ws_ping_server_fut = run_ws_ping_server(&ws_ping_addr);
-  let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
-  let wss_server_fut = run_wss_server(&wss_addr);
-  let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
-  let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
+  let ws_server_fut = run_ws_server(WS_PORT);
+  let ws_ping_server_fut = run_ws_ping_server(WS_PING_PORT);
+  let wss_server_fut = run_wss_server(WSS_PORT);
+  let ws_close_server_fut = run_ws_close_server(WS_CLOSE_PORT);
+  let wss2_server_fut = run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server();
   let tls_client_auth_server_fut = run_tls_client_auth_server();
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
+  let main_server_ipv6_fut = wrap_main_ipv6_server();
   let main_server_https_fut = wrap_main_https_server();
   let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
-  let h1_only_server_fut = wrap_https_h1_only_server();
-  let h2_only_server_fut = wrap_https_h2_only_server();
+  let h1_only_server_fut = wrap_http_h1_only_server();
+  let h2_only_server_fut = wrap_http_h2_only_server();
   let h2_grpc_server_fut = h2_grpc_server();
 
-  let mut server_fut = async {
+  let server_fut = async {
     futures::join!(
       redirect_server_fut,
       ws_server_fut,
       ws_ping_server_fut,
       wss_server_fut,
+      wss2_server_fut,
       tls_server_fut,
       tls_client_auth_server_fut,
       ws_close_server_fut,
@@ -1945,6 +1830,7 @@ pub async fn run_all_servers() {
       double_redirects_server_fut,
       abs_redirect_server_fut,
       main_server_fut,
+      main_server_ipv6_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
       h1_only_server_tls_fut,
@@ -1954,17 +1840,9 @@ pub async fn run_all_servers() {
       h2_grpc_server_fut,
     )
   }
-  .boxed();
+  .boxed_local();
 
-  let mut did_print_ready = false;
-  futures::future::poll_fn(move |cx| {
-    let poll_result = server_fut.poll_unpin(cx);
-    if !replace(&mut did_print_ready, true) {
-      println!("ready: server_fut"); // Eye catcher for HttpServerCount
-    }
-    poll_result
-  })
-  .await;
+  server_fut.await;
 }
 
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
@@ -2090,7 +1968,7 @@ impl HttpServerCount {
           if line.starts_with("ready:") {
             ready_count += 1;
           }
-          if ready_count == 6 {
+          if ready_count == 12 {
             break;
           }
         } else {
@@ -2254,15 +2132,13 @@ pub fn run_and_collect_output_with_args(
   envs: Option<Vec<(String, String)>>,
   need_http_server: bool,
 ) -> (String, String) {
-  let mut deno_process_builder = deno_cmd();
-  deno_process_builder
-    .args(args)
-    .current_dir(&testdata_path())
+  let mut deno_process_builder = deno_cmd()
+    .args_vec(args)
+    .current_dir(testdata_path())
     .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    .piped_output();
   if let Some(envs) = envs {
-    deno_process_builder.envs(envs);
+    deno_process_builder = deno_process_builder.envs(envs);
   }
   let _http_guard = if need_http_server {
     Some(http_server())
@@ -2297,135 +2173,15 @@ pub fn new_deno_dir() -> TempDir {
   TempDir::new()
 }
 
-/// Because we need to keep the [`TempDir`] alive for the entire run of this command,
-/// we have to effectively reproduce the entire builder-pattern object for [`Command`].
-pub struct DenoCmd {
-  _deno_dir: TempDir,
-  cmd: Command,
-}
-
-impl DenoCmd {
-  pub fn args<I, S>(&mut self, args: I) -> &mut Self
-  where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.args(args);
-    self
-  }
-
-  pub fn arg<S>(&mut self, arg: S) -> &mut Self
-  where
-    S: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.arg(arg);
-    self
-  }
-
-  pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
-  where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<std::ffi::OsStr>,
-    V: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.envs(vars);
-    self
-  }
-
-  pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
-  where
-    K: AsRef<std::ffi::OsStr>,
-    V: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.env(key, val);
-    self
-  }
-
-  pub fn env_remove<K>(&mut self, key: K) -> &mut Self
-  where
-    K: AsRef<std::ffi::OsStr>,
-  {
-    self.cmd.env_remove(key);
-    self
-  }
-
-  pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
-    self.cmd.stdin(cfg);
-    self
-  }
-
-  pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
-    self.cmd.stdout(cfg);
-    self
-  }
-
-  pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
-    self.cmd.stderr(cfg);
-    self
-  }
-
-  pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut Self {
-    self.cmd.current_dir(dir);
-    self
-  }
-
-  pub fn output(&mut self) -> Result<std::process::Output, std::io::Error> {
-    self.cmd.output()
-  }
-
-  pub fn status(&mut self) -> Result<std::process::ExitStatus, std::io::Error> {
-    self.cmd.status()
-  }
-
-  pub fn spawn(&mut self) -> Result<DenoChild, std::io::Error> {
-    Ok(DenoChild {
-      _deno_dir: self._deno_dir.clone(),
-      child: self.cmd.spawn()?,
-    })
-  }
-}
-
-/// We need to keep the [`TempDir`] around until the child has finished executing, so
-/// this acts as a RAII guard.
-pub struct DenoChild {
-  _deno_dir: TempDir,
-  child: Child,
-}
-
-impl Deref for DenoChild {
-  type Target = Child;
-  fn deref(&self) -> &Child {
-    &self.child
-  }
-}
-
-impl DerefMut for DenoChild {
-  fn deref_mut(&mut self) -> &mut Child {
-    &mut self.child
-  }
-}
-
-impl DenoChild {
-  pub fn wait_with_output(self) -> Result<Output, std::io::Error> {
-    self.child.wait_with_output()
-  }
-}
-
-pub fn deno_cmd() -> DenoCmd {
+pub fn deno_cmd() -> TestCommandBuilder {
   let deno_dir = new_deno_dir();
   deno_cmd_with_deno_dir(&deno_dir)
 }
 
-pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
-  let exe_path = deno_exe_path();
-  assert!(exe_path.exists());
-  let mut cmd = Command::new(exe_path);
-  cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
-  DenoCmd {
-    _deno_dir: deno_dir.clone(),
-    cmd,
-  }
+pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
+  TestCommandBuilder::new(deno_dir.clone())
+    .env("DENO_DIR", deno_dir.path())
+    .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
 }
 
 pub fn run_powershell_script_file(
@@ -2502,7 +2258,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder = command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
-      command_builder = command_builder.stdin(input);
+      command_builder = command_builder.stdin_text(input);
     }
     for (key, value) in &self.envs {
       command_builder = command_builder.env(key, value);
@@ -2511,7 +2267,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder = command_builder.env_clear();
     }
     if let Some(cwd) = &self.cwd {
-      command_builder = command_builder.cwd(cwd);
+      command_builder = command_builder.current_dir(cwd);
     }
 
     command_builder.run()
