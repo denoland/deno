@@ -3,7 +3,7 @@
   "servers": [
     {
       "agent": "deno_websocket",
-      "url": "ws://localhost:6969"
+      "url": "ws://host.docker.internal:6969"
     }
   ],
   "cases": [
