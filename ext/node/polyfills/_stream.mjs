@@ -4474,6 +4474,7 @@ var require_duplexify = __commonJS({
           readable: false,
         });
       }
+
       if (typeof body === "function") {
         const { value, write, final, destroy } = fromAsyncGen(body);
         if (isIterable(value)) {
@@ -4669,8 +4670,6 @@ var require_duplexify = __commonJS({
           cb(err);
         } else if (err) {
           d.destroy(err);
-        } else if (!readable && !writable) {
-          d.destroy();
         }
       }
       d = new Duplexify({
