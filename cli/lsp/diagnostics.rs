@@ -5,7 +5,6 @@ use super::cache;
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
-use super::documents::file_like_to_file_specifier;
 use super::documents::Document;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -815,10 +814,9 @@ fn generate_lint_diagnostics(
     if snapshot.documents.is_node_file(specifier) {
       continue;
     }
-    let file_specifier = file_like_to_file_specifier(specifier);
     let (lint_options, lint_rules) = lint_rules_by_scope
       .iter()
-      .rfind(|(s, _)| file_specifier.as_str().starts_with(s.as_str()))
+      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
       .map(|(_, p)| (p.0, &p.1))
       .unwrap_or_else(|| (&default_options, &default_rules));
     let version = document.maybe_lsp_version();

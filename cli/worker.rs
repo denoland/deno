@@ -19,6 +19,7 @@ use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
+use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_lockfile::Lockfile;
@@ -209,13 +210,27 @@ impl CliMainWorker {
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
         .worker
-        .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+        .js_runtime
+        .with_event_loop(
+          coverage_collector.stop_collecting().boxed_local(),
+          PollEventLoopOptions {
+            wait_for_inspector: false,
+            ..Default::default()
+          },
+        )
         .await?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       self
         .worker
-        .with_event_loop(hmr_runner.stop().boxed_local())
+        .js_runtime
+        .with_event_loop(
+          hmr_runner.stop().boxed_local(),
+          PollEventLoopOptions {
+            wait_for_inspector: false,
+            ..Default::default()
+          },
+        )
         .await?;
     }
 
@@ -324,7 +339,14 @@ impl CliMainWorker {
         tools::coverage::CoverageCollector::new(coverage_dir, session);
       self
         .worker
-        .with_event_loop(coverage_collector.start_collecting().boxed_local())
+        .js_runtime
+        .with_event_loop(
+          coverage_collector.start_collecting().boxed_local(),
+          PollEventLoopOptions {
+            wait_for_inspector: false,
+            ..Default::default()
+          },
+        )
         .await?;
       Ok(Some(coverage_collector))
     } else {
@@ -348,7 +370,14 @@ impl CliMainWorker {
 
     self
       .worker
-      .with_event_loop(hmr_runner.start().boxed_local())
+      .js_runtime
+      .with_event_loop(
+        hmr_runner.start().boxed_local(),
+        PollEventLoopOptions {
+          wait_for_inspector: false,
+          ..Default::default()
+        },
+      )
       .await?;
 
     Ok(Some(hmr_runner))
@@ -541,7 +570,8 @@ impl CliMainWorkerFactory {
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
     // list of enabled features.
     let feature_checker = shared.feature_checker.clone();
-    let mut unstable_features = Vec::with_capacity(8);
+    let mut unstable_features =
+      Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
     for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
       if feature_checker.check(feature_name) {
         unstable_features.push(*id);
@@ -610,9 +640,13 @@ impl CliMainWorkerFactory {
       options,
     );
 
-    if self.shared.subcommand.is_test_or_jupyter() {
+    if self.shared.subcommand.needs_test() {
       worker.js_runtime.execute_script_static(
-        "40_jupyter.js",
+        "ext:cli/40_testing.js",
+        include_str!("js/40_testing.js"),
+      )?;
+      worker.js_runtime.execute_script_static(
+        "ext:cli/40_jupyter.js",
         include_str!("js/40_jupyter.js"),
       )?;
     }
@@ -735,7 +769,8 @@ fn create_web_worker_callback(
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
     // list of enabled features.
     let feature_checker = shared.feature_checker.clone();
-    let mut unstable_features = Vec::with_capacity(8);
+    let mut unstable_features =
+      Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
     for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
       if feature_checker.check(feature_name) {
         unstable_features.push(*id);

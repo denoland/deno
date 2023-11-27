@@ -22,7 +22,6 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use indexmap::IndexSet;
 use log::error;
 use serde_json::from_value;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -32,6 +31,7 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -58,7 +58,6 @@ use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
-use super::documents::file_like_to_file_specifier;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
@@ -126,7 +125,7 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
+pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
 /// Snapshot of the state used by TSC.
 #[derive(Debug)]
@@ -181,8 +180,11 @@ pub struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client) -> Self {
-    Self(Arc::new(tokio::sync::RwLock::new(Inner::new(client))))
+  pub fn new(client: Client, token: CancellationToken) -> Self {
+    Self(
+      Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
+      token,
+    )
   }
 
   /// Similar to `deno cache` on the command line, where modules will be cached
@@ -1391,14 +1393,9 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let specifier = self
+    let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let document = match self.documents.get(&specifier) {
-      Some(doc) if doc.is_open() => doc,
-      _ => return Ok(None),
-    };
-    let mut specifier = file_like_to_file_specifier(&specifier);
     // skip formatting any files ignored by the config file
     if !self
       .config
@@ -1409,13 +1406,17 @@ impl Inner {
     {
       return Ok(None);
     }
+    let document = match self.documents.get(&specifier) {
+      Some(doc) if doc.is_open() => doc,
+      _ => return Ok(None),
+    };
     // Detect vendored paths. Vendor file URLs will normalize to their remote
     // counterparts, but for formatting we want to favour the file URL.
     // TODO(nayeemrmn): Implement `Document::file_resource_path()` or similar.
     if specifier.scheme() != "file"
       && params.text_document.uri.scheme() == "file"
     {
-      specifier = Cow::Owned(params.text_document.uri.clone());
+      specifier = params.text_document.uri.clone();
     }
     let file_path = specifier_to_file_path(&specifier).map_err(|err| {
       error!("{}", err);
@@ -2961,6 +2962,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn shutdown(&self) -> LspResult<()> {
+    self.1.cancel();
     self.0.write().await.shutdown().await
   }
 

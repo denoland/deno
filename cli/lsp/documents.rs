@@ -40,7 +40,6 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -82,15 +81,8 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .collect()
 });
 
-pub const DOCUMENT_SCHEMES: [&str; 7] = [
-  "data",
-  "blob",
-  "file",
-  "http",
-  "https",
-  "untitled",
-  "deno-notebook-cell",
-];
+pub const DOCUMENT_SCHEMES: [&str; 5] =
+  ["data", "blob", "file", "http", "https"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
@@ -253,33 +245,6 @@ impl AssetOrDocument {
   }
 }
 
-pub fn is_file_like_specifier(specifier: &Url) -> bool {
-  matches!(specifier.scheme(), "untitled" | "deno-notebook-cell")
-}
-
-/// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
-/// ```rust
-/// assert_eq!(
-///   file_like_to_file_specifier(
-///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
-///   ),
-///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
-/// );
-pub fn file_like_to_file_specifier(specifier: &Url) -> Cow<'_, Url> {
-  if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
-    if let Ok(mut s) = ModuleSpecifier::parse(&format!(
-      "file://{}",
-      &specifier.as_str()
-        [url::quirks::internal_components(specifier).host_end as usize..],
-    )) {
-      s.query_pairs_mut()
-        .append_pair("scheme", specifier.scheme());
-      return Cow::Owned(s);
-    }
-  }
-  Cow::Borrowed(specifier)
-}
-
 #[derive(Debug, Default)]
 struct DocumentDependencies {
   deps: IndexMap<String, deno_graph::Dependency>,
@@ -296,32 +261,10 @@ impl DocumentDependencies {
   }
 
   pub fn from_module(module: &deno_graph::EsmModule) -> Self {
-    let mut deps = Self {
+    Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
-    };
-    if is_file_like_specifier(&module.specifier) {
-      for (_, dep) in &mut deps.deps {
-        if let Resolution::Ok(resolved) = &mut dep.maybe_code {
-          let specifier =
-            file_like_to_file_specifier(&resolved.specifier).into_owned();
-          resolved.specifier = specifier;
-        }
-        if let Resolution::Ok(resolved) = &mut dep.maybe_type {
-          let specifier =
-            file_like_to_file_specifier(&resolved.specifier).into_owned();
-          resolved.specifier = specifier;
-        }
-      }
-      if let Some(dep) = &mut deps.maybe_types_dependency {
-        if let Resolution::Ok(resolved) = &mut dep.dependency {
-          let specifier =
-            file_like_to_file_specifier(&resolved.specifier).into_owned();
-          resolved.specifier = specifier;
-        }
-      }
     }
-    deps
   }
 }
 
@@ -801,11 +744,10 @@ impl SpecifierResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Arc<dyn HttpCache> {
-    let specifier = file_like_to_file_specifier(specifier);
     if specifier.scheme() == "file" {
-      return self.cache.for_specifier(&specifier);
+      return self.cache.for_specifier(specifier);
     }
-    let scope = self.remote_specifier_scopes.lock().get(&specifier).cloned();
+    let scope = self.remote_specifier_scopes.lock().get(specifier).cloned();
     if let Some(scope) = scope {
       return self.cache.for_specifier(&scope);
     }
@@ -1449,19 +1391,18 @@ impl Documents {
         referrer: Option<&ModuleSpecifier>,
       ) {
         if !self.analyzed_specifiers.contains(dep) {
-          let dep_as_file = file_like_to_file_specifier(dep);
           let scope = self
             .scopes
             .iter()
-            .rfind(|s| dep_as_file.as_str().starts_with(s.as_str()));
+            .rfind(|s| dep.as_str().starts_with(s.as_str()));
           if let Some(scope) = scope {
             self.last_encounted_scope = Some(scope.clone());
           }
-          if dep_as_file.scheme() != "file" {
+          if dep.scheme() != "file" {
             if let Some(scope) = &self.last_encounted_scope {
               self
                 .specifier_resolver
-                .set_scope_for_remote_specifier(&dep_as_file, scope);
+                .set_scope_for_remote_specifier(dep, scope);
             }
           }
           self.analyzed_specifiers.insert(dep.clone());
@@ -1555,7 +1496,6 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
   ) -> &Arc<CliGraphResolver> {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .resolvers_by_scope
       .iter()

@@ -6,7 +6,6 @@ use super::code_lens;
 use super::config;
 use super::config::default_ts_config;
 use super::config::ConfigTree;
-use super::documents::file_like_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -3752,12 +3751,8 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
-    let mut specifier = file_like_to_file_specifier(original).to_string();
-    let media_type = if original.scheme() == "deno-notebook-cell" {
-      MediaType::TypeScript
-    } else {
-      MediaType::from_specifier(original)
-    };
+    let mut specifier = original.to_string();
+    let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {

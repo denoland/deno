@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::documents::file_like_to_file_specifier;
 use super::logging::lsp_log;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
@@ -1193,7 +1192,6 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<ConfigData>> {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .scopes
       .lock()
@@ -1210,7 +1208,6 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .scopes
       .lock()
@@ -1223,7 +1220,6 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<ConfigFile>> {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .scopes
       .lock()
@@ -1236,7 +1232,6 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> bool {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .scopes
       .lock()
@@ -1268,7 +1263,6 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Arc<FmtOptions> {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .scopes
       .lock()
@@ -1295,7 +1289,6 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Arc<TsConfig> {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .scopes
       .lock()
@@ -1320,7 +1313,6 @@ impl ConfigTree {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<ImportMap>> {
-    let specifier = file_like_to_file_specifier(specifier);
     self
       .scopes
       .lock()
@@ -1517,9 +1509,6 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> Option<&LanguageWorkspaceSettings> {
     let workspace_settings = self.workspace_settings_for_specifier(specifier);
-    if specifier.scheme() == "deno-notebook-cell" {
-      return Some(&workspace_settings.typescript);
-    }
     match MediaType::from_specifier(specifier) {
       MediaType::JavaScript
       | MediaType::Jsx

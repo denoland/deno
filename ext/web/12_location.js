@@ -180,19 +180,20 @@ class Location {
         enumerable: true,
       },
       [SymbolFor("Deno.privateCustomInspect")]: {
-        value: function (inspect) {
-          const object = {
-            hash: this.hash,
-            host: this.host,
-            hostname: this.hostname,
-            href: this.href,
-            origin: this.origin,
-            pathname: this.pathname,
-            port: this.port,
-            protocol: this.protocol,
-            search: this.search,
-          };
-          return `${this.constructor.name} ${inspect(object)}`;
+        value: function (inspect, inspectOptions) {
+          return `${this.constructor.name} ${
+            inspect({
+              hash: this.hash,
+              host: this.host,
+              hostname: this.hostname,
+              href: this.href,
+              origin: this.origin,
+              pathname: this.pathname,
+              port: this.port,
+              protocol: this.protocol,
+              search: this.search,
+            }, inspectOptions)
+          }`;
         },
       },
     });
@@ -337,19 +338,20 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     configurable: true,
   },
   [SymbolFor("Deno.privateCustomInspect")]: {
-    value: function (inspect) {
-      const object = {
-        hash: this.hash,
-        host: this.host,
-        hostname: this.hostname,
-        href: this.href,
-        origin: this.origin,
-        pathname: this.pathname,
-        port: this.port,
-        protocol: this.protocol,
-        search: this.search,
-      };
-      return `${this.constructor.name} ${inspect(object)}`;
+    value: function (inspect, inspectOptions) {
+      return `${this.constructor.name} ${
+        inspect({
+          hash: this.hash,
+          host: this.host,
+          hostname: this.hostname,
+          href: this.href,
+          origin: this.origin,
+          pathname: this.pathname,
+          port: this.port,
+          protocol: this.protocol,
+          search: this.search,
+        }, inspectOptions)
+      }`;
     },
   },
 });

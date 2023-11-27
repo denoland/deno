@@ -11196,3 +11196,63 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
 
   client.shutdown();
 }
+
+#[test]
+fn lsp_jupyter_byonm_diagnostics() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("package.json").write_json(&json!({
+    "dependencies": {
+      "@denotest/esm-basic": "*"
+    }
+  }));
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["byonm"]
+  }));
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let notebook_specifier = temp_dir.join("notebook.ipynb").uri_file();
+  let notebook_specifier = format!(
+    "{}#abc",
+    notebook_specifier
+      .to_string()
+      .replace("file://", "deno-notebook-cell:")
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": notebook_specifier,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { getValue, nonExistent } from '@denotest/esm-basic';\n console.log(getValue, nonExistent);",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": notebook_specifier,
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 19,
+              },
+              "end": {
+                "line": 0,
+                "character": 30,
+              },
+            },
+            "severity": 1,
+            "code": 2305,
+            "source": "deno-ts",
+            "message": "Module '\"@denotest/esm-basic\"' has no exported member 'nonExistent'.",
+          },
+        ],
+        "version": 1,
+      },
+    ])
+  );
+  client.shutdown();
+}
