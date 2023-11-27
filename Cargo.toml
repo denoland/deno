@@ -49,10 +49,10 @@ test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
-denokv_proto = "0.2.1"
+denokv_proto = "0.4.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.2.1" }
-denokv_remote = "0.2.3"
+denokv_sqlite = { default-features = false, version = "0.4.0" }
+denokv_remote = "0.4.0"
 
 # exts
 deno_broadcast_channel = { version = "0.118.0", path = "./ext/broadcast_channel" }
