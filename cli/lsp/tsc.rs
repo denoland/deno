@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::CodeActionData;
+use super::cache::LspCache;
 use super::code_lens;
 use super::config;
+use super::config::default_ts_config;
+use super::config::ConfigTree;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -21,9 +24,6 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::FmtOptionsConfig;
-use crate::args::TsConfig;
-use crate::cache::HttpCache;
-use crate::lsp::cache::CacheMetadata;
 use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
@@ -59,6 +59,7 @@ use regex::Regex;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
 use std::cmp;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -210,15 +211,22 @@ fn normalize_diagnostic(
 pub struct TsServer {
   sender: mpsc::UnboundedSender<Request>,
   specifier_map: Arc<TscSpecifierMap>,
+  config_tree: Arc<ConfigTree>,
 }
 
 impl TsServer {
-  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
+  pub fn new(
+    performance: Arc<Performance>,
+    cache: Arc<LspCache>,
+    config_tree: Arc<ConfigTree>,
+  ) -> Self {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
+    let config_tree_ = config_tree.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
+      let mut ts_runtime =
+        js_runtime(performance, cache, specifier_map_, config_tree_);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -240,6 +248,7 @@ impl TsServer {
     Self {
       sender: tx,
       specifier_map,
+      config_tree,
     }
   }
 
@@ -249,21 +258,37 @@ impl TsServer {
     specifiers: Vec<ModuleSpecifier>,
     token: CancellationToken,
   ) -> Result<HashMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
-    let req = TscRequest {
-      method: "$getDiagnostics",
-      args: json!([specifiers
-        .into_iter()
-        .map(|s| self.specifier_map.denormalize(&s))
-        .collect::<Vec<String>>(),]),
-    };
-    let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
-    let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
-    for (mut specifier, mut diagnostics) in raw_diagnostics {
-      specifier = self.specifier_map.normalize(&specifier)?.to_string();
-      for diagnostic in &mut diagnostics {
-        normalize_diagnostic(diagnostic, &self.specifier_map)?;
+    let mut scope_partitions = BTreeMap::new();
+    for specifier in specifiers {
+      let scope = self.config_tree.scope_for_specifier(&specifier);
+      let partition: &mut Vec<_> = scope_partitions.entry(scope).or_default();
+      partition.push(specifier);
+    }
+    let mut diagnostics_map = HashMap::new();
+    for (scope, specifiers) in scope_partitions {
+      let req = TscRequest {
+        method: "$getDiagnostics",
+        args: json!([specifiers
+          .into_iter()
+          .map(|s| self.specifier_map.denormalize(&s))
+          .collect::<Vec<String>>(),]),
+        scope: scope.clone(),
+      };
+      let diagnostics_map_ = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot.clone(), req, token.clone()).await?;
+      for (specifier, mut diagnostics) in diagnostics_map_ {
+        let specifier = self.specifier_map.normalize(&specifier)?;
+        if diagnostics_map.contains_key(specifier.as_str()) {
+          continue;
+        }
+        if self.config_tree.scope_for_specifier(&specifier) != scope {
+          continue;
+        }
+        let specifier = specifier.to_string();
+        for diagnostic in &mut diagnostics {
+          normalize_diagnostic(diagnostic, &self.specifier_map)?;
+        }
+        diagnostics_map.insert(specifier, diagnostics);
       }
-      diagnostics_map.insert(specifier, diagnostics);
     }
     Ok(diagnostics_map)
   }
@@ -278,6 +303,7 @@ impl TsServer {
       method: "findReferences",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Option<Vec<ReferencedSymbol>>>(snapshot, req)
@@ -303,18 +329,7 @@ impl TsServer {
       method: "getNavigationTree",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6235
       args: json!([self.specifier_map.denormalize(&specifier)]),
-    };
-    self.request(snapshot, req).await
-  }
-
-  pub async fn configure(
-    &self,
-    snapshot: Arc<StateSnapshot>,
-    tsconfig: TsConfig,
-  ) -> Result<bool, AnyError> {
-    let req = TscRequest {
-      method: "$configure",
-      args: json!([tsconfig]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await
   }
@@ -326,6 +341,7 @@ impl TsServer {
     let req = TscRequest {
       method: "$getSupportedCodeFixes",
       args: json!([]),
+      scope: None,
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get fixable diagnostics: {}", err);
@@ -343,6 +359,7 @@ impl TsServer {
       method: "getQuickInfoAtPosition",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6214
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get quick info: {}", err);
@@ -370,6 +387,7 @@ impl TsServer {
         format_code_settings,
         preferences,
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     let result = self
       .request::<Vec<CodeFixAction>>(snapshot, req)
@@ -411,6 +429,7 @@ impl TsServer {
         json!(null),
         only,
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -437,6 +456,9 @@ impl TsServer {
         format_code_settings,
         preferences,
       ]),
+      scope: self
+        .config_tree
+        .scope_for_specifier(&code_action_data.specifier),
     };
     self
       .request::<CombinedCodeActions>(snapshot, req)
@@ -473,6 +495,7 @@ impl TsServer {
         action_name,
         preferences,
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<RefactorEditInfo>(snapshot, req)
@@ -504,6 +527,7 @@ impl TsServer {
         format_code_settings,
         user_preferences,
       ]),
+      scope: self.config_tree.scope_for_specifier(&old_specifier),
     };
     self
       .request::<Vec<FileTextChanges>>(snapshot, req)
@@ -538,6 +562,7 @@ impl TsServer {
           .map(|s| self.specifier_map.denormalize(&s))
           .collect::<Vec<_>>(),
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get document highlights from TypeScript: {}", err);
@@ -555,6 +580,7 @@ impl TsServer {
       method: "getDefinitionAndBoundSpan",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6226
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Option<DefinitionInfoAndBoundSpan>>(snapshot, req)
@@ -581,6 +607,7 @@ impl TsServer {
       method: "getTypeDefinitionAtPosition",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6227
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Option<Vec<DefinitionInfo>>>(snapshot, req)
@@ -614,6 +641,7 @@ impl TsServer {
         options,
         format_code_settings,
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     match self.request(snapshot, req).await {
       Ok(maybe_info) => maybe_info,
@@ -641,6 +669,7 @@ impl TsServer {
         args.preferences,
         args.data,
       ]),
+      scope: self.config_tree.scope_for_specifier(&args.specifier),
     };
     self
       .request::<Option<CompletionEntryDetails>>(snapshot, req)
@@ -663,6 +692,7 @@ impl TsServer {
       method: "getImplementationAtPosition",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6228
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Option<Vec<ImplementationLocation>>>(snapshot, req)
@@ -688,6 +718,7 @@ impl TsServer {
       method: "getOutliningSpans",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6240
       args: json!([self.specifier_map.denormalize(&specifier)]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -705,6 +736,7 @@ impl TsServer {
       method: "provideCallHierarchyIncomingCalls",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6237
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Vec<CallHierarchyIncomingCall>>(snapshot, req)
@@ -731,6 +763,7 @@ impl TsServer {
       method: "provideCallHierarchyOutgoingCalls",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6238
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Vec<CallHierarchyOutgoingCall>>(snapshot, req)
@@ -757,6 +790,7 @@ impl TsServer {
       method: "prepareCallHierarchy",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6236
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Option<OneOrMany<CallHierarchyItem>>>(snapshot, req)
@@ -797,6 +831,7 @@ impl TsServer {
         false,
         false,
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self
       .request::<Option<Vec<RenameLocation>>>(snapshot, req)
@@ -823,6 +858,7 @@ impl TsServer {
       method: "getSmartSelectionRange",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6224
       args: json!([self.specifier_map.denormalize(&specifier), position]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -847,6 +883,7 @@ impl TsServer {
         },
         "2020",
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -869,6 +906,7 @@ impl TsServer {
         position,
         options,
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver: {}", err);
@@ -884,14 +922,10 @@ impl TsServer {
     let req = TscRequest {
       method: "getNavigateToItems",
       // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6233
-      args: json!([
-        args.search,
-        args.max_result_count,
-        args.file.map(|f| match resolve_url(&f) {
-          Ok(s) => self.specifier_map.denormalize(&s),
-          Err(_) => f,
-        }),
-      ]),
+      args: json!([args.search, args.max_result_count, &args.specifier,]),
+      scope: args
+        .specifier
+        .and_then(|s| self.config_tree.scope_for_specifier(&s)),
     };
     self
       .request::<Vec<NavigateToItem>>(snapshot, req)
@@ -923,6 +957,7 @@ impl TsServer {
         text_span,
         user_preferences,
       ]),
+      scope: self.config_tree.scope_for_specifier(&specifier),
     };
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get inlay hints: {}", err);
@@ -934,6 +969,7 @@ impl TsServer {
     let req = TscRequest {
       method: "$restart",
       args: json!([]),
+      scope: None,
     };
     self.request::<bool>(snapshot, req).await.unwrap();
   }
@@ -1114,6 +1150,7 @@ async fn get_isolate_assets(
   let req = TscRequest {
     method: "$getAssets",
     args: json!([]),
+    scope: None,
   };
   let res: Value = ts_server.request(state_snapshot, req).await.unwrap();
   let response_assets = match res {
@@ -3396,7 +3433,7 @@ impl CompletionEntry {
         {
           if let Ok(import_specifier) = resolve_url(&import_data.file_name) {
             if let Some(new_module_specifier) = language_server
-              .get_ts_response_import_mapper()
+              .get_ts_response_import_mapper(specifier)
               .check_specifier(&import_specifier, specifier)
               .or_else(|| relative_specifier(specifier, &import_specifier))
             {
@@ -3759,6 +3796,8 @@ struct State {
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
+  config_tree: Arc<ConfigTree>,
+  current_scope: Option<ModuleSpecifier>,
   token: CancellationToken,
 }
 
@@ -3766,6 +3805,7 @@ impl State {
   fn new(
     state_snapshot: Arc<StateSnapshot>,
     specifier_map: Arc<TscSpecifierMap>,
+    config_tree: Arc<ConfigTree>,
     performance: Arc<Performance>,
   ) -> Self {
     Self {
@@ -3774,6 +3814,8 @@ impl State {
       response: None,
       state_snapshot,
       specifier_map,
+      config_tree,
+      current_scope: None,
       token: Default::default(),
     }
   }
@@ -3826,12 +3868,7 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   match ModuleSpecifier::parse(&path) {
-    Ok(specifier) => state
-      .state_snapshot
-      .npm
-      .as_ref()
-      .map(|n| n.npm_resolver.in_npm_package(&specifier))
-      .unwrap_or(false),
+    Ok(specifier) => state.state_snapshot.documents.is_node_file(&specifier),
     Err(_) => false,
   }
 }
@@ -3883,7 +3920,7 @@ fn op_resolve(
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
-        state.state_snapshot.npm.as_ref(),
+        state.current_scope.as_ref(),
       );
       Ok(
         resolved
@@ -3930,14 +3967,16 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
     let specifier = "asset:///node_types.d.ts";
-    result.push(specifier.to_string());
+    result.push(resolve_url(specifier).unwrap());
     seen.insert(specifier);
   }
 
   // inject these next because they're global
-  for import in documents.module_graph_imports() {
-    if seen.insert(import.as_str()) {
-      result.push(import.to_string());
+  if let Some(scope) = &state.current_scope {
+    for import in documents.module_graph_imports_for_scope(scope) {
+      if seen.insert(import.as_str()) {
+        result.push(import.clone());
+      }
     }
   }
 
@@ -3954,7 +3993,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
         if let Some(specifier) = documents.resolve_redirected(specifier) {
           // only include dependencies we know to exist otherwise typescript will error
           if documents.exists(&specifier) {
-            result.push(specifier.to_string());
+            result.push(specifier);
           }
         }
       }
@@ -3963,10 +4002,15 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
 
   result
     .into_iter()
-    .map(|s| match ModuleSpecifier::parse(&s) {
-      Ok(s) => state.specifier_map.denormalize(&s),
-      Err(_) => s,
+    .filter(|s| {
+      if let Some(current_scope) = &state.current_scope {
+        if let Some(scope) = state.config_tree.scope_for_specifier(s) {
+          return &scope == current_scope;
+        }
+      }
+      true
     })
+    .map(|s| state.specifier_map.denormalize(&s))
     .collect()
 }
 
@@ -3989,16 +4033,33 @@ fn op_script_version(
   Ok(state.script_version(&specifier))
 }
 
+#[op2]
+#[serde]
+fn op_ts_config(state: &mut OpState) -> serde_json::Value {
+  let state = state.borrow_mut::<State>();
+  if let Some(scope) = &state.current_scope {
+    json!(state.config_tree.ts_config_for_specifier(scope))
+  } else {
+    json!(default_ts_config())
+  }
+}
+
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
 fn js_runtime(
   performance: Arc<Performance>,
-  cache: Arc<dyn HttpCache>,
+  cache: Arc<LspCache>,
   specifier_map: Arc<TscSpecifierMap>,
+  config_tree: Arc<ConfigTree>,
 ) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
+    extensions: vec![deno_tsc::init_ops(
+      performance,
+      cache,
+      specifier_map,
+      config_tree,
+    )],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
@@ -4013,23 +4074,24 @@ deno_core::extension!(deno_tsc,
     op_respond,
     op_script_names,
     op_script_version,
+    op_ts_config,
   ],
   options = {
     performance: Arc<Performance>,
-    cache: Arc<dyn HttpCache>,
+    cache: Arc<LspCache>,
     specifier_map: Arc<TscSpecifierMap>,
+    config_tree: Arc<ConfigTree>,
   },
   state = |state, options| {
     state.put(State::new(
       Arc::new(StateSnapshot {
         assets: Default::default(),
-        cache_metadata: CacheMetadata::new(options.cache.clone()),
+        cache: options.cache.clone(),
         config: Default::default(),
-        documents: Documents::new(options.cache.clone()),
-        maybe_import_map: None,
-        npm: None,
+        documents: Documents::new(options.cache),
       }),
       options.specifier_map,
+      options.config_tree,
       options.performance,
     ));
   },
@@ -4190,9 +4252,10 @@ pub struct UserPreferences {
 impl UserPreferences {
   pub fn from_config_for_specifier(
     config: &config::Config,
-    fmt_config: &FmtOptionsConfig,
     specifier: &ModuleSpecifier,
   ) -> Self {
+    let fmt_options = config.tree.fmt_options_for_specifier(specifier);
+    let fmt_config = &fmt_options.options;
     let base_preferences = Self {
       allow_incomplete_completions: Some(true),
       allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
@@ -4296,7 +4359,8 @@ impl UserPreferences {
         language_settings.preferences.use_aliases_for_renames,
       ),
       // Only use workspace settings for quote style if there's no `deno.json`.
-      quote_preference: if config.has_config_file() {
+      quote_preference: if config.tree.has_config_file_for_specifier(specifier)
+      {
         base_preferences.quote_preference
       } else {
         Some(language_settings.preferences.quote_style)
@@ -4378,13 +4442,14 @@ impl From<&CompletionItemData> for GetCompletionDetailsArgs {
 pub struct GetNavigateToItemsArgs {
   pub search: String,
   pub max_result_count: Option<u32>,
-  pub file: Option<String>,
+  pub specifier: Option<ModuleSpecifier>,
 }
 
 #[derive(Clone, Debug)]
 struct TscRequest {
   method: &'static str,
   args: Value,
+  scope: Option<ModuleSpecifier>,
 }
 
 /// Send a request into a runtime and return the JSON value of the response.
@@ -4398,6 +4463,7 @@ fn request(
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
+    state.current_scope = request.scope.clone();
     state.state_snapshot = state_snapshot;
     state.token = token;
     state.last_id += 1;
@@ -4419,7 +4485,7 @@ fn request(
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
   let state = op_state.borrow_mut::<State>();
-
+  state.current_scope = None;
   performance.measure(mark);
   if let Some(response) = state.response.clone() {
     state.response = None;
@@ -4437,9 +4503,7 @@ mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
-  use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HeadersMap;
-  use crate::lsp::cache::CacheMetadata;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -4452,10 +4516,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      RealDenoCacheEnv,
-    ));
+    let cache = Arc::new(LspCache::new(location, &Default::default()));
     let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -4470,10 +4531,8 @@ mod tests {
     StateSnapshot {
       documents,
       assets: Default::default(),
-      cache_metadata: CacheMetadata::new(cache),
+      cache,
       config: Default::default(),
-      maybe_import_map: None,
-      npm: None,
     }
   }
 
@@ -4483,17 +4542,24 @@ mod tests {
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (TsServer, Arc<StateSnapshot>, Arc<GlobalHttpCache>) {
     let location = temp_dir.path().join("deps").to_path_buf();
-    let cache =
-      Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv));
+    let cache = Arc::new(LspCache::new(&location, &Default::default()));
     let snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let performance = Arc::new(Performance::default());
-    let ts_server = TsServer::new(performance, cache.clone());
-    let ts_config = TsConfig::new(config);
-    assert!(ts_server
-      .configure(snapshot.clone(), ts_config,)
-      .await
-      .unwrap());
-    (ts_server, snapshot, cache)
+    let config_tree = Arc::new(ConfigTree::default());
+    config_tree
+      .inject_config_file(
+        deno_config::ConfigFile::new(
+          &json!({
+            "compilerOptions": config,
+          })
+          .to_string(),
+          resolve_url("file:///deno.json").unwrap(),
+        )
+        .unwrap(),
+      )
+      .await;
+    let ts_server = TsServer::new(performance, cache.clone(), config_tree);
+    (ts_server, snapshot, cache.global().clone())
   }
 
   #[test]
@@ -4512,43 +4578,6 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_project_configure() {
-    let temp_dir = TempDir::new();
-    setup(
-      &temp_dir,
-      json!({
-        "target": "esnext",
-        "module": "esnext",
-        "noEmit": true,
-      }),
-      &[],
-    )
-    .await;
-  }
-
-  #[tokio::test]
-  async fn test_project_reconfigure() {
-    let temp_dir = TempDir::new();
-    let (ts_server, snapshot, _) = setup(
-      &temp_dir,
-      json!({
-        "target": "esnext",
-        "module": "esnext",
-        "noEmit": true,
-      }),
-      &[],
-    )
-    .await;
-    let ts_config = TsConfig::new(json!({
-      "target": "esnext",
-      "module": "esnext",
-      "noEmit": true,
-      "lib": ["deno.ns", "deno.worker"]
-    }));
-    assert!(ts_server.configure(snapshot, ts_config).await.unwrap());
-  }
-
-  #[tokio::test]
   async fn test_get_diagnostics() {
     let temp_dir = TempDir::new();
     let (ts_server, snapshot, _) = setup(
@@ -4557,6 +4586,7 @@ mod tests {
         "target": "esnext",
         "module": "esnext",
         "noEmit": true,
+        "lib": [],
       }),
       &[(
         "file:///a.ts",
@@ -5302,10 +5332,9 @@ mod tests {
       .variable_types
       .suppress_when_type_matches_name = true;
     let mut config = config::Config::new();
-    config.set_workspace_settings(settings, None);
+    config.set_workspace_settings(settings, vec![]);
     let user_preferences = UserPreferences::from_config_for_specifier(
       &config,
-      &Default::default(),
       &ModuleSpecifier::parse("file:///foo.ts").unwrap(),
     );
     assert_eq!(

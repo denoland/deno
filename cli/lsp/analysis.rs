@@ -32,6 +32,7 @@ use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -162,7 +163,7 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 /// Rewrites imports in quick fixes and code changes to be Deno specific.
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
-  maybe_import_map: Option<&'a ImportMap>,
+  maybe_import_map: Option<Arc<ImportMap>>,
   node_resolver: Option<&'a NodeResolver>,
   npm_resolver: Option<&'a dyn CliNpmResolver>,
 }
@@ -170,7 +171,7 @@ pub struct TsResponseImportMapper<'a> {
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
-    maybe_import_map: Option<&'a ImportMap>,
+    maybe_import_map: Option<Arc<ImportMap>>,
     node_resolver: Option<&'a NodeResolver>,
     npm_resolver: Option<&'a dyn CliNpmResolver>,
   ) -> Self {
@@ -210,7 +211,7 @@ impl<'a> TsResponseImportMapper<'a> {
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
             let sub_path = self.resolve_package_path(specifier);
-            if let Some(import_map) = self.maybe_import_map {
+            if let Some(import_map) = &self.maybe_import_map {
               for pkg_req in &pkg_reqs {
                 let paths = vec![
                   concat_npm_specifier("npm:", pkg_req, sub_path.as_deref()),
@@ -241,7 +242,7 @@ impl<'a> TsResponseImportMapper<'a> {
     }
 
     // check if the import map has this specifier
-    if let Some(import_map) = self.maybe_import_map {
+    if let Some(import_map) = &self.maybe_import_map {
       if let Some(result) = import_map.lookup(specifier, referrer) {
         return Some(result);
       }
@@ -760,7 +761,7 @@ impl CodeActionCollection {
     let action = fix_ts_import_action(
       specifier,
       action,
-      &language_server.get_ts_response_import_mapper(),
+      &language_server.get_ts_response_import_mapper(specifier),
     )?;
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
