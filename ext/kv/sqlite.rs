@@ -18,7 +18,7 @@ use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
 use deno_node::PathClean;
-use denokv_sqlite::SqliteBackendError;
+pub use denokv_sqlite::SqliteBackendError;
 use rand::RngCore;
 use rand::SeedableRng;
 use rusqlite::OpenFlags;
