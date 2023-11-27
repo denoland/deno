@@ -7,6 +7,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8ClampedArray,
 } = primordials;
@@ -53,7 +54,7 @@ class ImageData {
         prefix,
         "Argument 2",
       );
-      settings = arg3;
+      const dataLength = TypedArrayPrototypeGetLength(data);
 
       if (webidl.type(arg2) !== "Undefined") {
         sourceHeight = webidl.converters["unsigned long"](
@@ -77,14 +78,7 @@ class ImageData {
         );
       }
 
-      if (data.length % 4 !== 0) {
-        throw new DOMException(
-          "Failed to construct 'ImageData': The input data length is not a multiple of 4.",
-          "InvalidStateError",
-        );
-      }
-
-      if (data.length / 4 % sourceWidth !== 0) {
+      if (dataLength / 4 % sourceWidth !== 0) {
         throw new DOMException(
           "Failed to construct 'ImageData': The input data length is not a multiple of (4 * width).",
           "IndexSizeError",
@@ -93,7 +87,7 @@ class ImageData {
 
       if (
         webidl.type(sourceHeight) !== "Undefined" &&
-        (sourceWidth * sourceHeight * 4 !== data.length)
+        (sourceWidth * sourceHeight * 4 !== dataLength)
       ) {
         throw new DOMException(
           "Failed to construct 'ImageData': The input data length is not equal to (4 * width * height).",
