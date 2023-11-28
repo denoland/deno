@@ -16,6 +16,7 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
+use crate::graph_util::js_to_ts_specifier;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -687,17 +688,26 @@ fn recurse_dependents(
   }
 }
 
+struct SpecifierResolverOptions {
+  unstable_loose_imports: bool,
+}
+
 #[derive(Debug)]
 struct SpecifierResolver {
   cache: Arc<dyn HttpCache>,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
+  unstable_loose_imports: bool,
 }
 
 impl SpecifierResolver {
-  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
+  pub fn new(
+    cache: Arc<dyn HttpCache>,
+    options: SpecifierResolverOptions,
+  ) -> Self {
     Self {
       cache,
       redirects: Mutex::new(HashMap::new()),
+      unstable_loose_imports: options.unstable_loose_imports,
     }
   }
 
@@ -710,17 +720,34 @@ impl SpecifierResolver {
       return None;
     }
 
-    if scheme == "http" || scheme == "https" {
-      let mut redirects = self.redirects.lock();
-      if let Some(specifier) = redirects.get(specifier) {
-        Some(specifier.clone())
-      } else {
-        let redirect = self.resolve_remote(specifier, 10)?;
-        redirects.insert(specifier.clone(), redirect.clone());
-        Some(redirect)
+    match scheme {
+      "http" | "https" => {
+        let mut redirects = self.redirects.lock();
+        if let Some(specifier) = redirects.get(specifier) {
+          Some(specifier.clone())
+        } else {
+          let redirect = self.resolve_remote(specifier, 10)?;
+          redirects.insert(specifier.clone(), redirect.clone());
+          Some(redirect)
+        }
       }
-    } else {
-      Some(specifier.clone())
+      "file" => {
+        if let Some(ts_specifier) = js_to_ts_specifier(specifier) {
+          if let Ok(specifier_path) = specifier_to_file_path(specifier) {
+            if specifier_path.exists() {
+              return Some(specifier.clone());
+            }
+            if let Ok(ts_specifier_path) = specifier_to_file_path(&ts_specifier)
+            {
+              if ts_specifier_path.exists() {
+                return Some(ts_specifier);
+              }
+            }
+          }
+        }
+        Some(specifier.clone())
+      }
+      _ => Some(specifier.clone()),
     }
   }
 
@@ -1685,7 +1712,16 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   ) -> deno_graph::source::LoadFuture {
     match self.load_from_docs(specifier) {
       Some(fut) => fut,
-      None => self.inner_loader.load(specifier, is_dynamic, cache_setting),
+      None => {
+        if specifier.scheme() == "file" {
+          if let Some(ts_specifier) = js_to_ts_specifier(specifier) {
+            if let Some(fut) = self.load_from_docs(&ts_specifier) {
+              return fut;
+            }
+          }
+        }
+        self.inner_loader.load(specifier, is_dynamic, cache_setting)
+      }
     }
   }
 

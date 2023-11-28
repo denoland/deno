@@ -1080,7 +1080,7 @@ async fn create_npm_resolver(
   let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
     || maybe_config_file
       .as_ref()
-      .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+      .map(|c| c.has_unstable("byonm"))
       .unwrap_or(false);
   create_cli_npm_resolver_for_lsp(if is_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {

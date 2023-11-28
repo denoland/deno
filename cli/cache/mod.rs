@@ -4,6 +4,7 @@ use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
+use crate::graph_util::js_to_ts_specifier;
 use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file;
 
@@ -98,6 +99,11 @@ pub type LocalLspHttpCache =
 pub use deno_cache_dir::CachedUrlMetadata;
 pub use deno_cache_dir::HttpCache;
 
+pub struct FetchCacherOptions {
+  pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  pub unstable_loose_imports: bool,
+}
+
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
@@ -109,27 +115,29 @@ pub struct FetchCacher {
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
+  unstable_loose_imports: bool,
 }
 
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
     file_fetcher: Arc<FileFetcher>,
-    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
     permissions: PermissionsContainer,
+    options: FetchCacherOptions,
   ) -> Self {
     Self {
       emit_cache,
       file_fetcher,
-      file_header_overrides,
+      file_header_overrides: options.file_header_overrides,
       global_http_cache,
       npm_resolver,
       module_info_cache,
       permissions,
       cache_info_enabled: false,
+      unstable_loose_imports: options.unstable_loose_imports,
     }
   }
 
@@ -218,6 +226,89 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
+    fn do_load(
+      file_fetcher: Arc<FileFetcher>,
+      file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+      permissions: PermissionsContainer,
+      specifier: ModuleSpecifier,
+      cache_setting: deno_graph::source::CacheSetting,
+      unstable_loose_imports: bool,
+    ) -> LoadFuture {
+      async move {
+        let maybe_cache_setting = match cache_setting {
+          LoaderCacheSetting::Use => None,
+          LoaderCacheSetting::Reload => {
+            if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
+              return Err(deno_core::anyhow::anyhow!(
+                "Failed to resolve version constraint. Try running again without --cached-only"
+              ));
+            }
+            Some(CacheSetting::ReloadAll)
+          }
+          LoaderCacheSetting::Only => Some(CacheSetting::Only),
+        };
+        let result = file_fetcher
+          .fetch_with_options(FetchOptions {
+            specifier: &specifier,
+            permissions: permissions.clone(),
+            maybe_accept: None,
+            maybe_cache_setting: maybe_cache_setting.as_ref(),
+          })
+          .await
+          .map(|file| {
+            let maybe_headers =
+              match (file.maybe_headers, file_header_overrides.get(&specifier)) {
+                (Some(headers), Some(overrides)) => {
+                  Some(headers.into_iter().chain(overrides.clone()).collect())
+                }
+                (Some(headers), None) => Some(headers),
+                (None, Some(overrides)) => Some(overrides.clone()),
+                (None, None) => None,
+              };
+            Ok(Some(LoadResponse::Module {
+              specifier: file.specifier,
+              maybe_headers,
+              content: file.source,
+            }))
+          })
+          .unwrap_or_else(|err| {
+            if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+              if io_err.kind() == std::io::ErrorKind::NotFound {
+                return Ok(None);
+              } else {
+                return Err(err);
+              }
+            }
+            let error_class_name = get_error_class_name(&err);
+            match error_class_name {
+              "NotFound" => Ok(None),
+              "NotCached" if cache_setting == LoaderCacheSetting::Only => {
+                Ok(None)
+              }
+              _ => Err(err),
+            }
+          });
+
+        if unstable_loose_imports && matches!(result, Ok(None)) && specifier.scheme() == "file" {
+          if let Some(ts_specifier) = js_to_ts_specifier(&specifier) {
+            let result = do_load(
+              file_fetcher,
+              file_header_overrides,
+              permissions,
+              ts_specifier,
+              cache_setting,
+              unstable_loose_imports,
+            ).await;
+            if let Ok(Some(response)) = result {
+              return Ok(Some(response));
+            }
+          }
+        }
+
+        result
+      }.boxed_local()
+    }
+
     if specifier.path().contains("/node_modules/") {
       // The specifier might be in a completely different symlinked tree than
       // what the node_modules url is in (ex. `/my-project-1/node_modules`
@@ -238,60 +329,14 @@ impl Loader for FetchCacher {
     let permissions = self.permissions.clone();
     let specifier = specifier.clone();
 
-    async move {
-      let maybe_cache_setting = match cache_setting {
-        LoaderCacheSetting::Use => None,
-        LoaderCacheSetting::Reload => {
-          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(deno_core::anyhow::anyhow!(
-              "Failed to resolve version constraint. Try running again without --cached-only"
-            ));
-          }
-          Some(CacheSetting::ReloadAll)
-        }
-        LoaderCacheSetting::Only => Some(CacheSetting::Only),
-      };
-      file_fetcher
-        .fetch_with_options(FetchOptions {
-          specifier: &specifier,
-          permissions,
-          maybe_accept: None,
-          maybe_cache_setting: maybe_cache_setting.as_ref(),
-        })
-        .await
-        .map(|file| {
-          let maybe_headers =
-            match (file.maybe_headers, file_header_overrides.get(&specifier)) {
-              (Some(headers), Some(overrides)) => {
-                Some(headers.into_iter().chain(overrides.clone()).collect())
-              }
-              (Some(headers), None) => Some(headers),
-              (None, Some(overrides)) => Some(overrides.clone()),
-              (None, None) => None,
-            };
-          Ok(Some(LoadResponse::Module {
-            specifier: file.specifier,
-            maybe_headers,
-            content: file.source,
-          }))
-        })
-        .unwrap_or_else(|err| {
-          if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
-            if io_err.kind() == std::io::ErrorKind::NotFound {
-              return Ok(None);
-            } else {
-              return Err(err);
-            }
-          }
-          let error_class_name = get_error_class_name(&err);
-          match error_class_name {
-            "NotFound" => Ok(None),
-            "NotCached" if cache_setting == LoaderCacheSetting::Only => Ok(None),
-            _ => Err(err),
-          }
-        })
-    }
-    .boxed()
+    do_load(
+      file_fetcher,
+      file_header_overrides,
+      permissions,
+      specifier,
+      cache_setting,
+      self.unstable_loose_imports,
+    )
   }
 
   fn cache_module_info(
