@@ -130,17 +130,4 @@ export function getOwnNonIndexProperties(
   return result;
 }
 
-export function previewEntries(
-  iter: Iterable<unknown>,
-  isKeyValue?: boolean,
-): Array<unknown | boolean> {
-  if (isKeyValue) {
-    const arr = [...iter];
-    if (Array.isArray(arr[0]) && arr[0].length === 2) {
-      return [([] as unknown[]).concat(...arr), true];
-    }
-    return [arr, false];
-  } else {
-    return [...iter];
-  }
-}
+export { previewEntries } from "ext:deno_console/01_console.js";

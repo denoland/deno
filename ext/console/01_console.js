@@ -136,7 +136,19 @@ const {
   WeakSetPrototypeHas,
   isNaN,
 } = primordials;
-import { previewEntries } from "ext:deno_node/internal_binding/util.ts";
+
+// supposed to be in node/internal_binding/util.ts
+export function previewEntries(iter, isKeyValue) {
+  if (isKeyValue) {
+    const arr = [...iter];
+    if (Array.isArray(arr[0]) && arr[0].length === 2) {
+      return [[].concat(...arr), true];
+    }
+    return [arr, false];
+  } else {
+    return [...iter];
+  }
+}
 
 let noColor = () => false;
 
