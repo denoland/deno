@@ -1,5 +1,5 @@
-import { versions, arch } from "ext:deno_node/_process/process.ts";
-import { cpus, networkInterfaces, hostname } from "node:os";
+import { arch, versions } from "ext:deno_node/_process/process.ts";
+import { cpus, hostname, networkInterfaces } from "node:os";
 
 function writeReport(filename: string, err: Error) {
   return "";
@@ -8,8 +8,8 @@ function writeReport(filename: string, err: Error) {
 const todoUnimplemented = {
   get: () => {
     throw new Error("Unimplemented");
-  }
-}
+  },
+};
 
 function getReport(err: Error) {
   const dumpEventTime = new Date();
