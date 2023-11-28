@@ -3,6 +3,6 @@ contact_links:
   - name: 💬 Discord
     url: https://discord.com/deno
     about: Join our community on Discord.
-- name: Deploy Feedback
-  url: https://github.com/denoland/deploy_feedback/
-  about: Provide feature requests or bug reports about the Deno Deploy edge runtime.
+  - name: Deploy Feedback
+    url: https://github.com/denoland/deploy_feedback/
+    about: Provide feature requests or bug reports about the Deno Deploy edge runtime.
