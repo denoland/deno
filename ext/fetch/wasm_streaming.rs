@@ -8,7 +8,7 @@ use deno_core::ResourceId;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-// The Wasm streaming compilation pipeline.
+/// The Wasm streaming compilation pipeline.
 pub fn handle_wasm_streaming(
   state: Rc<RefCell<OpState>>,
   scope: &mut v8::HandleScope,
@@ -33,36 +33,57 @@ pub fn handle_wasm_streaming(
   wasm_streaming.set_url(&url);
 
   deno_core::unsync::spawn(async move {
-    let view = deno_core::BufMutView::new(65536);
     loop {
       let resource = state.borrow().resource_table.get_any(rid);
       let resource = match resource {
         Ok(r) => r,
         Err(_) => {
-          /* TODO(littledivy): propgate err */
-          wasm_streaming.abort(None);
+          state.borrow().borrow::<deno_core::V8TaskSpawner>().spawn(
+            move |scope| {
+              wasm_streaming.abort(Some(
+                v8::String::new(scope, "Failed to get resource.")
+                  .unwrap()
+                  .into(),
+              ))
+            },
+          );
           return;
         }
       };
 
+      let view = deno_core::BufMutView::new(65536);
       let (bytes, view) = match resource.read_byob(view).await {
         Ok(bytes) => bytes,
         Err(e) => {
-          println!("error reading wasm resource: {}", e);
-          /* TODO(littledivy): propgate err */
-          wasm_streaming.abort(None);
+          state.borrow().borrow::<deno_core::V8TaskSpawner>().spawn(
+            move |scope| {
+              wasm_streaming.abort(Some(
+                v8::String::new(
+                  scope,
+                  &format!("Error reading wasm resource: {}", e),
+                )
+                .unwrap()
+                .into(),
+              ))
+            },
+          );
+
           return;
         }
       };
+      /* EOF */
       if bytes == 0 {
         break;
       }
 
-      wasm_streaming.on_bytes_received(&view);
+      wasm_streaming.on_bytes_received(&view[..bytes]);
     }
 
-    /* XXX: crashes here if module compilation fails */
-    wasm_streaming.finish();
+    /* Spawn a task on JS loop to finish the streaming compilation */
+    state
+      .borrow()
+      .borrow::<deno_core::V8TaskSpawner>()
+      .spawn(move |_| wasm_streaming.finish());
   });
 }
 

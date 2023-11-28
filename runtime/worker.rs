@@ -503,7 +503,10 @@ impl MainWorker {
     bootstrap_fn.call(scope, undefined.into(), &[args]).unwrap();
 
     // Set Wasm streaming callback
-    deno_core::set_wasm_streaming_callback(scope, deno_fetch::handle_wasm_streaming);
+    deno_core::set_wasm_streaming_callback(
+      scope,
+      deno_fetch::handle_wasm_streaming,
+    );
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
