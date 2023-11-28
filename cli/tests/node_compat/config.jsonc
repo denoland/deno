@@ -333,7 +333,6 @@
       "test-fs-read-type.js",
       "test-fs-read-zero-length.js",
       "test-fs-read.js",
-      "test-fs-readdir-stack-overflow.js",
       "test-fs-readdir.js",
       "test-fs-readfile-empty.js",
       "test-fs-realpath-native.js",
