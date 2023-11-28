@@ -42,6 +42,7 @@
     "ext:deno_node/_next_tick.ts": "../ext/node/polyfills/_next_tick.ts",
     "ext:deno_node/_process/exiting.ts": "../ext/node/polyfills/_process/exiting.ts",
     "ext:deno_node/_process/process.ts": "../ext/node/polyfills/_process/process.ts",
+    "ext:deno_node/_process/report.ts": "../ext/node/polyfills/_process/report.ts",
     "ext:deno_node/_process/streams.mjs": "../ext/node/polyfills/_process/streams.mjs",
     "ext:deno_node/_readline_shared_types.d.ts": "../ext/node/polyfills/_readline_shared_types.d.ts",
     "ext:deno_node/_stream.d.ts": "../ext/node/polyfills/_stream.d.ts",

@@ -30,7 +30,8 @@ import {
   versions,
 } from "ext:deno_node/_process/process.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
-export { _nextTick as nextTick, chdir, cwd, env, version, versions };
+import { report } from "ext:deno_node/_process/report.ts";
+export { _nextTick as nextTick, chdir, cwd, env, version, versions, report };
 import {
   createWritableStdioStream,
   initStdin,
