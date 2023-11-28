@@ -92,9 +92,7 @@ impl VfsBuilder {
       if file_type.is_dir() {
         self.add_dir_recursive_internal(&path)?;
       } else if file_type.is_file() {
-        let file_bytes = std::fs::read(&path)
-          .with_context(|| format!("Reading {}", path.display()))?;
-        self.add_file(&path, file_bytes)?;
+        self.add_file_at_path(&path)?;
       } else if file_type.is_symlink() {
         let target = util::fs::canonicalize_path(&path)
           .with_context(|| format!("Reading symlink {}", path.display()))?;
@@ -161,6 +159,12 @@ impl VfsBuilder {
     }
 
     Ok(current_dir)
+  }
+
+  pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    let file_bytes = std::fs::read(path)
+      .with_context(|| format!("Reading {}", path.display()))?;
+    self.add_file(path, file_bytes)
   }
 
   fn add_file(&mut self, path: &Path, data: Vec<u8>) -> Result<(), AnyError> {
