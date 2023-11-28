@@ -338,6 +338,10 @@ function uncaughtExceptionHandler(err: any, origin: string) {
 
 let execPath: string | null = null;
 
+// NOTE(bartlomieju): this is always `undefined` when importing like
+// `import { send } from "node:process";`.
+export const send = undefined;
+
 class Process extends EventEmitter {
   constructor() {
     super();
@@ -674,6 +678,15 @@ class Process extends EventEmitter {
     execPath = path;
   }
 
+  send:
+    | undefined
+    | ((
+      msg: unknown,
+      sendHandle: unknown,
+      options: unknown,
+      cb: unknown,
+    ) => boolean) = undefined;
+
   setStartTime(t: number) {
     this.#startTime = t;
   }
@@ -833,6 +846,8 @@ internals.__bootstrapNodeProcess = function (
   argv0Val: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
+  ipcFd?: number,
+  ipcMode?: number,
 ) {
   // Overwrites the 1st item with getter.
   if (typeof argv0Val === "string") {
@@ -887,6 +902,11 @@ internals.__bootstrapNodeProcess = function (
   );
 
   process.setStartTime(Date.now());
+
+  process.send = function (msg, sendHandle, options, callback) {
+    console.log("process.send", msg, sendHandle, options, callback);
+    throw new Error("Not implemented: process.send()");
+  };
 
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;

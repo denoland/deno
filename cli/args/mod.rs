@@ -12,6 +12,8 @@ use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_node::NodeChannelOptions;
+use deno_runtime::deno_node::NodeChannelSerializationMode;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
@@ -760,6 +762,29 @@ impl CliOptions {
     } else {
       TsTypeLib::DenoWorker
     }
+  }
+
+  pub fn node_channel_options(&self) -> Option<NodeChannelOptions> {
+    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
+
+    if let Some(node_channel_fd) = maybe_node_channel_fd {
+      let node_channel_serialization_mode =
+        std::env::var("NODE_CHANNEL_SERIALIZATION_MODE").unwrap();
+      std::env::remove_var("NODE_CHANNEL_FD");
+      std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+
+      let node_channel_fd_num = node_channel_fd.parse::<usize>().unwrap();
+      return Some(NodeChannelOptions {
+        fd: node_channel_fd_num,
+        serialization_mode: if node_channel_serialization_mode == "json" {
+          NodeChannelSerializationMode::Json
+        } else {
+          NodeChannelSerializationMode::Advanced
+        },
+      });
+    }
+
+    None
   }
 
   pub fn cache_setting(&self) -> CacheSetting {

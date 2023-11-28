@@ -27,6 +27,7 @@ use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeChannelOptions;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -125,6 +126,7 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
+  node_ipc_options: Option<NodeChannelOptions>,
 }
 
 impl SharedWorkerState {
@@ -416,6 +418,7 @@ impl CliMainWorkerFactory {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
+    node_ipc_options: Option<NodeChannelOptions>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -436,6 +439,7 @@ impl CliMainWorkerFactory {
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
+        node_ipc_options,
       }),
     }
   }
@@ -578,6 +582,16 @@ impl CliMainWorkerFactory {
       }
     }
 
+    let (node_ipc_fd, node_ipc_mode) =
+      if let Some(node_ipc_options) = &shared.node_ipc_options {
+        (
+          Some(node_ipc_options.fd),
+          Some(node_ipc_options.serialization_mode),
+        )
+      } else {
+        (None, None)
+      };
+
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
         args: shared.options.argv.clone(),
@@ -600,6 +614,8 @@ impl CliMainWorkerFactory {
           .options
           .maybe_binary_npm_command_name
           .clone(),
+        node_ipc_fd,
+        node_ipc_mode: node_ipc_mode.map(|m| m.as_u8()),
       },
       extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -799,6 +815,8 @@ fn create_web_worker_callback(
           .options
           .maybe_binary_npm_command_name
           .clone(),
+        node_ipc_fd: None,
+        node_ipc_mode: None,
       },
       extensions,
       startup_snapshot: crate::js::deno_isolate_init(),

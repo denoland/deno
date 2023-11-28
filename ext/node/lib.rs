@@ -44,6 +44,26 @@ pub use resolution::NodeResolver;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
 
+#[derive(Clone, Copy)]
+pub enum NodeChannelSerializationMode {
+  Json,
+  Advanced,
+}
+
+impl NodeChannelSerializationMode {
+  pub fn as_u8(&self) -> u8 {
+    match self {
+      Self::Json => 0,
+      Self::Advanced => 1,
+    }
+  }
+}
+
+pub struct NodeChannelOptions {
+  pub fd: usize,
+  pub serialization_mode: NodeChannelSerializationMode,
+}
+
 pub trait NodePermissions {
   fn check_net_url(
     &mut self,
@@ -533,6 +553,17 @@ deno_core::extension!(deno_node,
   state = |state, options| {
     let fs = options.fs;
     state.put(fs.clone());
+    // if let Some(channel_options) = options.maybe_channel_options {
+    //   state.put(NodeChannelOptions {
+    //     fd: channel_options.0,
+    //     // TODO(bartlomieju): proper parsing
+    //     serialization_mode: if channel_options.1 == "json" {
+    //       NodeChannelSerializationMode::Json
+    //     } else {
+    //       NodeChannelSerializationMode::Advanced
+    //     }
+    //   });
+    // }
     if let Some(npm_resolver) = options.maybe_npm_resolver {
       state.put(npm_resolver.clone());
       state.put(Rc::new(NodeResolver::new(

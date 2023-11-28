@@ -661,6 +661,7 @@ impl CliFactory {
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
+      self.options.node_channel_options(),
     ))
   }
 

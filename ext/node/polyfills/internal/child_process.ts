@@ -171,8 +171,9 @@ export class ChildProcess extends EventEmitter {
       stdin = "pipe",
       stdout = "pipe",
       stderr = "pipe",
-      _channel, // TODO(kt3k): handle this correctly
+      channel, // TODO(kt3k): handle this correctly
     ] = normalizeStdioOption(stdio);
+    console.log(channel);
     const [cmd, cmdArgs] = buildCommand(
       command,
       args || [],
@@ -181,6 +182,11 @@ export class ChildProcess extends EventEmitter {
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
 
+    if (channel === "ipc") {
+      // TODO(bartlomieju): these are placeholder values
+      env.NODE_CHANNEL_FD = 4;
+      env.NODE_CHANNEL_SERIALIZATION_MODE = "json";
+    }
     const stringEnv = mapValues(env, (value) => value.toString());
     try {
       this.#process = new Deno.Command(cmd, {
