@@ -1067,8 +1067,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.233.0"
-source = "git+https://github.com/lrowe/deno_core.git?rev=0d87a9d0e57623c8965d6b342604ea8ed94c5c57#0d87a9d0e57623c8965d6b342604ea8ed94c5c57"
+version = "0.234.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94fe0979c3e6fe8fada5d4895ddd043fb8d5936e0f4c4b4e76fab403bf21ee22"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1084,6 +1085,7 @@ dependencies = [
  "serde_v8",
  "smallvec",
  "sourcemap 7.0.0",
+ "static_assertions",
  "tokio",
  "url",
  "v8",
@@ -1491,8 +1493,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.109.0"
-source = "git+https://github.com/lrowe/deno_core.git?rev=0d87a9d0e57623c8965d6b342604ea8ed94c5c57#0d87a9d0e57623c8965d6b342604ea8ed94c5c57"
+version = "0.110.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dab9fca550a1241267e56a9a8185f6263964233f980233cf70d47e587b5f866f"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4633,8 +4636,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.142.0"
-source = "git+https://github.com/lrowe/deno_core.git?rev=0d87a9d0e57623c8965d6b342604ea8ed94c5c57#0d87a9d0e57623c8965d6b342604ea8ed94c5c57"
+version = "0.143.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "331359280930e186b14c0f931433b75ec174edb017fa390bab8716d8e36c29ee"
 dependencies = [
  "bytes",
  "derive_more",
