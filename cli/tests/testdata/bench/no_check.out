@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 error: TypeError: Cannot read properties of undefined (reading 'fn')
+=======
+error: (in promise) TypeError: Cannot read properties of undefined (reading 'fn')
+>>>>>>> f3d7f961b (.)
 Deno.bench();
      ^
     at [WILDCARD]

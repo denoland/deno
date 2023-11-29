@@ -9,12 +9,8 @@ const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeIndexOf,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
-  ArrayPrototypePush,
-  ArrayPrototypeShift,
-  ArrayPrototypeSplice,
   DateNow,
   Error,
   ErrorPrototype,
@@ -27,13 +23,9 @@ const {
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
-  SafeWeakMap,
   Symbol,
   SymbolIterator,
   TypeError,
-  WeakMapPrototypeDelete,
-  WeakMapPrototypeGet,
-  WeakMapPrototypeSet,
 } = primordials;
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
@@ -328,7 +320,6 @@ function runtimeStart(
   target,
 ) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
-  core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   ops.op_set_format_exception_callback(formatException);
@@ -340,91 +331,38 @@ function runtimeStart(
   core.setBuildInfo(target);
 }
 
-const pendingRejections = [];
-const pendingRejectionsReasons = new SafeWeakMap();
-
-function promiseRejectCallback(type, promise, reason) {
-  switch (type) {
-    case 0: {
-      ops.op_store_pending_promise_rejection(promise, reason);
-      ArrayPrototypePush(pendingRejections, promise);
-      WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
-      break;
-    }
-    case 1: {
-      ops.op_remove_pending_promise_rejection(promise);
-      const index = ArrayPrototypeIndexOf(pendingRejections, promise);
-      if (index > -1) {
-        ArrayPrototypeSplice(pendingRejections, index, 1);
-        WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
-      }
-      break;
-    }
-    default:
-      return false;
-  }
-
-  return !!globalThis_.onunhandledrejection ||
-    event.listenerCount(globalThis_, "unhandledrejection") > 0 ||
-    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined";
-}
-
-function promiseRejectMacrotaskCallback() {
-  // We have no work to do, tell the runtime that we don't
-  // need to perform microtask checkpoint.
-  if (pendingRejections.length === 0) {
-    return undefined;
-  }
-
-  while (pendingRejections.length > 0) {
-    const promise = ArrayPrototypeShift(pendingRejections);
-    const hasPendingException = ops.op_has_pending_promise_rejection(
+core.setUnhandledPromiseRejectionHandler(processUnhandledPromiseRejection);
+// Notification that the core received an unhandled promise rejection that is about to
+// terminate the runtime. If we can handle it, attempt to do so.
+function processUnhandledPromiseRejection(promise, reason) {
+  const rejectionEvent = new event.PromiseRejectionEvent(
+    "unhandledrejection",
+    {
+      cancelable: true,
       promise,
-    );
-    const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
-    WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
+      reason,
+    },
+  );
+  
+  // Note that the handler may throw, causing a recursive "error" event
+  globalThis_.dispatchEvent(rejectionEvent);
 
-    if (!hasPendingException) {
-      continue;
-    }
-
-    const rejectionEvent = new event.PromiseRejectionEvent(
-      "unhandledrejection",
-      {
-        cancelable: true,
-        promise,
-        reason,
-      },
-    );
-
-    const errorEventCb = (event) => {
-      if (event.error === reason) {
-        ops.op_remove_pending_promise_rejection(promise);
-      }
-    };
-    // Add a callback for "error" event - it will be dispatched
-    // if error is thrown during dispatch of "unhandledrejection"
-    // event.
-    globalThis_.addEventListener("error", errorEventCb);
-    globalThis_.dispatchEvent(rejectionEvent);
-    globalThis_.removeEventListener("error", errorEventCb);
-
-    // If event was not yet prevented, try handing it off to Node compat layer
-    // (if it was initialized)
-    if (
-      !rejectionEvent.defaultPrevented &&
-      typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
-    ) {
-      internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
-    }
-
-    // If event was not prevented (or "unhandledrejection" listeners didn't
-    // throw) we will let Rust side handle it.
-    if (rejectionEvent.defaultPrevented) {
-      ops.op_remove_pending_promise_rejection(promise);
-    }
+  // If event was not yet prevented, try handing it off to Node compat layer
+  // (if it was initialized)
+  if (
+    !rejectionEvent.defaultPrevented &&
+    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
+  ) {
+    internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
   }
-  return true;
+
+  // If event was not prevented (or "unhandledrejection" listeners didn't
+  // throw) we will let Rust side handle it.
+  if (rejectionEvent.defaultPrevented) {
+    return true;
+  } 
+
+  return false;
 }
 
 let hasBootstrapped = false;
@@ -522,8 +460,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   event.defineEventHandler(globalThis, "beforeunload");
   event.defineEventHandler(globalThis, "unload");
   event.defineEventHandler(globalThis, "unhandledrejection");
-
-  core.setPromiseRejectCallback(promiseRejectCallback);
 
   runtimeStart(
     denoVersion,
@@ -641,8 +577,6 @@ function bootstrapWorkerRuntime(
   event.defineEventHandler(self, "message");
   event.defineEventHandler(self, "error", undefined, true);
   event.defineEventHandler(self, "unhandledrejection");
-
-  core.setPromiseRejectCallback(promiseRejectCallback);
 
   // `Deno.exit()` is an alias to `self.close()`. Setting and exit
   // code using an op in worker context is a no-op.

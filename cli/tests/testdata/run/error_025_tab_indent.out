@@ -1,4 +1,4 @@
-[WILDCARD]error: Uncaught Error: bad
+[WILDCARD]error: Uncaught (in promise) Error: bad
 	throw Error("bad");
 	      ^
     at foo ([WILDCARD]/error_025_tab_indent:2:8)

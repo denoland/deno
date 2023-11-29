@@ -105,7 +105,7 @@ fn standalone_error() {
   let stderr = output.stderr();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught Error: boom!");
+  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
   assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at boom (file://");
   assert_contains!(stderr, "standalone_error.ts:2:9");
@@ -145,7 +145,7 @@ fn standalone_error_module_with_imports() {
   let stderr = output.stderr();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught Error: boom!");
+  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
   assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at file://");
   assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
