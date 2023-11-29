@@ -5,11 +5,7 @@ function writeReport(filename: string, err: Error) {
   return "";
 }
 
-const todoUnimplemented = {
-  get: () => {
-    throw new Error("Unimplemented");
-  },
-};
+const todoUndefined = undefined;
 
 function getReport(err: Error) {
   const dumpEventTime = new Date();
@@ -40,23 +36,23 @@ function getReport(err: Error) {
           "https://nodejs.org/download/release/v21.2.0/node-v21.2.0.tar.gz",
       },
       osName: Deno.build.os.charAt(0).toUpperCase() + Deno.build.os.slice(1),
-      osRelease: todoUnimplemented,
-      osVersion: todoUnimplemented,
+      osRelease: todoUndefined,
+      osVersion: todoUndefined,
       osMachine: Deno.build.arch,
       cpus: cpus(),
       networkInterfaces: networkInterfaces(),
       host: hostname(),
     },
-    javascriptStack: todoUnimplemented,
-    javascriptHeap: todoUnimplemented,
-    nativeStack: todoUnimplemented,
-    resourceUsage: todoUnimplemented,
-    uvthreadResourceUsage: todoUnimplemented,
-    libuv: todoUnimplemented,
+    javascriptStack: todoUndefined,
+    javascriptHeap: todoUndefined,
+    nativeStack: todoUndefined,
+    resourceUsage: todoUndefined,
+    uvthreadResourceUsage: todoUndefined,
+    libuv: todoUndefined,
     workers: [],
-    environmentVariables: todoUnimplemented,
-    userLimits: todoUnimplemented,
-    sharedObjects: todoUnimplemented,
+    environmentVariables: todoUndefined,
+    userLimits: todoUndefined,
+    sharedObjects: todoUndefined,
   };
 }
 
