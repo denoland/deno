@@ -2737,12 +2737,17 @@ class GPURenderPipeline {
     return bindGroupLayout;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderPipelinePrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
