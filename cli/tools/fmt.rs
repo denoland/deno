@@ -223,23 +223,29 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   let ext = get_extension(file_path).unwrap_or_default();
-  if matches!(
-    ext.as_str(),
-    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
-  ) {
-    format_markdown(file_text, fmt_options)
-  } else if matches!(ext.as_str(), "json" | "jsonc") {
-    format_json(file_path, file_text, fmt_options)
-  } else {
-    let config = get_resolved_typescript_config(fmt_options);
-    dprint_plugin_typescript::format_text(file_path, file_text, &config)
+
+  match ext.as_str() {
+    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
+      format_markdown(file_text, fmt_options)
+    }
+    "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "ipynb" => dprint_plugin_jupyter::format_text(
+      file_text,
+      |file_path: &Path, file_text: String| {
+        format_file(file_path, &file_text, fmt_options)
+      },
+    ),
+    _ => {
+      let config = get_resolved_typescript_config(fmt_options);
+      dprint_plugin_typescript::format_text(file_path, file_text, &config)
+    }
   }
 }
 
@@ -667,7 +673,7 @@ where
 /// This function is similar to is_supported_ext but adds additional extensions
 /// supported by `deno fmt`.
 fn is_supported_ext_fmt(path: &Path) -> bool {
-  if let Some(ext) = get_extension(path) {
+  get_extension(path).is_some_and(|ext| {
     matches!(
       ext.as_str(),
       "ts"
@@ -686,10 +692,9 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mdwn"
         | "mdown"
         | "markdown"
+        | "ipynb"
     )
-  } else {
-    false
-  }
+  })
 }
 
 #[cfg(test)]
@@ -721,6 +726,7 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
   }
 
   #[test]

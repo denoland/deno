@@ -253,7 +253,7 @@ fn upgrade_lsp_repl_sleeps() {
       pty.expect("579");
     });
 
-  // the test server will sleep for 45 seconds, so ensure this is less
+  // the test server will sleep for 95 seconds, so ensure this is less
   let elapsed_secs = start_instant.elapsed().as_secs();
-  assert!(elapsed_secs < 30, "elapsed_secs: {}", elapsed_secs);
+  assert!(elapsed_secs < 94, "elapsed_secs: {}", elapsed_secs);
 }

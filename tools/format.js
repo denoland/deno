@@ -14,9 +14,17 @@ const cmd = new Deno.Command("deno", {
     "--config=" + configFile,
   ],
   cwd: ROOT_PATH,
-  stdout: "inherit",
+  stdout: "piped",
   stderr: "inherit",
 });
 
-const { code } = await cmd.output();
-Deno.exit(code);
+const { code, stdout } = await cmd.output();
+// todo(dsherret): temporary until https://github.com/denoland/deno/pull/21359 gets released.
+// Once it's released, just have stdout be inherited above and do `Deno.exit(code)` here.
+const stdoutText = new TextDecoder().decode(stdout);
+console.log(stdoutText);
+if (stdoutText.length > 0) {
+  Deno.exit(20);
+} else {
+  Deno.exit(code);
+}

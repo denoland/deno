@@ -10,19 +10,18 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_config::ConfigFile;
 use deno_core::anyhow;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
-use import_map::ImportMapWithDiagnostics;
+use import_map::ImportMap;
+use lsp_types::Url;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::Digest;
@@ -72,9 +71,8 @@ pub struct PublishingTask {
 async fn prepare_publish(
   initial_cwd: &Path,
   directory: PathBuf,
+  import_map: &ImportMap,
 ) -> Result<PreparedPublishPackage, AnyError> {
-  // TODO: handle publishing without deno.json
-
   let directory_path = initial_cwd.join(directory);
   // TODO: doesn't handle jsonc
   let deno_json_path = directory_path.join("deno.json");
@@ -97,17 +95,6 @@ async fn prepare_publish(
   let Some((scope, package_name)) = name.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-
-  // TODO: support `importMap` field in deno.json
-  assert!(deno_json.to_import_map_path().is_none());
-
-  let deno_json_url = Url::from_file_path(&deno_json_path)
-    .map_err(|_| anyhow!("deno.json path is not a valid file URL"))?;
-  let ImportMapWithDiagnostics { import_map, .. } =
-    import_map::parse_from_value(
-      &deno_json_url,
-      deno_json.to_import_map_value(),
-    )?;
 
   let unfurler = ImportMapUnfurler::new(import_map);
 
@@ -256,7 +243,7 @@ async fn perform_publish(
         .collect::<Vec<_>>();
 
       let response = client
-        .post(format!("{}/authorizations", registry_url))
+        .post(format!("{}authorizations", registry_url))
         .json(&serde_json::json!({
           "challenge": challenge,
           "permissions": permissions,
@@ -285,7 +272,7 @@ async fn perform_publish(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}/authorizations/exchange", registry_url))
+          .post(format!("{}authorizations/exchange", registry_url))
           .json(&serde_json::json!({
             "exchangeToken": auth.exchange_token,
             "verifier": verifier,
@@ -372,7 +359,7 @@ async fn perform_publish(
     );
 
     let url = format!(
-      "{}/scopes/{}/packages/{}/versions/{}",
+      "{}scopes/{}/packages/{}/versions/{}",
       registry_url, package.scope, package.package, package.version
     );
 
@@ -397,7 +384,7 @@ async fn perform_publish(
     while task.status != "success" && task.status != "failure" {
       tokio::time::sleep(interval).await;
       let resp = client
-        .get(format!("{}/publish_status/{}", registry_url, task.id))
+        .get(format!("{}publish_status/{}", registry_url, task.id))
         .send()
         .await
         .with_context(|| {
@@ -478,6 +465,14 @@ pub async fn publish(
     },
   };
 
+  let import_map = cli_factory
+    .maybe_import_map()
+    .await?
+    .clone()
+    .unwrap_or_else(|| {
+      Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
+    });
+
   let initial_cwd =
     std::env::current_dir().with_context(|| "Failed getting cwd.")?;
 
@@ -496,12 +491,14 @@ pub async fn publish(
 
   let members = &deno_json.json.workspaces;
   if members.is_empty() {
-    packages.push(prepare_publish(&initial_cwd, directory_path).await?);
+    packages
+      .push(prepare_publish(&initial_cwd, directory_path, &import_map).await?);
   } else {
     println!("Publishing a workspace...");
     for member in members {
       let member_dir = directory_path.join(member);
-      packages.push(prepare_publish(&initial_cwd, member_dir).await?);
+      packages
+        .push(prepare_publish(&initial_cwd, member_dir, &import_map).await?);
     }
   }
 

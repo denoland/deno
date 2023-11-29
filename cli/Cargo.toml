@@ -27,7 +27,11 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [features]
-default = ["__vendored_zlib_ng"]
+default = ["upgrade", "__vendored_zlib_ng"]
+# A feature that enables the upgrade subcommand and the background check for
+# available updates (of deno binary). This is typically disabled for (Linux)
+# distribution packages.
+upgrade = []
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
 __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
@@ -82,8 +86,9 @@ data-url.workspace = true
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.1"
+dprint-plugin-jupyter = "=0.1.2"
 dprint-plugin-markdown = "=0.16.3"
-dprint-plugin-typescript = "=0.88.5"
+dprint-plugin-typescript = "=0.88.6"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"

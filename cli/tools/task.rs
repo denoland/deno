@@ -122,7 +122,7 @@ pub async fn execute_script(
           None => Default::default(),
         };
         let env_vars = match npm_resolver.root_node_modules_path() {
-          Some(dir_path) => collect_env_vars_with_node_modules_dir(&dir_path),
+          Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
           None => collect_env_vars(),
         };
         let local = LocalSet::new();

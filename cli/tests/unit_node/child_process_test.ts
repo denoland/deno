@@ -722,3 +722,12 @@ Deno.test(function spawnSyncStdioUndefined() {
   assertEquals(ret.stdout.toString("utf-8").trim(), "hello");
   assertEquals(ret.stderr.toString("utf-8").trim(), "world");
 });
+
+Deno.test(function spawnSyncExitNonZero() {
+  const ret = spawnSync(
+    `"${Deno.execPath()}" eval "Deno.exit(22)"`,
+    { shell: true },
+  );
+
+  assertEquals(ret.status, 22);
+});
