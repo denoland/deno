@@ -441,15 +441,20 @@ class GPUAdapterInfo {
     return this[_description];
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        vendor: this.vendor,
-        architecture: this.architecture,
-        device: this.device,
-        description: this.description,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUAdapterInfoPrototype, this),
+        keys: [
+          "vendor",
+          "architecture",
+          "device",
+          "description",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 const GPUAdapterInfoPrototype = GPUAdapterInfo.prototype;
