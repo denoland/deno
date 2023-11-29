@@ -304,7 +304,7 @@ Deno.test({
   name:
     "os.freemem() is equivalent of Deno.systemMemoryInfo().available on linux",
   ignore: Deno.build.os !== "linux",
-  async fn() {
+  fn() {
     const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().available);
     assert(diff < 10_000);
   },

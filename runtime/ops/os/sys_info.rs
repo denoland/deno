@@ -220,7 +220,7 @@ pub fn mem_info() -> Option<MemInfo> {
       let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
       if let Some(line) = line {
         let mem = line.split_whitespace().nth(1);
-        let mem = mem.and_then(|v| v.parse::<i32>().ok());
+        let mem = mem.and_then(|v| v.parse::<u64>().ok());
         mem_info.available = mem.unwrap_or(0);
       }
     }
