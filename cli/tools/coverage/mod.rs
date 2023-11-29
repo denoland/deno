@@ -3,6 +3,7 @@
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
+use crate::cdp;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
@@ -34,11 +35,9 @@ use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
 
-mod json_types;
 mod merge;
 mod range_tree;
-
-use json_types::*;
+use merge::ProcessCoverage;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
@@ -84,8 +83,8 @@ impl CoverageCollector {
 
   async fn start_precise_coverage(
     &mut self,
-    parameters: StartPreciseCoverageParameters,
-  ) -> Result<StartPreciseCoverageReturnObject, AnyError> {
+    parameters: cdp::StartPreciseCoverageArgs,
+  ) -> Result<cdp::StartPreciseCoverageResponse, AnyError> {
     let return_value = self
       .session
       .post_message("Profiler.startPreciseCoverage", Some(parameters))
@@ -98,7 +97,7 @@ impl CoverageCollector {
 
   async fn take_precise_coverage(
     &mut self,
-  ) -> Result<TakePreciseCoverageReturnObject, AnyError> {
+  ) -> Result<cdp::TakePreciseCoverageResponse, AnyError> {
     let return_value = self
       .session
       .post_message::<()>("Profiler.takePreciseCoverage", None)
@@ -113,7 +112,7 @@ impl CoverageCollector {
     self.enable_debugger().await?;
     self.enable_profiler().await?;
     self
-      .start_precise_coverage(StartPreciseCoverageParameters {
+      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
         call_count: true,
         detailed: true,
         allow_triggered_updates: false,
@@ -138,12 +137,13 @@ impl CoverageCollector {
       let filename = format!("{}.json", Uuid::new_v4());
       let filepath = self.dir.join(filename);
 
-      let mut out = BufWriter::new(File::create(filepath)?);
+      let mut out = BufWriter::new(File::create(&filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formatted_coverage = format_json(&coverage, &Default::default())
-        .ok()
-        .flatten()
-        .unwrap_or(coverage);
+      let formatted_coverage =
+        format_json(&filepath, &coverage, &Default::default())
+          .ok()
+          .flatten()
+          .unwrap_or(coverage);
 
       out.write_all(formatted_coverage.as_bytes())?;
       out.flush()?;
@@ -179,7 +179,7 @@ struct CoverageReport {
 }
 
 fn generate_coverage_report(
-  script_coverage: &ScriptCoverage,
+  script_coverage: &cdp::ScriptCoverage,
   script_source: String,
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
@@ -569,8 +569,8 @@ impl CoverageReporter for PrettyCoverageReporter {
 
 fn collect_coverages(
   files: FileFlags,
-) -> Result<Vec<ScriptCoverage>, AnyError> {
-  let mut coverages: Vec<ScriptCoverage> = Vec::new();
+) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
+  let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
   let file_paths = FileCollector::new(|file_path| {
     file_path
       .extension()
@@ -589,7 +589,7 @@ fn collect_coverages(
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
-    let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
+    let new_coverage: cdp::ScriptCoverage = serde_json::from_str(&json)?;
     coverages.push(new_coverage);
   }
 
@@ -599,11 +599,11 @@ fn collect_coverages(
 }
 
 fn filter_coverages(
-  coverages: Vec<ScriptCoverage>,
+  coverages: Vec<cdp::ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
   npm_resolver: &dyn CliNpmResolver,
-) -> Vec<ScriptCoverage> {
+) -> Vec<cdp::ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
 
@@ -628,7 +628,7 @@ fn filter_coverages(
 
       (include.is_empty() || is_included) && !is_excluded && !is_internal
     })
-    .collect::<Vec<ScriptCoverage>>()
+    .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
 pub async fn cover_files(

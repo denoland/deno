@@ -36,8 +36,8 @@ pub struct PackageJson {
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
-  pub dependencies: Option<HashMap<String, String>>,
-  pub dev_dependencies: Option<HashMap<String, String>>,
+  pub dependencies: Option<IndexMap<String, String>>,
+  pub dev_dependencies: Option<IndexMap<String, String>>,
   pub scripts: Option<IndexMap<String, String>>,
 }
 
@@ -110,8 +110,13 @@ impl PackageJson {
     path: PathBuf,
     source: String,
   ) -> Result<PackageJson, AnyError> {
-    let package_json: Value = serde_json::from_str(&source)
-      .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
+    let package_json: Value = serde_json::from_str(&source).map_err(|err| {
+      anyhow::anyhow!(
+        "malformed package.json: {}\n    at {}",
+        err,
+        path.display()
+      )
+    })?;
     Self::load_from_value(path, package_json)
   }
 
@@ -146,7 +151,7 @@ impl PackageJson {
 
     let dependencies = package_json.get("dependencies").and_then(|d| {
       if d.is_object() {
-        let deps: HashMap<String, String> =
+        let deps: IndexMap<String, String> =
           serde_json::from_value(d.to_owned()).unwrap();
         Some(deps)
       } else {
@@ -155,7 +160,7 @@ impl PackageJson {
     });
     let dev_dependencies = package_json.get("devDependencies").and_then(|d| {
       if d.is_object() {
-        let deps: HashMap<String, String> =
+        let deps: IndexMap<String, String> =
           serde_json::from_value(d.to_owned()).unwrap();
         Some(deps)
       } else {

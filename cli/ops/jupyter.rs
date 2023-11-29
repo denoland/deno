@@ -37,6 +37,7 @@ pub async fn op_jupyter_broadcast(
   #[string] message_type: String,
   #[serde] content: serde_json::Value,
   #[serde] metadata: serde_json::Value,
+  #[serde] buffers: Vec<deno_core::JsBuffer>,
 ) -> Result<(), AnyError> {
   let (iopub_socket, last_execution_request) = {
     let s = state.borrow();
@@ -54,6 +55,7 @@ pub async fn op_jupyter_broadcast(
       .new_message(&message_type)
       .with_content(content)
       .with_metadata(metadata)
+      .with_buffers(buffers.into_iter().map(|b| b.into()).collect())
       .send(&mut *iopub_socket.lock().await)
       .await?;
   }

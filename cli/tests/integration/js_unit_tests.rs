@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::io::BufRead;
 use std::io::BufReader;
-use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 use test_util as util;
@@ -24,6 +23,7 @@ util::unit_test_factory!(
     console_test,
     copy_file_test,
     custom_event_test,
+    cron_test,
     dir_test,
     dom_exception_test,
     error_stack_test,
@@ -52,7 +52,6 @@ util::unit_test_factory!(
     link_test,
     make_temp_test,
     message_channel_test,
-    metrics_test,
     mkdir_test,
     navigator_test,
     net_test,
@@ -112,16 +111,24 @@ util::unit_test_factory!(
 fn js_unit_test(test: String) {
   let _g = util::http_server();
 
-  let mut deno = util::deno_cmd()
+  let deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
-    .arg("--no-prompt")
+    .arg("--no-prompt");
+
+  // TODO(mmastrac): it would be better to just load a test CA for all tests
+  let deno = if test == "websocket_test" {
+    deno.arg("--unsafely-ignore-certificate-errors")
+  } else {
+    deno
+  };
+
+  let mut deno = deno
     .arg("-A")
     .arg(util::tests_path().join("unit").join(format!("{test}.ts")))
-    .stderr(Stdio::piped())
-    .stdout(Stdio::piped())
+    .piped_output()
     .spawn()
     .expect("failed to spawn script");
 

@@ -497,12 +497,28 @@ fn syntax_error() {
 }
 
 #[test]
-fn syntax_error_jsx() {
-  // JSX is not supported in the REPL
+fn jsx_errors_without_pragma() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const element = <div />;");
-    console.expect("Expression expected");
+    console.expect("React is not defined");
   });
+}
+
+#[test]
+fn jsx_import_source() {
+  let context = TestContextBuilder::default()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  context
+    .new_command()
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line("/** @jsxImportSource http://localhost:4545/jsx */");
+      console.expect("undefined");
+      console.write_line("const element = <div />;");
+      console.expect("undefined");
+    });
 }
 
 #[test]
@@ -872,6 +888,48 @@ fn repl_with_quiet_flag() {
 }
 
 #[test]
+fn repl_unit_tests() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line_raw(
+      "\
+        console.log('Hello from outside of test!'); \
+        Deno.test('test1', async (t) => { \
+          console.log('Hello from inside of test!'); \
+          await t.step('step1', () => {}); \
+        }); \
+        Deno.test('test2', () => { \
+          throw new Error('some message'); \
+        }); \
+        console.log('Hello again from outside of test!'); \
+      ",
+    );
+
+    console.expect("Hello from outside of test!");
+    console.expect("Hello again from outside of test!");
+    // FIXME(nayeemrmn): REPL unit tests don't support output capturing.
+    console.expect("Hello from inside of test!");
+    console.expect("test1 ...");
+    console.expect("  step1 ... ok (");
+    console.expect("test1 ... ok (");
+    console.expect("test2 ... FAILED (");
+    console.expect("ERRORS");
+    console.expect("test2 => <anonymous>:6:6");
+    console.expect("error: Error: some message");
+    console.expect("   at <anonymous>:7:9");
+    console.expect("FAILURES");
+    console.expect("test2 => <anonymous>:6:6");
+    console.expect("FAILED | 1 passed (1 step) | 1 failed (");
+    console.expect("undefined");
+
+    console.write_line("Deno.test('test2', () => {});");
+
+    console.expect("test2 ... ok (");
+    console.expect("ok | 1 passed | 0 failed (");
+    console.expect("undefined");
+  });
+}
+
+#[test]
 fn npm_packages() {
   let mut env_vars = util::env_vars_for_npm_tests();
   env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
@@ -1000,11 +1058,13 @@ fn package_json_uncached_no_error() {
     // should support getting the package now though
     console
       .write_line("import { getValue, setValue } from '@denotest/esm-basic';");
-    console.expect_all(&["undefined", "Initialize"]);
+    console.expect_all(&["undefined", "Download"]);
     console.write_line("setValue(12 + 30);");
     console.expect("undefined");
     console.write_line("getValue()");
-    console.expect("42")
+    console.expect("42");
+
+    assert!(temp_dir.path().join("node_modules").exists());
   });
 }
 
@@ -1016,4 +1076,35 @@ fn closed_file_pre_load_does_not_occur() {
     .with_pty(|console| {
       assert_contains!(console.all_output(), "Skipping document preload.",);
     });
+}
+
+#[test]
+fn env_file() {
+  TestContext::default()
+    .new_command()
+    .args_vec([
+      "repl",
+      "--env=env",
+      "--allow-env",
+      "--eval",
+      "console.log(Deno.env.get('FOO'))",
+    ])
+    .with_pty(|console| {
+      assert_contains!(console.all_output(), "BAR",);
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/20528
+#[test]
+fn pty_promise_was_collected_regression_test() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl"],
+    Some(vec!["new Uint8Array(64 * 1024 * 1024)"]),
+    None,
+    false,
+  );
+
+  assert_contains!(out, "Uint8Array(67108864)");
+  assert!(err.is_empty());
 }

@@ -12,6 +12,7 @@ const {
   SymbolToStringTag,
   Uint8ArrayPrototype,
 } = globalThis.__bootstrap.primordials;
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
 const core = Deno.core;
 const ops = core.ops;
 
@@ -298,6 +299,10 @@ class Kv {
 
   close() {
     core.close(this.#rid);
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 }
 

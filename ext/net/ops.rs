@@ -771,7 +771,6 @@ fn rdata_to_return_record(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::UnstableChecker;
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -1039,12 +1038,15 @@ mod tests {
       test_ext,
       state = |state| {
         state.put(TestPermission {});
-        state.put(UnstableChecker { unstable: true });
       }
     );
 
+    let mut feature_checker = deno_core::FeatureChecker::default();
+    feature_checker.enable_legacy_unstable();
+
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
+      feature_checker: Some(Arc::new(feature_checker)),
       ..Default::default()
     });
 

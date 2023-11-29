@@ -3,7 +3,9 @@
 use super::*;
 
 pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
-  let url = Url::parse(path_or_url).unwrap();
+  let Ok(url) = Url::parse(path_or_url) else {
+    return "<anonymous>".to_string();
+  };
   if url.scheme() == "file" {
     if let Some(mut r) = cwd.make_relative(&url) {
       if !r.starts_with("../") {

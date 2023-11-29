@@ -38,6 +38,7 @@ declare interface Window extends EventTarget {
   localStorage: Storage;
   sessionStorage: Storage;
   caches: CacheStorage;
+  name: string;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -294,3 +295,6 @@ declare var Location: {
 // The types there must first be split into window, worker and global types.
 /** @category Web APIs */
 declare var location: Location;
+
+/** @category Web APIs */
+declare var name: string;

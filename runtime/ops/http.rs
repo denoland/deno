@@ -27,6 +27,8 @@ use deno_net::io::UnixStreamResource;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "http";
+
 deno_core::extension!(
   deno_http_runtime,
   ops = [op_http_start, op_http_upgrade],
@@ -63,8 +65,8 @@ fn op_http_start(
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| bad_resource("TLS stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.reunite(write_half);
-    let addr = tls_stream.get_ref().0.local_addr()?;
+    let tls_stream = read_half.unsplit(write_half);
+    let addr = tls_stream.local_addr()?;
     return http_create_conn_resource(state, tls_stream, addr, "https");
   }
 
@@ -73,7 +75,7 @@ fn op_http_start(
     .resource_table
     .take::<deno_net::io::UnixStreamResource>(tcp_stream_rid)
   {
-    super::check_unstable(state, "Deno.serveHttp");
+    super::check_unstable(state, UNSTABLE_FEATURE_NAME, "Deno.serveHttp");
 
     // This UNIX socket might be used somewhere else. If it's the case, we cannot proceed with the
     // process of starting a HTTP server on top of this UNIX socket, so we just return a bad

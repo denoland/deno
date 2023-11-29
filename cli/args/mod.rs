@@ -29,6 +29,7 @@ pub use deno_config::TsConfig;
 pub use deno_config::TsConfigForEmit;
 pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
+pub use deno_config::WorkspaceConfig;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -45,13 +46,14 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
+use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -76,25 +78,29 @@ use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
 
-static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
-  let env_var_name = "NPM_CONFIG_REGISTRY";
-  if let Ok(registry_url) = std::env::var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+pub fn npm_registry_default_url() -> &'static Url {
+  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "NPM_CONFIG_REGISTRY";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
       }
     }
-  }
 
-  Url::parse("https://registry.npmjs.org").unwrap()
-});
+    Url::parse("https://registry.npmjs.org").unwrap()
+  });
 
-pub fn npm_registry_default_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
@@ -109,12 +115,13 @@ pub fn ts_config_to_emit_options(
       "error" => deno_ast::ImportsNotUsedAsValues::Error,
       _ => deno_ast::ImportsNotUsedAsValues::Remove,
     };
-  let (transform_jsx, jsx_automatic, jsx_development) =
+  let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
     match options.jsx.as_str() {
-      "react" => (true, false, false),
-      "react-jsx" => (true, true, false),
-      "react-jsxdev" => (true, true, true),
-      _ => (false, false, false),
+      "react" => (true, false, false, false),
+      "react-jsx" => (true, true, false, false),
+      "react-jsxdev" => (true, true, true, false),
+      "precompile" => (false, false, false, true),
+      _ => (false, false, false, false),
     };
   deno_ast::EmitOptions {
     emit_metadata: options.emit_decorator_metadata,
@@ -127,6 +134,7 @@ pub fn ts_config_to_emit_options(
     jsx_factory: options.jsx_factory,
     jsx_fragment_factory: options.jsx_fragment_factory,
     jsx_import_source: options.jsx_import_source,
+    precompile_jsx,
     transform_jsx,
     var_decl_imports: false,
   }
@@ -569,8 +577,14 @@ pub fn get_root_cert_store(
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NpmProcessState {
-  pub snapshot: deno_npm::resolution::SerializedNpmResolutionSnapshot,
+  pub kind: NpmProcessStateKind,
   pub local_node_modules_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NpmProcessStateKind {
+  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
+  Byonm,
 }
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
@@ -606,6 +620,7 @@ pub struct CliOptions {
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
+  maybe_workspace_config: Option<WorkspaceConfig>,
 }
 
 impl CliOptions {
@@ -639,6 +654,26 @@ impl CliOptions {
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder =
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
+    let maybe_workspace_config =
+      if let Some(config_file) = maybe_config_file.as_ref() {
+        config_file.to_workspace_config()?
+      } else {
+        None
+      };
+
+    // TODO(bartlomieju): remove in v1.39 or v1.40.
+    if let Some(wsconfig) = &maybe_workspace_config {
+      if !wsconfig.members.is_empty() && !flags.unstable_workspaces {
+        eprintln!("Use of unstable 'workspaces' feature. The --unstable-workspaces flags must be provided.");
+        std::process::exit(70);
+      }
+    }
+
+    if let Some(env_file_name) = &flags.env_file {
+      if (from_filename(env_file_name)).is_err() {
+        bail!("Unable to load '{env_file_name}' environment variable file")
+      }
+    }
 
     Ok(Self {
       flags,
@@ -649,6 +684,7 @@ impl CliOptions {
       maybe_node_modules_folder,
       maybe_vendor_folder,
       overrides: Default::default(),
+      maybe_workspace_config,
     })
   }
 
@@ -704,7 +740,14 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    if self.flags.unstable {
+    if self.flags.unstable
+      || !self.flags.unstable_features.is_empty()
+      || self
+        .maybe_config_file
+        .as_ref()
+        .map(|f| !f.json.unstable.is_empty())
+        .unwrap_or(false)
+    {
       TsTypeLib::UnstableDenoWindow
     } else {
       TsTypeLib::DenoWindow
@@ -787,6 +830,41 @@ impl CliOptions {
     &self,
     file_fetcher: &FileFetcher,
   ) -> Result<Option<ImportMap>, AnyError> {
+    if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
+      let base_import_map_config = ::import_map::ext::ImportMapConfig {
+        base_url: self.maybe_config_file.as_ref().unwrap().specifier.clone(),
+        import_map_value: workspace_config.base_import_map_value.clone(),
+      };
+      let children_configs = workspace_config
+        .members
+        .iter()
+        .map(|member| {
+          let import_map_value = member.config_file.to_import_map_value();
+          ::import_map::ext::ImportMapConfig {
+            base_url: member.config_file.specifier.clone(),
+            import_map_value,
+          }
+        })
+        .collect();
+
+      let maybe_import_map = ::import_map::ext::create_synthetic_import_map(
+        base_import_map_config,
+        children_configs,
+      );
+      if let Some((_import_map_url, import_map)) = maybe_import_map {
+        log::debug!(
+          "Workspace config generated this import map {}",
+          serde_json::to_string_pretty(&import_map).unwrap()
+        );
+        return import_map::import_map_from_value(
+          // TODO(bartlomieju): maybe should be stored on the workspace config?
+          &self.maybe_config_file.as_ref().unwrap().specifier,
+          import_map,
+        )
+        .map(Some);
+      }
+    }
+
     let import_map_specifier = match self.resolve_import_map_specifier()? {
       Some(specifier) => specifier,
       None => return Ok(None),
@@ -874,9 +952,11 @@ impl CliOptions {
   pub fn resolve_npm_resolution_snapshot(
     &self,
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
-    if let Some(state) = &*NPM_PROCESS_STATE {
+    if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
+      NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+    {
       // TODO(bartlomieju): remove this clone
-      Ok(Some(state.snapshot.clone().into_valid()?))
+      Ok(Some(snapshot.clone().into_valid()?))
     } else {
       Ok(None)
     }
@@ -896,7 +976,7 @@ impl CliOptions {
   }
 
   pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some()
+    self.maybe_node_modules_folder.is_some() || self.unstable_byonm()
   }
 
   pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
@@ -912,6 +992,7 @@ impl CliOptions {
       maybe_config_file: self.maybe_config_file.clone(),
       maybe_package_json: self.maybe_package_json.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
+      maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
     }
   }
@@ -923,13 +1004,6 @@ impl CliOptions {
         .as_ref()
         .and_then(|c| c.node_modules_dir_flag())
     })
-  }
-
-  pub fn node_modules_dir_specifier(&self) -> Option<ModuleSpecifier> {
-    self
-      .maybe_node_modules_folder
-      .as_ref()
-      .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1014,6 +1088,10 @@ impl CliOptions {
 
   pub fn maybe_config_file(&self) -> &Option<ConfigFile> {
     &self.maybe_config_file
+  }
+
+  pub fn maybe_workspace_config(&self) -> &Option<WorkspaceConfig> {
+    &self.maybe_workspace_config
   }
 
   pub fn maybe_package_json(&self) -> &Option<PackageJson> {
@@ -1116,12 +1194,32 @@ impl CliOptions {
     }
   }
 
+  pub fn enable_op_summary_metrics(&self) -> bool {
+    self.flags.enable_op_summary_metrics
+      || matches!(
+        self.flags.subcommand,
+        DenoSubcommand::Test(_) | DenoSubcommand::Repl(_)
+      )
+  }
+
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
   }
 
   pub fn ext_flag(&self) -> &Option<String> {
     &self.flags.ext
+  }
+
+  pub fn has_hmr(&self) -> bool {
+    if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { hmr, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hmr
+    } else {
+      false
+    }
   }
 
   /// If the --inspect or --inspect-brk flags are used.
@@ -1204,6 +1302,10 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
+  pub fn strace_ops(&self) -> &Option<Vec<String>> {
+    &self.flags.strace_ops
+  }
+
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
   }
@@ -1214,6 +1316,39 @@ impl CliOptions {
 
   pub fn unstable(&self) -> bool {
     self.flags.unstable
+  }
+
+  pub fn unstable_bare_node_builtins(&self) -> bool {
+    self.flags.unstable_bare_node_builtins
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.json.unstable.contains(&"bare-node-builtins".to_string()))
+        .unwrap_or(false)
+  }
+
+  pub fn unstable_byonm(&self) -> bool {
+    self.flags.unstable_byonm
+      || NPM_PROCESS_STATE
+        .as_ref()
+        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
+        .unwrap_or(false)
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+        .unwrap_or(false)
+  }
+
+  pub fn unstable_features(&self) -> Vec<String> {
+    let mut from_config_file = self
+      .maybe_config_file()
+      .as_ref()
+      .map(|c| c.json.unstable.clone())
+      .unwrap_or_default();
+
+    from_config_file.extend_from_slice(&self.flags.unstable_features);
+    from_config_file
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

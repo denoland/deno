@@ -9,6 +9,7 @@ use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
+use std::fmt::Write as FmtWrite;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -48,18 +49,12 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
     Ok(())
   }
 
-  fn add_file_context(file_path: &Path, err: Error) -> Error {
-    Error::new(
-      err.kind(),
-      format!("{:#} (for '{}')", err, file_path.display()),
-    )
-  }
-
   fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
     let temp_file_path = {
-      let rand: String = (0..4)
-        .map(|_| format!("{:02x}", rand::random::<u8>()))
-        .collect();
+      let rand: String = (0..4).fold(String::new(), |mut output, _| {
+        let _ = write!(output, "{:02x}", rand::random::<u8>());
+        output
+      });
       let extension = format!("{rand}.tmp");
       file_path.with_extension(extension)
     };
@@ -77,7 +72,7 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
               data,
               mode,
             )
-            .map_err(|err| add_file_context(file_path, err));
+            .map_err(|err| add_file_context_to_err(file_path, err));
           }
           Err(create_err) => {
             if !parent_dir_path.exists() {
@@ -93,12 +88,50 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
           }
         }
       }
-      return Err(add_file_context(file_path, write_err));
+      return Err(add_file_context_to_err(file_path, write_err));
     }
     Ok(())
   }
 
   inner(file_path, data.as_ref(), mode)
+}
+
+/// Creates a std::fs::File handling if the parent does not exist.
+pub fn create_file(file_path: &Path) -> std::io::Result<std::fs::File> {
+  match std::fs::File::create(file_path) {
+    Ok(file) => Ok(file),
+    Err(err) => {
+      if err.kind() == ErrorKind::NotFound {
+        let parent_dir_path = file_path.parent().unwrap();
+        match std::fs::create_dir_all(parent_dir_path) {
+          Ok(()) => {
+            return std::fs::File::create(file_path)
+              .map_err(|err| add_file_context_to_err(file_path, err));
+          }
+          Err(create_err) => {
+            if !parent_dir_path.exists() {
+              return Err(Error::new(
+                create_err.kind(),
+                format!(
+                  "{:#} (for '{}')\nCheck the permission of the directory.",
+                  create_err,
+                  parent_dir_path.display()
+                ),
+              ));
+            }
+          }
+        }
+      }
+      Err(add_file_context_to_err(file_path, err))
+    }
+  }
+}
+
+fn add_file_context_to_err(file_path: &Path, err: Error) -> Error {
+  Error::new(
+    err.kind(),
+    format!("{:#} (for '{}')", err, file_path.display()),
+  )
 }
 
 pub fn write_file<T: AsRef<[u8]>>(
@@ -173,8 +206,14 @@ pub fn canonicalize_path_maybe_not_exists_with_fs(
         return Ok(canonicalized_path);
       }
       Err(err) if err.kind() == ErrorKind::NotFound => {
-        names_stack.push(path.file_name().unwrap());
-        path = path.parent().unwrap();
+        names_stack.push(match path.file_name() {
+          Some(name) => name.to_owned(),
+          None => return Err(err),
+        });
+        path = match path.parent() {
+          Some(parent) => parent,
+          None => return Err(err),
+        };
       }
       Err(err) => return Err(err),
     }

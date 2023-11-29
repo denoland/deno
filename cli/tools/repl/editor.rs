@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::cdp;
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
@@ -37,7 +38,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
-use super::cdp;
 use super::channel::RustylineSyncMessageSender;
 use super::session::REPL_INTERNALS_NAME;
 
@@ -374,32 +374,35 @@ impl Highlighter for EditorHelper {
               }
               Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
               Word::Ident(ident) => {
-                if ident == *"undefined" {
-                  colors::gray(&line[range]).to_string()
-                } else if ident == *"Infinity" || ident == *"NaN" {
-                  colors::yellow(&line[range]).to_string()
-                } else if ident == *"async" || ident == *"of" {
-                  colors::cyan(&line[range]).to_string()
-                } else {
-                  let next = lexed_items.peek().map(|item| &item.inner);
-                  if matches!(
-                    next,
-                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
-                  ) {
-                    // We're looking for something that looks like a function
-                    // We use a simple heuristic: 'ident' followed by 'LParen'
-                    colors::intense_blue(&line[range]).to_string()
-                  } else if ident == *"from"
-                    && matches!(
+                match ident.as_ref() {
+                  "undefined" => colors::gray(&line[range]).to_string(),
+                  "Infinity" | "NaN" => {
+                    colors::yellow(&line[range]).to_string()
+                  }
+                  "async" | "of" => colors::cyan(&line[range]).to_string(),
+                  _ => {
+                    let next = lexed_items.peek().map(|item| &item.inner);
+                    if matches!(
                       next,
-                      Some(deno_ast::TokenOrComment::Token(Token::Str { .. }))
-                    )
-                  {
-                    // When ident 'from' is followed by a string literal, highlight it
-                    // E.g. "export * from 'something'" or "import a from 'something'"
-                    colors::cyan(&line[range]).to_string()
-                  } else {
-                    line[range].to_string()
+                      Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                    ) {
+                      // We're looking for something that looks like a function
+                      // We use a simple heuristic: 'ident' followed by 'LParen'
+                      colors::intense_blue(&line[range]).to_string()
+                    } else if ident.as_ref() == "from"
+                      && matches!(
+                        next,
+                        Some(deno_ast::TokenOrComment::Token(
+                          Token::Str { .. }
+                        ))
+                      )
+                    {
+                      // When ident 'from' is followed by a string literal, highlight it
+                      // E.g. "export * from 'something'" or "import a from 'something'"
+                      colors::cyan(&line[range]).to_string()
+                    } else {
+                      line[range].to_string()
+                    }
                   }
                 }
               }

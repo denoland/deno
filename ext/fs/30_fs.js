@@ -34,7 +34,7 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { pathFromURL, SymbolDispose } from "ext:deno_web/00_infra.js";
 
 function chmodSync(path, mode) {
   ops.op_fs_chmod_sync(pathFromURL(path), mode);
@@ -668,6 +668,10 @@ class FsFile {
       this.#writable = writableStreamForRid(this.rid);
     }
     return this.#writable;
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.rid);
   }
 }
 

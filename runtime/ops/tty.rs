@@ -1,12 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Error;
-use std::io::IsTerminal;
 
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
-use deno_core::ResourceHandle;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -120,6 +118,41 @@ fn op_stdin_set_raw(
   }
   #[cfg(unix)]
   {
+    fn prepare_stdio() {
+      // SAFETY: Save current state of stdio and restore it when we exit.
+      unsafe {
+        use libc::atexit;
+        use libc::tcgetattr;
+        use libc::tcsetattr;
+        use libc::termios;
+        use once_cell::sync::OnceCell;
+
+        // Only save original state once.
+        static ORIG_TERMIOS: OnceCell<Option<termios>> = OnceCell::new();
+        ORIG_TERMIOS.get_or_init(|| {
+          let mut termios = std::mem::zeroed::<termios>();
+          if tcgetattr(libc::STDIN_FILENO, &mut termios) == 0 {
+            extern "C" fn reset_stdio() {
+              // SAFETY: Reset the stdio state.
+              unsafe {
+                tcsetattr(
+                  libc::STDIN_FILENO,
+                  0,
+                  &ORIG_TERMIOS.get().unwrap().unwrap(),
+                )
+              };
+            }
+
+            atexit(reset_stdio);
+            return Some(termios);
+          }
+
+          None
+        });
+      }
+    }
+
+    prepare_stdio();
     let tty_mode_store = state.borrow::<TtyModeStore>().clone();
     let previous_mode = tty_mode_store.get(rid);
 
@@ -167,24 +200,7 @@ fn op_stdin_set_raw(
 #[op2(fast)]
 fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
   let handle = state.resource_table.get_handle(rid)?;
-  // TODO(mmastrac): this can migrate to the deno_core implementation when it lands
-  Ok(match handle {
-    ResourceHandle::Fd(fd) if handle.is_valid() => {
-      #[cfg(windows)]
-      {
-        // SAFETY: The resource remains open for the for the duration of borrow_raw
-        unsafe {
-          std::os::windows::io::BorrowedHandle::borrow_raw(fd).is_terminal()
-        }
-      }
-      #[cfg(unix)]
-      {
-        // SAFETY: The resource remains open for the for the duration of borrow_raw
-        unsafe { std::os::fd::BorrowedFd::borrow_raw(fd).is_terminal() }
-      }
-    }
-    _ => false,
-  })
+  Ok(handle.is_terminal())
 }
 
 #[op2(fast)]

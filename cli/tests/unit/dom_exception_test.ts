@@ -7,11 +7,8 @@ import {
 } from "./test_util.ts";
 
 Deno.test(function customInspectFunction() {
-  const blob = new DOMException("test");
-  assertEquals(
-    Deno.inspect(blob),
-    `DOMException: test`,
-  );
+  const exception = new DOMException("test");
+  assertEquals(Deno.inspect(exception), exception.stack);
   assertStringIncludes(Deno.inspect(DOMException.prototype), "DOMException");
 });
 

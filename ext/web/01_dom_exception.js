@@ -131,19 +131,22 @@ class DOMException {
     return this[_code];
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
-      return `DOMException: ${this[_message]}`;
+      return this[_error].stack;
     } else {
-      return inspect(createFilteredInspectProxy({
-        object: this,
-        evaluate: false,
-        keys: [
-          "message",
-          "name",
-          "code",
-        ],
-      }));
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: false,
+          keys: [
+            "message",
+            "name",
+            "code",
+          ],
+        }),
+        inspectOptions,
+      );
     }
   }
 }
@@ -170,7 +173,7 @@ ObjectDefineProperty(DOMException.prototype, "__callSiteEvals", {
 
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
-webidl.configurePrototype(DOMException);
+webidl.configureInterface(DOMException);
 const DOMExceptionPrototype = DOMException.prototype;
 
 const entries = ObjectEntries({

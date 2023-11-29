@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::cdp;
 use crate::tools::repl;
-use crate::tools::repl::cdp;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::serde_json;
@@ -382,27 +382,15 @@ impl JupyterServer {
       }
     };
 
-    let repl::cdp::EvaluateResponse {
+    let cdp::EvaluateResponse {
       result,
       exception_details,
     } = evaluate_response.value;
 
     if exception_details.is_none() {
-      let output =
-        get_jupyter_display_or_eval_value(&mut self.repl_session, &result)
-          .await?;
-      // Don't bother sending `execute_result` reply if the MIME bundle is empty
-      if !output.is_empty() {
-        msg
-          .new_message("execute_result")
-          .with_content(json!({
-              "execution_count": self.execution_count,
-              "data": output,
-              "metadata": {},
-          }))
-          .send(&mut *self.iopub_socket.lock().await)
-          .await?;
-      }
+      publish_result(&mut self.repl_session, &result, self.execution_count)
+        .await?;
+
       msg
         .new_reply()
         .with_content(json!({
@@ -416,9 +404,7 @@ impl JupyterServer {
       // Otherwise, executing multiple cells one-by-one might lead to output
       // from various cells be grouped together in another cell result.
       tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    } else {
-      let exception_details = exception_details.unwrap();
-
+    } else if let Some(exception_details) = exception_details {
       // Determine the exception value and name
       let (name, message, stack) =
         if let Some(exception) = exception_details.exception {
@@ -545,33 +531,33 @@ fn kernel_info() -> serde_json::Value {
   })
 }
 
-async fn get_jupyter_display(
+async fn publish_result(
   session: &mut repl::ReplSession,
   evaluate_result: &cdp::RemoteObject,
+  execution_count: usize,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
+  let arg0 = cdp::CallArgument {
+    value: Some(serde_json::Value::Number(execution_count.into())),
+    unserializable_value: None,
+    object_id: None,
+  };
+
+  let arg1 = cdp::CallArgument::from(evaluate_result);
+
   let response = session
     .post_message_with_event_loop(
       "Runtime.callFunctionOn",
       Some(json!({
-        "functionDeclaration": r#"function (object) {
-      const display = object[Symbol.for("Jupyter.display")];
-
-      if (typeof display !== "function") {
-        return null;
-      }
-      
-      try {
-        return JSON.stringify(display());
-      } catch {
-        return null;
-      }
+        "functionDeclaration": r#"async function (execution_count, result) {
+          await Deno[Deno.internal].jupyter.broadcastResult(execution_count, result);
     }"#,
-        "arguments": [cdp::CallArgument::from(evaluate_result)],
+        "arguments": [arg0, arg1],
         "executionContextId": session.context_id,
         "awaitPromise": true,
       })),
     )
     .await?;
+
   let response: cdp::CallFunctionOnResponse = serde_json::from_value(response)?;
 
   if let Some(exception_details) = &response.exception_details {
@@ -581,73 +567,7 @@ async fn get_jupyter_display(
     return Ok(None);
   }
 
-  match response.result.value {
-    Some(serde_json::Value::String(json_str)) => {
-      let Ok(data) =
-        serde_json::from_str::<HashMap<String, serde_json::Value>>(&json_str)
-      else {
-        eprintln!("Unexpected response from Jupyter.display: {json_str}");
-        return Ok(None);
-      };
-
-      if !data.is_empty() {
-        return Ok(Some(data));
-      }
-    }
-    Some(serde_json::Value::Null) => {
-      // Object did not have the Jupyter display spec
-      return Ok(None);
-    }
-    _ => {
-      eprintln!(
-        "Unexpected response from Jupyter.display: {:?}",
-        response.result
-      )
-    }
-  }
-
   Ok(None)
-}
-
-async fn get_jupyter_display_or_eval_value(
-  session: &mut repl::ReplSession,
-  evaluate_result: &cdp::RemoteObject,
-) -> Result<HashMap<String, serde_json::Value>, AnyError> {
-  // Printing "undefined" generates a lot of noise, so let's skip
-  // these.
-  if evaluate_result.kind == "undefined" {
-    return Ok(HashMap::default());
-  }
-
-  // If the response is a primitive value we don't need to try and format
-  // Jupyter response.
-  if evaluate_result.object_id.is_some() {
-    if let Some(data) = get_jupyter_display(session, evaluate_result).await? {
-      return Ok(data);
-    }
-  }
-
-  let response = session
-    .call_function_on_args(
-      format!(
-        r#"function (object) {{
-        try {{
-          return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-        }} catch (err) {{
-          return {0}.inspectArgs(["%o", err]);
-        }}
-      }}"#,
-        *repl::REPL_INTERNALS_NAME
-      ),
-      &[evaluate_result.clone()],
-    )
-    .await?;
-  let mut data = HashMap::default();
-  if let Some(value) = response.result.value {
-    data.insert("text/plain".to_string(), value);
-  }
-
-  Ok(data)
 }
 
 // TODO(bartlomieju): dedup with repl::editor

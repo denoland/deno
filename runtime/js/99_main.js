@@ -1,9 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// Removes the `__proto__` for security reasons.
-// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-delete Object.prototype.__proto__;
-
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
@@ -14,6 +10,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -26,7 +23,6 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
-  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -50,31 +46,46 @@ import {
   getNoColor,
   inspectArgs,
   quoteString,
-  setNoColor,
+  setNoColorFn,
   wrapConsole,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
-import { denoNs, denoNsUnstable } from "ext:runtime/90_deno_ns.js";
+import {
+  denoNs,
+  denoNsUnstable,
+  denoNsUnstableById,
+} from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
   mainRuntimeGlobalProperties,
-  setLanguage,
-  setNumCpus,
-  setUserAgent,
+  memoizeLazy,
   unstableWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
+import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
 
 // deno-lint-ignore prefer-primordials
-Symbol.dispose ??= Symbol("Symbol.dispose");
-// deno-lint-ignore prefer-primordials
-Symbol.asyncDispose ??= Symbol("Symbol.asyncDispose");
+if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
+ObjectDefineProperties(Symbol, {
+  dispose: {
+    value: SymbolDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+  asyncDispose: {
+    value: SymbolAsyncDispose,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+});
 
 let windowIsClosing = false;
 let globalThis_;
@@ -224,6 +235,11 @@ function opMainModule() {
   return ops.op_main_module();
 }
 
+const opArgs = memoizeLazy(() => ops.op_bootstrap_args());
+const opPid = memoizeLazy(() => ops.op_bootstrap_pid());
+const opPpid = memoizeLazy(() => ops.op_ppid());
+setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
+
 function formatException(error) {
   if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
     return null;
@@ -310,10 +326,6 @@ function runtimeStart(
   v8Version,
   tsVersion,
   target,
-  logLevel,
-  noColor,
-  isTty,
-  source,
 ) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
@@ -326,8 +338,6 @@ function runtimeStart(
     tsVersion,
   );
   core.setBuildInfo(target);
-  util.setLogLevel(logLevel, source);
-  setNoColor(noColor || !isTty);
 }
 
 const pendingRejections = [];
@@ -435,7 +445,19 @@ const finalDenoNs = {
   resources: core.resources,
   close: core.close,
   ...denoNs,
+  // Deno.test and Deno.bench are noops here, but kept for compatibility; so
+  // that they don't cause errors when used outside of `deno test`/`deno bench`
+  // contexts.
+  test: () => {},
+  bench: () => {},
 };
+
+const {
+  denoVersion,
+  tsVersion,
+  v8Version,
+  target,
+} = ops.op_snapshot_options();
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
@@ -444,24 +466,12 @@ function bootstrapMainRuntime(runtimeOptions) {
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: args,
-    1: cpuCount,
-    2: logLevel,
-    3: denoVersion,
-    4: locale,
-    5: location_,
-    6: noColor,
-    7: isTty,
-    8: tsVersion,
-    9: unstableFlag,
-    10: pid,
-    11: target,
-    12: v8Version,
-    13: userAgent,
-    14: inspectFlag,
-    // 15: enableTestingFeaturesFlag
-    16: hasNodeModulesDir,
-    17: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    3: inspectFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -489,6 +499,10 @@ function bootstrapMainRuntime(runtimeOptions) {
   }
   ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
+    // TODO(bartlomieju): in the future we might want to change the
+    // behavior of setting `name` to actually update the process name.
+    // Empty string matches what browsers do.
+    name: util.writable(""),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
   });
@@ -516,30 +530,17 @@ function bootstrapMainRuntime(runtimeOptions) {
     v8Version,
     tsVersion,
     target,
-    logLevel,
-    noColor,
-    isTty,
   );
 
-  setNumCpus(cpuCount);
-  setUserAgent(userAgent);
-  setLanguage(locale);
-
-  let ppid = undefined;
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.readOnly(pid),
-    ppid: util.getterOnly(() => {
-      // lazy because it's expensive
-      if (ppid === undefined) {
-        ppid = ops.op_ppid();
-      }
-      return ppid;
-    }),
-    noColor: util.readOnly(noColor),
-    args: util.readOnly(ObjectFreeze(args)),
+    pid: util.getterOnly(opPid),
+    ppid: util.getterOnly(opPpid),
+    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
+    args: util.getterOnly(opArgs),
     mainModule: util.getterOnly(opMainModule),
   });
 
+  // TODO(bartlomieju): deprecate --unstable
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
     // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
@@ -559,13 +560,22 @@ function bootstrapMainRuntime(runtimeOptions) {
         jupyterNs = val;
       },
     });
+  } else {
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+    }
+  }
+
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+    // Removes the `__proto__` for security reasons.
+    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+    delete Object.prototype.__proto__;
   }
 
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-
-  util.log("args", args);
 
   if (nodeBootstrap) {
     nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
@@ -584,24 +594,12 @@ function bootstrapWorkerRuntime(
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: args,
-    1: cpuCount,
-    2: logLevel,
-    3: denoVersion,
-    4: locale,
-    5: location_,
-    6: noColor,
-    7: isTty,
-    8: tsVersion,
-    9: unstableFlag,
-    10: pid,
-    11: target,
-    12: v8Version,
-    13: userAgent,
-    // 14: inspectFlag,
-    15: enableTestingFeaturesFlag,
-    16: hasNodeModulesDir,
-    17: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    4: enableTestingFeaturesFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -657,27 +655,33 @@ function bootstrapWorkerRuntime(
     v8Version,
     tsVersion,
     target,
-    logLevel,
-    noColor,
-    isTty,
     internalName ?? name,
   );
 
   location.setLocationHref(location_);
 
-  setNumCpus(cpuCount);
-  setUserAgent(userAgent);
-  setLanguage(locale);
-
   globalThis.pollForMessages = pollForMessages;
 
+  // TODO(bartlomieju): deprecate --unstable
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
+  } else {
+    for (let i = 0; i <= unstableFeatures.length; i++) {
+      const id = unstableFeatures[i];
+      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+    }
   }
+
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+    // Removes the `__proto__` for security reasons.
+    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+    delete Object.prototype.__proto__;
+  }
+
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.readOnly(pid),
-    noColor: util.readOnly(noColor),
-    args: util.readOnly(ObjectFreeze(args)),
+    pid: util.getterOnly(opPid),
+    noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),
+    args: util.getterOnly(opArgs),
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".

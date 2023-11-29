@@ -17,8 +17,10 @@ use deno_core::serde_json;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
+use deno_runtime::deno_fs::RealFs;
 use import_map::ImportMap;
 
 use crate::args::JsxImportSourceConfig;
@@ -233,8 +235,7 @@ impl VendorTestBuilder {
     let output_dir = make_path("/vendor");
     let entry_points = self.entry_points.clone();
     let loader = self.loader.clone();
-    let parsed_source_cache = ParsedSourceCache::new_in_memory();
-    let analyzer = parsed_source_cache.as_analyzer();
+    let parsed_source_cache = ParsedSourceCache::default();
     let resolver = Arc::new(build_resolver(
       self.jsx_import_source_config.clone(),
       self.original_import_map.clone(),
@@ -245,12 +246,13 @@ impl VendorTestBuilder {
         let resolver = resolver.clone();
         move |entry_points| {
           async move {
+            let analyzer = DefaultModuleAnalyzer::default();
             Ok(
               build_test_graph(
                 entry_points,
                 loader,
                 resolver.as_graph_resolver(),
-                &*analyzer,
+                &analyzer,
               )
               .await,
             )
@@ -293,15 +295,17 @@ fn build_resolver(
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
-  CliGraphResolver::new(
-    None,
-    Default::default(),
-    CliGraphResolverOptions {
-      maybe_jsx_import_source_config,
-      maybe_import_map: original_import_map.map(Arc::new),
-      maybe_vendor_dir: None,
-    },
-  )
+  CliGraphResolver::new(CliGraphResolverOptions {
+    fs: Arc::new(RealFs),
+    node_resolver: None,
+    npm_resolver: None,
+    cjs_resolutions: None,
+    package_json_deps_provider: Default::default(),
+    maybe_jsx_import_source_config,
+    maybe_import_map: original_import_map.map(Arc::new),
+    maybe_vendor_dir: None,
+    bare_node_builtins_enabled: false,
+  })
 }
 
 async fn build_test_graph(

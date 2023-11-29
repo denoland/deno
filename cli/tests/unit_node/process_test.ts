@@ -13,7 +13,6 @@ import {
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import { delay } from "../../../test_util/std/async/delay.ts";
 
@@ -259,6 +258,23 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.argv0",
+  fn() {
+    assertEquals(typeof process.argv0, "string");
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+    // Setting should be a noop
+    process.argv0 = "foobar";
+    assert(
+      process.argv0.match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]",
+    );
+  },
+});
+
+Deno.test({
   name: "process.execArgv",
   fn() {
     assert(Array.isArray(process.execArgv));
@@ -348,8 +364,10 @@ Deno.test({
   name: "process.stdin readable with a TTY",
   // TODO(PolarETech): Run this test even in non tty environment
   ignore: !Deno.isatty(Deno.stdin.rid),
+  // stdin resource is present before the test starts.
+  sanitizeResources: false,
   async fn() {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const expected = ["foo", "bar", null, "end"];
     const data: (string | null)[] = [];
 
@@ -366,7 +384,7 @@ Deno.test({
       process.stdin.push("bar");
       process.nextTick(() => {
         process.stdin.push(null);
-        promise.resolve();
+        resolve();
       });
     });
 
@@ -711,6 +729,14 @@ Deno.test("process.getuid", () => {
   }
 });
 
+Deno.test("process.geteuid", () => {
+  if (Deno.build.os === "windows") {
+    assertEquals(process.geteuid, undefined);
+  } else {
+    assert(typeof process.geteuid?.() === "number");
+  }
+});
+
 Deno.test({
   name: "process.exit",
   async fn() {
@@ -784,5 +810,18 @@ Deno.test({
     );
     await delay(10);
     worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').errname",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.errname);
+    assert(typeof uv.errname === "function");
+    assertEquals(uv.errname(-1), "EPERM");
   },
 });

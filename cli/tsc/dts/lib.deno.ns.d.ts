@@ -812,8 +812,46 @@ declare namespace Deno {
     permissions?: PermissionOptions;
   }
 
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   *
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test({
+   *   name: "example test",
+   *   fn() {
+   *     assertEquals("world", "world");
+   *   },
+   * });
+   *
+   * Deno.test({
+   *   name: "example ignored test",
+   *   ignore: Deno.build.os === "windows",
+   *   fn() {
+   *     // This test is ignored only on Windows machines
+   *   },
+   * });
+   *
+   * Deno.test({
+   *   name: "example async test",
+   *   async fn() {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   }
+   * });
+   * ```
+   *
+   * @category Testing
+   */
   export const test: DenoTest;
 
+  /**
+   * @category Testing
+   */
   interface DenoTest {
     /** Register a test which will be run when `deno test` is used on the command
      * line and the containing module looks like a test module.
@@ -1748,10 +1786,8 @@ declare namespace Deno {
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
-   * @deprecated Use
-   * [`copy`](https://deno.land/std/streams/copy.ts?s=copy) from
-   * [`std/streams/copy.ts`](https://deno.land/std/streams/copy.ts)
-   * instead. `Deno.copy` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream.pipeTo} instead.
+   * {@linkcode Deno.copy} will be removed in the future.
    *
    * @category I/O
    *
@@ -1768,11 +1804,8 @@ declare namespace Deno {
   /**
    * Turns a Reader, `r`, into an async iterator.
    *
-   * @deprecated Use
-   * [`iterateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
-   * from
-   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
-   * instead. `Deno.iter` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Deno.iter}
+   * will be removed in the future.
    *
    * @category I/O
    */
@@ -1784,11 +1817,8 @@ declare namespace Deno {
   /**
    * Turns a ReaderSync, `r`, into an iterator.
    *
-   * @deprecated Use
-   * [`iterateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
-   * from
-   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
-   * instead. `Deno.iterSync` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} instead.
+   * {@linkcode Deno.iterSync} will be removed in the future.
    *
    * @category I/O
    */
@@ -1877,9 +1907,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use
-   * [`readAll()`](https://deno.land/std/streams/read_all.ts?s=readAll) from
-   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
+   * work with this directly, but rather use {@linkcode ReadableStream} and
+   * {@linkcode https://deno.land/std/streams/mod.ts?s=toArrayBuffer|toArrayBuffer}
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
@@ -1907,10 +1936,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use
-   * [`readAllSync()`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
-   * from
-   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
+   * work with this directly, but rather use {@linkcode ReadableStream} and
+   * {@linkcode https://deno.land/std/streams/mod.ts?s=toArrayBuffer|toArrayBuffer}
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single
@@ -1932,10 +1959,9 @@ declare namespace Deno {
   /** Write to the resource ID (`rid`) the contents of the array buffer (`data`).
    *
    * Resolves to the number of bytes written. This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather use
-   * [`writeAll()`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
-   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   * instead.
+   * level APIs and most users should not work with this directly, but rather
+   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
+   * {@linkcode ReadableStream.pipeTo}.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -1957,11 +1983,8 @@ declare namespace Deno {
    *
    * Returns the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather
-   * use
-   * [`writeAllSync()`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
-   * from
-   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   * instead.
+   * use {@linkcode WritableStream}, {@linkcode ReadableStream.from} and
+   * {@linkcode ReadableStream.pipeTo}.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -2184,7 +2207,8 @@ declare namespace Deno {
       WriterSync,
       Seeker,
       SeekerSync,
-      Closer {
+      Closer,
+      Disposable {
     /** The resource ID associated with the file instance. The resource ID
      * should be considered an opaque reference to resource. */
     readonly rid: number;
@@ -2458,13 +2482,16 @@ declare namespace Deno {
      * ```
      */
     close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /**
    * The Deno abstraction for reading and writing files.
    *
-   * @deprecated Use {@linkcode Deno.FsFile} instead. `Deno.File` will be
-   *   removed in the future.
+   * @deprecated Use {@linkcode Deno.FsFile} instead. {@linkcode Deno.File}
+   * will be removed in the future.
+   *
    * @category File System
    */
   export const File: typeof FsFile;
@@ -2657,9 +2684,9 @@ declare namespace Deno {
   /**
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
-   * @deprecated Use [`Buffer`](https://deno.land/std/io/buffer.ts?s=Buffer)
-   *   from [`std/io/buffer.ts`](https://deno.land/std/io/buffer.ts) instead.
-   *   `Deno.Buffer` will be removed in the future.
+   * @deprecated Use the
+   * [Web Streams API]{@link https://developer.mozilla.org/en-US/docs/Web/API/Streams_API}
+   * instead. {@linkcode Deno.Buffer} will be removed in the future.
    *
    * @category I/O
    */
@@ -2733,10 +2760,9 @@ declare namespace Deno {
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
-   * @deprecated Use
-   *   [`readAll`](https://deno.land/std/streams/read_all.ts?s=readAll) from
-   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
-   *   instead. `Deno.readAll` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} and
+   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * instead. {@linkcode Deno.readAll} will be removed in the future.
    *
    * @category I/O
    */
@@ -2746,11 +2772,9 @@ declare namespace Deno {
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
-   * @deprecated Use
-   *   [`readAllSync`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
-   *   from
-   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
-   *   instead. `Deno.readAllSync` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} and
+   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * instead. {@linkcode Deno.readAllSync} will be removed in the future.
    *
    * @category I/O
    */
@@ -2759,10 +2783,9 @@ declare namespace Deno {
   /**
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
-   * @deprecated Use
-   *   [`writeAll`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
-   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   *   instead. `Deno.writeAll` will be removed in the future.
+   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
+   * and {@linkcode ReadableStream.pipeTo} instead. {@linkcode Deno.writeAll}
+   * will be removed in the future.
    *
    * @category I/O
    */
@@ -2772,11 +2795,9 @@ declare namespace Deno {
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
-   * @deprecated Use
-   *   [`writeAllSync`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
-   *   from
-   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   *   instead. `Deno.writeAllSync` will be removed in the future.
+   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
+   * and {@linkcode ReadableStream.pipeTo} instead.
+   * {@linkcode Deno.writeAllSync} will be removed in the future.
    *
    * @category I/O
    */
@@ -3838,7 +3859,7 @@ declare namespace Deno {
    *
    * @category File System
    */
-  export interface FsWatcher extends AsyncIterable<FsEvent> {
+  export interface FsWatcher extends AsyncIterable<FsEvent>, Disposable {
     /** The resource id. */
     readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
@@ -4291,7 +4312,7 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
-  export class ChildProcess {
+  export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array>;
     get stdout(): ReadableStream<Uint8Array>;
     get stderr(): ReadableStream<Uint8Array>;
@@ -4304,6 +4325,8 @@ declare namespace Deno {
     output(): Promise<CommandOutput>;
     /** Kills the process with given {@linkcode Deno.Signal}.
      *
+     * Defaults to `SIGTERM` if no signal is provided.
+     *
      * @param [signo="SIGTERM"]
      */
     kill(signo?: Signal): void;
@@ -4314,6 +4337,8 @@ declare namespace Deno {
     /** Ensure that the status of the child process does not block the Deno
      * process from exiting. */
     unref(): void;
+
+    [Symbol.asyncDispose](): Promise<void>;
   }
 
   /**
@@ -5265,7 +5290,7 @@ declare namespace Deno {
    * requests on the HTTP server connection.
    *
    * @category HTTP Server */
-  export interface HttpConn extends AsyncIterable<RequestEvent> {
+  export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
      * need to be aware of this identifier. */
     readonly rid: number;
@@ -5918,7 +5943,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export interface Server {
+  export interface HttpServer extends AsyncDisposable {
     /** A promise that resolves once server finishes - eg. when aborted using
      * the signal passed to {@linkcode ServeOptions.signal}.
      */
@@ -5936,6 +5961,12 @@ declare namespace Deno {
     unref(): void;
   }
 
+  /**
+   * @category HTTP Server
+   * @deprecated Use {@linkcode HttpServer} instead.
+   */
+  export type Server = HttpServer;
+
   /** Serves HTTP requests with the given handler.
    *
    * The below example serves with the port `8000` on hostname `"127.0.0.1"`.
@@ -5946,7 +5977,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): Server;
+  export function serve(handler: ServeHandler): HttpServer;
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -6006,7 +6037,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Server;
+  ): HttpServer;
   /** Serves HTTP requests with the given option bag.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -6034,5 +6065,5 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Server;
+  ): HttpServer;
 }

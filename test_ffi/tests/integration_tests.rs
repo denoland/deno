@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use pretty_assertions::assert_eq;
 use std::process::Command;
 use test_util::deno_cmd;
 
@@ -28,7 +29,7 @@ fn basic() {
     .arg("run")
     .arg("--allow-ffi")
     .arg("--allow-read")
-    .arg("--unstable")
+    .arg("--unstable-ffi")
     .arg("--quiet")
     .arg(r#"--v8-flags=--allow-natives-syntax"#)
     .arg("tests/test.js")
@@ -54,11 +55,11 @@ fn basic() {
     [ 4, 5, 6 ]\n\
     Hello from pointer!\n\
     pointer!\n\
-    false\n\
-    true\n\
-    false\n\
-    true\n\
-    false\n\
+    false false\n\
+    true true\n\
+    false false\n\
+    true true\n\
+    false false\n\
     579\n\
     true\n\
     579\n\

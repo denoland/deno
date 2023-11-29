@@ -13,12 +13,22 @@ Deno.test({
     assertEquals(perfHooks.performance.clearMarks, performance.clearMarks);
     assertEquals(perfHooks.performance.mark, performance.mark);
     assertEquals(perfHooks.performance.now, performance.now);
+    assertEquals(
+      perfHooks.performance.getEntriesByName,
+      performance.getEntriesByName,
+    );
+    assertEquals(
+      perfHooks.performance.getEntriesByType,
+      performance.getEntriesByType,
+    );
     // @ts-ignore toJSON is not in Performance interface
     assertEquals(perfHooks.performance.toJSON, performance.toJSON);
     perfHooks.performance.measure("test");
     perfHooks.performance.mark("test");
     perfHooks.performance.clearMarks("test");
     perfHooks.performance.now();
+    assertEquals(perfHooks.performance.getEntriesByName("event", "mark"), []);
+    assertEquals(perfHooks.performance.getEntriesByType("mark"), []);
     // @ts-ignore toJSON is not in Performance interface
     perfHooks.performance.toJSON();
   },

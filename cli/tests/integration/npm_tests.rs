@@ -4,7 +4,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
-use std::process::Stdio;
 use test_util as util;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
@@ -433,6 +432,13 @@ itest!(types_no_types_entry {
   exit_code: 1,
 });
 
+itest!(types_d_ext {
+  args: "check --all npm/d_ext/main.ts",
+  output: "npm/d_ext/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(typescript_file_in_package {
   args: "run npm/typescript_file_in_package/main.ts",
   output: "npm/typescript_file_in_package/main.out",
@@ -501,8 +507,7 @@ fn cached_only_after_first_run() {
     .arg("npm/cached_only_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -521,8 +526,7 @@ fn cached_only_after_first_run() {
     .arg("npm/cached_only_after_first_run/main2.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -544,8 +548,7 @@ fn cached_only_after_first_run() {
     .arg("npm/cached_only_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -571,8 +574,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -591,8 +593,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -611,8 +612,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -631,8 +631,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -651,8 +650,7 @@ fn reload_flag() {
     .arg("npm/reload/main.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -678,8 +676,7 @@ fn no_npm_after_first_run() {
     .arg("npm/no_npm_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -700,8 +697,7 @@ fn no_npm_after_first_run() {
     .arg("npm/no_npm_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -720,8 +716,7 @@ fn no_npm_after_first_run() {
     .arg("npm/no_npm_after_first_run/main1.ts")
     .env("NO_COLOR", "1")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -1266,8 +1261,7 @@ fn lock_file_missing_top_level_package() {
     .arg("-A")
     .arg("main.ts")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -1504,8 +1498,7 @@ fn lock_file_lock_write() {
     .arg("--quiet")
     .arg("npm:cowsay@1.5.0")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -1556,8 +1549,7 @@ fn auto_discover_lock_file() {
     .arg("npm:@denotest/bin/cli-esm")
     .arg("test")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -2143,7 +2135,7 @@ fn top_level_install_package_json_explicit_opt_in() {
   let output = test_context
     .new_command()
     .args("run -")
-    .stdin("console.log(5)")
+    .stdin_text("console.log(5)")
     .run();
   output.assert_matches_text(concat!(
     "Initialize @denotest/esm-basic@1.0.0\n",
@@ -2212,3 +2204,458 @@ itest!(require_resolve_url_paths {
   cwd: Some("npm/require_resolve_url/"),
   copy_temp_dir: Some("npm/require_resolve_url/"),
 });
+
+#[test]
+pub fn byonm_cjs_esm_packages() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_UNSTABLE_BYONM", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+
+  test_context.run_npm("init -y");
+  test_context.run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
+
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(2);
+console.log(getValue());
+
+import cjsDefault from "@denotest/cjs-default-export";
+console.log(cjsDefault.default());
+console.log(cjsDefault.named());
+
+import { getKind } from "@denotest/dual-cjs-esm";
+console.log(getKind());
+
+
+"#,
+  );
+  let output = test_context.new_command().args("run --check main.ts").run();
+  output
+    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\nesm\n");
+
+  // should not have created the .deno directory
+  assert!(!dir.path().join("node_modules/.deno").exists());
+
+  // try chai
+  dir.write(
+    "chai.ts",
+    r#"import { expect } from "chai";
+
+    const timeout = setTimeout(() => {}, 0);
+    expect(timeout).to.be.a("number");
+    clearTimeout(timeout);"#,
+  );
+  test_context.new_command().args("run chai.ts").run();
+
+  // try chalk cjs
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try using an npm specifier for chalk that matches the version we installed
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@4'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try with one that doesn't match the package.json
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text(
+    r#"error: Could not find a matching package for 'npm:chalk@5' in '[WILDCARD]package.json'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    at file:///[WILDCARD]chalk.ts:1:19
+"#);
+  output.assert_exit_code(1);
+}
+
+#[test]
+pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_UNSTABLE_BYONM", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import '@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDCARD]' imported from '[WILDCARD]main.ts'
+    at file:///[WILDCARD]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
+pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_UNSTABLE_BYONM", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'npm:chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not find '[WILDCARD]package.json'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import 'npm:@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Failed resolving package subpath './test' for '[WILDCARD]package.json'
+    at file:///[WILDCARD]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
+pub fn byonm_npm_workspaces() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{
+  "name": "my-workspace",
+  "workspaces": [
+    "project-a",
+    "project-b"
+  ]
+}
+"#,
+  );
+
+  let project_a_dir = dir.path().join("project-a");
+  project_a_dir.create_dir_all();
+  project_a_dir.join("package.json").write_json(&json!({
+    "name": "project-a",
+    "version": "1.0.0",
+    "main": "./index.js",
+    "type": "module",
+    "dependencies": {
+      "chai": "^4.2",
+      "project-b": "^1"
+    }
+  }));
+  project_a_dir.join("index.js").write(
+    r#"
+import { expect } from "chai";
+
+const timeout = setTimeout(() => {}, 0);
+expect(timeout).to.be.a("number");
+clearTimeout(timeout);
+
+export function add(a, b) {
+  return a + b;
+}
+"#,
+  );
+  project_a_dir
+    .join("index.d.ts")
+    .write("export function add(a: number, b: number): number;");
+
+  let project_b_dir = dir.path().join("project-b");
+  project_b_dir.create_dir_all();
+  project_b_dir.join("package.json").write_json(&json!({
+    "name": "project-b",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0",
+    }
+  }));
+  project_b_dir.join("main.ts").write(
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+
+import { add } from "project-a";
+console.log(add(1, 2));
+"#,
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("5\n3\n");
+  let output = test_context
+    .new_command()
+    .args("check ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+}
+
+#[test]
+pub fn cjs_export_analysis_require_re_export() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
+  );
+  dir.write(
+    "main.js",
+    "import { value1, value2 } from 'my-package';\nconsole.log(value1);\nconsole.log(value2)\n",
+  );
+
+  let node_modules_dir = dir.path().join("node_modules");
+
+  // create a package at node_modules/.multipart/name/nested without a package.json
+  {
+    let pkg_dir = node_modules_dir
+      .join(".multipart")
+      .join("name")
+      .join("nested");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("index.js").write("module.exports.value1 = 5;");
+  }
+  // create a package at node_modules/.multipart/other with a package.json
+  {
+    let pkg_dir = node_modules_dir.join(".multipart").join("other");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("index.js").write("module.exports.value2 = 6;");
+  }
+  // create a package at node_modules/my-package that requires them both
+  {
+    let pkg_dir = node_modules_dir.join("my-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "my-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir
+    .join("index.js")
+    .write("module.exports = { ...require('.multipart/name/nested/index'), ...require('.multipart/other/index.js') }");
+  }
+
+  // the cjs export analysis was previously failing, but it should
+  // resolve these exports similar to require
+  let output = test_context
+    .new_command()
+    .args("run --allow-read main.js")
+    .run();
+  output.assert_matches_text("5\n6\n");
+}
+
+#[test]
+pub fn cjs_rexport_analysis_json() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{ "name": "test", "packages": { "my-package": "1.0.0" } }"#,
+  );
+  dir.write(
+    "main.js",
+    "import data from 'my-package';\nconsole.log(data);\n",
+  );
+
+  let node_modules_dir = dir.path().join("node_modules");
+
+  // create a package that has a json file at index.json and data.json then folder/index.json
+  {
+    let pkg_dir = node_modules_dir.join("data-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "data-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir.join("index.json").write(r#"{ "value": 2 }"#);
+    pkg_dir.join("data.json").write(r#"{ "value": 3 }"#);
+    let folder = pkg_dir.join("folder");
+    folder.create_dir_all();
+    folder.join("index.json").write(r#"{ "value": 4 }"#);
+  }
+  // create a package at node_modules/my-package that re-exports a json file
+  {
+    let pkg_dir = node_modules_dir.join("my-package");
+    pkg_dir.create_dir_all();
+    pkg_dir.join("package.json").write_json(&json!({
+      "name": "my-package",
+      "version": "1.0.0",
+    }));
+    pkg_dir.join("data.json").write(r#"{ "value": 1 }"#);
+    pkg_dir.join("index.js").write(
+      "module.exports = {
+  data1: require('./data'),
+  data2: require('data-package'),
+  data3: require('data-package/data'),
+  data4: require('data-package/folder'),
+};",
+    );
+  }
+
+  let output = test_context
+    .new_command()
+    .args("run --allow-read main.js")
+    .run();
+  output.assert_matches_text(
+    "{
+  data1: { value: 1 },
+  data2: { value: 2 },
+  data3: { value: 3 },
+  data4: { value: 4 }
+}
+",
+  );
+}
+
+itest!(imports_package_json {
+  args: "run --node-modules-dir=false npm/imports_package_json/main.js",
+  output: "npm/imports_package_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(imports_package_json_import_not_defined {
+  args:
+    "run --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
+  output: "npm/imports_package_json/import_not_defined.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(imports_package_json_sub_path_import_not_defined {
+  args:
+    "run --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
+  output: "npm/imports_package_json/sub_path_import_not_defined.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(different_nested_dep_node_modules_dir_false {
+  args: "run --quiet --node-modules-dir=false npm/different_nested_dep/main.js",
+  output: "npm/different_nested_dep/main.out",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(different_nested_dep_node_modules_dir_true {
+  args: "run --quiet --node-modules-dir=true main.js",
+  output: "npm/different_nested_dep/main.out",
+  copy_temp_dir: Some("npm/different_nested_dep/"),
+  cwd: Some("npm/different_nested_dep/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+#[test]
+pub fn different_nested_dep_byonm() {
+  let test_context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("npm/different_nested_dep")
+    .cwd("npm/different_nested_dep/")
+    .build();
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run --unstable-byonm main.js")
+    .run();
+  output.assert_matches_file("npm/different_nested_dep/main.out");
+}
+
+#[test]
+pub fn run_cjs_in_node_modules_folder() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write("package.json", "{}");
+  temp_dir.write("deno.json", r#"{ "unstable": ["byonm"] }"#);
+  let pkg_dir = temp_dir.path().join("node_modules/package");
+  pkg_dir.create_dir_all();
+  pkg_dir
+    .join("package.json")
+    .write(r#"{ "name": "package" }"#);
+  pkg_dir
+    .join("main.js")
+    .write("console.log('hi'); module.exports = 'hi';");
+  test_context
+    .new_command()
+    .args("run node_modules/package/main.js")
+    .run()
+    .assert_matches_text("hi\n");
+}

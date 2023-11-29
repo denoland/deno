@@ -67,7 +67,7 @@ const requestBodyReaders = new SafeWeakMap();
 /**
  * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
  * @param {Uint8Array | null} body
- * @returns {{ requestRid: number, requestBodyRid: number | null }}
+ * @returns {{ requestRid: number, requestBodyRid: number | null, cancelHandleRid: number | null }}
  */
 function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
   return ops.op_fetch(
@@ -594,4 +594,4 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-export { fetch, handleWasmStreaming };
+export { fetch, handleWasmStreaming, mainFetch };
