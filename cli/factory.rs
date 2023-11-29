@@ -690,17 +690,19 @@ impl CliFactory {
       is_inspecting: self.options.is_inspecting(),
       is_npm_main: self.options.is_npm_main(),
       location: self.options.location_flag().clone(),
-      maybe_binary_npm_command_name: {
-        let mut maybe_binary_command_name = None;
-        if let DenoSubcommand::Run(flags) = self.options.sub_command() {
-          if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
-            // if the user ran a binary command, we'll need to set process.argv[0]
-            // to be the name of the binary command instead of deno
-            maybe_binary_command_name =
-              Some(npm_pkg_req_ref_to_binary_command(&pkg_ref));
-          }
-        }
-        maybe_binary_command_name
+      // if the user ran a binary command, we'll need to set process.argv[0]
+      // to be the name of the binary command instead of deno
+      maybe_binary_npm_command_name: match self.options.sub_command() {
+        DenoSubcommand::Run(flags) => flags
+          .npm_bin_command_name
+          .as_ref()
+          .map(ToOwned::to_owned)
+          .or_else(|| {
+            NpmPackageReqReference::from_str(&flags.script)
+              .ok()
+              .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+          }),
+        _ => None,
       },
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),

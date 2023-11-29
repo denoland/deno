@@ -20,6 +20,8 @@ use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use indexmap::IndexMap;
+use lazy_regex::Lazy;
+use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -300,11 +302,95 @@ impl ShellCommand for NpmPackageBinCommand {
   }
 }
 
+/// Runs a module in the node_modules folder.
+#[derive(Clone)]
+struct NodeModulesFileRunCommand {
+  command_name: String,
+  path: PathBuf,
+}
+
+impl ShellCommand for NodeModulesFileRunCommand {
+  fn execute(
+    &self,
+    context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    let mut args = vec![
+      "run".to_string(),
+      "--ext=js".to_string(),
+      format!("--internal-bin-name={}", self.command_name),
+      "-A".to_string(),
+      self.path.to_string_lossy().to_string(),
+    ];
+    args.extend(context.args);
+    let executable_command =
+      deno_task_shell::ExecutableCommand::new("deno".to_string());
+    executable_command.execute(ShellCommandContext { args, ..context })
+  }
+}
+
 fn resolve_npm_commands_from_bin_dir(
   node_modules_dir: &Path,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
-  let mut result = HashMap::new();
+  let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
+  let bin_dir = node_modules_dir.join(".bin");
+  if let Ok(entries) = std::fs::read_dir(bin_dir) {
+    for entry in entries {
+      let Ok(entry) = entry else {
+        continue;
+      };
+      if entry.path().extension().is_some() {
+        continue; // only look at files without extensions (even on Windows)
+      }
+      if !entry.file_type().ok().map(|t| t.is_file()).unwrap_or(false) {
+        continue;
+      }
+      let Ok(text) = std::fs::read_to_string(entry.path()) else {
+        continue;
+      };
+      let command_name = entry.file_name().to_string_lossy().to_string();
+      if let Some(path) =
+        resolve_execution_path_from_npx_shim(entry.path(), &text)
+      {
+        log::debug!(
+          "Resolved npx command '{}' to '{}'.",
+          command_name,
+          path.display()
+        );
+        result.insert(
+          command_name.clone(),
+          Rc::new(NodeModulesFileRunCommand { command_name, path }),
+        );
+      } else {
+        log::debug!("Failed resolving npx command '{}'.", command_name);
+      }
+    }
+  }
   Ok(result)
+}
+
+/// This is not ideal, but it works ok because it allows us to bypass
+/// the shebang and execute the script directly with Deno.
+fn resolve_execution_path_from_npx_shim(
+  file_path: PathBuf,
+  text: &str,
+) -> Option<PathBuf> {
+  static SCRIPT_PATH_RE: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
+
+  if text.starts_with("#!/usr/bin/env node") {
+    // launch this file itself because it's a JS file
+    Some(file_path)
+  } else {
+    // Search for...
+    // > "$basedir/../next/dist/bin/next" "$@"
+    // ...which is what it will look like on Windows
+    SCRIPT_PATH_RE
+      .captures(text)
+      .and_then(|c| c.get(1))
+      .map(|relative_path| {
+        file_path.parent().unwrap().join(relative_path.as_str())
+      })
+  }
 }
 
 fn resolve_npm_commands(
@@ -362,6 +448,37 @@ mod test {
     assert_eq!(
       env_vars,
       HashMap::from([("PATH".to_string(), "/example".to_string())])
+    );
+  }
+
+  #[test]
+  fn test_resolve_execution_path_from_npx_shim() {
+    // example shim on unix
+    let unix_shim = r#"#!/usr/bin/env node
+"use strict";
+console.log('Hi!');
+"#;
+    let path = PathBuf::from("/node_modules/.bin/example");
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
+      path
+    );
+    // example shim on windows
+    let windows_shim = r#"#!/bin/sh
+basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
+
+case `uname` in
+    *CYGWIN*|*MINGW*|*MSYS*) basedir=`cygpath -w "$basedir"`;;
+esac
+
+if [ -x "$basedir/node" ]; then
+  exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
+else 
+  exec node  "$basedir/../example/bin/example" "$@"
+fi"#;
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(path.clone(), windows_shim).unwrap(),
+      path.parent().unwrap().join("../example/bin/example")
     );
   }
 }
