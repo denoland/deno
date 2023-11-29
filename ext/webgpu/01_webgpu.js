@@ -617,8 +617,44 @@ class GPUSupportedLimits {
     return this[_limits].maxComputeWorkgroupsPerDimension;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect(this[_limits])}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUSupportedLimitsPrototype, this),
+        keys: [
+          "maxTextureDimension1D",
+          "maxTextureDimension2D",
+          "maxTextureDimension3D",
+          "maxTextureArrayLayers",
+          "maxBindGroups",
+          "maxBindingsPerBindGroup",
+          "maxBufferSize",
+          "maxDynamicUniformBuffersPerPipelineLayout",
+          "maxDynamicStorageBuffersPerPipelineLayout",
+          "maxSampledTexturesPerShaderStage",
+          "maxSamplersPerShaderStage",
+          "maxStorageBuffersPerShaderStage",
+          "maxStorageTexturesPerShaderStage",
+          "maxUniformBuffersPerShaderStage",
+          "maxUniformBufferBindingSize",
+          "maxStorageBufferBindingSize",
+          "minUniformBufferOffsetAlignment",
+          "minStorageBufferOffsetAlignment",
+          "maxVertexBuffers",
+          "maxVertexAttributes",
+          "maxVertexBufferArrayStride",
+          "maxInterStageShaderComponents",
+          "maxComputeWorkgroupStorageSize",
+          "maxComputeInvocationsPerWorkgroup",
+          "maxComputeWorkgroupSizeX",
+          "maxComputeWorkgroupSizeY",
+          "maxComputeWorkgroupSizeZ",
+          "maxComputeWorkgroupsPerDimension",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
