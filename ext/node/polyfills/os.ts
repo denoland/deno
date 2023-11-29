@@ -164,7 +164,10 @@ export function freemem(): number {
   } else if (Deno.build.os === "darwin") {
     return Deno.systemMemoryInfo().available;
   } else if (Deno.build.os === "linux") {
-    return core.ops.op_node_os_freemem_linux();
+    // Use MemAvailable of /proc/meminfo if it's available, otherwise fall back to free memory.
+    // This is equivalent of what libuv does on linux.
+    // https://github.com/libuv/libuv/blob/a5c01d4de3695e9d9da34cfd643b5ff0ba582ea7/src/unix/linux.c#L2064
+    return core.ops.op_node_os_freemem_linux() || Deno.systemMemoryInfo().free;
   } else {
     // fallback to 'free' on other platforms
     return Deno.systemMemoryInfo().free;
