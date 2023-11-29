@@ -159,7 +159,16 @@ export function endianness(): "BE" | "LE" {
 
 /** Return free memory amount */
 export function freemem(): number {
-  return Deno.systemMemoryInfo().available;
+  if (Deno.build.os === "windows") {
+    return Deno.systemMemoryInfo().free;
+  } else if (Deno.build.os === "darwin") {
+    return Deno.systemMemoryInfo().available;
+  } else if (Deno.build.os === "linux") {
+    return core.ops.op_node_os_freemem_linux();
+  } else {
+    // fallback to 'free' on other platforms
+    return Deno.systemMemoryInfo().free;
+  }
 }
 
 /** Not yet implemented */

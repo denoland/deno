@@ -291,9 +291,34 @@ Deno.test({
 });
 
 Deno.test({
-  name: "os.freemem() is equivalent of Deno.systemMemoryInfo().available",
+  name:
+    "os.freemem() is equivalent of Deno.systemMemoryInfo().available on darwin",
+  ignore: Deno.build.os !== "darwin",
   fn() {
     const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().available);
+    assert(diff < 10_000);
+  },
+});
+
+Deno.test({
+  name:
+    "os.freemem() is equivalent of Deno.systemMemoryInfo().available on windows",
+  ignore: Deno.build.os !== "windows",
+  fn() {
+    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().free);
+    assert(diff < 10_000);
+  },
+});
+
+Deno.test({
+  name:
+    "os.freemem() is equivalent of MemAvailable entry of /proc/meminfo on linux",
+  async fn() {
+    const meminfo = await Deno.readTextFile("/proc/meminfo");
+    const memAvailable = +meminfo.split("\n").find((line) =>
+      line.startsWith("MemAvailable:")
+    ).split(/\s+/)[1];
+    const diff = Math.abs(os.freemem() - memAvailable);
     assert(diff < 10_000);
   },
 });

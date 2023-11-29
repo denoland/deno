@@ -71,6 +71,31 @@ where
   Ok(euid)
 }
 
+#[op2(fast)]
+pub fn op_node_os_freemem_linux<P>(state: &mut OpState) -> Result<i32, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  if cfg!(target_os = "linux") {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_read(std::path::Path::new("/proc/meminfo"))?;
+
+    // Gets the available memory from /proc/meminfo in linux for compatibility
+    let meminfo = std::fs::read_to_string("/proc/meminfo")?;
+    for line in meminfo.lines() {
+      if line.starts_with("MemAvailable:") {
+        let mem_available = line
+          .split_whitespace()
+          .nth(1)
+          .map(|v| v.parse::<i32>().ok())
+          .flatten();
+        return Ok(mem_available.unwrap_or(0));
+      }
+    }
+  }
+  Ok(0)
+}
+
 #[cfg(unix)]
 mod priority {
   use super::*;
