@@ -33,6 +33,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsSummaryTracker;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -692,13 +693,13 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        maybe_result
       }
 
       event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+
+        receiver.await
       }
     }
   }
@@ -711,24 +712,26 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
+    let poll_options = PollEventLoopOptions {
+      wait_for_inspector: false,
+      ..Default::default()
+    };
+
     tokio::select! {
       biased;
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
-        // If `None` is returned it means that runtime was destroyed before
-        // evaluation was complete. This can happen in Web Worker when `self.close()`
-        // is called at top level.
-        maybe_result.unwrap_or(Ok(()))
+        maybe_result
       }
 
-      event_loop_result = self.run_event_loop(false) => {
+      event_loop_result = self.run_event_loop(poll_options) => {
         if self.internal_handle.is_terminated() {
            return Ok(());
         }
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.unwrap_or(Ok(()))
+
+        receiver.await
       }
     }
   }
@@ -736,7 +739,7 @@ impl WebWorker {
   fn poll_event_loop(
     &mut self,
     cx: &mut Context,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.terminate_if_needed() {
@@ -745,7 +748,7 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
-    match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
+    match self.js_runtime.poll_event_loop2(cx, poll_options) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {
@@ -756,9 +759,16 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
-        panic!(
-          "coding error: either js is polling or the worker is terminated"
-        );
+        // TODO(mmastrac): we don't want to test this w/classic workers because
+        // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
+        if self.worker_type == WebWorkerType::Module {
+          panic!(
+            "coding error: either js is polling or the worker is terminated"
+          );
+        } else {
+          eprintln!("classic worker terminated unexpectedly");
+          Poll::Ready(Ok(()))
+        }
       }
       Poll::Pending => Poll::Pending,
     }
@@ -766,9 +776,9 @@ impl WebWorker {
 
   pub async fn run_event_loop(
     &mut self,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    poll_fn(|cx| self.poll_event_loop(cx, poll_options)).await
   }
 
   // Starts polling for messages from worker host from JavaScript.
@@ -844,7 +854,12 @@ pub fn run_web_worker(
     }
 
     let result = if result.is_ok() {
-      worker.run_event_loop(true).await
+      worker
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+          ..Default::default()
+        })
+        .await
     } else {
       result
     };

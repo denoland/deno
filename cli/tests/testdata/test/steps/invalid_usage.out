@@ -68,7 +68,7 @@ error: Started test step with sanitizers while another test step was running:
 
  FAILURES 
 
-capturing => ./test/steps/invalid_usage.ts:3:6
+capturing => ./test/steps/invalid_usage.ts:1:6
 top level missing await ... step => ./test/steps/invalid_usage.ts:[WILDCARD]
 inner missing await ... step ... inner => ./test/steps/invalid_usage.ts:[WILDCARD]
 parallel steps with sanitizers ... step 2 => ./test/steps/invalid_usage.ts:[WILDCARD]

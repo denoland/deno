@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::unsync::spawn;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::LspService;
 use tower_lsp::Server;
 
@@ -39,8 +41,12 @@ pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
+  let token = CancellationToken::new();
   let builder = LspService::build(|client| {
-    language_server::LanguageServer::new(client::Client::from_tower(client))
+    language_server::LanguageServer::new(
+      client::Client::from_tower(client),
+      token.clone(),
+    )
   })
   // TODO(nayeemrmn): The extension has replaced this with the `deno.cache`
   // command as of vscode_deno 3.21.0 / 2023.09.05. Remove this eventually.
@@ -81,7 +87,18 @@ pub async fn start() -> Result<(), AnyError> {
 
   let (service, socket) = builder.finish();
 
-  Server::new(stdin, stdout, socket).serve(service).await;
+  // TODO(nayeemrmn): This cancellation token is a workaround for
+  // https://github.com/denoland/deno/issues/20700. Remove when
+  // https://github.com/ebkalderon/tower-lsp/issues/399 is fixed.
+  // Force end the server 8 seconds after receiving a shutdown request.
+  tokio::select! {
+    biased;
+    _ = Server::new(stdin, stdout, socket).serve(service) => {}
+    _ = spawn(async move {
+      token.cancelled().await;
+      tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+    }) => {}
+  }
 
   Ok(())
 }

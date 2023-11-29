@@ -1273,6 +1273,41 @@ async fn main_server(
           .unwrap(),
       )
     }
+    (&hyper::Method::GET, "/upgrade/sleep/release-latest.txt") => {
+      tokio::time::sleep(Duration::from_secs(95)).await;
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .body(Body::from("99999.99.99"))
+          .unwrap(),
+      );
+    }
+    (&hyper::Method::GET, "/upgrade/sleep/canary-latest.txt") => {
+      tokio::time::sleep(Duration::from_secs(95)).await;
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .unwrap(),
+      );
+    }
+    (&hyper::Method::GET, "/release-latest.txt") => {
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          // use a deno version that will never happen
+          .body(Body::from("99999.99.99"))
+          .unwrap(),
+      );
+    }
+    (&hyper::Method::GET, "/canary-latest.txt") => {
+      return Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .unwrap(),
+      );
+    }
     _ => {
       let mut file_path = testdata_path().to_path_buf();
       file_path.push(&req.uri().path()[1..].replace("%2f", "/"));

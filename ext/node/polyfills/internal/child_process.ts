@@ -11,7 +11,6 @@ import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { Readable, Stream, Writable } from "node:stream";
-import { deferred } from "ext:deno_node/_util/async.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
@@ -151,7 +150,7 @@ export class ChildProcess extends EventEmitter {
   ];
 
   #process!: Deno.ChildProcess;
-  #spawned = deferred<void>();
+  #spawned = Promise.withResolvers<void>();
 
   constructor(
     command: string,
@@ -253,7 +252,7 @@ export class ChildProcess extends EventEmitter {
       (async () => {
         const status = await this.#process.status;
         this.exitCode = status.code;
-        this.#spawned.then(async () => {
+        this.#spawned.promise.then(async () => {
           const exitCode = this.signalCode == null ? this.exitCode : null;
           const signalCode = this.signalCode == null ? null : this.signalCode;
           // The 'exit' and 'close' events must be emitted after the 'spawn' event.
@@ -688,22 +687,22 @@ function waitForReadableToClose(readable: Readable) {
 }
 
 function waitForStreamToClose(stream: Stream) {
-  const promise = deferred<void>();
+  const deferred = Promise.withResolvers<void>();
   const cleanup = () => {
     stream.removeListener("close", onClose);
     stream.removeListener("error", onError);
   };
   const onClose = () => {
     cleanup();
-    promise.resolve();
+    deferred.resolve();
   };
   const onError = (err: Error) => {
     cleanup();
-    promise.reject(err);
+    deferred.reject(err);
   };
   stream.once("close", onClose);
   stream.once("error", onError);
-  return promise;
+  return deferred.promise;
 }
 
 /**
@@ -856,7 +855,7 @@ export function spawnSync(
       windowsRawArguments: windowsVerbatimArguments,
     }).outputSync();
 
-    const status = output.signal ? null : 0;
+    const status = output.signal ? null : output.code;
     let stdout = parseSpawnSyncOutputStreams(output, "stdout");
     let stderr = parseSpawnSyncOutputStreams(output, "stderr");
 

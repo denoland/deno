@@ -210,6 +210,10 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
+    // TODO:
+    DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
+      tools::registry::publish(flags, publish_flags).await
+    }),
   };
 
   handle.await?
@@ -315,6 +319,11 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
     "Enable unstable Deno.cron API",
     8,
+  ),
+  (
+    "unsafe-proto",
+    "Enable unsafe __proto__ support. This is a security risk.",
+    9,
   ),
 ];
 
