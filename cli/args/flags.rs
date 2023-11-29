@@ -91,6 +91,7 @@ pub struct CoverageFlags {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub lcov: bool,
+  pub html: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1396,6 +1397,12 @@ Generate html reports from lcov:
             )
             .require_equals(true)
             .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("html")
+            .long("html")
+            .help("Output coverage report in html format in the given coverage directory")
+            .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("files")
@@ -3299,6 +3306,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None => vec![],
   };
   let lcov = matches.get_flag("lcov");
+  let html = matches.get_flag("html");
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
@@ -3309,6 +3317,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     include,
     exclude,
     lcov,
+    html,
   });
 }
 
@@ -7868,6 +7877,7 @@ mod tests {
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: false,
+          html: false,
         }),
         ..Flags::default()
       }
@@ -7894,6 +7904,7 @@ mod tests {
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: true,
+          html: false,
           output: Some(PathBuf::from("foo.lcov")),
         }),
         ..Flags::default()

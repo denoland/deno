@@ -24,6 +24,7 @@ use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCode;
 use regex::Regex;
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
@@ -37,6 +38,7 @@ use uuid::Uuid;
 
 mod merge;
 mod range_tree;
+mod util;
 use merge::ProcessCoverage;
 
 pub struct CoverageCollector {
@@ -156,6 +158,7 @@ impl CoverageCollector {
   }
 }
 
+#[derive(Debug, Clone)]
 struct BranchCoverageItem {
   line_index: usize,
   block_number: usize,
@@ -164,19 +167,35 @@ struct BranchCoverageItem {
   is_hit: bool,
 }
 
+#[derive(Debug, Clone)]
 struct FunctionCoverageItem {
   name: String,
   line_index: usize,
   execution_count: i64,
 }
 
+#[derive(Debug, Clone)]
 struct CoverageReport {
   url: ModuleSpecifier,
   named_functions: Vec<FunctionCoverageItem>,
   branches: Vec<BranchCoverageItem>,
+  /// (line_index, number_of_hits)
   found_lines: Vec<(usize, i64)>,
   output: Option<PathBuf>,
 }
+
+#[derive(Default)]
+struct CoverageStats<'a> {
+  pub line_hit: usize,
+  pub line_miss: usize,
+  pub branch_hit: usize,
+  pub branch_miss: usize,
+  pub parent: Option<String>,
+  pub file_text: Option<String>,
+  pub report: Option<&'a CoverageReport>,
+}
+
+type CoverageSummary<'a> = HashMap<String, CoverageStats<'a>>;
 
 fn generate_coverage_report(
   script_coverage: &cdp::ScriptCoverage,
@@ -371,6 +390,7 @@ fn generate_coverage_report(
 enum CoverageReporterKind {
   Pretty,
   Lcov,
+  Html,
 }
 
 fn create_reporter(
@@ -379,6 +399,7 @@ fn create_reporter(
   match kind {
     CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
     CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
+    CoverageReporterKind::Html => Box::new(HtmlCoverageReporter::new()),
   }
 }
 
@@ -389,7 +410,7 @@ trait CoverageReporter {
     file_text: &str,
   ) -> Result<(), AnyError>;
 
-  fn done(&mut self);
+  fn done(&mut self, _coverage_root: &Path) {}
 }
 
 struct LcovCoverageReporter {}
@@ -490,8 +511,6 @@ impl CoverageReporter for LcovCoverageReporter {
     writeln!(out_writer, "end_of_record")?;
     Ok(())
   }
-
-  fn done(&mut self) {}
 }
 
 struct PrettyCoverageReporter {}
@@ -563,8 +582,344 @@ impl CoverageReporter for PrettyCoverageReporter {
     }
     Ok(())
   }
+}
 
-  fn done(&mut self) {}
+struct HtmlCoverageReporter {
+  file_reports: Vec<(CoverageReport, String)>,
+}
+
+impl HtmlCoverageReporter {
+  pub fn new() -> HtmlCoverageReporter {
+    HtmlCoverageReporter {
+      file_reports: Vec::new(),
+    }
+  }
+}
+
+impl CoverageReporter for HtmlCoverageReporter {
+  fn report(
+    &mut self,
+    report: &CoverageReport,
+    text: &str,
+  ) -> Result<(), AnyError> {
+    self.file_reports.push((report.clone(), text.to_string()));
+    Ok(())
+  }
+
+  fn done(&mut self, coverage_root: &Path) {
+    let summary = self.collect_summary();
+    let now = crate::util::time::utc_now().to_rfc2822();
+
+    for (node, stats) in &summary {
+      let report_path =
+        self.get_report_path(coverage_root, node, stats.file_text.is_none());
+      let main_content = if let Some(file_text) = &stats.file_text {
+        self.create_html_code_table(file_text, stats.report.unwrap())
+      } else {
+        self.create_html_summary_table(node, &summary)
+      };
+      let is_dir = stats.file_text.is_none();
+      let html = self.create_html(node, is_dir, stats, &now, &main_content);
+      fs::create_dir_all(report_path.parent().unwrap()).unwrap();
+      fs::write(report_path, html).unwrap();
+    }
+
+    println!(
+      "HTML coverage report has been generated at {}/html/index.html",
+      coverage_root.canonicalize().unwrap().display()
+    );
+  }
+}
+
+impl HtmlCoverageReporter {
+  /// Collects the coverage summary of each file or directory.
+  pub fn collect_summary(&self) -> CoverageSummary {
+    let urls = self.file_reports.iter().map(|rep| &rep.0.url).collect();
+    let root = util::find_root(urls).unwrap().to_file_path().unwrap();
+    // summary by file or directory
+    // tuple of (line hit, line miss, branch hit, branch miss, parent)
+    let mut summary = HashMap::new();
+    summary.insert("".to_string(), CoverageStats::default()); // root entry
+    for (report, file_text) in &self.file_reports {
+      let path = report.url.to_file_path().unwrap();
+      let relative_path = path.strip_prefix(&root).unwrap();
+      let mut file_text = Some(file_text.to_string());
+
+      let mut summary_path = Some(relative_path);
+      // From leaf to root, adds up the coverage stats
+      while let Some(path) = summary_path {
+        let path_str = path.to_str().unwrap().to_string();
+        let parent = path
+          .parent()
+          .and_then(|p| p.to_str())
+          .map(|p| p.to_string());
+        let stats = summary.entry(path_str).or_insert(CoverageStats {
+          parent,
+          file_text,
+          report: Some(report),
+          ..CoverageStats::default()
+        });
+
+        stats.line_hit += report
+          .found_lines
+          .iter()
+          .filter(|(_, count)| *count > 0)
+          .count();
+        stats.line_miss += report
+          .found_lines
+          .iter()
+          .filter(|(_, count)| *count == 0)
+          .count();
+        stats.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
+        stats.branch_miss +=
+          report.branches.iter().filter(|b| !b.is_hit).count();
+
+        file_text = None;
+        summary_path = path.parent();
+      }
+    }
+
+    summary
+  }
+
+  /// Gets the report path for a single file
+  pub fn get_report_path(
+    &self,
+    coverage_root: &Path,
+    node: &str,
+    is_dir: bool,
+  ) -> PathBuf {
+    if is_dir {
+      // e.g. /path/to/coverage/html/src/index.html
+      coverage_root.join("html").join(node).join("index.html")
+    } else {
+      // e.g. /path/to/coverage/html/src/main.ts.html
+      Path::new(&format!(
+        "{}.html",
+        coverage_root.join("html").join(node).to_str().unwrap()
+      ))
+      .to_path_buf()
+    }
+  }
+
+  /// Creates single page of html report.
+  pub fn create_html(
+    &self,
+    node: &str,
+    is_dir: bool,
+    stats: &CoverageStats,
+    timestamp: &str,
+    main_content: &str,
+  ) -> String {
+    let title = if node == "" {
+      "Coverage report for all files".to_string()
+    } else {
+      let node = if is_dir {
+        format!("{}/", node)
+      } else {
+        node.to_string()
+      };
+      format!("Coverage report for {node}")
+    };
+    let head = self.create_html_head(&title);
+    let header = self.create_html_header(&title, stats);
+    let footer = self.create_html_footer(timestamp);
+    format!(
+      "<!doctype html>
+      <html>
+        {head}
+        <body>
+          <div class='wrapper'>
+            {header}
+            <div class='pad1'>
+              {main_content}
+            </div>
+            <div class='push'></div>
+          </div>
+          {footer}
+        </body>
+      </html>"
+    )
+  }
+
+  /// Creates <head> tag for html report.
+  pub fn create_html_head(&self, title: &str) -> String {
+    let style_css = include_str!("style.css");
+    format!(
+      "
+      <head>
+        <meta charset='utf-8'>
+        <title>{title}</title>
+        <style>{style_css}</style>
+        <meta name='viewport' content='width=device-width, initial-scale=1' />
+      </head>"
+    )
+  }
+
+  /// Creates header part of the contents for html report.
+  pub fn create_html_header(
+    &self,
+    title: &str,
+    stats: &CoverageStats,
+  ) -> String {
+    let CoverageStats {
+      line_hit,
+      line_miss,
+      branch_hit,
+      branch_miss,
+      ..
+    } = stats;
+    let (line_total, line_percent, line_class) =
+      util::calc_coverage_display_info(*line_hit, *line_miss);
+    let (branch_total, branch_percent, _) =
+      util::calc_coverage_display_info(*branch_hit, *branch_miss);
+
+    format!(
+      "
+      <div class='pad1'>
+        <h1>{title}</h1>
+        <div class='clearfix'>
+          <div class='fl pad1y space-right2'>
+            <span class='strong'>{branch_percent:.2}%</span>
+            <span class='quiet'>Branches</span>
+            <span class='fraction'>{branch_hit}/{branch_total}</span>
+          </div>
+          <div class='fl pad1y space-right2'>
+            <span class='strong'>{line_percent:.2}%</span>
+            <span class='quiet'>Lines</span>
+            <span class='fraction'>{line_hit}/{line_total}</span>
+          </div>
+        </div>
+      </div>
+      <div class='status-line {line_class}'></div>"
+    )
+  }
+
+  /// Creates footer part of the contents for html report.
+  pub fn create_html_footer(&self, now: &str) -> String {
+    format!(
+      "
+      <div class='footer quiet pad2 space-top1 center small'>
+        Code coverage generated by
+        <a href='https://deno.com/' target='_blank'>Deno</a>
+        at {now}
+      </div>"
+    )
+  }
+
+  /// Creates <table> of summary for html report.
+  pub fn create_html_summary_table(
+    &self,
+    node: &String,
+    summary: &CoverageSummary,
+  ) -> String {
+    let mut children = summary
+      .iter()
+      .filter(|(_, stats)| stats.parent.as_ref() == Some(node))
+      .map(|(k, stats)| (stats.file_text.is_some(), k.clone()))
+      .collect::<Vec<_>>();
+    // Sort directories first, then files
+    children.sort();
+
+    let table_rows: Vec<String> = children.iter().map(|(is_file, c)| {
+    let CoverageStats { line_hit, line_miss, branch_hit, branch_miss, .. } =
+      summary.get(c).unwrap();
+
+    let (line_total, line_percent, line_class) =
+      util::calc_coverage_display_info(*line_hit, *line_miss);
+    let (branch_total, branch_percent, branch_class) =
+      util::calc_coverage_display_info(*branch_hit, *branch_miss);
+
+    let path = Path::new(c.strip_prefix(&format!("{node}/")).unwrap_or(c)).display();
+    let path_label = if *is_file { format!("{}", path) } else { format!("{}/", path) };
+    let path_link = if *is_file { format!("{}.html", path) } else { format!("{}index.html", path_label) };
+
+    format!("
+      <tr>
+        <td class='file {line_class}'><a href='{path_link}'>{path_label}</a></td>
+        <td class='pic {line_class}'>
+          <div class='chart'>
+            <div class='cover-fill' style='width: {line_percent:.1}%'></div><div class='cover-empty' style='width: calc(100% - {line_percent:.1}%)'></div>
+          </div>
+        </td>
+        <td class='pct {branch_class}'>{branch_percent:.2}%</td>
+        <td class='abs {branch_class}'>{branch_hit}/{branch_total}</td>
+        <td class='pct {line_class}'>{line_percent:.2}%</td>
+        <td class='abs {line_class}'>{line_hit}/{line_total}</td>
+      </tr>")}).collect();
+    let table_rows = table_rows.join("\n");
+
+    format!(
+      "
+      <table class='coverage-summary'>
+        <thead>
+          <tr>
+            <th class='file'>File</th>
+            <th class='pic'></th>
+            <th class='pct'>Branches</th>
+            <th class='abs'></th>
+            <th class='pct'>Lines</th>
+            <th class='abs'></th>
+          </tr>
+        </thead>
+        <tbody>
+          {table_rows}
+        </tbody>
+      </table>"
+    )
+  }
+
+  /// Creates <table> of single file code coverage.
+  pub fn create_html_code_table(
+    &self,
+    file_text: &String,
+    report: &CoverageReport,
+  ) -> String {
+    let line_num = file_text.lines().count();
+    let line_count = (1..line_num + 1)
+      .map(|i| format!("<a name='L{i}'></a><a href='#{i}'>{i}</a>"))
+      .collect::<Vec<_>>()
+      .join("\n");
+    let line_coverage = (0..line_num)
+      .map(|i| {
+        if let Some((_, count)) =
+          report.found_lines.iter().find(|(line, _)| i == *line)
+        {
+          if *count == 0 {
+            format!("<span class='cline-any cline-no'>&nbsp</span>")
+          } else {
+            format!("<span class='cline-any cline-yes'>x{count}</span>")
+          }
+        } else {
+          format!("<span class='cline-any cline-neutral'>&nbsp</span>")
+        }
+      })
+      .collect::<Vec<_>>()
+      .join("\n");
+    let branch_coverage = (0..line_num)
+      .map(|i| {
+        let branch_is_missed = report.branches.iter().find(|b| b.line_index == i && !b.is_hit).is_some();
+        if branch_is_missed {
+           format!("<span class='missing-if-branch' title='branch condition is missed in this line'>I</span>")
+        } else {
+          "".to_string()
+        }
+      })
+      .collect::<Vec<_>>()
+      .join("\n");
+
+    // TODO(kt3k): Add syntax highlight to source code
+    format!(
+      "<table class='coverage'>
+        <tr>
+          <td class='line-count quiet'><pre>{line_count}</pre></td>
+          <td class='line-coverage quiet'><pre>{line_coverage}</pre></td>
+          <td class='branch-coverage quiet'><pre>{branch_coverage}</pre></td>
+          <td class='text'><pre class='prettyprint'>{file_text}</pre></td>
+        </tr>
+      </table>"
+    )
+  }
 }
 
 fn collect_coverages(
@@ -645,6 +1000,11 @@ pub async fn cover_files(
   let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
 
+  assert!(!coverage_flags.files.include.is_empty());
+
+  // Use the first include path as the default output path.
+  let coverage_root = coverage_flags.files.include[0].clone();
+
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     script_coverages,
@@ -667,6 +1027,8 @@ pub async fn cover_files(
 
   let reporter_kind = if coverage_flags.lcov {
     CoverageReporterKind::Lcov
+  } else if coverage_flags.html {
+    CoverageReporterKind::Html
   } else {
     CoverageReporterKind::Pretty
   };
@@ -748,7 +1110,7 @@ pub async fn cover_files(
     }
   }
 
-  reporter.done();
+  reporter.done(&coverage_root);
 
   Ok(())
 }
