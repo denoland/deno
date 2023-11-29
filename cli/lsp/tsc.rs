@@ -208,6 +208,7 @@ fn normalize_diagnostic(
 
 #[derive(Clone, Debug)]
 pub struct TsServer {
+  performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   specifier_map: Arc<TscSpecifierMap>,
 }
@@ -217,8 +218,9 @@ impl TsServer {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let perf = performance.clone();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
+      let mut ts_runtime = js_runtime(perf, cache, specifier_map_);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -238,6 +240,7 @@ impl TsServer {
     });
 
     Self {
+      performance,
       sender: tx,
       specifier_map,
     }
@@ -946,9 +949,14 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    self
+    let mark = self
+      .performance
+      .mark(format!("tsc {}", req.method), None::<()>);
+    let r = self
       .request_with_cancellation(snapshot, req, Default::default())
-      .await
+      .await;
+    self.performance.measure(mark);
+    r
   }
 
   async fn request_with_cancellation<R>(
