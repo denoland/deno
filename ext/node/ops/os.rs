@@ -4,7 +4,6 @@ use crate::NodePermissions;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
-use deno_fs::FileSystemRc;
 
 #[op2(fast)]
 pub fn op_node_os_get_priority<P>(
@@ -70,29 +69,6 @@ where
   let euid = unsafe { libc::geteuid() };
 
   Ok(euid)
-}
-
-#[op2(fast)]
-pub fn op_node_os_freemem_linux<P>(state: &mut OpState) -> Result<i32, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  if cfg!(target_os = "linux") {
-    let permissions = state.borrow_mut::<P>();
-    permissions.check_read(std::path::Path::new("/proc/meminfo"))?;
-
-    // Gets the available memory from /proc/meminfo in linux for compatibility
-    let fs = state.borrow::<FileSystemRc>();
-    let path = std::path::PathBuf::from("/proc/meminfo");
-    let meminfo = fs.read_text_file_sync(&path)?;
-    let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
-    if let Some(line) = line {
-      let mem = line.split_whitespace().nth(1);
-      let mem = mem.and_then(|v| v.parse::<i32>().ok());
-      return Ok(mem.unwrap_or(0));
-    }
-  }
-  Ok(0)
 }
 
 #[cfg(unix)]

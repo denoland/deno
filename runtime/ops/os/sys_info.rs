@@ -211,7 +211,18 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_free = info.freeswap * mem_unit;
       mem_info.total = info.totalram * mem_unit;
       mem_info.free = info.freeram * mem_unit;
+      mem_info.available = mem_info.free;
       mem_info.buffers = info.bufferram * mem_unit;
+    }
+
+    // Gets the available memory from /proc/meminfo in linux for compatibility
+    if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+      let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
+      if let Some(line) = line {
+        let mem = line.split_whitespace().nth(1);
+        let mem = mem.and_then(|v| v.parse::<i32>().ok());
+        mem_info.available = mem.unwrap_or(0);
+      }
     }
   }
   #[cfg(target_vendor = "apple")]
