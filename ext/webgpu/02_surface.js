@@ -131,6 +131,19 @@ class GPUCanvasContext {
     this[_currentTexture].destroy();
     this[_currentTexture] = undefined;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUCanvasContextPrototype, this),
+        keys: [
+          "canvas",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 const GPUCanvasContextPrototype = GPUCanvasContext.prototype;
 

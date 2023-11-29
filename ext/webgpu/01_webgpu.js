@@ -676,10 +676,14 @@ class GPUSupportedFeatures {
   constructor() {
     webidl.illegalConstructor();
   }
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect([...new SafeArrayIterator(this.values())])
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    if (ObjectPrototypeIsPrototypeOf(GPUSupportedFeaturesPrototype, this)) {
+      return `${this.constructor.name} ${
+        // deno-lint-ignore prefer-primordials
+        inspect([...this], inspectOptions)
+      }`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 
@@ -717,10 +721,18 @@ class GPUDeviceLostInfo {
     return this[_message];
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({ reason: this[_reason], message: this[_message] })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUDeviceLostInfoPrototype, this),
+        keys: [
+          "reason",
+          "message",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -1540,15 +1552,23 @@ class GPUDevice extends EventTarget {
     );
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        features: this.features,
-        label: this.label,
-        limits: this.limits,
-        queue: this.queue,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUDevicePrototype, this),
+        keys: [
+          "features",
+          "label",
+          "limits",
+          "lost",
+          "queue",
+          // TODO(lucacasonato): emit an UncapturedErrorEvent
+          // "onuncapturederror"
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUDevice", GPUDevice);
@@ -1705,12 +1725,17 @@ class GPUQueue {
     device.pushError(err);
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUQueuePrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUQueue", GPUQueue);
@@ -2016,12 +2041,20 @@ class GPUBuffer {
     this[_cleanup]();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUBufferPrototype, this),
+        keys: [
+          "label",
+          "mapState",
+          "size",
+          "usage",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUBuffer", GPUBuffer);
@@ -2220,12 +2253,25 @@ class GPUTexture {
     return this[_usage];
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUTexturePrototype, this),
+        keys: [
+          "label",
+          "width",
+          "height",
+          "depthOrArrayLayers",
+          "mipLevelCount",
+          "sampleCount",
+          "dimension",
+          "format",
+          "usage",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUTexture", GPUTexture);
@@ -2286,12 +2332,17 @@ class GPUTextureView {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUTextureViewPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUTextureView", GPUTextureView);
@@ -2372,16 +2423,21 @@ class GPUBindGroupLayout {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUBindGroupLayoutPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUBindGroupLayout", GPUBindGroupLayout);
-
+const GPUBindGroupLayoutPrototype = GPUBindGroupLayout.prototype;
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -2415,12 +2471,17 @@ class GPUPipelineLayout {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUPipelineLayoutPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUPipelineLayout", GPUPipelineLayout);
@@ -2458,16 +2519,21 @@ class GPUBindGroup {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUBindGroupPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUBindGroup", GPUBindGroup);
-
+const GPUBindGroupPrototype = GPUBindGroup.prototype;
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -2501,16 +2567,21 @@ class GPUShaderModule {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUShaderModulePrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUShaderModule", GPUShaderModule);
-
+const GPUShaderModulePrototype = GPUShaderModule.prototype;
 class GPUShaderStage {
   constructor() {
     webidl.illegalConstructor();
@@ -2590,12 +2661,17 @@ class GPUComputePipeline {
     return bindGroupLayout;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUComputePipelinePrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUComputePipeline", GPUComputePipeline);
@@ -3356,12 +3432,17 @@ class GPUCommandEncoder {
     return commandBuffer;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUCommandEncoderPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
@@ -3958,12 +4039,17 @@ class GPURenderPassEncoder {
     );
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderPassEncoderPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPURenderPassEncoder", GPURenderPassEncoder);
@@ -4228,12 +4314,17 @@ class GPUComputePassEncoder {
     );
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUComputePassEncoderPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUComputePassEncoder", GPUComputePassEncoder);
@@ -4273,12 +4364,17 @@ class GPUCommandBuffer {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUCommandBufferPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUCommandBuffer", GPUCommandBuffer);
@@ -4707,16 +4803,21 @@ class GPURenderBundle {
     webidl.illegalConstructor();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderBundlePrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
-
+const GPURenderBundlePrototype = GPURenderBundle.prototype;
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -4773,12 +4874,19 @@ class GPUQuerySet {
     this[_count]();
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUQuerySetPrototype, this),
+        keys: [
+          "label",
+          "type",
+          "count",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPUQuerySet", GPUQuerySet);
