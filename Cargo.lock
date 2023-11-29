@@ -1704,9 +1704,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.2.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8952fb8c38c1dcd796d49b00030afb74aa184160ae86817b72a32a994c8e16f0"
+checksum = "dd501a6b10a8b7fe7e605cafe4aad1d266ed0791b788dab78889df14b1a23e5f"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1720,9 +1720,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_remote"
-version = "0.2.3"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edfc8447324d783b01e215bd5040ff9149c34d9715c7b7b5080dd648ebf1148a"
+checksum = "7d94fd3da7d1fa9ef1515bf3bc5b2fe75389edb3f15e9445e345679fda44987c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1742,9 +1742,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_sqlite"
-version = "0.2.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ec76b691ff069f14e56e3e053c2b2163540b27e4b60179f2b120064a7e4960d"
+checksum = "c2d2ab5fe45079dc41ab76549bb9fc3aeb9be4e54fddbdfb16a779db4a0b38df"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1756,6 +1756,7 @@ dependencies = [
  "rand",
  "rusqlite",
  "serde_json",
+ "thiserror",
  "tokio",
  "uuid",
 ]
