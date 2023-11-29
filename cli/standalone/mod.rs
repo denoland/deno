@@ -16,6 +16,7 @@ use crate::module_loader::CliNodeResolver;
 use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
+use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -311,61 +312,113 @@ pub async fn run(
     .join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(root_path.clone());
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
-  let (fs, vfs_root, maybe_node_modules_path, maybe_snapshot) =
-    if let Some(snapshot) = eszip.take_npm_snapshot() {
-      let vfs_root_dir_path = if metadata.node_modules_dir {
-        root_path
-      } else {
-        npm_cache_dir.registry_folder(&npm_registry_url)
-      };
-      let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-        .context("Failed to load npm vfs.")?;
-      let node_modules_path = if metadata.node_modules_dir {
-        Some(vfs.root().to_path_buf())
-      } else {
-        None
-      };
-      (
-        Arc::new(DenoCompileFileSystem::new(vfs))
-          as Arc<dyn deno_fs::FileSystem>,
-        Some(vfs_root_dir_path),
-        node_modules_path,
-        Some(snapshot),
-      )
-    } else {
-      (
-        Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
-        None,
-        None,
-        None,
-      )
+  let cache_setting = CacheSetting::Only;
+  let (package_json_deps_provider, fs, npm_resolver, maybe_vfs_root) =
+    match metadata.node_modules {
+      Some(binary::NodeModules::Managed {
+        node_modules_dir,
+        package_json_deps,
+      }) => {
+        // this will always have a snapshot
+        let snapshot = eszip.take_npm_snapshot().unwrap();
+        let vfs_root_dir_path = if node_modules_dir {
+          root_path
+        } else {
+          npm_cache_dir.registry_folder(&npm_registry_url)
+        };
+        let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+          .context("Failed to load npm vfs.")?;
+        let maybe_node_modules_path = if node_modules_dir {
+          Some(vfs.root().to_path_buf())
+        } else {
+          None
+        };
+        let package_json_deps_provider =
+          Arc::new(PackageJsonDepsProvider::new(
+            package_json_deps.map(|serialized| serialized.into_deps()),
+          ));
+        let fs = Arc::new(DenoCompileFileSystem::new(vfs))
+          as Arc<dyn deno_fs::FileSystem>;
+        let npm_resolver = create_cli_npm_resolver(
+          CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot)),
+            maybe_lockfile: None,
+            fs: fs.clone(),
+            http_client: http_client.clone(),
+            npm_global_cache_dir,
+            cache_setting,
+            text_only_progress_bar: progress_bar,
+            maybe_node_modules_path,
+            package_json_installer:
+              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+                package_json_deps_provider.clone(),
+              ),
+            npm_registry_url,
+            npm_system_info: Default::default(),
+          }),
+        )
+        .await?;
+        (
+          package_json_deps_provider,
+          fs,
+          npm_resolver,
+          Some(vfs_root_dir_path),
+        )
+      }
+      Some(binary::NodeModules::Byonm { package_json_deps }) => {
+        let vfs_root_dir_path = root_path;
+        let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+          .context("Failed to load npm vfs.")?;
+        let node_modules_path = vfs.root().join("node_modules");
+        let package_json_deps_provider =
+          Arc::new(PackageJsonDepsProvider::new(
+            package_json_deps.map(|serialized| serialized.into_deps()),
+          ));
+        let fs = Arc::new(DenoCompileFileSystem::new(vfs))
+          as Arc<dyn deno_fs::FileSystem>;
+        let npm_resolver =
+          create_cli_npm_resolver(CliNpmResolverCreateOptions::Byonm(
+            CliNpmResolverByonmCreateOptions {
+              fs: fs.clone(),
+              root_node_modules_dir: node_modules_path,
+            },
+          ))
+          .await?;
+        (
+          package_json_deps_provider,
+          fs,
+          npm_resolver,
+          Some(vfs_root_dir_path),
+        )
+      }
+      None => {
+        let package_json_deps_provider =
+          Arc::new(PackageJsonDepsProvider::new(None));
+        let fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
+        let npm_resolver = create_cli_npm_resolver(
+          CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
+            maybe_lockfile: None,
+            fs: fs.clone(),
+            http_client: http_client.clone(),
+            npm_global_cache_dir,
+            cache_setting,
+            text_only_progress_bar: progress_bar,
+            maybe_node_modules_path: None,
+            package_json_installer:
+              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+                package_json_deps_provider.clone(),
+              ),
+            npm_registry_url,
+            npm_system_info: Default::default(),
+          }),
+        )
+        .await?;
+        (package_json_deps_provider, fs, npm_resolver, None)
+      }
     };
 
-  let has_node_modules_dir = maybe_node_modules_path.is_some();
-  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
-    metadata
-      .package_json_deps
-      .map(|serialized| serialized.into_deps()),
-  ));
-  let npm_resolver = create_cli_npm_resolver(
-    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-      snapshot: CliNpmResolverManagedSnapshotOption::Specified(maybe_snapshot),
-      maybe_lockfile: None,
-      fs: fs.clone(),
-      http_client: http_client.clone(),
-      npm_global_cache_dir,
-      cache_setting: CacheSetting::Only,
-      text_only_progress_bar: progress_bar,
-      maybe_node_modules_path,
-      package_json_installer:
-        CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
-          package_json_deps_provider.clone(),
-        ),
-      npm_registry_url,
-      npm_system_info: Default::default(),
-    }),
-  )
-  .await?;
+  let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
   let node_resolver = Arc::new(NodeResolver::new(
     fs.clone(),
     npm_resolver.clone().into_npm_resolver(),
@@ -409,7 +462,7 @@ pub async fn run(
   let permissions = {
     let mut permissions = metadata.permissions;
     // if running with an npm vfs, grant read access to it
-    if let Some(vfs_root) = vfs_root {
+    if let Some(vfs_root) = maybe_vfs_root {
       match &mut permissions.allow_read {
         Some(vec) if vec.is_empty() => {
           // do nothing, already granted
