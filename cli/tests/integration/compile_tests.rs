@@ -1083,5 +1083,5 @@ fn dynamic_imports_tmp_lit() {
   output.assert_exit_code(0);
   output.skip_output_check();
   let output = context.new_command().name(&exe).run();
-  output.assert_matches_text("a\nb\n{ data: 5 }\n");
+  output.assert_matches_text("a\nb\n{ data: 5 }\n{ data: 1 }\n");
 }
