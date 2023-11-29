@@ -1,0 +1,9 @@
+local: [WILDCARD]main.js
+type: JavaScript
+dependencies: 3 unique
+size: [WILDCARD]
+
+file:///[WILDCARD]/dynamic_imports_tmp_lit/main.js ([WILDCARD])
+├── file:///[WILDCARD]/dynamic_imports_tmp_lit/sub/a.js ([WILDCARD])
+├── file:///[WILDCARD]/dynamic_imports_tmp_lit/sub/b.ts ([WILDCARD])
+└── file:///[WILDCARD]/dynamic_imports_tmp_lit/other/data.json ([WILDCARD])

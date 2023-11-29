@@ -35,6 +35,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
@@ -194,6 +195,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
+  fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -210,6 +212,7 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+    fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -223,6 +226,7 @@ impl ModuleGraphBuilder {
   ) -> Self {
     Self {
       options,
+      fs,
       resolver,
       npm_resolver,
       module_info_cache,
@@ -295,7 +299,7 @@ impl ModuleGraphBuilder {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
-          file_system: Some(&deno_graph::source::RealFileSystem),
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
@@ -345,7 +349,7 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
-          file_system: Some(&deno_graph::source::RealFileSystem),
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
@@ -772,7 +776,9 @@ fn workspace_member_config_try_into_workspace_member(
   })
 }
 
-pub struct DenoGraphFsAdapter<'a>(&'a dyn deno_runtime::deno_fs::FileSystem);
+pub struct DenoGraphFsAdapter<'a>(
+  pub &'a dyn deno_runtime::deno_fs::FileSystem,
+);
 
 impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
   fn read_dir(
@@ -819,13 +825,13 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
       let entry_path = dir_path.join(&entry.name);
       dir_entries.push(if entry.is_directory {
         DirEntry {
-          kind: DirEntryKind::File,
-          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+          kind: DirEntryKind::Dir,
+          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
         }
       } else if entry.is_file {
         DirEntry {
-          kind: DirEntryKind::Dir,
-          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
+          kind: DirEntryKind::File,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
         }
       } else if entry.is_symlink {
         DirEntry {
