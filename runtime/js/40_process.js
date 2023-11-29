@@ -160,6 +160,8 @@ function spawnChildInner(opFn, command, apiName, {
   stderr = "piped",
   signal = undefined,
   windowsRawArguments = false,
+  unstableNodeIpcFd = undefined,
+  unstableNodeIpcSerializationMode = undefined,
 } = {}) {
   const child = opFn({
     cmd: pathFromURL(command),
@@ -173,6 +175,8 @@ function spawnChildInner(opFn, command, apiName, {
     stdout,
     stderr,
     windowsRawArguments,
+    unstableNodeIpcFd,
+    unstableNodeIpcSerializationMode,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,

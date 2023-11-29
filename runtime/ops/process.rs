@@ -144,6 +144,9 @@ pub struct SpawnArgs {
 
   #[serde(flatten)]
   stdio: ChildStdio,
+
+  unstable_node_ipc_fd: Option<usize>,
+  unstable_node_ipc_serialization_mode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -236,6 +239,14 @@ fn create_command(
     command.env_clear();
   }
   command.envs(args.env);
+
+  if let Some(unstable_node_ipc_fd) = args.unstable_node_ipc_fd {
+    command.env("NODE_CHANNEL_FD", unstable_node_ipc_fd.to_string());
+    command.env(
+      "NODE_CHANNEL_SERIALIZATION_MODE",
+      args.unstable_node_ipc_serialization_mode.unwrap(),
+    );
+  }
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {

@@ -182,10 +182,13 @@ export class ChildProcess extends EventEmitter {
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
 
+    let unstableNodeIpcFd;
+    let unstableNodeIpcSerializationMode;
+
     if (channel === "ipc") {
       // TODO(bartlomieju): these are placeholder values
-      env.NODE_CHANNEL_FD = 4;
-      env.NODE_CHANNEL_SERIALIZATION_MODE = "json";
+      unstableNodeIpcFd = 4;
+      unstableNodeIpcSerializationMode = "json";
     }
     const stringEnv = mapValues(env, (value) => value.toString());
     try {
@@ -197,6 +200,8 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        unstableNodeIpcFd,
+        unstableNodeIpcSerializationMode,
       }).spawn();
       this.pid = this.#process.pid;
 
