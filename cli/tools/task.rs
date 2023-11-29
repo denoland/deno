@@ -5,6 +5,8 @@ use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::npm::CliNpmResolver;
+use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
@@ -115,11 +117,15 @@ pub async fn execute_script(
         output_task(&task_name, &script);
         let seq_list = deno_task_shell::parser::parse(&script)
           .with_context(|| format!("Error parsing script '{task_name}'."))?;
-        let npx_commands = match npm_resolver.as_managed() {
-          Some(npm_resolver) => {
+        let npx_commands = match npm_resolver.as_inner() {
+          InnerCliNpmResolverRef::Managed(npm_resolver) => {
             resolve_npm_commands(npm_resolver, node_resolver)?
           }
-          None => Default::default(),
+          InnerCliNpmResolverRef::Byonm(npm_resolver) => {
+            let node_modules_dir =
+              npm_resolver.root_node_modules_path().unwrap();
+            resolve_npm_commands_from_bin_dir(node_modules_dir)?
+          }
         };
         let env_vars = match npm_resolver.root_node_modules_path() {
           Some(dir_path) => collect_env_vars_with_node_modules_dir(dir_path),
@@ -292,6 +298,13 @@ impl ShellCommand for NpmPackageBinCommand {
       deno_task_shell::ExecutableCommand::new("deno".to_string());
     executable_command.execute(ShellCommandContext { args, ..context })
   }
+}
+
+fn resolve_npm_commands_from_bin_dir(
+  node_modules_dir: &Path,
+) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
+  let mut result = HashMap::new();
+  Ok(result)
 }
 
 fn resolve_npm_commands(
