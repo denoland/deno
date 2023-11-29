@@ -2472,6 +2472,36 @@ export class ERR_PACKAGE_PATH_NOT_EXPORTED extends NodeError {
   }
 }
 
+export class ERR_PARSE_ARGS_INVALID_OPTION_VALUE extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_PARSE_ARGS_INVALID_OPTION_VALUE", x);
+  }
+}
+
+export class ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL",
+      `Unexpected argument '${x}'. This ` +
+        `command does not take positional arguments`,
+    );
+  }
+}
+
+export class ERR_PARSE_ARGS_UNKNOWN_OPTION extends NodeTypeError {
+  constructor(option, allowPositionals) {
+    const suggestDashDash = allowPositionals
+      ? ". To specify a positional " +
+        "argument starting with a '-', place it at the end of the command after " +
+        `'--', as in '-- ${JSONStringify(option)}`
+      : "";
+    super(
+      "ERR_PARSE_ARGS_UNKNOWN_OPTION",
+      `Unknown option '${option}'${suggestDashDash}`,
+    );
+  }
+}
+
 export class ERR_INTERNAL_ASSERTION extends NodeError {
   constructor(message?: string) {
     const suffix = "This is caused by either a bug in Node.js " +

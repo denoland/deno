@@ -165,7 +165,6 @@ assert.throws(
   }
 );
 
-/*
 // Copy throws if sourceStart is greater than length of source
 assert.throws(
   () => Buffer.allocUnsafe(5).copy(Buffer.allocUnsafe(5), 0, 100),
@@ -174,7 +173,6 @@ assert.throws(
     name: 'RangeError',
   }
 );
-*/
 
 {
   // Check sourceEnd resets to targetEnd if former is greater than the latter

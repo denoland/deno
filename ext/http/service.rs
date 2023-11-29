@@ -176,7 +176,7 @@ impl Drop for HttpRequestBodyAutocloser {
   }
 }
 
-pub async fn handle_request(
+pub(crate) async fn handle_request(
   request: Request,
   request_info: HttpConnectionProperties,
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.

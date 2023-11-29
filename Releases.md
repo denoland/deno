@@ -8,7 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 1.38.3 / 2023.11.24
 
-- feat(unstable): tar up directory with deno.json  (#21228)
+- feat(unstable): tar up directory with deno.json (#21228)
 - fix(ext,runtime): add missing custom inspections (#21219)
 - fix(ext/http): avoid lockup in graceful shutdown (#21253)
 - fix(ext/http): fix crash in dropped Deno.serve requests (#21252)

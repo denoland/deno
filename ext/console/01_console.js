@@ -12,6 +12,7 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFill,
+  ArrayPrototypeConcat,
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeForEach,
@@ -41,6 +42,7 @@ const {
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
+  NumberIsNaN,
   MapPrototype,
   MapPrototypeDelete,
   MapPrototypeEntries,
@@ -134,8 +136,23 @@ const {
   Uint8Array,
   WeakMapPrototypeHas,
   WeakSetPrototypeHas,
-  isNaN,
 } = primordials;
+
+// supposed to be in node/internal_binding/util.ts
+export function previewEntries(iter, isKeyValue) {
+  if (isKeyValue) {
+    // deno-lint-ignore prefer-primordials
+    const arr = [...iter];
+    if (ArrayIsArray(arr[0]) && arr[0].length === 2) {
+      // deno-lint-ignore prefer-primordials
+      return [ArrayPrototypeConcat([], ...arr), true];
+    }
+    return [arr, false];
+  } else {
+    // deno-lint-ignore prefer-primordials
+    return [...iter];
+  }
+}
 
 let noColor = () => false;
 
@@ -950,7 +967,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
         const date = proxyDetails ? proxyDetails[0] : value;
-        if (isNaN(DatePrototypeGetTime(date))) {
+        if (NumberIsNaN(DatePrototypeGetTime(date))) {
           return ctx.stylize("Invalid Date", "date");
         } else {
           base = DatePrototypeToISOString(date);
@@ -1493,9 +1510,7 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
-  const { 0: entries, 1: isKeyValue } = value;
+  const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
   if (isKeyValue) {
     // Mark entry iterators as such.
     braces[0] = StringPrototypeReplace(
@@ -1704,16 +1719,12 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const entries = previewEntries(value);
-  const entries = value;
+  const entries = previewEntries(value);
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const entries = previewEntries(value);
-  const entries = value;
+  const entries = previewEntries(value);
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
