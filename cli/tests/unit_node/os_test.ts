@@ -302,14 +302,10 @@ Deno.test({
 
 Deno.test({
   name:
-    "os.freemem() is equivalent of MemAvailable entry of /proc/meminfo on linux",
+    "os.freemem() is equivalent of Deno.systemMemoryInfo().available on linux",
   ignore: Deno.build.os !== "linux",
   async fn() {
-    const meminfo = await Deno.readTextFile("/proc/meminfo");
-    const memAvailable = +meminfo.split("\n").find((line) =>
-      line.startsWith("MemAvailable:")
-    )!.split(/\s+/)[1];
-    const diff = Math.abs(os.freemem() - memAvailable);
+    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().available);
     assert(diff < 10_000);
   },
 });
