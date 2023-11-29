@@ -391,13 +391,19 @@ class GPUAdapter {
     return adapterInfo;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        features: this.features,
-        limits: this.limits,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUAdapterPrototype, this),
+        keys: [
+          "features",
+          "limits",
+          "isFallbackAdapter",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 const GPUAdapterPrototype = GPUAdapter.prototype;
