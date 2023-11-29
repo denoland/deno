@@ -4657,12 +4657,17 @@ class GPURenderBundleEncoder {
     );
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        label: this.label,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderBundleEncoderPrototype, this),
+        keys: [
+          "label",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 GPUObjectBaseMixin("GPURenderBundleEncoder", GPURenderBundleEncoder);
