@@ -1318,8 +1318,8 @@ declare namespace Deno {
   export function openKv(path?: string): Promise<Deno.Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * 
-   * CronScheduleExpression is used as the type of `minute`, `hour`, 
+   *
+   * CronScheduleExpression is used as the type of `minute`, `hour`,
    * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
    * @category Cron
    */
@@ -1330,7 +1330,7 @@ declare namespace Deno {
   };
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * 
+   *
    * CronSchedule is the interface used for JSON format
    * cron `schedule`.
    * @category Cron
