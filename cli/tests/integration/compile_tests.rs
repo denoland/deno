@@ -798,15 +798,36 @@ testing[WILDCARD]this
     r#"{ "dependencies": { "@denotest/esm-basic": "1" } }"#,
   );
 
-  let output = context
+  context
     .new_command()
     .args("compile --output binary main.ts")
-    .run();
-  output.assert_exit_code(0);
-  output.skip_output_check();
+    .run()
+    .assert_exit_code(0)
+    .skip_output_check();
 
-  let output = context.new_command().name(binary_path).run();
-  output.assert_matches_text("2\n");
+  context
+    .new_command()
+    .name(&binary_path)
+    .run()
+    .assert_matches_text("2\n");
+
+  // now try with byonm
+  temp_dir.remove_dir_all("node_modules");
+  temp_dir.write("deno.json", r#"{"unstable":["byonm"]}"#);
+  context.run_npm("install");
+
+  context
+    .new_command()
+    .args("compile --output binary main.ts")
+    .run()
+    .assert_exit_code(0)
+    .assert_matches_text("Check file:///[WILDCARD]/main.ts\nCompile file:///[WILDCARD]/main.ts to binary[WILDCARD]\n");
+
+  context
+    .new_command()
+    .name(&binary_path)
+    .run()
+    .assert_matches_text("2\n");
 }
 
 #[test]

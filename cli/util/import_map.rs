@@ -8,12 +8,12 @@ use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
 use import_map::ImportMap;
 
-pub struct ImportMapUnfurler {
-  import_map: ImportMap,
+pub struct ImportMapUnfurler<'a> {
+  import_map: &'a ImportMap,
 }
 
-impl ImportMapUnfurler {
-  pub fn new(import_map: ImportMap) -> Self {
+impl<'a> ImportMapUnfurler<'a> {
+  pub fn new(import_map: &'a ImportMap) -> Self {
     Self { import_map }
   }
 
@@ -158,7 +158,7 @@ mod tests {
     });
     let ImportMapWithDiagnostics { import_map, .. } =
       import_map::parse_from_value(&deno_json_url, value).unwrap();
-    let unfurler = ImportMapUnfurler::new(import_map);
+    let unfurler = ImportMapUnfurler::new(&import_map);
 
     // Unfurling TS file should apply changes.
     {
