@@ -81,19 +81,15 @@ where
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(std::path::Path::new("/proc/meminfo"))?;
 
+    // Gets the available memory from /proc/meminfo in linux for compatibility
     let fs = state.borrow::<FileSystemRc>();
     let path = std::path::PathBuf::from("/proc/meminfo");
-
-    // Gets the available memory from /proc/meminfo in linux for compatibility
     let meminfo = fs.read_text_file_sync(&path)?;
-    for line in meminfo.lines() {
-      if line.starts_with("MemAvailable:") {
-        let mem_available = line
-          .split_whitespace()
-          .nth(1)
-          .and_then(|v| v.parse::<i32>().ok());
-        return Ok(mem_available.unwrap_or(0));
-      }
+    let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
+    if let Some(line) = line {
+      let mem = line.split_whitespace().nth(1);
+      let mem = mem.and_then(|v| v.parse::<i32>().ok());
+      return Ok(mem.unwrap_or(0));
     }
   }
   Ok(0)
