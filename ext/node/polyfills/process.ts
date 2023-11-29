@@ -363,6 +363,10 @@ class Process extends EventEmitter {
     return arch;
   }
 
+  get report() {
+    return report;
+  }
+
   get title() {
     return "deno";
   }
