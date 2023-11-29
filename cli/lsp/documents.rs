@@ -1745,9 +1745,9 @@ fn analyze_module(
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
       deno_graph::ParseModuleFromAstOptions {
         graph_kind: deno_graph::GraphKind::All,
-        specifier: specifier,
-        maybe_headers: maybe_headers,
-        parsed_source: parsed_source,
+        specifier,
+        maybe_headers,
+        parsed_source,
         // use a null file system because there's no need to bother resolving
         // dynamic imports like import(`./dir/${something}`) in the LSP
         file_system: &deno_graph::source::NullFileSystem,

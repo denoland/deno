@@ -117,12 +117,8 @@ pub fn graph_valid(
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!(
-            "\n    at {}:{}:{}",
-            colors::cyan(range.specifier.as_str()),
-            colors::yellow(&(range.start.line + 1).to_string()),
-            colors::yellow(&(range.start.character + 1).to_string())
-          ));
+          message.push_str("\n    at ");
+          message.push_str(&format_range_with_colors(range));
         }
       }
 
@@ -845,6 +841,15 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
 
     dir_entries
   }
+}
+
+pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
+  format!(
+    "{}:{}:{}",
+    colors::cyan(range.specifier.as_str()),
+    colors::yellow(&(range.start.line + 1).to_string()),
+    colors::yellow(&(range.start.character + 1).to_string())
+  )
 }
 
 #[cfg(test)]
