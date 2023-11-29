@@ -1318,9 +1318,39 @@ declare namespace Deno {
   export function openKv(path?: string): Promise<Deno.Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   * 
+   * CronScheduleExpression is used as the type of `minute`, `hour`, 
+   * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
+   * @category Cron
+   */
+  type CronScheduleExpression = number | { exact: number | number[] } | {
+    start?: number;
+    end?: number;
+    every?: number;
+  };
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * 
+   * CronSchedule is the interface used for JSON format
+   * cron `schedule`.
+   * @category Cron
+   */
+  export interface CronSchedule {
+    minute?: CronScheduleExpression;
+    hour?: CronScheduleExpression;
+    dayOfMonth?: CronScheduleExpression;
+    month?: CronScheduleExpression;
+    dayOfWeek?: CronScheduleExpression;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Create a cron job that will periodically execute the provided handler
    * callback based on the specified schedule.
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
    *
    * ```ts
    * Deno.cron("sample cron", "20 * * * *", () => {
@@ -1339,7 +1369,7 @@ declare namespace Deno {
    */
   export function cron(
     name: string,
-    schedule: string,
+    schedule: string | CronSchedule,
     handler: () => Promise<void> | void,
     options: { backoffSchedule?: number[]; signal?: AbortSignal },
   ): Promise<void>;
@@ -1355,14 +1385,15 @@ declare namespace Deno {
    * });
    * ```
    *
-   * `schedule` is a Unix cron format expression, where time is specified
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
    * using UTC time zone.
    *
    * @category Cron
    */
   export function cron(
     name: string,
-    schedule: string,
+    schedule: string | CronSchedule,
     handler: () => Promise<void> | void,
   ): Promise<void>;
 
@@ -1379,7 +1410,8 @@ declare namespace Deno {
    * });
    * ```
    *
-   * `schedule` is a Unix cron format expression, where time is specified
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
    * using UTC time zone.
    *
    * `backoffSchedule` option can be used to specify the retry policy for failed
@@ -1392,7 +1424,7 @@ declare namespace Deno {
    */
   export function cron(
     name: string,
-    schedule: string,
+    schedule: string | CronSchedule,
     options: { backoffSchedule?: number[]; signal?: AbortSignal },
     handler: () => Promise<void> | void,
   ): Promise<void>;
