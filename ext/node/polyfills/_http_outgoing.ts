@@ -544,7 +544,7 @@ export class OutgoingMessage extends Stream {
       data = new Uint8Array(data.buffer);
     }
     if (data.buffer.byteLength > 0) {
-      core.writeAll(this._bodyWriteRid, data).then(() => {
+      this._bodyWriter.write(data).then(() => {
         callback?.();
         this.emit("drain");
       }).catch((e) => {

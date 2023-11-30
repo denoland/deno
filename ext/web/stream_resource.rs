@@ -197,7 +197,14 @@ impl BoundedBufferChannelInner {
   pub fn write(&mut self, buffer: V8Slice<u8>) -> Result<(), V8Slice<u8>> {
     let next_producer_index = (self.ring_producer + 1) % BUFFER_CHANNEL_SIZE;
     if next_producer_index == self.ring_consumer {
-      return Err(buffer);
+      // Note that we may have been allowed to write because of a close/error condition, but the
+      // underlying channel is actually closed. If this is the case, we return `Ok(())`` and just
+      // drop the bytes on the floor.
+      return if self.closed || self.error.is_some() {
+        Ok(())
+      } else {
+        Err(buffer)
+      };
     }
 
     self.current_size += buffer.len();

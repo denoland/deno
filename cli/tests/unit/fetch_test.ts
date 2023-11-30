@@ -3,6 +3,7 @@ import {
   assert,
   assertEquals,
   assertRejects,
+  assertThrows,
   delay,
   fail,
   unimplemented,
@@ -1193,10 +1194,8 @@ Deno.test(
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `transfer-encoding: chunked\r\n\r\n`,
-      "6\r\n",
-      "hello \r\n",
-      "5\r\n",
-      "world\r\n",
+      "B\r\n",
+      "hello world\r\n",
       "0\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
@@ -1264,7 +1263,7 @@ Deno.test(
       start(controller) {
         controller.enqueue(new Uint8Array([1]));
         setTimeout(() => {
-          controller.enqueue(new Uint8Array([2]));
+          assertThrows(() => controller.enqueue(new Uint8Array([2])));
           resolve();
         }, 1000);
       },
@@ -1853,8 +1852,9 @@ Deno.test(
   async function fetchBlobUrl(): Promise<void> {
     const blob = new Blob(["ok"], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
+    assert(url.startsWith("blob:"), `URL was ${url}`);
     const res = await fetch(url);
-    assert(res.url.startsWith("blob:http://js-unit-tests/"));
+    assertEquals(res.url, url);
     assertEquals(res.status, 200);
     assertEquals(res.headers.get("content-length"), "2");
     assertEquals(res.headers.get("content-type"), "text/plain");
@@ -1941,9 +1941,12 @@ Deno.test(
       })
     );
 
-    assert(err instanceof TypeError);
-    assert(err.cause);
-    assert(err.cause instanceof Error);
+    assert(err instanceof TypeError, `err was not a TypeError ${err}`);
+    assert(err.cause, `err.cause was null ${err}`);
+    assert(
+      err.cause instanceof Error,
+      `err.cause was not an Error ${err.cause}`,
+    );
     assertEquals(err.cause.message, "foo");
 
     await server;
@@ -1968,7 +1971,12 @@ Deno.test(
           method: "POST",
           signal: controller.signal,
         });
-        controller.abort();
+        try {
+          controller.abort();
+        } catch (e) {
+          console.log(e);
+          fail("abort should not throw");
+        }
         await promise;
       },
       DOMException,
