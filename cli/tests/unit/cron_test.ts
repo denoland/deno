@@ -148,7 +148,7 @@ Deno.test(function invalidBackoffScheduleTest() {
     () =>
       Deno.cron(
         "abc",
-        { minute: 0 },
+        { minute: { start: 0, every: 1 } },
         { backoffSchedule: [1, 1, 1, 1, 1, 1] },
         () => {},
       ),
