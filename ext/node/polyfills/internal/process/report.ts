@@ -6,7 +6,7 @@ import { cpus, hostname, networkInterfaces } from "node:os";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
-  StringPrototypeToUppercase,
+  StringPrototypeToUpperCase,
   StringPrototypeCharAt,
   StringPrototypeSlice,
   Date,
@@ -48,7 +48,7 @@ function getReport(_err: typeof Error) {
           "https://nodejs.org/download/release/v21.2.0/node-v21.2.0.tar.gz",
       },
       osName:
-        StringPrototypeToUppercase(StringPrototypeCharAt(Deno.build.os, 0)) +
+        StringPrototypeToUpperCase(StringPrototypeCharAt(Deno.build.os, 0)) +
         StringPrototypeSlice(Deno.build.os, 1),
       osRelease: todoUndefined,
       osVersion: todoUndefined,
