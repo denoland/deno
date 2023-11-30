@@ -13,7 +13,7 @@ export function formatToCronSchedule(
   if (value === undefined) {
     return "*";
   } else if (typeof value === "number") {
-    return value.toString();
+    return "" + value;
   } else {
     const { exact } = value as { exact: number | number[] };
     if (exact === undefined) {
@@ -36,10 +36,10 @@ export function formatToCronSchedule(
         throw new TypeError("Invalid cron schedule");
       }
     } else {
-      if (Array.isArray(exact)) {
-        return exact.join(",");
+      if (typeof exact === 'number') {
+        return "" + exact;
       } else {
-        return exact.toString();
+        return exact.join(",");
       }
     }
   }

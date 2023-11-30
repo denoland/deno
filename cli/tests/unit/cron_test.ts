@@ -147,8 +147,8 @@ Deno.test(function invalidBackoffScheduleTest() {
   assertThrows(
     () =>
       Deno.cron(
-        "abc",
-        { minute: { start: 0, every: 1 } },
+        "abc1",
+        { minute: { every: 1 } },
         { backoffSchedule: [1, 1, 1, 1, 1, 1] },
         () => {},
       ),
@@ -168,7 +168,7 @@ Deno.test(async function tooManyCrons() {
   const ac1 = new AbortController();
   for (let i = 0; i <= 100; i++) {
     const c = Deno.cron(
-      `abc_${i}`,
+      `abc1_${i}`,
       "*/1 * * * *",
       { signal: ac1.signal },
       () => {},
@@ -179,7 +179,7 @@ Deno.test(async function tooManyCrons() {
   try {
     assertThrows(
       () => {
-        Deno.cron("next-cron", "*/1 * * * *", { signal: ac1.signal }, () => {});
+        Deno.cron("next-cron1", "*/1 * * * *", { signal: ac1.signal }, () => {});
       },
       TypeError,
       "Too many crons",
@@ -195,8 +195,8 @@ Deno.test(async function tooManyCrons() {
   const ac2 = new AbortController();
   for (let i = 0; i <= 100; i++) {
     const c = Deno.cron(
-      `abc_${i}`,
-      { minute: { start: 0, every: 1 } },
+      `abc2_${i}`,
+      { minute: { every: 1 } },
       { signal: ac2.signal },
       () => {},
     );
@@ -206,7 +206,7 @@ Deno.test(async function tooManyCrons() {
   try {
     assertThrows(
       () => {
-        Deno.cron("next-cron", { minute: { start: 0, every: 1 } }, {
+        Deno.cron("next-cron2", { minute: { every: 1 } }, {
           signal: ac2.signal,
         }, () => {});
       },
@@ -236,10 +236,10 @@ Deno.test(async function duplicateCrons() {
   }
 
   const ac2 = new AbortController();
-  const c2 = Deno.cron("abc", "*/20 * * * *", { signal: ac2.signal }, () => {});
+  const c2 = Deno.cron("abc", { minute: { every: 20 } }, { signal: ac2.signal }, () => {});
   try {
     assertThrows(
-      () => Deno.cron("abc", { minute: { start: 0, every: 20 } }, () => {}),
+      () => Deno.cron("abc", { minute: { every: 20 } }, () => {}),
       TypeError,
       "Cron with this name already exists",
     );
@@ -255,7 +255,7 @@ Deno.test(async function basicTest() {
   let count1 = 0;
   const { promise, resolve } = Promise.withResolvers<void>();
   const ac1 = new AbortController();
-  const c1 = Deno.cron("abc", "*/20 * * * *", { signal: ac1.signal }, () => {
+  const c1 = Deno.cron("abcBasic1", "*/20 * * * *", { signal: ac1.signal }, () => {
     count1++;
     if (count1 > 5) {
       resolve();
@@ -270,7 +270,7 @@ Deno.test(async function basicTest() {
 
   let count2 = 0;
   const ac2 = new AbortController();
-  const c2 = Deno.cron("abc", { minute: { start: 0, every: 20 } }, {
+  const c2 = Deno.cron("abcBasic2", { minute: { every: 20 } }, {
     signal: ac2.signal,
   }, () => {
     count2++;
@@ -298,13 +298,13 @@ Deno.test(async function multipleCrons() {
     void
   >();
   const ac1 = new AbortController();
-  const c1 = Deno.cron("abc", "*/20 * * * *", { signal: ac1.signal }, () => {
+  const c1 = Deno.cron("abcMultipleCron1", "*/20 * * * *", { signal: ac1.signal }, () => {
     count1++;
     if (count1 > 5) {
       resolve1();
     }
   });
-  const c2 = Deno.cron("xyz", "*/20 * * * *", { signal: ac1.signal }, () => {
+  const c2 = Deno.cron("xyzcMultipleCron1", "*/20 * * * *", { signal: ac1.signal }, () => {
     count2++;
     if (count2 > 5) {
       resolve2();
@@ -328,7 +328,7 @@ Deno.test(async function multipleCrons() {
     void
   >();
   const ac2 = new AbortController();
-  const c3 = Deno.cron("abc", { minute: { start: 0, every: 20 } }, {
+  const c3 = Deno.cron("abcMultipleCron2", { minute: { every: 20 } }, {
     signal: ac2.signal,
   }, () => {
     count3++;
@@ -336,7 +336,7 @@ Deno.test(async function multipleCrons() {
       resolve3();
     }
   });
-  const c4 = Deno.cron("xyz", { minute: { start: 0, every: 20 } }, {
+  const c4 = Deno.cron("xyzMultipleCron2", { minute: { every: 20 } }, {
     signal: ac2.signal,
   }, () => {
     count4++;
@@ -366,7 +366,7 @@ Deno.test(async function overlappingExecutions() {
   >();
   const ac1 = new AbortController();
   const c1 = Deno.cron(
-    "abc",
+    "abcOverlappingExecutions1",
     "*/20 * * * *",
     { signal: ac1.signal },
     async () => {
@@ -394,8 +394,8 @@ Deno.test(async function overlappingExecutions() {
   >();
   const ac2 = new AbortController();
   const c2 = Deno.cron(
-    "abc",
-    { minute: { start: 0, every: 20 } },
+    "abcOverlappingExecutions2",
+    { minute: { every: 20 } },
     { signal: ac2.signal },
     async () => {
       resolve3();
@@ -439,7 +439,7 @@ Deno.test(async function retriesWithBackoffSchedule() {
 
   let count2 = 0;
   const ac2 = new AbortController();
-  const c2 = Deno.cron("abc2", { minute: { start: 0, every: 20 } }, {
+  const c2 = Deno.cron("abc2", { minute: { every: 20 } }, {
     signal: ac2.signal,
     backoffSchedule: [10, 20],
   }, async () => {
@@ -486,7 +486,7 @@ Deno.test(async function retriesWithBackoffScheduleOldApi() {
   const ac2 = new AbortController();
   const c2 = Deno.cron(
     "abc2",
-    { minute: { start: 0, every: 20 } },
+    { minute: { every: 20 } },
     async () => {
       count2 += 1;
       await sleep(10);
