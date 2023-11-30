@@ -19,6 +19,8 @@ pub use wgpu_types;
 use error::DomExceptionOperationError;
 use error::WebGpuResult;
 
+pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
+
 #[macro_use]
 mod macros {
   macro_rules! gfx_select {
@@ -76,19 +78,6 @@ pub mod shader;
 #[cfg(feature = "surface")]
 pub mod surface;
 pub mod texture;
-
-pub struct Unstable(pub bool);
-
-fn check_unstable(state: &OpState, api_name: &str) {
-  let unstable = state.borrow::<Unstable>();
-  if !unstable.0 {
-    eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
-    );
-    std::process::exit(70);
-  }
-}
 
 pub type Instance = std::sync::Arc<
   wgpu_core::global::Global<wgpu_core::identity::IdentityManagerFactory>,
@@ -225,10 +214,6 @@ deno_core::extension!(
         shader::op_webgpu_create_shader_module,
     ],
     esm = ["01_webgpu.js"],
-    options = { unstable: bool },
-    state = |state, options| {
-        state.put(Unstable(options.unstable));
-    },
 );
 
 fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
@@ -394,7 +379,14 @@ pub async fn op_webgpu_request_adapter(
   force_fallback_adapter: bool,
 ) -> Result<GpuAdapterDeviceOrErr, AnyError> {
   let mut state = state.borrow_mut();
-  check_unstable(&state, "navigator.gpu.requestAdapter");
+
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
+  state.feature_checker.check_or_exit_with_legacy_fallback(
+    UNSTABLE_FEATURE_NAME,
+    "navigator.gpu.requestAdapter",
+  );
+
   let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
     |_| wgpu_types::Backends::all(),
     |s| wgpu_core::instance::parse_backends_from_comma_list(&s),

@@ -315,6 +315,11 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     "Enable unsafe __proto__ support. This is a security risk.",
     9,
   ),
+  (
+    deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
+    "Enable unstable `WebGPU` API",
+    1,
+  ),
 ];
 
 pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
