@@ -233,13 +233,11 @@ impl TsServer {
           }
           let value =
             request(&mut ts_runtime, state_snapshot, req, token.clone());
+          let was_sent = tx.send(value).is_ok();
           // Don't print the send error if the token is cancelled, it's expected
           // to fail in that case and this commonly occurs.
-          #[allow(clippy::collapsible_if)]
-          if tx.send(value).is_err() {
-            if !token.is_cancelled() {
-              lsp_warn!("Unable to send result to client.");
-            }
+          if !was_sent && !token.is_cancelled() {
+            lsp_warn!("Unable to send result to client.");
           }
         }
       })
