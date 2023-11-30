@@ -250,7 +250,7 @@ export class OutgoingMessage extends Stream {
     }
 
     name = name.toString();
-    headers[name.toLowerCase()] = [name, value.toString()];
+    headers[name.toLowerCase()] = [name, String(value)];
     return this;
   }
 
