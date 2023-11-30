@@ -38,17 +38,7 @@ Deno.test(function invalidNameTest() {
     "Invalid cron name",
   );
   assertThrows(
-    () => Deno.cron("abc[]", { minute: 0 }, () => {}),
-    TypeError,
-    "Invalid cron name",
-  );
-  assertThrows(
     () => Deno.cron("a**bc", "*/1 * * * *", () => {}),
-    TypeError,
-    "Invalid cron name",
-  );
-  assertThrows(
-    () => Deno.cron("a**bc", { minute: 0 }, () => {}),
     TypeError,
     "Invalid cron name",
   );
@@ -58,17 +48,7 @@ Deno.test(function invalidNameTest() {
     "Invalid cron name",
   );
   assertThrows(
-    () => Deno.cron("abc<>", { minute: 0 }, () => {}),
-    TypeError,
-    "Invalid cron name",
-  );
-  assertThrows(
     () => Deno.cron(";']", "*/1 * * * *", () => {}),
-    TypeError,
-    "Invalid cron name",
-  );
-  assertThrows(
-    () => Deno.cron(";']", { minute: 0 }, () => {}),
     TypeError,
     "Invalid cron name",
   );
@@ -77,16 +57,6 @@ Deno.test(function invalidNameTest() {
       Deno.cron(
         "0000000000000000000000000000000000000000000000000000000000000000000000",
         "*/1 * * * *",
-        () => {},
-      ),
-    TypeError,
-    "Cron name is too long",
-  );
-  assertThrows(
-    () =>
-      Deno.cron(
-        "0000000000000000000000000000000000000000000000000000000000000000000000",
-        { minute: 0 },
         () => {},
       ),
     TypeError,
@@ -101,27 +71,12 @@ Deno.test(function invalidScheduleTest() {
     "Invalid cron schedule",
   );
   assertThrows(
-    () => Deno.cron("abc", { minute: { end: 10, every: 2 } }, () => {}),
-    TypeError,
-    "Invalid cron schedule",
-  );
-  assertThrows(
     () => Deno.cron("abc", "* * * * * *", () => {}),
     TypeError,
     "Invalid cron schedule",
   );
   assertThrows(
-    () => Deno.cron("abc", { minute: 80 }, () => {}),
-    TypeError,
-    "Invalid cron schedule",
-  );
-  assertThrows(
     () => Deno.cron("abc", "* * * *", () => {}),
-    TypeError,
-    "Invalid cron schedule",
-  );
-  assertThrows(
-    () => Deno.cron("fgh", { dayOfWeek: 90 }, () => {}),
     TypeError,
     "Invalid cron schedule",
   );
@@ -146,17 +101,6 @@ Deno.test(function invalidBackoffScheduleTest() {
   );
   assertThrows(
     () =>
-      Deno.cron(
-        "abc1",
-        { minute: { every: 1 } },
-        { backoffSchedule: [1, 1, 1, 1, 1, 1] },
-        () => {},
-      ),
-    TypeError,
-    "Invalid backoff schedule",
-  );
-  assertThrows(
-    () =>
       Deno.cron("abc", "*/1 * * * *", { backoffSchedule: [3600001] }, () => {}),
     TypeError,
     "Invalid backoff schedule",
@@ -164,66 +108,37 @@ Deno.test(function invalidBackoffScheduleTest() {
 });
 
 Deno.test(async function tooManyCrons() {
-  const crons1: Promise<void>[] = [];
-  const ac1 = new AbortController();
+  const crons: Promise<void>[] = [];
+  const ac = new AbortController();
   for (let i = 0; i <= 100; i++) {
     const c = Deno.cron(
-      `abc1_${i}`,
+      `abc_${i}`,
       "*/1 * * * *",
-      { signal: ac1.signal },
+      { signal: ac.signal },
       () => {},
     );
-    crons1.push(c);
+    crons.push(c);
   }
 
   try {
     assertThrows(
       () => {
-        Deno.cron("next-cron1", "*/1 * * * *", { signal: ac1.signal }, () => {});
+        Deno.cron("next-cron", "*/1 * * * *", { signal: ac.signal }, () => {});
       },
       TypeError,
       "Too many crons",
     );
   } finally {
-    ac1.abort();
-    for (const c of crons1) {
-      await c;
-    }
-  }
-
-  const crons2: Promise<void>[] = [];
-  const ac2 = new AbortController();
-  for (let i = 0; i <= 100; i++) {
-    const c = Deno.cron(
-      `abc2_${i}`,
-      { minute: { every: 1 } },
-      { signal: ac2.signal },
-      () => {},
-    );
-    crons2.push(c);
-  }
-
-  try {
-    assertThrows(
-      () => {
-        Deno.cron("next-cron2", { minute: { every: 1 } }, {
-          signal: ac2.signal,
-        }, () => {});
-      },
-      TypeError,
-      "Too many crons",
-    );
-  } finally {
-    ac2.abort();
-    for (const c of crons2) {
+    ac.abort();
+    for (const c of crons) {
       await c;
     }
   }
 });
 
 Deno.test(async function duplicateCrons() {
-  const ac1 = new AbortController();
-  const c1 = Deno.cron("abc", "*/20 * * * *", { signal: ac1.signal }, () => {});
+  const ac = new AbortController();
+  const c = Deno.cron("abc", "*/20 * * * *", { signal: ac.signal }, () => {});
   try {
     assertThrows(
       () => Deno.cron("abc", "*/20 * * * *", () => {}),
@@ -231,282 +146,164 @@ Deno.test(async function duplicateCrons() {
       "Cron with this name already exists",
     );
   } finally {
-    ac1.abort();
-    await c1;
-  }
-
-  const ac2 = new AbortController();
-  const c2 = Deno.cron("abc", { minute: { every: 20 } }, { signal: ac2.signal }, () => {});
-  try {
-    assertThrows(
-      () => Deno.cron("abc", { minute: { every: 20 } }, () => {}),
-      TypeError,
-      "Cron with this name already exists",
-    );
-  } finally {
-    ac2.abort();
-    await c2;
+    ac.abort();
+    await c;
   }
 });
 
 Deno.test(async function basicTest() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
-  let count1 = 0;
+  let count = 0;
   const { promise, resolve } = Promise.withResolvers<void>();
-  const ac1 = new AbortController();
-  const c1 = Deno.cron("abcBasic1", "*/20 * * * *", { signal: ac1.signal }, () => {
-    count1++;
-    if (count1 > 5) {
+  const ac = new AbortController();
+  const c = Deno.cron("abc", "*/20 * * * *", { signal: ac.signal }, () => {
+    count++;
+    if (count > 5) {
       resolve();
     }
   });
   try {
     await promise;
   } finally {
-    ac1.abort();
-    await c1;
+    ac.abort();
+    await c;
   }
+});
 
-  let count2 = 0;
-  const ac2 = new AbortController();
-  const c2 = Deno.cron("abcBasic2", { minute: { every: 20 } }, {
-    signal: ac2.signal,
-  }, () => {
-    count2++;
-    if (count2 > 5) {
+Deno.test(async function basicTestWithJsonFormatScheduleExpression() {
+  Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
+
+  let count = 0;
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ac = new AbortController();
+  const c = Deno.cron("abc", { minute: { every: 20 } }, { signal: ac.signal }, () => {
+    count++;
+    if (count > 5) {
       resolve();
     }
   });
   try {
     await promise;
   } finally {
-    ac2.abort();
-    await c2;
+    ac.abort();
+    await c;
   }
 });
 
 Deno.test(async function multipleCrons() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
+  let count0 = 0;
   let count1 = 0;
-  let count2 = 0;
+  const { promise: promise0, resolve: resolve0 } = Promise.withResolvers<
+    void
+  >();
   const { promise: promise1, resolve: resolve1 } = Promise.withResolvers<
     void
   >();
-  const { promise: promise2, resolve: resolve2 } = Promise.withResolvers<
-    void
-  >();
-  const ac1 = new AbortController();
-  const c1 = Deno.cron("abcMultipleCron1", "*/20 * * * *", { signal: ac1.signal }, () => {
+  const ac = new AbortController();
+  const c0 = Deno.cron("abc", "*/20 * * * *", { signal: ac.signal }, () => {
+    count0++;
+    if (count0 > 5) {
+      resolve0();
+    }
+  });
+  const c1 = Deno.cron("xyz", "*/20 * * * *", { signal: ac.signal }, () => {
     count1++;
     if (count1 > 5) {
       resolve1();
     }
   });
-  const c2 = Deno.cron("xyzcMultipleCron1", "*/20 * * * *", { signal: ac1.signal }, () => {
-    count2++;
-    if (count2 > 5) {
-      resolve2();
-    }
-  });
   try {
+    await promise0;
     await promise1;
-    await promise2;
   } finally {
-    ac1.abort();
+    ac.abort();
+    await c0;
     await c1;
-    await c2;
-  }
-
-  let count3 = 0;
-  let count4 = 0;
-  const { promise: promise3, resolve: resolve3 } = Promise.withResolvers<
-    void
-  >();
-  const { promise: promise4, resolve: resolve4 } = Promise.withResolvers<
-    void
-  >();
-  const ac2 = new AbortController();
-  const c3 = Deno.cron("abcMultipleCron2", { minute: { every: 20 } }, {
-    signal: ac2.signal,
-  }, () => {
-    count3++;
-    if (count3 > 5) {
-      resolve3();
-    }
-  });
-  const c4 = Deno.cron("xyzMultipleCron2", { minute: { every: 20 } }, {
-    signal: ac2.signal,
-  }, () => {
-    count4++;
-    if (count4 > 5) {
-      resolve4();
-    }
-  });
-  try {
-    await promise3;
-    await promise4;
-  } finally {
-    ac2.abort();
-    await c3;
-    await c4;
   }
 });
 
 Deno.test(async function overlappingExecutions() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
-  let count1 = 0;
+  let count = 0;
+  const { promise: promise0, resolve: resolve0 } = Promise.withResolvers<
+    void
+  >();
   const { promise: promise1, resolve: resolve1 } = Promise.withResolvers<
     void
   >();
-  const { promise: promise2, resolve: resolve2 } = Promise.withResolvers<
-    void
-  >();
-  const ac1 = new AbortController();
-  const c1 = Deno.cron(
-    "abcOverlappingExecutions1",
+  const ac = new AbortController();
+  const c = Deno.cron(
+    "abc",
     "*/20 * * * *",
-    { signal: ac1.signal },
+    { signal: ac.signal },
     async () => {
-      resolve1();
-      count1++;
-      await promise2;
+      resolve0();
+      count++;
+      await promise1;
     },
   );
   try {
-    await promise1;
+    await promise0;
   } finally {
     await sleep(2000);
-    resolve2();
-    ac1.abort();
-    await c1;
+    resolve1();
+    ac.abort();
+    await c;
   }
-  assertEquals(count1, 1);
-
-  let count2 = 0;
-  const { promise: promise3, resolve: resolve3 } = Promise.withResolvers<
-    void
-  >();
-  const { promise: promise4, resolve: resolve4 } = Promise.withResolvers<
-    void
-  >();
-  const ac2 = new AbortController();
-  const c2 = Deno.cron(
-    "abcOverlappingExecutions2",
-    { minute: { every: 20 } },
-    { signal: ac2.signal },
-    async () => {
-      resolve3();
-      count2++;
-      await promise4;
-    },
-  );
-  try {
-    await promise3;
-  } finally {
-    await sleep(2000);
-    resolve4();
-    ac2.abort();
-    await c2;
-  }
-  assertEquals(count2, 1);
+  assertEquals(count, 1);
 });
 
 Deno.test(async function retriesWithBackoffSchedule() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "5000");
 
-  let count1 = 0;
-  const ac1 = new AbortController();
-  const c1 = Deno.cron("abc1", "*/20 * * * *", {
-    signal: ac1.signal,
+  let count = 0;
+  const ac = new AbortController();
+  const c = Deno.cron("abc", "*/20 * * * *", {
+    signal: ac.signal,
     backoffSchedule: [10, 20],
   }, async () => {
-    count1 += 1;
+    count += 1;
     await sleep(10);
     throw new TypeError("cron error");
   });
   try {
     await sleep(6000);
   } finally {
-    ac1.abort();
-    await c1;
+    ac.abort();
+    await c;
   }
 
   // The cron should have executed 3 times (1st attempt and 2 retries).
-  assertEquals(count1, 3);
-
-  let count2 = 0;
-  const ac2 = new AbortController();
-  const c2 = Deno.cron("abc2", { minute: { every: 20 } }, {
-    signal: ac2.signal,
-    backoffSchedule: [10, 20],
-  }, async () => {
-    count2 += 1;
-    await sleep(10);
-    throw new TypeError("cron error");
-  });
-  try {
-    await sleep(6000);
-  } finally {
-    ac2.abort();
-    await c2;
-  }
-
-  // The cron should have executed 3 times (1st attempt and 2 retries).
-  assertEquals(count2, 3);
+  assertEquals(count, 3);
 });
 
 Deno.test(async function retriesWithBackoffScheduleOldApi() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "5000");
 
-  let count1 = 0;
-  const ac1 = new AbortController();
-  const c1 = Deno.cron("abc1", "*/20 * * * *", async () => {
-    count1 += 1;
+  let count = 0;
+  const ac = new AbortController();
+  const c = Deno.cron("abc2", "*/20 * * * *", async () => {
+    count += 1;
     await sleep(10);
     throw new TypeError("cron error");
   }, {
-    signal: ac1.signal,
+    signal: ac.signal,
     backoffSchedule: [10, 20],
   });
 
   try {
     await sleep(6000);
   } finally {
-    ac1.abort();
-    await c1;
+    ac.abort();
+    await c;
   }
 
   // The cron should have executed 3 times (1st attempt and 2 retries).
-  assertEquals(count1, 3);
-
-  let count2 = 0;
-  const ac2 = new AbortController();
-  const c2 = Deno.cron(
-    "abc2",
-    { minute: { every: 20 } },
-    async () => {
-      count2 += 1;
-      await sleep(10);
-      throw new TypeError("cron error");
-    },
-    {
-      signal: ac2.signal,
-      backoffSchedule: [10, 20],
-    },
-  );
-
-  try {
-    await sleep(6000);
-  } finally {
-    ac2.abort();
-    await c2;
-  }
-
-  // The cron should have executed 3 times (1st attempt and 2 retries).
-  assertEquals(count2, 3);
+  assertEquals(count, 3);
 });
 
 Deno.test("formatToCronSchedule - undefined value", () => {

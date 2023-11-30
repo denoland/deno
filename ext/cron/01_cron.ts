@@ -13,7 +13,7 @@ export function formatToCronSchedule(
   if (value === undefined) {
     return "*";
   } else if (typeof value === "number") {
-    return "" + value;
+    return value.toString();
   } else {
     const { exact } = value as { exact: number | number[] };
     if (exact === undefined) {
@@ -37,7 +37,7 @@ export function formatToCronSchedule(
       }
     } else {
       if (typeof exact === 'number') {
-        return "" + exact;
+        return exact.toString();
       } else {
         return exact.join(",");
       }
