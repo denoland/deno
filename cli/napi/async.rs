@@ -71,13 +71,15 @@ fn napi_queue_async_work(
   let send_env = SendPtr(env_ptr);
 
   #[inline(always)]
-  unsafe fn do_work(ptr: SendPtr<Env>, work: &AsyncWork) {
-    (work.execute)(ptr.0 as napi_env, work.data);
-    // Note: Must be called from the loop thread.
-    (work.complete)(ptr.0 as napi_env, napi_ok, work.data);
+  fn do_work(ptr: SendPtr<Env>, work: &AsyncWork) {
+    // SAFETY: This is a valid async work queue call and it runs on the event loop thread
+    unsafe {
+      (work.execute)(ptr.0 as napi_env, work.data);
+      (work.complete)(ptr.0 as napi_env, napi_ok, work.data);
+    }
   }
 
-  env.add_async_work(move || unsafe { do_work(send_env, work) });
+  env.add_async_work(move || do_work(send_env, work));
 
   napi_ok
 }

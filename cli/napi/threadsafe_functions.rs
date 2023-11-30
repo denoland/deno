@@ -95,6 +95,7 @@ impl TsFn {
     let context = SendPtr(self.context);
     let data = SendPtr(data);
 
+    #[inline(always)]
     fn spawn(
       sender: &V8CrossThreadTaskSpawner,
       is_blocking: bool,
@@ -110,6 +111,7 @@ impl TsFn {
     if let Some(call_js_cb) = self.maybe_call_js_cb {
       if let Some(func) = js_func {
         let func = SendPtr(func.into_raw().as_ptr());
+        #[inline(always)]
         fn call(
           scope: &mut v8::HandleScope,
           call_js_cb: napi_threadsafe_function_call_js,
@@ -118,6 +120,7 @@ impl TsFn {
           context: SendPtr<c_void>,
           data: SendPtr<c_void>,
         ) {
+          // SAFETY: This is a valid global from above
           let func: v8::Global<v8::Function> = unsafe {
             v8::Global::<v8::Function>::from_raw(
               scope,
@@ -126,25 +129,27 @@ impl TsFn {
           };
           let func: v8::Local<v8::Value> =
             func.open(scope).to_object(scope).unwrap().into();
+          // SAFETY: We're calling the provided callback with valid args
           unsafe {
             call_js_cb(env.0 as _, func.into(), context.0 as _, data.0 as _)
           }
         }
-        spawn(&self.sender, is_blocking, move |scope| unsafe {
+        spawn(&self.sender, is_blocking, move |scope| {
           call(scope, call_js_cb, func, env, context, data);
         });
       } else {
+        #[inline(always)]
         fn call(
-          scope: &mut v8::HandleScope,
           call_js_cb: napi_threadsafe_function_call_js,
           env: SendPtr<Env>,
           context: SendPtr<c_void>,
           data: SendPtr<c_void>,
         ) {
+          // SAFETY: We're calling the provided callback with valid args
           unsafe {
             call_js_cb(
               env.0 as _,
-              unsafe { std::mem::zeroed() },
+              std::mem::zeroed(),
               context.0 as _,
               data.0 as _,
             )
@@ -153,13 +158,13 @@ impl TsFn {
         spawn(
           &self.sender,
           is_blocking,
-          move |scope: &mut v8::HandleScope<'_>| unsafe {
-            call(scope, call_js_cb, env, context, data);
+          move |_| {
+            call(call_js_cb, env, context, data);
           },
         );
       }
     } else {
-      spawn(&self.sender, is_blocking, |_scope| {
+      spawn(&self.sender, is_blocking, |_| {
         // TODO: func.call
       });
     };
