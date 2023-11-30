@@ -1,8 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::source_range_to_lsp_range;
-use super::config::Config;
-use super::config::WorkspaceSettings;
+use super::config::CodeLensSettings;
 use super::language_server;
 use super::text::LineIndex;
 use super::tsc;
@@ -381,63 +380,29 @@ pub async fn resolve_code_lens(
   }
 }
 
-pub async fn collect(
+pub fn collect_test(
   specifier: &ModuleSpecifier,
-  parsed_source: Option<ParsedSource>,
-  config: &Config,
-  line_index: Arc<LineIndex>,
-  navigation_tree: &NavigationTree,
+  parsed_source: ParsedSource,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  let mut code_lenses = collect_test(specifier, parsed_source, config)?;
-  code_lenses.extend(
-    collect_tsc(
-      specifier,
-      config.workspace_settings(),
-      line_index,
-      navigation_tree,
-    )
-    .await?,
-  );
-
-  Ok(code_lenses)
-}
-
-fn collect_test(
-  specifier: &ModuleSpecifier,
-  parsed_source: Option<ParsedSource>,
-  config: &Config,
-) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  if config.specifier_enabled_for_test(specifier)
-    && config.enabled_code_lens_test_for_specifier(specifier)
-  {
-    if let Some(parsed_source) = parsed_source {
-      let mut collector =
-        DenoTestCollector::new(specifier.clone(), parsed_source.clone());
-      parsed_source.module().visit_with(&mut collector);
-      return Ok(collector.take());
-    }
-  }
-  Ok(Vec::new())
+  let mut collector =
+    DenoTestCollector::new(specifier.clone(), parsed_source.clone());
+  parsed_source.module().visit_with(&mut collector);
+  Ok(collector.take())
 }
 
 /// Return tsc navigation tree code lenses.
-async fn collect_tsc(
+pub async fn collect_tsc(
   specifier: &ModuleSpecifier,
-  workspace_settings: &WorkspaceSettings,
+  code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  if !workspace_settings.code_lens.implementations
-    && !workspace_settings.code_lens.references
-  {
-    return Ok(vec![]);
-  }
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
   navigation_tree.walk(&|i, mp| {
     let mut code_lenses = code_lenses.borrow_mut();
 
     // TSC Implementations Code Lens
-    if workspace_settings.code_lens.implementations {
+    if code_lens_settings.implementations {
       let source = CodeLensSource::Implementations;
       match i.kind {
         tsc::ScriptElementKind::InterfaceElement => {
@@ -465,7 +430,7 @@ async fn collect_tsc(
     }
 
     // TSC References Code Lens
-    if workspace_settings.code_lens.references {
+    if code_lens_settings.references {
       let source = CodeLensSource::References;
       if let Some(parent) = &mp {
         if parent.kind == tsc::ScriptElementKind::EnumElement {
@@ -478,7 +443,7 @@ async fn collect_tsc(
       }
       match i.kind {
         tsc::ScriptElementKind::FunctionElement => {
-          if workspace_settings.code_lens.references_all_functions {
+          if code_lens_settings.references_all_functions {
             code_lenses.push(i.to_code_lens(
               line_index.clone(),
               specifier,
