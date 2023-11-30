@@ -156,7 +156,9 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   #[cfg(unix)]
   let path = {
     use std::os::unix::prelude::OsStrExt;
-    PathBuf::from(std::ffi::OsStr::from_bytes(&percent_decode.collect::<Vec<u8>>()))
+    PathBuf::from(std::ffi::OsStr::from_bytes(
+      &percent_decode.collect::<Vec<u8>>(),
+    ))
   };
   #[cfg(windows)]
   let path = PathBuf::from(percent_decode.decode_utf8_lossy().as_ref());
