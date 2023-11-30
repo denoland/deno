@@ -1,13 +1,25 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { arch, versions } from "ext:deno_node/_process/process.ts";
 import { cpus, hostname, networkInterfaces } from "node:os";
 
-function writeReport(filename: string, err: Error) {
+const primordials = globalThis.__bootstrap.primordials;
+const {
+  Error,
+  StringPrototypeToUppercase,
+  StringPrototypeCharAt,
+  StringPrototypeSlice,
+  Date,
+  DatePrototypeGetTime,
+} = primordials;
+
+function writeReport(_filename: string, _err: typeof Error) {
   return "";
 }
 
 const todoUndefined = undefined;
 
-function getReport(err: Error) {
+function getReport(_err: typeof Error) {
   const dumpEventTime = new Date();
   return {
     header: {
@@ -16,7 +28,7 @@ function getReport(err: Error) {
       trigger: "GetReport",
       filename: report.filename, // assumption!
       dumpEventTime,
-      dumpEventTimeStamp: dumpEventTime.getTime(),
+      dumpEventTimeStamp: DatePrototypeGetTime(dumpEventTime),
       processId: Deno.pid, // I am not sure if it should be Deno.pid or Deno.ppid
       threadId: 0,
       cwd: Deno.cwd(),
@@ -35,7 +47,9 @@ function getReport(err: Error) {
         sourceUrl:
           "https://nodejs.org/download/release/v21.2.0/node-v21.2.0.tar.gz",
       },
-      osName: Deno.build.os.charAt(0).toUpperCase() + Deno.build.os.slice(1),
+      osName:
+        StringPrototypeToUppercase(StringPrototypeCharAt(Deno.build.os, 0)) +
+        StringPrototypeSlice(Deno.build.os, 1),
       osRelease: todoUndefined,
       osVersion: todoUndefined,
       osMachine: Deno.build.arch,
