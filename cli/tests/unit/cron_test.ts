@@ -177,12 +177,17 @@ Deno.test(async function basicTestWithJsonFormatScheduleExpression() {
   let count = 0;
   const { promise, resolve } = Promise.withResolvers<void>();
   const ac = new AbortController();
-  const c = Deno.cron("abc", { minute: { every: 20 } }, { signal: ac.signal }, () => {
-    count++;
-    if (count > 5) {
-      resolve();
-    }
-  });
+  const c = Deno.cron(
+    "abc",
+    { minute: { every: 20 } },
+    { signal: ac.signal },
+    () => {
+      count++;
+      if (count > 5) {
+        resolve();
+      }
+    },
+  );
   try {
     await promise;
   } finally {

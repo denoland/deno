@@ -36,7 +36,7 @@ export function formatToCronSchedule(
         throw new TypeError("Invalid cron schedule");
       }
     } else {
-      if (typeof exact === 'number') {
+      if (typeof exact === "number") {
         return exact.toString();
       } else {
         return exact.join(",");
