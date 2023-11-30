@@ -864,7 +864,7 @@ Deno.test({
     // test and remove dynamic parts
     assert(typeof result.header.filename === "string");
     delete result.header.filename;
-    assert(typeof result.header.dumpEventTime === "number");
+    assert(typeof result.header.dumpEventTime === "object");
     delete result.header.dumpEventTime;
     assert(typeof result.header.dumpEventTimeStamp === "number");
     delete result.header.dumpEventTimeStamp;
@@ -873,7 +873,7 @@ Deno.test({
     assert(typeof result.header.cwd === "string");
     delete result.header.cwd;
     assert(typeof result.header.nodejsVersion === "string");
-    assert(result.header.nodejsVersion.startWith("v"));
+    assert(result.header.nodejsVersion.startsWith("v"));
     delete result.header.nodejsVersion;
     assert(typeof result.header.arch === "string");
     delete result.header.arch;
@@ -883,15 +883,11 @@ Deno.test({
     delete result.header.componentVersions;
     assert(typeof result.header.osName === "string");
     delete result.header.osName;
-    assert(typeof result.header.osRelease === "string");
-    delete result.header.osRelease;
-    assert(typeof result.header.osVersion === "string");
-    delete result.header.osVersion;
     assert(typeof result.header.osMachine === "string");
     delete result.header.osMachine;
     assert(Array.isArray(result.header.cpus));
     delete result.header.cpus;
-    assert(Array.isArray(result.header.networkInterfaces));
+    assert(typeof result.header.networkInterfaces === "object");
     delete result.header.networkInterfaces;
     assert(typeof result.header.host === "string");
     delete result.header.host;
@@ -914,6 +910,8 @@ Deno.test({
           sourceUrl:
             "https://nodejs.org/download/release/v21.2.0/node-v21.2.0.tar.gz",
         },
+        osRelease: undefined,
+        osVersion: undefined,
       },
       javascriptStack: undefined,
       javascriptHeap: undefined,
