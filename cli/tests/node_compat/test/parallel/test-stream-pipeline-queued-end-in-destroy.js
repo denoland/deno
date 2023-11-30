@@ -16,7 +16,11 @@ const { Readable, Duplex, pipeline } = require('stream');
 // Refs: https://github.com/nodejs/node/issues/24456
 
 const readable = new Readable({
+<<<<<<< HEAD
   read: common.mustCall()
+=======
+  read: common.mustCall(() => {})
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 });
 
 const duplex = new Duplex({

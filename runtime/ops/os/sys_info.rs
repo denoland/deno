@@ -211,6 +211,7 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_free = info.freeswap * mem_unit;
       mem_info.total = info.totalram * mem_unit;
       mem_info.free = info.freeram * mem_unit;
+<<<<<<< HEAD
       mem_info.available = mem_info.free;
       mem_info.buffers = info.bufferram * mem_unit;
     }
@@ -225,6 +226,10 @@ pub fn mem_info() -> Option<MemInfo> {
         mem_info.available = mem.unwrap_or(0);
       }
     }
+=======
+      mem_info.buffers = info.bufferram * mem_unit;
+    }
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
   #[cfg(target_vendor = "apple")]
   {

@@ -87,7 +87,11 @@ const watcher =
 
 // 'stop' should only be emitted once - stopping a stopped watcher should
 // not trigger a 'stop' event.
+<<<<<<< HEAD
 watcher.on('stop', common.mustCall());
+=======
+watcher.on('stop', common.mustCall(function onStop() {}));
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 
 // Watch events should callback with a filename on supported systems.
 // Omitting AIX. It works but not reliably.

@@ -475,6 +475,7 @@ const { PassThrough, Transform } = require('stream');
     assert.strictEqual(ended, true);
   }));
 }
+<<<<<<< HEAD
 
 {
   const s = new Transform({
@@ -499,3 +500,5 @@ const { PassThrough, Transform } = require('stream');
   s.write('firstLine');
   process.nextTick(() => s.write('secondLine'));
 }
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))

@@ -15,7 +15,10 @@ import { Buffer } from "node:buffer";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import process from "node:process";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
+<<<<<<< HEAD
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
@@ -49,7 +52,10 @@ export {
   format,
   formatWithOptions,
   inspect,
+<<<<<<< HEAD
   parseArgs,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   promisify,
   stripVTControlCharacters,
   types,
@@ -314,7 +320,10 @@ export default {
   getSystemErrorName,
   deprecate,
   callbackify,
+<<<<<<< HEAD
   parseArgs,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   promisify,
   inherits,
   types,

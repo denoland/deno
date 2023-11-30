@@ -624,17 +624,23 @@ declare type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
   | ReadableStreamBYOBReadValueResult<V>;
 
 /** @category Streams API */
+<<<<<<< HEAD
 declare interface ReadableStreamBYOBReaderReadOptions {
   min?: number;
 }
 
 /** @category Streams API */
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 declare interface ReadableStreamBYOBReader {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
   read<V extends ArrayBufferView>(
     view: V,
+<<<<<<< HEAD
     options?: ReadableStreamBYOBReaderReadOptions,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   ): Promise<ReadableStreamBYOBReadResult<V>>;
   releaseLock(): void;
 }

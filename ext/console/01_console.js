@@ -12,7 +12,10 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFill,
+<<<<<<< HEAD
   ArrayPrototypeConcat,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeForEach,
@@ -42,7 +45,10 @@ const {
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
+<<<<<<< HEAD
   NumberIsNaN,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   MapPrototype,
   MapPrototypeDelete,
   MapPrototypeEntries,
@@ -136,6 +142,7 @@ const {
   Uint8Array,
   WeakMapPrototypeHas,
   WeakSetPrototypeHas,
+<<<<<<< HEAD
 } = primordials;
 
 // supposed to be in node/internal_binding/util.ts
@@ -154,6 +161,11 @@ export function previewEntries(iter, isKeyValue) {
   }
 }
 
+=======
+  isNaN,
+} = primordials;
+
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 let noColor = () => false;
 
 function setNoColorFn(fn) {
@@ -967,7 +979,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
         const date = proxyDetails ? proxyDetails[0] : value;
+<<<<<<< HEAD
         if (NumberIsNaN(DatePrototypeGetTime(date))) {
+=======
+        if (isNaN(DatePrototypeGetTime(date))) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
           return ctx.stylize("Invalid Date", "date");
         } else {
           base = DatePrototypeToISOString(date);
@@ -1510,7 +1526,13 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
+<<<<<<< HEAD
   const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
+=======
+  // TODO(wafuwafu13): Implement
+  // const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
+  const { 0: entries, 1: isKeyValue } = value;
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   if (isKeyValue) {
     // Mark entry iterators as such.
     braces[0] = StringPrototypeReplace(
@@ -1719,12 +1741,24 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
+<<<<<<< HEAD
   const entries = previewEntries(value);
+=======
+  // TODO(wafuwafu13): Implement
+  // const entries = previewEntries(value);
+  const entries = value;
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
+<<<<<<< HEAD
   const entries = previewEntries(value);
+=======
+  // TODO(wafuwafu13): Implement
+  // const entries = previewEntries(value);
+  const entries = value;
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
@@ -2753,34 +2787,57 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
+<<<<<<< HEAD
   if (colorKeywords.has(colorString)) {
     colorString = colorKeywords.get(colorString);
+=======
+  if (MapPrototypeHas(colorKeywords, colorString)) {
+    colorString = MapPrototypeGet(colorKeywords, colorString);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
   // deno-fmt-ignore
   const hashMatch = StringPrototypeMatch(colorString, HASH_PATTERN);
   if (hashMatch != null) {
     return [
+<<<<<<< HEAD
       NumberParseInt(hashMatch[1], 16),
       NumberParseInt(hashMatch[2], 16),
       NumberParseInt(hashMatch[3], 16),
+=======
+      Number(`0x${hashMatch[1]}`),
+      Number(`0x${hashMatch[2]}`),
+      Number(`0x${hashMatch[3]}`),
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     ];
   }
   // deno-fmt-ignore
   const smallHashMatch = StringPrototypeMatch(colorString, SMALL_HASH_PATTERN);
   if (smallHashMatch != null) {
     return [
+<<<<<<< HEAD
       NumberParseInt(`${smallHashMatch[1]}${smallHashMatch[1]}`, 16),
       NumberParseInt(`${smallHashMatch[2]}${smallHashMatch[2]}`, 16),
       NumberParseInt(`${smallHashMatch[3]}${smallHashMatch[3]}`, 16),
+=======
+      Number(`0x${smallHashMatch[1]}${smallHashMatch[1]}`),
+      Number(`0x${smallHashMatch[2]}${smallHashMatch[2]}`),
+      Number(`0x${smallHashMatch[3]}${smallHashMatch[3]}`),
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     ];
   }
   // deno-fmt-ignore
   const rgbMatch = StringPrototypeMatch(colorString, RGB_PATTERN);
   if (rgbMatch != null) {
     return [
+<<<<<<< HEAD
       MathRound(MathMax(0, MathMin(255, rgbMatch[1]))),
       MathRound(MathMax(0, MathMin(255, rgbMatch[2]))),
       MathRound(MathMax(0, MathMin(255, rgbMatch[3]))),
+=======
+      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[1])))),
+      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[2])))),
+      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[3])))),
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     ];
   }
   // deno-fmt-ignore
@@ -2791,8 +2848,13 @@ function parseCssColor(colorString) {
     if (h < 0) {
       h += 360;
     }
+<<<<<<< HEAD
     const s = MathMax(0, MathMin(100, hslMatch[2])) / 100;
     const l = MathMax(0, MathMin(100, hslMatch[3])) / 100;
+=======
+    const s = MathMax(0, MathMin(100, Number(hslMatch[2]))) / 100;
+    const l = MathMax(0, MathMin(100, Number(hslMatch[3]))) / 100;
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     const c = (1 - MathAbs(2 * l - 1)) * s;
     const x = c * (1 - MathAbs((h / 60) % 2 - 1));
     const m = l - c / 2;

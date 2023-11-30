@@ -17,7 +17,21 @@ import {
   validateInteger,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
+<<<<<<< HEAD
 import { previewEntries } from "ext:deno_node/internal_binding/util.ts";
+=======
+const previewEntries = (iter, isKeyValue) => {
+  if (isKeyValue) {
+    const arr = [...iter];
+    if (Array.isArray(arr[0]) && arr[0].length === 2) {
+      return [[].concat(...arr), true];
+    }
+    return [arr, false];
+  } else {
+    return [...iter];
+  }
+};
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 import { Buffer } from "node:buffer";
 const { isBuffer } = Buffer;
 import {
@@ -465,6 +479,10 @@ const consoleMethods = {
 
   // https://console.spec.whatwg.org/#table
   table(tabularData, properties) {
+<<<<<<< HEAD
+=======
+    console.log("tabularData", tabularData);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     if (properties !== undefined) {
       validateArray(properties, "properties");
     }

@@ -1,5 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+<<<<<<< HEAD
+=======
+// Removes the `__proto__` for security reasons.
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+delete Object.prototype.__proto__;
+
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
@@ -10,7 +17,10 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+<<<<<<< HEAD
   ArrayPrototypeIncludes,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -445,11 +455,14 @@ const finalDenoNs = {
   resources: core.resources,
   close: core.close,
   ...denoNs,
+<<<<<<< HEAD
   // Deno.test and Deno.bench are noops here, but kept for compatibility; so
   // that they don't cause errors when used outside of `deno test`/`deno bench`
   // contexts.
   test: () => {},
   bench: () => {},
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 };
 
 const {
@@ -567,12 +580,15 @@ function bootstrapMainRuntime(runtimeOptions) {
     }
   }
 
+<<<<<<< HEAD
   if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
     // Removes the `__proto__` for security reasons.
     // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
     delete Object.prototype.__proto__;
   }
 
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
@@ -671,6 +687,7 @@ function bootstrapWorkerRuntime(
       ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
   }
+<<<<<<< HEAD
 
   if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
     // Removes the `__proto__` for security reasons.
@@ -678,6 +695,8 @@ function bootstrapWorkerRuntime(
     delete Object.prototype.__proto__;
   }
 
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
     noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),

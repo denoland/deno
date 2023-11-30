@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_napi"
+<<<<<<< HEAD
 version = "0.55.0"
+=======
+version = "0.56.0"
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

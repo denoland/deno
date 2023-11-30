@@ -79,7 +79,10 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+<<<<<<< HEAD
   TypedArrayPrototypeGetLength,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
@@ -1304,9 +1307,13 @@ function readableByteStreamControllerClose(controller) {
   }
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
+<<<<<<< HEAD
     if (
       firstPendingPullInto.bytesFilled % firstPendingPullInto.elementSize !== 0
     ) {
+=======
+    if (firstPendingPullInto.bytesFilled > 0) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       const e = new TypeError(
         "Insufficient bytes to fill elements in the given buffer",
       );
@@ -1850,11 +1857,18 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
 /**
  * @param {ReadableStreamBYOBReader} reader
  * @param {ArrayBufferView} view
+<<<<<<< HEAD
  * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
 function readableStreamBYOBReaderRead(reader, view, min, readIntoRequest) {
+=======
+ * @param {ReadIntoRequest} readIntoRequest
+ * @returns {void}
+ */
+function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   const stream = reader[_stream];
   assert(stream);
   stream[_disturbed] = true;
@@ -1864,7 +1878,10 @@ function readableStreamBYOBReaderRead(reader, view, min, readIntoRequest) {
     readableByteStreamControllerPullInto(
       stream[_controller],
       view,
+<<<<<<< HEAD
       min,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       readIntoRequest,
     );
   }
@@ -1940,14 +1957,20 @@ function readableByteStreamControllerProcessReadRequestsUsingQueue(
 /**
  * @param {ReadableByteStreamController} controller
  * @param {ArrayBufferView} view
+<<<<<<< HEAD
  * @param {number} min
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
 function readableByteStreamControllerPullInto(
   controller,
   view,
+<<<<<<< HEAD
   min,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   readIntoRequest,
 ) {
   const stream = controller[_stream];
@@ -2017,10 +2040,13 @@ function readableByteStreamControllerPullInto(
     );
   }
 
+<<<<<<< HEAD
   const minimumFill = min * elementSize;
   assert(minimumFill >= 0 && minimumFill <= byteLength);
   assert(minimumFill % elementSize === 0);
 
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   try {
     buffer = transferArrayBuffer(buffer);
   } catch (e) {
@@ -2035,7 +2061,10 @@ function readableByteStreamControllerPullInto(
     byteOffset,
     byteLength,
     bytesFilled: 0,
+<<<<<<< HEAD
     minimumFill,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     elementSize,
     viewConstructor: ctor,
     readerType: "byob",
@@ -2151,7 +2180,11 @@ function readableByteStreamControllerRespondInReadableState(
     );
     return;
   }
+<<<<<<< HEAD
   if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill) {
+=======
+  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     return;
   }
   readableByteStreamControllerShiftPendingPullInto(controller);
@@ -2231,7 +2264,11 @@ function readableByteStreamControllerRespondInClosedState(
   controller,
   firstDescriptor,
 ) {
+<<<<<<< HEAD
   assert(firstDescriptor.bytesFilled % firstDescriptor.elementSize === 0);
+=======
+  assert(firstDescriptor.bytesFilled === 0);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   if (firstDescriptor.readerType === "none") {
     readableByteStreamControllerShiftPendingPullInto(controller);
   }
@@ -2261,9 +2298,13 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
   assert(pullIntoDescriptor.readerType !== "none");
   let done = false;
   if (stream[_state] === "closed") {
+<<<<<<< HEAD
     assert(
       pullIntoDescriptor.bytesFilled % pullIntoDescriptor.elementSize === 0,
     );
+=======
+    assert(pullIntoDescriptor.bytesFilled === 0);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     done = true;
   }
   const filledView = readableByteStreamControllerConvertPullIntoDescriptor(
@@ -2354,18 +2395,31 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   controller,
   pullIntoDescriptor,
 ) {
+<<<<<<< HEAD
+=======
+  const elementSize = pullIntoDescriptor.elementSize;
+  const currentAlignedBytes = pullIntoDescriptor.bytesFilled -
+    (pullIntoDescriptor.bytesFilled % elementSize);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
     // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
+<<<<<<< HEAD
   let totalBytesToCopyRemaining = maxBytesToCopy;
   let ready = false;
   assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
   const maxAlignedBytes = maxBytesFilled -
     (maxBytesFilled % pullIntoDescriptor.elementSize);
   if (maxAlignedBytes >= pullIntoDescriptor.minimumFill) {
+=======
+  const maxAlignedBytes = maxBytesFilled - (maxBytesFilled % elementSize);
+  let totalBytesToCopyRemaining = maxBytesToCopy;
+  let ready = false;
+  if (maxAlignedBytes > currentAlignedBytes) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     totalBytesToCopyRemaining = maxAlignedBytes -
       pullIntoDescriptor.bytesFilled;
     ready = true;
@@ -2415,7 +2469,11 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   if (!ready) {
     assert(controller[_queueTotalSize] === 0);
     assert(pullIntoDescriptor.bytesFilled > 0);
+<<<<<<< HEAD
     assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
+=======
+    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
   return ready;
 }
@@ -3388,7 +3446,11 @@ function readableByteStreamTee(stream) {
         reading = false;
       },
     };
+<<<<<<< HEAD
     readableStreamBYOBReaderRead(reader, view, 1, readIntoRequest);
+=======
+    readableStreamBYOBReaderRead(reader, view, readIntoRequest);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
 
   function pull1Algorithm() {
@@ -5556,19 +5618,28 @@ class ReadableStreamBYOBReader {
 
   /**
    * @param {ArrayBufferView} view
+<<<<<<< HEAD
    * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
   read(view, options = {}) {
+=======
+   *  @returns {Promise<ReadableStreamBYOBReadResult>}
+   */
+  read(view) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
       view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
+<<<<<<< HEAD
       options = webidl.converters.ReadableStreamBYOBReaderReadOptions(
         options,
         prefix,
         "Argument 2",
       );
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     } catch (err) {
       return PromiseReject(err);
     }
@@ -5603,6 +5674,7 @@ class ReadableStreamBYOBReader {
       );
     }
 
+<<<<<<< HEAD
     if (options.min === 0) {
       return PromiseReject(new TypeError("options.min must be non-zero"));
     }
@@ -5620,6 +5692,8 @@ class ReadableStreamBYOBReader {
       }
     }
 
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     if (this[_stream] === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
@@ -5639,7 +5713,11 @@ class ReadableStreamBYOBReader {
         promise.reject(e);
       },
     };
+<<<<<<< HEAD
     readableStreamBYOBReaderRead(this, view, options.min, readIntoRequest);
+=======
+    readableStreamBYOBReaderRead(this, view, readIntoRequest);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     return promise.promise;
   }
 
@@ -5965,7 +6043,10 @@ class ReadableByteStreamController {
         byteLength: autoAllocateChunkSize,
         bytesFilled: 0,
         elementSize: 1,
+<<<<<<< HEAD
         minimumFill: 1,
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
         viewConstructor: Uint8Array,
         readerType: "default",
       };
@@ -6836,6 +6917,7 @@ webidl.converters.ReadableStreamGetReaderOptions = webidl
     converter: webidl.converters.ReadableStreamReaderMode,
   }]);
 
+<<<<<<< HEAD
 webidl.converters.ReadableStreamBYOBReaderReadOptions = webidl
   .createDictionaryConverter("ReadableStreamBYOBReaderReadOptions", [{
     key: "min",
@@ -6847,6 +6929,8 @@ webidl.converters.ReadableStreamBYOBReaderReadOptions = webidl
     defaultValue: 1,
   }]);
 
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 webidl.converters.ReadableWritablePair = webidl
   .createDictionaryConverter("ReadableWritablePair", [
     {

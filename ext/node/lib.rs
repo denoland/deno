@@ -463,8 +463,11 @@ deno_core::extension!(deno_node,
     "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
     "internal/util/inspect.mjs",
+<<<<<<< HEAD
     "internal/util/parse_args/parse_args.js",
     "internal/util/parse_args/utils.js",
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     "internal/util/types.ts",
     "internal/validators.mjs",
     "path/_constants.ts",

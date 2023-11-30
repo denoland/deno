@@ -798,6 +798,7 @@ testing[WILDCARD]this
     r#"{ "dependencies": { "@denotest/esm-basic": "1" } }"#,
   );
 
+<<<<<<< HEAD
   context
     .new_command()
     .args("compile --output binary main.ts")
@@ -828,6 +829,17 @@ testing[WILDCARD]this
     .name(&binary_path)
     .run()
     .assert_matches_text("2\n");
+=======
+  let output = context
+    .new_command()
+    .args("compile --output binary main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context.new_command().name(binary_path).run();
+  output.assert_matches_text("2\n");
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 }
 
 #[test]

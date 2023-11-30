@@ -27,6 +27,10 @@
 
 | Target family | Syscall                                                                                                                                       | Description |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+<<<<<<< HEAD
 | Linux         | sysinfo and `/proc/meminfo`                                                                                                                   | -           |
+=======
+| Linux         | sysinfo                                                                                                                                       | -           |
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 | Windows       | `sysinfoapi::GlobalMemoryStatusEx`                                                                                                            | -           |
 | macOS         | <br> <pre> sysctl([CTL_HW, HW_MEMSIZE]); <br> sysctl([CTL_VM, VM_SWAPUSAGE]); <br> host_statistics64(mach_host_self(), HOST_VM_INFO64) </pre> | -           |

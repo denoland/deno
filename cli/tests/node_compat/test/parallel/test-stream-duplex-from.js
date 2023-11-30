@@ -9,8 +9,12 @@
 
 const common = require('../common');
 const assert = require('assert');
+<<<<<<< HEAD
 const { Duplex, Readable, Writable, pipeline, PassThrough } = require('stream');
 const { ReadableStream, WritableStream } = require('stream/web');
+=======
+const { Duplex, Readable, Writable, pipeline } = require('stream');
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 const { Blob } = require('buffer');
 
 {
@@ -150,7 +154,11 @@ const { Blob } = require('buffer');
       }
       assert.strictEqual(ret, 'abcdefghi');
     },
+<<<<<<< HEAD
     common.mustSucceed(),
+=======
+    common.mustCall(() => {}),
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   );
 }
 
@@ -286,6 +294,7 @@ const { Blob } = require('buffer');
 
   duplex.write('test');
 }
+<<<<<<< HEAD
 
 {
   const through = new PassThrough({ objectMode: true });
@@ -411,3 +420,5 @@ TODO(kt3k): Enable this test case
   }));
 }
 */
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))

@@ -331,6 +331,10 @@ deno_core::extension!(
   esm_entry_point = "ext:cli/99_main.js",
   esm = [
     dir "js",
+<<<<<<< HEAD
+=======
+    "40_testing.js",
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     "99_main.js"
   ],
   customizer = |ext: &mut deno_core::Extension| {
@@ -359,7 +363,15 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   // Ideally we could deduplicate that code.
   fn deno_version() -> String {
     if env::var("DENO_CANARY").is_ok() {
+<<<<<<< HEAD
       format!("{}+{}", env!("CARGO_PKG_VERSION"), &git_commit_hash()[..7])
+=======
+      format!(
+        "{}+{}",
+        env!("CARGO_PKG_VERSION"),
+        git_commit_hash()[..7].to_string()
+      )
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     } else {
       env!("CARGO_PKG_VERSION").to_string()
     }

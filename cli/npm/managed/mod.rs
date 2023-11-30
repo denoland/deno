@@ -288,8 +288,17 @@ impl ManagedCliNpmResolver {
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     let path = self.fs_resolver.package_folder(pkg_id)?;
+<<<<<<< HEAD
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
+=======
+    let path = canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
+      self
+        .fs
+        .realpath_sync(path)
+        .map_err(|err| err.into_io_error())
+    })?;
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     log::debug!(
       "Resolved package folder of {} to {}",
       pkg_id.as_serialized(),
@@ -556,7 +565,11 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         &self.progress_bar,
         self.api.base_url().clone(),
         npm_resolution,
+<<<<<<< HEAD
         self.root_node_modules_path().map(ToOwned::to_owned),
+=======
+        self.root_node_modules_path(),
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
         self.npm_system_info.clone(),
       ),
       self.global_npm_cache.clone(),
@@ -571,7 +584,11 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     InnerCliNpmResolverRef::Managed(self)
   }
 
+<<<<<<< HEAD
   fn root_node_modules_path(&self) -> Option<&PathBuf> {
+=======
+  fn root_node_modules_path(&self) -> Option<PathBuf> {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     self.fs_resolver.node_modules_path()
   }
 

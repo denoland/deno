@@ -17,7 +17,11 @@ console.log('%s q', 'string');
 console.log('%o with object format param', { foo: 'bar' });
 
 console.log(
+<<<<<<< HEAD
   new Error('test\n    at abc (../fixtures/node_modules/bar.js:4:4)\nfoobar'),
+=======
+  new Error('test\n    at abc (../fixtures/node_modules/bar.js:4:4)\nfoobar')
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 );
 
 try {

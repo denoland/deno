@@ -12,7 +12,11 @@ const common = require('../common');
 const assert = require('assert');
 const { on, EventEmitter } = require('events');
 const {
+<<<<<<< HEAD
   NodeEventTarget,
+=======
+  NodeEventTarget
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 } = require('internal/event_target');
 
 async function basic() {
@@ -138,6 +142,7 @@ async function next() {
 
   assert.deepStrictEqual(results, [{
     value: ['bar'],
+<<<<<<< HEAD
     done: false,
   }, {
     value: [42],
@@ -145,11 +150,24 @@ async function next() {
   }, {
     value: undefined,
     done: true,
+=======
+    done: false
+  }, {
+    value: [42],
+    done: false
+  }, {
+    value: undefined,
+    done: true
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }]);
 
   assert.deepStrictEqual(await iterable.next(), {
     value: undefined,
+<<<<<<< HEAD
     done: true,
+=======
+    done: true
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   });
 }
 
@@ -167,19 +185,33 @@ async function nextError() {
   ]);
   assert.deepStrictEqual(results, [{
     status: 'rejected',
+<<<<<<< HEAD
     reason: _err,
+=======
+    reason: _err
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }, {
     status: 'fulfilled',
     value: {
       value: undefined,
+<<<<<<< HEAD
       done: true,
     },
+=======
+      done: true
+    }
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }, {
     status: 'fulfilled',
     value: {
       value: undefined,
+<<<<<<< HEAD
       done: true,
     },
+=======
+      done: true
+    }
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }]);
   assert.strictEqual(ee.listeners('error').length, 0);
 }
@@ -203,7 +235,11 @@ async function iterableThrow() {
   }, {
     message: 'The "EventEmitter.AsyncIterator" property must be' +
     ' an instance of Error. Received undefined',
+<<<<<<< HEAD
     name: 'TypeError',
+=======
+    name: 'TypeError'
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   });
 
   const expected = [['bar'], [42]];
@@ -265,11 +301,19 @@ async function abortableOnBefore() {
   const abortedSignal = AbortSignal.abort();
   [1, {}, null, false, 'hi'].forEach((signal) => {
     assert.throws(() => on(ee, 'foo', { signal }), {
+<<<<<<< HEAD
       code: 'ERR_INVALID_ARG_TYPE',
     });
   });
   assert.throws(() => on(ee, 'foo', { signal: abortedSignal }), {
     name: 'AbortError',
+=======
+      code: 'ERR_INVALID_ARG_TYPE'
+    });
+  });
+  assert.throws(() => on(ee, 'foo', { signal: abortedSignal }), {
+    name: 'AbortError'
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   });
 }
 
@@ -278,11 +322,19 @@ async function eventTargetAbortableOnBefore() {
   const abortedSignal = AbortSignal.abort();
   [1, {}, null, false, 'hi'].forEach((signal) => {
     assert.throws(() => on(et, 'foo', { signal }), {
+<<<<<<< HEAD
       code: 'ERR_INVALID_ARG_TYPE',
     });
   });
   assert.throws(() => on(et, 'foo', { signal: abortedSignal }), {
     name: 'AbortError',
+=======
+      code: 'ERR_INVALID_ARG_TYPE'
+    });
+  });
+  assert.throws(() => on(et, 'foo', { signal: abortedSignal }), {
+    name: 'AbortError'
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   });
 }
 

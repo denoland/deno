@@ -320,6 +320,7 @@ impl DenoSubcommand {
     matches!(self, Self::Run(_))
   }
 
+<<<<<<< HEAD
   // Returns `true` if the subcommand depends on testing infrastructure.
   pub fn needs_test(&self) -> bool {
     matches!(
@@ -330,6 +331,10 @@ impl DenoSubcommand {
         | Self::Bench(_)
         | Self::Lsp
     )
+=======
+  pub fn is_test_or_jupyter(&self) -> bool {
+    matches!(self, Self::Test(_) | Self::Jupyter(_))
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
 }
 
@@ -844,11 +849,53 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   if matches.get_flag("unstable") {
     flags.unstable = true;
   }
+<<<<<<< HEAD
 
   for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
     if matches.get_flag(&format!("unstable-{}", name)) {
       flags.unstable_features.push(name.to_string());
     }
+=======
+  if matches.get_flag("unstable-broadcast-channel") {
+    flags.unstable_features.push(
+      deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME.to_string(),
+    );
+  }
+  if matches.get_flag("unstable-ffi") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-fs") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-http") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::http::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-kv") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-net") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_net::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-worker-options") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-cron") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME.to_string());
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
 
   flags.unstable_bare_node_builtins =
@@ -1579,9 +1626,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .help("Set content type of the supplied file")
             // prefer using ts for formatting instead of js because ts works in more scenarios
             .default_value("ts")
+<<<<<<< HEAD
             .value_parser([
               "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "ipynb",
             ]),
+=======
+            .value_parser(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
         )
         .arg(
           Arg::new("ignore")
@@ -2202,7 +2253,10 @@ update to a different location, use the --output flag
 
   deno upgrade --output $HOME/my_deno",
     )
+<<<<<<< HEAD
     .hide(cfg!(not(feature = "upgrade")))
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     .defer(|cmd| {
       cmd
         .arg(
@@ -2306,8 +2360,12 @@ fn publish_subcommand() -> Command {
       )
       .arg(
         Arg::new("token")
+<<<<<<< HEAD
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
+=======
+          .help("The API token to use when publishing. If unset, interactive authentication will be used.")
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       )
     })
 }

@@ -289,6 +289,7 @@ Deno.test({
     await child.status;
   },
 });
+<<<<<<< HEAD
 
 Deno.test({
   name:
@@ -309,3 +310,5 @@ Deno.test({
     assert(diff < 10_000);
   },
 });
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))

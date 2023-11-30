@@ -11,6 +11,7 @@ const AUTOBAHN_TESTSUITE_DOCKER =
 
 const self = Deno.execPath();
 $`${self} run -A --unstable ${pwd}/autobahn_server.js`.spawn();
+<<<<<<< HEAD
 
 for (let i = 0; i < 6; i++) {
   try {
@@ -30,6 +31,9 @@ await $`docker run
   --net=host
   --rm ${AUTOBAHN_TESTSUITE_DOCKER}
   wstest -m fuzzingclient -s fuzzingclient.json`
+=======
+await $`docker run --name fuzzingserver	-v ${pwd}/fuzzingclient.json:/fuzzingclient.json:ro	-v ${pwd}/reports:/reports -p 9001:9001	--net=host --rm	${AUTOBAHN_TESTSUITE_DOCKER} wstest -m fuzzingclient -s fuzzingclient.json`
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   .cwd(pwd);
 
 const { deno_websocket } = JSON.parse(

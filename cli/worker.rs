@@ -570,8 +570,12 @@ impl CliMainWorkerFactory {
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
     // list of enabled features.
     let feature_checker = shared.feature_checker.clone();
+<<<<<<< HEAD
     let mut unstable_features =
       Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
+=======
+    let mut unstable_features = Vec::with_capacity(8);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
       if feature_checker.check(feature_name) {
         unstable_features.push(*id);
@@ -640,6 +644,7 @@ impl CliMainWorkerFactory {
       options,
     );
 
+<<<<<<< HEAD
     if self.shared.subcommand.needs_test() {
       worker.js_runtime.execute_script_static(
         "ext:cli/40_testing.js",
@@ -647,6 +652,11 @@ impl CliMainWorkerFactory {
       )?;
       worker.js_runtime.execute_script_static(
         "ext:cli/40_jupyter.js",
+=======
+    if self.shared.subcommand.is_test_or_jupyter() {
+      worker.js_runtime.execute_script_static(
+        "40_jupyter.js",
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
         include_str!("js/40_jupyter.js"),
       )?;
     }
@@ -769,8 +779,12 @@ fn create_web_worker_callback(
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
     // list of enabled features.
     let feature_checker = shared.feature_checker.clone();
+<<<<<<< HEAD
     let mut unstable_features =
       Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
+=======
+    let mut unstable_features = Vec::with_capacity(8);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
       if feature_checker.check(feature_name) {
         unstable_features.push(*id);

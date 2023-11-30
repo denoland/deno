@@ -172,6 +172,10 @@ const { Readable } = require('stream');
 
   const stream = new ArrayReader();
   stream.once('readable', common.mustCall(onRead));
+<<<<<<< HEAD
   stream.on('end', common.mustCall());
+=======
+  stream.on('end', common.mustCall(() => {}));
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 
 }

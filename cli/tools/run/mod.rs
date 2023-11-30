@@ -47,7 +47,10 @@ To grant permissions, set them before the script argument. For example:
 
   // Run a background task that checks for available upgrades or output
   // if an earlier run of this background task found a new version of Deno.
+<<<<<<< HEAD
   #[cfg(feature = "upgrade")]
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   super::upgrade::check_for_upgrades(
     http_client.clone(),
     deno_dir.upgrade_check_file_path(),

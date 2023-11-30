@@ -4474,7 +4474,10 @@ var require_duplexify = __commonJS({
           readable: false,
         });
       }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       if (typeof body === "function") {
         const { value, write, final, destroy } = fromAsyncGen(body);
         if (isIterable(value)) {
@@ -4670,6 +4673,11 @@ var require_duplexify = __commonJS({
           cb(err);
         } else if (err) {
           d.destroy(err);
+<<<<<<< HEAD
+=======
+        } else if (!readable && !writable) {
+          d.destroy();
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
         }
       }
       d = new Duplexify({

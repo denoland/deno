@@ -10442,6 +10442,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
 
   client.shutdown();
 }
+<<<<<<< HEAD
 
 #[test]
 fn lsp_jupyter_byonm_diagnostics() {
@@ -10502,3 +10503,5 @@ fn lsp_jupyter_byonm_diagnostics() {
   );
   client.shutdown();
 }
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))

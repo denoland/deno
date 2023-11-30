@@ -223,13 +223,18 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
+<<<<<<< HEAD
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
+=======
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   let ext = get_extension(file_path).unwrap_or_default();
+<<<<<<< HEAD
 
   match ext.as_str() {
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
@@ -246,6 +251,18 @@ pub fn format_file(
       let config = get_resolved_typescript_config(fmt_options);
       dprint_plugin_typescript::format_text(file_path, file_text, &config)
     }
+=======
+  if matches!(
+    ext.as_str(),
+    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
+  ) {
+    format_markdown(file_text, fmt_options)
+  } else if matches!(ext.as_str(), "json" | "jsonc") {
+    format_json(file_path, file_text, fmt_options)
+  } else {
+    let config = get_resolved_typescript_config(fmt_options);
+    dprint_plugin_typescript::format_text(file_path, file_text, &config)
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
 }
 
@@ -673,7 +690,11 @@ where
 /// This function is similar to is_supported_ext but adds additional extensions
 /// supported by `deno fmt`.
 fn is_supported_ext_fmt(path: &Path) -> bool {
+<<<<<<< HEAD
   get_extension(path).is_some_and(|ext| {
+=======
+  if let Some(ext) = get_extension(path) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     matches!(
       ext.as_str(),
       "ts"
@@ -692,9 +713,16 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mdwn"
         | "mdown"
         | "markdown"
+<<<<<<< HEAD
         | "ipynb"
     )
   })
+=======
+    )
+  } else {
+    false
+  }
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 }
 
 #[cfg(test)]
@@ -726,7 +754,10 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+<<<<<<< HEAD
     assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
 
   #[test]

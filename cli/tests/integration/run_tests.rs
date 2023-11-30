@@ -4716,6 +4716,7 @@ itest!(workspaces_nested_member {
   http_server: true,
   exit_code: 1,
 });
+<<<<<<< HEAD
 
 itest!(unsafe_proto {
   args: "run -A run/unsafe_proto/main.js",
@@ -4730,3 +4731,5 @@ itest!(unsafe_proto_flag {
   http_server: false,
   exit_code: 0,
 });
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))

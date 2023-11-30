@@ -88,7 +88,10 @@
       "test-querystring.js",
       "test-readline-interface.js",
       "test-stdin-from-file-spawn.js",
+<<<<<<< HEAD
       "test-stream-duplex-from.js",
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       "test-ttywrap-invalid-fd.js",
       "test-url-urltooptions.js",
       "test-util-format.js",
@@ -430,7 +433,10 @@
       "test-nodeeventtarget.js",
       "test-outgoing-message-destroy.js",
       "test-outgoing-message-pipe.js",
+<<<<<<< HEAD
       "test-parse-args.mjs",
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       "test-path-basename.js",
       "test-path-dirname.js",
       "test-path-extname.js",

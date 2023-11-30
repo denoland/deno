@@ -19,7 +19,11 @@ use deno_semver::package::PackageReq;
 use crate::args::package_json::get_local_package_json_version_reqs;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
+<<<<<<< HEAD
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+=======
+use crate::util::fs::canonicalize_path_maybe_not_exists;
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 use crate::util::path::specifier_to_file_path;
 
 use super::common::types_package_name;
@@ -188,8 +192,13 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     InnerCliNpmResolverRef::Byonm(self)
   }
 
+<<<<<<< HEAD
   fn root_node_modules_path(&self) -> Option<&PathBuf> {
     Some(&self.root_node_modules_dir)
+=======
+  fn root_node_modules_path(&self) -> Option<std::path::PathBuf> {
+    Some(self.root_node_modules_dir.clone())
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   }
 
   fn resolve_pkg_folder_from_deno_module_req(
@@ -215,10 +224,14 @@ impl CliNpmResolver for ByonmCliNpmResolver {
               .unwrap()
               .join("node_modules")
               .join(key);
+<<<<<<< HEAD
             return Ok(canonicalize_path_maybe_not_exists_with_fs(
               &package_path,
               fs,
             )?);
+=======
+            return Ok(canonicalize_path_maybe_not_exists(&package_path)?);
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
           }
         }
       }

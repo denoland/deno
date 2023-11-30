@@ -36,7 +36,11 @@
  * }, { raw: true });
  * ```
  */
+<<<<<<< HEAD
 (() => {
+=======
+{
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   const internals = Deno[Deno.internal];
   const core = internals.core;
 
@@ -428,4 +432,8 @@
   }
 
   internals.enableJupyter = enableJupyter;
+<<<<<<< HEAD
 })();
+=======
+}
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))

@@ -20,11 +20,19 @@ const types = {
   MX: 15,
   TXT: 16,
   ANY: 255,
+<<<<<<< HEAD
   CAA: 257,
 };
 
 const classes = {
   IN: 1,
+=======
+  CAA: 257
+};
+
+const classes = {
+  IN: 1
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 };
 
 // Naïve DNS parser/serializer.
@@ -41,7 +49,11 @@ function readDomainFromPacket(buffer, offset) {
     const { nread, domain } = readDomainFromPacket(buffer, offset + length);
     return {
       nread: 1 + length + nread,
+<<<<<<< HEAD
       domain: domain ? `${chunk}.${domain}` : chunk,
+=======
+      domain: domain ? `${chunk}.${domain}` : chunk
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
     };
   }
   // Pointer to another part of the packet.
@@ -50,7 +62,11 @@ function readDomainFromPacket(buffer, offset) {
   const pointeeOffset = buffer.readUInt16BE(offset) &~ 0xC000;
   return {
     nread: 2,
+<<<<<<< HEAD
     domain: readDomainFromPacket(buffer, pointeeOffset),
+=======
+    domain: readDomainFromPacket(buffer, pointeeOffset)
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   };
 }
 
@@ -323,5 +339,9 @@ module.exports = {
   parseDNSPacket,
   errorLookupMock,
   mockedErrorCode,
+<<<<<<< HEAD
   mockedSysCall,
+=======
+  mockedSysCall
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 };

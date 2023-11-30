@@ -43,7 +43,10 @@ use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
+<<<<<<< HEAD
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -307,6 +310,7 @@ impl CliFactory {
         create_cli_npm_resolver(if self.options.unstable_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
+<<<<<<< HEAD
             root_node_modules_dir: match self.options.node_modules_dir_path().clone() {
               Some(node_modules_path) => node_modules_path,
               // path needs to be canonicalized for node resolution
@@ -314,6 +318,11 @@ impl CliFactory {
               None => canonicalize_path_maybe_not_exists(self.options.initial_cwd())?
                 .join("node_modules"),
             },
+=======
+            // todo(byonm): actually resolve this properly because the package.json
+            // might be in an ancestor directory
+            root_node_modules_dir: self.options.initial_cwd().join("node_modules"),
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
           })
         } else {
           CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {

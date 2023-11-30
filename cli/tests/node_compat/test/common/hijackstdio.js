@@ -35,5 +35,9 @@ module.exports = {
   hijackStdout: hijackStdWritable.bind(null, 'stdout'),
   hijackStderr: hijackStdWritable.bind(null, 'stderr'),
   restoreStdout: restoreWritable.bind(null, 'stdout'),
+<<<<<<< HEAD
   restoreStderr: restoreWritable.bind(null, 'stderr'),
+=======
+  restoreStderr: restoreWritable.bind(null, 'stderr')
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 };

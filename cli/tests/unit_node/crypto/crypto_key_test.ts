@@ -17,8 +17,11 @@ import {
 } from "../../../../test_util/std/testing/asserts.ts";
 import { createHmac } from "node:crypto";
 
+<<<<<<< HEAD
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
+=======
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 const generateKeyPairAsync = promisify(
   (
     type: any,
@@ -79,12 +82,19 @@ Deno.test({
   },
 });
 
+<<<<<<< HEAD
 const modulusLengths = RUN_SLOW_TESTS ? [2048, 3072] : [2048];
 
 for (const type of ["rsa", "rsa-pss", "dsa"]) {
   for (const modulusLength of modulusLengths) {
     Deno.test({
       name: `generate ${type} key ${modulusLength}`,
+=======
+for (const type of ["rsa", "rsa-pss", "dsa"]) {
+  for (const modulusLength of [2048, 3072]) {
+    Deno.test({
+      name: `generate ${type} key`,
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       fn() {
         const { publicKey, privateKey } = generateKeyPairSync(type as any, {
           modulusLength,
@@ -96,7 +106,11 @@ for (const type of ["rsa", "rsa-pss", "dsa"]) {
     });
 
     Deno.test({
+<<<<<<< HEAD
       name: `generate ${type} key async ${modulusLength}`,
+=======
+      name: `generate ${type} key async`,
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
       async fn() {
         const x = await generateKeyPairAsync(type as any, {
           modulusLength,
@@ -178,9 +192,13 @@ for (
   });
 }
 
+<<<<<<< HEAD
 const primeLengths = RUN_SLOW_TESTS ? [1024, 2048, 4096] : [1024];
 
 for (const primeLength of primeLengths) {
+=======
+for (const primeLength of [1024, 2048, 4096]) {
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
   Deno.test({
     name: `generate dh key ${primeLength}`,
     fn() {

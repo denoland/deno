@@ -2,7 +2,11 @@
 
 [package]
 name = "deno"
+<<<<<<< HEAD
 version = "1.38.3"
+=======
+version = "1.38.4"
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -27,11 +31,15 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [features]
+<<<<<<< HEAD
 default = ["upgrade", "__vendored_zlib_ng"]
 # A feature that enables the upgrade subcommand and the background check for
 # available updates (of deno binary). This is typically disabled for (Linux)
 # distribution packages.
 upgrade = []
+=======
+default = ["__vendored_zlib_ng"]
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
 __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
@@ -55,7 +63,11 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = "=0.6.1"
+<<<<<<< HEAD
 deno_config = "=0.6.5"
+=======
+deno_config = "=0.6.4"
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "=0.73.3", features = ["html"] }
 deno_emit = "=0.31.4"
@@ -85,10 +97,16 @@ data-encoding.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
+<<<<<<< HEAD
 dprint-plugin-json = "=0.19.1"
 dprint-plugin-jupyter = "=0.1.2"
 dprint-plugin-markdown = "=0.16.3"
 dprint-plugin-typescript = "=0.88.6"
+=======
+dprint-plugin-json = "=0.19.0"
+dprint-plugin-markdown = "=0.16.2"
+dprint-plugin-typescript = "=0.88.4"
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
@@ -102,7 +120,11 @@ http.workspace = true
 hyper.workspace = true
 import_map = { version = "=0.17.0", features = ["ext"] }
 indexmap.workspace = true
+<<<<<<< HEAD
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
+=======
+jsonc-parser = { version = "=0.21.1", features = ["serde"] }
+>>>>>>> 8c07f52a7 (1.38.4 (#21398))
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
