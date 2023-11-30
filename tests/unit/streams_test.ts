@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertRejects, fail } from "./test_util.ts";
+import { assertEquals, fail } from "./test_util.ts";
 
 const {
   core,
@@ -495,13 +495,7 @@ Deno.test(async function compressionStreamReadableMayBeCancelled() {
 
 Deno.test(async function decompressionStreamWritableMayBeAborted() {
   await Promise.all([
-    assertRejects(
-      async () => {
-        await new DecompressionStream("gzip").writable.getWriter().abort();
-      },
-      TypeError,
-      "corrupt gzip stream does not have a matching checksum",
-    ),
+    new DecompressionStream("gzip").writable.getWriter().abort(),
     new DecompressionStream("deflate").writable.getWriter().abort(),
     new DecompressionStream("deflate-raw").writable.getWriter().abort(),
   ]);
@@ -509,13 +503,7 @@ Deno.test(async function decompressionStreamWritableMayBeAborted() {
 
 Deno.test(async function decompressionStreamReadableMayBeCancelled() {
   await Promise.all([
-    assertRejects(
-      async () => {
-        await new DecompressionStream("gzip").readable.getReader().cancel();
-      },
-      TypeError,
-      "corrupt gzip stream does not have a matching checksum",
-    ),
+    new DecompressionStream("gzip").readable.getReader().cancel(),
     new DecompressionStream("deflate").readable.getReader().cancel(),
     new DecompressionStream("deflate-raw").readable.getReader().cancel(),
   ]);
