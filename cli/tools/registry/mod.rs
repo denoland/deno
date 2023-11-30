@@ -362,7 +362,7 @@ async fn perform_publish(
       authorizations
     }
   };
-  
+
   assert_eq!(packages.len(), authorizations.len());
   for (package, authorization) in
     packages.into_iter().zip(authorizations.into_iter())
