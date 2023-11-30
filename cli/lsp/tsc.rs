@@ -232,7 +232,9 @@ impl TsServer {
             started = true;
           }
           let value = request(&mut ts_runtime, state_snapshot, req, token);
-          if tx.send(value).is_err() {
+          // Don't print the send error if the token is cancelled, it's expected
+          // to fail in that case and this commonly occurs.
+          if tx.send(value).is_err() && !token.is_cancelled() {
             lsp_warn!("Unable to send result to client.");
           }
         }
