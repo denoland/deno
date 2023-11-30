@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertThrows } from "./test_util.ts";
-import { formatToCronSchedule } from "../../../ext/cron/01_cron.ts";
+import {
+  formatToCronSchedule,
+  parseScheduleToString,
+} from "../../../ext/cron/01_cron.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -357,4 +360,20 @@ Deno.test("formatToCronSchedule - end, every values", () => {
     TypeError,
     "Invalid cron schedule",
   );
+});
+
+Deno.test("Parse CronSchedule to string", () => {
+  const result = parseScheduleToString({
+    minute: { exact: [1, 2, 3] },
+    hour: { start: 1, end: 10, every: 2 },
+    dayOfMonth: { exact: 5 },
+    month: { start: 1, end: 10 },
+    dayOfWeek: { start: 1, every: 2 },
+  });
+  assertEquals(result, "1,2,3 1-10/2 5 1-10 1/2");
+});
+
+Deno.test("Parse schedule to string - string", () => {
+  const result = parseScheduleToString("* * * * *");
+  assertEquals(result, "* * * * *");
 });

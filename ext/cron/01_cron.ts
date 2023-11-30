@@ -45,7 +45,9 @@ export function formatToCronSchedule(
   }
 }
 
-function parseScheduleToString(schedule: string | Deno.CronSchedule): string {
+export function parseScheduleToString(
+  schedule: string | Deno.CronSchedule,
+): string {
   if (typeof schedule === "string") {
     return schedule;
   } else {
