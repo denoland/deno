@@ -2147,34 +2147,60 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !self.config.enabled_code_lens_for_specifier(&specifier)
     {
       return Ok(None);
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
-    let navigation_tree =
-      self.get_navigation_tree(&specifier).await.map_err(|err| {
-        error!("Error getting code lenses for \"{}\": {}", specifier, err);
-        LspError::internal_error()
-      })?;
-    let parsed_source = asset_or_doc.maybe_parsed_source().and_then(|r| r.ok());
-    let line_index = asset_or_doc.line_index();
-    let code_lenses = code_lens::collect(
-      &specifier,
-      parsed_source,
-      &self.config,
-      line_index,
-      &navigation_tree,
-    )
-    .await
-    .map_err(|err| {
-      error!("Error getting code lenses for \"{}\": {}", specifier, err);
-      LspError::internal_error()
-    })?;
+    let settings = self.config.workspace_settings_for_specifier(&specifier);
+    let mut code_lenses = Vec::new();
+    if settings.code_lens.test
+      && self.config.specifier_enabled_for_test(&specifier)
+    {
+      if let Some(Ok(parsed_source)) = asset_or_doc.maybe_parsed_source() {
+        code_lenses.extend(
+          code_lens::collect_test(&specifier, parsed_source).map_err(
+            |err| {
+              error!(
+                "Error getting test code lenses for \"{}\": {}",
+                &specifier, err
+              );
+              LspError::internal_error()
+            },
+          )?,
+        );
+      }
+    }
+    if settings.code_lens.implementations || settings.code_lens.references {
+      let navigation_tree =
+        self.get_navigation_tree(&specifier).await.map_err(|err| {
+          error!("Error getting code lenses for \"{}\": {}", specifier, err);
+          LspError::internal_error()
+        })?;
+      let line_index = asset_or_doc.line_index();
+      code_lenses.extend(
+        code_lens::collect_tsc(
+          &specifier,
+          &settings.code_lens,
+          line_index,
+          &navigation_tree,
+        )
+        .await
+        .map_err(|err| {
+          error!(
+            "Error getting ts code lenses for \"{}\": {}",
+            &specifier, err
+          );
+          LspError::internal_error()
+        })?,
+      );
+    }
     self.performance.measure(mark);
 
+    if code_lenses.is_empty() {
+      return Ok(None);
+    }
     Ok(Some(code_lenses))
   }
 

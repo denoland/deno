@@ -208,6 +208,7 @@ fn normalize_diagnostic(
 
 #[derive(Clone, Debug)]
 pub struct TsServer {
+  performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   specifier_map: Arc<TscSpecifierMap>,
 }
@@ -217,8 +218,9 @@ impl TsServer {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let perf = performance.clone();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
+      let mut ts_runtime = js_runtime(perf, cache, specifier_map_);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -229,8 +231,12 @@ impl TsServer {
             start(&mut ts_runtime, false).unwrap();
             started = true;
           }
-          let value = request(&mut ts_runtime, state_snapshot, req, token);
-          if tx.send(value).is_err() {
+          let value =
+            request(&mut ts_runtime, state_snapshot, req, token.clone());
+          let was_sent = tx.send(value).is_ok();
+          // Don't print the send error if the token is cancelled, it's expected
+          // to fail in that case and this commonly occurs.
+          if !was_sent && !token.is_cancelled() {
             lsp_warn!("Unable to send result to client.");
           }
         }
@@ -238,6 +244,7 @@ impl TsServer {
     });
 
     Self {
+      performance,
       sender: tx,
       specifier_map,
     }
@@ -946,9 +953,14 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    self
+    let mark = self
+      .performance
+      .mark(format!("tsc {}", req.method), None::<()>);
+    let r = self
       .request_with_cancellation(snapshot, req, Default::default())
-      .await
+      .await;
+    self.performance.measure(mark);
+    r
   }
 
   async fn request_with_cancellation<R>(
@@ -960,11 +972,24 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    // When an LSP request is cancelled by the client, the future this is being
+    // executed under and any local variables here will be dropped at the next
+    // await point. To pass on that cancellation to the TS thread, we make this
+    // wrapper which cancels the request's token on drop.
+    struct DroppableToken(CancellationToken);
+    impl Drop for DroppableToken {
+      fn drop(&mut self) {
+        self.0.cancel();
+      }
+    }
+    let token = token.child_token();
+    let droppable_token = DroppableToken(token.clone());
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
+    drop(droppable_token);
     Ok(serde_json::from_value::<R>(value)?)
   }
 }
