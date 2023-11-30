@@ -968,6 +968,10 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    // When an LSP request is cancelled by the client, the future this is being
+    // executed under and any local variables here will be dropped at the next
+    // await point. To pass on that cancellation to the TS thread, we make this
+    // wrapper which cancels the request's token on drop.
     struct DroppableToken(CancellationToken);
     impl Drop for DroppableToken {
       fn drop(&mut self) {
