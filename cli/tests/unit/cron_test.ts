@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertThrows } from "./test_util.ts";
+import {
+  formatToCronSchedule,
+  parseScheduleToString,
+} from "../../../ext/cron/01_cron.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -170,6 +174,31 @@ Deno.test(async function basicTest() {
   }
 });
 
+Deno.test(async function basicTestWithJsonFormatScheduleExpression() {
+  Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
+
+  let count = 0;
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ac = new AbortController();
+  const c = Deno.cron(
+    "abc",
+    { minute: { every: 20 } },
+    { signal: ac.signal },
+    () => {
+      count++;
+      if (count > 5) {
+        resolve();
+      }
+    },
+  );
+  try {
+    await promise;
+  } finally {
+    ac.abort();
+    await c;
+  }
+});
+
 Deno.test(async function multipleCrons() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
@@ -283,4 +312,68 @@ Deno.test(async function retriesWithBackoffScheduleOldApi() {
 
   // The cron should have executed 3 times (1st attempt and 2 retries).
   assertEquals(count, 3);
+});
+
+Deno.test("formatToCronSchedule - undefined value", () => {
+  const result = formatToCronSchedule();
+  assertEquals(result, "*");
+});
+
+Deno.test("formatToCronSchedule - number value", () => {
+  const result = formatToCronSchedule(5);
+  assertEquals(result, "5");
+});
+
+Deno.test("formatToCronSchedule - exact array value", () => {
+  const result = formatToCronSchedule({ exact: [1, 2, 3] });
+  assertEquals(result, "1,2,3");
+});
+
+Deno.test("formatToCronSchedule - exact number value", () => {
+  const result = formatToCronSchedule({ exact: 5 });
+  assertEquals(result, "5");
+});
+
+Deno.test("formatToCronSchedule - start, end, every values", () => {
+  const result = formatToCronSchedule({ start: 1, end: 10, every: 2 });
+  assertEquals(result, "1-10/2");
+});
+
+Deno.test("formatToCronSchedule - start, end values", () => {
+  const result = formatToCronSchedule({ start: 1, end: 10 });
+  assertEquals(result, "1-10");
+});
+
+Deno.test("formatToCronSchedule - start, every values", () => {
+  const result = formatToCronSchedule({ start: 1, every: 2 });
+  assertEquals(result, "1/2");
+});
+
+Deno.test("formatToCronSchedule - start value", () => {
+  const result = formatToCronSchedule({ start: 1 });
+  assertEquals(result, "1/1");
+});
+
+Deno.test("formatToCronSchedule - end, every values", () => {
+  assertThrows(
+    () => formatToCronSchedule({ end: 10, every: 2 }),
+    TypeError,
+    "Invalid cron schedule",
+  );
+});
+
+Deno.test("Parse CronSchedule to string", () => {
+  const result = parseScheduleToString({
+    minute: { exact: [1, 2, 3] },
+    hour: { start: 1, end: 10, every: 2 },
+    dayOfMonth: { exact: 5 },
+    month: { start: 1, end: 10 },
+    dayOfWeek: { start: 1, every: 2 },
+  });
+  assertEquals(result, "1,2,3 1-10/2 5 1-10 1/2");
+});
+
+Deno.test("Parse schedule to string - string", () => {
+  const result = parseScheduleToString("* * * * *");
+  assertEquals(result, "* * * * *");
 });
