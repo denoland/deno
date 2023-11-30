@@ -4,6 +4,7 @@ use std::fmt::Write;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
@@ -227,20 +228,20 @@ async fn perform_publish(
   let client = http_client.client()?;
   let registry_url = crate::cache::DENO_REGISTRY_URL.to_string();
 
-  let authorization = match auth_method {
+  let permissions = packages
+    .iter()
+    .map(|package| Permission::VersionPublish {
+      scope: &package.scope,
+      package: &package.package,
+      version: &package.version,
+      tarball_hash: &package.tarball_hash,
+    })
+    .collect::<Vec<_>>();
+
+  let authorizations = match auth_method {
     AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
-
-      let permissions = packages
-        .iter()
-        .map(|package| Permission::VersionPublish {
-          scope: &package.scope,
-          package: &package.package,
-          version: &package.version,
-          tarball_hash: &package.tarball_hash,
-        })
-        .collect::<Vec<_>>();
 
       let response = client
         .post(format!("{}authorizations", registry_url))
@@ -290,7 +291,12 @@ async fn perform_publish(
               colors::gray("Authenticated as"),
               colors::cyan(res.user.name)
             );
-            break format!("Bearer {}", res.token);
+            let authorization: Rc<str> = format!("Bearer {}", res.token).into();
+            let mut authorizations = Vec::new();
+            for _ in &packages {
+              authorizations.push(authorization.clone());
+            }
+            break authorizations;
           }
           Err(err) => {
             if err.code == "authorizationPending" {
@@ -302,54 +308,65 @@ async fn perform_publish(
         }
       }
     }
-    AuthMethod::Token(token) => format!("Bearer {}", token),
-    AuthMethod::Oidc(oidc_config) => {
-      let permissions = packages
-        .iter()
-        .map(|package| Permission::VersionPublish {
-          scope: &package.scope,
-          package: &package.package,
-          version: &package.version,
-          tarball_hash: &package.tarball_hash,
-        })
-        .collect::<Vec<_>>();
-      let audience = json!({ "permissions": permissions }).to_string();
-
-      let url = format!(
-        "{}&audience={}",
-        oidc_config.url,
-        percent_encoding::percent_encode(
-          audience.as_bytes(),
-          percent_encoding::NON_ALPHANUMERIC
-        )
-      );
-
-      let response = client
-        .get(url)
-        .bearer_auth(oidc_config.token)
-        .send()
-        .await
-        .context("Failed to get OIDC token")?;
-      let status = response.status();
-      let text = response.text().await.with_context(|| {
-        format!("Failed to get OIDC token: status {}", status)
-      })?;
-      if !status.is_success() {
-        bail!(
-          "Failed to get OIDC token: status {}, response: '{}'",
-          status,
-          text
-        );
+    AuthMethod::Token(token) => {
+      let authorization: Rc<str> = format!("Bearer {}", token).into();
+      let mut authorizations = Vec::new();
+      for _ in &packages {
+        authorizations.push(authorization.clone());
       }
-      let OidcTokenResponse { value } = serde_json::from_str(&text)
-        .with_context(|| {
-          format!("Failed to parse OIDC token: '{}' (status {})", text, status)
+      authorizations
+    }
+    AuthMethod::Oidc(oidc_config) => {
+      let mut authorizations = Vec::new();
+      for permissions in permissions.chunks(16) {
+        let audience = json!({ "permissions": permissions }).to_string();
+        let url = format!(
+          "{}&audience={}",
+          oidc_config.url,
+          percent_encoding::percent_encode(
+            audience.as_bytes(),
+            percent_encoding::NON_ALPHANUMERIC
+          )
+        );
+
+        let response = client
+          .get(url)
+          .bearer_auth(&oidc_config.token)
+          .send()
+          .await
+          .context("Failed to get OIDC token")?;
+        let status = response.status();
+        let text = response.text().await.with_context(|| {
+          format!("Failed to get OIDC token: status {}", status)
         })?;
-      format!("githuboidc {}", value)
+        if !status.is_success() {
+          bail!(
+            "Failed to get OIDC token: status {}, response: '{}'",
+            status,
+            text
+          );
+        }
+        let OidcTokenResponse { value } = serde_json::from_str(&text)
+          .with_context(|| {
+            format!(
+              "Failed to parse OIDC token: '{}' (status {})",
+              text, status
+            )
+          })?;
+
+        let authorization: Rc<str> = format!("githuboidc {}", value).into();
+        for _ in &packages {
+          authorizations.push(authorization.clone());
+        }
+      }
+      authorizations
     }
   };
-
-  for package in packages {
+  
+  assert_eq!(packages.len(), authorizations.len());
+  for (package, authorization) in
+    packages.into_iter().zip(authorizations.into_iter())
+  {
     println!(
       "{} @{}/{}@{} ...",
       colors::intense_blue("Publishing"),
@@ -365,7 +382,7 @@ async fn perform_publish(
 
     let response = client
       .post(url)
-      .header(AUTHORIZATION, &authorization)
+      .header(AUTHORIZATION, &*authorization)
       .header(CONTENT_ENCODING, "gzip")
       .body(package.tarball)
       .send()
