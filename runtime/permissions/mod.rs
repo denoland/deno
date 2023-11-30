@@ -856,7 +856,7 @@ impl UnaryPermission<NetDescriptor> {
     &mut self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.revoke_desc(&Some(NetDescriptor::new(&host.unwrap())))
+    self.revoke_desc(&host.map(|h| NetDescriptor::new(&h)))
   }
 
   pub fn check<T: AsRef<str>>(
