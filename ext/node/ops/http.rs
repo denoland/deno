@@ -64,7 +64,7 @@ where
 
   if let Some(body) = body {
     request = request.body(Body::wrap_stream(ResourceToBodyAdapter::new(
-      state.resource_table.get_any(body)?,
+      state.resource_table.take_any(body)?,
     )));
   } else {
     // POST and PUT requests should always have a 0 length content-length,
