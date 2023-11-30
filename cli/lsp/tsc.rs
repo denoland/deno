@@ -235,6 +235,7 @@ impl TsServer {
             request(&mut ts_runtime, state_snapshot, req, token.clone());
           // Don't print the send error if the token is cancelled, it's expected
           // to fail in that case and this commonly occurs.
+          // IMPORTANT: Preserve the order of these effectful conditions.
           if tx.send(value).is_err() && !token.is_cancelled() {
             lsp_warn!("Unable to send result to client.");
           }
