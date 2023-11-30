@@ -155,13 +155,9 @@ impl TsFn {
             )
           }
         }
-        spawn(
-          &self.sender,
-          is_blocking,
-          move |_| {
-            call(call_js_cb, env, context, data);
-          },
-        );
+        spawn(&self.sender, is_blocking, move |_| {
+          call(call_js_cb, env, context, data);
+        });
       }
     } else {
       spawn(&self.sender, is_blocking, |_| {
