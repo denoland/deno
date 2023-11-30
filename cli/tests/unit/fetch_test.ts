@@ -1258,13 +1258,19 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchNoServerReadableStreamBody() {
-    const { promise, resolve } = Promise.withResolvers<void>();
+    const completed = Promise.withResolvers<void>();
+    const failed = Promise.withResolvers<void>();
     const body = new ReadableStream({
       start(controller) {
         controller.enqueue(new Uint8Array([1]));
-        setTimeout(() => {
+        setTimeout(async () => {
+          // This is technically a race. If the fetch has failed by this point, the enqueue will
+          // throw. If not, it will succeed. Windows appears to take a while to time out the fetch,
+          // so we will just wait for that here before we attempt to enqueue so it's consistent
+          // across platforms.
+          await failed.promise;
           assertThrows(() => controller.enqueue(new Uint8Array([2])));
-          resolve();
+          completed.resolve();
         }, 1000);
       },
     });
@@ -1272,7 +1278,8 @@ Deno.test(
     await assertRejects(async () => {
       await fetch(nonExistentHostname, { body, method: "POST" });
     }, TypeError);
-    await promise;
+    failed.resolve();
+    await completed.promise;
   },
 );
 
