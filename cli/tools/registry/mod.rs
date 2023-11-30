@@ -355,7 +355,7 @@ async fn perform_publish(
           })?;
 
         let authorization: Rc<str> = format!("githuboidc {}", value).into();
-        for _ in &packages {
+        for _ in permissions {
           authorizations.push(authorization.clone());
         }
       }
