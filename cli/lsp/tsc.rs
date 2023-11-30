@@ -968,11 +968,20 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    struct DroppableToken(CancellationToken);
+    impl Drop for DroppableToken {
+      fn drop(&mut self) {
+        self.0.cancel();
+      }
+    }
+    let token = token.child_token();
+    let droppable_token = DroppableToken(token.clone());
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
+    drop(droppable_token);
     Ok(serde_json::from_value::<R>(value)?)
   }
 }
