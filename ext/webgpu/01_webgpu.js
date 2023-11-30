@@ -623,7 +623,10 @@ class GPUSupportedLimits {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUSupportedLimitsPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUSupportedLimitsPrototype,
+          this,
+        ),
         keys: [
           "maxTextureDimension1D",
           "maxTextureDimension2D",
@@ -681,10 +684,10 @@ class GPUSupportedFeatures {
     if (ObjectPrototypeIsPrototypeOf(GPUSupportedFeaturesPrototype, this)) {
       return `${this.constructor.name} ${
         // deno-lint-ignore prefer-primordials
-        inspect([...this], inspectOptions)
-      }`;
+        inspect([...this], inspectOptions)}`;
     } else {
       return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+    }
   }
 }
 
@@ -726,7 +729,10 @@ class GPUDeviceLostInfo {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUDeviceLostInfoPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUDeviceLostInfoPrototype,
+          this,
+        ),
         keys: [
           "reason",
           "message",
@@ -2428,7 +2434,10 @@ class GPUBindGroupLayout {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUBindGroupLayoutPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUBindGroupLayoutPrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
@@ -2476,7 +2485,10 @@ class GPUPipelineLayout {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUPipelineLayoutPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUPipelineLayoutPrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
@@ -2487,7 +2499,6 @@ class GPUPipelineLayout {
 }
 GPUObjectBaseMixin("GPUPipelineLayout", GPUPipelineLayout);
 const GPUPipelineLayoutPrototype = GPUPipelineLayout.prototype;
-
 
 /**
  * @param {string | null} label
@@ -2668,7 +2679,10 @@ class GPUComputePipeline {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUComputePipelinePrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUComputePipelinePrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
@@ -2744,7 +2758,10 @@ class GPURenderPipeline {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderPipelinePrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPURenderPipelinePrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
@@ -2908,7 +2925,11 @@ class GPUCommandEncoder {
             prefix,
             `resolve target texture view for ${context}`,
           );
-          assertResource(colorAttachment.resolveTarget[_texture], prefix, `texture backing resolve target texture view for ${context}`);
+          assertResource(
+            colorAttachment.resolveTarget[_texture],
+            prefix,
+            `texture backing resolve target texture view for ${context}`,
+          );
           assertDeviceMatch(
             device,
             colorAttachment.resolveTarget[_texture],
@@ -2941,11 +2962,16 @@ class GPUCommandEncoder {
 
     let timestampWrites = null;
     if (descriptor.timestampWrites) {
-      const querySet = assertResource(descriptor.timestampWrites.querySet, prefix, "querySet");
+      const querySet = assertResource(
+        descriptor.timestampWrites.querySet,
+        prefix,
+        "querySet",
+      );
 
       timestampWrites = {
         querySet,
-        beginningOfPassWriteIndex: descriptor.timestampWrites.beginningOfPassWriteIndex,
+        beginningOfPassWriteIndex:
+          descriptor.timestampWrites.beginningOfPassWriteIndex,
         endOfPassWriteIndex: descriptor.timestampWrites.endOfPassWriteIndex,
       };
     }
@@ -2986,11 +3012,16 @@ class GPUCommandEncoder {
 
     let timestampWrites = null;
     if (descriptor.timestampWrites) {
-      const querySet = assertResource(descriptor.timestampWrites.querySet, prefix, "querySet");
+      const querySet = assertResource(
+        descriptor.timestampWrites.querySet,
+        prefix,
+        "querySet",
+      );
 
       timestampWrites = {
         querySet,
-        beginningOfPassWriteIndex: descriptor.timestampWrites.beginningOfPassWriteIndex,
+        beginningOfPassWriteIndex:
+          descriptor.timestampWrites.beginningOfPassWriteIndex,
         endOfPassWriteIndex: descriptor.timestampWrites.endOfPassWriteIndex,
       };
     }
@@ -3444,7 +3475,10 @@ class GPUCommandEncoder {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUCommandEncoderPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUCommandEncoderPrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
@@ -4051,7 +4085,10 @@ class GPURenderPassEncoder {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderPassEncoderPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPURenderPassEncoderPrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
@@ -4326,7 +4363,10 @@ class GPUComputePassEncoder {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUComputePassEncoderPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUComputePassEncoderPrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
@@ -4766,7 +4806,10 @@ class GPURenderBundleEncoder {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderBundleEncoderPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPURenderBundleEncoderPrototype,
+          this,
+        ),
         keys: [
           "label",
         ],
