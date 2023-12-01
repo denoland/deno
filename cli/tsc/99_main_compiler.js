@@ -722,7 +722,7 @@ delete Object.prototype.__proto__;
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = ops.op_script_version({ specifier });
+      const scriptVersion = ops.op_script_version(specifier);
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
