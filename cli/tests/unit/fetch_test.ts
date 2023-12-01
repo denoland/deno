@@ -524,7 +524,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchInitBlobBody() {
-  const data = "const a = 1";
+  const data = "const a = 1 🦕";
   const blob = new Blob([data], {
     type: "text/javascript",
   });
@@ -556,7 +556,11 @@ Deno.test(
   async function fetchInitFormDataBlobFilenameBody() {
     const form = new FormData();
     form.append("field", "value");
-    form.append("file", new Blob([new TextEncoder().encode("deno")]));
+    form.append(
+      "file",
+      new Blob([new TextEncoder().encode("deno")]),
+      "file name",
+    );
     const response = await fetch("http://localhost:4545/echo_server", {
       method: "POST",
       body: form,
@@ -565,7 +569,28 @@ Deno.test(
     assertEquals(form.get("field"), resultForm.get("field"));
     const file = resultForm.get("file");
     assert(file instanceof File);
-    assertEquals(file.name, "blob");
+    assertEquals(file.name, "file name");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchInitFormDataFileFilenameBody() {
+    const form = new FormData();
+    form.append("field", "value");
+    form.append(
+      "file",
+      new File([new Blob([new TextEncoder().encode("deno")])], "file name"),
+    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    const file = resultForm.get("file");
+    assert(file instanceof File);
+    assertEquals(file.name, "file name");
   },
 );
 

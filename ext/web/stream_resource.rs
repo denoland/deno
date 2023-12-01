@@ -343,6 +343,7 @@ struct ReadableStreamResource {
   channel: BoundedBufferChannel,
   cancel_handle: CancelHandle,
   data: ReadableStreamResourceData,
+  size_hint: (u64, Option<u64>),
 }
 
 impl ReadableStreamResource {
@@ -384,6 +385,10 @@ impl Resource for ReadableStreamResource {
 
   fn close(self: Rc<Self>) {
     self.close_channel();
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    self.size_hint
   }
 }
 
@@ -445,6 +450,25 @@ pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
     cancel_handle: Default::default(),
     channel: BoundedBufferChannel::default(),
     data: ReadableStreamResourceData { completion },
+    size_hint: (0, None),
+  };
+  state.resource_table.add(resource)
+}
+
+/// Allocate a resource that wraps a ReadableStream, with a size hint.
+#[op2(fast)]
+#[smi]
+pub fn op_readable_stream_resource_allocate_sized(
+  state: &mut OpState,
+  #[number] length: u64,
+) -> ResourceId {
+  let completion = CompletionHandle::default();
+  let resource = ReadableStreamResource {
+    read_queue: Default::default(),
+    cancel_handle: Default::default(),
+    channel: BoundedBufferChannel::default(),
+    data: ReadableStreamResourceData { completion },
+    size_hint: (length, Some(length)),
   };
   state.resource_table.add(resource)
 }
