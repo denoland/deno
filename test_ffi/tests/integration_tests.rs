@@ -271,7 +271,7 @@ fn ffi_callback_errors_test() {
     CallCase: AsyncSyncFfi\n\
     0\n\
     Calling\n\
-    CallCase: AsyncFfi";
+    CallCase: AsyncFfi\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
