@@ -681,9 +681,52 @@ Deno.test("process.memoryUsage.rss()", () => {
 });
 
 Deno.test("process.exitCode", () => {
-  assert(process.exitCode === undefined);
+  assertEquals(process.exitCode, undefined);
   process.exitCode = 127;
-  assert(process.exitCode === 127);
+  assertEquals(process.exitCode, 127);
+  process.exitCode = "asdf";
+  assertEquals(process.exitCode, "asdf");
+  process.exitCode = "10";
+  assertEquals(process.exitCode, "10");
+  process.exitCode = undefined; // reset
+});
+
+async function exitCodeTest(codeText: string, expectedExitCode: number) {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "eval",
+      codeText,
+    ],
+    cwd: testDir,
+  });
+  const { code } = await command.output();
+  assertEquals(code, expectedExitCode);
+}
+
+Deno.test("process.exitCode in should change exit code", async () => {
+  await exitCodeTest(
+    "import process from 'node:process'; process.exitCode = 127;",
+    127,
+  );
+  await exitCodeTest(
+    "import process from 'node:process'; process.exitCode = '10';",
+    10,
+  );
+  await exitCodeTest(
+    "import process from 'node:process'; process.exitCode = '0x10';",
+    16,
+  );
+  await exitCodeTest(
+    "import process from 'node:process'; process.exitCode = NaN;",
+    0,
+  );
+});
+
+Deno.test("Deno.exit should override process exit", async () => {
+  await exitCodeTest(
+    "import process from 'node:process'; process.exitCode = 10; Deno.exit(12);",
+  );
+  assertEquals(code, 12);
 });
 
 Deno.test("process.config", () => {
