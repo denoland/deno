@@ -954,9 +954,7 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    let mark = self
-      .performance
-      .mark(format!("tsc {}", req.method), None::<()>);
+    let mark = self.performance.mark(format!("tsc.request.{}", req.method));
     let r = self
       .request_with_cancellation(snapshot, req, Default::default())
       .await;
@@ -3910,7 +3908,7 @@ fn op_resolve(
   #[serde] args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_resolve", Some(&args));
+  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
   let result = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
@@ -4438,8 +4436,10 @@ fn request(
     let id = state.last_id;
     (state.performance.clone(), id)
   };
-  let mark =
-    performance.mark("request", Some((request.method, request.args.clone())));
+  let mark = performance.mark_with_args(
+    format!("tsc.host.{}", request.method),
+    request.args.clone(),
+  );
   assert!(
     request.args.is_array(),
     "Internal error: expected args to be array"
