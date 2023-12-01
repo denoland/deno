@@ -2202,6 +2202,9 @@ impl Inner {
     }
     self.performance.measure(mark);
 
+    if code_lenses.is_empty() {
+      return Ok(None);
+    }
     Ok(Some(code_lenses))
   }
 
