@@ -7,6 +7,8 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
+// Used by 40_testing.js
+internals.primordials = primordials;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
