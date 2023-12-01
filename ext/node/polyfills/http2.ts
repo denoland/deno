@@ -20,7 +20,6 @@ import {
 import { FileHandle } from "node:fs/promises";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { addTrailers, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
-import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";
@@ -552,9 +551,9 @@ function getAuthority(headers) {
 
 export class Http2Stream extends EventEmitter {
   #session: Http2Session;
-  #headers: Deferred<Http2Headers>;
-  #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
-  #readerPromise: Deferred<ReadableStream<Uint8Array>>;
+  #headers: Promise<Http2Headers>;
+  #controllerPromise: Promise<ReadableStreamDefaultController<Uint8Array>>;
+  #readerPromise: Promise<ReadableStream<Uint8Array>>;
   #closed: boolean;
   _response: Response;
 
@@ -1260,7 +1259,7 @@ function callTimeout() {
 }
 
 export class ServerHttp2Stream extends Http2Stream {
-  _promise: Deferred<Response>;
+  _deferred: ReturnType<typeof Promise.withResolvers<Response>>;
   #body: ReadableStream<Uint8Array>;
   #waitForTrailers: boolean;
   #headersSent: boolean;
@@ -1273,7 +1272,7 @@ export class ServerHttp2Stream extends Http2Stream {
     body: ReadableStream<Uint8Array>,
   ) {
     super(session, headers, controllerPromise, Promise.resolve(reader));
-    this._promise = new deferred();
+    this._deferred = Promise.withResolvers<Response>();
     this.#body = body;
   }
 
@@ -1319,10 +1318,10 @@ export class ServerHttp2Stream extends Http2Stream {
       }
     }
     if (options?.endStream) {
-      this._promise.resolve(this._response = new Response("", response));
+      this._deferred.resolve(this._response = new Response("", response));
     } else {
       this.#waitForTrailers = options?.waitForTrailers;
-      this._promise.resolve(
+      this._deferred.resolve(
         this._response = new Response(this.#body, response),
       );
     }
@@ -1368,12 +1367,12 @@ export class Http2Server extends Server {
             this.#abortController.signal,
             async (req: Request) => {
               try {
-                const controllerPromise: Deferred<
+                const controllerDeferred = Promise.withResolvers<
                   ReadableStreamDefaultController<Uint8Array>
-                > = deferred();
+                >();
                 const body = new ReadableStream({
                   start(controller) {
-                    controllerPromise.resolve(controller);
+                    controllerDeferred.resolve(controller);
                   },
                 });
                 const headers: Http2Headers = {};
@@ -1385,13 +1384,13 @@ export class Http2Server extends Server {
                 const stream = new ServerHttp2Stream(
                   session,
                   Promise.resolve(headers),
-                  controllerPromise,
+                  controllerDeferred.promise,
                   req.body,
                   body,
                 );
                 session.emit("stream", stream, headers);
                 this.emit("stream", stream, headers);
-                return await stream._promise;
+                return await stream._deferred.promise;
               } catch (e) {
                 console.log(">>> Error in serveHttpOnConnection", e);
               }

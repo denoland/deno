@@ -10,45 +10,46 @@ import {
   assertStrictEquals,
   assertStringIncludes,
 } from "../../../test_util/std/testing/asserts.ts";
-import { Deferred, deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
-function withTimeout<T>(timeoutInMS = 10_000): Deferred<T> {
-  const promise = deferred<T>();
+function withTimeout<T>(
+  timeoutInMS = 10_000,
+): ReturnType<typeof Promise.withResolvers<T>> {
+  const deferred = Promise.withResolvers<T>();
   const timer = setTimeout(() => {
-    promise.reject("Timeout");
+    deferred.reject("Timeout");
   }, timeoutInMS);
-  promise.then(() => {
+  deferred.promise.then(() => {
     clearTimeout(timer);
   });
-  return promise;
+  return deferred;
 }
 
 // TODO(uki00a): Once Node.js's `parallel/test-child-process-spawn-error.js` works, this test case should be removed.
 Deno.test("[node/child_process spawn] The 'error' event is emitted when no binary is found", async () => {
-  const promise = withTimeout();
+  const deferred = withTimeout<void>();
   const childProcess = spawn("no-such-cmd");
   childProcess.on("error", (_err: Error) => {
     // TODO(@bartlomieju) Assert an error message.
-    promise.resolve();
+    deferred.resolve();
   });
-  await promise;
+  await deferred.promise;
 });
 
 Deno.test("[node/child_process spawn] The 'exit' event is emitted with an exit code after the child process ends", async () => {
-  const promise = withTimeout();
+  const deferred = withTimeout<void>();
   const childProcess = spawn(Deno.execPath(), ["--help"], {
     env: { NO_COLOR: "true" },
   });
   try {
     let exitCode = null;
     childProcess.on("exit", (code: number) => {
-      promise.resolve();
+      deferred.resolve();
       exitCode = code;
     });
-    await promise;
+    await deferred.promise;
     assertStrictEquals(exitCode, 0);
     assertStrictEquals(childProcess.exitCode, exitCode);
   } finally {
@@ -59,16 +60,16 @@ Deno.test("[node/child_process spawn] The 'exit' event is emitted with an exit c
 });
 
 Deno.test("[node/child_process disconnect] the method exists", async () => {
-  const promise = withTimeout();
+  const deferred = withTimeout<void>();
   const childProcess = spawn(Deno.execPath(), ["--help"], {
     env: { NO_COLOR: "true" },
   });
   try {
     childProcess.disconnect();
     childProcess.on("exit", () => {
-      promise.resolve();
+      deferred.resolve();
     });
-    await promise;
+    await deferred.promise;
   } finally {
     childProcess.kill();
     childProcess.stdout?.destroy();
@@ -79,7 +80,7 @@ Deno.test("[node/child_process disconnect] the method exists", async () => {
 Deno.test({
   name: "[node/child_process spawn] Verify that stdin and stdout work",
   fn: async () => {
-    const promise = withTimeout();
+    const deferred = withTimeout<void>();
     const childProcess = spawn(Deno.execPath(), ["fmt", "-"], {
       env: { NO_COLOR: "true" },
       stdio: ["pipe", "pipe"],
@@ -94,9 +95,9 @@ Deno.test({
       childProcess.stdin.write("  console.log('hello')", "utf-8");
       childProcess.stdin.end();
       childProcess.on("close", () => {
-        promise.resolve();
+        deferred.resolve();
       });
-      await promise;
+      await deferred.promise;
       assertStrictEquals(data, `console.log("hello");\n`);
     } finally {
       childProcess.kill();
@@ -107,7 +108,7 @@ Deno.test({
 Deno.test({
   name: "[node/child_process spawn] stdin and stdout with binary data",
   fn: async () => {
-    const promise = withTimeout();
+    const deferred = withTimeout<void>();
     const p = path.join(
       path.dirname(path.fromFileUrl(import.meta.url)),
       "./testdata/binary_stdio.js",
@@ -127,9 +128,9 @@ Deno.test({
       childProcess.stdin.write(buffer);
       childProcess.stdin.end();
       childProcess.on("close", () => {
-        promise.resolve();
+        deferred.resolve();
       });
-      await promise;
+      await deferred.promise;
       assertEquals(new Uint8Array(data!), buffer);
     } finally {
       childProcess.kill();
@@ -140,7 +141,7 @@ Deno.test({
 async function spawnAndGetEnvValue(
   inputValue: string | number | boolean,
 ): Promise<string> {
-  const promise = withTimeout<string>();
+  const deferred = withTimeout<string>();
   const env = spawn(
     `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
     {
@@ -152,14 +153,14 @@ async function spawnAndGetEnvValue(
     let envOutput = "";
 
     assert(env.stdout);
-    env.on("error", (err: Error) => promise.reject(err));
+    env.on("error", (err: Error) => deferred.reject(err));
     env.stdout.on("data", (data) => {
       envOutput += data;
     });
     env.on("close", () => {
-      promise.resolve(envOutput.trim());
+      deferred.resolve(envOutput.trim());
     });
-    return await promise;
+    return await deferred.promise;
   } finally {
     env.kill();
   }
@@ -191,7 +192,7 @@ Deno.test({
 
 // TODO(uki00a): Remove this case once Node's `parallel/test-child-process-spawn-event.js` works.
 Deno.test("[child_process spawn] 'spawn' event", async () => {
-  const timeout = withTimeout();
+  const timeout = withTimeout<void>();
   const subprocess = spawn(Deno.execPath(), ["eval", "console.log('ok')"]);
 
   let didSpawn = false;
@@ -205,13 +206,13 @@ Deno.test("[child_process spawn] 'spawn' event", async () => {
 
   const promises = [] as Promise<void>[];
   function mustBeCalledAfterSpawn() {
-    const promise = deferred<void>();
-    promises.push(promise);
+    const deferred = Promise.withResolvers<void>();
+    promises.push(deferred.promise);
     return () => {
       if (didSpawn) {
-        promise.resolve();
+        deferred.resolve();
       } else {
-        promise.reject(
+        deferred.reject(
           new Error("function should be called after the 'spawn' event"),
         );
       }
@@ -229,7 +230,7 @@ Deno.test("[child_process spawn] 'spawn' event", async () => {
   subprocess.on("close", mustBeCalledAfterSpawn());
 
   try {
-    await Promise.race([Promise.all(promises), timeout]);
+    await Promise.race([Promise.all(promises), timeout.promise]);
     timeout.resolve();
   } finally {
     subprocess.kill();
@@ -238,12 +239,12 @@ Deno.test("[child_process spawn] 'spawn' event", async () => {
 
 // TODO(uki00a): Remove this case once Node's `parallel/test-child-process-spawn-shell.js` works.
 Deno.test("[child_process spawn] Verify that a shell is executed", async () => {
-  const promise = withTimeout();
+  const deferred = withTimeout<void>();
   const doesNotExist = spawn("does-not-exist", { shell: true });
   try {
     assertNotStrictEquals(doesNotExist.spawnfile, "does-not-exist");
     doesNotExist.on("error", () => {
-      promise.reject("The 'error' event must not be emitted.");
+      deferred.reject("The 'error' event must not be emitted.");
     });
     doesNotExist.on("exit", (code: number, signal: null) => {
       assertStrictEquals(signal, null);
@@ -254,9 +255,9 @@ Deno.test("[child_process spawn] Verify that a shell is executed", async () => {
         assertStrictEquals(code, 127); // Exit code of /bin/sh });
       }
 
-      promise.resolve();
+      deferred.resolve();
     });
-    await promise;
+    await deferred.promise;
   } finally {
     doesNotExist.kill();
     doesNotExist.stdout?.destroy();
@@ -269,7 +270,7 @@ Deno.test({
   ignore: Deno.build.os === "windows",
   name: "[node/child_process spawn] Verify that passing arguments works",
   async fn() {
-    const promise = withTimeout();
+    const deferred = withTimeout<void>();
     const echo = spawn("echo", ["foo"], {
       shell: true,
     });
@@ -286,9 +287,9 @@ Deno.test({
       });
       echo.on("close", () => {
         assertStrictEquals(echoOutput.trim(), "foo");
-        promise.resolve();
+        deferred.resolve();
       });
-      await promise;
+      await deferred.promise;
     } finally {
       echo.kill();
     }
@@ -300,7 +301,7 @@ Deno.test({
   ignore: Deno.build.os === "windows",
   name: "[node/child_process spawn] Verity that shell features can be used",
   async fn() {
-    const promise = withTimeout();
+    const deferred = withTimeout<void>();
     const cmd = "echo bar | cat";
     const command = spawn(cmd, {
       shell: true,
@@ -315,10 +316,10 @@ Deno.test({
 
       command.on("close", () => {
         assertStrictEquals(commandOutput.trim(), "bar");
-        promise.resolve();
+        deferred.resolve();
       });
 
-      await promise;
+      await deferred.promise;
     } finally {
       command.kill();
     }
@@ -331,7 +332,7 @@ Deno.test({
   name:
     "[node/child_process spawn] Verity that environment is properly inherited",
   async fn() {
-    const promise = withTimeout();
+    const deferred = withTimeout<void>();
     const env = spawn(
       `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
       {
@@ -343,15 +344,15 @@ Deno.test({
       let envOutput = "";
 
       assert(env.stdout);
-      env.on("error", (err: Error) => promise.reject(err));
+      env.on("error", (err: Error) => deferred.reject(err));
       env.stdout.on("data", (data) => {
         envOutput += data;
       });
       env.on("close", () => {
         assertStrictEquals(envOutput.trim(), "buzz");
-        promise.resolve();
+        deferred.resolve();
       });
-      await promise;
+      await deferred.promise;
     } finally {
       env.kill();
     }
@@ -496,16 +497,16 @@ Deno.test({
       "./testdata/infinite_loop.js",
     );
     const childProcess = spawn(Deno.execPath(), ["run", script]);
-    const p = withTimeout();
-    const pStdout = withTimeout();
-    const pStderr = withTimeout();
+    const p = withTimeout<void>();
+    const pStdout = withTimeout<void>();
+    const pStderr = withTimeout<void>();
     childProcess.on("exit", () => p.resolve());
     childProcess.stdout.on("close", () => pStdout.resolve());
     childProcess.stderr.on("close", () => pStderr.resolve());
     childProcess.kill("SIGKILL");
-    await p;
-    await pStdout;
-    await pStderr;
+    await p.promise;
+    await pStdout.promise;
+    await pStderr.promise;
     assert(childProcess.killed);
     assertEquals(childProcess.signalCode, "SIGKILL");
     assertExists(childProcess.exitCode);
@@ -527,9 +528,9 @@ Deno.test({
       "--unstable",
       script,
     ]);
-    const p = deferred();
-    childProcess.on("exit", () => p.resolve());
-    await p;
+    const deferred = Promise.withResolvers<void>();
+    childProcess.on("exit", () => deferred.resolve());
+    await deferred.promise;
   },
 });
 
@@ -547,14 +548,14 @@ Deno.test({
       "foo",
       "index.js",
     );
-    const p = deferred();
+    const p = Promise.withResolvers<void>();
     const cp = CP.fork(script, [], { cwd: testdataDir, stdio: "pipe" });
     let output = "";
     cp.on("close", () => p.resolve());
     cp.stdout?.on("data", (data) => {
       output += data;
     });
-    await p;
+    await p.promise;
     assertEquals(output, "foo\ntrue\ntrue\ntrue\n");
   },
 });
@@ -567,7 +568,7 @@ Deno.test(
   "[node/child_process spawn] supports windowsVerbatimArguments option",
   { ignore: Deno.build.os !== "windows" },
   async () => {
-    const cmdFinished = deferred();
+    const cmdFinished = Promise.withResolvers<void>();
     let output = "";
     const cp = spawn("cmd", ["/d", "/s", "/c", '"deno ^"--version^""'], {
       stdio: "pipe",
@@ -577,7 +578,7 @@ Deno.test(
     cp.stdout?.on("data", (data) => {
       output += data;
     });
-    await cmdFinished;
+    await cmdFinished.promise;
     assertStringIncludes(output, "deno");
     assertStringIncludes(output, "v8");
     assertStringIncludes(output, "typescript");
@@ -587,7 +588,7 @@ Deno.test(
 Deno.test(
   "[node/child_process spawn] supports stdio array option",
   async () => {
-    const cmdFinished = deferred();
+    const cmdFinished = Promise.withResolvers<void>();
     let output = "";
     const script = path.join(
       path.dirname(path.fromFileUrl(import.meta.url)),
@@ -599,7 +600,7 @@ Deno.test(
       output += data;
     });
     cp.on("close", () => cmdFinished.resolve());
-    await cmdFinished;
+    await cmdFinished.promise;
 
     assertStringIncludes(output, "foo");
     assertStringIncludes(output, "close");
@@ -609,7 +610,7 @@ Deno.test(
 Deno.test(
   "[node/child_process spawn] supports stdio [0, 1, 2] option",
   async () => {
-    const cmdFinished = deferred();
+    const cmdFinished = Promise.withResolvers<void>();
     let output = "";
     const script = path.join(
       path.dirname(path.fromFileUrl(import.meta.url)),
@@ -621,7 +622,7 @@ Deno.test(
       output += data;
     });
     cp.on("close", () => cmdFinished.resolve());
-    await cmdFinished;
+    await cmdFinished.promise;
 
     assertStringIncludes(output, "foo");
     assertStringIncludes(output, "close");
@@ -638,16 +639,16 @@ Deno.test({
 
     // Spawn an infinite cat
     const cp = spawn("cat", ["-"]);
-    const p = withTimeout();
-    const pStdout = withTimeout();
-    const pStderr = withTimeout();
+    const p = withTimeout<void>();
+    const pStdout = withTimeout<void>();
+    const pStderr = withTimeout<void>();
     cp.on("exit", () => p.resolve());
     cp.stdout.on("close", () => pStdout.resolve());
     cp.stderr.on("close", () => pStderr.resolve());
     cp.kill("SIGIOT");
-    await p;
-    await pStdout;
-    await pStderr;
+    await p.promise;
+    await pStdout.promise;
+    await pStderr.promise;
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
   },
@@ -655,7 +656,7 @@ Deno.test({
 
 // Regression test for https://github.com/denoland/deno/issues/20373
 Deno.test(async function undefinedValueInEnvVar() {
-  const promise = withTimeout<string>();
+  const deferred = withTimeout<string>();
   const env = spawn(
     `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
     {
@@ -673,18 +674,18 @@ Deno.test(async function undefinedValueInEnvVar() {
     let envOutput = "";
 
     assert(env.stdout);
-    env.on("error", (err: Error) => promise.reject(err));
+    env.on("error", (err: Error) => deferred.reject(err));
     env.stdout.on("data", (data) => {
       envOutput += data;
     });
     env.on("close", () => {
-      promise.resolve(envOutput.trim());
+      deferred.resolve(envOutput.trim());
     });
-    await promise;
+    await deferred.promise;
   } finally {
     env.kill();
   }
-  const value = await promise;
+  const value = await deferred.promise;
   assertEquals(value, "BAZ");
 });
 
@@ -720,4 +721,13 @@ Deno.test(function spawnSyncStdioUndefined() {
   assertEquals(ret.status, 0);
   assertEquals(ret.stdout.toString("utf-8").trim(), "hello");
   assertEquals(ret.stderr.toString("utf-8").trim(), "world");
+});
+
+Deno.test(function spawnSyncExitNonZero() {
+  const ret = spawnSync(
+    `"${Deno.execPath()}" eval "Deno.exit(22)"`,
+    { shell: true },
+  );
+
+  assertEquals(ret.status, 22);
 });

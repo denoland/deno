@@ -6,6 +6,56 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.38.4 / 2023.11.30
+
+- fix(node): `spawnSync`'s `status` was incorrect (#21359)
+- perf(lsp): add performance marks for TSC requests (#21383)
+- perf(lsp): avoid redundant getNavigationTree() calls (#21396)
+- perf(lsp): cancel ts requests on future drop (#21387)
+- perf(lsp): remove throttling of cancellation token (#21395)
+
+### 1.38.3 / 2023.11.24
+
+- feat(unstable): tar up directory with deno.json (#21228)
+- fix(ext,runtime): add missing custom inspections (#21219)
+- fix(ext/http): avoid lockup in graceful shutdown (#21253)
+- fix(ext/http): fix crash in dropped Deno.serve requests (#21252)
+- fix(ext/node): fix node:stream.Writable (#21297)
+- fix(ext/node): handle closing process.stdin more than once (#21267)
+- fix(ext/url): add deno_console dependency for bench (#21266)
+- fix(fmt): maintain parens for jsx in member expr (#21280)
+- fix(lsp): force shutdown after a timeout (#21251)
+- fix(runtime): fix for panic in classic workers (#21300)
+- fix(swc): support jsx pragma when hashbang present (#21317)
+- fix: 'Promise was collected' error in REPL/jupyter (#21272)
+- fix: Deno.noColor should not be true when NO_COLOR is empty string (#21275)
+
+### 1.38.2 / 2023.11.17
+
+- feat(ext/web): add `AbortSignal.any()` (#21087)
+- feat(lsp): upgrade check on init and notification (#21105)
+- fix(cli): Allow executable name start with digit (#21214)
+- fix(doc): issue discovering re-exports of re-exports sometimes (#21223)
+- fix(ext/node): Re-enable alloc max size test (#21059)
+- fix(ext/node): add APIs perf_hook.performance (#21192)
+- fix(ext/node): implement process.geteuid (#21151)
+- fix(ext/web): Prevent TextDecoderStream resource leak on stream cancellation
+  (#21074)
+- fix(ext/web): webstorage has trap for symbol (#21090)
+- fix(install): should work with non-existent relative root (#21161)
+- fix(lsp): update tsconfig after refreshing settings on init (#21170)
+- fix(node/http): export globalAgent (#21081)
+- fix(npm): support cjs entrypoint in node_modules folder (#21224)
+- fix(runtime): fix Deno.noColor when stdout is not tty (#21208)
+- fix: improve `deno doc --lint` error messages (#21156)
+- fix: use short git hash for deno version (#21218)
+- perf(cli): strace mode for ops (undocumented) (#21131)
+- perf(ext/http): Object pooling for HttpRecord and HeaderMap (#20809)
+- perf: lazy bootstrap options - first pass (#21164)
+- perf: move jupyter esm out of main snapshot (#21163)
+- perf: snapshot runtime ops (#21127)
+- perf: static bootstrap options in snapshot (#21213)
+
 ### 1.38.1 / 2023.11.10
 
 - feat(ext/kv): increase checks limit (#21055)

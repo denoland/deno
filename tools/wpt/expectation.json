@@ -3197,18 +3197,16 @@
       "construct-byob-request.any.worker.html": true,
       "general.any.html": true,
       "general.any.worker.html": true,
-      "non-transferable-buffers.any.html": [
-        "ReadableStream with byte source: fill() with a non-transferable buffer"
-      ],
-      "non-transferable-buffers.any.worker.html": [
-        "ReadableStream with byte source: fill() with a non-transferable buffer"
-      ],
+      "non-transferable-buffers.any.html": true,
+      "non-transferable-buffers.any.worker.html": true,
       "tee.any.html": true,
       "tee.any.worker.html": true,
       "respond-after-enqueue.any.html": true,
       "respond-after-enqueue.any.worker.html": true,
       "enqueue-with-detached-buffer.any.html": true,
-      "enqueue-with-detached-buffer.any.worker.html": true
+      "enqueue-with-detached-buffer.any.worker.html": true,
+      "read-min.any.html": true,
+      "read-min.any.worker.html": true
     },
     "readable-streams": {
       "async-iterator.any.html": true,
@@ -6936,12 +6934,8 @@
       "scripting-1": {
         "the-script-element": {
           "import-assertions": {
-            "dynamic-import-with-assertion-argument.any.html": [
-              "Dynamic import with an unsupported import assertion should fail"
-            ],
-            "dynamic-import-with-assertion-argument.any.worker.html": [
-              "Dynamic import with an unsupported import assertion should fail"
-            ]
+            "dynamic-import-with-assertion-argument.any.html": true,
+            "dynamic-import-with-assertion-argument.any.worker.html": true
           },
           "json-module": {
             "charset-bom.any.html": [

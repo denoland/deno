@@ -3,7 +3,6 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
-use super::documents::file_like_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -209,6 +208,7 @@ fn normalize_diagnostic(
 
 #[derive(Clone, Debug)]
 pub struct TsServer {
+  performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   specifier_map: Arc<TscSpecifierMap>,
 }
@@ -218,8 +218,9 @@ impl TsServer {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let perf = performance.clone();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
+      let mut ts_runtime = js_runtime(perf, cache, specifier_map_);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -230,8 +231,12 @@ impl TsServer {
             start(&mut ts_runtime, false).unwrap();
             started = true;
           }
-          let value = request(&mut ts_runtime, state_snapshot, req, token);
-          if tx.send(value).is_err() {
+          let value =
+            request(&mut ts_runtime, state_snapshot, req, token.clone());
+          let was_sent = tx.send(value).is_ok();
+          // Don't print the send error if the token is cancelled, it's expected
+          // to fail in that case and this commonly occurs.
+          if !was_sent && !token.is_cancelled() {
             lsp_warn!("Unable to send result to client.");
           }
         }
@@ -239,6 +244,7 @@ impl TsServer {
     });
 
     Self {
+      performance,
       sender: tx,
       specifier_map,
     }
@@ -257,9 +263,9 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<String>>(),]),
     };
-    let diagnostics_map_ = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
-    let mut diagnostics_map = HashMap::new();
-    for (mut specifier, mut diagnostics) in diagnostics_map_ {
+    let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
+    let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
+    for (mut specifier, mut diagnostics) in raw_diagnostics {
       specifier = self.specifier_map.normalize(&specifier)?.to_string();
       for diagnostic in &mut diagnostics {
         normalize_diagnostic(diagnostic, &self.specifier_map)?;
@@ -947,9 +953,12 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    self
+    let mark = self.performance.mark(format!("tsc.request.{}", req.method));
+    let r = self
       .request_with_cancellation(snapshot, req, Default::default())
-      .await
+      .await;
+    self.performance.measure(mark);
+    r
   }
 
   async fn request_with_cancellation<R>(
@@ -961,11 +970,24 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    // When an LSP request is cancelled by the client, the future this is being
+    // executed under and any local variables here will be dropped at the next
+    // await point. To pass on that cancellation to the TS thread, we make this
+    // wrapper which cancels the request's token on drop.
+    struct DroppableToken(CancellationToken);
+    impl Drop for DroppableToken {
+      fn drop(&mut self) {
+        self.0.cancel();
+      }
+    }
+    let token = token.child_token();
+    let droppable_token = DroppableToken(token.clone());
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
+    drop(droppable_token);
     Ok(serde_json::from_value::<R>(value)?)
   }
 }
@@ -3715,16 +3737,8 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
-    let mut specifier = if let Some(s) = file_like_to_file_specifier(original) {
-      s.to_string()
-    } else {
-      original.to_string()
-    };
-    let media_type = if original.scheme() == "deno-notebook-cell" {
-      MediaType::TypeScript
-    } else {
-      MediaType::from_specifier(original)
-    };
+    let mut specifier = original.to_string();
+    let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
@@ -3860,7 +3874,7 @@ fn op_load(
   #[serde] args: SpecifierArgs,
 ) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_load", Some(&args));
+  let mark = state.performance.mark_with_args("tsc.op.op_load", &args);
   let specifier = state.specifier_map.normalize(args.specifier)?;
   if specifier.as_str() == "internal:///missing_dependency.d.ts" {
     return Ok(Some(LoadResponse {
@@ -3885,7 +3899,7 @@ fn op_resolve(
   #[serde] args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_resolve", Some(&args));
+  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
   let result = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
@@ -4413,8 +4427,10 @@ fn request(
     let id = state.last_id;
     (state.performance.clone(), id)
   };
-  let mark =
-    performance.mark("request", Some((request.method, request.args.clone())));
+  let mark = performance.mark_with_args(
+    format!("tsc.host.{}", request.method),
+    request.args.clone(),
+  );
   assert!(
     request.args.is_array(),
     "Internal error: expected args to be array"

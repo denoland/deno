@@ -1,5 +1,3 @@
-import { deferred } from "../../../../../test_util/std/async/deferred.ts";
-
 Deno.test("description", async (t) => {
   const success = await t.step("step 1", async (t) => {
     await t.step("inner 1", () => {});
@@ -107,9 +105,9 @@ Deno.test("steps buffered then streaming reporting", async (t) => {
     name: "step 1",
     fn: async (t) => {
       // also ensure the buffered tests display in order regardless of the second one finishing first
-      const step2Finished = deferred();
+      const step2Finished = Promise.withResolvers<void>();
       const step1 = t.step("step 1 - 1", async () => {
-        await step2Finished;
+        await step2Finished.promise;
       });
       const step2 = t.step("step 1 - 2", async (t) => {
         await t.step("step 1 - 2 - 1", () => {});

@@ -129,3 +129,5 @@ export function getOwnNonIndexProperties(
   }
   return result;
 }
+
+export { previewEntries } from "ext:deno_console/01_console.js";

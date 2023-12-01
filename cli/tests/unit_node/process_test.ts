@@ -13,7 +13,6 @@ import {
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import { delay } from "../../../test_util/std/async/delay.ts";
 
@@ -365,8 +364,10 @@ Deno.test({
   name: "process.stdin readable with a TTY",
   // TODO(PolarETech): Run this test even in non tty environment
   ignore: !Deno.isatty(Deno.stdin.rid),
+  // stdin resource is present before the test starts.
+  sanitizeResources: false,
   async fn() {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const expected = ["foo", "bar", null, "end"];
     const data: (string | null)[] = [];
 
@@ -383,7 +384,7 @@ Deno.test({
       process.stdin.push("bar");
       process.nextTick(() => {
         process.stdin.push(null);
-        promise.resolve();
+        resolve();
       });
     });
 
@@ -822,5 +823,107 @@ Deno.test({
     assert(uv.errname);
     assert(typeof uv.errname === "function");
     assertEquals(uv.errname(-1), "EPERM");
+  },
+});
+
+Deno.test({
+  name: "process.report",
+  fn() {
+    // The process.report is marked as possibly undefined in node 18 typings
+    if (!process.report) throw "No process report";
+
+    assert(typeof process.report.directory === "string");
+    assert(typeof process.report.filename === "string");
+    assert(typeof process.report.getReport === "function");
+    assert(typeof process.report.reportOnFatalError === "boolean");
+    assert(typeof process.report.reportOnSignal === "boolean");
+    assert(typeof process.report.reportOnUncaughtException === "boolean");
+    assert(typeof process.report.signal === "string");
+    assert(typeof process.report.writeReport === "function");
+  },
+});
+
+Deno.test({
+  name: "process.report.writeReport unimplemented result",
+  fn() {
+    // The process.report is marked as possibly undefined in node 18 typings
+    if (!process.report) throw "No process report";
+
+    assertEquals(process.report.writeReport(), "");
+  },
+});
+
+Deno.test({
+  name: "process.report.getReport result",
+  fn() {
+    // The process.report is marked as possibly undefined in node 18 typings
+    if (!process.report) throw "No process report";
+
+    // deno-lint-ignore no-explicit-any
+    const result = process.report.getReport() as any;
+
+    // test and remove dynamic parts
+    assert(typeof result.header.filename === "string");
+    delete result.header.filename;
+    assert(typeof result.header.dumpEventTime === "object");
+    delete result.header.dumpEventTime;
+    assert(typeof result.header.dumpEventTimeStamp === "number");
+    delete result.header.dumpEventTimeStamp;
+    assert(typeof result.header.processId === "number");
+    delete result.header.processId;
+    assert(typeof result.header.cwd === "string");
+    delete result.header.cwd;
+    assert(typeof result.header.nodejsVersion === "string");
+    assert(result.header.nodejsVersion.startsWith("v"));
+    delete result.header.nodejsVersion;
+    assert(typeof result.header.arch === "string");
+    delete result.header.arch;
+    assert(typeof result.header.platform === "string");
+    delete result.header.platform;
+    assert(typeof result.header.componentVersions === "object");
+    delete result.header.componentVersions;
+    assert(typeof result.header.osName === "string");
+    delete result.header.osName;
+    assert(typeof result.header.osMachine === "string");
+    delete result.header.osMachine;
+    assert(Array.isArray(result.header.cpus));
+    delete result.header.cpus;
+    assert(typeof result.header.networkInterfaces === "object");
+    delete result.header.networkInterfaces;
+    assert(typeof result.header.host === "string");
+    delete result.header.host;
+
+    // test hardcoded part
+    assertEquals(result, {
+      header: {
+        reportVersion: 3,
+        event: "JavaScript API",
+        trigger: "GetReport",
+        threadId: 0,
+        commandLine: ["node"],
+        glibcVersionRuntime: "2.38",
+        glibcVersionCompiler: "2.38",
+        wordSize: 64,
+        release: {
+          name: "node",
+          headersUrl:
+            "https://nodejs.org/download/release/v21.2.0/node-v21.2.0-headers.tar.gz",
+          sourceUrl:
+            "https://nodejs.org/download/release/v21.2.0/node-v21.2.0.tar.gz",
+        },
+        osRelease: undefined,
+        osVersion: undefined,
+      },
+      javascriptStack: undefined,
+      javascriptHeap: undefined,
+      nativeStack: undefined,
+      resourceUsage: undefined,
+      uvthreadResourceUsage: undefined,
+      libuv: undefined,
+      workers: [],
+      environmentVariables: undefined,
+      userLimits: undefined,
+      sharedObjects: undefined,
+    });
   },
 });

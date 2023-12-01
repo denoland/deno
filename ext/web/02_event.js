@@ -158,12 +158,15 @@ class Event {
     };
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(Event.prototype, this),
-      keys: EVENT_PROPS,
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(EventPrototype, this),
+        keys: EVENT_PROPS,
+      }),
+      inspectOptions,
+    );
   }
 
   get type() {
@@ -384,6 +387,8 @@ class Event {
     return this[_attributes].timeStamp;
   }
 }
+
+const EventPrototype = Event.prototype;
 
 // Not spec compliant. The spec defines it as [LegacyUnforgeable]
 // but doing so has a big performance hit
@@ -1042,6 +1047,10 @@ class EventTarget {
   getParent(_event) {
     return null;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  }
 }
 
 webidl.configureInterface(EventTarget);
@@ -1102,24 +1111,29 @@ class ErrorEvent extends Event {
     this.#error = error;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "message",
-        "filename",
-        "lineno",
-        "colno",
-        "error",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "message",
+          "filename",
+          "lineno",
+          "colno",
+          "error",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "ErrorEvent";
 }
+
+const ErrorEventPrototype = ErrorEvent.prototype;
 
 defineEnumerableProps(ErrorEvent, [
   "message",
@@ -1163,19 +1177,24 @@ class CloseEvent extends Event {
     this.#reason = reason;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "wasClean",
-        "code",
-        "reason",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CloseEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "wasClean",
+          "code",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
+
+const CloseEventPrototype = CloseEvent.prototype;
 
 class MessageEvent extends Event {
   get source() {
@@ -1195,22 +1214,27 @@ class MessageEvent extends Event {
     this.lastEventId = eventInitDict?.lastEventId ?? "";
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "data",
-        "origin",
-        "lastEventId",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "data",
+          "origin",
+          "lastEventId",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "CloseEvent";
 }
+
+const MessageEventPrototype = MessageEvent.prototype;
 
 class CustomEvent extends Event {
   #detail = null;
@@ -1230,20 +1254,25 @@ class CustomEvent extends Event {
     return this.#detail;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "detail",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CustomEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "detail",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "CustomEvent";
 }
+
+const CustomEventPrototype = CustomEvent.prototype;
 
 ReflectDefineProperty(CustomEvent.prototype, "detail", {
   enumerable: true,
@@ -1260,22 +1289,27 @@ class ProgressEvent extends Event {
     this.total = eventInitDict?.total ?? 0;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "lengthComputable",
-        "loaded",
-        "total",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "lengthComputable",
+          "loaded",
+          "total",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "ProgressEvent";
 }
+
+const ProgressEventPrototype = ProgressEvent.prototype;
 
 class PromiseRejectionEvent extends Event {
   #promise = null;
@@ -1308,24 +1342,29 @@ class PromiseRejectionEvent extends Event {
     this.#reason = reason;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        PromiseRejectionEvent.prototype,
-        this,
-      ),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "promise",
-        "reason",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PromiseRejectionEventPrototype,
+          this,
+        ),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "promise",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "PromiseRejectionEvent";
 }
+
+const PromiseRejectionEventPrototype = PromiseRejectionEvent.prototype;
 
 defineEnumerableProps(PromiseRejectionEvent, [
   "promise",
@@ -1342,7 +1381,7 @@ function makeWrappedHandler(handler, isSpecialErrorEventHandler) {
 
     if (
       isSpecialErrorEventHandler &&
-      ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, evt) &&
+      ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, evt) &&
       evt.type === "error"
     ) {
       const ret = FunctionPrototypeCall(

@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertThrows } from "./test_util.ts";
+import {
+  formatToCronSchedule,
+  parseScheduleToString,
+} from "../../../ext/cron/01_cron.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -89,17 +93,18 @@ Deno.test(function invalidScheduleTest() {
 Deno.test(function invalidBackoffScheduleTest() {
   assertThrows(
     () =>
-      Deno.cron("abc", "*/1 * * * *", () => {}, {
-        backoffSchedule: [1, 1, 1, 1, 1, 1],
-      }),
+      Deno.cron(
+        "abc",
+        "*/1 * * * *",
+        { backoffSchedule: [1, 1, 1, 1, 1, 1] },
+        () => {},
+      ),
     TypeError,
     "Invalid backoff schedule",
   );
   assertThrows(
     () =>
-      Deno.cron("abc", "*/1 * * * *", () => {}, {
-        backoffSchedule: [3600001],
-      }),
+      Deno.cron("abc", "*/1 * * * *", { backoffSchedule: [3600001] }, () => {}),
     TypeError,
     "Invalid backoff schedule",
   );
@@ -109,16 +114,19 @@ Deno.test(async function tooManyCrons() {
   const crons: Promise<void>[] = [];
   const ac = new AbortController();
   for (let i = 0; i <= 100; i++) {
-    const c = Deno.cron(`abc_${i}`, "*/1 * * * *", () => {}, {
-      signal: ac.signal,
-    });
+    const c = Deno.cron(
+      `abc_${i}`,
+      "*/1 * * * *",
+      { signal: ac.signal },
+      () => {},
+    );
     crons.push(c);
   }
 
   try {
     assertThrows(
       () => {
-        Deno.cron("next-cron", "*/1 * * * *", () => {}, { signal: ac.signal });
+        Deno.cron("next-cron", "*/1 * * * *", { signal: ac.signal }, () => {});
       },
       TypeError,
       "Too many crons",
@@ -133,8 +141,7 @@ Deno.test(async function tooManyCrons() {
 
 Deno.test(async function duplicateCrons() {
   const ac = new AbortController();
-  const c = Deno.cron("abc", "*/20 * * * *", () => {
-  }, { signal: ac.signal });
+  const c = Deno.cron("abc", "*/20 * * * *", { signal: ac.signal }, () => {});
   try {
     assertThrows(
       () => Deno.cron("abc", "*/20 * * * *", () => {}),
@@ -153,12 +160,37 @@ Deno.test(async function basicTest() {
   let count = 0;
   const { promise, resolve } = Promise.withResolvers<void>();
   const ac = new AbortController();
-  const c = Deno.cron("abc", "*/20 * * * *", () => {
+  const c = Deno.cron("abc", "*/20 * * * *", { signal: ac.signal }, () => {
     count++;
     if (count > 5) {
       resolve();
     }
-  }, { signal: ac.signal });
+  });
+  try {
+    await promise;
+  } finally {
+    ac.abort();
+    await c;
+  }
+});
+
+Deno.test(async function basicTestWithJsonFormatScheduleExpression() {
+  Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
+
+  let count = 0;
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ac = new AbortController();
+  const c = Deno.cron(
+    "abc",
+    { minute: { every: 20 } },
+    { signal: ac.signal },
+    () => {
+      count++;
+      if (count > 5) {
+        resolve();
+      }
+    },
+  );
   try {
     await promise;
   } finally {
@@ -179,18 +211,18 @@ Deno.test(async function multipleCrons() {
     void
   >();
   const ac = new AbortController();
-  const c0 = Deno.cron("abc", "*/20 * * * *", () => {
+  const c0 = Deno.cron("abc", "*/20 * * * *", { signal: ac.signal }, () => {
     count0++;
     if (count0 > 5) {
       resolve0();
     }
-  }, { signal: ac.signal });
-  const c1 = Deno.cron("xyz", "*/20 * * * *", () => {
+  });
+  const c1 = Deno.cron("xyz", "*/20 * * * *", { signal: ac.signal }, () => {
     count1++;
     if (count1 > 5) {
       resolve1();
     }
-  }, { signal: ac.signal });
+  });
   try {
     await promise0;
     await promise1;
@@ -212,11 +244,16 @@ Deno.test(async function overlappingExecutions() {
     void
   >();
   const ac = new AbortController();
-  const c = Deno.cron("abc", "*/20 * * * *", async () => {
-    resolve0();
-    count++;
-    await promise1;
-  }, { signal: ac.signal });
+  const c = Deno.cron(
+    "abc",
+    "*/20 * * * *",
+    { signal: ac.signal },
+    async () => {
+      resolve0();
+      count++;
+      await promise1;
+    },
+  );
   try {
     await promise0;
   } finally {
@@ -228,16 +265,19 @@ Deno.test(async function overlappingExecutions() {
   assertEquals(count, 1);
 });
 
-Deno.test(async function retriesWithBackkoffSchedule() {
+Deno.test(async function retriesWithBackoffSchedule() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "5000");
 
   let count = 0;
   const ac = new AbortController();
-  const c = Deno.cron("abc", "*/20 * * * *", async () => {
+  const c = Deno.cron("abc", "*/20 * * * *", {
+    signal: ac.signal,
+    backoffSchedule: [10, 20],
+  }, async () => {
     count += 1;
     await sleep(10);
     throw new TypeError("cron error");
-  }, { signal: ac.signal, backoffSchedule: [10, 20] });
+  });
   try {
     await sleep(6000);
   } finally {
@@ -247,4 +287,93 @@ Deno.test(async function retriesWithBackkoffSchedule() {
 
   // The cron should have executed 3 times (1st attempt and 2 retries).
   assertEquals(count, 3);
+});
+
+Deno.test(async function retriesWithBackoffScheduleOldApi() {
+  Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "5000");
+
+  let count = 0;
+  const ac = new AbortController();
+  const c = Deno.cron("abc2", "*/20 * * * *", async () => {
+    count += 1;
+    await sleep(10);
+    throw new TypeError("cron error");
+  }, {
+    signal: ac.signal,
+    backoffSchedule: [10, 20],
+  });
+
+  try {
+    await sleep(6000);
+  } finally {
+    ac.abort();
+    await c;
+  }
+
+  // The cron should have executed 3 times (1st attempt and 2 retries).
+  assertEquals(count, 3);
+});
+
+Deno.test("formatToCronSchedule - undefined value", () => {
+  const result = formatToCronSchedule();
+  assertEquals(result, "*");
+});
+
+Deno.test("formatToCronSchedule - number value", () => {
+  const result = formatToCronSchedule(5);
+  assertEquals(result, "5");
+});
+
+Deno.test("formatToCronSchedule - exact array value", () => {
+  const result = formatToCronSchedule({ exact: [1, 2, 3] });
+  assertEquals(result, "1,2,3");
+});
+
+Deno.test("formatToCronSchedule - exact number value", () => {
+  const result = formatToCronSchedule({ exact: 5 });
+  assertEquals(result, "5");
+});
+
+Deno.test("formatToCronSchedule - start, end, every values", () => {
+  const result = formatToCronSchedule({ start: 1, end: 10, every: 2 });
+  assertEquals(result, "1-10/2");
+});
+
+Deno.test("formatToCronSchedule - start, end values", () => {
+  const result = formatToCronSchedule({ start: 1, end: 10 });
+  assertEquals(result, "1-10");
+});
+
+Deno.test("formatToCronSchedule - start, every values", () => {
+  const result = formatToCronSchedule({ start: 1, every: 2 });
+  assertEquals(result, "1/2");
+});
+
+Deno.test("formatToCronSchedule - start value", () => {
+  const result = formatToCronSchedule({ start: 1 });
+  assertEquals(result, "1/1");
+});
+
+Deno.test("formatToCronSchedule - end, every values", () => {
+  assertThrows(
+    () => formatToCronSchedule({ end: 10, every: 2 }),
+    TypeError,
+    "Invalid cron schedule",
+  );
+});
+
+Deno.test("Parse CronSchedule to string", () => {
+  const result = parseScheduleToString({
+    minute: { exact: [1, 2, 3] },
+    hour: { start: 1, end: 10, every: 2 },
+    dayOfMonth: { exact: 5 },
+    month: { start: 1, end: 10 },
+    dayOfWeek: { start: 1, every: 2 },
+  });
+  assertEquals(result, "1,2,3 1-10/2 5 1-10 1/2");
+});
+
+Deno.test("Parse schedule to string - string", () => {
+  const result = parseScheduleToString("* * * * *");
+  assertEquals(result, "* * * * *");
 });

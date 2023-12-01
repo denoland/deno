@@ -12,6 +12,7 @@ const {
   op_arraybuffer_was_detached,
   op_transfer_arraybuffer,
   op_readable_stream_resource_allocate,
+  op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_get_sink,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_buf,
@@ -79,6 +80,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
@@ -862,13 +864,16 @@ function readableStreamReadFn(reader, sink) {
  * read operations, and those read operations will be fed by the output of the
  * ReadableStream source.
  * @param {ReadableStream<Uint8Array>} stream
+ * @param {number | undefined} length
  * @returns {number}
  */
-function resourceForReadableStream(stream) {
+function resourceForReadableStream(stream, length) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
-  const rid = op_readable_stream_resource_allocate();
+  const rid = typeof length == "number"
+    ? op_readable_stream_resource_allocate_sized(length)
+    : op_readable_stream_resource_allocate();
 
   // Close the Reader we get from the ReadableStream when the resource is closed, ignoring any errors
   PromisePrototypeCatch(
@@ -1303,7 +1308,9 @@ function readableByteStreamControllerClose(controller) {
   }
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
-    if (firstPendingPullInto.bytesFilled > 0) {
+    if (
+      firstPendingPullInto.bytesFilled % firstPendingPullInto.elementSize !== 0
+    ) {
       const e = new TypeError(
         "Insufficient bytes to fill elements in the given buffer",
       );
@@ -1847,10 +1854,11 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
 /**
  * @param {ReadableStreamBYOBReader} reader
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
-function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
+function readableStreamBYOBReaderRead(reader, view, min, readIntoRequest) {
   const stream = reader[_stream];
   assert(stream);
   stream[_disturbed] = true;
@@ -1860,6 +1868,7 @@ function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
     readableByteStreamControllerPullInto(
       stream[_controller],
       view,
+      min,
       readIntoRequest,
     );
   }
@@ -1935,12 +1944,14 @@ function readableByteStreamControllerProcessReadRequestsUsingQueue(
 /**
  * @param {ReadableByteStreamController} controller
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
 function readableByteStreamControllerPullInto(
   controller,
   view,
+  min,
   readIntoRequest,
 ) {
   const stream = controller[_stream];
@@ -2010,6 +2021,10 @@ function readableByteStreamControllerPullInto(
     );
   }
 
+  const minimumFill = min * elementSize;
+  assert(minimumFill >= 0 && minimumFill <= byteLength);
+  assert(minimumFill % elementSize === 0);
+
   try {
     buffer = transferArrayBuffer(buffer);
   } catch (e) {
@@ -2024,6 +2039,7 @@ function readableByteStreamControllerPullInto(
     byteOffset,
     byteLength,
     bytesFilled: 0,
+    minimumFill,
     elementSize,
     viewConstructor: ctor,
     readerType: "byob",
@@ -2139,7 +2155,7 @@ function readableByteStreamControllerRespondInReadableState(
     );
     return;
   }
-  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize) {
+  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill) {
     return;
   }
   readableByteStreamControllerShiftPendingPullInto(controller);
@@ -2219,7 +2235,7 @@ function readableByteStreamControllerRespondInClosedState(
   controller,
   firstDescriptor,
 ) {
-  assert(firstDescriptor.bytesFilled === 0);
+  assert(firstDescriptor.bytesFilled % firstDescriptor.elementSize === 0);
   if (firstDescriptor.readerType === "none") {
     readableByteStreamControllerShiftPendingPullInto(controller);
   }
@@ -2249,7 +2265,9 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
   assert(pullIntoDescriptor.readerType !== "none");
   let done = false;
   if (stream[_state] === "closed") {
-    assert(pullIntoDescriptor.bytesFilled === 0);
+    assert(
+      pullIntoDescriptor.bytesFilled % pullIntoDescriptor.elementSize === 0,
+    );
     done = true;
   }
   const filledView = readableByteStreamControllerConvertPullIntoDescriptor(
@@ -2340,19 +2358,18 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   controller,
   pullIntoDescriptor,
 ) {
-  const elementSize = pullIntoDescriptor.elementSize;
-  const currentAlignedBytes = pullIntoDescriptor.bytesFilled -
-    (pullIntoDescriptor.bytesFilled % elementSize);
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
     // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
-  const maxAlignedBytes = maxBytesFilled - (maxBytesFilled % elementSize);
   let totalBytesToCopyRemaining = maxBytesToCopy;
   let ready = false;
-  if (maxAlignedBytes > currentAlignedBytes) {
+  assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
+  const maxAlignedBytes = maxBytesFilled -
+    (maxBytesFilled % pullIntoDescriptor.elementSize);
+  if (maxAlignedBytes >= pullIntoDescriptor.minimumFill) {
     totalBytesToCopyRemaining = maxAlignedBytes -
       pullIntoDescriptor.bytesFilled;
     ready = true;
@@ -2402,7 +2419,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   if (!ready) {
     assert(controller[_queueTotalSize] === 0);
     assert(pullIntoDescriptor.bytesFilled > 0);
-    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize);
+    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
   }
   return ready;
 }
@@ -3375,7 +3392,7 @@ function readableByteStreamTee(stream) {
         reading = false;
       },
     };
-    readableStreamBYOBReaderRead(reader, view, readIntoRequest);
+    readableStreamBYOBReaderRead(reader, view, 1, readIntoRequest);
   }
 
   function pull1Algorithm() {
@@ -4977,18 +4994,21 @@ class ByteLengthQueuingStrategy {
     return WeakMapPrototypeGet(byteSizeFunctionWeakMap, this[_globalObject]);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        ByteLengthQueuingStrategyPrototype,
-        this,
-      ),
-      keys: [
-        "highWaterMark",
-        "size",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ByteLengthQueuingStrategyPrototype,
+          this,
+        ),
+        keys: [
+          "highWaterMark",
+          "size",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5031,18 +5051,21 @@ class CountQueuingStrategy {
     return WeakMapPrototypeGet(countSizeFunctionWeakMap, this[_globalObject]);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        CountQueuingStrategyPrototype,
-        this,
-      ),
-      keys: [
-        "highWaterMark",
-        "size",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          CountQueuingStrategyPrototype,
+          this,
+        ),
+        keys: [
+          "highWaterMark",
+          "size",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5372,8 +5395,18 @@ class ReadableStream {
     return iterator;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamPrototype,
+          this,
+        ),
+        keys: ["locked"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5484,8 +5517,18 @@ class ReadableStreamDefaultReader {
     return readableStreamReaderGenericCancel(this, reason);
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamDefaultReaderPrototype,
+          this,
+        ),
+        keys: ["closed"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5517,13 +5560,19 @@ class ReadableStreamBYOBReader {
 
   /**
    * @param {ArrayBufferView} view
+   * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view) {
+  read(view, options = {}) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
       view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
+      options = webidl.converters.ReadableStreamBYOBReaderReadOptions(
+        options,
+        prefix,
+        "Argument 2",
+      );
     } catch (err) {
       return PromiseReject(err);
     }
@@ -5558,6 +5607,23 @@ class ReadableStreamBYOBReader {
       );
     }
 
+    if (options.min === 0) {
+      return PromiseReject(new TypeError("options.min must be non-zero"));
+    }
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) !== undefined) {
+      if (options.min > TypedArrayPrototypeGetLength(view)) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
+    } else {
+      if (options.min > DataViewPrototypeGetByteLength(view)) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
+    }
+
     if (this[_stream] === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
@@ -5577,7 +5643,7 @@ class ReadableStreamBYOBReader {
         promise.reject(e);
       },
     };
-    readableStreamBYOBReaderRead(this, view, readIntoRequest);
+    readableStreamBYOBReaderRead(this, view, options.min, readIntoRequest);
     return promise.promise;
   }
 
@@ -5621,8 +5687,18 @@ class ReadableStreamBYOBReader {
     return readableStreamReaderGenericCancel(this, reason);
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamBYOBReaderPrototype,
+          this,
+        ),
+        keys: ["closed"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5837,15 +5913,18 @@ class ReadableByteStreamController {
     readableByteStreamControllerError(this, e);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamControllerPrototype,
-        this,
-      ),
-      keys: ["desiredSize"],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableByteStreamControllerPrototype,
+          this,
+        ),
+        keys: ["desiredSize"],
+      }),
+      inspectOptions,
+    );
   }
 
   /**
@@ -5890,6 +5969,7 @@ class ReadableByteStreamController {
         byteLength: autoAllocateChunkSize,
         bytesFilled: 0,
         elementSize: 1,
+        minimumFill: 1,
         viewConstructor: Uint8Array,
         readerType: "default",
       };
@@ -5987,15 +6067,18 @@ class ReadableStreamDefaultController {
     readableStreamDefaultControllerError(this, e);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        ReadableStreamDefaultController.prototype,
-        this,
-      ),
-      keys: ["desiredSize"],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamDefaultControllerPrototype,
+          this,
+        ),
+        keys: ["desiredSize"],
+      }),
+      inspectOptions,
+    );
   }
 
   /**
@@ -6146,10 +6229,18 @@ class TransformStream {
     return this[_writable];
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({ readable: this.readable, writable: this.writable })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TransformStreamPrototype,
+          this,
+        ),
+        keys: ["readable", "writable"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -6215,15 +6306,18 @@ class TransformStreamDefaultController {
     transformStreamDefaultControllerTerminate(this);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        TransformStreamDefaultController.prototype,
-        this,
-      ),
-      keys: ["desiredSize"],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TransformStreamDefaultControllerPrototype,
+          this,
+        ),
+        keys: ["desiredSize"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -6363,8 +6457,18 @@ class WritableStream {
     return acquireWritableStreamDefaultWriter(this);
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamPrototype,
+          this,
+        ),
+        keys: ["locked"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -6498,19 +6602,22 @@ class WritableStreamDefaultWriter {
     return writableStreamDefaultWriterWrite(this, chunk);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        WritableStreamDefaultWriter.prototype,
-        this,
-      ),
-      keys: [
-        "closed",
-        "desiredSize",
-        "ready",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamDefaultWriterPrototype,
+          this,
+        ),
+        keys: [
+          "closed",
+          "desiredSize",
+          "ready",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -6569,15 +6676,18 @@ class WritableStreamDefaultController {
     writableStreamDefaultControllerError(this, e);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        WritableStreamDefaultController.prototype,
-        this,
-      ),
-      keys: [],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamDefaultControllerPrototype,
+          this,
+        ),
+        keys: ["signal"],
+      }),
+      inspectOptions,
+    );
   }
 
   /**
@@ -6728,6 +6838,17 @@ webidl.converters.ReadableStreamGetReaderOptions = webidl
   .createDictionaryConverter("ReadableStreamGetReaderOptions", [{
     key: "mode",
     converter: webidl.converters.ReadableStreamReaderMode,
+  }]);
+
+webidl.converters.ReadableStreamBYOBReaderReadOptions = webidl
+  .createDictionaryConverter("ReadableStreamBYOBReaderReadOptions", [{
+    key: "min",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    defaultValue: 1,
   }]);
 
 webidl.converters.ReadableWritablePair = webidl

@@ -26,10 +26,12 @@ const {
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
+  ObjectFromEntries,
   ObjectPrototypeIsPrototypeOf,
   SafeMap,
   SafeRegExp,
   Symbol,
+  SymbolFor,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeTrim,
@@ -260,6 +262,16 @@ class FormData {
     }
     if (!added) {
       ArrayPrototypePush(list, entry);
+    }
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, this)) {
+      return `${this.constructor.name} ${
+        inspect(ObjectFromEntries(this), inspectOptions)
+      }`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
     }
   }
 }
