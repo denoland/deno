@@ -213,7 +213,7 @@ deno_core::extension!(
     // shader
     shader::op_webgpu_create_shader_module,
   ],
-  esm = ["01_webgpu.js"],
+  lazy_loaded_esm = ["01_webgpu.js"],
 );
 
 fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {

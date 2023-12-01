@@ -26,7 +26,6 @@ import * as urlPattern from "ext:deno_url/01_urlpattern.js";
 import * as headers from "ext:deno_fetch/20_headers.js";
 import * as streams from "ext:deno_web/06_streams.js";
 import * as fileReader from "ext:deno_web/10_filereader.js";
-import * as webgpu from "ext:deno_webgpu/01_webgpu.js";
 import * as webSocket from "ext:deno_websocket/01_websocket.js";
 import * as webSocketStream from "ext:deno_websocket/02_websocketstream.js";
 import * as broadcastChannel from "ext:deno_broadcast_channel/01_broadcast_channel.js";
@@ -143,43 +142,142 @@ const windowOrWorkerGlobalScope = {
   [webidl.brand]: util.nonEnumerable(webidl.brand),
 };
 
-const unstableWindowOrWorkerGlobalScope = {
+let unstableWindowOrWorkerGlobalScope = {
   BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
   WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
 
-  GPU: util.nonEnumerable(webgpu.GPU),
-  GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
-  GPUAdapterInfo: util.nonEnumerable(webgpu.GPUAdapterInfo),
-  GPUSupportedLimits: util.nonEnumerable(webgpu.GPUSupportedLimits),
-  GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
-  GPUDeviceLostInfo: util.nonEnumerable(webgpu.GPUDeviceLostInfo),
-  GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
-  GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
-  GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
-  GPUBufferUsage: util.nonEnumerable(webgpu.GPUBufferUsage),
-  GPUMapMode: util.nonEnumerable(webgpu.GPUMapMode),
-  GPUTextureUsage: util.nonEnumerable(webgpu.GPUTextureUsage),
-  GPUTexture: util.nonEnumerable(webgpu.GPUTexture),
-  GPUTextureView: util.nonEnumerable(webgpu.GPUTextureView),
-  GPUSampler: util.nonEnumerable(webgpu.GPUSampler),
-  GPUBindGroupLayout: util.nonEnumerable(webgpu.GPUBindGroupLayout),
-  GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
-  GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
-  GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
-  GPUShaderStage: util.nonEnumerable(webgpu.GPUShaderStage),
-  GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
-  GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
-  GPUColorWrite: util.nonEnumerable(webgpu.GPUColorWrite),
-  GPUCommandEncoder: util.nonEnumerable(webgpu.GPUCommandEncoder),
-  GPURenderPassEncoder: util.nonEnumerable(webgpu.GPURenderPassEncoder),
-  GPUComputePassEncoder: util.nonEnumerable(webgpu.GPUComputePassEncoder),
-  GPUCommandBuffer: util.nonEnumerable(webgpu.GPUCommandBuffer),
-  GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
-  GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
-  GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
-  GPUError: util.nonEnumerable(webgpu.GPUError),
-  GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
-  GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
+  GPU: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPU;
+  }),
+  GPUAdapter: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUAdapter;
+  }),
+  GPUAdapterInfo: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUAdapterInfo;
+  }),
+  GPUSupportedLimits: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUSupportedLimits;
+  }),
+  GPUSupportedFeatures: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUSupportedFeatures;
+  }),
+  GPUDeviceLostInfo: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUDeviceLostInfo;
+  }),
+  GPUDevice: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUDevice;
+  }),
+  GPUQueue: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUQueue;
+  }),
+  GPUBuffer: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUBuffer;
+  }),
+  GPUBufferUsage: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUBufferUsage;
+  }),
+  GPUMapMode: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUMapMode;
+  }),
+  GPUTextureUsage: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUTextureUsage;
+  }),
+  GPUTexture: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUTexture;
+  }),
+  GPUTextureView: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUTextureView;
+  }),
+  GPUSampler: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUSampler;
+  }),
+  GPUBindGroupLayout: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUBindGroupLayout;
+  }),
+  GPUPipelineLayout: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUPipelineLayout;
+  }),
+  GPUBindGroup: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUBindGroup;
+  }),
+  GPUShaderModule: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUShaderModule;
+  }),
+  GPUShaderStage: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUShaderStage;
+  }),
+  GPUComputePipeline: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUComputePipeline;
+  }),
+  GPURenderPipeline: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPURenderPipeline;
+  }),
+  GPUColorWrite: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUColorWrite;
+  }),
+  GPUCommandEncoder: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUCommandEncoder;
+  }),
+  GPURenderPassEncoder: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPURenderPassEncoder;
+  }),
+  GPUComputePassEncoder: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUComputePassEncoder;
+  }),
+  GPUCommandBuffer: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUCommandBuffer;
+  }),
+  GPURenderBundleEncoder: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPURenderBundleEncoder;
+  }),
+  GPURenderBundle: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPURenderBundle;
+  }),
+  GPUQuerySet: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUQuerySet;
+  }),
+  GPUError: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUError;
+  }),
+  GPUValidationError: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUValidationError;
+  }),
+  GPUOutOfMemoryError: webGPUNonEnumerable(() => {
+    loadWebGPU();
+    return webgpu.GPUOutOfMemoryError;
+  }),
 };
 
 class Navigator {
@@ -220,12 +318,30 @@ const numCpus = memoizeLazy(() => ops.op_bootstrap_numcpus());
 const userAgent = memoizeLazy(() => ops.op_bootstrap_user_agent());
 const language = memoizeLazy(() => ops.op_bootstrap_language());
 
+let webgpu;
+
+function webGPUNonEnumerable(getter) {
+  return {
+    get: getter,
+    set() {},
+    enumerable: false,
+    configurable: true,
+  };
+}
+
+function loadWebGPU() {
+  if (!webgpu) {
+    webgpu = ops.op_lazy_load_esm("ext:deno_webgpu/01_webgpu.js");
+  }
+}
+
 ObjectDefineProperties(Navigator.prototype, {
   gpu: {
     configurable: true,
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
+      loadWebGPU();
       return webgpu.gpu;
     },
   },
@@ -294,6 +410,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
+      loadWebGPU();
       return webgpu.gpu;
     },
   },

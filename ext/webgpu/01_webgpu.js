@@ -6,9 +6,9 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-const core = globalThis.Deno.core;
+const core = globalThis.Deno[Deno.internal].core;
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+const primordials = globalThis.Deno[Deno.internal].primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { EventTarget } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
