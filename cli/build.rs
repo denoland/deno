@@ -60,17 +60,11 @@ mod ts {
     false
   }
 
-  #[derive(Debug, Deserialize, Serialize)]
-  #[serde(rename_all = "camelCase")]
-  struct ScriptVersionArgs {
-    specifier: String,
-  }
-
   #[op2]
   #[string]
   fn op_script_version(
     _state: &mut OpState,
-    #[serde] _args: ScriptVersionArgs,
+    #[string] _arg: &str,
   ) -> Result<Option<String>, AnyError> {
     Ok(Some("1".to_string()))
   }
