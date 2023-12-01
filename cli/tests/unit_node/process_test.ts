@@ -859,7 +859,8 @@ Deno.test({
     // The process.report is marked as possibly undefined in node 18 typings
     if (!process.report) throw "No process report";
 
-    const result = process.report.getReport() as unknown as object;
+    // deno-lint-ignore no-explicit-any
+    const result = process.report.getReport() as any;
 
     // test and remove dynamic parts
     assert(typeof result.header.filename === "string");
