@@ -75,7 +75,7 @@ pub trait CliNpmResolver: NpmResolver {
     }
   }
 
-  fn root_node_modules_path(&self) -> Option<PathBuf>;
+  fn root_node_modules_path(&self) -> Option<&PathBuf>;
 
   fn resolve_pkg_folder_from_deno_module_req(
     &self,

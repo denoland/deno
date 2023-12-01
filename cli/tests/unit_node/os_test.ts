@@ -289,3 +289,23 @@ Deno.test({
     await child.status;
   },
 });
+
+Deno.test({
+  name:
+    "os.freemem() is equivalent of Deno.systemMemoryInfo().free except on linux",
+  ignore: Deno.build.os === "linux",
+  fn() {
+    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().free);
+    assert(diff < 10_000);
+  },
+});
+
+Deno.test({
+  name:
+    "os.freemem() is equivalent of Deno.systemMemoryInfo().available on linux",
+  ignore: Deno.build.os !== "linux",
+  fn() {
+    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().available);
+    assert(diff < 10_000);
+  },
+});

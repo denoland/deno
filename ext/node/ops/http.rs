@@ -4,18 +4,17 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
-use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_fetch::get_or_create_client_from_state;
-use deno_fetch::FetchBodyStream;
 use deno_fetch::FetchCancelHandle;
-use deno_fetch::FetchRequestBodyResource;
 use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
 use deno_fetch::HttpClientResource;
+use deno_fetch::ResourceToBodyAdapter;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -31,7 +30,7 @@ pub fn op_node_http_request<P>(
   #[string] url: String,
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] client_rid: Option<u32>,
-  has_body: bool,
+  #[smi] body: Option<ResourceId>,
 ) -> Result<FetchReturn, AnyError>
 where
   P: crate::NodePermissions + 'static,
@@ -63,25 +62,16 @@ where
 
   let mut request = client.request(method.clone(), url).headers(header_map);
 
-  let request_body_rid = if has_body {
-    // If no body is passed, we return a writer for streaming the body.
-    let (tx, stream) = tokio::sync::mpsc::channel(1);
-
-    request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
-
-    let request_body_rid = state.resource_table.add(FetchRequestBodyResource {
-      body: AsyncRefCell::new(Some(tx)),
-      cancel: CancelHandle::default(),
-    });
-
-    Some(request_body_rid)
+  if let Some(body) = body {
+    request = request.body(Body::wrap_stream(ResourceToBodyAdapter::new(
+      state.resource_table.take_any(body)?,
+    )));
   } else {
     // POST and PUT requests should always have a 0 length content-length,
     // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
     if matches!(method, Method::POST | Method::PUT) {
       request = request.header(CONTENT_LENGTH, HeaderValue::from(0));
     }
-    None
   };
 
   let cancel_handle = CancelHandle::new_rc();
@@ -104,7 +94,6 @@ where
 
   Ok(FetchReturn {
     request_rid,
-    request_body_rid,
     cancel_handle_rid: Some(cancel_handle_rid),
   })
 }

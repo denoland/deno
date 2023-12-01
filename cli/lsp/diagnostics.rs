@@ -493,8 +493,7 @@ impl DiagnosticsServer {
                     _ = tokio::time::sleep(DELAY) => {}
                   };
 
-                  let mark =
-                    performance.mark("update_diagnostics_ts", None::<()>);
+                  let mark = performance.mark("lsp.update_diagnostics_ts");
                   let diagnostics = generate_ts_diagnostics(
                     snapshot.clone(),
                     &config,
@@ -549,8 +548,7 @@ impl DiagnosticsServer {
                   if let Some(previous_handle) = previous_deps_handle {
                     previous_handle.await;
                   }
-                  let mark =
-                    performance.mark("update_diagnostics_deps", None::<()>);
+                  let mark = performance.mark("lsp.update_diagnostics_deps");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
                     move || generate_deno_diagnostics(&snapshot, &config, token)
@@ -599,8 +597,7 @@ impl DiagnosticsServer {
                   if let Some(previous_handle) = previous_lint_handle {
                     previous_handle.await;
                   }
-                  let mark =
-                    performance.mark("update_diagnostics_lint", None::<()>);
+                  let mark = performance.mark("lsp.update_diagnostics_lint");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
                     move || {
