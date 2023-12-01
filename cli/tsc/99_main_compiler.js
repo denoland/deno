@@ -485,26 +485,13 @@ delete Object.prototype.__proto__;
   class OperationCanceledError extends Error {
   }
 
-  // todo(dsherret): we should investigate if throttling is really necessary
   /**
-   * Inspired by ThrottledCancellationToken in ts server.
-   *
-   * We don't want to continually call back into Rust and so
-   * we throttle cancellation checks to only occur once
-   * in a while.
+   * This implementation calls into Rust to check if Tokio's cancellation token
+   * has already been canceled.
    * @implements {ts.CancellationToken}
    */
-  class ThrottledCancellationToken {
-    #lastCheckTimeMs = 0;
-
+  class CancellationToken {
     isCancellationRequested() {
-      const timeMs = Date.now();
-      // TypeScript uses 20ms
-      if ((timeMs - this.#lastCheckTimeMs) < 20) {
-        return false;
-      }
-
-      this.#lastCheckTimeMs = timeMs;
       return ops.op_is_cancelled();
     }
 
@@ -542,7 +529,7 @@ delete Object.prototype.__proto__;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
-      return new ThrottledCancellationToken();
+      return new CancellationToken();
     },
     getSourceFile(
       specifier,
