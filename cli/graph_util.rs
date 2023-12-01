@@ -787,14 +787,8 @@ impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
 
     let dir_path = match dir_url.to_file_path() {
       Ok(path) => path,
-      Err(()) => {
-        return vec![DirEntry {
-          kind: DirEntryKind::Error(anyhow::anyhow!(
-            "Failed converting url to path."
-          )),
-          url: dir_url.clone(),
-        }]
-      }
+      // ignore, treat as non-analyzable
+      Err(()) => return vec![],
     };
     let entries = match self.0.read_dir_sync(&dir_path) {
       Ok(dir) => dir,
