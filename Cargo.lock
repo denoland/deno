@@ -1187,6 +1187,7 @@ dependencies = [
  "deno_tls",
  "dyn-clone",
  "http",
+ "pin-project",
  "reqwest",
  "serde",
  "tokio",
