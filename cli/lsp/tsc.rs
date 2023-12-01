@@ -47,6 +47,8 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -3877,71 +3879,76 @@ struct LoadResponse {
 }
 
 #[op2]
-#[serde]
-fn op_load(
+fn op_load<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[serde] args: SpecifierArgs,
-) -> Result<Option<LoadResponse>, AnyError> {
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.specifier_map.normalize(args.specifier)?;
-  if specifier.as_str() == "internal:///missing_dependency.d.ts" {
-    return Ok(Some(LoadResponse {
-      data: Arc::from("declare const __: any;\nexport = __;\n"),
-      script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
-      version: Some("1".to_string()),
-    }));
-  }
-  let asset_or_document = state.get_asset_or_document(&specifier);
+  let maybe_load_response =
+    if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+      Some(LoadResponse {
+        data: Arc::from("declare const __: any;\nexport = __;\n"),
+        script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
+        version: Some("1".to_string()),
+      })
+    } else {
+      let asset_or_document = state.get_asset_or_document(&specifier);
+      asset_or_document.map(|doc| LoadResponse {
+        data: doc.text(),
+        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+        version: state.script_version(&specifier),
+      })
+    };
+
+  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+
   state.performance.measure(mark);
-  Ok(asset_or_document.map(|doc| LoadResponse {
-    data: doc.text(),
-    script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-    version: state.script_version(&specifier),
-  }))
+  Ok(serialized)
 }
 
 #[op2]
-#[serde]
-fn op_resolve(
+fn op_resolve<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[serde] args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, AnyError> {
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
-  let result = match state.get_asset_or_document(&referrer) {
+  let specifiers = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
         state.state_snapshot.npm.as_ref(),
       );
-      Ok(
-        resolved
-          .into_iter()
-          .map(|o| {
-            o.map(|(s, mt)| {
-              (
-                state.specifier_map.denormalize(&s),
-                mt.as_ts_extension().to_string(),
-              )
-            })
+      resolved
+        .into_iter()
+        .map(|o| {
+          o.map(|(s, mt)| {
+            (
+              state.specifier_map.denormalize(&s),
+              mt.as_ts_extension().to_string(),
+            )
           })
-          .collect(),
-      )
+        })
+        .collect()
     }
     None => {
       lsp_warn!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       );
-      Ok(vec![None; args.specifiers.len()])
+      vec![None; args.specifiers.len()]
     }
   };
 
+  let response = serde_v8::to_v8(scope, specifiers)?;
   state.performance.measure(mark);
-  result
+  Ok(response)
 }
 
 #[op2]
@@ -4002,22 +4009,16 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     .collect()
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ScriptVersionArgs {
-  specifier: String,
-}
-
 #[op2]
 #[string]
 fn op_script_version(
   state: &mut OpState,
-  #[serde] args: ScriptVersionArgs,
+  #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
-  let specifier = state.specifier_map.normalize(args.specifier)?;
+  let specifier = state.specifier_map.normalize(specifier)?;
   Ok(state.script_version(&specifier))
 }
 
