@@ -9,6 +9,7 @@ use crate::MIN_SAFE_INTEGER;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::TryCatch;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -171,7 +172,12 @@ unsafe extern "C" fn deno_ffi_callback(
       };
 
       async_work_sender.spawn_blocking(move |scope| {
-        args.run(scope);
+        // We don't have a lot of choice here, so just print an unhandled exception message
+        let tc_scope = &mut TryCatch::new(scope);
+        args.run(tc_scope);
+        if tc_scope.exception().is_some() {
+          eprintln!("Illegal unhandled exception in nonblocking callback.");
+        }
       });
     }
   });
