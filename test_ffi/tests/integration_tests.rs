@@ -273,5 +273,8 @@ fn ffi_callback_errors_test() {
     Calling\n\
     CallCase: AsyncFfi\n";
   assert_eq!(stdout, expected);
-  assert_eq!(stderr, "");
+  assert_eq!(
+    stderr,
+    "Illegal unhandled exception in nonblocking callback.\n".repeat(3)
+  );
 }
