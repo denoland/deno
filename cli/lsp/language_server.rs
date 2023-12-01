@@ -1506,7 +1506,7 @@ impl Inner {
 
     let mark = self
       .performance
-      .mark_with_args("did_change_watched_files", &params);
+      .mark_with_args("lsp.did_change_watched_files", &params);
     let mut touched = false;
     let changes: IndexSet<Url> = params
       .changes
@@ -2772,7 +2772,7 @@ impl Inner {
 
     let mark = self
       .performance
-      .mark_with_args("prepare_call_hierarchy", &params);
+      .mark_with_args("lsp.prepare_call_hierarchy", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2950,7 +2950,7 @@ impl Inner {
 
     let mark = self
       .performance
-      .mark_with_args("semantic_tokens_range", &params);
+      .mark_with_args("lsp.semantic_tokens_range", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -3347,7 +3347,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let inner = self.0.read().await;
       inner
         .performance
-        .mark_with_args("did_change_configuration", &params)
+        .mark_with_args("lsp.did_change_configuration", &params)
     };
 
     self.refresh_configuration().await;
@@ -3372,7 +3372,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       let mark = ls
         .performance
-        .mark_with_args("did_change_workspace_folders", &params);
+        .mark_with_args("lsp.did_change_workspace_folders", &params);
       ls.did_change_workspace_folders(params);
       (ls.performance.clone(), mark)
     };
@@ -3743,7 +3743,7 @@ impl Inner {
   ) -> LspResult<Option<String>> {
     let mark = self
       .performance
-      .mark_with_args("virtual_text_document", &params);
+      .mark_with_args("lsp.virtual_text_document", &params);
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
