@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertThrows,
   fail,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 
 Deno.test("invalid scheme", () => {
   assertThrows(() => new WebSocket("foo://localhost:4242"));
