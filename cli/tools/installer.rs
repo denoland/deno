@@ -166,7 +166,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   let mut stem = path.file_stem()?.to_string_lossy();
   if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli") {
     if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
-      stem = parent_name.to_string_lossy().to_string();
+      stem = parent_name.to_string_lossy();
     }
   }
 
@@ -175,12 +175,12 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   // a version number.
   match stem.find('@') {
     Some(at_index) if at_index > 0 => {
-      stem = stem.split_at(at_index).0.to_string();
+      stem = stem.split_at(at_index).0.to_string().into();
     }
     _ => {}
   }
 
-  Some(stem)
+  Some(stem.to_string())
 }
 
 pub fn uninstall(name: String, root: Option<String>) -> Result<(), AnyError> {
