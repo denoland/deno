@@ -36,7 +36,7 @@
  * }, { raw: true });
  * ```
  */
-{
+(() => {
   const internals = Deno[Deno.internal];
   const core = internals.core;
 
@@ -428,4 +428,4 @@
   }
 
   internals.enableJupyter = enableJupyter;
-}
+})();

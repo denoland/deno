@@ -16,7 +16,7 @@
 import { magenta } from "../../../test_util/std/fmt/colors.ts";
 import { pooledMap } from "../../../test_util/std/async/pool.ts";
 import { dirname, fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
-import { fail } from "../../../test_util/std/testing/asserts.ts";
+import { fail } from "../../../test_util/std/assert/mod.ts";
 import {
   config,
   getPathsFromTestSuites,
@@ -83,6 +83,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         "--quiet",
         "--unstable",
         //"--unsafely-ignore-certificate-errors",
+        "--unstable-bare-node-builtins",
         "--v8-flags=" + v8Flags.join(),
         "runner.ts",
         testCase,

@@ -859,9 +859,6 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> Option<&LanguageWorkspaceSettings> {
     let workspace_settings = self.workspace_settings_for_specifier(specifier);
-    if specifier.scheme() == "deno-notebook-cell" {
-      return Some(&workspace_settings.typescript);
-    }
     match MediaType::from_specifier(specifier) {
       MediaType::JavaScript
       | MediaType::Jsx
@@ -899,26 +896,6 @@ impl Config {
       || settings.inlay_hints.property_declaration_types.enabled
       || settings.inlay_hints.function_like_return_types.enabled
       || settings.inlay_hints.enum_member_values.enabled
-  }
-
-  /// Determine if any code lenses are enabled at all.  This allows short
-  /// circuiting when there are no code lenses enabled.
-  pub fn enabled_code_lens_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> bool {
-    let settings = self.workspace_settings_for_specifier(specifier);
-    settings.code_lens.implementations
-      || settings.code_lens.references
-      || settings.code_lens.test
-  }
-
-  pub fn enabled_code_lens_test_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> bool {
-    let settings = self.workspace_settings_for_specifier(specifier);
-    settings.code_lens.test
   }
 
   pub fn root_uri(&self) -> Option<&Url> {

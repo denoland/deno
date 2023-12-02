@@ -548,13 +548,13 @@ impl MainWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        maybe_result
       }
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+
+        receiver.await
       }
     }
   }
@@ -603,14 +603,26 @@ impl MainWorker {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
+    self.js_runtime.poll_event_loop2(
+      cx,
+      deno_core::PollEventLoopOptions {
+        wait_for_inspector,
+        ..Default::default()
+      },
+    )
   }
 
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    self.js_runtime.run_event_loop(wait_for_inspector).await
+    self
+      .js_runtime
+      .run_event_loop2(deno_core::PollEventLoopOptions {
+        wait_for_inspector,
+        ..Default::default()
+      })
+      .await
   }
 
   /// Return exit code set by the executed code (either in main worker

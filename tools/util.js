@@ -17,7 +17,7 @@ const versions = {
   "dlint": "dlint 0.51.0",
 };
 
-const compressed = new Set(["ld64.lld"]);
+const compressed = new Set(["ld64.lld", "rcodesign"]);
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
@@ -175,8 +175,9 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
+const commitId = "c249f61eaed67db26c2934b195dc51e3ab91ae03";
 const downloadUrl =
-  `https://raw.githubusercontent.com/denoland/deno_third_party/1fd66ef78ab40841db833d4a1efd5c5597faf066/prebuilt/${platformDirName}`;
+  `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 
 export async function downloadPrebuilt(toolName) {
   // Ensure only one download per tool happens at a time

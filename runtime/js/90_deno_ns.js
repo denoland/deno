@@ -208,6 +208,8 @@ const denoNsUnstableById = {
   8: {
     cron: cron.cron,
   },
+  // Unsafe proto
+  // 9: {},
 };
 
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js

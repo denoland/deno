@@ -1536,8 +1536,12 @@ Buffer.prototype.copy = function copy(
     sourceStart = 0;
   } else {
     sourceStart = toInteger(sourceStart, 0);
-    if (sourceStart < 0) {
-      throw new codes.ERR_OUT_OF_RANGE("sourceStart", ">= 0", sourceStart);
+    if (sourceStart < 0 || sourceStart > this.length) {
+      throw new codes.ERR_OUT_OF_RANGE(
+        "sourceStart",
+        `>= 0 && <= ${this.length}`,
+        sourceStart,
+      );
     }
     if (sourceStart >= MAX_UINT32) {
       throw new codes.ERR_OUT_OF_RANGE(
