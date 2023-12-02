@@ -711,6 +711,10 @@ Deno.test("process.exitCode in should change exit code", async () => {
     127,
   );
   await exitCodeTest(
+    "import process from 'node:process'; process.exitCode = 2.5;",
+    2,
+  );
+  await exitCodeTest(
     "import process from 'node:process'; process.exitCode = '10';",
     10,
   );
