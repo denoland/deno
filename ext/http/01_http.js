@@ -5,7 +5,6 @@ const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 const { op_http_write } = Deno.core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
