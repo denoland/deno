@@ -57,16 +57,16 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_cache_dir = "=0.6.1"
 deno_config = "=0.6.5"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.73.3", features = ["html"] }
-deno_emit = "=0.31.4"
-deno_graph = "=0.61.1"
+deno_doc = { version = "=0.73.5", features = ["html"] }
+deno_emit = "=0.31.5"
+deno_graph = "=0.61.5"
 deno_lint = { version = "=0.52.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "0.15.2"
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
 deno_semver = "0.5.1"
 deno_task_shell = "=0.14.0"
-eszip = "=0.55.4"
+eszip = "=0.55.5"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -100,7 +100,7 @@ glob = "0.3.1"
 hex.workspace = true
 http.workspace = true
 hyper.workspace = true
-import_map = { version = "=0.17.0", features = ["ext"] }
+import_map = { version = "=0.18.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex.workspace = true

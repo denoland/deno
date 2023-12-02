@@ -191,7 +191,7 @@ impl Performance {
         "type": "measure",
         "name": measure.name,
         "count": measure.count,
-        "duration": measure.duration.as_millis() as u32,
+        "duration": measure.duration.as_micros() as f64 / 1000.0,
       })
     );
     let duration = measure.duration;
