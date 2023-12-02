@@ -4,13 +4,7 @@ import {
   assert,
   assertEquals,
 } from "../../../../test_util/std/testing/asserts.ts";
-import {
-  createPrivateKey,
-  createSign,
-  createVerify,
-  sign,
-  verify,
-} from "node:crypto";
+import { createSign, createVerify, sign, verify } from "node:crypto";
 import { Buffer } from "node:buffer";
 
 const rsaPrivatePem = Buffer.from(
