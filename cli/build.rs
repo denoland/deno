@@ -318,25 +318,6 @@ mod ts {
   }
 }
 
-// Duplicated in `ops/mod.rs`. Keep in sync!
-deno_core::extension!(
-  cli,
-  deps = [runtime],
-  esm_entry_point = "ext:cli/99_main.js",
-  esm = [
-    dir "js",
-    "99_main.js"
-  ],
-  customizer = |ext: &mut deno_core::Extension| {
-    ext.esm_files.to_mut().push(ExtensionFileSource {
-      specifier: "ext:cli/runtime/js/99_main.js",
-      code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-        deno_runtime::js::PATH_FOR_99_MAIN_JS,
-      ),
-    });
-  }
-);
-
 #[cfg(not(feature = "__runtime_js_sources"))]
 #[must_use = "The files listed by create_cli_snapshot should be printed as 'cargo:rerun-if-changed' lines"]
 fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
@@ -417,7 +398,6 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
         target: std::env::var("TARGET").unwrap(),
       },
     )),
-    cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 
   create_snapshot(CreateSnapshotOptions {
