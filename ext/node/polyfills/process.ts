@@ -10,6 +10,7 @@ const { ops } = core;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
+import { report } from "ext:deno_node/internal/process/report.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -360,6 +361,10 @@ class Process extends EventEmitter {
       arch = arch_();
     }
     return arch;
+  }
+
+  get report() {
+    return report;
   }
 
   get title() {

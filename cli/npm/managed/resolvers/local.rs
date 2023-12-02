@@ -122,14 +122,9 @@ impl LocalNpmPackageResolver {
     };
     // Canonicalize the path so it's not pointing to the symlinked directory
     // in `node_modules` directory of the referrer.
-    canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
-      self
-        .fs
-        .realpath_sync(path)
-        .map_err(|err| err.into_io_error())
-    })
-    .map(Some)
-    .map_err(|err| err.into())
+    canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
+      .map(Some)
+      .map_err(|err| err.into())
   }
 }
 
@@ -139,8 +134,8 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self.root_node_modules_url
   }
 
-  fn node_modules_path(&self) -> Option<PathBuf> {
-    Some(self.root_node_modules_path.clone())
+  fn node_modules_path(&self) -> Option<&PathBuf> {
+    Some(&self.root_node_modules_path)
   }
 
   fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {

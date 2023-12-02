@@ -138,13 +138,15 @@ fn deno_doc_html() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Written 8 files to");
+  assert_contains!(output.stderr(), "Written 10 files to");
+  assert!(temp_dir.path().join("all_symbols.html").exists());
   assert!(temp_dir.path().join("index.html").exists());
-  assert!(temp_dir.path().join("compound_index.html").exists());
   assert!(temp_dir.path().join("fuse.js").exists());
+  assert!(temp_dir.path().join("page.css").exists());
   assert!(temp_dir.path().join("search.js").exists());
   assert!(temp_dir.path().join("search_index.js").exists());
   assert!(temp_dir.path().join("styles.css").exists());
-  assert!(temp_dir.path().join("MyInterface.html").exists());
-  assert!(temp_dir.path().join("MyClass.html").exists());
+  assert!(temp_dir.path().join("~/MyInterface.html").exists());
+  assert!(temp_dir.path().join("~/MyClass.html").exists());
+  assert!(temp_dir.path().join("~/index.html").exists());
 }

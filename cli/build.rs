@@ -60,17 +60,11 @@ mod ts {
     false
   }
 
-  #[derive(Debug, Deserialize, Serialize)]
-  #[serde(rename_all = "camelCase")]
-  struct ScriptVersionArgs {
-    specifier: String,
-  }
-
   #[op2]
   #[string]
   fn op_script_version(
     _state: &mut OpState,
-    #[serde] _args: ScriptVersionArgs,
+    #[string] _arg: &str,
   ) -> Result<Option<String>, AnyError> {
     Ok(Some("1".to_string()))
   }
@@ -359,11 +353,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   // Ideally we could deduplicate that code.
   fn deno_version() -> String {
     if env::var("DENO_CANARY").is_ok() {
-      format!(
-        "{}+{}",
-        env!("CARGO_PKG_VERSION"),
-        git_commit_hash()[..7].to_string()
-      )
+      format!("{}+{}", env!("CARGO_PKG_VERSION"), &git_commit_hash()[..7])
     } else {
       env!("CARGO_PKG_VERSION").to_string()
     }
