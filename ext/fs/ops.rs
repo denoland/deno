@@ -455,6 +455,22 @@ where
   Ok(SerializableStat::from(stat))
 }
 
+#[op2(fast)]
+pub fn op_fs_exists_sync<P>(
+  state: &mut OpState,
+  #[string] path: String,
+) -> Result<bool, AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let path = PathBuf::from(path);
+  state
+    .borrow_mut::<P>()
+    .check_read(&path, "Deno.existsSync()")?;
+  let fs = state.borrow::<FileSystemRc>();
+  Ok(fs.lstat_sync(&path).is_ok())
+}
+
 #[op2]
 #[string]
 pub fn op_fs_realpath_sync<P>(
