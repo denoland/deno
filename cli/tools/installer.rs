@@ -155,16 +155,16 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   let percent_decode = percent_encoding::percent_decode(url.path().as_bytes());
   #[cfg(unix)]
   let path = {
-    use std::os::unix::prelude::OsStrExt;
-    PathBuf::from(std::ffi::OsStr::from_bytes(
-      &percent_decode.collect::<Vec<u8>>(),
+    use std::os::unix::prelude::OsStringExt;
+    PathBuf::from(std::ffi::OsString::from_vec(
+      percent_decode.collect::<Vec<u8>>(),
     ))
   };
   #[cfg(windows)]
   let path = PathBuf::from(percent_decode.decode_utf8_lossy().as_ref());
 
-  let mut stem = path.file_stem()?.to_string_lossy().to_string();
-  if matches!(stem.as_str(), "main" | "mod" | "index" | "cli") {
+  let mut stem = path.file_stem()?.to_string_lossy();
+  if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli") {
     if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
       stem = parent_name.to_string_lossy().to_string();
     }
