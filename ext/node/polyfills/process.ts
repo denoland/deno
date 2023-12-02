@@ -433,8 +433,8 @@ class Process extends EventEmitter {
 
   set exitCode(code: number | undefined) {
     globalProcessExitCode = code;
-    code = (typeof code === "string" ? parseInt(code) : code) ?? 0;
-    if (typeof code === "number" && !isNaN(code)) {
+    code = parseInt(code) || 0;
+    if (!isNaN(code)) {
       ops.op_set_exit_code(code);
     }
   }
