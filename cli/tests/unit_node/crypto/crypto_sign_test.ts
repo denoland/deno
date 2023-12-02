@@ -4,12 +4,23 @@ import {
   assert,
   assertEquals,
 } from "../../../../test_util/std/testing/asserts.ts";
-import { createSign, createVerify, sign, verify } from "node:crypto";
+import {
+  createPrivateKey,
+  createSign,
+  createVerify,
+  sign,
+  verify,
+} from "node:crypto";
 import { Buffer } from "node:buffer";
 
 const rsaPrivatePem = Buffer.from(
   await Deno.readFile(
     new URL("../testdata/rsa_private.pem", import.meta.url),
+  ),
+);
+const rsaPrivatePkcs1Pem = Buffer.from(
+  await Deno.readFile(
+    new URL("../testdata/rsa_private_pkcs1.pem", import.meta.url),
   ),
 );
 const rsaPublicPem = Buffer.from(
@@ -84,6 +95,42 @@ Deno.test({
             rsaPublicPem,
             Buffer.from(testCase.signature, "hex"),
           ),
+        );
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "crypto.createPrivateKey|sign - RSA PEM",
+  fn() {
+    for (const testCase of table) {
+      for (const algorithm of testCase.algorithms) {
+        assertEquals(
+          createSign(algorithm).update(data).sign(rsaPrivatePem, "hex"),
+          testCase.signature,
+        );
+        assertEquals(
+          sign(algorithm, data, rsaPrivatePem),
+          Buffer.from(testCase.signature, "hex"),
+        );
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "crypto.createPrivateKey|sign - RSA PKCS1 PEM",
+  fn() {
+    for (const testCase of table) {
+      for (const algorithm of testCase.algorithms) {
+        assertEquals(
+          createSign(algorithm).update(data).sign(rsaPrivatePkcs1Pem, "hex"),
+          testCase.signature,
+        );
+        assertEquals(
+          sign(algorithm, data, rsaPrivatePkcs1Pem),
+          Buffer.from(testCase.signature, "hex"),
         );
       }
     }
