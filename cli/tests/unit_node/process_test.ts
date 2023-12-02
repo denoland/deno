@@ -684,10 +684,10 @@ Deno.test("process.exitCode", () => {
   assertEquals(process.exitCode, undefined);
   process.exitCode = 127;
   assertEquals(process.exitCode, 127);
-  process.exitCode = "asdf";
-  assertEquals(process.exitCode, "asdf");
-  process.exitCode = "10";
-  assertEquals(process.exitCode, "10");
+  (process.exitCode as any) = "asdf";
+  assertEquals(process.exitCode as any, "asdf");
+  (process.exitCode as any) = "10";
+  assertEquals(process.exitCode as any, "10");
   process.exitCode = undefined; // reset
 });
 
@@ -725,8 +725,8 @@ Deno.test("process.exitCode in should change exit code", async () => {
 Deno.test("Deno.exit should override process exit", async () => {
   await exitCodeTest(
     "import process from 'node:process'; process.exitCode = 10; Deno.exit(12);",
+    12,
   );
-  assertEquals(code, 12);
 });
 
 Deno.test("process.config", () => {
