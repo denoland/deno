@@ -31,6 +31,7 @@ import {
   _role,
   _server,
   _serverHandleIdleTimeout,
+  createWebSocketBranded,
   SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
@@ -474,7 +475,7 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  const socket = webidl.createBranded(WebSocket);
+  const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;

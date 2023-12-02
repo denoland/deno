@@ -365,3 +365,42 @@ Deno.test(async function websocketTlsSocketWorks() {
 
   await finished;
 });
+
+// https://github.com/denoland/deno/issues/15340
+Deno.test(
+  { sanitizeOps: false, sanitizeResources: false },
+  async function websocketServerFieldInit() {
+    const ac = new AbortController();
+    const listeningDeferred = Promise.withResolvers<void>();
+
+    const server = Deno.serve({
+      handler: (req) => {
+        const { socket, response } = Deno.upgradeWebSocket(req);
+        socket.onopen = function () {
+          assert(typeof socket.url == "string");
+          assert(socket.readyState == WebSocket.OPEN);
+          assert(socket.protocol == "");
+          socket.close();
+          ac.abort();
+        };
+        return response;
+      },
+      signal: ac.signal,
+      onListen: () => listeningDeferred.resolve(),
+      hostname: "localhost",
+      port: servePort,
+    });
+
+    await listeningDeferred.promise;
+    const deferred = Promise.withResolvers<void>();
+    const ws = new WebSocket(serveUrl);
+    assertEquals(ws.url, serveUrl);
+    ws.onerror = () => fail();
+    ws.onclose = () => {
+      deferred.resolve();
+    };
+
+    await Promise.all([deferred.promise, server.finished]);
+    ws.close();
+  },
+);
