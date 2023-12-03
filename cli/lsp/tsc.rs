@@ -4423,6 +4423,9 @@ fn request(
   request: TscRequest,
   token: CancellationToken,
 ) -> Result<Value, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("Operation was cancelled."));
+  }
   let (performance, id) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
