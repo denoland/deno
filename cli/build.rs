@@ -15,17 +15,10 @@ mod ts {
   use deno_core::op2;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-  use serde::Deserialize;
   use serde::Serialize;
   use std::collections::HashMap;
   use std::path::Path;
   use std::path::PathBuf;
-
-  #[derive(Debug, Deserialize)]
-  struct LoadArgs {
-    /// The fully qualified specifier that should be loaded.
-    specifier: String,
-  }
 
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
@@ -83,7 +76,7 @@ mod ts {
   // files, but a slightly different implementation at build time.
   fn op_load(
     state: &mut OpState,
-    #[serde] args: LoadArgs,
+    #[string] load_specifier: &str,
   ) -> Result<LoadResponse, AnyError> {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
@@ -91,7 +84,7 @@ mod ts {
     let build_specifier = "asset:///bootstrap.ts";
 
     // we need a basic file to send to tsc to warm it up.
-    if args.specifier == build_specifier {
+    if load_specifier == build_specifier {
       Ok(LoadResponse {
         data: r#"Deno.writeTextFile("hello.txt", "hello deno!");"#.to_string(),
         version: "1".to_string(),
@@ -100,7 +93,7 @@ mod ts {
       })
       // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
       // parse out just the name so we can lookup the asset.
-    } else if let Some(caps) = re_asset.captures(&args.specifier) {
+    } else if let Some(caps) = re_asset.captures(load_specifier) {
       if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
         // if it comes from an op crate, we were supplied with the path to the
         // file.
@@ -120,13 +113,13 @@ mod ts {
       } else {
         Err(custom_error(
           "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", args.specifier),
+          format!("An invalid specifier was requested: {}", load_specifier),
         ))
       }
     } else {
       Err(custom_error(
         "InvalidSpecifier",
-        format!("An invalid specifier was requested: {}", args.specifier),
+        format!("An invalid specifier was requested: {}", load_specifier),
       ))
     }
   }
