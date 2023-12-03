@@ -254,7 +254,25 @@ fn console_log() {
     console.expect("hello");
     console.write_line("'world'");
     console.expect("\"world\"");
+
+    // https://github.com/denoland/deno/issues/21427
+    console.write_line("console.log('%d', 21427n)");
+    console.expect("21427");
+
+    console.write_line("console.log('%d', Symbol.for(21427n))");
+    console.expect("NaN");
   });
+
+  // https://github.com/denoland/deno/issues/21428
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=./run/093_console_log_format.js"],
+    None,
+    None,
+    false,
+  );
+  assert_contains!(out, "0.5");
+  assert!(err.is_empty());
 }
 
 #[test]

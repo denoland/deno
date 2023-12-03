@@ -60,6 +60,7 @@ const {
   Number,
   NumberIsInteger,
   NumberParseInt,
+  NumberParseFloat,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
   ObjectAssign,
@@ -3110,20 +3111,18 @@ function inspectArgs(args, inspectOptions = {}) {
           } else if (ArrayPrototypeIncludes(["d", "i"], char)) {
             // Format as an integer.
             const value = args[a++];
-            if (typeof value == "bigint") {
-              formattedArg = `${value}n`;
-            } else if (typeof value == "number") {
-              formattedArg = `${NumberParseInt(String(value))}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
+            } else {
+              formattedArg = `${NumberParseInt(value)}`;
             }
           } else if (char == "f") {
             // Format as a floating point value.
             const value = args[a++];
-            if (typeof value == "number") {
-              formattedArg = `${value}`;
-            } else {
+            if (typeof value === "symbol") {
               formattedArg = "NaN";
+            } else {
+              formattedArg = `${NumberParseFloat(value)}`;
             }
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
