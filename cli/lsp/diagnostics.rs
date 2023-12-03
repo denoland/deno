@@ -502,12 +502,7 @@ impl DiagnosticsServer {
                   )
                   .await
                   .map_err(|err| {
-                    if !token.is_cancelled() {
-                      error!(
-                        "Error generating TypeScript diagnostics: {}",
-                        err
-                      );
-                    }
+                    error!("Error generating TypeScript diagnostics: {}", err);
                   })
                   .unwrap_or_default();
 
@@ -1618,6 +1613,35 @@ let c: number = "a";
       .unwrap()
       .versioned
       .diagnostics
+  }
+
+  #[tokio::test]
+  async fn test_cancelled_ts_diagnostics_request() {
+    let temp_dir = TempDir::new();
+    let (snapshot, cache_location) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"export let a: string = 5;"#,
+        1,
+        LanguageId::TypeScript,
+      )],
+      None,
+    );
+    let snapshot = Arc::new(snapshot);
+    let cache =
+      Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
+    let ts_server = TsServer::new(Default::default(), cache);
+
+    let config = mock_config();
+    let token = CancellationToken::new();
+    token.cancel();
+    let diagnostics =
+      generate_ts_diagnostics(snapshot.clone(), &config, &ts_server, token)
+        .await
+        .unwrap();
+    // should be none because it's cancelled
+    assert_eq!(diagnostics.len(), 0);
   }
 
   #[tokio::test]
