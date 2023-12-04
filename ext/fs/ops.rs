@@ -466,7 +466,8 @@ where
   let path = PathBuf::from(path);
   state
     .borrow_mut::<P>()
-    .check_read(&path, "Deno.existsSync()")?;
+    // currently only used by node:fs
+    .check_read(&path, "node:fs.existsSync()")?;
   let fs = state.borrow::<FileSystemRc>();
   Ok(fs.lstat_sync(&path).is_ok())
 }
