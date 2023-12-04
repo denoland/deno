@@ -302,7 +302,7 @@ class Kv {
   watch(keys: Deno.KvKey[], options = {}) {
     const raw = options.raw ?? false;
     const rid = ops.op_kv_watch(this.#rid, keys);
-    const lastEntries: any[] = Array.from(
+    const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = Array.from(
       { length: keys.length },
       () => undefined,
     );
