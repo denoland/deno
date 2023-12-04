@@ -391,7 +391,7 @@ async fn perform_publish(
     let res = parse_response::<PublishingTask>(response).await;
     let mut task = match res {
       Ok(task) => task,
-      Err(err) if err.code == "versionAlreadyExists" => {
+      Err(err) if err.code == "duplicateVersionPublish" => {
         println!(
           "{} @{}/{}@{}",
           colors::yellow("Skipping, already published"),
