@@ -20,7 +20,7 @@ where
   let path = PathBuf::from(path);
   state
     .borrow_mut::<P>()
-    .check_read_api(&path, Some("node:fs.existsSync()"))?;
+    .check_read_with_api_name(&path, Some("node:fs.existsSync()"))?;
   let fs = state.borrow::<FileSystemRc>();
   Ok(fs.lstat_sync(&path).is_ok())
 }

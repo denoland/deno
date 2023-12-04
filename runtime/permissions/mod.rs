@@ -1376,7 +1376,7 @@ impl deno_node::NodePermissions for PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read_api(
+  fn check_read_with_api_name(
     &self,
     path: &Path,
     api_name: Option<&str>,

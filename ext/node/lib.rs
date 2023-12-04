@@ -51,9 +51,9 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
   fn check_read(&self, path: &Path) -> Result<(), AnyError> {
-    self.check_read_api(path, None)
+    self.check_read_with_api_name(path, None)
   }
-  fn check_read_api(
+  fn check_read_with_api_name(
     &self,
     path: &Path,
     api_name: Option<&str>,
@@ -71,7 +71,7 @@ impl NodePermissions for AllowAllNodePermissions {
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_read_api(
+  fn check_read_with_api_name(
     &self,
     _path: &Path,
     _api_name: Option<&str>,

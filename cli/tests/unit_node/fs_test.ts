@@ -48,7 +48,7 @@ Deno.test(
 Deno.test(
   "[node/fs existsSync] path",
   { permissions: { read: true } },
-  function () {
+  () => {
     assert(existsSync("cli/tests/testdata/assets/fixture.json"));
   },
 );
@@ -56,7 +56,7 @@ Deno.test(
 Deno.test(
   "[node/fs existsSync] url",
   { permissions: { read: true } },
-  function () {
+  () => {
     assert(existsSync(
       pathToAbsoluteFileUrl("cli/tests/testdata/assets/fixture.json"),
     ));
@@ -66,7 +66,7 @@ Deno.test(
 Deno.test(
   "[node/fs existsSync] no permission",
   { permissions: { read: false } },
-  function () {
+  () => {
     assertThrows(() => {
       existsSync("cli/tests/testdata/assets/fixture.json");
     }, Deno.errors.PermissionDenied);
@@ -76,7 +76,7 @@ Deno.test(
 Deno.test(
   "[node/fs existsSync] not exists",
   { permissions: { read: true } },
-  function () {
+  () => {
     assert(!existsSync("bad_filename"));
   },
 );
