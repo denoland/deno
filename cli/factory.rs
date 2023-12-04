@@ -596,11 +596,10 @@ impl CliFactory {
     self.services.feature_checker.get_or_init(|| {
       let mut checker = FeatureChecker::default();
       checker.set_exit_cb(Box::new(crate::unstable_exit_cb));
-      // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
-      // of granular --unstable-* flags.
-      // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
+      checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
       if self.options.unstable() {
         checker.enable_legacy_unstable();
+        checker.warn_on_legacy_unstable();
       }
       let unstable_features = self.options.unstable_features();
       for (flag_name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {

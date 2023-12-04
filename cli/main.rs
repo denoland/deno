@@ -333,10 +333,12 @@ pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
   std::process::exit(70);
 }
 
-#[allow(dead_code)]
 pub(crate) fn unstable_warn_cb(feature: &str) {
   eprintln!(
-    "The `--unstable` flag is deprecated, use --unstable-{feature} instead."
+    "⚠️  {}",
+    colors::yellow(format!(
+      "The `--unstable` flag is deprecated, use `--unstable-{feature}` instead."
+    ))
   );
 }
 
