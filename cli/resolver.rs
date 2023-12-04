@@ -488,9 +488,9 @@ impl UnstableLooseImportsResolver {
       return Cow::Borrowed(specifier);
     }
 
-    let media_type = MediaType::from_specifier(&specifier);
+    let media_type = MediaType::from_specifier(specifier);
     let probe_media_type_types = match media_type {
-      MediaType::JavaScript => vec![MediaType::TypeScript],
+      MediaType::JavaScript => vec![MediaType::TypeScript, MediaType::Tsx],
       MediaType::Jsx => vec![MediaType::Tsx],
       MediaType::Mjs => vec![MediaType::Mts],
       MediaType::Cjs => vec![MediaType::Cts],
@@ -555,6 +555,9 @@ impl UnstableLooseImportsResolver {
 mod test {
   use std::collections::BTreeMap;
 
+  use deno_runtime::deno_fs::RealFs;
+  use test_util::TestContext;
+
   use super::*;
 
   #[test]
@@ -615,5 +618,65 @@ mod test {
 
     // non-existent bare specifier
     assert_eq!(resolve("non-existent", &deps).unwrap(), None);
+  }
+
+  #[test]
+  fn test_unstable_loose_imports() {
+    // It would be more ideal to use an in memory file system, but
+    // we haven't written one.
+    let context = TestContext::default();
+    let temp_dir = context.temp_dir().path();
+    let fs = Arc::new(RealFs);
+    let resolver = UnstableLooseImportsResolver::new(fs);
+
+    // scenarios like resolving ./example.js to ./example.ts
+    for (ext_from, ext_to) in [("js", "ts"), ("js", "tsx"), ("mjs", "mts")] {
+      let ts_file = temp_dir.join(format!("file.{}", ext_to));
+      ts_file.write("");
+      assert_eq!(
+        resolver.resolve(&ts_file.uri_file()).to_string(),
+        ts_file.uri_file().to_string(),
+      );
+      assert_eq!(
+        resolver
+          .resolve(
+            &temp_dir
+              .uri_dir()
+              .join(&format!("file.{}", ext_from))
+              .unwrap()
+          )
+          .to_string(),
+        ts_file.uri_file().to_string(),
+      );
+      ts_file.remove_file();
+    }
+
+    // no extension scenarios
+    for ext in ["js", "ts", "js", "tsx", "jsx", "mjs", "mts"] {
+      let file = temp_dir.join(format!("file.{}", ext));
+      file.write("");
+      assert_eq!(
+        resolver
+          .resolve(
+            &temp_dir
+              .uri_dir()
+              .join("file") // no ext
+              .unwrap()
+          )
+          .to_string(),
+        file.uri_file().to_string(),
+      );
+      file.remove_file();
+    }
+
+    // .ts and .js exists, .js specified (goes to specified)
+    let ts_file = temp_dir.join("file.ts");
+    ts_file.write("");
+    let js_file = temp_dir.join("file.js");
+    js_file.write("");
+    assert_eq!(
+      resolver.resolve(&js_file.uri_file()).to_string(),
+      js_file.uri_file().to_string(),
+    );
   }
 }
