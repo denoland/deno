@@ -1376,8 +1376,12 @@ impl deno_node::NodePermissions for PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
-    self.0.lock().read.check(path, None)
+  fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, api_name)
   }
 
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {
