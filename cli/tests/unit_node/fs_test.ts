@@ -77,8 +77,6 @@ Deno.test(
   "[node/fs existsSync] not exists",
   { permissions: { read: true } },
   function () {
-    assertThrows(() => {
-      Deno.readTextFileSync("bad_filename");
-    }, Deno.errors.NotFound);
+    assert(!existsSync("bad_filename"));
   },
 );

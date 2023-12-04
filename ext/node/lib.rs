@@ -50,7 +50,14 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+    self.check_read_api(path, None)
+  }
+  fn check_read_api(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
 }
 
@@ -64,7 +71,11 @@ impl NodePermissions for AllowAllNodePermissions {
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read_api(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     Ok(())
   }
   fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
@@ -227,6 +238,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::fs::op_node_fs_exists_sync<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,

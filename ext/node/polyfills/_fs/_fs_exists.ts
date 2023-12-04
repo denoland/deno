@@ -35,5 +35,5 @@ Object.defineProperty(exists, kCustomPromisifiedSymbol, {
  */
 export function existsSync(path: string | URL): boolean {
   path = path instanceof URL ? pathFromURL(path) : path;
-  return core.ops.op_fs_exists_sync(path);
+  return core.ops.op_node_fs_exists_sync(path);
 }

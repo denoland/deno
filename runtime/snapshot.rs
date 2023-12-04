@@ -76,7 +76,11 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
-  fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
+  fn check_read_api(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
