@@ -4735,3 +4735,50 @@ itest!(unsafe_proto_flag {
   http_server: false,
   exit_code: 0,
 });
+
+#[test]
+fn test_unstable_loose_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{ "unstable": ["loose-imports"] }"#);
+  temp_dir.write("a.ts", "export class A {}");
+  temp_dir.write("b.js", "export class B {}");
+  temp_dir.write("c.mts", "export class C {}");
+  temp_dir.write("d.mjs", "export class D {}");
+  temp_dir.write("e.tsx", "export class E {}");
+  temp_dir.write("f.jsx", "export class F {}");
+  temp_dir.write(
+    "main.ts",
+    r#"
+import * as a from "./a.js";
+import * as b from "./b";
+import * as c from "./c";
+import * as d from "./d";
+import * as e from "./e";
+import * as e2 from "./e.js";
+import * as f from "./f";
+console.log(a.A);
+console.log(b.B);
+console.log(c.C);
+console.log(d.D);
+console.log(e.E);
+console.log(e2.E);
+console.log(f.F);
+"#,
+  );
+
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text(
+      "[class A]
+[class B]
+[class C]
+[class D]
+[class E]
+[class E]
+[class F]
+",
+    );
+}
