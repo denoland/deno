@@ -12,6 +12,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -33,8 +34,13 @@ class HttpClient {
   constructor(rid) {
     this.rid = rid;
   }
+
   close() {
     core.close(this.rid);
+  }
+
+  [SymbolDispose]() {
+    this.close();
   }
 }
 const HttpClientPrototype = HttpClient.prototype;
