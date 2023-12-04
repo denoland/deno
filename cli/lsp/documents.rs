@@ -16,11 +16,11 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
-use crate::graph_util::js_to_ts_specifier;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::UnstableLooseImportsResolver;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -51,6 +51,7 @@ use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -688,26 +689,22 @@ fn recurse_dependents(
   }
 }
 
-struct SpecifierResolverOptions {
-  unstable_loose_imports: bool,
-}
-
 #[derive(Debug)]
 struct SpecifierResolver {
   cache: Arc<dyn HttpCache>,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
-  unstable_loose_imports: bool,
+  loose_imports_resolver: Option<UnstableLooseImportsResolver>,
 }
 
 impl SpecifierResolver {
   pub fn new(
     cache: Arc<dyn HttpCache>,
-    options: SpecifierResolverOptions,
+    loose_imports_resolver: Option<UnstableLooseImportsResolver>,
   ) -> Self {
     Self {
       cache,
       redirects: Mutex::new(HashMap::new()),
-      unstable_loose_imports: options.unstable_loose_imports,
+      loose_imports_resolver,
     }
   }
 
@@ -731,22 +728,10 @@ impl SpecifierResolver {
           Some(redirect)
         }
       }
-      "file" => {
-        if let Some(ts_specifier) = js_to_ts_specifier(specifier) {
-          if let Ok(specifier_path) = specifier_to_file_path(specifier) {
-            if specifier_path.exists() {
-              return Some(specifier.clone());
-            }
-            if let Ok(ts_specifier_path) = specifier_to_file_path(&ts_specifier)
-            {
-              if ts_specifier_path.exists() {
-                return Some(ts_specifier);
-              }
-            }
-          }
-        }
-        Some(specifier.clone())
-      }
+      "file" => match &self.loose_imports_resolver {
+        Some(resolver) => Some(resolver.resolve(specifier).into_owned()),
+        None => Some(specifier.clone()),
+      },
       _ => Some(specifier.clone()),
     }
   }
@@ -940,7 +925,7 @@ impl Documents {
       })),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
-      specifier_resolver: Arc::new(SpecifierResolver::new(cache)),
+      specifier_resolver: Arc::new(SpecifierResolver::new(cache, None)),
     }
   }
 
@@ -1248,7 +1233,10 @@ impl Documents {
   pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
     // TODO update resolved dependencies?
     self.cache = cache.clone();
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(cache));
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(
+      cache,
+      self.specifier_resolver.loose_imports_resolver.clone(),
+    ));
     self.dirty = true;
   }
 
@@ -1284,6 +1272,7 @@ impl Documents {
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_vendor_dir: Option<bool>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
+      maybe_unstable_flags: Option<&Vec<String>>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(document_preload_limit);
@@ -1299,6 +1288,7 @@ impl Documents {
       }
       hasher.write_hashable(maybe_vendor_dir);
       hasher.write_hashable(maybe_jsx_config);
+      hasher.write_hashable(maybe_unstable_flags);
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
         // this in order to catch if the type of package_json_deps ever changes
@@ -1334,11 +1324,13 @@ impl Documents {
       maybe_jsx_config.as_ref(),
       options.maybe_config_file.and_then(|c| c.vendor_dir_flag()),
       maybe_package_json_deps.as_ref(),
+      options.maybe_config_file.map(|c| &c.json.unstable),
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
+    let fs = Arc::new(RealFs);
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-      fs: Arc::new(RealFs),
+      fs: fs.clone(),
       node_resolver: options.node_resolver,
       npm_resolver: options.npm_resolver,
       cjs_resolutions: None, // only used for runtime
@@ -1351,14 +1343,21 @@ impl Documents {
         .as_ref(),
       bare_node_builtins_enabled: options
         .maybe_config_file
-        .map(|config| {
-          config
-            .json
-            .unstable
-            .contains(&"bare-node-builtins".to_string())
-        })
+        .map(|config| config.has_unstable("bare-node-builtins"))
         .unwrap_or(false),
     }));
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(
+      self.cache.clone(),
+      if options
+        .maybe_config_file
+        .map(|c| c.has_unstable("loose-imports"))
+        .unwrap_or(false)
+      {
+        Some(UnstableLooseImportsResolver::new(fs.clone()))
+      } else {
+        None
+      },
+    ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         options.maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1676,6 +1675,7 @@ fn node_resolve_npm_req_ref(
 pub struct OpenDocumentsGraphLoader<'a> {
   pub inner_loader: &'a mut dyn deno_graph::source::Loader,
   pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
+  pub loose_imports_resolver: Option<&'a UnstableLooseImportsResolver>,
 }
 
 impl<'a> OpenDocumentsGraphLoader<'a> {
@@ -1710,18 +1710,15 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
     is_dynamic: bool,
     cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
-    match self.load_from_docs(specifier) {
+    let specifier = match &self.loose_imports_resolver {
+      Some(resolver) => resolver.resolve(specifier),
+      None => Cow::Borrowed(specifier),
+    };
+    match self.load_from_docs(&specifier) {
       Some(fut) => fut,
-      None => {
-        if specifier.scheme() == "file" {
-          if let Some(ts_specifier) = js_to_ts_specifier(specifier) {
-            if let Some(fut) = self.load_from_docs(&ts_specifier) {
-              return fut;
-            }
-          }
-        }
-        self.inner_loader.load(specifier, is_dynamic, cache_setting)
-      }
+      None => self
+        .inner_loader
+        .load(&specifier, is_dynamic, cache_setting),
     }
   }
 

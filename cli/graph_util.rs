@@ -12,13 +12,13 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::UnstableLooseImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
-use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -486,13 +486,15 @@ impl ModuleGraphBuilder {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),
       permissions,
-      cache::FetchCacherOptions {
-        file_header_overrides: self.options.resolve_file_header_overrides(),
-        unstable_loose_imports: self.options.unstable_loose_imports(),
+      if self.options.unstable_loose_imports() {
+        Some(UnstableLooseImportsResolver::new(self.fs.clone()))
+      } else {
+        None
       },
     )
   }
@@ -850,47 +852,6 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
   )
 }
 
-/// Converts a `.js` specifier to the corresponding `.ts` specifier.
-///
-/// Example:
-///   file:///mod.js -> file:///mod.ts
-///   file:///mod.jsx -> file:///mod.tsx
-pub fn js_to_ts_specifier(
-  specifier: &ModuleSpecifier,
-) -> Option<ModuleSpecifier> {
-  // doesn't make sense otherwise
-  debug_assert_eq!(specifier.scheme(), "file");
-
-  let media_type = MediaType::from_specifier(&specifier);
-  let new_media_type = match media_type {
-    MediaType::JavaScript => MediaType::TypeScript,
-    MediaType::Jsx => MediaType::Tsx,
-    MediaType::Mjs => MediaType::Mts,
-    MediaType::Cjs => MediaType::Cts,
-    MediaType::TypeScript
-    | MediaType::Mts
-    | MediaType::Cts
-    | MediaType::Dts
-    | MediaType::Dmts
-    | MediaType::Dcts
-    | MediaType::Tsx
-    | MediaType::Json
-    | MediaType::Wasm
-    | MediaType::TsBuildInfo
-    | MediaType::SourceMap
-    | MediaType::Unknown => return None,
-  };
-  let old_specifier = specifier
-    .as_str()
-    .strip_suffix(media_type.as_ts_extension())?;
-  ModuleSpecifier::parse(&format!(
-    "{}{}",
-    old_specifier,
-    new_media_type.as_ts_extension()
-  ))
-  .ok()
-}
-
 #[cfg(test)]
 mod test {
   use std::sync::Arc;
@@ -941,29 +902,5 @@ mod test {
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
-  }
-
-  #[test]
-  fn test_js_to_ts_specifier() {
-    #[track_caller]
-    fn test(specifier: &str, result: Option<&str>) {
-      assert_eq!(
-        js_to_ts_specifier(&ModuleSpecifier::parse(specifier).unwrap())
-          .map(|s| s.to_string()),
-        result.map(|s| s.to_string())
-      );
-    }
-
-    test("file:///mod.ts", None);
-    test("file:///mod.tsx", None);
-    test("file:///mod.mts", None);
-    test("file:///mod.json", None);
-    test("file:///mod.d.ts", None);
-    test("file:///mod.d.mts", None);
-    test("file:///mod.d.cts", None);
-    test("file:///mod.js", Some("file:///mod.ts"));
-    test("file:///mod.jsx", Some("file:///mod.tsx"));
-    test("file:///mod.mjs", Some("file:///mod.mts"));
-    test("file:///mod.cjs", Some("file:///mod.cts"));
   }
 }

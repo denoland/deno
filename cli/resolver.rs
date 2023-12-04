@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
@@ -24,6 +25,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -34,6 +36,7 @@ use crate::module_loader::CjsResolutionStore;
 use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::util::path::specifier_to_file_path;
 use crate::util::sync::AtomicFlag;
 
 /// Result of checking if a specifier is mapped via
@@ -464,6 +467,73 @@ impl NpmResolver for CliGraphResolver {
 
   fn enables_bare_builtin_node_module(&self) -> bool {
     self.bare_node_builtins_enabled
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnstableLooseImportsResolver {
+  fs: Arc<dyn FileSystem>,
+}
+
+impl UnstableLooseImportsResolver {
+  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
+    Self { fs }
+  }
+
+  pub fn resolve<'a>(
+    &self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Cow<'a, ModuleSpecifier> {
+    if specifier.scheme() != "file" {
+      return Cow::Borrowed(specifier);
+    }
+
+    let media_type = MediaType::from_specifier(&specifier);
+    let new_media_type = match media_type {
+      MediaType::JavaScript => MediaType::TypeScript,
+      MediaType::Jsx => MediaType::Tsx,
+      MediaType::Mjs => MediaType::Mts,
+      MediaType::Cjs => MediaType::Cts,
+      MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Tsx
+      | MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown => return Cow::Borrowed(specifier),
+    };
+    let Ok(path) = specifier_to_file_path(specifier) else {
+      return Cow::Borrowed(specifier);
+    };
+    if self.fs.exists_sync(&path) {
+      return Cow::Borrowed(specifier);
+    }
+    let Some(old_specifier) = specifier
+      .as_str()
+      .strip_suffix(media_type.as_ts_extension())
+    else {
+      return Cow::Borrowed(specifier);
+    };
+    let Ok(new_specifier) = ModuleSpecifier::parse(&format!(
+      "{}{}",
+      old_specifier,
+      new_media_type.as_ts_extension()
+    )) else {
+      return Cow::Borrowed(specifier);
+    };
+    let Ok(new_path) = specifier_to_file_path(&new_specifier) else {
+      return Cow::Borrowed(specifier);
+    };
+    if self.fs.exists_sync(&new_path) {
+      Cow::Owned(new_specifier)
+    } else {
+      Cow::Borrowed(specifier)
+    }
   }
 }
 
