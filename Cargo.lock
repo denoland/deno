@@ -1720,8 +1720,8 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.3.0"
-source = "git+https://github.com/denoland/denokv?rev=b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4#b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4"
+version = "0.4.0"
+source = "git+https://github.com/denoland/denokv?rev=62353da2f5a0f266b0da258cc335fa507f0f2ae5#62353da2f5a0f266b0da258cc335fa507f0f2ae5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1736,8 +1736,8 @@ dependencies = [
 
 [[package]]
 name = "denokv_remote"
-version = "0.3.0"
-source = "git+https://github.com/denoland/denokv?rev=b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4#b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4"
+version = "0.4.0"
+source = "git+https://github.com/denoland/denokv?rev=62353da2f5a0f266b0da258cc335fa507f0f2ae5#62353da2f5a0f266b0da258cc335fa507f0f2ae5"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1760,8 +1760,8 @@ dependencies = [
 
 [[package]]
 name = "denokv_sqlite"
-version = "0.3.0"
-source = "git+https://github.com/denoland/denokv?rev=b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4#b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4"
+version = "0.4.0"
+source = "git+https://github.com/denoland/denokv?rev=62353da2f5a0f266b0da258cc335fa507f0f2ae5#62353da2f5a0f266b0da258cc335fa507f0f2ae5"
 dependencies = [
  "anyhow",
  "async-stream",

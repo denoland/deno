@@ -49,10 +49,10 @@ test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
-denokv_proto = { git = "https://github.com/denoland/denokv", rev = "b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4" }
+denokv_proto = { git = "https://github.com/denoland/denokv", rev = "62353da2f5a0f266b0da258cc335fa507f0f2ae5" }
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, git = "https://github.com/denoland/denokv", rev = "b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4" }
-denokv_remote = { git = "https://github.com/denoland/denokv", rev = "b27fdc1a1a148ab9590c5eff4d2430aa6ee075b4" }
+denokv_sqlite = { default-features = false, git = "https://github.com/denoland/denokv", rev = "62353da2f5a0f266b0da258cc335fa507f0f2ae5" }
+denokv_remote = { git = "https://github.com/denoland/denokv", rev = "62353da2f5a0f266b0da258cc335fa507f0f2ae5" }
 
 # exts
 deno_broadcast_channel = { version = "0.117.0", path = "./ext/broadcast_channel" }
