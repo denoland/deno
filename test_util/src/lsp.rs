@@ -1,11 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_exe_path;
-use crate::new_deno_dir;
 use crate::npm_registry_url;
 use crate::PathRef;
-use crate::TestContext;
-use crate::TestContextBuilder;
 
 use super::TempDir;
 
@@ -464,23 +461,29 @@ pub struct LspClientBuilder {
   print_stderr: bool,
   capture_stderr: bool,
   deno_exe: PathRef,
-  context: Option<TestContext>,
+  root_dir: PathRef,
   use_diagnostic_sync: bool,
+  deno_dir: TempDir,
 }
 
 impl LspClientBuilder {
   #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
+    Self::new_with_dir(TempDir::new())
+  }
+
+  pub fn new_with_dir(deno_dir: TempDir) -> Self {
     Self {
       print_stderr: false,
       capture_stderr: false,
       deno_exe: deno_exe_path(),
-      context: None,
+      root_dir: deno_dir.path().clone(),
       use_diagnostic_sync: true,
+      deno_dir,
     }
   }
 
-  pub fn deno_exe(&mut self, exe_path: impl AsRef<Path>) -> &mut Self {
+  pub fn deno_exe(mut self, exe_path: impl AsRef<Path>) -> Self {
     self.deno_exe = PathRef::new(exe_path);
     self
   }
@@ -488,25 +491,25 @@ impl LspClientBuilder {
   // not deprecated, this is just here so you don't accidentally
   // commit code with this enabled
   #[deprecated]
-  pub fn print_stderr(&mut self) -> &mut Self {
+  pub fn print_stderr(mut self) -> Self {
     self.print_stderr = true;
     self
   }
 
-  pub fn capture_stderr(&mut self) -> &mut Self {
+  pub fn capture_stderr(mut self) -> Self {
     self.capture_stderr = true;
     self
   }
 
   /// Whether to use the synchronization messages to better sync diagnostics
   /// between the test client and server.
-  pub fn use_diagnostic_sync(&mut self, value: bool) -> &mut Self {
+  pub fn use_diagnostic_sync(mut self, value: bool) -> Self {
     self.use_diagnostic_sync = value;
     self
   }
 
-  pub fn set_test_context(&mut self, test_context: &TestContext) -> &mut Self {
-    self.context = Some(test_context.clone());
+  pub fn set_root_dir(mut self, root_dir: PathRef) -> Self {
+    self.root_dir = root_dir;
     self
   }
 
@@ -515,11 +518,7 @@ impl LspClientBuilder {
   }
 
   pub fn build_result(&self) -> Result<LspClient> {
-    let deno_dir = self
-      .context
-      .as_ref()
-      .map(|c| c.deno_dir().clone())
-      .unwrap_or_else(new_deno_dir);
+    let deno_dir = self.deno_dir.clone();
     let mut command = Command::new(&self.deno_exe);
     command
       .env("DENO_DIR", deno_dir.path())
@@ -576,10 +575,7 @@ impl LspClientBuilder {
       reader,
       request_id: 1,
       start: Instant::now(),
-      context: self
-        .context
-        .clone()
-        .unwrap_or_else(|| TestContextBuilder::new().build()),
+      root_dir: self.root_dir.clone(),
       writer,
       deno_dir,
       stderr_lines_rx,
@@ -596,7 +592,7 @@ pub struct LspClient {
   start: Instant,
   writer: io::BufWriter<ChildStdin>,
   deno_dir: TempDir,
-  context: TestContext,
+  root_dir: PathRef,
   stderr_lines_rx: Option<mpsc::Receiver<String>>,
   config: serde_json::Value,
   supports_workspace_configuration: bool,
@@ -712,7 +708,7 @@ impl LspClient {
     mut config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new(config.clone());
-    builder.set_root_uri(self.context.temp_dir().uri());
+    builder.set_root_uri(self.root_dir.uri_dir());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.

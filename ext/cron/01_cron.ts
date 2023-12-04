@@ -3,11 +3,79 @@
 // @ts-ignore internal api
 const core = Deno.core;
 
+export function formatToCronSchedule(
+  value?: number | { exact: number | number[] } | {
+    start?: number;
+    end?: number;
+    every?: number;
+  },
+): string {
+  if (value === undefined) {
+    return "*";
+  } else if (typeof value === "number") {
+    return value.toString();
+  } else {
+    const { exact } = value as { exact: number | number[] };
+    if (exact === undefined) {
+      const { start, end, every } = value as {
+        start?: number;
+        end?: number;
+        every?: number;
+      };
+      if (start !== undefined && end !== undefined && every !== undefined) {
+        return start + "-" + end + "/" + every;
+      } else if (start !== undefined && end !== undefined) {
+        return start + "-" + end;
+      } else if (start !== undefined && every !== undefined) {
+        return start + "/" + every;
+      } else if (start !== undefined) {
+        return start + "/1";
+      } else if (end === undefined && every !== undefined) {
+        return "*/" + every;
+      } else {
+        throw new TypeError("Invalid cron schedule");
+      }
+    } else {
+      if (typeof exact === "number") {
+        return exact.toString();
+      } else {
+        return exact.join(",");
+      }
+    }
+  }
+}
+
+export function parseScheduleToString(
+  schedule: string | Deno.CronSchedule,
+): string {
+  if (typeof schedule === "string") {
+    return schedule;
+  } else {
+    const {
+      minute,
+      hour,
+      dayOfMonth,
+      month,
+      dayOfWeek,
+    } = schedule;
+
+    return formatToCronSchedule(minute) +
+      " " + formatToCronSchedule(hour) +
+      " " + formatToCronSchedule(dayOfMonth) +
+      " " + formatToCronSchedule(month) +
+      " " + formatToCronSchedule(dayOfWeek);
+  }
+}
+
 function cron(
   name: string,
-  schedule: string,
-  handler: () => Promise<void> | void,
-  options?: { backoffSchedule?: number[]; signal?: AbortSignal },
+  schedule: string | Deno.CronSchedule,
+  handlerOrOptions1:
+    | (() => Promise<void> | void)
+    | ({ backoffSchedule?: number[]; signal?: AbortSignal }),
+  handlerOrOptions2?:
+    | (() => Promise<void> | void)
+    | ({ backoffSchedule?: number[]; signal?: AbortSignal }),
 ) {
   if (name === undefined) {
     throw new TypeError("Deno.cron requires a unique name");
@@ -15,7 +83,22 @@ function cron(
   if (schedule === undefined) {
     throw new TypeError("Deno.cron requires a valid schedule");
   }
-  if (handler === undefined) {
+
+  schedule = parseScheduleToString(schedule);
+
+  let handler: () => Promise<void> | void;
+  let options: { backoffSchedule?: number[]; signal?: AbortSignal } | undefined;
+
+  if (typeof handlerOrOptions1 === "function") {
+    handler = handlerOrOptions1;
+    if (typeof handlerOrOptions2 === "function") {
+      throw new TypeError("options must be an object");
+    }
+    options = handlerOrOptions2;
+  } else if (typeof handlerOrOptions2 === "function") {
+    handler = handlerOrOptions2;
+    options = handlerOrOptions1;
+  } else {
     throw new TypeError("Deno.cron requires a handler");
   }
 

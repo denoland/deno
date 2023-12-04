@@ -112,10 +112,10 @@ class PermissionStatus extends EventTarget {
     return dispatched;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     const object = { state: this.state, onchange: this.onchange };
     if (this.partial) object.partial = this.partial;
-    return `${this.constructor.name} ${inspect(object)}`;
+    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
   }
 }
 

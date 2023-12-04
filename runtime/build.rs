@@ -13,12 +13,33 @@ mod startup_snapshot {
   use super::*;
   use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
+  use deno_core::op2;
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
+  use deno_core::OpState;
   use deno_http::DefaultHttpPropertyExtractor;
   use shared::maybe_transpile_source;
   use shared::runtime;
   use std::path::Path;
+
+  // Keep in sync with `runtime/ops/bootstrap.rs`
+  #[derive(serde::Serialize, Default)]
+  #[serde(rename_all = "camelCase")]
+  pub struct SnapshotOptions {
+    pub deno_version: String,
+    pub ts_version: String,
+    pub v8_version: &'static str,
+    pub target: String,
+  }
+
+  // TODO(@littledivy): Remove this once we get rid of deno_runtime snapshots.
+  #[op2]
+  #[serde]
+  pub fn op_snapshot_options(_: &mut OpState) -> SnapshotOptions {
+    SnapshotOptions::default()
+  }
+
+  deno_core::extension!(snapshot, ops = [op_snapshot_options],);
 
   #[derive(Clone)]
   struct Permissions;
@@ -193,7 +214,7 @@ mod startup_snapshot {
 
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let fs = std::sync::Arc::new(deno_fs::RealFs);
     let mut extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -232,6 +253,7 @@ mod startup_snapshot {
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
       deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
       runtime::init_ops_and_esm(),
+      snapshot::init_ops_and_esm(),
     ];
 
     for extension in &mut extensions {
@@ -276,6 +298,7 @@ fn main() {
     let snapshot_slice = &[];
     #[allow(clippy::needless_borrow)]
     #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::needless_borrows_for_generic_args)]
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 

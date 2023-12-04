@@ -9,6 +9,7 @@
 const core = globalThis.Deno.core;
 const { InterruptedPrototype, ops } = core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   EventTarget,
@@ -25,7 +26,6 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
-  ObjectSetPrototypeOf,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -57,10 +57,18 @@ class MessageChannel {
     return this.#port2;
   }
 
-  [SymbolFor("Deno.inspect")](inspect) {
-    return `MessageChannel ${
-      inspect({ port1: this.port1, port2: this.port2 })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageChannelPrototype, this),
+        keys: [
+          "port1",
+          "port2",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -75,9 +83,8 @@ const _enabled = Symbol("enabled");
  * @returns {MessagePort}
  */
 function createMessagePort(id) {
-  const port = core.createHostObject();
-  ObjectSetPrototypeOf(port, MessagePortPrototype);
-  port[webidl.brand] = webidl.brand;
+  const port = webidl.createBranded(MessagePort);
+  port[core.hostObjectBrand] = core.hostObjectBrand;
   setEventTargetData(port);
   port[_id] = id;
   return port;
@@ -180,6 +187,20 @@ class MessagePort extends EventTarget {
       core.close(this[_id]);
       this[_id] = null;
     }
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessagePortPrototype, this),
+        keys: [
+          "onmessage",
+          "onmessageerror",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

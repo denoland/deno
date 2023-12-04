@@ -19,6 +19,7 @@ use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -34,6 +35,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
@@ -115,12 +117,8 @@ pub fn graph_valid(
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!(
-            "\n    at {}:{}:{}",
-            colors::cyan(range.specifier.as_str()),
-            colors::yellow(&(range.start.line + 1).to_string()),
-            colors::yellow(&(range.start.character + 1).to_string())
-          ));
+          message.push_str("\n    at ");
+          message.push_str(&format_range_with_colors(range));
         }
       }
 
@@ -193,6 +191,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
+  fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -209,6 +208,7 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+    fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -222,6 +222,7 @@ impl ModuleGraphBuilder {
   ) -> Self {
     Self {
       options,
+      fs,
       resolver,
       npm_resolver,
       module_info_cache,
@@ -269,6 +270,12 @@ impl ModuleGraphBuilder {
     options: CreateGraphOptions<'_>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
 
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
@@ -288,11 +295,11 @@ impl ModuleGraphBuilder {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo(dsherret): workspace support
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;
@@ -312,6 +319,12 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -332,12 +345,12 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo(dsherret): workspace support
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;
@@ -717,6 +730,120 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
         .unwrap();
     }
   }
+}
+
+pub fn workspace_config_to_workspace_members(
+  workspace_config: &deno_config::WorkspaceConfig,
+) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+  workspace_config
+    .members
+    .iter()
+    .map(|member| {
+      workspace_member_config_try_into_workspace_member(member).with_context(
+        || {
+          format!(
+            "Failed to resolve configuration for '{}' workspace member at '{}'",
+            member.member_name,
+            member.config_file.specifier.as_str()
+          )
+        },
+      )
+    })
+    .collect()
+}
+
+fn workspace_member_config_try_into_workspace_member(
+  config: &deno_config::WorkspaceMemberConfig,
+) -> Result<deno_graph::WorkspaceMember, AnyError> {
+  let nv = deno_semver::package::PackageNv {
+    name: config.package_name.clone(),
+    version: deno_semver::Version::parse_standard(&config.package_version)?,
+  };
+  Ok(deno_graph::WorkspaceMember {
+    base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
+    nv,
+    exports: config
+      .config_file
+      .to_exports_config()?
+      .into_map()
+      // todo(dsherret): deno_graph should use an IndexMap
+      .into_iter()
+      .collect(),
+  })
+}
+
+pub struct DenoGraphFsAdapter<'a>(
+  pub &'a dyn deno_runtime::deno_fs::FileSystem,
+);
+
+impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
+  fn read_dir(
+    &self,
+    dir_url: &deno_graph::ModuleSpecifier,
+  ) -> Vec<deno_graph::source::DirEntry> {
+    use deno_core::anyhow;
+    use deno_graph::source::DirEntry;
+    use deno_graph::source::DirEntryKind;
+
+    let dir_path = match dir_url.to_file_path() {
+      Ok(path) => path,
+      // ignore, treat as non-analyzable
+      Err(()) => return vec![],
+    };
+    let entries = match self.0.read_dir_sync(&dir_path) {
+      Ok(dir) => dir,
+      Err(err)
+        if matches!(
+          err.kind(),
+          std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+        ) =>
+      {
+        return vec![];
+      }
+      Err(err) => {
+        return vec![DirEntry {
+          kind: DirEntryKind::Error(
+            anyhow::Error::from(err)
+              .context("Failed to read directory.".to_string()),
+          ),
+          url: dir_url.clone(),
+        }];
+      }
+    };
+    let mut dir_entries = Vec::with_capacity(entries.len());
+    for entry in entries {
+      let entry_path = dir_path.join(&entry.name);
+      dir_entries.push(if entry.is_directory {
+        DirEntry {
+          kind: DirEntryKind::Dir,
+          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_file {
+        DirEntry {
+          kind: DirEntryKind::File,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_symlink {
+        DirEntry {
+          kind: DirEntryKind::Symlink,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else {
+        continue;
+      });
+    }
+
+    dir_entries
+  }
+}
+
+pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
+  format!(
+    "{}:{}:{}",
+    colors::cyan(range.specifier.as_str()),
+    colors::yellow(&(range.start.line + 1).to_string()),
+    colors::yellow(&(range.start.character + 1).to_string())
+  )
 }
 
 #[cfg(test)]

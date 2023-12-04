@@ -2,6 +2,7 @@
 
 use deno_core::op2;
 use deno_core::OpState;
+use serde::Serialize;
 
 use crate::BootstrapOptions;
 
@@ -16,8 +17,33 @@ deno_core::extension!(
     op_bootstrap_log_level,
     op_bootstrap_no_color,
     op_bootstrap_is_tty,
+    op_snapshot_options,
   ],
+  options = {
+    snapshot_options: Option<SnapshotOptions>,
+  },
+  state = |state, options| {
+    if let Some(snapshot_options) = options.snapshot_options {
+      state.put::<SnapshotOptions>(snapshot_options);
+    }
+  },
 );
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotOptions {
+  pub deno_version: String,
+  pub ts_version: String,
+  pub v8_version: &'static str,
+  pub target: String,
+}
+
+// Note: Called at snapshot time, op perf is not a concern.
+#[op2]
+#[serde]
+pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
+  state.take::<SnapshotOptions>()
+}
 
 #[op2]
 #[serde]

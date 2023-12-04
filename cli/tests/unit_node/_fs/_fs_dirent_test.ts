@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { Dirent as Dirent_ } from "node:fs";
 
 // deno-lint-ignore no-explicit-any

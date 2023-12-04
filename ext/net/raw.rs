@@ -4,8 +4,8 @@ use crate::io::TcpStreamResource;
 use crate::io::UnixStreamResource;
 use crate::ops::TcpListenerResource;
 use crate::ops_tls::TlsListenerResource;
-use crate::ops_tls::TlsStream;
 use crate::ops_tls::TlsStreamResource;
+use crate::ops_tls::TLS_BUFFER_SIZE;
 #[cfg(unix)]
 use crate::ops_unix::UnixListenerResource;
 use deno_core::error::bad_resource;
@@ -15,6 +15,7 @@ use deno_core::ResourceId;
 use deno_core::ResourceTable;
 use deno_tls::rustls::ServerConfig;
 use pin_project::pin_project;
+use rustls_tokio_stream::TlsStream;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -187,7 +188,11 @@ impl NetworkStreamListener {
       }
       Self::Tls(tcp, config) => {
         let (stream, _addr) = tcp.accept().await?;
-        NetworkStream::Tls(TlsStream::new_server_side(stream, config.clone()))
+        NetworkStream::Tls(TlsStream::new_server_side(
+          stream,
+          config.clone(),
+          TLS_BUFFER_SIZE,
+        ))
       }
       #[cfg(unix)]
       Self::Unix(unix) => {
@@ -242,7 +247,7 @@ pub fn take_network_stream_resource(
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| bad_resource("TLS stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.reunite(write_half);
+    let tls_stream = read_half.unsplit(write_half);
     return Ok(NetworkStream::Tls(tls_stream));
   }
 

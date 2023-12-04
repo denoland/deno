@@ -544,7 +544,7 @@ declare namespace Deno {
      * Examples:
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "inherit",
@@ -559,7 +559,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "true",
@@ -574,7 +574,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "false",
@@ -589,7 +589,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "localhost:8080",
@@ -818,7 +818,7 @@ declare namespace Deno {
    * `fn` can be async if required.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.test({
    *   name: "example test",
@@ -859,7 +859,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "example test",
@@ -896,7 +896,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test("My test description", () => {
      *   assertEquals("hello", "hello");
@@ -922,7 +922,7 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test(function myTestName() {
      *   assertEquals("hello", "hello");
@@ -945,7 +945,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+     * import {assert, fail, assertEquals} from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test("My test description", { permissions: { read: true } }, (): void => {
      *   assertEquals("hello", "hello");
@@ -972,7 +972,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test(
      *   {
@@ -1010,7 +1010,7 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test(
      *   { permissions: { read: true } },
@@ -1234,7 +1234,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench({
    *   name: "example test",
@@ -1273,7 +1273,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench("My test description", () => {
    *   assertEquals("hello", "hello");
@@ -1301,7 +1301,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(function myTestName() {
    *   assertEquals("hello", "hello");
@@ -1326,7 +1326,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(
    *   "My test description",
@@ -1363,7 +1363,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(
    *   { name: "My test description", permissions: { read: true } },
@@ -1397,7 +1397,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(
    *   { permissions: { read: true } },
@@ -1786,10 +1786,8 @@ declare namespace Deno {
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
-   * @deprecated Use
-   * [`copy`](https://deno.land/std/streams/copy.ts?s=copy) from
-   * [`std/streams/copy.ts`](https://deno.land/std/streams/copy.ts)
-   * instead. `Deno.copy` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream.pipeTo} instead.
+   * {@linkcode Deno.copy} will be removed in the future.
    *
    * @category I/O
    *
@@ -1806,11 +1804,8 @@ declare namespace Deno {
   /**
    * Turns a Reader, `r`, into an async iterator.
    *
-   * @deprecated Use
-   * [`iterateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
-   * from
-   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
-   * instead. `Deno.iter` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Deno.iter}
+   * will be removed in the future.
    *
    * @category I/O
    */
@@ -1822,11 +1817,8 @@ declare namespace Deno {
   /**
    * Turns a ReaderSync, `r`, into an iterator.
    *
-   * @deprecated Use
-   * [`iterateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
-   * from
-   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
-   * instead. `Deno.iterSync` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} instead.
+   * {@linkcode Deno.iterSync} will be removed in the future.
    *
    * @category I/O
    */
@@ -2459,7 +2451,7 @@ declare namespace Deno {
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const file = await Deno.open("hello.txt");
      * const fileInfo = await file.stat();
@@ -2471,7 +2463,7 @@ declare namespace Deno {
     /** Synchronously returns a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const file = Deno.openSync("hello.txt")
      * const fileInfo = file.statSync();
@@ -2497,8 +2489,9 @@ declare namespace Deno {
   /**
    * The Deno abstraction for reading and writing files.
    *
-   * @deprecated Use {@linkcode Deno.FsFile} instead. `Deno.File` will be
-   *   removed in the future.
+   * @deprecated Use {@linkcode Deno.FsFile} instead. {@linkcode Deno.File}
+   * will be removed in the future.
+   *
    * @category File System
    */
   export const File: typeof FsFile;
@@ -2691,9 +2684,9 @@ declare namespace Deno {
   /**
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
-   * @deprecated Use [`Buffer`](https://deno.land/std/io/buffer.ts?s=Buffer)
-   *   from [`std/io/buffer.ts`](https://deno.land/std/io/buffer.ts) instead.
-   *   `Deno.Buffer` will be removed in the future.
+   * @deprecated Use the
+   * [Web Streams API]{@link https://developer.mozilla.org/en-US/docs/Web/API/Streams_API}
+   * instead. {@linkcode Deno.Buffer} will be removed in the future.
    *
    * @category I/O
    */
@@ -2767,10 +2760,9 @@ declare namespace Deno {
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
-   * @deprecated Use
-   *   [`readAll`](https://deno.land/std/streams/read_all.ts?s=readAll) from
-   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
-   *   instead. `Deno.readAll` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} and
+   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * instead. {@linkcode Deno.readAll} will be removed in the future.
    *
    * @category I/O
    */
@@ -2780,11 +2772,9 @@ declare namespace Deno {
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
-   * @deprecated Use
-   *   [`readAllSync`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
-   *   from
-   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
-   *   instead. `Deno.readAllSync` will be removed in the future.
+   * @deprecated Use {@linkcode ReadableStream} and
+   * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
+   * instead. {@linkcode Deno.readAllSync} will be removed in the future.
    *
    * @category I/O
    */
@@ -2793,10 +2783,9 @@ declare namespace Deno {
   /**
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
-   * @deprecated Use
-   *   [`writeAll`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
-   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   *   instead. `Deno.writeAll` will be removed in the future.
+   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
+   * and {@linkcode ReadableStream.pipeTo} instead. {@linkcode Deno.writeAll}
+   * will be removed in the future.
    *
    * @category I/O
    */
@@ -2806,11 +2795,9 @@ declare namespace Deno {
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
-   * @deprecated Use
-   *   [`writeAllSync`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
-   *   from
-   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
-   *   instead. `Deno.writeAllSync` will be removed in the future.
+   * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
+   * and {@linkcode ReadableStream.pipeTo} instead.
+   * {@linkcode Deno.writeAllSync} will be removed in the future.
    *
    * @category I/O
    */
@@ -3526,7 +3513,7 @@ declare namespace Deno {
    * of what it points to.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = await Deno.lstat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3543,7 +3530,7 @@ declare namespace Deno {
    * returned instead of what it points to.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = Deno.lstatSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3559,7 +3546,7 @@ declare namespace Deno {
    * always follow symlinks.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = await Deno.stat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3575,7 +3562,7 @@ declare namespace Deno {
    * `path`. Will always follow symlinks.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = Deno.statSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -4325,7 +4312,7 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
-  export class ChildProcess implements Disposable {
+  export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array>;
     get stdout(): ReadableStream<Uint8Array>;
     get stderr(): ReadableStream<Uint8Array>;
@@ -4351,7 +4338,7 @@ declare namespace Deno {
      * process from exiting. */
     unref(): void;
 
-    [Symbol.dispose](): void;
+    [Symbol.asyncDispose](): Promise<void>;
   }
 
   /**
@@ -4807,7 +4794,7 @@ declare namespace Deno {
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
@@ -4818,7 +4805,7 @@ declare namespace Deno {
     /** Revokes a permission, and returns the state of the permission.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const status = Deno.permissions.revokeSync({ name: "run" });
      * assert(status.state !== "granted")
@@ -4896,14 +4883,14 @@ declare namespace Deno {
    * ### Revoking
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const status = await Deno.permissions.revoke({ name: "run" });
    * assert(status.state !== "granted")
    * ```
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const status = Deno.permissions.revokeSync({ name: "run" });
    * assert(status.state !== "granted")
@@ -4999,13 +4986,13 @@ declare namespace Deno {
    * Give the following command line invocation of Deno:
    *
    * ```sh
-   * deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+   * deno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi
    * ```
    *
    * Then `Deno.args` will contain:
    *
    * ```ts
-   * [ "/etc/passwd" ]
+   * [ "Sushi" ]
    * ```
    *
    * If you are looking for a structured way to parse arguments, there is the
@@ -5213,7 +5200,7 @@ declare namespace Deno {
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const file = await Deno.open("file.txt", { read: true });
    * const fileInfo = await Deno.fstat(file.rid);
@@ -5229,7 +5216,7 @@ declare namespace Deno {
    * stream.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const file = Deno.openSync("file.txt", { read: true });
    * const fileInfo = Deno.fstatSync(file.rid);

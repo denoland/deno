@@ -5,7 +5,6 @@ use deno_core::serde_json::json;
 use pretty_assertions::assert_eq;
 use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
 use util::http_server;
@@ -24,7 +23,7 @@ fn output_dir_exists() {
     .env("NO_COLOR", "1")
     .arg("vendor")
     .arg("mod.ts")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -46,7 +45,7 @@ fn output_dir_exists() {
     .arg("--output")
     .arg("vendor")
     .arg("mod.ts")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -91,8 +90,7 @@ fn standard_test() {
     .arg("--output")
     .arg("vendor2")
     .env("NO_COLOR", "1")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -140,8 +138,7 @@ fn standard_test() {
     .arg("--import-map")
     .arg("vendor2/import_map.json")
     .arg("my_app.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -178,8 +175,7 @@ fn import_map_output_dir() {
     .arg("--import-map")
     .arg("vendor/import_map.json")
     .arg("my_app.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -210,8 +206,7 @@ fn remote_module_test() {
     .env("NO_COLOR", "1")
     .arg("vendor")
     .arg("http://localhost:4545/vendor/query_reexport.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -272,7 +267,7 @@ fn existing_import_map_no_remote() {
     .arg("mod.ts")
     .arg("--import-map")
     .arg(import_map_filename)
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -345,8 +340,7 @@ fn existing_import_map_mixed_with_remote() {
     .arg("vendor/import_map.json")
     .arg("--output")
     .arg("vendor2")
-    .stderr(Stdio::piped())
-    .stdout(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -434,8 +428,7 @@ fn dynamic_import() {
     .arg("--import-map")
     .arg("vendor/import_map.json")
     .arg("mod.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -459,8 +452,7 @@ fn dynamic_non_analyzable_import() {
     .arg("vendor")
     .arg("--reload")
     .arg("mod.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -502,8 +494,7 @@ fn update_existing_config_test() {
     .arg("--output")
     .arg("vendor2")
     .env("NO_COLOR", "1")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -527,8 +518,7 @@ fn update_existing_config_test() {
     .arg("--check")
     .arg("--quiet")
     .arg("my_app.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();

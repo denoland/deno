@@ -8,7 +8,6 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::fs;
-use std::process::Stdio;
 use test_util::assert_starts_with;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
@@ -1303,7 +1302,7 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"/etc/passwd\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -7130,8 +7129,7 @@ fn lsp_npm_specifier_unopened_file() {
     .arg("--quiet")
     .arg("other.ts")
     .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
@@ -8305,19 +8303,27 @@ fn lsp_performance() {
   assert_eq!(
     averages,
     vec![
-      "did_open",
-      "hover",
-      "initialize",
-      "op_load",
-      "request",
-      "testing_update",
-      "update_cache",
-      "update_diagnostics_deps",
-      "update_diagnostics_lint",
-      "update_diagnostics_ts",
-      "update_import_map",
-      "update_registries",
-      "update_tsconfig",
+      "lsp.did_open",
+      "lsp.hover",
+      "lsp.initialize",
+      "lsp.testing_update",
+      "lsp.update_cache",
+      "lsp.update_diagnostics_deps",
+      "lsp.update_diagnostics_lint",
+      "lsp.update_diagnostics_ts",
+      "lsp.update_import_map",
+      "lsp.update_registries",
+      "lsp.update_tsconfig",
+      "tsc.host.$configure",
+      "tsc.host.$getAssets",
+      "tsc.host.$getDiagnostics",
+      "tsc.host.$getSupportedCodeFixes",
+      "tsc.host.getQuickInfoAtPosition",
+      "tsc.op.op_load",
+      "tsc.request.$configure",
+      "tsc.request.$getAssets",
+      "tsc.request.$getSupportedCodeFixes",
+      "tsc.request.getQuickInfoAtPosition",
     ]
   );
   client.shutdown();
@@ -10438,5 +10444,65 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
     }])
   );
 
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jupyter_byonm_diagnostics() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("package.json").write_json(&json!({
+    "dependencies": {
+      "@denotest/esm-basic": "*"
+    }
+  }));
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["byonm"]
+  }));
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let notebook_specifier = temp_dir.join("notebook.ipynb").uri_file();
+  let notebook_specifier = format!(
+    "{}#abc",
+    notebook_specifier
+      .to_string()
+      .replace("file://", "deno-notebook-cell:")
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": notebook_specifier,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { getValue, nonExistent } from '@denotest/esm-basic';\n console.log(getValue, nonExistent);",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": notebook_specifier,
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 19,
+              },
+              "end": {
+                "line": 0,
+                "character": 30,
+              },
+            },
+            "severity": 1,
+            "code": 2305,
+            "source": "deno-ts",
+            "message": "Module '\"@denotest/esm-basic\"' has no exported member 'nonExistent'.",
+          },
+        ],
+        "version": 1,
+      },
+    ])
+  );
   client.shutdown();
 }

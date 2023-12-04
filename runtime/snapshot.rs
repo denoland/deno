@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops;
+use crate::ops::bootstrap::SnapshotOptions;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
@@ -183,9 +184,12 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
   }
 }
 
-pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
+pub fn create_runtime_snapshot(
+  snapshot_path: PathBuf,
+  snapshot_options: SnapshotOptions,
+) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
-  // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   let mut extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -234,7 +238,7 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     ops::signal::deno_signal::init_ops(),
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
-    ops::bootstrap::deno_bootstrap::init_ops(),
+    ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
   ];
 
   for extension in &mut extensions {

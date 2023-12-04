@@ -1,9 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// Removes the `__proto__` for security reasons.
-// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-delete Object.prototype.__proto__;
-
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
@@ -14,6 +10,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -448,7 +445,19 @@ const finalDenoNs = {
   resources: core.resources,
   close: core.close,
   ...denoNs,
+  // Deno.test and Deno.bench are noops here, but kept for compatibility; so
+  // that they don't cause errors when used outside of `deno test`/`deno bench`
+  // contexts.
+  test: () => {},
+  bench: () => {},
 };
+
+const {
+  denoVersion,
+  tsVersion,
+  v8Version,
+  target,
+} = ops.op_snapshot_options();
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
@@ -457,16 +466,12 @@ function bootstrapMainRuntime(runtimeOptions) {
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: denoVersion,
-    1: location_,
-    2: tsVersion,
-    3: unstableFlag,
-    4: unstableFeatures,
-    5: target,
-    6: v8Version,
-    7: inspectFlag,
-    9: hasNodeModulesDir,
-    10: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    3: inspectFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -562,6 +567,12 @@ function bootstrapMainRuntime(runtimeOptions) {
     }
   }
 
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+    // Removes the `__proto__` for security reasons.
+    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+    delete Object.prototype.__proto__;
+  }
+
   // Setup `Deno` global - we're actually overriding already existing global
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
@@ -583,16 +594,12 @@ function bootstrapWorkerRuntime(
   const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
-    0: denoVersion,
-    1: location_,
-    2: tsVersion,
-    3: unstableFlag,
-    4: unstableFeatures,
-    5: target,
-    6: v8Version,
-    8: enableTestingFeaturesFlag,
-    9: hasNodeModulesDir,
-    10: maybeBinaryNpmCommandName,
+    0: location_,
+    1: unstableFlag,
+    2: unstableFeatures,
+    4: enableTestingFeaturesFlag,
+    5: hasNodeModulesDir,
+    6: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -664,6 +671,13 @@ function bootstrapWorkerRuntime(
       ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
     }
   }
+
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+    // Removes the `__proto__` for security reasons.
+    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+    delete Object.prototype.__proto__;
+  }
+
   ObjectDefineProperties(finalDenoNs, {
     pid: util.getterOnly(opPid),
     noColor: util.getterOnly(() => ops.op_bootstrap_no_color()),

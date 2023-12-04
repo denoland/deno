@@ -1,15 +1,11 @@
-import { deferred } from "../../../../test_util/std/async/deferred.ts";
-import {
-  assert,
-  assertEquals,
-} from "../../../../test_util/std/testing/asserts.ts";
+import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
 import { BufReader, BufWriter } from "../../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "./textproto.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-const resolvable = deferred();
+const { promise, resolve } = Promise.withResolvers();
 const hostname = "localhost";
 const port = 3505;
 
@@ -32,7 +28,7 @@ listener.accept().then(
     // TODO(bartlomieju): this might be a bug
     setTimeout(() => {
       conn.close();
-      resolvable.resolve();
+      resolve();
     }, 0);
   },
 );
@@ -65,6 +61,6 @@ await r.readFull(bodyBuf);
 assertEquals(decoder.decode(bodyBuf), "Hello World\n");
 conn.close();
 listener.close();
-await resolvable;
+await promise;
 
 console.log("DONE");
