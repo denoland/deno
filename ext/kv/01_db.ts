@@ -62,6 +62,7 @@ const kvSymbol = Symbol("KvRid");
 
 class Kv {
   #rid: number;
+  #isClosed: boolean;
 
   constructor(rid: number = undefined, symbol: symbol = undefined) {
     if (kvSymbol !== symbol) {
@@ -70,6 +71,7 @@ class Kv {
       );
     }
     this.#rid = rid;
+    this.#isClosed = false;
   }
 
   atomic() {
@@ -249,6 +251,9 @@ class Kv {
   async listenQueue(
     handler: (message: unknown) => Promise<void> | void,
   ): Promise<void> {
+    if (this.#isClosed) {
+      throw new Error("already closed");
+    }
     const finishMessageOps = new Map<number, Promise<void>>();
     while (true) {
       // Wait for the next message.
@@ -299,6 +304,7 @@ class Kv {
 
   close() {
     core.close(this.#rid);
+    this.#isClosed = true;
   }
 
   [SymbolDispose]() {

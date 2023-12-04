@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -53,4 +53,15 @@ queueTest("queue with undelivered", async (db) => {
     db.close();
     await listener;
   }
+});
+
+queueTest("throw error if already closed", async (db) => {
+  db.close();
+  await assertRejects(
+    async () => {
+      await db.listenQueue(() => {});
+    },
+    Error,
+    "already closed",
+  );
 });
