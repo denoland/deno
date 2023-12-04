@@ -24,13 +24,14 @@ use crate::tools::lint::get_configured_rules;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -39,6 +40,7 @@ use deno_lint::rules::LintRule;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -94,14 +96,16 @@ type DiagnosticsBySource = HashMap<DiagnosticSource, VersionedDiagnostics>;
 #[derive(Debug)]
 struct DiagnosticsPublisher {
   client: Client,
+  state: Arc<DiagnosticsState>,
   diagnostics_by_specifier:
     Mutex<HashMap<ModuleSpecifier, DiagnosticsBySource>>,
 }
 
 impl DiagnosticsPublisher {
-  pub fn new(client: Client) -> Self {
+  pub fn new(client: Client, state: Arc<DiagnosticsState>) -> Self {
     Self {
       client,
+      state,
       diagnostics_by_specifier: Default::default(),
     }
   }
@@ -142,6 +146,9 @@ impl DiagnosticsPublisher {
         .collect::<Vec<_>>();
 
       self
+        .state
+        .update(&record.specifier, version, &all_specifier_diagnostics);
+      self
         .client
         .when_outside_lsp_lock()
         .publish_diagnostics(
@@ -171,6 +178,7 @@ impl DiagnosticsPublisher {
         specifiers_to_remove.push(specifier.clone());
         if let Some(removed_value) = maybe_removed_value {
           // clear out any diagnostics for this specifier
+          self.state.update(specifier, removed_value.version, &[]);
           self
             .client
             .when_outside_lsp_lock()
@@ -290,6 +298,75 @@ struct ChannelUpdateMessage {
 }
 
 #[derive(Debug)]
+struct SpecifierState {
+  version: Option<i32>,
+  no_cache_diagnostics: Vec<lsp::Diagnostic>,
+}
+
+#[derive(Debug, Default)]
+pub struct DiagnosticsState {
+  specifiers: RwLock<HashMap<ModuleSpecifier, SpecifierState>>,
+}
+
+impl DiagnosticsState {
+  fn update(
+    &self,
+    specifier: &ModuleSpecifier,
+    version: Option<i32>,
+    diagnostics: &[lsp::Diagnostic],
+  ) {
+    let mut specifiers = self.specifiers.write();
+    let current_version = specifiers.get(specifier).and_then(|s| s.version);
+    match (version, current_version) {
+      (Some(arg), Some(existing)) if arg < existing => return,
+      _ => {}
+    }
+    let mut no_cache_diagnostics = vec![];
+    for diagnostic in diagnostics {
+      if diagnostic.code
+        == Some(lsp::NumberOrString::String("no-cache".to_string()))
+        || diagnostic.code
+          == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
+      {
+        no_cache_diagnostics.push(diagnostic.clone());
+      }
+    }
+    specifiers.insert(
+      specifier.clone(),
+      SpecifierState {
+        version,
+        no_cache_diagnostics,
+      },
+    );
+  }
+
+  pub fn clear(&self, specifier: &ModuleSpecifier) {
+    self.specifiers.write().remove(specifier);
+  }
+
+  pub fn has_no_cache_diagnostics(&self, specifier: &ModuleSpecifier) -> bool {
+    self
+      .specifiers
+      .read()
+      .get(specifier)
+      .map(|s| !s.no_cache_diagnostics.is_empty())
+      .unwrap_or(false)
+  }
+
+  pub fn no_cache_diagnostics(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<lsp::Diagnostic> {
+    self
+      .specifiers
+      .read()
+      .get(specifier)
+      .map(|s| s.no_cache_diagnostics.clone())
+      .unwrap_or_default()
+  }
+}
+
+#[derive(Debug)]
 pub struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<ChannelMessage>>,
   ts_diagnostics: TsDiagnosticsStore,
@@ -297,6 +374,7 @@ pub struct DiagnosticsServer {
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
   batch_counter: DiagnosticBatchCounter,
+  state: Arc<DiagnosticsState>,
 }
 
 impl DiagnosticsServer {
@@ -304,6 +382,7 @@ impl DiagnosticsServer {
     client: Client,
     performance: Arc<Performance>,
     ts_server: Arc<TsServer>,
+    state: Arc<DiagnosticsState>,
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),
@@ -312,6 +391,7 @@ impl DiagnosticsServer {
       performance,
       ts_server,
       batch_counter: Default::default(),
+      state,
     }
   }
 
@@ -339,6 +419,7 @@ impl DiagnosticsServer {
     let (tx, mut rx) = mpsc::unbounded_channel::<ChannelMessage>();
     self.channel = Some(tx);
     let client = self.client.clone();
+    let state = self.state.clone();
     let performance = self.performance.clone();
     let ts_diagnostics_store = self.ts_diagnostics.clone();
     let ts_server = self.ts_server.clone();
@@ -352,7 +433,7 @@ impl DiagnosticsServer {
         let mut lint_handle: Option<JoinHandle<()>> = None;
         let mut deps_handle: Option<JoinHandle<()>> = None;
         let diagnostics_publisher =
-          Arc::new(DiagnosticsPublisher::new(client.clone()));
+          Arc::new(DiagnosticsPublisher::new(client.clone(), state.clone()));
 
         loop {
           match rx.recv().await {
@@ -412,8 +493,7 @@ impl DiagnosticsServer {
                     _ = tokio::time::sleep(DELAY) => {}
                   };
 
-                  let mark =
-                    performance.mark("update_diagnostics_ts", None::<()>);
+                  let mark = performance.mark("lsp.update_diagnostics_ts");
                   let diagnostics = generate_ts_diagnostics(
                     snapshot.clone(),
                     &config,
@@ -422,7 +502,12 @@ impl DiagnosticsServer {
                   )
                   .await
                   .map_err(|err| {
-                    error!("Error generating TypeScript diagnostics: {}", err);
+                    if !token.is_cancelled() {
+                      error!(
+                        "Error generating TypeScript diagnostics: {}",
+                        err
+                      );
+                    }
                   })
                   .unwrap_or_default();
 
@@ -468,8 +553,7 @@ impl DiagnosticsServer {
                   if let Some(previous_handle) = previous_deps_handle {
                     previous_handle.await;
                   }
-                  let mark =
-                    performance.mark("update_diagnostics_deps", None::<()>);
+                  let mark = performance.mark("lsp.update_diagnostics_deps");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
                     move || generate_deno_diagnostics(&snapshot, &config, token)
@@ -518,8 +602,7 @@ impl DiagnosticsServer {
                   if let Some(previous_handle) = previous_lint_handle {
                     previous_handle.await;
                   }
-                  let mark =
-                    performance.mark("update_diagnostics_lint", None::<()>);
+                  let mark = performance.mark("lsp.update_diagnostics_lint");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
                     move || {
@@ -645,10 +728,10 @@ fn to_lsp_related_information(
     related
       .iter()
       .filter_map(|ri| {
-        if let (Some(source), Some(start), Some(end)) =
-          (&ri.source, &ri.start, &ri.end)
+        if let (Some(file_name), Some(start), Some(end)) =
+          (&ri.file_name, &ri.start, &ri.end)
         {
-          let uri = lsp::Url::parse(source).unwrap();
+          let uri = lsp::Url::parse(file_name).unwrap();
           Some(lsp::DiagnosticRelatedInformation {
             location: lsp::Location {
               uri,
@@ -707,37 +790,37 @@ fn generate_lint_diagnostics(
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let workspace_settings = config.settings.workspace.clone();
   let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
-  if workspace_settings.lint {
-    for document in documents {
-      // exit early if cancelled
-      if token.is_cancelled() {
-        break;
-      }
-
-      // ignore any npm package files
-      if let Some(node_resolver) = &snapshot.maybe_node_resolver {
-        if node_resolver.in_npm_package(document.specifier()) {
-          continue;
-        }
-      }
-
-      let version = document.maybe_lsp_version();
-      diagnostics_vec.push(DiagnosticRecord {
-        specifier: document.specifier().clone(),
-        versioned: VersionedDiagnostics {
-          version,
-          diagnostics: generate_document_lint_diagnostics(
-            config,
-            lint_options,
-            lint_rules.clone(),
-            &document,
-          ),
-        },
-      });
+  for document in documents {
+    let settings =
+      config.workspace_settings_for_specifier(document.specifier());
+    if !settings.lint {
+      continue;
     }
+    // exit early if cancelled
+    if token.is_cancelled() {
+      break;
+    }
+    // ignore any npm package files
+    if let Some(npm) = &snapshot.npm {
+      if npm.node_resolver.in_npm_package(document.specifier()) {
+        continue;
+      }
+    }
+    let version = document.maybe_lsp_version();
+    diagnostics_vec.push(DiagnosticRecord {
+      specifier: document.specifier().clone(),
+      versioned: VersionedDiagnostics {
+        version,
+        diagnostics: generate_document_lint_diagnostics(
+          config,
+          lint_options,
+          lint_rules.clone(),
+          &document,
+        ),
+      },
+    });
   }
   diagnostics_vec
 }
@@ -838,7 +921,7 @@ async fn generate_ts_diagnostics(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DiagnosticDataSpecifier {
+pub struct DiagnosticDataSpecifier {
   pub specifier: ModuleSpecifier,
 }
 
@@ -870,13 +953,13 @@ pub enum DenoDiagnostic {
   /// remapped to an import map import specifier.
   ImportMapRemap { from: String, to: String },
   /// The import assertion type is incorrect.
-  InvalidAssertType(String),
-  /// A module requires an assertion type to be a valid import.
-  NoAssertType,
+  InvalidAttributeType(String),
+  /// A module requires an attribute type to be a valid import.
+  NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
-  NoCacheNpm(NpmPackageReqReference, ModuleSpecifier),
+  NoCacheNpm(PackageReq, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -889,6 +972,8 @@ pub enum DenoDiagnostic {
   ResolutionError(deno_graph::ResolutionError),
   /// Invalid `node:` specifier.
   InvalidNodeSpecifier(ModuleSpecifier),
+  /// Bare specifier is used for `node:` specifier
+  BareNodeSpecifier(String),
 }
 
 impl DenoDiagnostic {
@@ -896,8 +981,8 @@ impl DenoDiagnostic {
     match self {
       Self::DenoWarn(_) => "deno-warn",
       Self::ImportMapRemap { .. } => "import-map-remap",
-      Self::InvalidAssertType(_) => "invalid-assert-type",
-      Self::NoAssertType => "no-assert-type",
+      Self::InvalidAttributeType(_) => "invalid-attribute-type",
+      Self::NoAttributeType => "no-attribute-type",
       Self::NoCache(_) => "no-cache",
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
@@ -922,6 +1007,7 @@ impl DenoDiagnostic {
         }
       }
       Self::InvalidNodeSpecifier(_) => "resolver-error",
+      Self::BareNodeSpecifier(_) => "import-node-prefix-missing",
     }
   }
 
@@ -957,15 +1043,15 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
-        "no-assert-type" => lsp::CodeAction {
-          title: "Insert import assertion.".to_string(),
+        "no-attribute-type" => lsp::CodeAction {
+          title: "Insert import attribute.".to_string(),
           kind: Some(lsp::CodeActionKind::QUICKFIX),
           diagnostics: Some(vec![diagnostic.clone()]),
           edit: Some(lsp::WorkspaceEdit {
             changes: Some(HashMap::from([(
               specifier.clone(),
               vec![lsp::TextEdit {
-                new_text: " assert { type: \"json\" }".to_string(),
+                new_text: " with { type: \"json\" }".to_string(),
                 range: lsp::Range {
                   start: diagnostic.range.end,
                   end: diagnostic.range.end,
@@ -982,20 +1068,17 @@ impl DenoDiagnostic {
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
           let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
-          let title = match code.as_str() {
-            "no-cache" | "no-cache-npm" => {
-              format!("Cache \"{}\" and its dependencies.", data.specifier)
-            }
-            _ => "Cache the data URL and its dependencies.".to_string(),
-          };
           lsp::CodeAction {
-            title,
+            title: format!(
+              "Cache \"{}\" and its dependencies.",
+              data.specifier
+            ),
             kind: Some(lsp::CodeActionKind::QUICKFIX),
             diagnostics: Some(vec![diagnostic.clone()]),
             command: Some(lsp::Command {
               title: "".to_string(),
               command: "deno.cache".to_string(),
-              arguments: Some(vec![json!([data.specifier])]),
+              arguments: Some(vec![json!([data.specifier]), json!(&specifier)]),
             }),
             ..Default::default()
           }
@@ -1068,7 +1151,7 @@ impl DenoDiagnostic {
         "import-map-remap"
           | "no-cache"
           | "no-cache-npm"
-          | "no-assert-type"
+          | "no-attribute-type"
           | "redirect"
           | "import-node-prefix-missing"
       )
@@ -1083,10 +1166,10 @@ impl DenoDiagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
       Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
-      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
-      Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
+      Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an attribute type of \"json\". Instead got \"{assert_type}\"."), None),
+      Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
-      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_ref.req), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: {specifier}\n  Please check the file path."), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (
@@ -1096,6 +1179,7 @@ impl DenoDiagnostic {
           .map(|specifier| json!({ "specifier": specifier }))
       ),
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
+      Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
     };
     lsp::Diagnostic {
       range: *range,
@@ -1111,6 +1195,7 @@ impl DenoDiagnostic {
 
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
+  dependency_key: &str,
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
@@ -1143,25 +1228,31 @@ fn diagnose_resolution(
           match maybe_assert_type {
             // The module has the correct assertion type, no diagnostic
             Some("json") => (),
-            // The dynamic import statement is missing an assertion type, which
+            // The dynamic import statement is missing an attribute type, which
             // we might not be able to statically detect, therefore we will
             // not provide a potentially incorrect diagnostic.
             None if is_dynamic => (),
             // The module has an incorrect assertion type, diagnostic
-            Some(assert_type) => diagnostics
-              .push(DenoDiagnostic::InvalidAssertType(assert_type.to_string())),
-            // The module is missing an assertion type, diagnostic
-            None => diagnostics.push(DenoDiagnostic::NoAssertType),
+            Some(assert_type) => diagnostics.push(
+              DenoDiagnostic::InvalidAttributeType(assert_type.to_string()),
+            ),
+            // The module is missing an attribute type, diagnostic
+            None => diagnostics.push(DenoDiagnostic::NoAttributeType),
           }
         }
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
-        if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+        if let Some(npm_resolver) = snapshot
+          .npm
+          .as_ref()
+          .and_then(|n| n.npm_resolver.as_managed())
+        {
           // show diagnostics for npm package references that aren't cached
-          if !npm_resolver.is_pkg_req_folder_cached(&pkg_ref.req) {
+          let req = pkg_ref.into_inner().req;
+          if !npm_resolver.is_pkg_req_folder_cached(&req) {
             diagnostics
-              .push(DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone()));
+              .push(DenoDiagnostic::NoCacheNpm(req, specifier.clone()));
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
@@ -1169,13 +1260,30 @@ fn diagnose_resolution(
         if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
-        } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+        } else if module_name == dependency_key {
+          let mut is_mapped = false;
+          if let Some(import_map) = &snapshot.maybe_import_map {
+            if let Resolution::Ok(resolved) = &resolution {
+              if import_map.resolve(module_name, &resolved.specifier).is_ok() {
+                is_mapped = true;
+              }
+            }
+          }
+          // show diagnostics for bare node specifiers that aren't mapped by import map
+          if !is_mapped {
+            diagnostics
+              .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
+          }
+        } else if let Some(npm_resolver) = snapshot
+          .npm
+          .as_ref()
+          .and_then(|n| n.npm_resolver.as_managed())
+        {
           // check that a @types/node package exists in the resolver
-          let types_node_ref =
-            NpmPackageReqReference::from_str("npm:@types/node").unwrap();
-          if !npm_resolver.is_pkg_req_folder_cached(&types_node_ref.req) {
+          let types_node_req = PackageReq::from_str("@types/node").unwrap();
+          if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
             diagnostics.push(DenoDiagnostic::NoCacheNpm(
-              types_node_ref,
+              types_node_req,
               ModuleSpecifier::parse("npm:@types/node").unwrap(),
             ));
           }
@@ -1211,8 +1319,8 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
-    if npm_resolver.in_npm_package(referrer) {
+  if let Some(npm) = &snapshot.npm {
+    if npm.npm_resolver.in_npm_package(referrer) {
       return; // ignore, surface typescript errors instead
     }
   }
@@ -1242,13 +1350,14 @@ fn diagnose_dependency(
   diagnostics.extend(
     diagnose_resolution(
       snapshot,
+      dependency_key,
       if dependency.maybe_code.is_none() {
         &dependency.maybe_type
       } else {
         &dependency.maybe_code
       },
       dependency.is_dynamic,
-      dependency.maybe_assert_type.as_deref(),
+      dependency.maybe_attribute_type.as_deref(),
     )
     .iter()
     .flat_map(|diag| {
@@ -1275,9 +1384,10 @@ fn diagnose_dependency(
     diagnostics.extend(
       diagnose_resolution(
         snapshot,
+        dependency_key,
         &dependency.maybe_type,
         dependency.is_dynamic,
-        dependency.maybe_assert_type.as_deref(),
+        dependency.maybe_attribute_type.as_deref(),
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),
@@ -1334,7 +1444,6 @@ mod tests {
   use crate::cache::RealDenoCacheEnv;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
-  use crate::lsp::config::SpecifierSettings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -1380,21 +1489,29 @@ mod tests {
       cache_metadata: cache::CacheMetadata::new(Arc::new(
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
-      maybe_node_resolver: None,
-      maybe_npm_resolver: None,
+      config: Default::default(),
+      npm: None,
     }
   }
 
   fn mock_config() -> ConfigSnapshot {
+    let root_uri = resolve_url("file:///").unwrap();
     ConfigSnapshot {
       settings: Settings {
-        workspace: WorkspaceSettings {
-          enable: true,
+        unscoped: WorkspaceSettings {
+          enable: Some(true),
           lint: true,
           ..Default::default()
         },
         ..Default::default()
       },
+      workspace_folders: vec![(
+        root_uri.clone(),
+        lsp::WorkspaceFolder {
+          uri: root_uri,
+          name: "".to_string(),
+        },
+      )],
       ..Default::default()
     }
   }
@@ -1413,7 +1530,6 @@ mod tests {
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
     let temp_dir = TempDir::new();
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let (snapshot, cache_location) = setup(
       &temp_dir,
       &[(
@@ -1462,14 +1578,10 @@ let c: number = "a";
     // now test disabled specifier
     {
       let mut disabled_config = mock_config();
-      disabled_config.settings.specifiers.insert(
-        specifier.clone(),
-        SpecifierSettings {
-          enable: false,
-          enable_paths: Vec::new(),
-          code_lens: Default::default(),
-        },
-      );
+      disabled_config.settings.unscoped = WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      };
 
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
@@ -1509,48 +1621,32 @@ let c: number = "a";
   }
 
   #[tokio::test]
-  async fn test_cancelled_ts_diagnostics_request() {
-    let temp_dir = TempDir::new();
-    let (snapshot, cache_location) = setup(
-      &temp_dir,
-      &[(
-        "file:///a.ts",
-        r#"export let a: string = 5;"#,
-        1,
-        LanguageId::TypeScript,
-      )],
-      None,
-    );
-    let snapshot = Arc::new(snapshot);
-    let cache =
-      Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
-    let ts_server = TsServer::new(Default::default(), cache);
-
-    let config = mock_config();
-    let token = CancellationToken::new();
-    token.cancel();
-    let diagnostics =
-      generate_ts_diagnostics(snapshot.clone(), &config, &ts_server, token)
-        .await
-        .unwrap();
-    // should be none because it's cancelled
-    assert_eq!(diagnostics.len(), 0);
-  }
-
-  #[tokio::test]
   async fn test_deno_diagnostics_with_import_map() {
     let temp_dir = TempDir::new();
     let (snapshot, _) = setup(
       &temp_dir,
       &[
-        ("file:///std/testing/asserts.ts", "export function assert() {}", 1, LanguageId::TypeScript),
-        ("file:///a/file.ts", "import { assert } from \"../std/testing/asserts.ts\";\n\nassert();\n", 1, LanguageId::TypeScript),
+        (
+          "file:///std/assert/mod.ts",
+          "export function assert() {}",
+          1,
+          LanguageId::TypeScript,
+        ),
+        (
+          "file:///a/file.ts",
+          "import { assert } from \"../std/assert/mod.ts\";\n\nassert();\n",
+          1,
+          LanguageId::TypeScript,
+        ),
       ],
-      Some(("file:///a/import-map.json", r#"{
+      Some((
+        "file:///a/import-map.json",
+        r#"{
         "imports": {
           "/~/std/": "../std/"
         }
-      }"#)),
+      }"#,
+      )),
     );
     let config = mock_config();
     let token = CancellationToken::new();
@@ -1558,7 +1654,7 @@ let c: number = "a";
     assert_eq!(actual.len(), 2);
     for record in actual {
       match record.specifier.as_str() {
-        "file:///std/testing/asserts.ts" => {
+        "file:///std/assert/mod.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
         }
         "file:///a/file.ts" => assert_eq!(
@@ -1572,16 +1668,16 @@ let c: number = "a";
                 },
                 "end": {
                   "line": 0,
-                  "character": 50
+                  "character": 45
                 }
               },
               "severity": 4,
               "code": "import-map-remap",
               "source": "deno",
-              "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+              "message": "The import specifier can be remapped to \"/~/std/assert/mod.ts\" which will resolve it via the active import map.",
               "data": {
-                "from": "../std/testing/asserts.ts",
-                "to": "/~/std/testing/asserts.ts"
+                "from": "../std/assert/mod.ts",
+                "to": "/~/std/assert/mod.ts"
               }
             }
           ])
@@ -1602,10 +1698,10 @@ let c: number = "a";
       severity: Some(lsp::DiagnosticSeverity::HINT),
       code: Some(lsp::NumberOrString::String("import-map-remap".to_string())),
       source: Some("deno".to_string()),
-      message: "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.".to_string(),
+      message: "The import specifier can be remapped to \"/~/std/assert/mod.ts\" which will resolve it via the active import map.".to_string(),
       data: Some(json!({
-        "from": "../std/testing/asserts.ts",
-        "to": "/~/std/testing/asserts.ts"
+        "from": "../std/assert/mod.ts",
+        "to": "/~/std/assert/mod.ts"
       })),
       ..Default::default()
     });
@@ -1614,7 +1710,7 @@ let c: number = "a";
     assert_eq!(
       json!(actual),
       json!({
-        "title": "Update \"../std/testing/asserts.ts\" to \"/~/std/testing/asserts.ts\" to use import map.",
+        "title": "Update \"../std/assert/mod.ts\" to \"/~/std/assert/mod.ts\" to use import map.",
         "kind": "quickfix",
         "diagnostics": [
           {
@@ -1631,10 +1727,10 @@ let c: number = "a";
             "severity": 4,
             "code": "import-map-remap",
             "source": "deno",
-            "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+            "message": "The import specifier can be remapped to \"/~/std/assert/mod.ts\" which will resolve it via the active import map.",
             "data": {
-              "from": "../std/testing/asserts.ts",
-              "to": "/~/std/testing/asserts.ts"
+              "from": "../std/assert/mod.ts",
+              "to": "/~/std/assert/mod.ts"
             }
           }
         ],
@@ -1652,7 +1748,7 @@ let c: number = "a";
                     "character": 50
                   }
                 },
-                "newText": "\"/~/std/testing/asserts.ts\""
+                "newText": "\"/~/std/assert/mod.ts\""
               }
             ]
           }

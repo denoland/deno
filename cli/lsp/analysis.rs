@@ -7,8 +7,8 @@ use super::language_server;
 use super::tsc;
 
 use crate::npm::CliNpmResolver;
-use crate::npm::NpmResolution;
 use crate::tools::lint::create_linter;
+use crate::util::path::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -21,9 +21,11 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules::LintRule;
-use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
-use deno_semver::npm::NpmPackageReq;
+use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -161,21 +163,21 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
-  npm_resolution: &'a NpmResolution,
-  npm_resolver: &'a CliNpmResolver,
+  node_resolver: Option<&'a NodeResolver>,
+  npm_resolver: Option<&'a dyn CliNpmResolver>,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
-    npm_resolution: &'a NpmResolution,
-    npm_resolver: &'a CliNpmResolver,
+    node_resolver: Option<&'a NodeResolver>,
+    npm_resolver: Option<&'a dyn CliNpmResolver>,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
-      npm_resolution,
+      node_resolver,
       npm_resolver,
     }
   }
@@ -187,7 +189,7 @@ impl<'a> TsResponseImportMapper<'a> {
   ) -> Option<String> {
     fn concat_npm_specifier(
       prefix: &str,
-      pkg_req: &NpmPackageReq,
+      pkg_req: &PackageReq,
       sub_path: Option<&str>,
     ) -> String {
       let result = format!("{}{}", prefix, pkg_req);
@@ -197,40 +199,42 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
-    if self.npm_resolver.in_npm_package(specifier) {
-      if let Ok(Some(pkg_id)) = self
-        .npm_resolver
-        .resolve_package_id_from_specifier(specifier)
-      {
-        let pkg_reqs =
-          self.npm_resolution.resolve_pkg_reqs_from_pkg_id(&pkg_id);
-        // check if any pkg reqs match what is found in an import map
-        if !pkg_reqs.is_empty() {
-          let sub_path = self.resolve_package_path(specifier);
-          if let Some(import_map) = self.maybe_import_map {
-            for pkg_req in &pkg_reqs {
-              let paths = vec![
-                concat_npm_specifier("npm:", pkg_req, sub_path.as_deref()),
-                concat_npm_specifier("npm:/", pkg_req, sub_path.as_deref()),
-              ];
-              for path in paths {
-                if let Some(mapped_path) = ModuleSpecifier::parse(&path)
-                  .ok()
-                  .and_then(|s| import_map.lookup(&s, referrer))
-                {
-                  return Some(mapped_path);
+    if let Some(npm_resolver) =
+      self.npm_resolver.as_ref().and_then(|r| r.as_managed())
+    {
+      if npm_resolver.in_npm_package(specifier) {
+        if let Ok(Some(pkg_id)) =
+          npm_resolver.resolve_pkg_id_from_specifier(specifier)
+        {
+          let pkg_reqs = npm_resolver.resolve_pkg_reqs_from_pkg_id(&pkg_id);
+          // check if any pkg reqs match what is found in an import map
+          if !pkg_reqs.is_empty() {
+            let sub_path = self.resolve_package_path(specifier);
+            if let Some(import_map) = self.maybe_import_map {
+              for pkg_req in &pkg_reqs {
+                let paths = vec![
+                  concat_npm_specifier("npm:", pkg_req, sub_path.as_deref()),
+                  concat_npm_specifier("npm:/", pkg_req, sub_path.as_deref()),
+                ];
+                for path in paths {
+                  if let Some(mapped_path) = ModuleSpecifier::parse(&path)
+                    .ok()
+                    .and_then(|s| import_map.lookup(&s, referrer))
+                  {
+                    return Some(mapped_path);
+                  }
                 }
               }
             }
-          }
 
-          // if not found in the import map, return the first pkg req
-          if let Some(pkg_req) = pkg_reqs.first() {
-            return Some(concat_npm_specifier(
-              "npm:",
-              pkg_req,
-              sub_path.as_deref(),
-            ));
+            // if not found in the import map, return the first pkg req
+            if let Some(pkg_req) = pkg_reqs.first() {
+              return Some(concat_npm_specifier(
+                "npm:",
+                pkg_req,
+                sub_path.as_deref(),
+              ));
+            }
           }
         }
       }
@@ -250,18 +254,14 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let specifier_path = specifier.to_file_path().ok()?;
-    let root_folder = self
-      .npm_resolver
-      .resolve_package_folder_from_specifier(specifier)
+    let node_resolver = self.node_resolver?;
+    let package_json = node_resolver
+      .get_closest_package_json(specifier, &PermissionsContainer::allow_all())
       .ok()
       .flatten()?;
-    let package_json_path = root_folder.join("package.json");
-    let package_json_text = std::fs::read_to_string(&package_json_path).ok()?;
-    let package_json =
-      PackageJson::load_from_string(package_json_path, package_json_text)
-        .ok()?;
+    let root_folder = package_json.path.parent()?;
 
+    let specifier_path = specifier_to_file_path(specifier).ok()?;
     let mut search_paths = vec![specifier_path.clone()];
     // TypeScript will provide a .js extension for quick fixes, so do
     // a search for the .d.ts file instead
@@ -272,7 +272,7 @@ impl<'a> TsResponseImportMapper<'a> {
     for search_path in search_paths {
       if let Some(exports) = &package_json.exports {
         if let Some(result) = try_reverse_map_package_json_exports(
-          &root_folder,
+          root_folder,
           &search_path,
           exports,
         ) {
@@ -848,13 +848,23 @@ impl CodeActionCollection {
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
   pub fn get_response(self) -> lsp::CodeActionResponse {
-    self
+    // Prefer TSC fixes first, then Deno fixes, then Deno lint fixes.
+    let (tsc, rest): (Vec<_>, Vec<_>) = self
       .actions
       .into_iter()
-      .map(|i| match i {
-        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
+      .partition(|a| matches!(a, CodeActionKind::Tsc(..)));
+    let (deno, deno_lint): (Vec<_>, Vec<_>) = rest
+      .into_iter()
+      .partition(|a| matches!(a, CodeActionKind::Deno(_)));
+
+    tsc
+      .into_iter()
+      .chain(deno)
+      .chain(deno_lint)
+      .map(|k| match k {
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
         CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
       })
       .collect()
   }
@@ -906,6 +916,24 @@ impl CodeActionCollection {
         }
       }
     }
+  }
+
+  pub fn add_cache_all_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    diagnostics: Vec<lsp::Diagnostic>,
+  ) {
+    self.actions.push(CodeActionKind::Deno(lsp::CodeAction {
+      title: "Cache all dependencies of this module.".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(diagnostics),
+      command: Some(lsp::Command {
+        title: "".to_string(),
+        command: "deno.cache".to_string(),
+        arguments: Some(vec![json!([]), json!(&specifier)]),
+      }),
+      ..Default::default()
+    }));
   }
 }
 

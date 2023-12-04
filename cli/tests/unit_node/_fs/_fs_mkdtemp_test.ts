@@ -3,7 +3,7 @@ import {
   assert,
   assertRejects,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { EncodingOption, existsSync, mkdtemp, mkdtempSync } from "node:fs";
 import { env } from "node:process";
 import { promisify } from "node:util";

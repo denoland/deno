@@ -1,15 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
 import { URL } from "ext:deno_url/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
-  _skipInternalInit,
   CloseEvent,
   defineEventHandler,
   dispatch,
@@ -28,7 +27,6 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
-  DataView,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -47,12 +45,12 @@ const {
   SymbolFor,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
-const op_ws_check_permission_and_cancel_handle =
-  core.ops.op_ws_check_permission_and_cancel_handle;
+const { op_ws_check_permission_and_cancel_handle } = core.ops;
 const {
   op_ws_create,
   op_ws_close,
   op_ws_send_binary,
+  op_ws_send_binary_ab,
   op_ws_send_text,
   op_ws_next_event,
   op_ws_get_buffer,
@@ -339,11 +337,7 @@ class WebSocket extends EventTarget {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
-        (ab) =>
-          op_ws_send_binary(
-            this[_rid],
-            new DataView(ab),
-          ),
+        (ab) => op_ws_send_binary_ab(this[_rid], ab),
       );
     } else {
       const string = String(data);
@@ -450,7 +444,6 @@ class WebSocket extends EventTarget {
           const event = new MessageEvent("message", {
             data,
             origin: this[_url],
-            [_skipInternalInit]: true,
           });
           setIsTrusted(event, true);
           dispatch(this, event);
@@ -544,17 +537,26 @@ class WebSocket extends EventTarget {
     }
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        url: this.url,
-        readyState: this.readyState,
-        extensions: this.extensions,
-        protocol: this.protocol,
-        binaryType: this.binaryType,
-        bufferedAmount: this.bufferedAmount,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketPrototype, this),
+        keys: [
+          "url",
+          "readyState",
+          "extensions",
+          "protocol",
+          "binaryType",
+          "bufferedAmount",
+          "onmessage",
+          "onerror",
+          "onclose",
+          "onopen",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -578,7 +580,7 @@ defineEventHandler(WebSocket.prototype, "error");
 defineEventHandler(WebSocket.prototype, "close");
 defineEventHandler(WebSocket.prototype, "open");
 
-webidl.configurePrototype(WebSocket);
+webidl.configureInterface(WebSocket);
 const WebSocketPrototype = WebSocket.prototype;
 
 export {

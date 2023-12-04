@@ -15,7 +15,7 @@ use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_script_ext;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
@@ -27,8 +27,8 @@ use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde_v8;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
@@ -106,6 +106,7 @@ pub struct BenchDescription {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BenchStats {
   pub n: u64,
   pub min: f64,
@@ -115,6 +116,8 @@ pub struct BenchStats {
   pub p99: f64,
   pub p995: f64,
   pub p999: f64,
+  pub high_precision: bool,
+  pub used_explicit_timers: bool,
 }
 
 impl BenchReport {
@@ -241,7 +244,6 @@ async fn bench_specifiers(
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
-    let specifier = specifier;
     let sender = sender.clone();
     let options = option_for_handles.clone();
     spawn_blocking(move || {
@@ -344,7 +346,7 @@ fn is_supported_bench_path(path: &Path) -> bool {
     (basename.ends_with("_bench")
       || basename.ends_with(".bench")
       || basename == "bench")
-      && is_supported_ext(path)
+      && is_script_ext(path)
   } else {
     false
   }
@@ -407,26 +409,27 @@ pub async fn run_benchmarks_with_watch(
 ) -> Result<(), AnyError> {
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig {
-      job_name: "Bench".to_string(),
-      clear_screen: bench_flags
+    file_watcher::PrintConfig::new(
+      "Bench",
+      bench_flags
         .watch
         .as_ref()
         .map(|w| !w.no_clear_screen)
         .unwrap_or(true),
-    },
-    move |flags, sender, changed_paths| {
+    ),
+    move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
       Ok(async move {
         let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone())
-          .build_from_flags(flags)
+          .build_from_flags_for_watcher(flags, watcher_communicator.clone())
           .await?;
         let cli_options = factory.cli_options();
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
-        let _ = sender.send(cli_options.watch_paths());
-        let _ = sender.send(bench_options.files.include.clone());
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+        if let Some(include) = &bench_options.files.include {
+          let _ = watcher_communicator.watch_paths(include.clone());
+        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let module_graph_builder = factory.module_graph_builder().await?;

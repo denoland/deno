@@ -6,7 +6,7 @@ import { buffer, text } from "node:stream/consumers";
 import {
   assertEquals,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -197,5 +197,29 @@ Deno.test({
       new Uint8Array(16),
     ));
     assertEquals(await text(stream), "foo".repeat(15));
+  },
+});
+
+Deno.test({
+  name: "createCipheriv - invalid algorithm",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createCipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
+      TypeError,
+      "Unknown cipher",
+    );
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - invalid algorithm",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createDecipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
+      TypeError,
+      "Unknown cipher",
+    );
   },
 });

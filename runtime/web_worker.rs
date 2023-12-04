@@ -3,8 +3,8 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
-use crate::worker::runtime;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -25,20 +25,24 @@ use deno_core::v8;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::OpMetricsSummaryTracker;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
@@ -236,10 +240,10 @@ pub struct WebWorkerHandle {
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
+  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn get_control_event(
     &self,
   ) -> Result<Option<WorkerControlEvent>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut receiver = self.receiver.borrow_mut();
     Ok(receiver.next().await)
   }
@@ -349,6 +353,7 @@ pub struct WebWorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
+  pub feature_checker: Arc<FeatureChecker>,
 }
 
 impl WebWorker {
@@ -376,18 +381,15 @@ impl WebWorker {
     deno_core::extension!(deno_permissions_web_worker,
       options = {
         permissions: PermissionsContainer,
-        unstable: bool,
         enable_testing_features: bool,
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::UnstableChecker { unstable: options.unstable });
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
     );
 
     // Permissions: many ops depend on this
-    let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
@@ -395,7 +397,7 @@ impl WebWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
+    // `runtime/build.rs`, `runtime/worker.rs` and `runtime/snapshot.rs`!
 
     let mut extensions = vec![
       // Web APIs
@@ -429,24 +431,33 @@ impl WebWorker {
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         options.broadcast_channel.clone(),
-        unstable,
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(unstable),
+      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
         options.root_cert_store_provider.clone(),
-        unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(None),
-        unstable,
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+          None,
+          options.seed,
+          deno_kv::remote::HttpOptions {
+            user_agent: options.bootstrap.user_agent.clone(),
+            root_cert_store_provider: options.root_cert_store_provider.clone(),
+            unsafely_ignore_certificate_errors: options
+              .unsafely_ignore_certificate_errors
+              .clone(),
+            client_cert_chain_and_key: None,
+            proxy: None,
+          },
+        ),
       ),
+      deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        unstable,
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
@@ -454,7 +465,6 @@ impl WebWorker {
         options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::deno_web_worker::init_ops_and_esm(),
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
@@ -467,12 +477,13 @@ impl WebWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm(None),
       deno_permissions_web_worker::init_ops_and_esm(
         permissions,
-        unstable,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
+      ops::web_worker::deno_web_worker::init_ops_and_esm(),
     ];
 
     for extension in &mut extensions {
@@ -484,7 +495,7 @@ impl WebWorker {
       }
       #[cfg(feature = "__runtime_js_sources")]
       {
-        use crate::worker::maybe_transpile_source;
+        use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
           maybe_transpile_source(source).unwrap();
         }
@@ -498,6 +509,18 @@ impl WebWorker {
 
     #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
     options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+
+    // Hook up the summary metrics if the user or subcommand requested them
+    let (op_summary_metrics, op_metrics_factory_fn) =
+      if options.bootstrap.enable_op_summary_metrics {
+        let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
+        (
+          Some(op_summary_metrics.clone()),
+          Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
+        )
+      } else {
+        (None, None)
+      };
 
     // Clear extension modules from the module map, except preserve `node:*`
     // modules as `node:` specifiers.
@@ -516,8 +539,14 @@ impl WebWorker {
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
       preserve_snapshotted_modules,
+      feature_checker: Some(options.feature_checker.clone()),
+      op_metrics_factory_fn,
       ..Default::default()
     });
+
+    if let Some(op_summary_metrics) = op_summary_metrics {
+      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
@@ -581,6 +610,7 @@ impl WebWorker {
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+    self.js_runtime.op_state().borrow_mut().put(options.clone());
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {
@@ -663,13 +693,13 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        maybe_result
       }
 
       event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+
+        receiver.await
       }
     }
   }
@@ -682,24 +712,26 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
+    let poll_options = PollEventLoopOptions {
+      wait_for_inspector: false,
+      ..Default::default()
+    };
+
     tokio::select! {
       biased;
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
-        // If `None` is returned it means that runtime was destroyed before
-        // evaluation was complete. This can happen in Web Worker when `self.close()`
-        // is called at top level.
-        maybe_result.unwrap_or(Ok(()))
+        maybe_result
       }
 
-      event_loop_result = self.run_event_loop(false) => {
+      event_loop_result = self.run_event_loop(poll_options) => {
         if self.internal_handle.is_terminated() {
            return Ok(());
         }
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.unwrap_or(Ok(()))
+
+        receiver.await
       }
     }
   }
@@ -707,7 +739,7 @@ impl WebWorker {
   fn poll_event_loop(
     &mut self,
     cx: &mut Context,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.terminate_if_needed() {
@@ -716,7 +748,7 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
-    match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
+    match self.js_runtime.poll_event_loop2(cx, poll_options) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {
@@ -727,9 +759,16 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
-        panic!(
-          "coding error: either js is polling or the worker is terminated"
-        );
+        // TODO(mmastrac): we don't want to test this w/classic workers because
+        // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
+        if self.worker_type == WebWorkerType::Module {
+          panic!(
+            "coding error: either js is polling or the worker is terminated"
+          );
+        } else {
+          eprintln!("classic worker terminated unexpectedly");
+          Poll::Ready(Ok(()))
+        }
       }
       Poll::Pending => Poll::Pending,
     }
@@ -737,9 +776,9 @@ impl WebWorker {
 
   pub async fn run_event_loop(
     &mut self,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    poll_fn(|cx| self.poll_event_loop(cx, poll_options)).await
   }
 
   // Starts polling for messages from worker host from JavaScript.
@@ -815,7 +854,12 @@ pub fn run_web_worker(
     }
 
     let result = if result.is_ok() {
-      worker.run_event_loop(true).await
+      worker
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+          ..Default::default()
+        })
+        .await
     } else {
       result
     };

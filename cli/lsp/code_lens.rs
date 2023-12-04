@@ -1,8 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::source_range_to_lsp_range;
-use super::config::Config;
-use super::config::WorkspaceSettings;
+use super::config::CodeLensSettings;
 use super::language_server;
 use super::text::LineIndex;
 use super::tsc;
@@ -153,9 +152,9 @@ impl Visit for DenoTestCollector {
         }
         ast::Expr::Member(member_expr) => {
           if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
-            if ns_prop_ident.sym.to_string() == "test" {
+            if ns_prop_ident.sym == "test" {
               if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
-                if ident.sym.to_string() == "Deno" {
+                if ident.sym == "Deno" {
                   self.check_call_expr(node, &ns_prop_ident.range());
                 }
               }
@@ -173,7 +172,7 @@ impl Visit for DenoTestCollector {
         match init.as_ref() {
           // Identify destructured assignments of `test` from `Deno`
           ast::Expr::Ident(ident) => {
-            if ident.sym.to_string() == "Deno" {
+            if ident.sym == "Deno" {
               if let ast::Pat::Object(object_pat) = &decl.name {
                 for prop in &object_pat.props {
                   match prop {
@@ -185,7 +184,7 @@ impl Visit for DenoTestCollector {
                     }
                     ast::ObjectPatProp::KeyValue(prop) => {
                       if let ast::PropName::Ident(key_ident) = &prop.key {
-                        if key_ident.sym.to_string() == "test" {
+                        if key_ident.sym == "test" {
                           if let ast::Pat::Ident(value_ident) =
                             &prop.value.as_ref()
                           {
@@ -205,9 +204,9 @@ impl Visit for DenoTestCollector {
           // Identify variable assignments where the init is `Deno.test`
           ast::Expr::Member(member_expr) => {
             if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() {
-              if obj_ident.sym.to_string() == "Deno" {
+              if obj_ident.sym == "Deno" {
                 if let ast::MemberProp::Ident(prop_ident) = &member_expr.prop {
-                  if prop_ident.sym.to_string() == "test" {
+                  if prop_ident.sym == "test" {
                     if let ast::Pat::Ident(binding_ident) = &decl.name {
                       self.test_vars.insert(binding_ident.id.sym.to_string());
                     }
@@ -381,47 +380,20 @@ pub async fn resolve_code_lens(
   }
 }
 
-pub async fn collect(
+pub fn collect_test(
   specifier: &ModuleSpecifier,
-  parsed_source: Option<ParsedSource>,
-  config: &Config,
-  line_index: Arc<LineIndex>,
-  navigation_tree: &NavigationTree,
+  parsed_source: ParsedSource,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  let mut code_lenses = collect_test(specifier, parsed_source, config)?;
-  code_lenses.extend(
-    collect_tsc(
-      specifier,
-      config.workspace_settings(),
-      line_index,
-      navigation_tree,
-    )
-    .await?,
-  );
-
-  Ok(code_lenses)
-}
-
-fn collect_test(
-  specifier: &ModuleSpecifier,
-  parsed_source: Option<ParsedSource>,
-  config: &Config,
-) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  if config.specifier_code_lens_test(specifier) {
-    if let Some(parsed_source) = parsed_source {
-      let mut collector =
-        DenoTestCollector::new(specifier.clone(), parsed_source.clone());
-      parsed_source.module().visit_with(&mut collector);
-      return Ok(collector.take());
-    }
-  }
-  Ok(Vec::new())
+  let mut collector =
+    DenoTestCollector::new(specifier.clone(), parsed_source.clone());
+  parsed_source.module().visit_with(&mut collector);
+  Ok(collector.take())
 }
 
 /// Return tsc navigation tree code lenses.
-async fn collect_tsc(
+pub async fn collect_tsc(
   specifier: &ModuleSpecifier,
-  workspace_settings: &WorkspaceSettings,
+  code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
@@ -430,7 +402,7 @@ async fn collect_tsc(
     let mut code_lenses = code_lenses.borrow_mut();
 
     // TSC Implementations Code Lens
-    if workspace_settings.code_lens.implementations {
+    if code_lens_settings.implementations {
       let source = CodeLensSource::Implementations;
       match i.kind {
         tsc::ScriptElementKind::InterfaceElement => {
@@ -458,7 +430,7 @@ async fn collect_tsc(
     }
 
     // TSC References Code Lens
-    if workspace_settings.code_lens.references {
+    if code_lens_settings.references {
       let source = CodeLensSource::References;
       if let Some(parent) = &mp {
         if parent.kind == tsc::ScriptElementKind::EnumElement {
@@ -471,7 +443,7 @@ async fn collect_tsc(
       }
       match i.kind {
         tsc::ScriptElementKind::FunctionElement => {
-          if workspace_settings.code_lens.references_all_functions {
+          if code_lens_settings.references_all_functions {
             code_lenses.push(i.to_code_lens(
               line_index.clone(),
               specifier,

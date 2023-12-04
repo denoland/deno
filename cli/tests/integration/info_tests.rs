@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
-use util::env_vars_for_npm_tests_no_sync_download;
+use util::env_vars_for_npm_tests;
 use util::TestContextBuilder;
 
 #[test]
@@ -11,7 +11,7 @@ fn info_with_compiled_source() {
 
   let output = context
     .new_command()
-    .cwd(util::testdata_path())
+    .current_dir(util::testdata_path())
     .args_vec(["cache", module_path])
     .run();
   output.assert_exit_code(0);
@@ -19,7 +19,7 @@ fn info_with_compiled_source() {
 
   let output = context
     .new_command()
-    .cwd(util::testdata_path())
+    .current_dir(util::testdata_path())
     .args_vec(["info", module_path])
     .split_output()
     .run();
@@ -141,7 +141,7 @@ itest!(with_config_override {
 itest!(package_json_basic {
   args: "info --quiet main.ts",
   output: "package_json/basic/main.info.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   cwd: Some("package_json/basic"),
   copy_temp_dir: Some("package_json/basic"),
@@ -152,5 +152,11 @@ itest!(info_import_map {
   args: "info preact/debug",
   output: "info/with_import_map/with_import_map.out",
   cwd: Some("info/with_import_map"),
+  exit_code: 0,
+});
+
+itest!(info_dynamic_imports_tmpl_lit {
+  args: "info compile/dynamic_imports_tmp_lit/main.js",
+  output: "compile/dynamic_imports_tmp_lit/main.info.out",
   exit_code: 0,
 });

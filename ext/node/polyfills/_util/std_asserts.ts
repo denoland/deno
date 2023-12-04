@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// vendored from std/testing/asserts.ts
+// vendored from std/assert/mod.ts
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -139,7 +139,6 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-// deno-lint-ignore ban-types
 function constructorsEqual(a: object, b: object) {
   return a.constructor === b.constructor ||
     a.constructor === Object && !b.constructor ||

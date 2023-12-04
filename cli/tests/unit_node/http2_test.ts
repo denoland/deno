@@ -2,78 +2,114 @@
 
 import * as http2 from "node:http2";
 import * as net from "node:net";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import { assertEquals } from "../../../test_util/std/assert/mod.ts";
 
-const {
-  HTTP2_HEADER_AUTHORITY,
-  HTTP2_HEADER_METHOD,
-  HTTP2_HEADER_PATH,
-  HTTP2_HEADER_STATUS,
-} = http2.constants;
+for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
+  Deno.test(`[node/http2 client] ${url}`, {
+    ignore: Deno.build.os === "windows",
+  }, async () => {
+    // Create a server to respond to the HTTP2 requests
+    const client = http2.connect(url, {});
+    client.on("error", (err) => console.error(err));
 
-Deno.test("[node/http2 client]", async () => {
+    const req = client.request({ ":method": "POST", ":path": "/" }, {
+      waitForTrailers: true,
+    });
+
+    let receivedTrailers;
+    let receivedHeaders;
+    let receivedData = "";
+
+    req.on("response", (headers, _flags) => {
+      receivedHeaders = headers;
+    });
+
+    req.write("hello");
+    req.setEncoding("utf8");
+
+    req.on("wantTrailers", () => {
+      req.sendTrailers({ foo: "bar" });
+    });
+
+    req.on("trailers", (trailers, _flags) => {
+      receivedTrailers = trailers;
+    });
+
+    req.on("data", (chunk) => {
+      receivedData += chunk;
+    });
+    req.end();
+
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(() => {
+      try {
+        client.close();
+      } catch (_) {
+        // pass
+      }
+      resolve();
+    }, 2000);
+
+    await promise;
+    assertEquals(receivedHeaders, { ":status": 200 });
+    assertEquals(receivedData, "hello world\n");
+
+    assertEquals(receivedTrailers, {
+      "abc": "def",
+      "opr": "stv",
+      "foo": "bar",
+    });
+  });
+}
+
+Deno.test(`[node/http2 client createConnection]`, {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const url = "http://127.0.0.1:4246";
+  const createConnDeferred = Promise.withResolvers<void>();
   // Create a server to respond to the HTTP2 requests
-  const portPromise = deferred();
-  const reqPromise = deferred<Request>();
-  const ready = deferred();
-  const ac = new AbortController();
-  const server = Deno.serve({
-    port: 0,
-    signal: ac.signal,
-    onListen: ({ port }: { port: number }) => portPromise.resolve(port),
-    handler: async (req: Request) => {
-      reqPromise.resolve(req);
-      await ready;
-      return new Response("body", {
-        status: 401,
-        headers: { "resp-header-name": "resp-header-value" },
+  const client = http2.connect(url, {
+    createConnection() {
+      const socket = net.connect({ host: "127.0.0.1", port: 4246 });
+
+      socket.on("connect", () => {
+        createConnDeferred.resolve();
       });
+
+      return socket;
     },
   });
+  client.on("error", (err) => console.error(err));
 
-  const port = await portPromise;
+  const req = client.request({ ":method": "POST", ":path": "/" });
 
-  // Get a session
-  const sessionPromise = deferred();
-  const session = http2.connect(
-    `localhost:${port}`,
-    {},
-    sessionPromise.resolve.bind(sessionPromise),
-  );
-  const session2 = await sessionPromise;
-  assertEquals(session, session2);
+  let receivedData = "";
 
-  // Write a request, including a body
-  const stream = session.request({
-    [HTTP2_HEADER_AUTHORITY]: `localhost:${port}`,
-    [HTTP2_HEADER_METHOD]: "POST",
-    [HTTP2_HEADER_PATH]: "/path",
-    "req-header-name": "req-header-value",
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
   });
-  stream.write("body");
-  stream.end();
+  req.end();
 
-  // Check the request
-  const req = await reqPromise;
-  assertEquals(req.headers.get("req-header-name"), "req-header-value");
-  assertEquals(await req.text(), "body");
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
 
-  ready.resolve();
-
-  // Read a response
-  const headerPromise = new Promise<Record<string, string | string[]>>((
-    resolve,
-  ) => stream.on("headers", resolve));
-  const headers = await headerPromise;
-  assertEquals(headers["resp-header-name"], "resp-header-value");
-  assertEquals(headers[HTTP2_HEADER_STATUS], "401");
-
-  ac.abort();
-  await server.finished;
+  await createConnDeferred.promise;
+  await endPromise.promise;
+  assertEquals(receivedData, "hello world\n");
 });
 
-Deno.test("[node/http2 server]", async () => {
+// TODO(bartlomieju): reenable sanitizers
+Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
   const server = http2.createServer();
   server.listen(0);
   const port = (<net.AddressInfo> server.address()).port;
@@ -90,11 +126,9 @@ Deno.test("[node/http2 server]", async () => {
   const stream = await new Promise<http2.ServerHttp2Stream>((resolve) =>
     session.on("stream", resolve)
   );
-  const _headers = await new Promise((resolve) =>
-    stream.on("headers", resolve)
-  );
-  const _data = await new Promise((resolve) => stream.on("data", resolve));
-  const _end = await new Promise((resolve) => stream.on("end", resolve));
+  await new Promise((resolve) => stream.on("headers", resolve));
+  await new Promise((resolve) => stream.on("data", resolve));
+  await new Promise((resolve) => stream.on("end", resolve));
   stream.respond();
   stream.end();
   const resp = await responsePromise;

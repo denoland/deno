@@ -32,6 +32,7 @@ const {
   StringPrototypeSubstring,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
+  Symbol,
   TypeError,
 } = primordials;
 import { URLPrototype } from "ext:deno_url/00_url.js";
@@ -457,6 +458,12 @@ function pathFromURL(pathOrUrl) {
 // NOTE(bartlomieju): this is exposed on `internals` so we can test
 // it in unit tests
 internals.pathFromURL = pathFromURL;
+
+// deno-lint-ignore prefer-primordials
+export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolAsyncDispose = Symbol.asyncDispose ??
+  Symbol("Symbol.asyncDispose");
 
 export {
   ASCII_ALPHA,

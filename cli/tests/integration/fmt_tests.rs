@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
 use util::assert_contains;
 use util::PathRef;
 use util::TestContext;
@@ -28,18 +27,24 @@ fn fmt_test() {
     testdata_fmt_dir.join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");
   badly_formatted_original_json.copy(&badly_formatted_json);
-  // First, check formatting by ignoring the badly formatted file.
 
+  let fixed_ipynb = testdata_fmt_dir.join("badly_formatted_fixed.ipynb");
+  let badly_formatted_original_ipynb =
+    testdata_fmt_dir.join("badly_formatted.ipynb");
+  let badly_formatted_ipynb = t.path().join("badly_formatted.ipynb");
+  badly_formatted_original_ipynb.copy(&badly_formatted_ipynb);
+
+  // First, check formatting by ignoring the badly formatted file.
   let output = context
     .new_command()
-    .cwd(&testdata_fmt_dir)
+    .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       format!(
-        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json}",
+        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_ipynb}",
       ),
       format!(
-        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json}",
+        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json} {badly_formatted_ipynb}",
       ),
     ])
     .run();
@@ -51,13 +56,14 @@ fn fmt_test() {
   // Check without ignore.
   let output = context
     .new_command()
-    .cwd(&testdata_fmt_dir)
+    .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       "--check".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
+      badly_formatted_ipynb.to_string(),
     ])
     .run();
 
@@ -67,12 +73,13 @@ fn fmt_test() {
   // Format the source file.
   let output = context
     .new_command()
-    .cwd(&testdata_fmt_dir)
+    .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
+      badly_formatted_ipynb.to_string(),
     ])
     .run();
 
@@ -82,34 +89,29 @@ fn fmt_test() {
   let expected_js = fixed_js.read_to_string();
   let expected_md = fixed_md.read_to_string();
   let expected_json = fixed_json.read_to_string();
+  let expected_ipynb = fixed_ipynb.read_to_string();
   let actual_js = badly_formatted_js.read_to_string();
   let actual_md = badly_formatted_md.read_to_string();
   let actual_json = badly_formatted_json.read_to_string();
+  let actual_ipynb = badly_formatted_ipynb.read_to_string();
   assert_eq!(expected_js, actual_js);
   assert_eq!(expected_md, actual_md);
   assert_eq!(expected_json, actual_json);
+  assert_eq!(expected_ipynb, actual_ipynb);
 }
 
 #[test]
-fn fmt_stdin_error() {
-  use std::io::Write;
-  let mut deno = util::deno_cmd()
+fn fmt_stdin_syntax_error() {
+  let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("-")
-    .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
-  let stdin = deno.stdin.as_mut().unwrap();
-  let invalid_js = b"import { example }";
-  stdin.write_all(invalid_js).unwrap();
-  let output = deno.wait_with_output().unwrap();
-  // Error message might change. Just check stdout empty, stderr not.
-  assert!(output.stdout.is_empty());
-  assert!(!output.stderr.is_empty());
-  assert!(!output.status.success());
+    .stdin_text("import { example }")
+    .split_output()
+    .run();
+  assert!(output.stdout().is_empty());
+  assert!(!output.stderr().is_empty());
+  output.assert_exit_code(1);
 }
 
 #[test]
@@ -132,7 +134,8 @@ fn fmt_auto_ignore_git_and_node_modules() {
     bad_json_path.write("bad json\n");
   }
 
-  let temp_dir = TempDir::new();
+  let context = TestContext::default();
+  let temp_dir = context.temp_dir();
   let t = temp_dir.path().join("target");
   let nest_git = t.join("nest").join(".git");
   let git_dir = t.join(".git");
@@ -147,10 +150,9 @@ fn fmt_auto_ignore_git_and_node_modules() {
   create_bad_json(nest_node_modules);
   create_bad_json(node_modules_dir);
 
-  let context = TestContext::default();
   let output = context
     .new_command()
-    .cwd(t)
+    .current_dir(t)
     .env("NO_COLOR", "1")
     .args("fmt")
     .run();
@@ -205,6 +207,12 @@ itest!(fmt_stdin_json {
   args: "fmt --ext=json -",
   input: Some("{    \"key\":   \"value\"}"),
   output_str: Some("{ \"key\": \"value\" }\n"),
+});
+
+itest!(fmt_stdin_ipynb {
+  args: "fmt --ext=ipynb -",
+  input: Some(include_str!("../testdata/fmt/badly_formatted.ipynb")),
+  output_str: Some(include_str!("../testdata/fmt/badly_formatted_fixed.ipynb")),
 });
 
 itest!(fmt_stdin_check_formatted {
@@ -266,15 +274,15 @@ fn fmt_with_glob_config() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
-    assert_contains!(output, r#"glob\pages\[id].ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\bar.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.js"#);
-    assert_contains!(output, r#"glob\nested\foo\bar.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.ts"#);
+    assert_contains!(output, r"glob\nested\fizz\fizz.ts");
+    assert_contains!(output, r"glob\pages\[id].ts");
+    assert_contains!(output, r"glob\nested\fizz\bar.ts");
+    assert_contains!(output, r"glob\nested\foo\foo.ts");
+    assert_contains!(output, r"glob\data\test1.js");
+    assert_contains!(output, r"glob\nested\foo\bar.ts");
+    assert_contains!(output, r"glob\nested\foo\fizz.ts");
+    assert_contains!(output, r"glob\nested\fizz\foo.ts");
+    assert_contains!(output, r"glob\data\test1.ts");
   } else {
     assert_contains!(output, "glob/nested/fizz/fizz.ts");
     assert_contains!(output, "glob/pages/[id].ts");
@@ -303,15 +311,15 @@ fn fmt_with_glob_config_and_flags() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
-    assert_contains!(output, r#"glob\pages\[id].ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\bazz.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.js"#);
-    assert_contains!(output, r#"glob\nested\foo\bazz.ts"#);
-    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
-    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
-    assert_contains!(output, r#"glob\data\test1.ts"#);
+    assert_contains!(output, r"glob\nested\fizz\fizz.ts");
+    assert_contains!(output, r"glob\pages\[id].ts");
+    assert_contains!(output, r"glob\nested\fizz\bazz.ts");
+    assert_contains!(output, r"glob\nested\foo\foo.ts");
+    assert_contains!(output, r"glob\data\test1.js");
+    assert_contains!(output, r"glob\nested\foo\bazz.ts");
+    assert_contains!(output, r"glob\nested\foo\fizz.ts");
+    assert_contains!(output, r"glob\nested\fizz\foo.ts");
+    assert_contains!(output, r"glob\data\test1.ts");
   } else {
     assert_contains!(output, "glob/nested/fizz/fizz.ts");
     assert_contains!(output, "glob/pages/[id].ts");
@@ -333,8 +341,8 @@ fn fmt_with_glob_config_and_flags() {
 
   let output = cmd_output.combined_output();
   if cfg!(windows) {
-    assert_contains!(output, r#"glob\data\test1.js"#);
-    assert_contains!(output, r#"glob\data\test1.ts"#);
+    assert_contains!(output, r"glob\data\test1.js");
+    assert_contains!(output, r"glob\data\test1.ts");
   } else {
     assert_contains!(output, "glob/data/test1.js");
     assert_contains!(output, "glob/data/test1.ts");

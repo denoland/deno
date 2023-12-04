@@ -29,7 +29,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use log::debug;
 use log::info;
 use log::warn;
@@ -64,11 +64,8 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   if let Some(watch_flags) = &fmt_flags.watch {
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig {
-        job_name: "Fmt".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
-      move |flags, sender, changed_paths| {
+      file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
+      move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
           let factory = CliFactory::from_flags(flags).await?;
@@ -82,7 +79,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
                 Ok(files)
               }
             })?;
-          _ = sender.send(files.clone());
+          let _ = watcher_communicator.watch_paths(files.clone());
           let refmt_files = if let Some(paths) = changed_paths {
             if fmt_options.check {
               // check all files on any changed (https://github.com/denoland/deno/issues/12446)
@@ -153,7 +150,7 @@ fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
     .ignore_node_modules()
     .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
-    .collect_files(&files.include)
+    .collect_files(files.include.as_deref())
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -191,13 +188,13 @@ fn format_markdown(
           rest => rest,
         };
 
+        let fake_filename =
+          PathBuf::from(format!("deno_fmt_stdin.{extension}"));
         if matches!(extension, "json" | "jsonc") {
           let mut json_config = get_resolved_json_config(fmt_options);
           json_config.line_width = line_width;
-          dprint_plugin_json::format_text(text, &json_config)
+          dprint_plugin_json::format_text(&fake_filename, text, &json_config)
         } else {
-          let fake_filename =
-            PathBuf::from(format!("deno_fmt_stdin.{extension}"));
           let mut codeblock_config =
             get_resolved_typescript_config(fmt_options);
           codeblock_config.line_width = line_width;
@@ -218,30 +215,37 @@ fn format_markdown(
 /// of configuration builder of <https://github.com/dprint/dprint-plugin-json>.
 /// See <https://github.com/dprint/dprint-plugin-json/blob/cfa1052dbfa0b54eb3d814318034cdc514c813d7/src/configuration/builder.rs#L87> for configuration.
 pub fn format_json(
+  file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   let config = get_resolved_json_config(fmt_options);
-  dprint_plugin_json::format_text(file_text, &config)
+  dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   let ext = get_extension(file_path).unwrap_or_default();
-  if matches!(
-    ext.as_str(),
-    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
-  ) {
-    format_markdown(file_text, fmt_options)
-  } else if matches!(ext.as_str(), "json" | "jsonc") {
-    format_json(file_text, fmt_options)
-  } else {
-    let config = get_resolved_typescript_config(fmt_options);
-    dprint_plugin_typescript::format_text(file_path, file_text, &config)
+
+  match ext.as_str() {
+    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
+      format_markdown(file_text, fmt_options)
+    }
+    "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "ipynb" => dprint_plugin_jupyter::format_text(
+      file_text,
+      |file_path: &Path, file_text: String| {
+        format_file(file_path, &file_text, fmt_options)
+      },
+    ),
+    _ => {
+      let config = get_resolved_typescript_config(fmt_options);
+      dprint_plugin_typescript::format_text(file_path, file_text, &config)
+    }
   }
 }
 
@@ -669,7 +673,7 @@ where
 /// This function is similar to is_supported_ext but adds additional extensions
 /// supported by `deno fmt`.
 fn is_supported_ext_fmt(path: &Path) -> bool {
-  if let Some(ext) = get_extension(path) {
+  get_extension(path).is_some_and(|ext| {
     matches!(
       ext.as_str(),
       "ts"
@@ -688,10 +692,9 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mdwn"
         | "mdown"
         | "markdown"
+        | "ipynb"
     )
-  } else {
-    false
-  }
+  })
 }
 
 #[cfg(test)]
@@ -723,6 +726,7 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
   }
 
   #[test]

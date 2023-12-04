@@ -1,11 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { scrypt, scryptSync } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../../test_util/std/async/deferred.ts";
+import { assertEquals } from "../../../../test_util/std/assert/mod.ts";
 
 Deno.test("scrypt works correctly", async () => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<boolean>();
 
   scrypt("password", "salt", 32, (err, key) => {
     if (err) throw err;
@@ -46,14 +45,14 @@ Deno.test("scrypt works correctly", async () => {
         115,
       ]),
     );
-    promise.resolve(true);
+    resolve(true);
   });
 
   await promise;
 });
 
 Deno.test("scrypt works with options", async () => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<boolean>();
 
   scrypt(
     "password",
@@ -101,7 +100,7 @@ Deno.test("scrypt works with options", async () => {
           71,
         ]),
       );
-      promise.resolve(true);
+      resolve(true);
     },
   );
 

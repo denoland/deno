@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::process::Stdio;
 use test_util as util;
+use util::assert_contains;
 
 #[test]
 fn help_flag() {
@@ -20,21 +20,16 @@ fn help_output() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("--help")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
+    .run();
 
-  assert!(output.status.success());
-  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stdout = output.combined_output();
   let subcommand_descriptions = vec![
     "Run a JavaScript or TypeScript program",
     "Run benchmarks",
     "Bundle module and dependencies into single file",
     "Cache the dependencies",
     "Type-check the dependencies",
-    "UNSTABLE: Compile the script into a self contained executable",
+    "Compile the script into a self contained executable",
     "Generate shell completions",
     "Print coverage reports",
     "Show documentation for a module",
@@ -50,13 +45,14 @@ fn help_output() {
     "Run a task defined in the configuration file",
     "Run tests",
     "Print runtime TypeScript declarations",
+    #[cfg(feature = "upgrade")]
     "Upgrade deno executable to given version",
     "Vendor remote modules into a local directory",
     "Print this message or the help of the given subcommand(s)",
   ];
 
   for description in subcommand_descriptions {
-    assert!(stdout.contains(description));
+    assert_contains!(stdout, description);
   }
 }
 

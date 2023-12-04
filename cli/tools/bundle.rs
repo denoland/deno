@@ -31,19 +31,18 @@ pub async fn bundle(
   if let Some(watch_flags) = &bundle_flags.watch {
     util::file_watcher::watch_func(
       flags,
-      util::file_watcher::PrintConfig {
-        job_name: "Bundle".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
-      move |flags, sender, _changed_paths| {
+      util::file_watcher::PrintConfig::new(
+        "Bundle",
+        !watch_flags.no_clear_screen,
+      ),
+      move |flags, watcher_communicator, _changed_paths| {
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(sender.clone())
-            .build_from_flags(flags)
+            .build_from_flags_for_watcher(flags, watcher_communicator.clone())
             .await?;
           let cli_options = factory.cli_options();
-          let _ = sender.send(cli_options.watch_paths());
+          let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
           bundle_action(factory, &bundle_flags).await?;
 
           Ok(())
@@ -149,8 +148,11 @@ fn bundle_module_graph(
   deno_emit::bundle_graph(
     graph,
     deno_emit::BundleOptions {
+      minify: false,
       bundle_type: deno_emit::BundleType::Module,
-      emit_options: ts_config_result.ts_config.into(),
+      emit_options: crate::args::ts_config_to_emit_options(
+        ts_config_result.ts_config,
+      ),
       emit_ignore_directives: true,
     },
   )

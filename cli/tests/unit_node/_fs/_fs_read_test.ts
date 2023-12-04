@@ -4,13 +4,12 @@ import {
   assertFalse,
   assertMatch,
   assertStrictEquals,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { read, readSync } from "node:fs";
 import { open, openSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import * as path from "../../../../test_util/std/path/mod.ts";
 import { closeSync } from "node:fs";
-import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 async function readTest(
   testData: string,
@@ -132,7 +131,7 @@ Deno.test({
 Deno.test({
   name: "[std/node/fs] Read fs.read(fd, options, cb) signature",
   async fn() {
-    const promise = deferred();
+    const { promise, reject, resolve } = Promise.withResolvers<void>();
     const file = Deno.makeTempFileSync();
     Deno.writeTextFileSync(file, "hi there");
     const fd = openSync(file, "r+");
@@ -154,10 +153,10 @@ Deno.test({
             Buffer.from([104, 105, 32, 116, 104, 101, 114, 101, 0, 0, 0]),
           );
         } catch (e) {
-          promise.reject(e);
+          reject(e);
           return;
         }
-        promise.resolve();
+        resolve();
       },
     );
     closeSync(fd);
@@ -168,7 +167,7 @@ Deno.test({
 Deno.test({
   name: "[std/node/fs] Read fs.read(fd, cb) signature",
   async fn() {
-    const promise = deferred();
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
     const file = Deno.makeTempFileSync();
     Deno.writeTextFileSync(file, "hi deno");
     const fd = openSync(file, "r+");
@@ -178,10 +177,10 @@ Deno.test({
         assertStrictEquals(bytesRead, 7);
         assertStrictEquals(data?.byteLength, 16384);
       } catch (e) {
-        promise.reject(e);
+        reject(e);
         return;
       }
-      promise.resolve();
+      resolve();
     });
     closeSync(fd);
     await promise;
@@ -277,32 +276,47 @@ Deno.test({
     await Deno.writeTextFile(file, "abc");
 
     await t.step("without position option", async () => {
-      const promise = deferred<void>();
+      const { promise, resolve } = Promise.withResolvers<void>();
       let called = false;
       const fd = openSync(file, "r");
       read(fd, () => {
         called = true;
         closeSync(fd);
-        promise.resolve();
+        resolve();
       });
       assertFalse(called);
       await promise;
     });
 
     await t.step("with position option", async () => {
-      const promise = deferred<void>();
+      const { promise, resolve } = Promise.withResolvers<void>();
       let called = false;
       const buffer = Buffer.alloc(2);
       const fd = openSync(file, "r");
       read(fd, { position: 1, buffer, offset: 0, length: 2 }, () => {
         called = true;
         closeSync(fd);
-        promise.resolve();
+        resolve();
       });
       assertFalse(called);
       await promise;
     });
 
     await Deno.remove(file);
+  },
+});
+
+Deno.test({
+  name: "SYNC: read with no offsetOropts argument",
+  fn() {
+    const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+    const testData = path.resolve(moduleDir, "testdata", "hello.txt");
+    const buffer = Buffer.alloc(1024);
+    const fd = openSync(testData, "r");
+    const _bytesRead = readSync(
+      fd,
+      buffer,
+    );
+    closeSync(fd);
   },
 });

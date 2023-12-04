@@ -5,7 +5,7 @@ import {
   assertEquals,
   assertStrictEquals,
   assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import * as util from "node:util";
 
@@ -46,8 +46,8 @@ Deno.test({
   name: "[util] isBoolean",
   fn() {
     assert(util.isBoolean(true));
-    assert(util.isBoolean(new Boolean()));
-    assert(util.isBoolean(new Boolean(true)));
+    assert(!util.isBoolean(new Boolean()));
+    assert(!util.isBoolean(new Boolean(true)));
     assert(util.isBoolean(false));
     assert(!util.isBoolean("deno"));
     assert(!util.isBoolean("true"));
@@ -80,7 +80,7 @@ Deno.test({
   name: "[util] isNumber",
   fn() {
     assert(util.isNumber(666));
-    assert(util.isNumber(new Number(666)));
+    assert(!util.isNumber(new Number(666)));
     assert(!util.isNumber("999"));
     assert(!util.isNumber(null));
   },
@@ -90,7 +90,7 @@ Deno.test({
   name: "[util] isString",
   fn() {
     assert(util.isString("deno"));
-    assert(util.isString(new String("DIO")));
+    assert(!util.isString(new String("DIO")));
     assert(!util.isString(1337));
   },
 });
@@ -99,6 +99,7 @@ Deno.test({
   name: "[util] isSymbol",
   fn() {
     assert(util.isSymbol(Symbol()));
+    assert(!util.isSymbol(Object(Symbol())));
     assert(!util.isSymbol(123));
     assert(!util.isSymbol("string"));
   },
@@ -128,7 +129,7 @@ Deno.test({
   name: "[util] isError",
   fn() {
     const java = new Error();
-    const nodejs = new TypeError();
+    const nodejs = Reflect.construct(Error, [], Object);
     const deno = "Future";
     assert(util.isError(java));
     assert(util.isError(nodejs));
@@ -204,6 +205,14 @@ Deno.test({
     assert(util.TextEncoder === TextEncoder);
     const te: util.TextEncoder = new util.TextEncoder();
     assert(te instanceof TextEncoder);
+  },
+});
+
+Deno.test({
+  name: "[util] toUSVString",
+  fn() {
+    assertEquals(util.toUSVString("foo"), "foo");
+    assertEquals(util.toUSVString("bar\ud801"), "bar\ufffd");
   },
 });
 

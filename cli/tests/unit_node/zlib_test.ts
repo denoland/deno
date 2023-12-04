@@ -1,10 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assert,
-  assertEquals,
-} from "../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
+import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
 import {
   brotliCompressSync,
@@ -24,7 +20,7 @@ Deno.test("brotli compression sync", () => {
 });
 
 Deno.test("brotli compression", async () => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   const compress = createBrotliCompress();
   const filePath = relative(
     Deno.cwd(),
@@ -43,7 +39,7 @@ Deno.test("brotli compression", async () => {
     const stream2 = input2.pipe(decompress).pipe(output2);
 
     stream2.on("finish", () => {
-      promise.resolve();
+      resolve();
     });
   });
 
@@ -62,16 +58,23 @@ Deno.test("brotli compression", async () => {
   }
 });
 
+Deno.test("brotli end-to-end with 4097 bytes", () => {
+  const a = "a".repeat(4097);
+  const compressed = brotliCompressSync(a);
+  const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), a);
+});
+
 Deno.test(
   "zlib create deflate with dictionary",
   { sanitizeResources: false },
   async () => {
-    const promise = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const handle = createDeflate({
       dictionary: Buffer.alloc(0),
     });
 
-    handle.on("close", () => promise.resolve());
+    handle.on("close", () => resolve());
     handle.end();
     handle.destroy();
 

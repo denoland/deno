@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+pub use deno_native_certs;
 pub use rustls;
-pub use rustls_native_certs;
 pub use rustls_pemfile;
 pub use webpki;
 pub use webpki_roots;
@@ -145,16 +145,27 @@ pub struct BasicAuth {
 pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
   // TODO(@justinmchase): Consider also loading the system keychain here
-  root_cert_store.add_server_trust_anchors(
-    webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+  root_cert_store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
+    |ta| {
       rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
         ta.subject,
         ta.spki,
         ta.name_constraints,
       )
-    }),
-  );
+    },
+  ));
   root_cert_store
+}
+
+pub enum SocketUse {
+  /// General SSL: No ALPN
+  GeneralSsl,
+  /// HTTP: h1 and h2
+  Http,
+  /// http/1.1 only
+  Http1Only,
+  /// http/2 only
+  Http2Only,
 }
 
 pub fn create_client_config(
@@ -162,6 +173,7 @@ pub fn create_client_config(
   ca_certs: Vec<Vec<u8>>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
+  socket_use: SocketUse,
 ) -> Result<ClientConfig, AnyError> {
   let maybe_cert_chain_and_key =
     if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
@@ -184,15 +196,16 @@ pub fn create_client_config(
     // However it's not really feasible to deduplicate it as the `client_config` instances
     // are not type-compatible - one wants "client cert", the other wants "transparency policy
     // or client cert".
-    let client =
+    let mut client =
       if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
         client_config
-          .with_single_cert(cert_chain, private_key)
+          .with_client_auth_cert(cert_chain, private_key)
           .expect("invalid client key or certificate")
       } else {
         client_config.with_no_client_auth()
       };
 
+    add_alpn(&mut client, socket_use);
     return Ok(client);
   }
 
@@ -220,16 +233,32 @@ pub fn create_client_config(
       root_cert_store
     });
 
-  let client = if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key
-  {
-    client_config
-      .with_single_cert(cert_chain, private_key)
-      .expect("invalid client key or certificate")
-  } else {
-    client_config.with_no_client_auth()
-  };
+  let mut client =
+    if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
+      client_config
+        .with_client_auth_cert(cert_chain, private_key)
+        .expect("invalid client key or certificate")
+    } else {
+      client_config.with_no_client_auth()
+    };
 
+  add_alpn(&mut client, socket_use);
   Ok(client)
+}
+
+fn add_alpn(client: &mut ClientConfig, socket_use: SocketUse) {
+  match socket_use {
+    SocketUse::Http1Only => {
+      client.alpn_protocols = vec!["http/1.1".into()];
+    }
+    SocketUse::Http2Only => {
+      client.alpn_protocols = vec!["h2".into()];
+    }
+    SocketUse::Http => {
+      client.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+    }
+    SocketUse::GeneralSsl => {}
+  };
 }
 
 pub fn load_certs(

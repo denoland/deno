@@ -13,7 +13,7 @@ use crate::factory::CliFactory;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::FileCollector;
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
@@ -59,11 +59,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     }
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig {
-        job_name: "Lint".to_string(),
-        clear_screen: !watch_flags.no_clear_screen,
-      },
-      move |flags, sender, changed_paths| {
+      file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
+      move |flags, watcher_communicator, changed_paths| {
         let lint_flags = lint_flags.clone();
         Ok(async move {
           let factory = CliFactory::from_flags(flags).await?;
@@ -77,7 +74,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
                 Ok(files)
               }
             })?;
-          _ = sender.send(files.clone());
+          _ = watcher_communicator.watch_paths(files.clone());
 
           let lint_paths = if let Some(paths) = changed_paths {
             // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
@@ -195,20 +192,20 @@ async fn lint_files(
 }
 
 fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_supported_ext)
+  FileCollector::new(is_script_ext)
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
-    .collect_files(&files.include)
+    .collect_files(files.include.as_deref())
 }
 
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
-  let lint_rules = get_configured_rules(LintRulesConfig {
-    exclude: None,
-    include: None,
-    tags: maybe_rules_tags,
-  });
+  let lint_rules = if maybe_rules_tags.is_none() {
+    rules::get_all_rules()
+  } else {
+    rules::get_filtered_rules(maybe_rules_tags, None, None)
+  };
 
   if json {
     let json_rules: Vec<serde_json::Value> = lint_rules
@@ -228,8 +225,19 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
     for rule in lint_rules.iter() {
-      println!(" - {}", rule.code());
-      println!("   help: https://lint.deno.land/#{}", rule.code());
+      print!(" - {}", colors::cyan(rule.code()));
+      if rule.tags().is_empty() {
+        println!();
+      } else {
+        println!(" [{}]", colors::gray(rule.tags().join(", ")))
+      }
+      println!(
+        "{}",
+        colors::gray(format!(
+          "   help: https://lint.deno.land/#{}",
+          rule.code()
+        ))
+      );
       println!();
     }
   }

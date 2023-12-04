@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -11,8 +10,6 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageReq;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -44,7 +41,7 @@ pub struct TypeChecker {
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
   node_resolver: Arc<NodeResolver>,
-  npm_resolver: Arc<CliNpmResolver>,
+  npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 impl TypeChecker {
@@ -52,7 +49,7 @@ impl TypeChecker {
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
     node_resolver: Arc<NodeResolver>,
-    npm_resolver: Arc<CliNpmResolver>,
+    npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       caches,
@@ -74,11 +71,10 @@ impl TypeChecker {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
-    if graph.has_node_specifier {
-      self
-        .npm_resolver
-        .inject_synthetic_types_node_package()
-        .await?;
+    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+      if graph.has_node_specifier {
+        npm_resolver.inject_synthetic_types_node_package().await?;
+      }
     }
 
     log::debug!("Type checking.");
@@ -96,19 +92,28 @@ impl TypeChecker {
     let debug = self.cli_options.log_level() == Some(log::Level::Debug);
     let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
     let check_js = ts_config.get_check_js();
-    let check_hash = match get_check_hash(
-      &graph,
-      self.npm_resolver.package_reqs(),
-      type_check_mode,
-      &ts_config,
-    ) {
-      CheckHashResult::NoFiles => return Ok(()),
-      CheckHashResult::Hash(hash) => hash,
+    let maybe_check_hash = match self.npm_resolver.check_state_hash() {
+      Some(npm_check_hash) => {
+        match get_check_hash(
+          &graph,
+          npm_check_hash,
+          type_check_mode,
+          &ts_config,
+        ) {
+          CheckHashResult::NoFiles => return Ok(()),
+          CheckHashResult::Hash(hash) => Some(hash),
+        }
+      }
+      None => None, // we can't determine a check hash
     };
 
     // do not type check if we know this is type checked
-    if !options.reload && cache.has_check_hash(check_hash) {
-      return Ok(());
+    if !options.reload {
+      if let Some(check_hash) = maybe_check_hash {
+        if cache.has_check_hash(check_hash) {
+          return Ok(());
+        }
+      }
     }
 
     for root in &graph.roots {
@@ -138,7 +143,10 @@ impl TypeChecker {
       debug,
       graph: graph.clone(),
       hash_data,
-      maybe_node_resolver: Some(self.node_resolver.clone()),
+      maybe_npm: Some(tsc::RequestNpmState {
+        node_resolver: self.node_resolver.clone(),
+        npm_resolver: self.npm_resolver.clone(),
+      }),
       maybe_tsbuildinfo,
       root_names,
       check_mode: type_check_mode,
@@ -172,7 +180,9 @@ impl TypeChecker {
     }
 
     if diagnostics.is_empty() {
-      cache.add_check_hash(check_hash);
+      if let Some(check_hash) = maybe_check_hash {
+        cache.add_check_hash(check_hash);
+      }
     }
 
     log::debug!("{}", response.stats);
@@ -194,7 +204,7 @@ enum CheckHashResult {
 /// be used to tell
 fn get_check_hash(
   graph: &ModuleGraph,
-  package_reqs: HashMap<NpmPackageReq, NpmPackageNv>,
+  package_reqs_hash: u64,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
@@ -268,15 +278,7 @@ fn get_check_hash(
     }
   }
 
-  // Check if any of the top level npm packages have changed. We could go
-  // further and check all the individual npm packages, but that's
-  // probably overkill.
-  let mut package_reqs = package_reqs.into_iter().collect::<Vec<_>>();
-  package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
-  for (pkg_req, pkg_nv) in package_reqs {
-    hasher.write_hashable(&pkg_req);
-    hasher.write_hashable(&pkg_nv);
-  }
+  hasher.write_hashable(package_reqs_hash);
 
   if !has_file || !check_js && !has_file_to_type_check {
     // no files to type check

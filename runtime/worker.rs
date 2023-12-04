@@ -1,12 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
@@ -14,12 +14,11 @@ use deno_cache::SqliteBackedCache;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::futures::Future;
+use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
-#[cfg(feature = "__runtime_js_sources")]
-use deno_core::ExtensionFileSource;
+use deno_core::FeatureChecker;
 use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
@@ -28,14 +27,17 @@ use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::OpMetricsFactoryFn;
+use deno_core::OpMetricsSummaryTracker;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
@@ -44,6 +46,7 @@ use log::debug;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::runtime;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
@@ -59,78 +62,6 @@ impl ExitCode {
   pub fn set(&mut self, code: i32) {
     self.0.store(code, Relaxed);
   }
-}
-
-// Duplicated in `build.rs`. Keep in sync!
-deno_core::extension!(
-  runtime,
-  esm_entry_point = "ext:runtime/90_deno_ns.js",
-  esm = [
-    dir "js",
-    "01_errors.js",
-    "01_version.ts",
-    "06_util.js",
-    "10_permissions.js",
-    "11_workers.js",
-    "13_buffer.js",
-    "30_os.js",
-    "40_fs_events.js",
-    "40_http.js",
-    "40_process.js",
-    "40_signals.js",
-    "40_tty.js",
-    "41_prompt.js",
-    "90_deno_ns.js",
-    "98_global_scope.js"
-  ],
-);
-
-// Duplicated in `build.rs`. Keep in sync!
-#[cfg(feature = "__runtime_js_sources")]
-pub fn maybe_transpile_source(
-  source: &mut ExtensionFileSource,
-) -> Result<(), AnyError> {
-  use deno_ast::MediaType;
-  use deno_ast::ParseParams;
-  use deno_ast::SourceTextInfo;
-  use deno_core::ExtensionFileSourceCode;
-  use std::path::Path;
-
-  // Always transpile `node:` built-in modules, since they might be TypeScript.
-  let media_type = if source.specifier.starts_with("node:") {
-    MediaType::TypeScript
-  } else {
-    MediaType::from_path(Path::new(&source.specifier))
-  };
-
-  match media_type {
-    MediaType::TypeScript => {}
-    MediaType::JavaScript => return Ok(()),
-    MediaType::Mjs => return Ok(()),
-    _ => panic!(
-      "Unsupported media type for snapshotting {media_type:?} for file {}",
-      source.specifier
-    ),
-  }
-  let code = source.load()?;
-
-  let parsed = deno_ast::parse_module(ParseParams {
-    specifier: source.specifier.to_string(),
-    text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
-    media_type,
-    capture_tokens: false,
-    scope_analysis: false,
-    maybe_syntax: None,
-  })?;
-  let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
-    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-    inline_source_map: false,
-    ..Default::default()
-  })?;
-
-  source.code =
-    ExtensionFileSourceCode::Computed(transpiled_source.text.into());
-  Ok(())
 }
 
 /// This worker is created and used by almost all
@@ -161,6 +92,9 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
+  /// Should op registration be skipped?
+  pub skip_op_registration: bool,
+
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
 
@@ -190,6 +124,8 @@ pub struct WorkerOptions {
   // If true, the worker will wait for inspector session before executing
   // user code.
   pub should_wait_for_inspector_session: bool,
+  /// If Some, print a low-level trace output for ops matching the given patterns.
+  pub strace_ops: Option<Vec<String>>,
 
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
@@ -214,6 +150,7 @@ pub struct WorkerOptions {
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub feature_checker: Arc<FeatureChecker>,
 }
 
 impl Default for WorkerOptions {
@@ -224,10 +161,12 @@ impl Default for WorkerOptions {
       }),
       fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
+      skip_op_registration: false,
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
+      strace_ops: Default::default(),
       compiled_wasm_module_store: Default::default(),
       shared_array_buffer_store: Default::default(),
       maybe_inspector_server: Default::default(),
@@ -245,8 +184,74 @@ impl Default for WorkerOptions {
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      feature_checker: Default::default(),
     }
   }
+}
+
+fn create_op_metrics(
+  enable_op_summary_metrics: bool,
+  strace_ops: Option<Vec<String>>,
+) -> (
+  Option<Rc<OpMetricsSummaryTracker>>,
+  Option<OpMetricsFactoryFn>,
+) {
+  let mut op_summary_metrics = None;
+  let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
+  let now = Instant::now();
+  let max_len: Rc<std::cell::Cell<usize>> = Default::default();
+  if let Some(patterns) = strace_ops {
+    /// Match an op name against a list of patterns
+    fn matches_pattern(patterns: &[String], name: &str) -> bool {
+      let mut found_match = false;
+      let mut found_nomatch = false;
+      for pattern in patterns.iter() {
+        if let Some(pattern) = pattern.strip_prefix('-') {
+          if name.contains(pattern) {
+            return false;
+          }
+        } else if name.contains(pattern.as_str()) {
+          found_match = true;
+        } else {
+          found_nomatch = true;
+        }
+      }
+
+      found_match || !found_nomatch
+    }
+
+    op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
+      // If we don't match a requested pattern, or we match a negative pattern, bail
+      if !matches_pattern(&patterns, decl.name) {
+        return None;
+      }
+
+      max_len.set(max_len.get().max(decl.name.len()));
+      let max_len = max_len.clone();
+      Some(Rc::new(
+        move |op: &deno_core::_ops::OpCtx, event, source| {
+          eprintln!(
+            "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
+            now.elapsed().as_secs_f64(),
+            name = op.decl().name,
+            max_len = max_len.get()
+          );
+        },
+      ))
+    }));
+  }
+
+  if enable_op_summary_metrics {
+    let summary = Rc::new(OpMetricsSummaryTracker::default());
+    let summary_metrics = summary.clone().op_metrics_factory_fn(|_| true);
+    op_metrics_factory_fn = Some(match op_metrics_factory_fn {
+      Some(f) => merge_op_metrics(f, summary_metrics),
+      None => summary_metrics,
+    });
+    op_summary_metrics = Some(summary);
+  }
+
+  (op_summary_metrics, op_metrics_factory_fn)
 }
 
 impl MainWorker {
@@ -257,7 +262,7 @@ impl MainWorker {
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
     let mut worker = Self::from_options(main_module, permissions, options);
-    worker.bootstrap(&bootstrap_options);
+    worker.bootstrap(bootstrap_options);
     worker
   }
 
@@ -269,18 +274,21 @@ impl MainWorker {
     deno_core::extension!(deno_permissions_worker,
       options = {
         permissions: PermissionsContainer,
-        unstable: bool,
         enable_testing_features: bool,
       },
       state = |state, options| {
         state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::UnstableChecker { unstable: options.unstable });
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
     );
 
+    // Get our op metrics
+    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
+      options.bootstrap.enable_op_summary_metrics,
+      options.strace_ops,
+    );
+
     // Permissions: many ops depend on this
-    let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
@@ -289,7 +297,7 @@ impl MainWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    // `runtime/build.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let mut extensions = vec![
       // Web APIs
       deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -324,26 +332,33 @@ impl MainWorker {
       deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         options.broadcast_channel.clone(),
-        unstable,
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(unstable),
+      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
       deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
         options.root_cert_store_provider.clone(),
-        unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           options.origin_storage_dir.clone(),
+          options.seed,
+          deno_kv::remote::HttpOptions {
+            user_agent: options.bootstrap.user_agent.clone(),
+            root_cert_store_provider: options.root_cert_store_provider.clone(),
+            unsafely_ignore_certificate_errors: options
+              .unsafely_ignore_certificate_errors
+              .clone(),
+            client_cert_chain_and_key: None,
+            proxy: None,
+          },
         ),
-        unstable,
       ),
+      deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        unstable,
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
@@ -363,9 +378,18 @@ impl MainWorker {
       ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
+      ops::bootstrap::deno_bootstrap::init_ops_and_esm({
+        #[cfg(feature = "__runtime_js_sources")]
+        {
+          Some(Default::default())
+        }
+        #[cfg(not(feature = "__runtime_js_sources"))]
+        {
+          None
+        }
+      }),
       deno_permissions_worker::init_ops_and_esm(
         permissions,
-        unstable,
         enable_testing_features,
       ),
       runtime::init_ops_and_esm(),
@@ -380,6 +404,7 @@ impl MainWorker {
       }
       #[cfg(feature = "__runtime_js_sources")]
       {
+        use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
           maybe_transpile_source(source).unwrap();
         }
@@ -406,6 +431,7 @@ impl MainWorker {
         .or_else(crate::js::deno_isolate_init),
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
+      skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
@@ -413,8 +439,14 @@ impl MainWorker {
       preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
+      feature_checker: Some(options.feature_checker.clone()),
+      op_metrics_factory_fn,
       ..Default::default()
     });
+
+    if let Some(op_summary_metrics) = op_summary_metrics {
+      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
@@ -430,7 +462,6 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       op_state.borrow_mut().put(inspector);
     }
-
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
@@ -462,7 +493,8 @@ impl MainWorker {
     }
   }
 
-  pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+  pub fn bootstrap(&mut self, options: BootstrapOptions) {
+    self.js_runtime.op_state().borrow_mut().put(options.clone());
     let scope = &mut self.js_runtime.handle_scope();
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
@@ -516,13 +548,13 @@ impl MainWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        maybe_result
       }
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+
+        receiver.await
       }
     }
   }
@@ -571,32 +603,26 @@ impl MainWorker {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
+    self.js_runtime.poll_event_loop2(
+      cx,
+      deno_core::PollEventLoopOptions {
+        wait_for_inspector,
+        ..Default::default()
+      },
+    )
   }
 
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    self.js_runtime.run_event_loop(wait_for_inspector).await
-  }
-
-  /// A utility function that runs provided future concurrently with the event loop.
-  ///
-  /// Useful when using a local inspector session.
-  pub async fn with_event_loop<'a, T>(
-    &mut self,
-    mut fut: Pin<Box<dyn Future<Output = T> + 'a>>,
-  ) -> T {
-    loop {
-      tokio::select! {
-        biased;
-        result = &mut fut => {
-          return result;
-        }
-        _ = self.run_event_loop(false) => {}
-      };
-    }
+    self
+      .js_runtime
+      .run_event_loop2(deno_core::PollEventLoopOptions {
+        wait_for_inspector,
+        ..Default::default()
+      })
+      .await
   }
 
   /// Return exit code set by the executed code (either in main worker

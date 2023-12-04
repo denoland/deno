@@ -7,7 +7,7 @@
 
 const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
   _normalizeArgs,
   // createConnection,
@@ -58,6 +58,7 @@ import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
+import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 
 enum STATUS_CODES {
@@ -289,6 +290,10 @@ class FakeSocket extends EventEmitter {
   end() {}
 
   destroy() {}
+
+  setTimeout(callback, timeout = 0, ...args) {
+    setTimeout(callback, timeout, args);
+  }
 }
 
 /** ClientRequest represents the http(s) request from the client */
@@ -566,7 +571,9 @@ class ClientRequest extends OutgoingMessage {
       }
     }*/
     this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
+  }
 
+  _writeHeader() {
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -580,15 +587,38 @@ class ClientRequest extends OutgoingMessage {
     const client = this._getClient() ?? createHttpClient({ http2: false });
     this._client = client;
 
+    if (
+      this.method === "POST" || this.method === "PATCH" || this.method === "PUT"
+    ) {
+      const { readable, writable } = new TransformStream({
+        cancel: (e) => {
+          this._requestSendError = e;
+        },
+      });
+
+      this._bodyWritable = writable;
+      this._bodyWriter = writable.getWriter();
+
+      this._bodyWriteRid = resourceForReadableStream(readable);
+    }
+
     this._req = core.ops.op_node_http_request(
       this.method,
       url,
       headers,
       client.rid,
-      this.method === "POST" || this.method === "PATCH" ||
-        this.method === "PUT",
+      this._bodyWriteRid,
     );
-    this._bodyWriteRid = this._req.requestBodyRid;
+  }
+
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
+    }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
   }
 
   _getClient(): Deno.HttpClient | undefined {
@@ -615,26 +645,18 @@ class ClientRequest extends OutgoingMessage {
     }
 
     this.finished = true;
-    if (chunk !== undefined && chunk !== null) {
-      this.write(chunk, encoding);
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
     }
+    this._bodyWriter?.close();
 
     (async () => {
       try {
-        const [res, _] = await Promise.all([
-          core.opAsync("op_fetch_send", this._req.requestRid),
-          (async () => {
-            if (this._bodyWriteRid) {
-              try {
-                await core.shutdown(this._bodyWriteRid);
-              } catch (err) {
-                this._requestSendError = err;
-              }
-
-              core.tryClose(this._bodyWriteRid);
-            }
-          })(),
-        ]);
+        const res = await core.opAsync("op_fetch_send", this._req.requestRid);
         try {
           cb?.();
         } catch (_) {
@@ -771,6 +793,13 @@ class ClientRequest extends OutgoingMessage {
     }
     this.destroyed = true;
 
+    const rid = this._client?.rid;
+    if (rid) {
+      core.tryClose(rid);
+    }
+    if (this._req.cancelHandleRid !== null) {
+      core.tryClose(this._req.cancelHandleRid);
+    }
     // If we're aborting, we don't care about any more response data.
     if (this.res) {
       this.res._dump();
@@ -1528,7 +1557,7 @@ export class ServerImpl extends EventEmitter {
   #server: Deno.Server;
   #unref = false;
   #ac?: AbortController;
-  #servePromise: Deferred<void>;
+  #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
   listening = false;
 
   constructor(opts, requestListener?: ServerHandler) {
@@ -1545,8 +1574,8 @@ export class ServerImpl extends EventEmitter {
 
     this._opts = opts;
 
-    this.#servePromise = deferred();
-    this.#servePromise.then(() => this.emit("close"));
+    this.#serveDeferred = Promise.withResolvers<void>();
+    this.#serveDeferred.promise.then(() => this.emit("close"));
     if (requestListener !== undefined) {
       this.on("request", requestListener);
     }
@@ -1632,7 +1661,7 @@ export class ServerImpl extends EventEmitter {
     if (this.#unref) {
       this.#server.unref();
     }
-    this.#server.finished.then(() => this.#servePromise!.resolve());
+    this.#server.finished.then(() => this.#serveDeferred!.resolve());
   }
 
   setTimeout() {
@@ -1672,7 +1701,7 @@ export class ServerImpl extends EventEmitter {
       this.#ac.abort();
       this.#ac = undefined;
     } else {
-      this.#servePromise!.resolve();
+      this.#serveDeferred!.resolve();
     }
 
     this.#server = undefined;
@@ -1736,6 +1765,7 @@ export function get(...args: any[]) {
 export {
   Agent,
   ClientRequest,
+  globalAgent,
   IncomingMessageForServer as IncomingMessage,
   METHODS,
   OutgoingMessage,
@@ -1743,6 +1773,7 @@ export {
 };
 export default {
   Agent,
+  globalAgent,
   ClientRequest,
   STATUS_CODES,
   METHODS,

@@ -4,6 +4,7 @@ pub use deno_broadcast_channel;
 pub use deno_cache;
 pub use deno_console;
 pub use deno_core;
+pub use deno_cron;
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_ffi;
@@ -29,11 +30,14 @@ pub mod inspector_server;
 pub mod js;
 pub mod ops;
 pub mod permissions;
+pub mod snapshot;
 pub mod tokio_util;
 pub mod web_worker;
 pub mod worker;
 
 mod worker_bootstrap;
-pub use worker::runtime;
 pub use worker_bootstrap::BootstrapOptions;
 pub use worker_bootstrap::WorkerLogLevel;
+
+mod shared;
+pub use shared::runtime;

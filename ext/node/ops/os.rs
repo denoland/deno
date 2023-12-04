@@ -2,10 +2,10 @@
 
 use crate::NodePermissions;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 
-#[op]
+#[op2(fast)]
 pub fn op_node_os_get_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -21,7 +21,7 @@ where
   priority::get_priority(pid)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_os_set_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -38,7 +38,8 @@ where
   priority::set_priority(pid, priority)
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_os_username<P>(state: &mut OpState) -> Result<String, AnyError>
 where
   P: NodePermissions + 'static,
@@ -48,7 +49,26 @@ where
     permissions.check_sys("userInfo", "node:os.userInfo()")?;
   }
 
-  Ok(whoami::username())
+  Ok(deno_whoami::username())
+}
+
+#[op2(fast)]
+pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("geteuid", "node:os.geteuid()")?;
+  }
+
+  #[cfg(windows)]
+  let euid = 0;
+  #[cfg(unix)]
+  // SAFETY: Call to libc geteuid.
+  let euid = unsafe { libc::geteuid() };
+
+  Ok(euid)
 }
 
 #[cfg(unix)]
@@ -60,13 +80,6 @@ mod priority {
   use libc::id_t;
   use libc::PRIO_PROCESS;
 
-  #[cfg(target_os = "macos")]
-  #[allow(non_camel_case_types)]
-  type priority_t = i32;
-  #[cfg(target_os = "linux")]
-  #[allow(non_camel_case_types)]
-  type priority_t = u32;
-
   const PRIORITY_HIGH: i32 = -14;
 
   // Ref: https://github.com/libuv/libuv/blob/55376b044b74db40772e8a6e24d67a8673998e02/src/unix/core.c#L1533-L1547
@@ -74,7 +87,7 @@ mod priority {
     set_errno(Errno(0));
     match (
       // SAFETY: libc::getpriority is unsafe
-      unsafe { libc::getpriority(PRIO_PROCESS as priority_t, pid as id_t) },
+      unsafe { libc::getpriority(PRIO_PROCESS, pid as id_t) },
       errno(),
     ) {
       (-1, Errno(0)) => Ok(PRIORITY_HIGH),
@@ -85,9 +98,7 @@ mod priority {
 
   pub fn set_priority(pid: u32, priority: i32) -> Result<(), AnyError> {
     // SAFETY: libc::setpriority is unsafe
-    match unsafe {
-      libc::setpriority(PRIO_PROCESS as priority_t, pid as id_t, priority)
-    } {
+    match unsafe { libc::setpriority(PRIO_PROCESS, pid as id_t, priority) } {
       -1 => Err(std::io::Error::last_os_error().into()),
       _ => Ok(()),
     }

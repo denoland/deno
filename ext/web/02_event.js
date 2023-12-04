@@ -21,7 +21,6 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
   Boolean,
-  DateNow,
   Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
@@ -123,8 +122,6 @@ const _inPassiveListener = Symbol("[[inPassiveListener]]");
 const _dispatched = Symbol("[[dispatched]]");
 const _isTrusted = Symbol("[[isTrusted]]");
 const _path = Symbol("[[path]]");
-// internal.
-const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
 class Event {
   constructor(type, eventInitDict = {}) {
@@ -137,21 +134,6 @@ class Event {
     this[_dispatched] = false;
     this[_isTrusted] = false;
     this[_path] = [];
-
-    if (eventInitDict?.[_skipInternalInit]) {
-      this[_attributes] = {
-        type,
-        data: eventInitDict.data ?? null,
-        bubbles: eventInitDict.bubbles ?? false,
-        cancelable: eventInitDict.cancelable ?? false,
-        composed: eventInitDict.composed ?? false,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: 0,
-      };
-      return;
-    }
 
     webidl.requiredArguments(
       arguments.length,
@@ -172,16 +154,19 @@ class Event {
       currentTarget: null,
       eventPhase: Event.NONE,
       target: null,
-      timeStamp: DateNow(),
+      timeStamp: 0,
     };
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(Event.prototype, this),
-      keys: EVENT_PROPS,
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(EventPrototype, this),
+        keys: EVENT_PROPS,
+      }),
+      inspectOptions,
+    );
   }
 
   get type() {
@@ -402,6 +387,8 @@ class Event {
     return this[_attributes].timeStamp;
   }
 }
+
+const EventPrototype = Event.prototype;
 
 // Not spec compliant. The spec defines it as [LegacyUnforgeable]
 // but doing so has a big performance hit
@@ -896,44 +883,28 @@ function getDefaultTargetData() {
   };
 }
 
-// This is lazy loaded because there is a circular dependency with AbortSignal.
-let addEventListenerOptionsConverter;
-
-function lazyAddEventListenerOptionsConverter() {
-  addEventListenerOptionsConverter ??= webidl.createDictionaryConverter(
-    "AddEventListenerOptions",
-    [
-      {
-        key: "capture",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "passive",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "once",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "signal",
-        converter: webidl.converters.AbortSignal,
-      },
-    ],
-  );
-}
-
-webidl.converters.AddEventListenerOptions = (V, prefix, context, opts) => {
-  if (webidl.type(V) !== "Object" || V === null) {
-    V = { capture: Boolean(V) };
+function addEventListenerOptionsConverter(V, prefix) {
+  if (webidl.type(V) !== "Object") {
+    return { capture: !!V, once: false, passive: false };
   }
 
-  lazyAddEventListenerOptionsConverter();
-  return addEventListenerOptionsConverter(V, prefix, context, opts);
-};
+  const options = {
+    capture: !!V.capture,
+    once: !!V.once,
+    passive: !!V.passive,
+  };
+
+  const signal = V.signal;
+  if (signal !== undefined) {
+    options.signal = webidl.converters.AbortSignal(
+      signal,
+      prefix,
+      "'signal' of 'AddEventListenerOptions' (Argument 3)",
+    );
+  }
+
+  return options;
+}
 
 class EventTarget {
   constructor() {
@@ -952,11 +923,7 @@ class EventTarget {
 
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    options = webidl.converters.AddEventListenerOptions(
-      options,
-      prefix,
-      "Argument 3",
-    );
+    options = addEventListenerOptionsConverter(options, prefix);
 
     if (callback === null) {
       return;
@@ -1080,9 +1047,13 @@ class EventTarget {
   getParent(_event) {
     return null;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  }
 }
 
-webidl.configurePrototype(EventTarget);
+webidl.configureInterface(EventTarget);
 const EventTargetPrototype = EventTarget.prototype;
 
 defineEnumerableProps(EventTarget, [
@@ -1140,24 +1111,29 @@ class ErrorEvent extends Event {
     this.#error = error;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "message",
-        "filename",
-        "lineno",
-        "colno",
-        "error",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "message",
+          "filename",
+          "lineno",
+          "colno",
+          "error",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "ErrorEvent";
 }
+
+const ErrorEventPrototype = ErrorEvent.prototype;
 
 defineEnumerableProps(ErrorEvent, [
   "message",
@@ -1201,19 +1177,24 @@ class CloseEvent extends Event {
     this.#reason = reason;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "wasClean",
-        "code",
-        "reason",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CloseEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "wasClean",
+          "code",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
+
+const CloseEventPrototype = CloseEvent.prototype;
 
 class MessageEvent extends Event {
   get source() {
@@ -1225,7 +1206,6 @@ class MessageEvent extends Event {
       bubbles: eventInitDict?.bubbles ?? false,
       cancelable: eventInitDict?.cancelable ?? false,
       composed: eventInitDict?.composed ?? false,
-      [_skipInternalInit]: eventInitDict?.[_skipInternalInit],
     });
 
     this.data = eventInitDict?.data ?? null;
@@ -1234,22 +1214,27 @@ class MessageEvent extends Event {
     this.lastEventId = eventInitDict?.lastEventId ?? "";
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "data",
-        "origin",
-        "lastEventId",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "data",
+          "origin",
+          "lastEventId",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "CloseEvent";
 }
+
+const MessageEventPrototype = MessageEvent.prototype;
 
 class CustomEvent extends Event {
   #detail = null;
@@ -1269,20 +1254,25 @@ class CustomEvent extends Event {
     return this.#detail;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "detail",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CustomEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "detail",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "CustomEvent";
 }
+
+const CustomEventPrototype = CustomEvent.prototype;
 
 ReflectDefineProperty(CustomEvent.prototype, "detail", {
   enumerable: true,
@@ -1299,22 +1289,27 @@ class ProgressEvent extends Event {
     this.total = eventInitDict?.total ?? 0;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "lengthComputable",
-        "loaded",
-        "total",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "lengthComputable",
+          "loaded",
+          "total",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "ProgressEvent";
 }
+
+const ProgressEventPrototype = ProgressEvent.prototype;
 
 class PromiseRejectionEvent extends Event {
   #promise = null;
@@ -1347,24 +1342,29 @@ class PromiseRejectionEvent extends Event {
     this.#reason = reason;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        PromiseRejectionEvent.prototype,
-        this,
-      ),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "promise",
-        "reason",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PromiseRejectionEventPrototype,
+          this,
+        ),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "promise",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "PromiseRejectionEvent";
 }
+
+const PromiseRejectionEventPrototype = PromiseRejectionEvent.prototype;
 
 defineEnumerableProps(PromiseRejectionEvent, [
   "promise",
@@ -1381,7 +1381,7 @@ function makeWrappedHandler(handler, isSpecialErrorEventHandler) {
 
     if (
       isSpecialErrorEventHandler &&
-      ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, evt) &&
+      ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, evt) &&
       evt.type === "error"
     ) {
       const ret = FunctionPrototypeCall(
@@ -1514,7 +1514,6 @@ function reportError(error) {
 }
 
 export {
-  _skipInternalInit,
   CloseEvent,
   CustomEvent,
   defineEventHandler,

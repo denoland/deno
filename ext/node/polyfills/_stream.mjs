@@ -1669,9 +1669,11 @@ var require_destroy = __commonJS({
         }
       }
       try {
-        stream._construct(onConstruct);
+        stream._construct((err) => {
+          nextTick(onConstruct, err);
+        });
       } catch (err) {
-        onConstruct(err);
+        nextTick(onConstruct, err);
       }
     }
     function emitConstructNT(stream) {
@@ -4472,6 +4474,7 @@ var require_duplexify = __commonJS({
           readable: false,
         });
       }
+
       if (typeof body === "function") {
         const { value, write, final, destroy } = fromAsyncGen(body);
         if (isIterable(value)) {
@@ -4667,8 +4670,6 @@ var require_duplexify = __commonJS({
           cb(err);
         } else if (err) {
           d.destroy(err);
-        } else if (!readable && !writable) {
-          d.destroy();
         }
       }
       d = new Duplexify({

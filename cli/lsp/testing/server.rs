@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::collectors::TestCollector;
-use super::definitions::TestDefinitions;
+use super::definitions::TestModule;
 use super::execution::TestRun;
 use super::lsp_custom;
 
@@ -47,7 +47,7 @@ pub struct TestServer {
   /// A map of run ids to test runs
   runs: Arc<Mutex<HashMap<u32, TestRun>>>,
   /// Tests that are discovered from a versioned document
-  tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
+  tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
   /// A channel for requesting that changes to documents be statically analyzed
   /// for tests
   update_channel: mpsc::UnboundedSender<Arc<StateSnapshot>>,
@@ -59,7 +59,7 @@ impl TestServer {
     performance: Arc<Performance>,
     maybe_root_uri: Option<ModuleSpecifier>,
   ) -> Self {
-    let tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>> =
+    let tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>> =
       Arc::new(Mutex::new(HashMap::new()));
 
     let (update_channel, mut update_rx) =
@@ -87,7 +87,7 @@ impl TestServer {
           match update_rx.recv().await {
             None => break,
             Some(snapshot) => {
-              let mark = performance.mark("testing_update", None::<()>);
+              let mark = performance.mark("lsp.testing_update");
               let mut tests = tests.lock();
               // we create a list of test modules we currently are tracking
               // eliminating any we go over when iterating over the document
@@ -98,6 +98,9 @@ impl TestServer {
                 .documents(DocumentsFilter::AllDiagnosable)
               {
                 let specifier = document.specifier();
+                if !snapshot.config.specifier_enabled_for_test(specifier) {
+                  continue;
+                }
                 keys.remove(specifier);
                 let script_version = document.script_version();
                 let valid = if let Some(test) = tests.get(specifier) {
@@ -109,26 +112,27 @@ impl TestServer {
                   if let Some(Ok(parsed_source)) =
                     document.maybe_parsed_source()
                   {
+                    let was_empty = tests
+                      .remove(specifier)
+                      .map(|tm| tm.is_empty())
+                      .unwrap_or(true);
                     let mut collector = TestCollector::new(
                       specifier.clone(),
+                      script_version,
                       parsed_source.text_info().clone(),
                     );
                     parsed_source.module().visit_with(&mut collector);
-                    let test_definitions = TestDefinitions {
-                      discovered: collector.take(),
-                      injected: Default::default(),
-                      script_version,
-                    };
-                    if !test_definitions.discovered.is_empty() {
+                    let test_module = collector.take();
+                    if !test_module.is_empty() {
                       client.send_test_notification(
-                        test_definitions.as_notification(
-                          specifier,
-                          mru.as_ref(),
-                          parsed_source.text_info(),
-                        ),
+                        test_module.as_replace_notification(mru.as_ref()),
                       );
+                    } else if !was_empty {
+                      client.send_test_notification(as_delete_notification(
+                        specifier.clone(),
+                      ));
                     }
-                    tests.insert(specifier.clone(), test_definitions);
+                    tests.insert(specifier.clone(), test_module);
                   }
                 }
               }

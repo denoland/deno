@@ -3,7 +3,7 @@
 use std::io::Error;
 
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 
 #[cfg(unix)]
@@ -70,7 +70,7 @@ fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
   original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
 }
 
-#[op(fast)]
+#[op2(fast)]
 fn op_stdin_set_raw(
   state: &mut OpState,
   is_raw: bool,
@@ -118,6 +118,41 @@ fn op_stdin_set_raw(
   }
   #[cfg(unix)]
   {
+    fn prepare_stdio() {
+      // SAFETY: Save current state of stdio and restore it when we exit.
+      unsafe {
+        use libc::atexit;
+        use libc::tcgetattr;
+        use libc::tcsetattr;
+        use libc::termios;
+        use once_cell::sync::OnceCell;
+
+        // Only save original state once.
+        static ORIG_TERMIOS: OnceCell<Option<termios>> = OnceCell::new();
+        ORIG_TERMIOS.get_or_init(|| {
+          let mut termios = std::mem::zeroed::<termios>();
+          if tcgetattr(libc::STDIN_FILENO, &mut termios) == 0 {
+            extern "C" fn reset_stdio() {
+              // SAFETY: Reset the stdio state.
+              unsafe {
+                tcsetattr(
+                  libc::STDIN_FILENO,
+                  0,
+                  &ORIG_TERMIOS.get().unwrap().unwrap(),
+                )
+              };
+            }
+
+            atexit(reset_stdio);
+            return Some(termios);
+          }
+
+          None
+        });
+      }
+    }
+
+    prepare_stdio();
     let tty_mode_store = state.borrow::<TtyModeStore>().clone();
     let previous_mode = tty_mode_store.get(rid);
 
@@ -162,38 +197,16 @@ fn op_stdin_set_raw(
   }
 }
 
-#[op(fast)]
-fn op_isatty(
-  state: &mut OpState,
-  rid: u32,
-  out: &mut [u8],
-) -> Result<(), AnyError> {
-  let raw_fd = state.resource_table.get_fd(rid)?;
-  #[cfg(windows)]
-  {
-    use winapi::shared::minwindef::FALSE;
-    use winapi::um::consoleapi;
-
-    let handle = raw_fd;
-    let mut test_mode: DWORD = 0;
-    // If I cannot get mode out of console, it is not a console.
-    out[0] =
-      // SAFETY: Windows API
-      unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE }
-        as u8;
-  }
-  #[cfg(unix)]
-  {
-    // SAFETY: Posix API
-    out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
-  }
-  Ok(())
+#[op2(fast)]
+fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
+  let handle = state.resource_table.get_handle(rid)?;
+  Ok(handle.is_terminal())
 }
 
-#[op(fast)]
+#[op2(fast)]
 fn op_console_size(
   state: &mut OpState,
-  result: &mut [u32],
+  #[buffer] result: &mut [u32],
 ) -> Result<(), AnyError> {
   fn check_console_size(
     state: &mut OpState,

@@ -14,7 +14,7 @@ import {
   assertEquals,
   assertThrows,
   fail,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { open, openSync } from "node:fs";
 import { join, parse } from "node:path";
@@ -395,6 +395,16 @@ Deno.test("[std/node/fs] open callback isn't called twice if error is thrown", a
     invocation: `open(${JSON.stringify(tempFile)}, `,
     async cleanup() {
       await Deno.remove(tempFile);
+    },
+  });
+
+  Deno.test({
+    name: "SYNC: open file with flag set to 0 (readonly)",
+    fn() {
+      const file = Deno.makeTempFileSync();
+      const fd = openSync(file, 0);
+      assert(Deno.resources()[fd]);
+      closeSync(fd);
     },
   });
 });

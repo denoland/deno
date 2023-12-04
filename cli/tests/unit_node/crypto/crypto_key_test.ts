@@ -2,6 +2,7 @@
 
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
+  createPrivateKey,
   createSecretKey,
   generateKeyPair,
   generateKeyPairSync,
@@ -13,8 +14,10 @@ import { Buffer } from "node:buffer";
 import {
   assertEquals,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { createHmac } from "node:crypto";
+
+const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
 const generateKeyPairAsync = promisify(
   (
@@ -76,10 +79,12 @@ Deno.test({
   },
 });
 
+const modulusLengths = RUN_SLOW_TESTS ? [2048, 3072] : [2048];
+
 for (const type of ["rsa", "rsa-pss", "dsa"]) {
-  for (const modulusLength of [2048, 3072]) {
+  for (const modulusLength of modulusLengths) {
     Deno.test({
-      name: `generate ${type} key`,
+      name: `generate ${type} key ${modulusLength}`,
       fn() {
         const { publicKey, privateKey } = generateKeyPairSync(type as any, {
           modulusLength,
@@ -91,7 +96,7 @@ for (const type of ["rsa", "rsa-pss", "dsa"]) {
     });
 
     Deno.test({
-      name: `generate ${type} key async`,
+      name: `generate ${type} key async ${modulusLength}`,
       async fn() {
         const x = await generateKeyPairAsync(type as any, {
           modulusLength,
@@ -173,7 +178,9 @@ for (
   });
 }
 
-for (const primeLength of [1024, 2048, 4096]) {
+const primeLengths = RUN_SLOW_TESTS ? [1024, 2048, 4096] : [1024];
+
+for (const primeLength of primeLengths) {
   Deno.test({
     name: `generate dh key ${primeLength}`,
     fn() {
@@ -202,3 +209,28 @@ for (const primeLength of [1024, 2048, 4096]) {
     },
   });
 }
+
+const rsaPrivateKey = Deno.readTextFileSync(
+  new URL("../testdata/rsa_private.pem", import.meta.url),
+);
+
+Deno.test("createPrivateKey rsa", function () {
+  const key = createPrivateKey(rsaPrivateKey);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "rsa");
+  assertEquals(key.asymmetricKeyDetails?.modulusLength, 2048);
+  assertEquals(key.asymmetricKeyDetails?.publicExponent, 65537n);
+});
+
+// openssl ecparam -name secp256r1 -genkey -noout -out a.pem
+// openssl pkcs8 -topk8 -nocrypt -in a.pem -out b.pem
+const ecPrivateKey = Deno.readTextFileSync(
+  new URL("./ec_private_secp256r1.pem", import.meta.url),
+);
+
+Deno.test("createPrivateKey ec", function () {
+  const key = createPrivateKey(ecPrivateKey);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+});

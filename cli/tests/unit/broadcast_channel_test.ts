@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
+import { assertEquals } from "../../../test_util/std/assert/mod.ts";
 
 Deno.test("BroadcastChannel worker", async () => {
   const intercom = new BroadcastChannel("intercom");
@@ -12,7 +11,7 @@ Deno.test("BroadcastChannel worker", async () => {
   const worker = new Worker(url, { type: "module", name: "worker" });
   worker.onmessage = () => intercom.postMessage(++count);
 
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   intercom.onmessage = function (e) {
     assertEquals(count, e.data);
@@ -21,7 +20,7 @@ Deno.test("BroadcastChannel worker", async () => {
     } else {
       worker.terminate();
       intercom.close();
-      promise.resolve();
+      resolve();
     }
   };
 

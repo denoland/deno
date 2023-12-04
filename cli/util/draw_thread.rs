@@ -2,9 +2,10 @@
 
 use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_runtime::ops::tty::ConsoleSize;
 use once_cell::sync::Lazy;
+use std::io::IsTerminal;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -70,7 +71,7 @@ static INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
 });
 
 static IS_TTY_WITH_CONSOLE_SIZE: Lazy<bool> = Lazy::new(|| {
-  atty::is(atty::Stream::Stderr)
+  std::io::stderr().is_terminal()
     && console_size()
       .map(|s| s.cols > 0 && s.rows > 0)
       .unwrap_or(false)

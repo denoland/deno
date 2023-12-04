@@ -103,6 +103,31 @@ declare namespace Deno {
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
+  /** @category FFI */
+  const brand: unique symbol;
+
+  /** @category FFI */
+  export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
+  /** @category FFI */
+  export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
+  /** @category FFI */
+  export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
+  /** @category FFI */
+  export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
+    [brand]: T;
+  };
+  export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
+    & "function"
+    & {
+      [brand]: T;
+    };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * All supported types for interfacing with foreign functions.
@@ -126,21 +151,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A utility type conversion for foreign symbol parameters and unsafe callback
-   * return types.
-   *
-   * @category FFI
-   */
-  type ToNativeTypeMap =
-    & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, number | bigint>
-    & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue>
-    & Record<NativeFunctionType, PointerValue>
-    & Record<NativeBufferType, BufferSource | null>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Type conversion for foreign symbol parameters and unsafe callback return
    * types.
    *
@@ -148,15 +158,22 @@ declare namespace Deno {
    */
   type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
-    : ToNativeTypeMap[Exclude<T, NativeStructType>];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion for unsafe callback return types.
-   *
-   * @category FFI
-   */
-  type ToNativeResultTypeMap = ToNativeTypeMap & Record<NativeVoidType, void>;
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -166,7 +183,23 @@ declare namespace Deno {
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? BufferSource
-      : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+        : T extends NativeI8Enum<infer U> ? U
+        : T extends NativeU16Enum<infer U> ? U
+        : T extends NativeI16Enum<infer U> ? U
+        : T extends NativeU32Enum<infer U> ? U
+        : T extends NativeI32Enum<infer U> ? U
+        : number
+      : T extends NativeBigIntType ? number | bigint
+      : T extends NativeBooleanType ? boolean
+      : T extends NativePointerType
+        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      : T extends NativeFunctionType
+        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+        : PointerValue
+      : T extends NativeBufferType ? BufferSource | null
+      : T extends NativeVoidType ? void
+      : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -186,21 +219,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A utility type for conversion of foreign symbol return types and unsafe
-   * callback parameters.
-   *
-   * @category FFI
-   */
-  type FromNativeTypeMap =
-    & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, number | bigint>
-    & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue>
-    & Record<NativeBufferType, PointerValue>
-    & Record<NativeFunctionType, PointerValue>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Type conversion for foreign symbol return types and unsafe callback
    * parameters.
    *
@@ -208,17 +226,22 @@ declare namespace Deno {
    */
   type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
-    : FromNativeTypeMap[Exclude<T, NativeStructType>];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion for foreign symbol return types.
-   *
-   * @category FFI
-   */
-  type FromNativeResultTypeMap =
-    & FromNativeTypeMap
-    & Record<NativeVoidType, void>;
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -228,7 +251,23 @@ declare namespace Deno {
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? Uint8Array
-      : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+        : T extends NativeI8Enum<infer U> ? U
+        : T extends NativeU16Enum<infer U> ? U
+        : T extends NativeI16Enum<infer U> ? U
+        : T extends NativeU32Enum<infer U> ? U
+        : T extends NativeI32Enum<infer U> ? U
+        : number
+      : T extends NativeBigIntType ? number | bigint
+      : T extends NativeBooleanType ? boolean
+      : T extends NativePointerType
+        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      : T extends NativeBufferType ? PointerValue
+      : T extends NativeFunctionType
+        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+        : PointerValue
+      : T extends NativeVoidType ? void
+      : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -354,42 +393,52 @@ declare namespace Deno {
       : StaticForeignSymbol<T[K]>;
   };
 
-  /** @category FFI */
-  const brand: unique symbol;
-  /** @category FFI */
-  type PointerObject = { [brand]: unknown };
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Pointer type depends on the architecture and actual pointer value.
+   * A non-null pointer, represented as an object
+   * at runtime. The object's prototype is `null`
+   * and cannot be changed. The object cannot be
+   * assigned to either and is thus entirely read-only.
    *
-   * On a 32 bit host system all pointer values are plain numbers. On a 64 bit
-   * host system pointer values are represented as numbers if the value is below
-   * `Number.MAX_SAFE_INTEGER`, otherwise they are provided as bigints.
+   * To interact with memory through a pointer use the
+   * {@linkcode UnsafePointerView} class. To create a
+   * pointer from an address or the get the address of
+   * a pointer use the static methods of the
+   * {@linkcode UnsafePointer} class.
    *
    * @category FFI
    */
-  export type PointerValue = null | PointerObject;
+  export type PointerObject<T = unknown> = { [brand]: T };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An unsafe pointer to a memory location for passing and returning pointers
-   * to and from the FFI.
+   * Pointers are represented either with a {@linkcode PointerObject}
+   * object or a `null` if the pointer is null.
+   *
+   * @category FFI
+   */
+  export type PointerValue<T = unknown> = null | PointerObject<T>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A collection of static functions for interacting with pointer objects.
    *
    * @category FFI
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create(value: number | bigint): PointerValue;
+    static create<T = unknown>(value: number | bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
-    static equals(a: PointerValue, b: PointerValue): boolean;
+    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
-    static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    static of<T = unknown>(
+      value: Deno.UnsafeCallback | BufferSource,
+    ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
-    static offset(
-      value: NonNullable<PointerValue>,
+    static offset<T = unknown>(
+      value: PointerObject,
       offset: number,
-    ): PointerValue;
+    ): PointerValue<T>;
     /** Get the numeric value of a pointer */
     static value(value: PointerValue): number | bigint;
   }
@@ -404,9 +453,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: NonNullable<PointerValue>);
+    constructor(pointer: PointerObject);
 
-    pointer: NonNullable<PointerValue>;
+    pointer: PointerObject;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -441,14 +490,14 @@ declare namespace Deno {
      * pointer. */
     getFloat64(offset?: number): number;
     /** Gets a pointer at the specified byte offset from the pointer */
-    getPointer(offset?: number): PointerValue;
+    getPointer<T = unknown>(offset?: number): PointerValue<T>;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
     static getCString(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       offset?: number,
     ): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
@@ -457,7 +506,7 @@ declare namespace Deno {
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -473,7 +522,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -488,11 +537,13 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: NonNullable<PointerValue>;
+    pointer: PointerObject<Fn>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
+    constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
+    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
+    constructor(pointer: PointerObject, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -562,7 +613,7 @@ declare namespace Deno {
     );
 
     /** The pointer to the unsafe callback. */
-    readonly pointer: NonNullable<PointerValue>;
+    readonly pointer: PointerObject<Definition>;
     /** The definition of the unsafe callback. */
     readonly definition: Definition;
     /** The callback function. */
@@ -874,7 +925,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Create a custom HttpClient for to use with {@linkcode fetch}. This is an
+   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
    * extension of the web platform Fetch API which allows Deno to use custom
    * TLS certificates and connect via a proxy while using `fetch()`.
    *
@@ -1265,6 +1316,124 @@ declare namespace Deno {
    * @category KV
    */
   export function openKv(path?: string): Promise<Deno.Kv>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * CronScheduleExpression is used as the type of `minute`, `hour`,
+   * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
+   * @category Cron
+   */
+  type CronScheduleExpression = number | { exact: number | number[] } | {
+    start?: number;
+    end?: number;
+    every?: number;
+  };
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * CronSchedule is the interface used for JSON format
+   * cron `schedule`.
+   * @category Cron
+   */
+  export interface CronSchedule {
+    minute?: CronScheduleExpression;
+    hour?: CronScheduleExpression;
+    dayOfMonth?: CronScheduleExpression;
+    month?: CronScheduleExpression;
+    dayOfWeek?: CronScheduleExpression;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * ```ts
+   * Deno.cron("sample cron", { hour: { every: 6 } }, () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string | CronSchedule,
+    handler: () => Promise<void> | void,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", {
+   *   backoffSchedule: [10, 20]
+   * }, () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
+   *
+   * `backoffSchedule` option can be used to specify the retry policy for failed
+   * executions. Each element in the array represents the number of milliseconds
+   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
+   * means that a failed execution will be retried at most 3 times, with 1
+   * second, 5 seconds, and 10 seconds delay between each retry.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string | CronSchedule,
+    options: { backoffSchedule?: number[]; signal?: AbortSignal },
+    handler: () => Promise<void> | void,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   * `backoffSchedule` option can be used to specify the retry policy for failed
+   * executions. Each element in the array represents the number of milliseconds
+   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
+   * means that a failed execution will be retried at most 3 times, with 1
+   * second, 5 seconds, and 10 seconds delay between each retry.
+   *
+   * @category Cron
+   * @deprecated Use other {@linkcode cron} overloads instead. This overload
+   * will be removed in the future.
+   */
+  export function cron(
+    name: string,
+    schedule: string | CronSchedule,
+    handler: () => Promise<void> | void,
+    options: { backoffSchedule?: number[]; signal?: AbortSignal },
+  ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1673,7 +1842,7 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export class Kv {
+  export class Kv implements Disposable {
     /**
      * Retrieve the value and versionstamp for the given key from the database
      * in the form of a {@linkcode Deno.KvEntryMaybe}. If no value exists for
@@ -1869,6 +2038,8 @@ declare namespace Deno {
      * operations immediately.
      */
     close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1884,6 +2055,313 @@ declare namespace Deno {
     constructor(value: bigint);
     /** The value of this unsigned 64-bit integer, represented as a bigint. */
     readonly value: bigint;
+  }
+
+  /** An instance of the server created using `Deno.serve()` API.
+   *
+   * @category HTTP Server
+   */
+  export interface HttpServer {
+    /** Gracefully close the server. No more new connections will be accepted,
+     * while pending requests will be allowed to finish.
+     */
+    shutdown(): Promise<void>;
+  }
+
+  export interface ServeUnixOptions {
+    /** The unix domain socket path to listen on. */
+    path: string;
+
+    /** An {@linkcode AbortSignal} to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server starts listening. */
+    onListen?: (params: { path: string }) => void;
+  }
+
+  /** Information for a unix domain socket HTTP request.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeUnixHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.UnixAddr;
+  }
+
+  /** A handler for unix domain socket HTTP requests. Consumes a request and returns a response.
+   *
+   * If a handler throws, the server calling the handler will assume the impact
+   * of the error is isolated to the individual request. It will catch the error
+   * and if necessary will close the underlying connection.
+   *
+   * @category HTTP Server
+   */
+  export type ServeUnixHandler = (
+    request: Request,
+    info: ServeUnixHandlerInfo,
+  ) => Response | Promise<Response>;
+
+  /**
+   * @category HTTP Server
+   */
+  export interface ServeUnixInit {
+    /** The handler to invoke to process each incoming request. */
+    handler: ServeUnixHandler;
+  }
+
+  /** Serves HTTP requests with the given option bag and handler.
+   *
+   * You can specify the socket path with `path` option.
+   *
+   * ```ts
+   * Deno.serve(
+   *   { path: "path/to/socket" },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * ```
+   *
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve(
+   *    { signal: ac.signal, path: "path/to/socket" },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message
+   * `Listening on path/to/socket` on listening. If you like to
+   * change this behavior, you can specify a custom `onListen` callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   path: "path/to/socket",
+   * }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeUnixOptions,
+    handler: ServeUnixHandler,
+  ): Server;
+  /** Serves HTTP requests with the given option bag.
+   *
+   * You can specify an object with the path option, which is the
+   * unix domain socket to listen on.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve({
+   *   path: "path/to/socket",
+   *   handler: (_req) => new Response("Hello, world"),
+   *   signal: ac.signal,
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
+   *   },
+   * });
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeUnixInit & ServeUnixOptions,
+  ): Server;
+
+  /**
+   * A namespace containing runtime APIs available in Jupyter notebooks.
+   *
+   * When accessed outside of Jupyter notebook context an error will be thrown.
+   *
+   * @category Jupyter */
+  export namespace jupyter {
+    /** @category Jupyter */
+    export interface DisplayOptions {
+      raw?: boolean;
+      update?: boolean;
+      display_id?: string;
+    }
+
+    type VegaObject = {
+      $schema: string;
+      [key: string]: unknown;
+    };
+
+    /**
+     * A collection of supported media types and data for Jupyter frontends.
+     *
+     * @category Jupyter
+     */
+    export type MediaBundle = {
+      "text/plain"?: string;
+      "text/html"?: string;
+      "image/svg+xml"?: string;
+      "text/markdown"?: string;
+      "application/javascript"?: string;
+
+      // Images (per Jupyter spec) must be base64 encoded. We could _allow_
+      // accepting Uint8Array or ArrayBuffer within `display` calls, however we still
+      // must encode them for jupyter.
+      "image/png"?: string; // WISH: Uint8Array | ArrayBuffer
+      "image/jpeg"?: string; // WISH: Uint8Array | ArrayBuffer
+      "image/gif"?: string; // WISH: Uint8Array | ArrayBuffer
+      "application/pdf"?: string; // WISH: Uint8Array | ArrayBuffer
+
+      // NOTE: all JSON types must be objects at the top level (no arrays, strings, or other primitives)
+      "application/json"?: object;
+      "application/geo+json"?: object;
+      "application/vdom.v1+json"?: object;
+      "application/vnd.plotly.v1+json"?: object;
+      "application/vnd.vega.v5+json"?: VegaObject;
+      "application/vnd.vegalite.v4+json"?: VegaObject;
+      "application/vnd.vegalite.v5+json"?: VegaObject;
+
+      // Must support a catch all for custom media types / mimetypes
+      [key: string]: string | object | undefined;
+    };
+
+    /** @category Jupyter */
+    export const $display: unique symbol;
+
+    /** @category Jupyter */
+    export type Displayable = {
+      [$display]: () => MediaBundle | Promise<MediaBundle>;
+    };
+
+    /**
+     * Display function for Jupyter Deno Kernel.
+     * Mimics the behavior of IPython's `display(obj, raw=True)` function to allow
+     * asynchronous displaying of objects in Jupyter.
+     *
+     * @param obj - The object to be displayed
+     * @param options - Display options with a default { raw: true }
+     * @category Jupyter
+     */
+    export function display(obj: unknown, options?: DisplayOptions): void;
+
+    /**
+     * Show Markdown in Jupyter frontends with a tagged template function.
+     *
+     * Takes a template string and returns a displayable object for Jupyter frontends.
+     *
+     * @example
+     * Create a Markdown view.
+     *
+     * ```typescript
+     * const { md } = Deno.jupyter;
+     * md`# Notebooks in TypeScript via Deno ![Deno logo](https://github.com/denoland.png?size=32)
+     *
+     * * TypeScript ${Deno.version.typescript}
+     * * V8 ${Deno.version.v8}
+     * * Deno ${Deno.version.deno}
+     *
+     * Interactive compute with Jupyter _built into Deno_!
+     * `
+     * ```
+     *
+     * @category Jupyter
+     */
+    export function md(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Displayable;
+
+    /**
+     * Show HTML in Jupyter frontends with a tagged template function.
+     *
+     * Takes a template string and returns a displayable object for Jupyter frontends.
+     *
+     * @example
+     * Create an HTML view.
+     * ```typescript
+     * const { html } = Deno.jupyter;
+     * html`<h1>Hello, world!</h1>`
+     * ```
+     *
+     * @category Jupyter
+     */
+    export function html(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Displayable;
+
+    /**
+     * SVG Tagged Template Function.
+     *
+     * Takes a template string and returns a displayable object for Jupyter frontends.
+     *
+     * Example usage:
+     *
+     * svg`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+     *      <circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
+     *    </svg>`
+     *
+     * @category Jupyter
+     */
+    export function svg(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Displayable;
+
+    /**
+     * Format an object for displaying in Deno
+     *
+     * @param obj - The object to be displayed
+     * @returns MediaBundle
+     *
+     * @category Jupyter
+     */
+    export function format(obj: unknown): MediaBundle;
+
+    /**
+     * Broadcast a message on IO pub channel.
+     *
+     * ```
+     * await Deno.jupyter.broadcast("display_data", {
+     *   data: { "text/html": "<b>Processing.</b>" },
+     *   metadata: {},
+     *   transient: { display_id: "progress" }
+     * });
+     *
+     * await new Promise((resolve) => setTimeout(resolve, 500));
+     *
+     * await Deno.jupyter.broadcast("update_display_data", {
+     *   data: { "text/html": "<b>Processing..</b>" },
+     *   metadata: {},
+     *   transient: { display_id: "progress" }
+     * });
+     * ```
+     *
+     * @category Jupyter */
+    export function broadcast(
+      msgType: string,
+      content: Record<string, unknown>,
+      extra?: {
+        metadata?: Record<string, unknown>;
+        buffers?: Uint8Array[];
+      },
+    ): Promise<void>;
   }
 }
 
@@ -1978,7 +2456,7 @@ declare interface WebSocketCloseInfo {
  */
 declare interface WebSocketStream {
   url: string;
-  connection: Promise<WebSocketConnection>;
+  opened: Promise<WebSocketConnection>;
   closed: Promise<WebSocketCloseInfo>;
   close(closeInfo?: WebSocketCloseInfo): void;
 }

@@ -10,6 +10,7 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBufferIsView,
@@ -349,19 +350,24 @@ class CryptoKey {
     return this[_algorithm];
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        type: this.type,
-        extractable: this.extractable,
-        algorithm: this.algorithm,
-        usages: this.usages,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, this),
+        keys: [
+          "type",
+          "extractable",
+          "algorithm",
+          "usages",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(CryptoKey);
+webidl.configureInterface(CryptoKey);
 const CryptoKeyPrototype = CryptoKey.prototype;
 
 /**
@@ -1313,6 +1319,7 @@ class SubtleCrypto {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
           signature,
+          saltLength: normalizedAlgorithm.saltLength,
         }, data);
       }
       case "HMAC": {
@@ -1708,6 +1715,10 @@ class SubtleCrypto {
     }
 
     return result;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
@@ -2273,18 +2284,13 @@ function importKeyEd25519(
       }
 
       // 5.
-      if (jwk.alg !== undefined && jwk.alg !== "EdDSA") {
-        throw new DOMException("Invalid algorithm", "DataError");
-      }
-
-      // 6.
       if (
         keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
       ) {
         throw new DOMException("Invalid key usage", "DataError");
       }
 
-      // 7.
+      // 6.
       if (jwk.key_ops !== undefined) {
         if (
           ArrayPrototypeFind(
@@ -2311,12 +2317,12 @@ function importKeyEd25519(
         }
       }
 
-      // 8.
+      // 7.
       if (jwk.ext !== undefined && jwk.ext === false && extractable) {
         throw new DOMException("Invalid key extractability", "DataError");
       }
 
-      // 9.
+      // 8.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
         let privateKeyData;
@@ -4089,7 +4095,6 @@ function exportKeyEd25519(format, key, innerKey) {
         : ops.op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
-        alg: "EdDSA",
         crv: "Ed25519",
         x,
         "key_ops": key.usages,
@@ -4677,7 +4682,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
   }
 }
 
-webidl.configurePrototype(SubtleCrypto);
+webidl.configureInterface(SubtleCrypto);
 const subtle = webidl.createBranded(SubtleCrypto);
 
 class Crypto {
@@ -4735,12 +4740,19 @@ class Crypto {
     return subtle;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({})}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CryptoPrototype, this),
+        keys: ["subtle"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(Crypto);
+webidl.configureInterface(Crypto);
 const CryptoPrototype = Crypto.prototype;
 
 const crypto = webidl.createBranded(Crypto);

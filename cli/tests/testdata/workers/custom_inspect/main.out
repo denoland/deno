@@ -1,2 +1,1 @@
-[WILDCARD]ReadableStream { locked: false }
-[WILDCARD]
+ReadableStream { locked: false }

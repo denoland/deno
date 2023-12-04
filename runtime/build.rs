@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+mod shared;
+
 use std::env;
 use std::path::PathBuf;
 
@@ -9,58 +11,35 @@ use std::path::PathBuf;
 ))]
 mod startup_snapshot {
   use super::*;
-  use deno_ast::MediaType;
-  use deno_ast::ParseParams;
-  use deno_ast::SourceTextInfo;
   use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
+  use deno_core::op2;
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
-  use deno_core::ExtensionFileSource;
-  use deno_core::ExtensionFileSourceCode;
+  use deno_core::OpState;
   use deno_http::DefaultHttpPropertyExtractor;
+  use shared::maybe_transpile_source;
+  use shared::runtime;
   use std::path::Path;
 
-  // Duplicated in `worker.rs`. Keep in sync!
-  fn maybe_transpile_source(
-    source: &mut ExtensionFileSource,
-  ) -> Result<(), AnyError> {
-    // Always transpile `node:` built-in modules, since they might be TypeScript.
-    let media_type = if source.specifier.starts_with("node:") {
-      MediaType::TypeScript
-    } else {
-      MediaType::from_path(Path::new(&source.specifier))
-    };
-
-    match media_type {
-      MediaType::TypeScript => {}
-      MediaType::JavaScript => return Ok(()),
-      MediaType::Mjs => return Ok(()),
-      _ => panic!(
-        "Unsupported media type for snapshotting {media_type:?} for file {}",
-        source.specifier
-      ),
-    }
-    let code = source.load()?;
-
-    let parsed = deno_ast::parse_module(ParseParams {
-      specifier: source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
-      media_type,
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    })?;
-    let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
-      imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-      inline_source_map: false,
-      ..Default::default()
-    })?;
-
-    source.code =
-      ExtensionFileSourceCode::Computed(transpiled_source.text.into());
-    Ok(())
+  // Keep in sync with `runtime/ops/bootstrap.rs`
+  #[derive(serde::Serialize, Default)]
+  #[serde(rename_all = "camelCase")]
+  pub struct SnapshotOptions {
+    pub deno_version: String,
+    pub ts_version: String,
+    pub v8_version: &'static str,
+    pub target: String,
   }
+
+  // TODO(@littledivy): Remove this once we get rid of deno_runtime snapshots.
+  #[op2]
+  #[serde]
+  pub fn op_snapshot_options(_: &mut OpState) -> SnapshotOptions {
+    SnapshotOptions::default()
+  }
+
+  deno_core::extension!(snapshot, ops = [op_snapshot_options],);
 
   #[derive(Clone)]
   struct Permissions;
@@ -95,14 +74,6 @@ mod startup_snapshot {
 
   impl deno_web::TimersPermission for Permissions {
     fn allow_hrtime(&mut self) -> bool {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_unstable(
-      &self,
-      _state: &deno_core::OpState,
-      _api_name: &'static str,
-    ) {
       unreachable!("snapshotting!")
     }
   }
@@ -241,74 +212,9 @@ mod startup_snapshot {
     }
   }
 
-  // Duplicated in `worker.rs`. Keep in sync!
-  deno_core::extension!(runtime,
-    deps = [
-      deno_webidl,
-      deno_console,
-      deno_url,
-      deno_tls,
-      deno_web,
-      deno_fetch,
-      deno_cache,
-      deno_websocket,
-      deno_webstorage,
-      deno_crypto,
-      deno_broadcast_channel,
-      // FIXME(bartlomieju): this should be reenabled
-      // "deno_node",
-      deno_ffi,
-      deno_net,
-      deno_napi,
-      deno_http,
-      deno_io,
-      deno_fs
-    ],
-    esm = [
-      dir "js",
-      "01_errors.js",
-      "01_version.ts",
-      "06_util.js",
-      "10_permissions.js",
-      "11_workers.js",
-      "13_buffer.js",
-      "30_os.js",
-      "40_fs_events.js",
-      "40_http.js",
-      "40_process.js",
-      "40_signals.js",
-      "40_tty.js",
-      "41_prompt.js",
-      "90_deno_ns.js",
-      "98_global_scope.js"
-    ],
-  );
-
-  #[cfg(not(feature = "snapshot_from_snapshot"))]
-  deno_core::extension!(
-    runtime_main,
-    deps = [runtime],
-    esm_entry_point = "ext:runtime_main/js/99_main.js",
-    customizer = |ext: &mut deno_core::Extension| {
-      ext.esm_files.to_mut().push(ExtensionFileSource {
-        specifier: "ext:runtime_main/js/99_main.js",
-        code: deno_core::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!("js/99_main.js"),
-        ),
-      });
-    }
-  );
-
-  #[cfg(feature = "snapshot_from_snapshot")]
-  deno_core::extension!(
-    runtime_main,
-    deps = [runtime],
-    esm_entry_point = "ext:runtime/90_deno_ns.js",
-  );
-
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let fs = std::sync::Arc::new(deno_fs::RealFs);
     let mut extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -331,27 +237,23 @@ mod startup_snapshot {
       deno_crypto::deno_crypto::init_ops_and_esm(None),
       deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-        false, // No --unstable.
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(false),
-      deno_net::deno_net::init_ops_and_esm::<Permissions>(
-        None, false, // No --unstable.
-        None,
-      ),
+      deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(),
+      deno_net::deno_net::init_ops_and_esm::<Permissions>(None, None),
       deno_tls::deno_tls::init_ops_and_esm(),
-      deno_kv::deno_kv::init_ops_and_esm(
-        deno_kv::sqlite::SqliteDbHandler::<Permissions>::new(None),
-        false, // No --unstable
+      deno_kv::deno_kv::init_ops_and_esm(deno_kv::sqlite::SqliteDbHandler::<
+        Permissions,
+      >::new(None, None)),
+      deno_cron::deno_cron::init_ops_and_esm(
+        deno_cron::local::LocalCronHandler::new(),
       ),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, fs.clone()),
-      runtime::init_ops_and_esm(),
-      // FIXME(bartlomieju): these extensions are specified last, because they
-      // depend on `runtime`, even though it should be other way around
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
       deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
-      runtime_main::init_ops_and_esm(),
+      runtime::init_ops_and_esm(),
+      snapshot::init_ops_and_esm(),
     ];
 
     for extension in &mut extensions {
@@ -370,6 +272,7 @@ mod startup_snapshot {
       extensions,
       compression_cb: None,
       with_runtime_cb: None,
+      skip_op_registration: false,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
@@ -395,6 +298,7 @@ fn main() {
     let snapshot_slice = &[];
     #[allow(clippy::needless_borrow)]
     #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::needless_borrows_for_generic_args)]
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 

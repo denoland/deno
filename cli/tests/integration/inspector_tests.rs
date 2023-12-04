@@ -16,13 +16,14 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use std::io::BufRead;
+use std::time::Duration;
 use test_util as util;
-use test_util::TempDir;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 use url::Url;
 use util::assert_starts_with;
-use util::http_server;
 use util::DenoChild;
+use util::TestContextBuilder;
 
 struct SpawnExecutor;
 
@@ -32,7 +33,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -73,6 +74,12 @@ struct InspectorTester {
   child: DenoChild,
   stderr_lines: Box<dyn Iterator<Item = String>>,
   stdout_lines: Box<dyn Iterator<Item = String>>,
+}
+
+impl Drop for InspectorTester {
+  fn drop(&mut self) {
+    _ = self.child.kill();
+  }
 }
 
 fn ignore_script_parsed(msg: &str) -> bool {
@@ -148,7 +155,11 @@ impl InspectorTester {
 
   async fn recv(&mut self) -> String {
     loop {
-      let result = self.socket.read_frame().await.map_err(|e| anyhow!(e));
+      // In the rare case this locks up, don't wait longer than one minute
+      let result = timeout(Duration::from_secs(60), self.socket.read_frame())
+        .await
+        .expect("recv() timeout")
+        .map_err(|e| anyhow!(e));
       let message =
         String::from_utf8(self.handle_error(result).payload.to_vec()).unwrap();
       if (self.notification_filter)(&message) {
@@ -280,7 +291,7 @@ async fn inspector_connect() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
 
@@ -302,8 +313,7 @@ async fn inspector_break_on_first_line() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -353,7 +363,7 @@ async fn inspector_break_on_first_line() {
     .await;
   tester
     .assert_received_messages(
-      &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
+      &[r#"{"id":4,"result":{"result":{"type":"object","subtype":"null","value":null}}}"#],
       &[],
     )
     .await;
@@ -386,8 +396,7 @@ async fn inspector_pause() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -427,7 +436,7 @@ async fn inspector_port_collision() {
     .arg("run")
     .arg(&inspect_flag)
     .arg(script.clone())
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
 
@@ -441,7 +450,7 @@ async fn inspector_port_collision() {
     .arg("run")
     .arg(&inspect_flag)
     .arg(script)
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
 
@@ -466,8 +475,7 @@ async fn inspector_does_not_hang() {
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .env("NO_COLOR", "1")
     .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -557,8 +565,7 @@ async fn inspector_without_brk_runs_code() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -586,8 +593,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     .arg("--allow-read")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -695,7 +701,7 @@ async fn inspector_json() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
 
@@ -744,7 +750,7 @@ async fn inspector_json_list() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
 
@@ -775,7 +781,7 @@ async fn inspector_connect_non_ws() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap();
 
@@ -801,8 +807,7 @@ async fn inspector_break_on_first_line_in_test() {
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -878,8 +883,7 @@ async fn inspector_with_ts_files() {
     .arg("--check")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -953,7 +957,7 @@ async fn inspector_with_ts_files() {
   tester.assert_received_messages(
       &[
         r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
-        r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":5,"result":{"scriptSource":"class Foo {\n  hello() {\n    return \"hello\";\n  }\n}\nexport function foo() {\n  const f = new Foo();\n  return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
         r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
       ],
       &[],
@@ -997,8 +1001,7 @@ async fn inspector_memory() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -1098,8 +1101,7 @@ async fn inspector_profile() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap();
 
@@ -1176,22 +1178,20 @@ async fn inspector_profile() {
 #[ignore]
 #[tokio::test]
 async fn inspector_break_on_first_line_npm_esm() {
-  let _server = http_server();
-
-  let child = util::deno_cmd()
-    .arg("run")
-    .arg("--quiet")
-    .arg(inspect_flag_with_unique_port("--inspect-brk"))
-    .arg("npm:@denotest/bin/cli-esm")
-    .arg("this")
-    .arg("is")
-    .arg("a")
-    .arg("test")
-    .envs(util::env_vars_for_npm_tests())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
+  let context = TestContextBuilder::for_npm().build();
+  let child = context
+    .new_command()
+    .args_vec([
+      "run",
+      "--quiet",
+      &inspect_flag_with_unique_port("--inspect-brk"),
+      "npm:@denotest/bin/cli-esm",
+      "this",
+      "is",
+      "a",
+      "test",
+    ])
+    .spawn_with_piped_output();
 
   let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
@@ -1246,21 +1246,20 @@ async fn inspector_break_on_first_line_npm_esm() {
 #[ignore]
 #[tokio::test]
 async fn inspector_break_on_first_line_npm_cjs() {
-  let _server = http_server();
-  let child = util::deno_cmd()
-    .arg("run")
-    .arg("--quiet")
-    .arg(inspect_flag_with_unique_port("--inspect-brk"))
-    .arg("npm:@denotest/bin/cli-cjs")
-    .arg("this")
-    .arg("is")
-    .arg("a")
-    .arg("test")
-    .envs(util::env_vars_for_npm_tests())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
+  let context = TestContextBuilder::for_npm().build();
+  let child = context
+    .new_command()
+    .args_vec([
+      "run",
+      "--quiet",
+      &inspect_flag_with_unique_port("--inspect-brk"),
+      "npm:@denotest/bin/cli-cjs",
+      "this",
+      "is",
+      "a",
+      "test",
+    ])
+    .spawn_with_piped_output();
 
   let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
@@ -1316,19 +1315,17 @@ async fn inspector_break_on_first_line_npm_cjs() {
 #[tokio::test]
 async fn inspector_error_with_npm_import() {
   let script = util::testdata_path().join("inspector/error_with_npm_import.js");
-  let _server = http_server();
-
-  let child = util::deno_cmd()
-    .arg("run")
-    .arg("--quiet")
-    .arg("-A")
-    .arg(inspect_flag_with_unique_port("--inspect-brk"))
-    .arg(script)
-    .envs(util::env_vars_for_npm_tests())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
+  let context = TestContextBuilder::for_npm().build();
+  let child = context
+    .new_command()
+    .args_vec([
+      "run",
+      "--quiet",
+      "-A",
+      &inspect_flag_with_unique_port("--inspect-brk"),
+      &script.to_string_lossy(),
+    ])
+    .spawn_with_piped_output();
 
   let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
@@ -1380,19 +1377,19 @@ async fn inspector_error_with_npm_import() {
 #[tokio::test]
 async fn inspector_wait() {
   let script = util::testdata_path().join("inspector/inspect_wait.js");
-  let temp_dir = TempDir::new();
+  let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
 
-  let child = util::deno_cmd()
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--quiet")
-    .arg("-A")
-    .arg(inspect_flag_with_unique_port("--inspect-wait"))
-    .arg(script)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
+  let child = test_context
+    .new_command()
+    .args_vec([
+      "run",
+      "--quiet",
+      "-A",
+      &inspect_flag_with_unique_port("--inspect-wait"),
+      &script.to_string_lossy(),
+    ])
+    .spawn_with_piped_output();
 
   tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
   assert!(!temp_dir.path().join("hello.txt").exists());

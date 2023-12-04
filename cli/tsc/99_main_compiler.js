@@ -485,26 +485,13 @@ delete Object.prototype.__proto__;
   class OperationCanceledError extends Error {
   }
 
-  // todo(dsherret): we should investigate if throttling is really necessary
   /**
-   * Inspired by ThrottledCancellationToken in ts server.
-   *
-   * We don't want to continually call back into Rust and so
-   * we throttle cancellation checks to only occur once
-   * in a while.
+   * This implementation calls into Rust to check if Tokio's cancellation token
+   * has already been canceled.
    * @implements {ts.CancellationToken}
    */
-  class ThrottledCancellationToken {
-    #lastCheckTimeMs = 0;
-
+  class CancellationToken {
     isCancellationRequested() {
-      const timeMs = Date.now();
-      // TypeScript uses 20ms
-      if ((timeMs - this.#lastCheckTimeMs) < 20) {
-        return false;
-      }
-
-      this.#lastCheckTimeMs = timeMs;
       return ops.op_is_cancelled();
     }
 
@@ -538,11 +525,11 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
-      return ops.op_load({ specifier }).data;
+      return ops.op_load(specifier).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
-      return new ThrottledCancellationToken();
+      return new CancellationToken();
     },
     getSourceFile(
       specifier,
@@ -568,9 +555,11 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = ops.op_load(
-        { specifier },
-      );
+      const fileInfo = ops.op_load(specifier);
+      if (!fileInfo) {
+        return undefined;
+      }
+      const { data, scriptKind, version } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
@@ -726,16 +715,12 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptVersion("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        return sourceFile.version ?? "1";
-      }
       // tsc requests the script version multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = ops.op_script_version({ specifier });
+      const scriptVersion = ops.op_script_version(specifier);
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -743,30 +728,26 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
+      let sourceFile = sourceFileCache.get(specifier);
+      if (
+        !specifier.startsWith(ASSETS_URL_PREFIX) &&
+        sourceFile?.version != this.getScriptVersion(specifier)
+      ) {
+        sourceFileCache.delete(specifier);
+        sourceFile = undefined;
+      }
+      if (!sourceFile) {
+        sourceFile = this.getSourceFile(
+          specifier,
+          specifier.endsWith(".json")
+            ? ts.ScriptTarget.JSON
+            : ts.ScriptTarget.ESNext,
+        );
+      }
       if (sourceFile) {
-        return {
-          getText(start, end) {
-            return sourceFile.text.substring(start, end);
-          },
-          getLength() {
-            return sourceFile.text.length;
-          },
-          getChangeRange() {
-            return undefined;
-          },
-        };
+        return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-
-      const fileInfo = ops.op_load(
-        { specifier },
-      );
-      if (fileInfo) {
-        scriptVersionCache.set(specifier, fileInfo.version);
-        return ts.ScriptSnapshot.fromString(fileInfo.data);
-      } else {
-        return undefined;
-      }
+      return undefined;
     },
   };
 
@@ -862,12 +843,25 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @param {Record<string, string>} config */
+  function normalizeConfig(config) {
+    // the typescript compiler doesn't know about the precompile
+    // transform at the moment, so just tell it we're using react-jsx
+    if (config.jsx === "precompile") {
+      config.jsx = "react-jsx";
+    }
+    return config;
+  }
+
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames, localOnly }) {
     setLogDebug(debugFlag, "TS");
     performanceStart();
+
+    config = normalizeConfig(config);
+
     if (logDebug) {
       debug(">>> exec start", { rootNames });
       debug(config);
@@ -968,26 +962,24 @@ delete Object.prototype.__proto__;
     ops.op_respond({ id, data });
   }
 
-  /**
-   * @param {LanguageServerRequest} request
-   */
-  function serverRequest({ id, ...request }) {
+  function serverRequest(id, method, args) {
     if (logDebug) {
-      debug(`serverRequest()`, { id, ...request });
+      debug(`serverRequest()`, id, method, args);
     }
 
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
-    switch (request.method) {
-      case "restart": {
+    switch (method) {
+      case "$restart": {
         serverRestart();
         return respond(id, true);
       }
-      case "configure": {
+      case "$configure": {
+        const config = normalizeConfig(args[0]);
         const { options, errors } = ts
-          .convertCompilerOptionsFromJson(request.compilerOptions, "");
+          .convertCompilerOptionsFromJson(config, "");
         Object.assign(options, {
           allowNonTsExtensions: true,
           allowImportingTsExtensions: true,
@@ -998,136 +990,20 @@ delete Object.prototype.__proto__;
         compilationSettings = options;
         return respond(id, true);
       }
-      case "findRenameLocations": {
+      case "$getSupportedCodeFixes": {
         return respond(
           id,
-          languageService.findRenameLocations(
-            request.specifier,
-            request.position,
-            request.findInStrings,
-            request.findInComments,
-            request.providePrefixAndSuffixTextForRename,
-          ),
+          ts.getSupportedCodeFixes(),
         );
       }
-      case "getAssets": {
+      case "$getAssets": {
         return respond(id, getAssets());
       }
-      case "getApplicableRefactors": {
-        return respond(
-          id,
-          languageService.getApplicableRefactors(
-            request.specifier,
-            request.range,
-            {
-              quotePreference: "double",
-              allowTextChangesInNewFiles: true,
-              provideRefactorNotApplicableReason: true,
-            },
-            undefined,
-            request.kind,
-          ),
-        );
-      }
-      case "getEditsForRefactor": {
-        return respond(
-          id,
-          languageService.getEditsForRefactor(
-            request.specifier,
-            {
-              ...request.formatCodeSettings,
-              indentStyle: ts.IndentStyle.Smart,
-              insertSpaceBeforeAndAfterBinaryOperators: true,
-              insertSpaceAfterCommaDelimiter: true,
-            },
-            request.range,
-            request.refactorName,
-            request.actionName,
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCodeFixes": {
-        return respond(
-          id,
-          languageService.getCodeFixesAtPosition(
-            request.specifier,
-            request.startPosition,
-            request.endPosition,
-            request.errorCodes.map((v) => Number(v)),
-            {
-              ...request.formatCodeSettings,
-              indentStyle: ts.IndentStyle.Block,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCombinedCodeFix": {
-        return respond(
-          id,
-          languageService.getCombinedCodeFix(
-            {
-              type: "file",
-              fileName: request.specifier,
-            },
-            request.fixId,
-            {
-              ...request.formatCodeSettings,
-              indentStyle: ts.IndentStyle.Block,
-            },
-            {
-              quotePreference: "double",
-            },
-          ),
-        );
-      }
-      case "getCompletionDetails": {
-        if (logDebug) {
-          debug("request", request);
-        }
-        return respond(
-          id,
-          languageService.getCompletionEntryDetails(
-            request.args.specifier,
-            request.args.position,
-            request.args.name,
-            request.args.formatCodeSettings ?? {},
-            request.args.source,
-            request.args.preferences,
-            request.args.data,
-          ),
-        );
-      }
-      case "getCompletions": {
-        return respond(
-          id,
-          languageService.getCompletionsAtPosition(
-            request.specifier,
-            request.position,
-            request.preferences,
-            request.formatCodeSettings,
-          ),
-        );
-      }
-      case "getDefinition": {
-        return respond(
-          id,
-          languageService.getDefinitionAndBoundSpan(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getDiagnostics": {
+      case "$getDiagnostics": {
         try {
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
-          for (const specifier of request.specifiers) {
+          for (const specifier of args[0]) {
             diagnosticMap[specifier] = fromTypeScriptDiagnostics([
               ...languageService.getSemanticDiagnostics(specifier),
               ...languageService.getSuggestionDiagnostics(specifier),
@@ -1149,151 +1025,18 @@ delete Object.prototype.__proto__;
           return respond(id, {});
         }
       }
-      case "getDocumentHighlights": {
-        return respond(
-          id,
-          languageService.getDocumentHighlights(
-            request.specifier,
-            request.position,
-            request.filesToSearch,
-          ),
-        );
-      }
-      case "getEncodedSemanticClassifications": {
-        return respond(
-          id,
-          languageService.getEncodedSemanticClassifications(
-            request.specifier,
-            request.span,
-            ts.SemanticClassificationFormat.TwentyTwenty,
-          ),
-        );
-      }
-      case "getImplementation": {
-        return respond(
-          id,
-          languageService.getImplementationAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getNavigateToItems": {
-        return respond(
-          id,
-          languageService.getNavigateToItems(
-            request.search,
-            request.maxResultCount,
-            request.fileName,
-          ),
-        );
-      }
-      case "getNavigationTree": {
-        return respond(
-          id,
-          languageService.getNavigationTree(request.specifier),
-        );
-      }
-      case "getOutliningSpans": {
-        return respond(
-          id,
-          languageService.getOutliningSpans(
-            request.specifier,
-          ),
-        );
-      }
-      case "getQuickInfo": {
-        return respond(
-          id,
-          languageService.getQuickInfoAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "findReferences": {
-        return respond(
-          id,
-          languageService.findReferences(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSignatureHelpItems": {
-        return respond(
-          id,
-          languageService.getSignatureHelpItems(
-            request.specifier,
-            request.position,
-            request.options,
-          ),
-        );
-      }
-      case "getSmartSelectionRange": {
-        return respond(
-          id,
-          languageService.getSmartSelectionRange(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getSupportedCodeFixes": {
-        return respond(
-          id,
-          ts.getSupportedCodeFixes(),
-        );
-      }
-      case "getTypeDefinition": {
-        return respond(
-          id,
-          languageService.getTypeDefinitionAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "prepareCallHierarchy": {
-        return respond(
-          id,
-          languageService.prepareCallHierarchy(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideCallHierarchyIncomingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyIncomingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideCallHierarchyOutgoingCalls": {
-        return respond(
-          id,
-          languageService.provideCallHierarchyOutgoingCalls(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "provideInlayHints":
-        return respond(
-          id,
-          languageService.provideInlayHints(
-            request.specifier,
-            request.span,
-            request.preferences,
-          ),
-        );
       default:
+        if (typeof languageService[method] === "function") {
+          // The `getCompletionEntryDetails()` method returns null if the
+          // `source` is `null` for whatever reason. It must be `undefined`.
+          if (method == "getCompletionEntryDetails") {
+            args[4] ??= undefined;
+          }
+          return respond(id, languageService[method](...args));
+        }
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
-          `Invalid request method for request: "${request.method}" (${id})`,
+          `Invalid request method for request: "${method}" (${id})`,
         );
     }
   }
@@ -1390,6 +1133,7 @@ delete Object.prototype.__proto__;
         `${ASSETS_URL_PREFIX}${specifier}`,
         ts.ScriptTarget.ESNext,
       ),
+      `failed to load '${ASSETS_URL_PREFIX}${specifier}'`,
     );
   }
   // this helps ensure as much as possible is in memory that is re-usable
@@ -1400,7 +1144,10 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+  assert(
+    ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0,
+    "lib.d.ts files have errors",
+  );
 
   // remove this now that we don't need it anymore for warming up tsc
   sourceFileCache.delete(buildSpecifier);

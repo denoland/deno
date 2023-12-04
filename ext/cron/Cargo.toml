@@ -1,0 +1,23 @@
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_cron"
+version = "0.6.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Implementation of the Deno cron API"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+deno_core.workspace = true
+deno_unsync = "0.1.1"
+saffron.workspace = true
+tokio.workspace = true

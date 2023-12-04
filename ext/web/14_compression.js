@@ -9,9 +9,12 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  SymbolFor,
+  ObjectPrototypeIsPrototypeOf,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { TransformStream } from "ext:deno_web/06_streams.js";
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
@@ -60,9 +63,26 @@ class CompressionStream {
     webidl.assertBranded(this, CompressionStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          CompressionStreamPrototype,
+          this,
+        ),
+        keys: [
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(CompressionStream);
+webidl.configureInterface(CompressionStream);
 const CompressionStreamPrototype = CompressionStream.prototype;
 
 class DecompressionStream {
@@ -102,6 +122,23 @@ class DecompressionStream {
     webidl.assertBranded(this, DecompressionStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          DecompressionStreamPrototype,
+          this,
+        ),
+        keys: [
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
 function maybeEnqueue(controller, output) {
@@ -110,7 +147,7 @@ function maybeEnqueue(controller, output) {
   }
 }
 
-webidl.configurePrototype(DecompressionStream);
+webidl.configureInterface(DecompressionStream);
 const DecompressionStreamPrototype = DecompressionStream.prototype;
 
 export { CompressionStream, DecompressionStream };
