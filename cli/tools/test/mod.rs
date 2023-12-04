@@ -411,6 +411,41 @@ pub async fn test_specifier(
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  match test_specifier_inner(
+    worker_factory,
+    permissions,
+    specifier.clone(),
+    &sender,
+    fail_fast_tracker,
+    options,
+  )
+  .await
+  {
+    Ok(()) => Ok(()),
+    Err(error) => {
+      if error.is::<JsError>() {
+        sender.send(TestEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(error.downcast::<JsError>().unwrap()),
+        ))?;
+        Ok(())
+      } else {
+        Err(error)
+      }
+    }
+  }
+}
+
+/// Test a single specifier as documentation containing test programs, an executable test module or
+/// both.
+async fn test_specifier_inner(
+  worker_factory: Arc<CliMainWorkerFactory>,
+  permissions: Permissions,
+  specifier: ModuleSpecifier,
+  sender: &TestEventSender,
+  fail_fast_tracker: FailFastTracker,
+  options: TestSpecifierOptions,
+) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
@@ -439,22 +474,12 @@ pub async fn test_specifier(
   }
 
   // We execute the main module as a side module so that import.meta.main is not set.
-  match worker.execute_side_module_possibly_with_npm().await {
-    Ok(()) => {}
-    Err(error) => {
-      if error.is::<JsError>() {
-        sender.send(TestEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(error.downcast::<JsError>().unwrap()),
-        ))?;
-        return Ok(());
-      } else {
-        return Err(error);
-      }
-    }
-  }
+  worker.execute_side_module_possibly_with_npm().await?;
 
   let mut worker = worker.into_main_worker();
+
+  // Ensure that there are no pending exceptions before we start running tests
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
   worker.dispatch_load_event(located_script_name!())?;
 
@@ -465,6 +490,12 @@ pub async fn test_specifier(
   // event loop to continue beyond what's needed to await results.
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
+
+  // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
+  // want to wait forever here.
+  worker
+    .run_up_to_duration(Duration::from_millis(100))
+    .await?;
 
   if let Some(coverage_collector) = coverage_collector.as_mut() {
     worker

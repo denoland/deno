@@ -698,7 +698,6 @@ impl WebWorker {
 
       event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
-
         receiver.await
       }
     }
@@ -730,7 +729,6 @@ impl WebWorker {
            return Ok(());
         }
         event_loop_result?;
-
         receiver.await
       }
     }
