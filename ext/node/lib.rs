@@ -50,6 +50,7 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  #[inline(always)]
   fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.check_read_with_api_name(path, None)
   }
