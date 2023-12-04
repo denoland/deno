@@ -525,7 +525,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
-      return ops.op_load({ specifier }).data;
+      return ops.op_load(specifier).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -555,9 +555,11 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = ops.op_load(
-        { specifier },
-      );
+      const fileInfo = ops.op_load(specifier);
+      if (!fileInfo) {
+        return undefined;
+      }
+      const { data, scriptKind, version } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
@@ -713,10 +715,6 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptVersion("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        return sourceFile.version ?? "1";
-      }
       // tsc requests the script version multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptVersionCache.has(specifier)) {
@@ -730,30 +728,26 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
+      let sourceFile = sourceFileCache.get(specifier);
+      if (
+        !specifier.startsWith(ASSETS_URL_PREFIX) &&
+        sourceFile?.version != this.getScriptVersion(specifier)
+      ) {
+        sourceFileCache.delete(specifier);
+        sourceFile = undefined;
+      }
+      if (!sourceFile) {
+        sourceFile = this.getSourceFile(
+          specifier,
+          specifier.endsWith(".json")
+            ? ts.ScriptTarget.JSON
+            : ts.ScriptTarget.ESNext,
+        );
+      }
       if (sourceFile) {
-        return {
-          getText(start, end) {
-            return sourceFile.text.substring(start, end);
-          },
-          getLength() {
-            return sourceFile.text.length;
-          },
-          getChangeRange() {
-            return undefined;
-          },
-        };
+        return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-
-      const fileInfo = ops.op_load(
-        { specifier },
-      );
-      if (fileInfo) {
-        scriptVersionCache.set(specifier, fileInfo.version);
-        return ts.ScriptSnapshot.fromString(fileInfo.data);
-      } else {
-        return undefined;
-      }
+      return undefined;
     },
   };
 

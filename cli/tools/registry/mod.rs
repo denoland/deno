@@ -388,14 +388,28 @@ async fn perform_publish(
       .send()
       .await?;
 
-    let mut task = parse_response::<PublishingTask>(response)
-      .await
-      .with_context(|| {
-        format!(
-          "Failed to publish @{}/{} at {}",
-          package.scope, package.package, package.version
-        )
-      })?;
+    let res = parse_response::<PublishingTask>(response).await;
+    let mut task = match res {
+      Ok(task) => task,
+      Err(err) if err.code == "duplicateVersionPublish" => {
+        println!(
+          "{} @{}/{}@{}",
+          colors::yellow("Skipping, already published"),
+          package.scope,
+          package.package,
+          package.version
+        );
+        continue;
+      }
+      Err(err) => {
+        return Err(err).with_context(|| {
+          format!(
+            "Failed to publish @{}/{} at {}",
+            package.scope, package.package, package.version
+          )
+        })
+      }
+    };
 
     let interval = std::time::Duration::from_secs(2);
     while task.status != "success" && task.status != "failure" {

@@ -3835,12 +3835,6 @@ impl State {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SpecifierArgs {
-  specifier: String,
-}
-
 #[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
@@ -3873,11 +3867,13 @@ struct LoadResponse {
 fn op_load<'s>(
   scope: &'s mut v8::HandleScope,
   state: &mut OpState,
-  #[serde] args: SpecifierArgs,
+  #[string] specifier: &str,
 ) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark_with_args("tsc.op.op_load", &args);
-  let specifier = state.specifier_map.normalize(args.specifier)?;
+  let mark = state
+    .performance
+    .mark_with_args("tsc.op.op_load", specifier);
+  let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
     if specifier.as_str() == "internal:///missing_dependency.d.ts" {
       Some(LoadResponse {
@@ -4418,6 +4414,9 @@ fn request(
   request: TscRequest,
   token: CancellationToken,
 ) -> Result<Value, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("Operation was cancelled."));
+  }
   let (performance, id) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -4447,8 +4446,7 @@ fn request(
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.clone() {
-    state.response = None;
+  if let Some(response) = state.response.take() {
     Ok(response.data)
   } else {
     Err(custom_error(
