@@ -489,11 +489,11 @@ impl UnstableLooseImportsResolver {
     }
 
     let media_type = MediaType::from_specifier(&specifier);
-    let new_media_type = match media_type {
-      MediaType::JavaScript => MediaType::TypeScript,
-      MediaType::Jsx => MediaType::Tsx,
-      MediaType::Mjs => MediaType::Mts,
-      MediaType::Cjs => MediaType::Cts,
+    let probe_media_type_types = match media_type {
+      MediaType::JavaScript => vec![MediaType::TypeScript],
+      MediaType::Jsx => vec![MediaType::Tsx],
+      MediaType::Mjs => vec![MediaType::Mts],
+      MediaType::Cjs => vec![MediaType::Cts],
       MediaType::TypeScript
       | MediaType::Mts
       | MediaType::Cts
@@ -504,8 +504,15 @@ impl UnstableLooseImportsResolver {
       | MediaType::Json
       | MediaType::Wasm
       | MediaType::TsBuildInfo
-      | MediaType::SourceMap
-      | MediaType::Unknown => return Cow::Borrowed(specifier),
+      | MediaType::SourceMap => return Cow::Borrowed(specifier),
+      MediaType::Unknown => vec![
+        MediaType::TypeScript,
+        MediaType::JavaScript,
+        MediaType::Tsx,
+        MediaType::Jsx,
+        MediaType::Mts,
+        MediaType::Mjs,
+      ],
     };
     let Ok(path) = specifier_to_file_path(specifier) else {
       return Cow::Borrowed(specifier);
@@ -513,27 +520,34 @@ impl UnstableLooseImportsResolver {
     if self.fs.exists_sync(&path) {
       return Cow::Borrowed(specifier);
     }
-    let Some(old_specifier) = specifier
-      .as_str()
-      .strip_suffix(media_type.as_ts_extension())
-    else {
-      return Cow::Borrowed(specifier);
+    let old_specifier = match media_type {
+      MediaType::Unknown => specifier.as_str(),
+      _ => {
+        match specifier
+          .as_str()
+          .strip_suffix(media_type.as_ts_extension())
+        {
+          Some(s) => s,
+          None => return Cow::Borrowed(specifier),
+        }
+      }
     };
-    let Ok(new_specifier) = ModuleSpecifier::parse(&format!(
-      "{}{}",
-      old_specifier,
-      new_media_type.as_ts_extension()
-    )) else {
-      return Cow::Borrowed(specifier);
-    };
-    let Ok(new_path) = specifier_to_file_path(&new_specifier) else {
-      return Cow::Borrowed(specifier);
-    };
-    if self.fs.exists_sync(&new_path) {
-      Cow::Owned(new_specifier)
-    } else {
-      Cow::Borrowed(specifier)
+    for new_media_type in probe_media_type_types {
+      let Ok(new_specifier) = ModuleSpecifier::parse(&format!(
+        "{}{}",
+        old_specifier,
+        new_media_type.as_ts_extension()
+      )) else {
+        continue;
+      };
+      let Ok(new_path) = specifier_to_file_path(&new_specifier) else {
+        continue;
+      };
+      if self.fs.exists_sync(&new_path) {
+        return Cow::Owned(new_specifier);
+      }
     }
+    Cow::Borrowed(specifier)
   }
 }
 
