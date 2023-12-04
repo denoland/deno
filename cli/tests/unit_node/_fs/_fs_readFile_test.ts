@@ -2,10 +2,7 @@
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { readFile, readFileSync } from "node:fs";
 import * as path from "../../../../test_util/std/path/mod.ts";
-import {
-  assert,
-  assertEquals,
-} from "../../../../test_util/std/testing/asserts.ts";
+import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");

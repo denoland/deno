@@ -1319,8 +1319,99 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * CronScheduleExpression is used as the type of `minute`, `hour`,
+   * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
+   * @category Cron
+   */
+  type CronScheduleExpression = number | { exact: number | number[] } | {
+    start?: number;
+    end?: number;
+    every?: number;
+  };
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * CronSchedule is the interface used for JSON format
+   * cron `schedule`.
+   * @category Cron
+   */
+  export interface CronSchedule {
+    minute?: CronScheduleExpression;
+    hour?: CronScheduleExpression;
+    dayOfMonth?: CronScheduleExpression;
+    month?: CronScheduleExpression;
+    dayOfWeek?: CronScheduleExpression;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Create a cron job that will periodically execute the provided handler
    * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * ```ts
+   * Deno.cron("sample cron", { hour: { every: 6 } }, () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string | CronSchedule,
+    handler: () => Promise<void> | void,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", {
+   *   backoffSchedule: [10, 20]
+   * }, () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
+   *
+   * `backoffSchedule` option can be used to specify the retry policy for failed
+   * executions. Each element in the array represents the number of milliseconds
+   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
+   * means that a failed execution will be retried at most 3 times, with 1
+   * second, 5 seconds, and 10 seconds delay between each retry.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string | CronSchedule,
+    options: { backoffSchedule?: number[]; signal?: AbortSignal },
+    handler: () => Promise<void> | void,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
    *
    * ```ts
    * Deno.cron("sample cron", "20 * * * *", () => {
@@ -1339,62 +1430,9 @@ declare namespace Deno {
    */
   export function cron(
     name: string,
-    schedule: string,
+    schedule: string | CronSchedule,
     handler: () => Promise<void> | void,
     options: { backoffSchedule?: number[]; signal?: AbortSignal },
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
-   * callback based on the specified schedule.
-   *
-   * ```ts
-   * Deno.cron("sample cron", "20 * * * *", () => {
-   *   console.log("cron job executed");
-   * });
-   * ```
-   *
-   * `schedule` is a Unix cron format expression, where time is specified
-   * using UTC time zone.
-   *
-   * @category Cron
-   */
-  export function cron(
-    name: string,
-    schedule: string,
-    handler: () => Promise<void> | void,
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
-   * callback based on the specified schedule.
-   *
-   * ```ts
-   * Deno.cron("sample cron", "20 * * * *", {
-   *   backoffSchedule: [10, 20]
-   * }, () => {
-   *   console.log("cron job executed");
-   * });
-   * ```
-   *
-   * `schedule` is a Unix cron format expression, where time is specified
-   * using UTC time zone.
-   *
-   * `backoffSchedule` option can be used to specify the retry policy for failed
-   * executions. Each element in the array represents the number of milliseconds
-   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
-   * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
-   *
-   * @category Cron
-   */
-  export function cron(
-    name: string,
-    schedule: string,
-    options: { backoffSchedule?: number[]; signal?: AbortSignal },
-    handler: () => Promise<void> | void,
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.

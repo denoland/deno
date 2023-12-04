@@ -8,10 +8,7 @@ import {
 } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
-import {
-  assert,
-  assertEquals,
-} from "../../../../test_util/std/testing/asserts.ts";
+import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
 
 // https://github.com/denoland/deno/issues/18140
 Deno.test({

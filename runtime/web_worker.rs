@@ -397,7 +397,7 @@ impl WebWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
+    // `runtime/build.rs`, `runtime/worker.rs` and `runtime/snapshot.rs`!
 
     let mut extensions = vec![
       // Web APIs

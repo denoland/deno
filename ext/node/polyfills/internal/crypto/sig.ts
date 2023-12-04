@@ -20,8 +20,8 @@ import type {
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
-  getKeyMaterial,
   KeyObject,
+  prepareAsymmetricKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
@@ -80,26 +80,13 @@ export class SignImpl extends Writable {
     privateKey: BinaryLike | SignKeyObjectInput | SignPrivateKeyInput,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    let keyData: Uint8Array;
-    let keyType: KeyType;
-    let keyFormat: KeyFormat;
-    if (typeof privateKey === "string" || isArrayBufferView(privateKey)) {
-      // if the key is BinaryLike, interpret it as a PEM encoded RSA key
-      // deno-lint-ignore no-explicit-any
-      keyData = privateKey as any;
-      keyType = "rsa";
-      keyFormat = "pem";
-    } else {
-      keyData = getKeyMaterial(privateKey);
-      keyType = "rsa";
-      keyFormat = "pem";
-    }
+    const { data, format, type } = prepareAsymmetricKey(privateKey);
     const ret = Buffer.from(ops.op_node_sign(
       this.hash.digest(),
       this.#digestType,
-      keyData!,
-      keyType,
-      keyFormat,
+      data!,
+      type,
+      format,
     ));
     return encoding ? ret.toString(encoding) : ret;
   }

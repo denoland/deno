@@ -1120,11 +1120,11 @@ fn bundle_subcommand() -> Command {
     .long_about(
       "Output a single JavaScript file with all dependencies.
 
-  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
+  deno bundle https://deno.land/std/http/file_server.ts file_server.bundle.js
 
 If no output file is given, the output is written to standard output:
 
-  deno bundle https://deno.land/std/examples/colors.ts",
+  deno bundle https://deno.land/std/http/file_server.ts",
     )
     .defer(|cmd| {
       compile_args(cmd)
@@ -1212,7 +1212,7 @@ fn compile_subcommand() -> Command {
       "Compiles the given script into a self contained executable.
 
   deno compile -A https://deno.land/std/http/file_server.ts
-  deno compile --output color_util https://deno.land/std/examples/colors.ts
+  deno compile --output file_server https://deno.land/std/http/file_server.ts
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and
@@ -1665,7 +1665,9 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .value_parser(value_parser!(bool))
             .default_missing_value("true")
             .require_equals(true)
-            .help("Don't use semicolons except where necessary."),
+            .help(
+              "Don't use semicolons except where necessary. Defaults to false.",
+            ),
         )
     })
 }
@@ -1739,7 +1741,7 @@ fn install_subcommand() -> Command {
         "Installs a script as an executable in the installation root's bin directory.
 
   deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
-  deno install https://deno.land/std/examples/colors.ts
+  deno install https://examples.deno.land/color-logging.ts
 
 To change the executable name, use -n/--name:
 
@@ -2213,6 +2215,7 @@ update to a different location, use the --output flag
 
   deno upgrade --output $HOME/my_deno",
     )
+    .hide(cfg!(not(feature = "upgrade")))
     .defer(|cmd| {
       cmd
         .arg(
@@ -6373,14 +6376,14 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "install",
-      "https://deno.land/std/examples/colors.ts"
+      "https://deno.land/std/http/file_server.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
           name: None,
-          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: vec![],
           root: None,
           force: false,
@@ -7847,13 +7850,14 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "compile",
-      "https://deno.land/std/examples/colors.ts"
+      "https://examples.deno.land/color-logging.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
-          source_file: "https://deno.land/std/examples/colors.ts".to_string(),
+          source_file: "https://examples.deno.land/color-logging.ts"
+            .to_string(),
           output: None,
           args: vec![],
           target: None,
@@ -7869,12 +7873,13 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://deno.land/std/examples/colors.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
-          source_file: "https://deno.land/std/examples/colors.ts".to_string(),
+          source_file: "https://examples.deno.land/color-logging.ts"
+            .to_string(),
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,
