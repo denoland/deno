@@ -1095,8 +1095,7 @@ fn lsp_import_attributes() {
           "only": ["quickfix"]
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([{
@@ -10596,5 +10595,76 @@ fn lsp_sloppy_imports_warn() {
       version: Some(1),
     }
   );
+
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.join("file.ts").uri_file()
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 24 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 19 },
+            "end": { "line": 0, "character": 24 }
+          },
+          "severity": 3,
+          "code": "redirect",
+          "source": "deno",
+          "message": format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("a").uri_file(),
+            temp_dir.join("a.ts").uri_file()
+          ),
+          "data": {
+            "specifier": temp_dir.join("a").uri_file(),
+            "redirect": temp_dir.join("a.ts").uri_file()
+          },
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Update specifier to its redirected specifier.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 3,
+        "code": "redirect",
+        "source": "deno",
+        "message": format!(
+          "The import of \"{}\" was redirected to \"{}\".",
+          temp_dir.join("a").uri_file(),
+          temp_dir.join("a.ts").uri_file()
+        ),
+        "data": {
+          "specifier": temp_dir.join("a").uri_file(),
+          "redirect": temp_dir.join("a.ts").uri_file()
+        },
+      }],
+      "edit": {
+        "changes": {
+          temp_dir.join("file.ts").uri_file(): [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 }
+            },
+            "newText": "\"./a.ts\""
+          }]
+        }
+      }
+    }])
+  );
+
   client.shutdown();
 }
