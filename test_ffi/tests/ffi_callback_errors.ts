@@ -44,7 +44,7 @@ globalThis.onerror = (data) => {
 };
 
 globalThis.addEventListener("unhandledrejection", (data) => {
-  console.log("KEKKONEN");
+  console.log("Unhandled rejection");
   data.preventDefault();
 });
 
