@@ -979,7 +979,7 @@ fn clap_root() -> Command {
         .help(
           "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
         )
-        .env("DENO_UNSTABLE_LOOSE_IMPORTS")
+        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
