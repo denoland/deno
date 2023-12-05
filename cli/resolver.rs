@@ -117,7 +117,7 @@ impl MappedSpecifierResolver {
 #[derive(Debug)]
 pub struct CliGraphResolver {
   fs: Arc<dyn FileSystem>,
-  loose_imports_resolver: Option<UnstableLooseImportsResolver>,
+  sloppy_imports_resolver: Option<UnstableSloppyImportsResolver>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
@@ -132,7 +132,7 @@ pub struct CliGraphResolver {
 pub struct CliGraphResolverOptions<'a> {
   pub fs: Arc<dyn FileSystem>,
   pub cjs_resolutions: Option<Arc<CjsResolutionStore>>,
-  pub loose_imports_resolver: Option<UnstableLooseImportsResolver>,
+  pub sloppy_imports_resolver: Option<UnstableSloppyImportsResolver>,
   pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
@@ -152,7 +152,7 @@ impl CliGraphResolver {
     Self {
       fs: options.fs,
       cjs_resolutions: options.cjs_resolutions,
-      loose_imports_resolver: options.loose_imports_resolver,
+      sloppy_imports_resolver: options.sloppy_imports_resolver,
       mapped_specifier_resolver: MappedSpecifierResolver::new(
         options.maybe_import_map,
         if is_byonm {
@@ -270,16 +270,19 @@ impl Resolver for CliGraphResolver {
       }
     };
 
-    // do loose imports resolution if enabled
-    let result = if let Some(loose_imports_resolver) =
-      &self.loose_imports_resolver
-    {
-      result.map(|specifier| {
-        loose_imports_resolve(loose_imports_resolver, specifier, referrer_range)
-      })
-    } else {
-      result
-    };
+    // do sloppy imports resolution if enabled
+    let result =
+      if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
+        result.map(|specifier| {
+          sloppy_imports_resolve(
+            sloppy_imports_resolver,
+            specifier,
+            referrer_range,
+          )
+        })
+      } else {
+        result
+      };
 
     // When the user is vendoring, don't allow them to import directly from the vendor/ directory
     // as it might cause them confusion or duplicate dependencies. Additionally, this folder has
@@ -395,8 +398,8 @@ impl Resolver for CliGraphResolver {
   }
 }
 
-fn loose_imports_resolve(
-  resolver: &UnstableLooseImportsResolver,
+fn sloppy_imports_resolve(
+  resolver: &UnstableSloppyImportsResolver,
   specifier: ModuleSpecifier,
   referrer_range: &deno_graph::Range,
 ) -> ModuleSpecifier {
@@ -517,12 +520,12 @@ impl NpmResolver for CliGraphResolver {
 }
 
 #[derive(Debug)]
-struct UnstableLooseImportsStatCache {
+struct UnstableSloppyImportsStatCache {
   fs: Arc<dyn FileSystem>,
-  cache: Mutex<HashMap<PathBuf, Option<UnstableLooseImportsFsEntry>>>,
+  cache: Mutex<HashMap<PathBuf, Option<UnstableSloppyImportsFsEntry>>>,
 }
 
-impl UnstableLooseImportsStatCache {
+impl UnstableSloppyImportsStatCache {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
       fs,
@@ -530,7 +533,7 @@ impl UnstableLooseImportsStatCache {
     }
   }
 
-  pub fn stat_sync(&self, path: &Path) -> Option<UnstableLooseImportsFsEntry> {
+  pub fn stat_sync(&self, path: &Path) -> Option<UnstableSloppyImportsFsEntry> {
     // there will only ever be one thread in here at a
     // time, so it's ok to hold the lock for so long
     let mut cache = self.cache.lock();
@@ -540,9 +543,9 @@ impl UnstableLooseImportsStatCache {
 
     let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
       if stat.is_file {
-        Some(UnstableLooseImportsFsEntry::File)
+        Some(UnstableSloppyImportsFsEntry::File)
       } else if stat.is_directory {
-        Some(UnstableLooseImportsFsEntry::Dir)
+        Some(UnstableSloppyImportsFsEntry::Dir)
       } else {
         None
       }
@@ -553,26 +556,26 @@ impl UnstableLooseImportsStatCache {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnstableLooseImportsFsEntry {
+pub enum UnstableSloppyImportsFsEntry {
   File,
   Dir,
 }
 
 #[derive(Debug)]
-pub struct UnstableLooseImportsResolver {
-  stat_cache: UnstableLooseImportsStatCache,
+pub struct UnstableSloppyImportsResolver {
+  stat_cache: UnstableSloppyImportsStatCache,
 }
 
-impl UnstableLooseImportsResolver {
+impl UnstableSloppyImportsResolver {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
-      stat_cache: UnstableLooseImportsStatCache::new(fs),
+      stat_cache: UnstableSloppyImportsStatCache::new(fs),
     }
   }
 
   pub fn resolve_with_stat_sync(
     specifier: &ModuleSpecifier,
-    stat_sync: impl Fn(&Path) -> Option<UnstableLooseImportsFsEntry>,
+    stat_sync: impl Fn(&Path) -> Option<UnstableSloppyImportsFsEntry>,
   ) -> Cow<ModuleSpecifier> {
     if specifier.scheme() != "file" {
       return Cow::Borrowed(specifier);
@@ -582,10 +585,10 @@ impl UnstableLooseImportsResolver {
       return Cow::Borrowed(specifier);
     };
     let probe_paths = match (stat_sync)(&path) {
-      Some(UnstableLooseImportsFsEntry::File) => {
+      Some(UnstableSloppyImportsFsEntry::File) => {
         return Cow::Borrowed(specifier);
       }
-      Some(UnstableLooseImportsFsEntry::Dir) => {
+      Some(UnstableSloppyImportsFsEntry::Dir) => {
         // try to resolve at the index file
         vec![
           path.join("index.ts"),
@@ -645,7 +648,7 @@ impl UnstableLooseImportsResolver {
     };
 
     for probe_path in probe_paths {
-      if (stat_sync)(&probe_path) == Some(UnstableLooseImportsFsEntry::File) {
+      if (stat_sync)(&probe_path) == Some(UnstableSloppyImportsFsEntry::File) {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
           return Cow::Owned(specifier);
         }
@@ -735,14 +738,14 @@ mod test {
   }
 
   #[test]
-  fn test_unstable_loose_imports() {
+  fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> Cow<ModuleSpecifier> {
-      UnstableLooseImportsResolver::resolve_with_stat_sync(specifier, |path| {
+      UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
         RealFs.stat_sync(path).ok().and_then(|stat| {
           if stat.is_file {
-            Some(UnstableLooseImportsFsEntry::File)
+            Some(UnstableSloppyImportsFsEntry::File)
           } else if stat.is_directory {
-            Some(UnstableLooseImportsFsEntry::Dir)
+            Some(UnstableSloppyImportsFsEntry::Dir)
           } else {
             None
           }

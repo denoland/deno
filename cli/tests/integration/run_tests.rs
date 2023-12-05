@@ -4737,10 +4737,10 @@ itest!(unsafe_proto_flag {
 });
 
 #[test]
-fn test_unstable_loose_imports() {
+fn test_unstable_sloppy_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", r#"{ "unstable": ["loose-imports"] }"#);
+  temp_dir.write("deno.json", r#"{ "unstable": ["sloppy-imports"] }"#);
   temp_dir.write("a.ts", "export class A {}");
   temp_dir.write("b.js", "export class B {}");
   temp_dir.write("c.mts", "export class C {}");

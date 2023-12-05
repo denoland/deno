@@ -20,8 +20,8 @@ use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
-use crate::resolver::UnstableLooseImportsFsEntry;
-use crate::resolver::UnstableLooseImportsResolver;
+use crate::resolver::UnstableSloppyImportsFsEntry;
+use crate::resolver::UnstableSloppyImportsResolver;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -891,8 +891,8 @@ pub struct Documents {
   has_injected_types_node_package: bool,
   /// Resolves a specifier to its final redirected to specifier.
   redirect_resolver: Arc<RedirectResolver>,
-  /// If --unstable-loose-imports is enabled.
-  unstable_loose_imports: bool,
+  /// If --unstable-sloppy-imports is enabled.
+  unstable_sloppy_imports: bool,
 }
 
 impl Documents {
@@ -915,12 +915,12 @@ impl Documents {
         maybe_import_map: None,
         maybe_vendor_dir: None,
         bare_node_builtins_enabled: false,
-        loose_imports_resolver: None,
+        sloppy_imports_resolver: None,
       })),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
-      unstable_loose_imports: false,
+      unstable_sloppy_imports: false,
     }
   }
 
@@ -1050,30 +1050,30 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if specifier.scheme() == "file" && self.unstable_loose_imports {
-      Some(self.resolve_unstable_loose_import(specifier).into_owned())
+    if specifier.scheme() == "file" && self.unstable_sloppy_imports {
+      Some(self.resolve_unstable_sloppy_import(specifier).into_owned())
     } else {
       self.redirect_resolver.resolve(specifier)
     }
   }
 
-  fn resolve_unstable_loose_import<'a>(
+  fn resolve_unstable_sloppy_import<'a>(
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> Cow<'a, ModuleSpecifier> {
-    UnstableLooseImportsResolver::resolve_with_stat_sync(specifier, |path| {
+    UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         if self.open_docs.contains_key(&specifier)
           || self.cache.contains(&specifier)
         {
-          return Some(UnstableLooseImportsFsEntry::File);
+          return Some(UnstableSloppyImportsFsEntry::File);
         }
       }
       path.metadata().ok().and_then(|m| {
         if m.is_file() {
-          Some(UnstableLooseImportsFsEntry::File)
+          Some(UnstableSloppyImportsFsEntry::File)
         } else if m.is_dir() {
-          Some(UnstableLooseImportsFsEntry::Dir)
+          Some(UnstableSloppyImportsFsEntry::Dir)
         } else {
           None
         }
@@ -1376,7 +1376,7 @@ impl Documents {
       // Don't set this for the LSP because instead we'll use the OpenDocumentsLoader
       // because it's much easier and we get diagnostics/quick fixes about a redirected
       // specifier for free.
-      loose_imports_resolver: None,
+      sloppy_imports_resolver: None,
     }));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));
@@ -1400,9 +1400,9 @@ impl Documents {
         IndexMap::new()
       },
     );
-    self.unstable_loose_imports = options
+    self.unstable_sloppy_imports = options
       .maybe_config_file
-      .map(|c| c.has_unstable("loose-imports"))
+      .map(|c| c.has_unstable("sloppy-imports"))
       .unwrap_or(false);
 
     // only refresh the dependencies if the underlying configuration has changed
@@ -1701,7 +1701,7 @@ fn node_resolve_npm_req_ref(
 pub struct OpenDocumentsGraphLoader<'a> {
   pub inner_loader: &'a mut dyn deno_graph::source::Loader,
   pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
-  pub unstable_loose_imports: bool,
+  pub unstable_sloppy_imports: bool,
 }
 
 impl<'a> OpenDocumentsGraphLoader<'a> {
@@ -1724,21 +1724,21 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     None
   }
 
-  fn resolve_unstable_loose_import<'b>(
+  fn resolve_unstable_sloppy_import<'b>(
     &self,
     specifier: &'b ModuleSpecifier,
   ) -> Cow<'b, ModuleSpecifier> {
-    UnstableLooseImportsResolver::resolve_with_stat_sync(specifier, |path| {
+    UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         if self.open_docs.contains_key(&specifier) {
-          return Some(UnstableLooseImportsFsEntry::File);
+          return Some(UnstableSloppyImportsFsEntry::File);
         }
       }
       path.metadata().ok().and_then(|m| {
         if m.is_file() {
-          Some(UnstableLooseImportsFsEntry::File)
+          Some(UnstableSloppyImportsFsEntry::File)
         } else if m.is_dir() {
-          Some(UnstableLooseImportsFsEntry::Dir)
+          Some(UnstableSloppyImportsFsEntry::Dir)
         } else {
           None
         }
@@ -1758,8 +1758,8 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
     is_dynamic: bool,
     cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
-    let specifier = if self.unstable_loose_imports {
-      self.resolve_unstable_loose_import(specifier)
+    let specifier = if self.unstable_sloppy_imports {
+      self.resolve_unstable_sloppy_import(specifier)
     } else {
       Cow::Borrowed(specifier)
     };

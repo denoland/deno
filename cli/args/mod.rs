@@ -1340,12 +1340,12 @@ impl CliOptions {
         .unwrap_or(false)
   }
 
-  pub fn unstable_loose_imports(&self) -> bool {
-    self.flags.unstable_loose_imports
+  pub fn unstable_sloppy_imports(&self) -> bool {
+    self.flags.unstable_sloppy_imports
       || self
         .maybe_config_file()
         .as_ref()
-        .map(|c| c.has_unstable("loose-imports"))
+        .map(|c| c.has_unstable("sloppy-imports"))
         .unwrap_or(false)
   }
 

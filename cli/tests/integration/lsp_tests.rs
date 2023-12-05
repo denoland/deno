@@ -10508,13 +10508,13 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
-fn lsp_loose_imports_warn() {
+fn lsp_sloppy_imports_warn() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let temp_dir = temp_dir.path();
   temp_dir
     .join("deno.json")
-    .write(r#"{ "unstable": ["loose-imports"] }"#);
+    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
   // should work when exists on the fs and when doesn't
   temp_dir.join("a.ts").write("export class A {}");
   let mut client = context.new_lsp_command().build();
