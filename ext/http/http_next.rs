@@ -1183,16 +1183,6 @@ pub async fn op_http_close(
 
   if graceful {
     http_general_trace!("graceful shutdown");
-    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-    // once we phase out `check_or_exit_with_legacy_fallback`
-    state
-      .borrow()
-      .feature_checker
-      .check_or_exit_with_legacy_fallback(
-        UNSTABLE_FEATURE_NAME,
-        "Deno.Server.shutdown",
-      );
-
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
     poll_fn(|cx| join_handle.server_state.poll_complete(cx)).await;
