@@ -268,9 +268,7 @@ async fn bench_specifier_inner(
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
-  worker
-    .run_up_to_duration(Duration::from_millis(100))
-    .await?;
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
   Ok(())
 }

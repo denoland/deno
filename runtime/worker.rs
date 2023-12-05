@@ -560,7 +560,8 @@ impl MainWorker {
     }
   }
 
-  /// Run the event loop up to a given duration.
+  /// Run the event loop up to a given duration. If the runtime resolves early, returns
+  /// early. Will always poll the runtime at least once.
   pub async fn run_up_to_duration(
     &mut self,
     duration: Duration,
