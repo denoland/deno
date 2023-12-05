@@ -182,7 +182,8 @@ impl WebWorkerInternalHandle {
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(&mut self) {
     self.cancel.cancel();
-
+    self.terminate_waker.wake();
+    
     // This function can be called multiple times by whomever holds
     // the handle. However only a single "termination" should occur so
     // we need a guard here.
