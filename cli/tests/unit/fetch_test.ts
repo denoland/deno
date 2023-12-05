@@ -1645,7 +1645,6 @@ Deno.test(
   },
 );
 
-
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
