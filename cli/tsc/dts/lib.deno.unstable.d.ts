@@ -2033,6 +2033,48 @@ declare namespace Deno {
     atomic(): AtomicOperation;
 
     /**
+     * Watch for changes to the given keys in the database. The returned stream
+     * is a {@linkcode ReadableStream} that emits a new value whenever any of
+     * the watched keys change their versionstamp. The emitted value is an array
+     * of {@linkcode Deno.KvEntryMaybe} objects, with the same length and order
+     * as the `keys` array. If no value exists for a given key, the returned
+     * entry will have a `null` value and versionstamp.
+     *
+     * The returned stream does not return every single intermediate state of
+     * the watched keys, but rather only keeps you up to date with the latest
+     * state of the keys. This means that if a key is modified multiple times
+     * quickly, you may not receive a notification for every single change, but
+     * rather only the latest state of the key.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     *
+     * const stream = db.watch([["foo"], ["bar"]]);
+     * for await (const entries of stream) {
+     *   entries[0].key; // ["foo"]
+     *   entries[0].value; // "bar"
+     *   entries[0].versionstamp; // "00000000000000010000"
+     *   entries[1].key; // ["bar"]
+     *   entries[1].value; // null
+     *   entries[1].versionstamp; // null
+     * }
+     * ```
+     *
+     * The `options` argument can be used to specify additional options for the
+     * watch operation. The `raw` option can be used to specify whether a new
+     * value should be emitted whenever a mutation occurs on any of the watched
+     * keys (even if the value of the key does not change, such as deleting a
+     * deleted key), or only when entries have observably changed in some way.
+     * When `raw: true` is used, it is possible for the stream to occasionally
+     * emit values even if no mutations have occurred on any of the watched
+     * keys. The default value for this option is `false`.
+     */
+    watch<T extends readonly unknown[]>(
+      keys: readonly [...{ [K in keyof T]: KvKey }],
+      options?: { raw?: boolean },
+    ): ReadableStream<{ [K in keyof T]: KvEntryMaybe<T[K]> }>;
+
+    /**
      * Close the database connection. This will prevent any further operations
      * from being performed on the database, and interrupt any in-flight
      * operations immediately.

@@ -1707,13 +1707,14 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd501a6b10a8b7fe7e605cafe4aad1d266ed0791b788dab78889df14b1a23e5f"
+checksum = "98a79f7e98bfd3c148ce782c27c1494e77c3c94ab87c9e7e86e901cbc1643449"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "futures",
  "num-bigint",
  "prost",
  "prost-build",
@@ -1723,15 +1724,17 @@ dependencies = [
 
 [[package]]
 name = "denokv_remote"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d94fd3da7d1fa9ef1515bf3bc5b2fe75389edb3f15e9445e345679fda44987c"
+checksum = "518e181eb14f1a3b8fc423e48de431048249780fb0815d81e8139faf347c3269"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "bytes",
  "chrono",
  "denokv_proto",
+ "futures",
  "log",
  "prost",
  "rand",
@@ -1739,21 +1742,24 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-util",
  "url",
  "uuid",
 ]
 
 [[package]]
 name = "denokv_sqlite"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d2ab5fe45079dc41ab76549bb9fc3aeb9be4e54fddbdfb16a779db4a0b38df"
+checksum = "90af93f2ab8eec43fea9f8931fa99d38e73fa0af60aba0fae79de3fb87a0ed06"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "chrono",
  "denokv_proto",
  "futures",
+ "hex",
  "log",
  "num-bigint",
  "rand",
