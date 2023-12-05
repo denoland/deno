@@ -10506,3 +10506,77 @@ fn lsp_jupyter_byonm_diagnostics() {
   );
   client.shutdown();
 }
+
+#[test]
+fn lsp_loose_imports_warn() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", r#"{ "unstable": ["loose-imports"] }"#);
+  // should work when exists on the fs and when doesn't
+  temp_dir.write("a.ts", "export class A {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_root_uri(temp_dir.uri());
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.path().join("b.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class B {}",
+    },
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.path().join("file.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from './a';\nimport * as b from './b.js';\nconsole.log(a)\nconsole.log(b);\n",
+    },
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    lsp::PublishDiagnosticsParams {
+      uri: Url::parse("file:///a/file.ts").unwrap(),
+      diagnostics: vec![
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 19
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 60
+            }
+          },
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
+          code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
+          source: Some("deno".to_string()),
+          message: "foobar".to_string(),
+          ..Default::default()
+        },
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 19
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 60
+            }
+          },
+          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
+          code: Some(lsp::NumberOrString::String("redirect".to_string())),
+          source: Some("deno".to_string()),
+          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".".to_string(),
+          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"})),
+          ..Default::default()
+        }
+      ],
+      version: Some(1),
+    }
+  );
+  client.shutdown();
+}

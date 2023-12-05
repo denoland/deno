@@ -26,6 +26,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -470,7 +471,13 @@ impl NpmResolver for CliGraphResolver {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnstableLooseImportsFsEntry {
+  File,
+  Dir,
+}
+
+#[derive(Debug)]
 pub struct UnstableLooseImportsResolver {
   fs: Arc<dyn FileSystem>,
 }
@@ -480,74 +487,121 @@ impl UnstableLooseImportsResolver {
     Self { fs }
   }
 
-  pub fn resolve<'a>(
-    &self,
+  pub fn resolve_with_fs<'a>(
     specifier: &'a ModuleSpecifier,
+    fs: &dyn FileSystem,
   ) -> Cow<'a, ModuleSpecifier> {
+    Self::resolve_with_stat_sync(specifier, |path| {
+      fs.stat_sync(path).ok().and_then(|stat| {
+        if stat.is_file {
+          Some(UnstableLooseImportsFsEntry::File)
+        } else if stat.is_directory {
+          Some(UnstableLooseImportsFsEntry::Dir)
+        } else {
+          None
+        }
+      })
+    })
+  }
+
+  pub fn resolve_with_stat_sync(
+    specifier: &ModuleSpecifier,
+    stat_sync: impl Fn(&Path) -> Option<UnstableLooseImportsFsEntry>,
+  ) -> Cow<ModuleSpecifier> {
     if specifier.scheme() != "file" {
       return Cow::Borrowed(specifier);
     }
 
-    let media_type = MediaType::from_specifier(specifier);
-    let probe_media_type_types = match media_type {
-      MediaType::JavaScript => vec![MediaType::TypeScript, MediaType::Tsx],
-      MediaType::Jsx => vec![MediaType::Tsx],
-      MediaType::Mjs => vec![MediaType::Mts],
-      MediaType::Cjs => vec![MediaType::Cts],
-      MediaType::TypeScript
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Tsx
-      | MediaType::Json
-      | MediaType::Wasm
-      | MediaType::TsBuildInfo
-      | MediaType::SourceMap => return Cow::Borrowed(specifier),
-      MediaType::Unknown => vec![
-        MediaType::TypeScript,
-        MediaType::JavaScript,
-        MediaType::Tsx,
-        MediaType::Jsx,
-        MediaType::Mts,
-        MediaType::Mjs,
-      ],
-    };
     let Ok(path) = specifier_to_file_path(specifier) else {
       return Cow::Borrowed(specifier);
     };
-    if self.fs.exists_sync(&path) {
-      return Cow::Borrowed(specifier);
-    }
-    let old_specifier = match media_type {
-      MediaType::Unknown => specifier.as_str(),
-      _ => {
-        match specifier
-          .as_str()
-          .strip_suffix(media_type.as_ts_extension())
-        {
-          Some(s) => s,
-          None => return Cow::Borrowed(specifier),
-        }
+    let probe_paths = match (stat_sync)(&path) {
+      Some(UnstableLooseImportsFsEntry::File) => {
+        return Cow::Borrowed(specifier);
+      }
+      Some(UnstableLooseImportsFsEntry::Dir) => {
+        // try to resolve at the index file
+        vec![
+          path.join("index.ts"),
+          path.join("index.js"),
+          path.join("index.mts"),
+          path.join("index.mjs"),
+          path.join("index.tsx"),
+          path.join("index.jsx"),
+        ]
+      }
+      None => {
+        let media_type = MediaType::from_specifier(specifier);
+        let probe_media_type_types = match media_type {
+          MediaType::JavaScript => vec![MediaType::TypeScript, MediaType::Tsx],
+          MediaType::Jsx => vec![MediaType::Tsx],
+          MediaType::Mjs => vec![MediaType::Mts],
+          MediaType::Cjs => vec![MediaType::Cts],
+          MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
+          | MediaType::Tsx
+          | MediaType::Json
+          | MediaType::Wasm
+          | MediaType::TsBuildInfo
+          | MediaType::SourceMap => return Cow::Borrowed(specifier),
+          MediaType::Unknown => vec![
+            MediaType::TypeScript,
+            MediaType::JavaScript,
+            MediaType::Tsx,
+            MediaType::Jsx,
+            MediaType::Mts,
+            MediaType::Mjs,
+          ],
+        };
+        let old_path_str = path.to_string_lossy();
+        let old_path_str = match media_type {
+          MediaType::Unknown => old_path_str,
+          _ => match old_path_str.strip_suffix(media_type.as_ts_extension()) {
+            Some(s) => Cow::Borrowed(s),
+            None => return Cow::Borrowed(specifier),
+          },
+        };
+        probe_media_type_types
+          .into_iter()
+          .map(|media_type| {
+            PathBuf::from(format!(
+              "{}{}",
+              old_path_str,
+              media_type.as_ts_extension()
+            ))
+          })
+          .collect::<Vec<_>>()
       }
     };
-    for new_media_type in probe_media_type_types {
-      let Ok(new_specifier) = ModuleSpecifier::parse(&format!(
-        "{}{}",
-        old_specifier,
-        new_media_type.as_ts_extension()
-      )) else {
-        continue;
-      };
-      let Ok(new_path) = specifier_to_file_path(&new_specifier) else {
-        continue;
-      };
-      if self.fs.exists_sync(&new_path) {
-        return Cow::Owned(new_specifier);
+
+    for probe_path in probe_paths {
+      if (stat_sync)(&probe_path) == Some(UnstableLooseImportsFsEntry::File) {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
+          return Cow::Owned(specifier);
+        }
       }
     }
+
     Cow::Borrowed(specifier)
+  }
+
+  pub fn resolve<'a>(
+    &self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Cow<'a, ModuleSpecifier> {
+    let new_specifier = Self::resolve_with_fs(specifier, self.fs.as_ref());
+    // if matches!(new_specifier, Cow::Owned(_)) {
+    //   log::warn!(
+    //     "{} Unstable loose import resolution.\n    at {}",
+    //     crate::colors::yellow("Warning"),
+    //   todo....
+    //   );
+    // }
+    new_specifier
   }
 }
 
@@ -622,30 +676,29 @@ mod test {
 
   #[test]
   fn test_unstable_loose_imports() {
-    // It would be more ideal to use an in memory file system, but
-    // we haven't written one.
+    fn resolve(specifier: &ModuleSpecifier) -> Cow<ModuleSpecifier> {
+      UnstableLooseImportsResolver::resolve_with_fs(specifier, &RealFs)
+    }
+
     let context = TestContext::default();
     let temp_dir = context.temp_dir().path();
-    let fs = Arc::new(RealFs);
-    let resolver = UnstableLooseImportsResolver::new(fs);
 
     // scenarios like resolving ./example.js to ./example.ts
     for (ext_from, ext_to) in [("js", "ts"), ("js", "tsx"), ("mjs", "mts")] {
       let ts_file = temp_dir.join(format!("file.{}", ext_to));
       ts_file.write("");
       assert_eq!(
-        resolver.resolve(&ts_file.uri_file()).to_string(),
+        resolve(&ts_file.uri_file()).to_string(),
         ts_file.uri_file().to_string(),
       );
       assert_eq!(
-        resolver
-          .resolve(
-            &temp_dir
-              .uri_dir()
-              .join(&format!("file.{}", ext_from))
-              .unwrap()
-          )
-          .to_string(),
+        resolve(
+          &temp_dir
+            .uri_dir()
+            .join(&format!("file.{}", ext_from))
+            .unwrap()
+        )
+        .to_string(),
         ts_file.uri_file().to_string(),
       );
       ts_file.remove_file();
@@ -656,27 +709,40 @@ mod test {
       let file = temp_dir.join(format!("file.{}", ext));
       file.write("");
       assert_eq!(
-        resolver
-          .resolve(
-            &temp_dir
-              .uri_dir()
-              .join("file") // no ext
-              .unwrap()
-          )
-          .to_string(),
+        resolve(
+          &temp_dir
+            .uri_dir()
+            .join("file") // no ext
+            .unwrap()
+        )
+        .to_string(),
         file.uri_file().to_string(),
       );
       file.remove_file();
     }
 
     // .ts and .js exists, .js specified (goes to specified)
-    let ts_file = temp_dir.join("file.ts");
-    ts_file.write("");
-    let js_file = temp_dir.join("file.js");
-    js_file.write("");
-    assert_eq!(
-      resolver.resolve(&js_file.uri_file()).to_string(),
-      js_file.uri_file().to_string(),
-    );
+    {
+      let ts_file = temp_dir.join("file.ts");
+      ts_file.write("");
+      let js_file = temp_dir.join("file.js");
+      js_file.write("");
+      assert_eq!(
+        resolve(&js_file.uri_file()).to_string(),
+        js_file.uri_file().to_string(),
+      );
+    }
+
+    // resolving a directory to an index file
+    {
+      let routes_dir = temp_dir.join("routes");
+      routes_dir.create_dir_all();
+      let index_file = routes_dir.join("index.ts");
+      index_file.write("");
+      assert_eq!(
+        resolve(&routes_dir.uri_file()).to_string(),
+        index_file.uri_file().to_string(),
+      );
+    }
   }
 }

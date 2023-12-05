@@ -15,7 +15,6 @@ use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -112,7 +111,6 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::resolver::UnstableLooseImportsResolver;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -255,13 +253,10 @@ impl LanguageServer {
       let factory = CliFactory::from_cli_options(cli_options.clone());
       let module_graph_builder = factory.module_graph_builder().await?;
       let mut inner_loader = module_graph_builder.create_graph_loader();
-      let loose_imports_resolver = cli_options
-        .unstable_loose_imports()
-        .then(|| UnstableLooseImportsResolver::new(Arc::new(RealFs)));
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
-        loose_imports_resolver: loose_imports_resolver.as_ref(),
+        unstable_loose_imports: cli_options.unstable_loose_imports(),
       };
       let graph = module_graph_builder
         .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
