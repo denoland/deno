@@ -4747,6 +4747,9 @@ fn test_unstable_sloppy_imports() {
   temp_dir.write("d.mjs", "export class D {}");
   temp_dir.write("e.tsx", "export class E {}");
   temp_dir.write("f.jsx", "export class F {}");
+  let dir = temp_dir.path().join("dir");
+  dir.create_dir_all();
+  dir.join("index.tsx").write("export class G {}");
   temp_dir.write(
     "main.ts",
     r#"import * as a from "./a.js";
@@ -4756,6 +4759,7 @@ import * as d from "./d";
 import * as e from "./e";
 import * as e2 from "./e.js";
 import * as f from "./f";
+import * as g from "./dir";
 console.log(a.A);
 console.log(b.B);
 console.log(c.C);
@@ -4763,6 +4767,7 @@ console.log(d.D);
 console.log(e.E);
 console.log(e2.E);
 console.log(f.F);
+console.log(g.G);
 "#,
   );
 
@@ -4771,20 +4776,22 @@ console.log(f.F);
     .args("run main.ts")
     .run()
     .assert_matches_text(
-      "Warning Loose import resolution.
+      "Warning Sloppy import resolution (update .js extension to .ts)
     at file:///[WILDCARD]/main.ts:1:20
-Warning Loose import resolution.
+Warning Sloppy import resolution (add .js extension)
     at file:///[WILDCARD]/main.ts:2:20
-Warning Loose import resolution.
+Warning Sloppy import resolution (add .mts extension)
     at file:///[WILDCARD]/main.ts:3:20
-Warning Loose import resolution.
+Warning Sloppy import resolution (add .mjs extension)
     at file:///[WILDCARD]/main.ts:4:20
-Warning Loose import resolution.
+Warning Sloppy import resolution (add .tsx extension)
     at file:///[WILDCARD]/main.ts:5:20
-Warning Loose import resolution.
+Warning Sloppy import resolution (update .js extension to .tsx)
     at file:///[WILDCARD]/main.ts:6:21
-Warning Loose import resolution.
+Warning Sloppy import resolution (add .jsx extension)
     at file:///[WILDCARD]/main.ts:7:20
+Warning Sloppy import resolution (specify path to index.tsx file in directory instead)
+    at file:///[WILDCARD]/main.ts:8:20
 [class A]
 [class B]
 [class C]
@@ -4792,6 +4799,7 @@ Warning Loose import resolution.
 [class E]
 [class E]
 [class F]
+[class G]
 ",
     );
 }

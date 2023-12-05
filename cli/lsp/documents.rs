@@ -21,6 +21,7 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::UnstableSloppyImportsFsEntry;
+use crate::resolver::UnstableSloppyImportsResolution;
 use crate::resolver::UnstableSloppyImportsResolver;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
@@ -1051,7 +1052,11 @@ impl Documents {
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
     if specifier.scheme() == "file" && self.unstable_sloppy_imports {
-      Some(self.resolve_unstable_sloppy_import(specifier).into_owned())
+      Some(
+        self
+          .resolve_unstable_sloppy_import(specifier)
+          .into_owned_specifier(),
+      )
     } else {
       self.redirect_resolver.resolve(specifier)
     }
@@ -1060,7 +1065,7 @@ impl Documents {
   fn resolve_unstable_sloppy_import<'a>(
     &self,
     specifier: &'a ModuleSpecifier,
-  ) -> Cow<'a, ModuleSpecifier> {
+  ) -> UnstableSloppyImportsResolution<'a> {
     UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         if self.open_docs.contains_key(&specifier)
@@ -1727,7 +1732,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
   fn resolve_unstable_sloppy_import<'b>(
     &self,
     specifier: &'b ModuleSpecifier,
-  ) -> Cow<'b, ModuleSpecifier> {
+  ) -> UnstableSloppyImportsResolution<'b> {
     UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         if self.open_docs.contains_key(&specifier) {
@@ -1759,7 +1764,9 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
     cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
     let specifier = if self.unstable_sloppy_imports {
-      self.resolve_unstable_sloppy_import(specifier)
+      self
+        .resolve_unstable_sloppy_import(specifier)
+        .into_specifier()
     } else {
       Cow::Borrowed(specifier)
     };
