@@ -2169,7 +2169,7 @@ dbTest("key watch", async (db) => {
   });
 
   const { versionstamp } = await db.set(["key"], 1);
-  while (changeHistory.length as any !== 2) {
+  while (changeHistory.length as number !== 2) {
     await sleep(100);
   }
   assertEquals(changeHistory[1], {
