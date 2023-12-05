@@ -87,6 +87,11 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
+// NOTE(bartlomieju): currently we don't have any unstable HTTP features,
+// but let's keep this const here, because:
+//   a) we still need to support `--unstable-http` flag to not break user's CLI;
+//   b) we might add more unstable features in the future.
+#[allow(dead_code)]
 pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
 /// All HTTP/2 connections start with this byte string.
