@@ -1066,6 +1066,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.234.0"
+source = "git+https://github.com/mmastrac/deno_core.git?branch=module_map_promises#7ed98712be601542863a05ee87e013a766a21500"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1492,6 +1493,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.110.0"
+source = "git+https://github.com/mmastrac/deno_core.git?branch=module_map_promises#7ed98712be601542863a05ee87e013a766a21500"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4635,6 +4637,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.143.0"
+source = "git+https://github.com/mmastrac/deno_core.git?branch=module_map_promises#7ed98712be601542863a05ee87e013a766a21500"
 dependencies = [
  "bytes",
  "derive_more",
