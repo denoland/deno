@@ -1630,6 +1630,22 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function createHttpClientExplicitResourceManagementDoubleClose() {
+    using client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/assets/fixture.json", {
+      client,
+    });
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    // Close the client even though we declared it with `using` to confirm that
+    // the cleanup done as per `Symbol.dispose` will not throw any errors.
+    client.close();
+  },
+);
+
+
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));

@@ -40,7 +40,7 @@ class HttpClient {
   }
 
   [SymbolDispose]() {
-    this.close();
+    core.tryClose(this.rid);
   }
 }
 const HttpClientPrototype = HttpClient.prototype;
