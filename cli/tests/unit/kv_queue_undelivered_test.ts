@@ -56,12 +56,10 @@ queueTest("queue with undelivered", async (db) => {
 });
 
 queueTest("throw error if already closed", async (db) => {
-  const { resolve } = Promise.withResolvers<void>();
   db.close();
   await assertRejects(
     async () => {
       await db.listenQueue(() => {
-        resolve();
       });
     },
     Error,
