@@ -11,7 +11,8 @@ try {
 }
 
 function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
-  Deno.test({
+  // TODO(igorzi): https://github.com/denoland/deno/issues/21437
+  Deno.test.ignore({
     name,
     // https://github.com/denoland/deno/issues/18363
     ignore: Deno.build.os === "darwin" && isCI,
