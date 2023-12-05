@@ -26,6 +26,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -471,6 +473,40 @@ impl NpmResolver for CliGraphResolver {
   }
 }
 
+#[derive(Debug)]
+struct UnstableLooseImportsStatCache {
+  fs: Arc<dyn FileSystem>,
+  cache: RefCell<HashMap<PathBuf, Option<UnstableLooseImportsFsEntry>>>,
+}
+
+impl UnstableLooseImportsStatCache {
+  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
+    Self {
+      fs,
+      cache: Default::default(),
+    }
+  }
+
+  pub fn stat_sync(&self, path: &Path) -> Option<UnstableLooseImportsFsEntry> {
+    let mut cache = self.cache.borrow_mut();
+    if let Some(entry) = cache.get(path) {
+      return entry.clone();
+    }
+
+    let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
+      if stat.is_file {
+        Some(UnstableLooseImportsFsEntry::File)
+      } else if stat.is_directory {
+        Some(UnstableLooseImportsFsEntry::Dir)
+      } else {
+        None
+      }
+    });
+    cache.insert(path.to_owned(), entry.clone());
+    entry
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnstableLooseImportsFsEntry {
   File,
@@ -479,29 +515,14 @@ pub enum UnstableLooseImportsFsEntry {
 
 #[derive(Debug)]
 pub struct UnstableLooseImportsResolver {
-  fs: Arc<dyn FileSystem>,
+  stat_cache: UnstableLooseImportsStatCache,
 }
 
 impl UnstableLooseImportsResolver {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-    Self { fs }
-  }
-
-  pub fn resolve_with_fs<'a>(
-    specifier: &'a ModuleSpecifier,
-    fs: &dyn FileSystem,
-  ) -> Cow<'a, ModuleSpecifier> {
-    Self::resolve_with_stat_sync(specifier, |path| {
-      fs.stat_sync(path).ok().and_then(|stat| {
-        if stat.is_file {
-          Some(UnstableLooseImportsFsEntry::File)
-        } else if stat.is_directory {
-          Some(UnstableLooseImportsFsEntry::Dir)
-        } else {
-          None
-        }
-      })
-    })
+    Self {
+      stat_cache: UnstableLooseImportsStatCache::new(fs),
+    }
   }
 
   pub fn resolve_with_stat_sync(
@@ -593,7 +614,9 @@ impl UnstableLooseImportsResolver {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> Cow<'a, ModuleSpecifier> {
-    let new_specifier = Self::resolve_with_fs(specifier, self.fs.as_ref());
+    let new_specifier = Self::resolve_with_stat_sync(specifier, |path| {
+      self.stat_cache.stat_sync(path)
+    });
     // if matches!(new_specifier, Cow::Owned(_)) {
     //   log::warn!(
     //     "{} Unstable loose import resolution.\n    at {}",
@@ -677,7 +700,17 @@ mod test {
   #[test]
   fn test_unstable_loose_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> Cow<ModuleSpecifier> {
-      UnstableLooseImportsResolver::resolve_with_fs(specifier, &RealFs)
+      UnstableLooseImportsResolver::resolve_with_stat_sync(specifier, |path| {
+        RealFs.stat_sync(path).ok().and_then(|stat| {
+          if stat.is_file {
+            Some(UnstableLooseImportsFsEntry::File)
+          } else if stat.is_directory {
+            Some(UnstableLooseImportsFsEntry::Dir)
+          } else {
+            None
+          }
+        })
+      })
     }
 
     let context = TestContext::default();
