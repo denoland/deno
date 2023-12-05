@@ -1494,7 +1494,7 @@ function reportException(error) {
   });
   // Avoid recursing `reportException()` via error handlers more than once.
   if (reportExceptionStackedCalls > 1 || globalThis_.dispatchEvent(event)) {
-    ops.op_dispatch_exception(error, false);
+    core.reportUnhandledException(error);
   }
   reportExceptionStackedCalls--;
 }
