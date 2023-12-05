@@ -7,7 +7,10 @@
     "/mod.ts": {
       "dependencies": [{
         "kind": "import",
+<<<<<<< HEAD
         "type": "static",
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         "range": [[0, 0], [0, 35]],
         "specifier": "./other.ts",
         "specifierRange": [[0, 22], [0, 34]]

@@ -2,7 +2,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import repl from "node:repl";
+<<<<<<< HEAD
 import { assert } from "../../../test_util/std/assert/mod.ts";
+=======
+import { assert } from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 Deno.test({
   name: "repl module exports",

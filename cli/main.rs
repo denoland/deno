@@ -198,6 +198,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       let types = tsc::get_types_declaration_file_text(flags.unstable);
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
+<<<<<<< HEAD
     #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
       tools::upgrade::upgrade(flags, upgrade_flags).await
@@ -207,6 +208,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
+=======
+    DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
+      tools::upgrade::upgrade(flags, upgrade_flags).await
+    }),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
@@ -243,6 +249,7 @@ fn setup_panic_hook() {
   }));
 }
 
+<<<<<<< HEAD
 fn exit_with_message(message: &str, code: i32) -> ! {
   eprintln!(
     "{}: {}",
@@ -252,6 +259,8 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   std::process::exit(code);
 }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
@@ -266,7 +275,16 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
         error_code = 10;
       }
 
+<<<<<<< HEAD
       exit_with_message(&error_string, error_code);
+=======
+      eprintln!(
+        "{}: {}",
+        colors::red_bold("error"),
+        error_string.trim_start_matches("error: ")
+      );
+      std::process::exit(error_code);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
   }
 }
@@ -320,11 +338,14 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     "Enable unstable Deno.cron API",
     8,
   ),
+<<<<<<< HEAD
   (
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",
     9,
   ),
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 ];
 
 pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {

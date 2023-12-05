@@ -6,7 +6,11 @@ import {
   assertFalse,
   assertInstanceOf,
   assertThrows,
+<<<<<<< HEAD
 } from "../../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { opendir, opendirSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";

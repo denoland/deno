@@ -197,6 +197,7 @@ impl BoundedBufferChannelInner {
   pub fn write(&mut self, buffer: V8Slice<u8>) -> Result<(), V8Slice<u8>> {
     let next_producer_index = (self.ring_producer + 1) % BUFFER_CHANNEL_SIZE;
     if next_producer_index == self.ring_consumer {
+<<<<<<< HEAD
       // Note that we may have been allowed to write because of a close/error condition, but the
       // underlying channel is actually closed. If this is the case, we return `Ok(())`` and just
       // drop the bytes on the floor.
@@ -205,6 +206,9 @@ impl BoundedBufferChannelInner {
       } else {
         Err(buffer)
       };
+=======
+      return Err(buffer);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
 
     self.current_size += buffer.len();
@@ -343,7 +347,10 @@ struct ReadableStreamResource {
   channel: BoundedBufferChannel,
   cancel_handle: CancelHandle,
   data: ReadableStreamResourceData,
+<<<<<<< HEAD
   size_hint: (u64, Option<u64>),
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 impl ReadableStreamResource {
@@ -386,10 +393,13 @@ impl Resource for ReadableStreamResource {
   fn close(self: Rc<Self>) {
     self.close_channel();
   }
+<<<<<<< HEAD
 
   fn size_hint(&self) -> (u64, Option<u64>) {
     self.size_hint
   }
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 impl Drop for ReadableStreamResource {
@@ -450,6 +460,7 @@ pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
     cancel_handle: Default::default(),
     channel: BoundedBufferChannel::default(),
     data: ReadableStreamResourceData { completion },
+<<<<<<< HEAD
     size_hint: (0, None),
   };
   state.resource_table.add(resource)
@@ -469,6 +480,8 @@ pub fn op_readable_stream_resource_allocate_sized(
     channel: BoundedBufferChannel::default(),
     data: ReadableStreamResourceData { completion },
     size_hint: (length, Some(length)),
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   };
   state.resource_table.add(resource)
 }

@@ -18,8 +18,16 @@ async function runTest() {
   await pipeline(
     '',
     new PassThrough({ objectMode: true }),
+<<<<<<< HEAD
     common.mustCall(),
   );
 }
 
 runTest().then(common.mustCall());
+=======
+    common.mustCall(() => { })
+  );
+}
+
+runTest().then(common.mustCall(() => {}));
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

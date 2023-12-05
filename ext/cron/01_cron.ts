@@ -3,6 +3,7 @@
 // @ts-ignore internal api
 const core = Deno.core;
 
+<<<<<<< HEAD
 export function formatToCronSchedule(
   value?: number | { exact: number | number[] } | {
     start?: number;
@@ -70,6 +71,11 @@ export function parseScheduleToString(
 function cron(
   name: string,
   schedule: string | Deno.CronSchedule,
+=======
+function cron(
+  name: string,
+  schedule: string,
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   handlerOrOptions1:
     | (() => Promise<void> | void)
     | ({ backoffSchedule?: number[]; signal?: AbortSignal }),
@@ -84,8 +90,11 @@ function cron(
     throw new TypeError("Deno.cron requires a valid schedule");
   }
 
+<<<<<<< HEAD
   schedule = parseScheduleToString(schedule);
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   let handler: () => Promise<void> | void;
   let options: { backoffSchedule?: number[]; signal?: AbortSignal } | undefined;
 

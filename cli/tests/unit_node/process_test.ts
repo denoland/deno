@@ -11,7 +11,11 @@ import {
   assertObjectMatch,
   assertStrictEquals,
   assertThrows,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import { delay } from "../../../test_util/std/async/delay.ts";
@@ -681,6 +685,7 @@ Deno.test("process.memoryUsage.rss()", () => {
 });
 
 Deno.test("process.exitCode", () => {
+<<<<<<< HEAD
   assertEquals(process.exitCode, undefined);
   process.exitCode = 127;
   assertEquals(process.exitCode, 127);
@@ -733,6 +738,11 @@ Deno.test("Deno.exit should override process exit", async () => {
     "import process from 'node:process'; process.exitCode = 10; Deno.exit(12);",
     12,
   );
+=======
+  assert(process.exitCode === undefined);
+  process.exitCode = 127;
+  assert(process.exitCode === 127);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 });
 
 Deno.test("process.config", () => {
@@ -874,6 +884,7 @@ Deno.test({
     assertEquals(uv.errname(-1), "EPERM");
   },
 });
+<<<<<<< HEAD
 
 Deno.test({
   name: "process.report",
@@ -976,3 +987,5 @@ Deno.test({
     });
   },
 });
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

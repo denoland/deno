@@ -11,8 +11,11 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+<<<<<<< HEAD
 use std::task::Context;
 use std::task::Poll;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 use deno_core::anyhow::Error;
 use deno_core::error::type_error;
@@ -23,11 +26,20 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
+<<<<<<< HEAD
+=======
+use deno_core::BufView;
+use deno_core::WriteOutcome;
+
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+<<<<<<< HEAD
 use deno_core::BufView;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -62,6 +74,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+<<<<<<< HEAD
+=======
+use tokio::sync::mpsc;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 // Re-export reqwest and data_url
 pub use data_url;
@@ -183,6 +199,10 @@ pub fn get_declaration() -> PathBuf {
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
   pub request_rid: ResourceId,
+<<<<<<< HEAD
+=======
+  pub request_body_rid: Option<ResourceId>,
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   pub cancel_handle_rid: Option<ResourceId>,
 }
 
@@ -214,6 +234,7 @@ pub fn get_or_create_client_from_state(
   }
 }
 
+<<<<<<< HEAD
 #[allow(clippy::type_complexity)]
 pub struct ResourceToBodyAdapter(
   Rc<dyn Resource>,
@@ -267,6 +288,8 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 #[op2]
 #[serde]
 #[allow(clippy::too_many_arguments)]
@@ -277,8 +300,13 @@ pub fn op_fetch<FP>(
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] client_rid: Option<u32>,
   has_body: bool,
+<<<<<<< HEAD
   #[buffer] data: Option<JsBuffer>,
   #[smi] resource: Option<ResourceId>,
+=======
+  #[number] body_length: Option<u64>,
+  #[buffer] data: Option<JsBuffer>,
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -295,7 +323,11 @@ where
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
+<<<<<<< HEAD
   let (request_rid, cancel_handle_rid) = match scheme {
+=======
+  let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     "file" => {
       let path = url.to_file_path().map_err(|_| {
         type_error("NetworkError when attempting to fetch resource.")
@@ -319,7 +351,11 @@ where
       let maybe_cancel_handle_rid = maybe_cancel_handle
         .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
 
+<<<<<<< HEAD
       (request_rid, maybe_cancel_handle_rid)
+=======
+      (request_rid, None, maybe_cancel_handle_rid)
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
@@ -333,6 +369,7 @@ where
 
       let mut request = client.request(method.clone(), url);
 
+<<<<<<< HEAD
       if has_body {
         match (data, resource) {
           (Some(data), _) => {
@@ -352,6 +389,36 @@ where
               .body(Body::wrap_stream(ResourceToBodyAdapter::new(resource)))
           }
           (None, None) => unreachable!(),
+=======
+      let request_body_rid = if has_body {
+        match data {
+          None => {
+            // If no body is passed, we return a writer for streaming the body.
+            let (tx, stream) = tokio::sync::mpsc::channel(1);
+
+            // If the size of the body is known, we include a content-length
+            // header explicitly.
+            if let Some(body_size) = body_length {
+              request =
+                request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
+            }
+
+            request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
+
+            let request_body_rid =
+              state.resource_table.add(FetchRequestBodyResource {
+                body: AsyncRefCell::new(Some(tx)),
+                cancel: CancelHandle::default(),
+              });
+
+            Some(request_body_rid)
+          }
+          Some(data) => {
+            // If a body is passed, we use it, and don't return a body for streaming.
+            request = request.body(data.to_vec());
+            None
+          }
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         }
       } else {
         // POST and PUT requests should always have a 0 length content-length,
@@ -359,6 +426,10 @@ where
         if matches!(method, Method::POST | Method::PUT) {
           request = request.header(CONTENT_LENGTH, HeaderValue::from(0));
         }
+<<<<<<< HEAD
+=======
+        None
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       };
 
       let mut header_map = HeaderMap::new();
@@ -395,7 +466,11 @@ where
           .send()
           .or_cancel(cancel_handle_)
           .await
+<<<<<<< HEAD
           .map(|res| res.map_err(|err| err.into()))
+=======
+          .map(|res| res.map_err(|err| type_error(err.to_string())))
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       };
 
       let request_rid = state
@@ -405,7 +480,11 @@ where
       let cancel_handle_rid =
         state.resource_table.add(FetchCancelHandle(cancel_handle));
 
+<<<<<<< HEAD
       (request_rid, Some(cancel_handle_rid))
+=======
+      (request_rid, request_body_rid, Some(cancel_handle_rid))
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
     "data" => {
       let data_url = DataUrl::process(url.as_str())
@@ -426,7 +505,11 @@ where
         .resource_table
         .add(FetchRequestResource(Box::pin(fut)));
 
+<<<<<<< HEAD
       (request_rid, None)
+=======
+      (request_rid, None, None)
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
     "blob" => {
       // Blob URL resolution happens in the JS side of fetch. If we got here is
@@ -438,11 +521,19 @@ where
 
   Ok(FetchReturn {
     request_rid,
+<<<<<<< HEAD
+=======
+    request_body_rid,
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     cancel_handle_rid,
   })
 }
 
+<<<<<<< HEAD
 #[derive(Default, Serialize)]
+=======
+#[derive(Serialize)]
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 #[serde(rename_all = "camelCase")]
 pub struct FetchResponse {
   pub status: u16,
@@ -453,7 +544,10 @@ pub struct FetchResponse {
   pub content_length: Option<u64>,
   pub remote_addr_ip: Option<String>,
   pub remote_addr_port: Option<u16>,
+<<<<<<< HEAD
   pub error: Option<String>,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 #[op2(async)]
@@ -473,6 +567,7 @@ pub async fn op_fetch_send(
 
   let res = match request.0.await {
     Ok(Ok(res)) => res,
+<<<<<<< HEAD
     Ok(Err(err)) => {
       // We're going to try and rescue the error cause from a stream and return it from this fetch.
       // If any error in the chain is a reqwest body error, return that as a special result we can use to
@@ -496,6 +591,9 @@ pub async fn op_fetch_send(
 
       return Err(type_error(err.to_string()));
     }
+=======
+    Ok(Err(err)) => return Err(type_error(err.to_string())),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     Err(_) => return Err(type_error("request was cancelled")),
   };
 
@@ -528,7 +626,10 @@ pub async fn op_fetch_send(
     content_length,
     remote_addr_ip,
     remote_addr_port,
+<<<<<<< HEAD
     error: None,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   })
 }
 
@@ -663,6 +764,77 @@ impl Resource for FetchCancelHandle {
   }
 }
 
+<<<<<<< HEAD
+=======
+/// Wraps a [`mpsc::Receiver`] in a [`Stream`] that can be used as a Hyper [`Body`].
+pub struct FetchBodyStream(pub mpsc::Receiver<Result<bytes::Bytes, Error>>);
+
+impl Stream for FetchBodyStream {
+  type Item = Result<bytes::Bytes, Error>;
+  fn poll_next(
+    mut self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Self::Item>> {
+    self.0.poll_recv(cx)
+  }
+}
+
+pub struct FetchRequestBodyResource {
+  pub body: AsyncRefCell<Option<mpsc::Sender<Result<bytes::Bytes, Error>>>>,
+  pub cancel: CancelHandle,
+}
+
+impl Resource for FetchRequestBodyResource {
+  fn name(&self) -> Cow<str> {
+    "fetchRequestBody".into()
+  }
+
+  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
+    Box::pin(async move {
+      let bytes: bytes::Bytes = buf.into();
+      let nwritten = bytes.len();
+      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let body = (*body).as_ref();
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let body = body.ok_or(type_error(
+        "request body receiver not connected (request closed)",
+      ))?;
+      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
+        type_error("request body receiver not connected (request closed)")
+      })?;
+      Ok(WriteOutcome::Full { nwritten })
+    })
+  }
+
+  fn write_error(self: Rc<Self>, error: Error) -> AsyncResult<()> {
+    async move {
+      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let body = (*body).as_ref();
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let body = body.ok_or(type_error(
+        "request body receiver not connected (request closed)",
+      ))?;
+      body.send(Err(error)).or_cancel(cancel).await??;
+      Ok(())
+    }
+    .boxed_local()
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    async move {
+      let mut body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      body.take();
+      Ok(())
+    }
+    .boxed_local()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
+
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 

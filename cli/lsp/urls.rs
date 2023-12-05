@@ -247,8 +247,11 @@ impl LspUrlMap {
           LspUrlKind::File => Url::from_file_path(path).unwrap(),
         });
       }
+<<<<<<< HEAD
     } else if let Some(s) = file_like_to_file_specifier(url) {
       specifier = Some(s);
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     } else if let Some(s) = from_deno_url(url) {
       specifier = Some(s);
     }
@@ -258,6 +261,7 @@ impl LspUrlMap {
   }
 }
 
+<<<<<<< HEAD
 /// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
 /// ```rust
 /// assert_eq!(
@@ -282,6 +286,8 @@ fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
   None
 }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -415,6 +421,7 @@ mod tests {
     let actual = map.normalize_url(&fixture, LspUrlKind::File);
     assert_eq!(actual, fixture);
   }
+<<<<<<< HEAD
 
   #[test]
   fn test_file_like_to_file_specifier() {
@@ -439,4 +446,6 @@ mod tests {
       ),
     );
   }
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }

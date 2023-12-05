@@ -48,7 +48,10 @@ util::unit_test_factory!(
     jupyter_test,
     kv_test,
     kv_queue_test_no_db_close,
+<<<<<<< HEAD
     kv_queue_test,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     kv_queue_undelivered_test,
     link_test,
     make_temp_test,

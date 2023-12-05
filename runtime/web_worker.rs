@@ -33,7 +33,10 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsSummaryTracker;
+<<<<<<< HEAD
 use deno_core::PollEventLoopOptions;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -397,7 +400,11 @@ impl WebWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
+<<<<<<< HEAD
     // `runtime/build.rs`, `runtime/worker.rs` and `runtime/snapshot.rs`!
+=======
+    // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
     let mut extensions = vec![
       // Web APIs
@@ -693,12 +700,21 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
+<<<<<<< HEAD
         maybe_result
+=======
+        maybe_result.expect("Module evaluation result not provided.")
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       }
 
       event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
+<<<<<<< HEAD
         receiver.await
+=======
+        let maybe_result = receiver.await;
+        maybe_result.expect("Module evaluation result not provided.")
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       }
     }
   }
@@ -711,25 +727,43 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
+<<<<<<< HEAD
     let poll_options = PollEventLoopOptions {
       wait_for_inspector: false,
       ..Default::default()
     };
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     tokio::select! {
       biased;
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
+<<<<<<< HEAD
         maybe_result
       }
 
       event_loop_result = self.run_event_loop(poll_options) => {
+=======
+        // If `None` is returned it means that runtime was destroyed before
+        // evaluation was complete. This can happen in Web Worker when `self.close()`
+        // is called at top level.
+        maybe_result.unwrap_or(Ok(()))
+      }
+
+      event_loop_result = self.run_event_loop(false) => {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         if self.internal_handle.is_terminated() {
            return Ok(());
         }
         event_loop_result?;
+<<<<<<< HEAD
         receiver.await
+=======
+        let maybe_result = receiver.await;
+        maybe_result.unwrap_or(Ok(()))
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       }
     }
   }
@@ -737,7 +771,11 @@ impl WebWorker {
   fn poll_event_loop(
     &mut self,
     cx: &mut Context,
+<<<<<<< HEAD
     poll_options: PollEventLoopOptions,
+=======
+    wait_for_inspector: bool,
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.terminate_if_needed() {
@@ -746,7 +784,11 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
+<<<<<<< HEAD
     match self.js_runtime.poll_event_loop2(cx, poll_options) {
+=======
+    match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {
@@ -774,9 +816,15 @@ impl WebWorker {
 
   pub async fn run_event_loop(
     &mut self,
+<<<<<<< HEAD
     poll_options: PollEventLoopOptions,
   ) -> Result<(), AnyError> {
     poll_fn(|cx| self.poll_event_loop(cx, poll_options)).await
+=======
+    wait_for_inspector: bool,
+  ) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 
   // Starts polling for messages from worker host from JavaScript.
@@ -852,12 +900,16 @@ pub fn run_web_worker(
     }
 
     let result = if result.is_ok() {
+<<<<<<< HEAD
       worker
         .run_event_loop(PollEventLoopOptions {
           wait_for_inspector: true,
           ..Default::default()
         })
         .await
+=======
+      worker.run_event_loop(true).await
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     } else {
       result
     };

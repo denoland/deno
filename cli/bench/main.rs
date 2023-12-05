@@ -130,7 +130,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
+<<<<<<< HEAD
       "test_util/std/http/file_server_test.ts",
+=======
+      "test_util/std/examples/chat/server_test.ts",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     ],
     None,
   ),
@@ -141,7 +145,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
+<<<<<<< HEAD
       "test_util/std/http/file_server_test.ts",
+=======
+      "test_util/std/examples/chat/server_test.ts",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     ],
     None,
   ),
@@ -150,7 +158,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "bundle",
       "--unstable",
+<<<<<<< HEAD
       "test_util/std/http/file_server_test.ts",
+=======
+      "test_util/std/examples/chat/server_test.ts",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     ],
     None,
   ),
@@ -160,7 +172,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "bundle",
       "--no-check",
       "--unstable",
+<<<<<<< HEAD
       "test_util/std/http/file_server_test.ts",
+=======
+      "test_util/std/examples/chat/server_test.ts",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     ],
     None,
   ),
@@ -314,7 +330,11 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 
 const BUNDLES: &[(&str, &str)] = &[
   ("file_server", "./test_util/std/http/file_server.ts"),
+<<<<<<< HEAD
   ("welcome", "./cli/tests/testdata/welcome.ts"),
+=======
+  ("gist", "./test_util/std/examples/gist.ts"),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 ];
 fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();

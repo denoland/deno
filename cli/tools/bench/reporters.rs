@@ -12,7 +12,10 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+<<<<<<< HEAD
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 #[derive(Debug, Serialize)]
@@ -92,8 +95,11 @@ impl BenchReporter for JsonReporter {
       });
     }
   }
+<<<<<<< HEAD
 
   fn report_uncaught_error(&mut self, _origin: &str, _error: Box<JsError>) {}
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 pub struct ConsoleReporter {
@@ -304,6 +310,7 @@ impl BenchReporter for ConsoleReporter {
   fn report_end(&mut self, _: &BenchReport) {
     self.report_group_summary();
   }
+<<<<<<< HEAD
 
   fn report_uncaught_error(&mut self, _origin: &str, error: Box<JsError>) {
     println!(
@@ -315,4 +322,6 @@ impl BenchReporter for ConsoleReporter {
     println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
     println!();
   }
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }

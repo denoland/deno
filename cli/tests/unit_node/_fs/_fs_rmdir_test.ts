@@ -1,5 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+<<<<<<< HEAD
 import { assertEquals, fail } from "../../../../test_util/std/assert/mod.ts";
+=======
+import {
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { rmdir, rmdirSync } from "node:fs";
 import { closeSync } from "node:fs";
 import { existsSync } from "node:fs";

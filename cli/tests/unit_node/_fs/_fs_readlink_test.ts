@@ -1,7 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { readlink, readlinkSync } from "node:fs";
+<<<<<<< HEAD
 import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
+=======
+import {
+  assert,
+  assertEquals,
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import * as path from "../../../../test_util/std/path/mod.ts";
 
 const testDir = Deno.makeTempDirSync();

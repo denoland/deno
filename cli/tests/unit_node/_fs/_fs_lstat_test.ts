@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { lstat, lstatSync } from "node:fs";
+<<<<<<< HEAD
 import { fail } from "../../../../test_util/std/assert/mod.ts";
+=======
+import { fail } from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
 import type { BigIntStats, Stats } from "node:fs";

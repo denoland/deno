@@ -52,5 +52,9 @@ module.exports = {
   cleanupStaleProcess,
   logAfterTime,
   kExpiringChildRunTime,
+<<<<<<< HEAD
   kExpiringParentTimer,
+=======
+  kExpiringParentTimer
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 };

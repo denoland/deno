@@ -4,7 +4,11 @@ import { performance } from "node:perf_hooks";
 import {
   assertEquals,
   assertThrows,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 Deno.test({
   name: "[perf_hooks] performance",

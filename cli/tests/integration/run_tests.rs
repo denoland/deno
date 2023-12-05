@@ -2703,11 +2703,14 @@ mod permissions {
     output: "run/064_permissions_revoke_global.ts.out",
   });
 
+<<<<<<< HEAD
   itest!(_065_permissions_revoke_net {
     args: "run --allow-net run/065_permissions_revoke_net.ts",
     output: "run/065_permissions_revoke_net.ts.out",
   });
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   #[test]
   fn _066_prompt() {
     TestContext::default()
@@ -4721,6 +4724,7 @@ itest!(workspaces_nested_member {
   http_server: true,
   exit_code: 1,
 });
+<<<<<<< HEAD
 
 itest!(unsafe_proto {
   args: "run -A run/unsafe_proto/main.js",
@@ -4735,3 +4739,5 @@ itest!(unsafe_proto_flag {
   http_server: false,
   exit_code: 0,
 });
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

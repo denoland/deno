@@ -12,11 +12,14 @@ const rsaPrivatePem = Buffer.from(
     new URL("../testdata/rsa_private.pem", import.meta.url),
   ),
 );
+<<<<<<< HEAD
 const rsaPrivatePkcs1Pem = Buffer.from(
   await Deno.readFile(
     new URL("../testdata/rsa_private_pkcs1.pem", import.meta.url),
   ),
 );
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 const rsaPublicPem = Buffer.from(
   await Deno.readFile(
     new URL("../testdata/rsa_public.pem", import.meta.url),
@@ -94,6 +97,7 @@ Deno.test({
     }
   },
 });
+<<<<<<< HEAD
 
 Deno.test({
   name: "crypto.createPrivateKey|sign - RSA PEM",
@@ -130,3 +134,5 @@ Deno.test({
     }
   },
 });
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

@@ -3,6 +3,10 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
+<<<<<<< HEAD
+=======
+use super::documents::file_like_to_file_specifier;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -265,9 +269,15 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<String>>(),]),
     };
+<<<<<<< HEAD
     let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
     let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
     for (mut specifier, mut diagnostics) in raw_diagnostics {
+=======
+    let diagnostics_map_ = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
+    let mut diagnostics_map = HashMap::new();
+    for (mut specifier, mut diagnostics) in diagnostics_map_ {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       specifier = self.specifier_map.normalize(&specifier)?.to_string();
       for diagnostic in &mut diagnostics {
         normalize_diagnostic(diagnostic, &self.specifier_map)?;
@@ -3739,8 +3749,21 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
+<<<<<<< HEAD
     let mut specifier = original.to_string();
     let media_type = MediaType::from_specifier(original);
+=======
+    let mut specifier = if let Some(s) = file_like_to_file_specifier(original) {
+      s.to_string()
+    } else {
+      original.to_string()
+    };
+    let media_type = if original.scheme() == "deno-notebook-cell" {
+      MediaType::TypeScript
+    } else {
+      MediaType::from_specifier(original)
+    };
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {

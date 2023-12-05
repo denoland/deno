@@ -7,7 +7,11 @@ import {
   assert,
   assertEquals,
   fail,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 
 import { gzip } from "node:zlib";

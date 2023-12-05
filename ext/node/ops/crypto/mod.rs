@@ -19,7 +19,10 @@ use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
+<<<<<<< HEAD
 use rsa::pkcs1::DecodeRsaPrivateKey;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
@@ -364,6 +367,7 @@ pub fn op_node_sign(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[serde] key: StringOrBuffer,
+<<<<<<< HEAD
   #[string] _type: &str,
   #[string] format: &str,
 ) -> Result<ToJsBuffer, AnyError> {
@@ -390,6 +394,25 @@ pub fn op_node_sign(
     RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
       let key = RsaPrivateKey::from_pkcs1_der(pkey)?;
+=======
+  #[string] key_type: &str,
+  #[string] key_format: &str,
+) -> Result<ToJsBuffer, AnyError> {
+  match key_type {
+    "rsa" => {
+      use rsa::pkcs1v15::SigningKey;
+      let key = match key_format {
+        "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
+          .map_err(|_| type_error("Invalid RSA private key"))?,
+        // TODO(kt3k): Support der and jwk formats
+        _ => {
+          return Err(type_error(format!(
+            "Unsupported key format: {}",
+            key_format
+          )))
+        }
+      };
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       Ok(
         match digest_type {
           "sha224" => {
@@ -418,7 +441,14 @@ pub fn op_node_sign(
         .into(),
       )
     }
+<<<<<<< HEAD
     _ => Err(type_error("Unsupported signing key")),
+=======
+    _ => Err(type_error(format!(
+      "Signing with {} keys is not supported yet",
+      key_type
+    ))),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 }
 
@@ -1352,6 +1382,11 @@ fn parse_private_key(
   format: &str,
   type_: &str,
 ) -> Result<pkcs8::SecretDocument, AnyError> {
+<<<<<<< HEAD
+=======
+  use rsa::pkcs1::DecodeRsaPrivateKey;
+
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   match format {
     "pem" => {
       let (label, doc) =

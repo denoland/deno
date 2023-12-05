@@ -3,7 +3,11 @@
 import {
   assert,
   assertStringIncludes,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 /** Asserts that an error thrown in a callback will not be wrongly caught. */
 export async function assertCallbackErrorUncaught(

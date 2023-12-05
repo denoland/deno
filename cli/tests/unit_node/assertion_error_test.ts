@@ -3,7 +3,11 @@ import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import {
   assert,
   assertStrictEquals,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { AssertionError } from "node:assert";
 
 Deno.test({

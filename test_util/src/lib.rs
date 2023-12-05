@@ -1276,7 +1276,11 @@ async fn main_server(
       )
     }
     (&hyper::Method::GET, "/upgrade/sleep/release-latest.txt") => {
+<<<<<<< HEAD
       tokio::time::sleep(Duration::from_secs(95)).await;
+=======
+      tokio::time::sleep(Duration::from_secs(45)).await;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       return Ok(
         Response::builder()
           .status(StatusCode::OK)
@@ -1285,7 +1289,11 @@ async fn main_server(
       );
     }
     (&hyper::Method::GET, "/upgrade/sleep/canary-latest.txt") => {
+<<<<<<< HEAD
       tokio::time::sleep(Duration::from_secs(95)).await;
+=======
+      tokio::time::sleep(Duration::from_secs(45)).await;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       return Ok(
         Response::builder()
           .status(StatusCode::OK)

@@ -7,7 +7,11 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 Deno.test({
   name: "build architecture is a string",
@@ -289,6 +293,7 @@ Deno.test({
     await child.status;
   },
 });
+<<<<<<< HEAD
 
 Deno.test({
   name:
@@ -309,3 +314,5 @@ Deno.test({
     assert(diff < 10_000);
   },
 });
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

@@ -1302,7 +1302,11 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
+<<<<<<< HEAD
         "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
+=======
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"/etc/passwd\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -10446,6 +10450,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
 
   client.shutdown();
 }
+<<<<<<< HEAD
 
 #[test]
 fn lsp_jupyter_byonm_diagnostics() {
@@ -10506,3 +10511,5 @@ fn lsp_jupyter_byonm_diagnostics() {
   );
   client.shutdown();
 }
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

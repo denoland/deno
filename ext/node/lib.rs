@@ -50,6 +50,7 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+<<<<<<< HEAD
   #[inline(always)]
   fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.check_read_with_api_name(path, None)
@@ -59,6 +60,9 @@ pub trait NodePermissions {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
+=======
+  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
 }
 
@@ -72,11 +76,15 @@ impl NodePermissions for AllowAllNodePermissions {
   ) -> Result<(), AnyError> {
     Ok(())
   }
+<<<<<<< HEAD
   fn check_read_with_api_name(
     &self,
     _path: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), AnyError> {
+=======
+  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     Ok(())
   }
   fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
@@ -239,7 +247,10 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+<<<<<<< HEAD
     ops::fs::op_node_fs_exists_sync<P>,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -449,7 +460,10 @@ deno_core::extension!(deno_node,
     "internal/options.ts",
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",
+<<<<<<< HEAD
     "internal/process/report.ts",
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     "internal/querystring.ts",
     "internal/readline/callbacks.mjs",
     "internal/readline/emitKeypressEvents.mjs",
@@ -477,8 +491,11 @@ deno_core::extension!(deno_node,
     "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
     "internal/util/inspect.mjs",
+<<<<<<< HEAD
     "internal/util/parse_args/parse_args.js",
     "internal/util/parse_args/utils.js",
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     "internal/util/types.ts",
     "internal/validators.mjs",
     "path/_constants.ts",

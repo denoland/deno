@@ -6,7 +6,10 @@ pub use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
+<<<<<<< HEAD
 use deno_runtime::deno_fs::FileSystem;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
@@ -188,11 +191,16 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
+<<<<<<< HEAD
   canonicalize_path_maybe_not_exists_with_custom_fn(path, canonicalize_path)
+=======
+  canonicalize_path_maybe_not_exists_with_fs(path, canonicalize_path)
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 pub fn canonicalize_path_maybe_not_exists_with_fs(
   path: &Path,
+<<<<<<< HEAD
   fs: &dyn FileSystem,
 ) -> Result<PathBuf, Error> {
   canonicalize_path_maybe_not_exists_with_custom_fn(path, |path| {
@@ -202,6 +210,8 @@ pub fn canonicalize_path_maybe_not_exists_with_fs(
 
 fn canonicalize_path_maybe_not_exists_with_custom_fn(
   path: &Path,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   canonicalize: impl Fn(&Path) -> Result<PathBuf, Error>,
 ) -> Result<PathBuf, Error> {
   let path = path.to_path_buf().clean();

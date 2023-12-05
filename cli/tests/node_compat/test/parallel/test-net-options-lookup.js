@@ -43,11 +43,15 @@ function connectDoesNotThrow(input) {
 {
   // Verify that an error is emitted when an invalid address family is returned.
   const s = connectDoesNotThrow((host, options, cb) => {
+<<<<<<< HEAD
     if (options.all) {
       cb(null, [{ address: '127.0.0.1', family: 100 }]);
     } else {
       cb(null, '127.0.0.1', 100);
     }
+=======
+    cb(null, '127.0.0.1', 100);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   });
 
   s.on('error', common.expectsError({

@@ -18,35 +18,61 @@ assert.rejects(
   dnsPromises.lookup(addresses.NOT_FOUND, {
     hints: 0,
     family: 0,
+<<<<<<< HEAD
     all: false,
   }),
   {
     code: 'ENOTFOUND',
     message: `getaddrinfo ENOTFOUND ${addresses.NOT_FOUND}`,
   },
+=======
+    all: false
+  }),
+  {
+    code: 'ENOTFOUND',
+    message: `getaddrinfo ENOTFOUND ${addresses.NOT_FOUND}`
+  }
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 );
 
 assert.rejects(
   dnsPromises.lookup(addresses.NOT_FOUND, {
     hints: 0,
     family: 0,
+<<<<<<< HEAD
     all: true,
   }),
   {
     code: 'ENOTFOUND',
     message: `getaddrinfo ENOTFOUND ${addresses.NOT_FOUND}`,
   },
+=======
+    all: true
+  }),
+  {
+    code: 'ENOTFOUND',
+    message: `getaddrinfo ENOTFOUND ${addresses.NOT_FOUND}`
+  }
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 );
 
 dns.lookup(addresses.NOT_FOUND, {
   hints: 0,
   family: 0,
+<<<<<<< HEAD
   all: true,
+=======
+  all: true
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }, common.mustCall((error) => {
   assert.strictEqual(error.code, 'ENOTFOUND');
   assert.strictEqual(
     error.message,
+<<<<<<< HEAD
     `getaddrinfo ENOTFOUND ${addresses.NOT_FOUND}`,
+=======
+    `getaddrinfo ENOTFOUND ${addresses.NOT_FOUND}`
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   );
   assert.strictEqual(error.syscall, 'getaddrinfo');
   assert.strictEqual(error.hostname, addresses.NOT_FOUND);
@@ -55,7 +81,13 @@ dns.lookup(addresses.NOT_FOUND, {
 assert.throws(
   () => dnsPromises.lookup(addresses.NOT_FOUND, {
     family: 'ipv4',
+<<<<<<< HEAD
     all: 'all',
   }),
   { code: 'ERR_INVALID_ARG_VALUE' },
+=======
+    all: 'all'
+  }),
+  { code: 'ERR_INVALID_ARG_VALUE' }
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 );

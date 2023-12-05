@@ -18,15 +18,22 @@ pub fn create_gzipped_tarball(
   unfurler: ImportMapUnfurler,
 ) -> Result<Bytes, AnyError> {
   let mut tar = TarGzArchive::new();
+<<<<<<< HEAD
   let dir = dir
     .canonicalize()
     .map_err(|_| anyhow::anyhow!("Unable to canonicalize path {:?}", dir))?;
 
   for entry in walkdir::WalkDir::new(&dir).follow_links(false) {
+=======
+  let dir_url = Url::from_directory_path(&dir).unwrap();
+
+  for entry in walkdir::WalkDir::new(dir).follow_links(false) {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     let entry = entry?;
 
     if entry.file_type().is_file() {
       let url = Url::from_file_path(entry.path())
+<<<<<<< HEAD
         .map_err(|_| anyhow::anyhow!("Unable to convert path to url"))?;
       let relative_path = entry
         .path()
@@ -35,16 +42,28 @@ pub fn create_gzipped_tarball(
       let relative_path = relative_path.to_str().ok_or_else(|| {
         anyhow::anyhow!("Unable to convert path to string {:?}", relative_path)
       })?;
+=======
+        .map_err(|_| anyhow::anyhow!("Invalid file path {:?}", entry.path()))?;
+      let relative_path = dir_url
+        .make_relative(&url)
+        .expect("children can be relative to parent");
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       let data = std::fs::read(entry.path())
         .with_context(|| format!("Unable to read file {:?}", entry.path()))?;
       let content = unfurler
         .unfurl(&url, data)
         .with_context(|| format!("Unable to unfurl file {:?}", entry.path()))?;
+<<<<<<< HEAD
       tar
         .add_file(relative_path.to_string(), &content)
         .with_context(|| {
           format!("Unable to add file to tarball {:?}", entry.path())
         })?;
+=======
+      tar.add_file(relative_path, &content).with_context(|| {
+        format!("Unable to add file to tarball {:?}", entry.path())
+      })?;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     } else if entry.file_type().is_dir() {
       // skip
     } else {

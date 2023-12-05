@@ -154,9 +154,12 @@ itest!(info_import_map {
   cwd: Some("info/with_import_map"),
   exit_code: 0,
 });
+<<<<<<< HEAD
 
 itest!(info_dynamic_imports_tmpl_lit {
   args: "info compile/dynamic_imports_tmp_lit/main.js",
   output: "compile/dynamic_imports_tmp_lit/main.info.out",
   exit_code: 0,
 });
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

@@ -2472,6 +2472,7 @@ export class ERR_PACKAGE_PATH_NOT_EXPORTED extends NodeError {
   }
 }
 
+<<<<<<< HEAD
 export class ERR_PARSE_ARGS_INVALID_OPTION_VALUE extends NodeTypeError {
   constructor(x: string) {
     super("ERR_PARSE_ARGS_INVALID_OPTION_VALUE", x);
@@ -2502,6 +2503,8 @@ export class ERR_PARSE_ARGS_UNKNOWN_OPTION extends NodeTypeError {
   }
 }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 export class ERR_INTERNAL_ASSERTION extends NodeError {
   constructor(message?: string) {
     const suffix = "This is caused by either a bug in Node.js " +

@@ -152,6 +152,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
     return None;
   }
 
+<<<<<<< HEAD
   let percent_decode = percent_encoding::percent_decode(url.path().as_bytes());
   #[cfg(unix)]
   let path = {
@@ -167,6 +168,16 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli") {
     if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
       stem = parent_name.to_string_lossy();
+=======
+  let path = PathBuf::from(url.path());
+  let mut stem = match path.file_stem() {
+    Some(stem) => stem.to_string_lossy().to_string(),
+    None => return None,
+  };
+  if stem == "main" || stem == "mod" || stem == "index" || stem == "cli" {
+    if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
+      stem = parent_name.to_string_lossy().to_string();
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
   }
 
@@ -175,12 +186,20 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   // a version number.
   match stem.find('@') {
     Some(at_index) if at_index > 0 => {
+<<<<<<< HEAD
       stem = stem.split_at(at_index).0.to_string().into();
+=======
+      stem = stem.split_at(at_index).0.to_string();
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
     _ => {}
   }
 
+<<<<<<< HEAD
   Some(stem.to_string())
+=======
+  Some(stem)
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 pub fn uninstall(name: String, root: Option<String>) -> Result<(), AnyError> {
@@ -530,6 +549,7 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+<<<<<<< HEAD
         &Url::parse("https://example.com/ab%20c/mod.ts").unwrap()
       )
       .await,
@@ -537,6 +557,8 @@ mod tests {
     );
     assert_eq!(
       infer_name_from_url(
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         &Url::parse("https://example.com/abc/index.ts").unwrap()
       )
       .await,
@@ -567,10 +589,13 @@ mod tests {
       Some("abc".to_string())
     );
     assert_eq!(
+<<<<<<< HEAD
       infer_name_from_url(&Url::parse("file:///ab%20c/main.ts").unwrap()).await,
       Some("ab c".to_string())
     );
     assert_eq!(
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       infer_name_from_url(&Url::parse("file:///main.ts").unwrap()).await,
       Some("main".to_string())
     );

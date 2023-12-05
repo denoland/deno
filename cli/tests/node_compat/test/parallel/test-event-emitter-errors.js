@@ -18,7 +18,11 @@ assert.throws(
   {
     code: 'ERR_UNHANDLED_ERROR',
     name: 'Error',
+<<<<<<< HEAD
     message: "Unhandled error. ('Accepts a string')",
+=======
+    message: "Unhandled error. ('Accepts a string')"
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 );
 
@@ -27,18 +31,30 @@ assert.throws(
   {
     code: 'ERR_UNHANDLED_ERROR',
     name: 'Error',
+<<<<<<< HEAD
     message: "Unhandled error. ({ message: 'Error!' })",
+=======
+    message: "Unhandled error. ({ message: 'Error!' })"
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 );
 
 assert.throws(
   () => EE.emit('error', {
     message: 'Error!',
+<<<<<<< HEAD
     [util.inspect.custom]() { throw new Error(); },
+=======
+    [util.inspect.custom]() { throw new Error(); }
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }),
   {
     code: 'ERR_UNHANDLED_ERROR',
     name: 'Error',
+<<<<<<< HEAD
     message: 'Unhandled error. ([object Object])',
+=======
+    message: 'Unhandled error. ([object Object])'
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 );

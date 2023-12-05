@@ -29,7 +29,11 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn root_dir_url(&self) -> &Url;
 
   /// The local node_modules folder if it is applicable to the implementation.
+<<<<<<< HEAD
   fn node_modules_path(&self) -> Option<&PathBuf>;
+=======
+  fn node_modules_path(&self) -> Option<PathBuf>;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
   fn package_folder(
     &self,

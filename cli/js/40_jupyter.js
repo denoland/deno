@@ -36,7 +36,11 @@
  * }, { raw: true });
  * ```
  */
+<<<<<<< HEAD
 (() => {
+=======
+{
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   const internals = Deno[Deno.internal];
   const core = internals.core;
 
@@ -428,4 +432,8 @@
   }
 
   internals.enableJupyter = enableJupyter;
+<<<<<<< HEAD
 })();
+=======
+}
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

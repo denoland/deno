@@ -10,7 +10,10 @@ const { ops } = core;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
+<<<<<<< HEAD
 import { report } from "ext:deno_node/internal/process/report.ts";
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -76,16 +79,25 @@ const notImplementedEvents = [
 ];
 
 export const argv: string[] = [];
+<<<<<<< HEAD
 let globalProcessExitCode: number | undefined = undefined;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
     if (typeof code === "string") {
       const parsedCode = parseInt(code);
+<<<<<<< HEAD
       globalProcessExitCode = isNaN(parsedCode) ? undefined : parsedCode;
     } else {
       globalProcessExitCode = code;
+=======
+      process.exitCode = isNaN(parsedCode) ? undefined : parsedCode;
+    } else {
+      process.exitCode = code;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
   }
 
@@ -364,10 +376,13 @@ class Process extends EventEmitter {
     return arch;
   }
 
+<<<<<<< HEAD
   get report() {
     return report;
   }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   get title() {
     return "deno";
   }
@@ -427,6 +442,7 @@ class Process extends EventEmitter {
   _exiting = _exiting;
 
   /** https://nodejs.org/api/process.html#processexitcode_1 */
+<<<<<<< HEAD
   get exitCode() {
     return globalProcessExitCode;
   }
@@ -438,6 +454,9 @@ class Process extends EventEmitter {
       ops.op_set_exit_code(code);
     }
   }
+=======
+  exitCode: undefined | number = undefined;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
   // Typed as any to avoid importing "module" module for types
   // deno-lint-ignore no-explicit-any

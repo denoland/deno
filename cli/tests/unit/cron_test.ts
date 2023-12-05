@@ -1,9 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertThrows } from "./test_util.ts";
+<<<<<<< HEAD
 import {
   formatToCronSchedule,
   parseScheduleToString,
 } from "../../../ext/cron/01_cron.ts";
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -174,6 +177,7 @@ Deno.test(async function basicTest() {
   }
 });
 
+<<<<<<< HEAD
 Deno.test(async function basicTestWithJsonFormatScheduleExpression() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
@@ -199,6 +203,8 @@ Deno.test(async function basicTestWithJsonFormatScheduleExpression() {
   }
 });
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 Deno.test(async function multipleCrons() {
   Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
 
@@ -313,6 +319,7 @@ Deno.test(async function retriesWithBackoffScheduleOldApi() {
   // The cron should have executed 3 times (1st attempt and 2 retries).
   assertEquals(count, 3);
 });
+<<<<<<< HEAD
 
 Deno.test("formatToCronSchedule - undefined value", () => {
   const result = formatToCronSchedule();
@@ -377,3 +384,5 @@ Deno.test("Parse schedule to string - string", () => {
   const result = parseScheduleToString("* * * * *");
   assertEquals(result, "* * * * *");
 });
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

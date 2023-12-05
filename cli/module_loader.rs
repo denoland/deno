@@ -9,7 +9,10 @@ use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::workspace_config_to_workspace_members;
+<<<<<<< HEAD
 use crate::graph_util::DenoGraphFsAdapter;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
@@ -65,7 +68,10 @@ use std::sync::Arc;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
+<<<<<<< HEAD
   fs: Arc<dyn deno_fs::FileSystem>,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -81,7 +87,10 @@ impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+<<<<<<< HEAD
     fs: Arc<dyn deno_fs::FileSystem>,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -94,7 +103,10 @@ impl ModuleLoadPreparer {
   ) -> Self {
     Self {
       options,
+<<<<<<< HEAD
       fs,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       graph_container,
       lockfile,
       maybe_file_watcher_reporter,
@@ -159,7 +171,10 @@ impl ModuleLoadPreparer {
         deno_graph::BuildOptions {
           is_dynamic,
           imports: maybe_imports,
+<<<<<<< HEAD
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),

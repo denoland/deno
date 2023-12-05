@@ -256,7 +256,11 @@ const assert = require('assert');
 
 {
   const read = new Readable({
+<<<<<<< HEAD
     read: common.mustNotCall()
+=======
+    read: common.mustNotCall(function() {})
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   });
   read.destroy();
   assert.strictEqual(read.destroyed, true);

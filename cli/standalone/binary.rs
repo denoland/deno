@@ -123,6 +123,7 @@ impl SerializablePackageJsonDeps {
 }
 
 #[derive(Deserialize, Serialize)]
+<<<<<<< HEAD
 pub enum NodeModules {
   Managed {
     /// Whether this uses a node_modules directory (true) or the global cache (false).
@@ -135,6 +136,8 @@ pub enum NodeModules {
 }
 
 #[derive(Deserialize, Serialize)]
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 pub struct Metadata {
   pub argv: Vec<String>,
   pub unstable: bool,
@@ -148,7 +151,13 @@ pub struct Metadata {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
+<<<<<<< HEAD
   pub node_modules: Option<NodeModules>,
+=======
+  /// Whether this uses a node_modules directory (true) or the global cache (false).
+  pub node_modules_dir: bool,
+  pub package_json_deps: Option<SerializablePackageJsonDeps>,
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -500,6 +509,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .resolve_import_map(self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
+<<<<<<< HEAD
     let (npm_vfs, npm_files, node_modules) =
       match self.npm_resolver.as_inner() {
         InnerCliNpmResolverRef::Managed(managed) => {
@@ -538,6 +548,25 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           )
         }
       };
+=======
+    let (npm_vfs, npm_files) = match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(managed) => {
+        let snapshot =
+          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+        if !snapshot.as_serialized().packages.is_empty() {
+          let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+          eszip.add_npm_snapshot(snapshot);
+          (Some(root_dir), files)
+        } else {
+          (None, Vec::new())
+        }
+      }
+      InnerCliNpmResolverRef::Byonm(_) => {
+        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+        (Some(root_dir), files)
+      }
+    };
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
@@ -554,7 +583,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       entrypoint: entrypoint.clone(),
       maybe_import_map,
+<<<<<<< HEAD
       node_modules,
+=======
+      node_modules_dir: self.npm_resolver.root_node_modules_path().is_some(),
+      package_json_deps: self
+        .package_json_deps_provider
+        .deps()
+        .map(|deps| SerializablePackageJsonDeps::from_deps(deps.clone())),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     };
 
     write_binary_bytes(
@@ -572,7 +609,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       InnerCliNpmResolverRef::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           let mut builder = VfsBuilder::new(node_modules_path.clone())?;
+<<<<<<< HEAD
           builder.add_dir_recursive(node_modules_path)?;
+=======
+          builder.add_dir_recursive(&node_modules_path)?;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           Ok(builder)
         } else {
           // DO NOT include the user's registry url as it may contain credentials,
@@ -592,6 +633,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Ok(builder)
         }
       }
+<<<<<<< HEAD
       InnerCliNpmResolverRef::Byonm(npm_resolver) => {
         // the root_node_modules directory will always exist for byonm
         let node_modules_path = npm_resolver.root_node_modules_path().unwrap();
@@ -605,6 +647,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           builder.add_dir_recursive(node_modules_path)?;
         }
         Ok(builder)
+=======
+      InnerCliNpmResolverRef::Byonm(_) => {
+        // todo(#18967): should use the node_modules directory
+        todo!()
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       }
     }
   }

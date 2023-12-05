@@ -4,6 +4,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+<<<<<<< HEAD
+=======
+const core = globalThis.__bootstrap.core;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import EE from "node:events";
@@ -543,7 +547,11 @@ export class OutgoingMessage extends Stream {
       data = new Uint8Array(data.buffer);
     }
     if (data.buffer.byteLength > 0) {
+<<<<<<< HEAD
       this._bodyWriter.write(data).then(() => {
+=======
+      core.writeAll(this._bodyWriteRid, data).then(() => {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         callback?.();
         this.emit("drain");
       }).catch((e) => {

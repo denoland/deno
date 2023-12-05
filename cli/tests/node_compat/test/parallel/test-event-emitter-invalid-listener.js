@@ -22,6 +22,10 @@ for (const method of eventsMethods) {
     code: 'ERR_INVALID_ARG_TYPE',
     name: 'TypeError',
     message: 'The "listener" argument must be of type function. ' +
+<<<<<<< HEAD
              'Received null',
+=======
+             'Received null'
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }, `event.${method}('foo', null) should throw the proper error`);
 }

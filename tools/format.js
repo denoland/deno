@@ -14,6 +14,7 @@ const cmd = new Deno.Command("deno", {
     "--config=" + configFile,
   ],
   cwd: ROOT_PATH,
+<<<<<<< HEAD
   stdout: "piped",
   stderr: "inherit",
 });
@@ -28,3 +29,11 @@ if (stdoutText.length > 0) {
 } else {
   Deno.exit(code);
 }
+=======
+  stdout: "inherit",
+  stderr: "inherit",
+});
+
+const { code } = await cmd.output();
+Deno.exit(code);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

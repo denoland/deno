@@ -5,7 +5,11 @@ export {
   assertEquals,
   assertRejects,
   assertThrows,
+<<<<<<< HEAD
 } from "../test_util/std/assert/mod.ts";
+=======
+} from "../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 export { fromFileUrl } from "../test_util/std/path/mod.ts";
 import process from "node:process";
 

@@ -4,12 +4,16 @@ use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
+<<<<<<< HEAD
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
 use import_map::ImportMap;
 
+<<<<<<< HEAD
 use crate::graph_util::format_range_with_colors;
 
 pub struct ImportMapUnfurler<'a> {
@@ -18,6 +22,14 @@ pub struct ImportMapUnfurler<'a> {
 
 impl<'a> ImportMapUnfurler<'a> {
   pub fn new(import_map: &'a ImportMap) -> Self {
+=======
+pub struct ImportMapUnfurler {
+  import_map: ImportMap,
+}
+
+impl ImportMapUnfurler {
+  pub fn new(import_map: ImportMap) -> Self {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     Self { import_map }
   }
 
@@ -63,6 +75,7 @@ impl<'a> ImportMapUnfurler<'a> {
     })?;
     let mut text_changes = Vec::new();
     let module_info = DefaultModuleAnalyzer::module_info(&parsed_source);
+<<<<<<< HEAD
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
@@ -72,10 +85,25 @@ impl<'a> ImportMapUnfurler<'a> {
           text_changes.push(deno_ast::TextChange {
             range: to_range(&parsed_source, range),
             new_text: make_relative_to(url, &resolved),
+=======
+    let mut analyze_specifier =
+      |specifier: &str, range: &deno_graph::PositionRange| {
+        let resolved = self.import_map.resolve(specifier, url);
+        if let Ok(resolved) = resolved {
+          let new_text = if resolved.scheme() == "file" {
+            format!("./{}", url.make_relative(&resolved).unwrap())
+          } else {
+            resolved.to_string()
+          };
+          text_changes.push(deno_ast::TextChange {
+            range: to_range(&parsed_source, range),
+            new_text,
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           });
         }
       };
     for dep in &module_info.dependencies {
+<<<<<<< HEAD
       match dep {
         DependencyDescriptor::Static(dep) => {
           analyze_specifier(
@@ -106,6 +134,9 @@ impl<'a> ImportMapUnfurler<'a> {
           }
         }
       }
+=======
+      analyze_specifier(&dep.specifier, &dep.specifier_range);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
     for ts_ref in &module_info.ts_references {
       let specifier_with_range = match ts_ref {
@@ -115,21 +146,30 @@ impl<'a> ImportMapUnfurler<'a> {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
+<<<<<<< HEAD
         &mut text_changes,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       );
     }
     for specifier_with_range in &module_info.jsdoc_imports {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
+<<<<<<< HEAD
         &mut text_changes,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       );
     }
     if let Some(specifier_with_range) = &module_info.jsx_import_source {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
+<<<<<<< HEAD
         &mut text_changes,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       );
     }
     Ok(
@@ -153,6 +193,7 @@ impl<'a> ImportMapUnfurler<'a> {
   }
 }
 
+<<<<<<< HEAD
 fn make_relative_to(from: &ModuleSpecifier, to: &ModuleSpecifier) -> String {
   if to.scheme() == "file" {
     format!("./{}", from.make_relative(to).unwrap())
@@ -228,6 +269,8 @@ fn try_unfurl_dynamic_dep(
   }
 }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 fn to_range(
   parsed_source: &ParsedSource,
   range: &deno_graph::PositionRange,
@@ -266,7 +309,11 @@ mod tests {
     });
     let ImportMapWithDiagnostics { import_map, .. } =
       import_map::parse_from_value(&deno_json_url, value).unwrap();
+<<<<<<< HEAD
     let unfurler = ImportMapUnfurler::new(&import_map);
+=======
+    let unfurler = ImportMapUnfurler::new(import_map);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
     // Unfurling TS file should apply changes.
     {
@@ -274,6 +321,7 @@ mod tests {
 import foo from "lib/foo.ts";
 import bar from "lib/bar.ts";
 import fizz from "fizz";
+<<<<<<< HEAD
 
 const test1 = await import("lib/foo.ts");
 const test2 = await import(`lib/foo.ts`);
@@ -282,6 +330,8 @@ const test4 = await import(`./lib/${expr}`);
 // will warn
 const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 "#;
       let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
       let unfurled_source = unfurler
@@ -291,6 +341,7 @@ const test6 = await import(`${expr}`);
 import foo from "./lib/foo.ts";
 import bar from "./lib/bar.ts";
 import fizz from "./fizz/mod.ts";
+<<<<<<< HEAD
 
 const test1 = await import("./lib/foo.ts");
 const test2 = await import(`./lib/foo.ts`);
@@ -299,6 +350,8 @@ const test4 = await import(`./lib/${expr}`);
 // will warn
 const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 "#;
       assert_eq!(unfurled_source, expected_source);
     }

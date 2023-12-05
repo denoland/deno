@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+<<<<<<< HEAD
 // vendored from std/assert/mod.ts
+=======
+// vendored from std/testing/asserts.ts
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials

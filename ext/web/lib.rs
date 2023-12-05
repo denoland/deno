@@ -91,7 +91,10 @@ deno_core::extension!(deno_web,
     op_sleep,
     op_transfer_arraybuffer,
     stream_resource::op_readable_stream_resource_allocate,
+<<<<<<< HEAD
     stream_resource::op_readable_stream_resource_allocate_sized,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     stream_resource::op_readable_stream_resource_get_sink,
     stream_resource::op_readable_stream_resource_write_error,
     stream_resource::op_readable_stream_resource_write_buf,

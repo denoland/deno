@@ -163,6 +163,11 @@ assert.throws(() => {
 }, {
   code: 'ERR_OUT_OF_RANGE',
   name: 'RangeError',
+<<<<<<< HEAD
+=======
+  message: 'The value of "mode" is out of range. It must be an integer ' +
+           '>= 0 && <= 7. Received 8'
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 });
 
 assert.throws(() => {

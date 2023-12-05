@@ -4,7 +4,11 @@ import {
   assertRejects,
   assertThrows,
   fail,
+<<<<<<< HEAD
 } from "../../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { rm, rmSync } from "node:fs";
 import { closeSync, existsSync } from "node:fs";
 import { join } from "../../../../test_util/std/path/mod.ts";

@@ -3,6 +3,10 @@
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::config::WorkspaceSettings;
+<<<<<<< HEAD
+=======
+use super::documents::file_like_to_file_specifier;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::lsp_custom;
@@ -374,11 +378,23 @@ fn get_local_completions(
   current: &str,
   range: &lsp::Range,
 ) -> Option<Vec<lsp::CompletionItem>> {
+<<<<<<< HEAD
+=======
+  let base = match file_like_to_file_specifier(base) {
+    Some(s) => s,
+    None => base.clone(),
+  };
+
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   if base.scheme() != "file" {
     return None;
   }
 
+<<<<<<< HEAD
   let mut base_path = specifier_to_file_path(base).ok()?;
+=======
+  let mut base_path = specifier_to_file_path(&base).ok()?;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   base_path.pop();
   let mut current_path = normalize_path(base_path.join(current));
   // if the current text does not end in a `/` then we are still selecting on
@@ -398,10 +414,17 @@ fn get_local_completions(
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
           let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
+<<<<<<< HEAD
           if entry_specifier == *base {
             return None;
           }
           let full_text = relative_specifier(base, &entry_specifier)?;
+=======
+          if entry_specifier == base {
+            return None;
+          }
+          let full_text = relative_specifier(&base, &entry_specifier)?;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           // this weeds out situations where we are browsing in the parent, but
           // we want to filter out non-matches when the completion is manually
           // invoked by the user, but still allows for things like `../src/../`

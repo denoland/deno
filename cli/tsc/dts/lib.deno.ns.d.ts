@@ -544,7 +544,11 @@ declare namespace Deno {
      * Examples:
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test({
      *   name: "inherit",
@@ -559,7 +563,11 @@ declare namespace Deno {
      * ```
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test({
      *   name: "true",
@@ -574,7 +582,11 @@ declare namespace Deno {
      * ```
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test({
      *   name: "false",
@@ -589,7 +601,11 @@ declare namespace Deno {
      * ```
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test({
      *   name: "localhost:8080",
@@ -818,7 +834,11 @@ declare namespace Deno {
    * `fn` can be async if required.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * Deno.test({
    *   name: "example test",
@@ -859,7 +879,11 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test({
      *   name: "example test",
@@ -896,7 +920,11 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test("My test description", () => {
      *   assertEquals("hello", "hello");
@@ -922,7 +950,11 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test(function myTestName() {
      *   assertEquals("hello", "hello");
@@ -945,7 +977,11 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
+<<<<<<< HEAD
      * import {assert, fail, assertEquals} from "https://deno.land/std/assert/mod.ts";
+=======
+     * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test("My test description", { permissions: { read: true } }, (): void => {
      *   assertEquals("hello", "hello");
@@ -972,7 +1008,11 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test(
      *   {
@@ -1010,7 +1050,11 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * Deno.test(
      *   { permissions: { read: true } },
@@ -1234,7 +1278,11 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * Deno.bench({
    *   name: "example test",
@@ -1273,7 +1321,11 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * Deno.bench("My test description", () => {
    *   assertEquals("hello", "hello");
@@ -1301,7 +1353,11 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * Deno.bench(function myTestName() {
    *   assertEquals("hello", "hello");
@@ -1326,7 +1382,11 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * Deno.bench(
    *   "My test description",
@@ -1363,7 +1423,11 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * Deno.bench(
    *   { name: "My test description", permissions: { read: true } },
@@ -1397,7 +1461,11 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * Deno.bench(
    *   { permissions: { read: true } },
@@ -2451,7 +2519,11 @@ declare namespace Deno {
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * const file = await Deno.open("hello.txt");
      * const fileInfo = await file.stat();
@@ -2463,7 +2535,11 @@ declare namespace Deno {
     /** Synchronously returns a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * const file = Deno.openSync("hello.txt")
      * const fileInfo = file.statSync();
@@ -3289,10 +3365,17 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     ino: number | null;
+<<<<<<< HEAD
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
      *
      * _Linux/Mac OS only._ */
+=======
+    /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
+     *
+     * The underlying raw `st_mode` bits that contain the standard Unix
+     * permissions for this file/directory. */
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     mode: number | null;
     /** Number of hard links pointing to this file.
      *
@@ -3513,7 +3596,11 @@ declare namespace Deno {
    * of what it points to.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    * const fileInfo = await Deno.lstat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3530,7 +3617,11 @@ declare namespace Deno {
    * returned instead of what it points to.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    * const fileInfo = Deno.lstatSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3546,7 +3637,11 @@ declare namespace Deno {
    * always follow symlinks.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    * const fileInfo = await Deno.stat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3562,7 +3657,11 @@ declare namespace Deno {
    * `path`. Will always follow symlinks.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    * const fileInfo = Deno.statSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -4312,7 +4411,11 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
+<<<<<<< HEAD
   export class ChildProcess implements AsyncDisposable {
+=======
+  export class ChildProcess implements Disposable {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     get stdin(): WritableStream<Uint8Array>;
     get stdout(): ReadableStream<Uint8Array>;
     get stderr(): ReadableStream<Uint8Array>;
@@ -4338,7 +4441,11 @@ declare namespace Deno {
      * process from exiting. */
     unref(): void;
 
+<<<<<<< HEAD
     [Symbol.asyncDispose](): Promise<void>;
+=======
+    [Symbol.dispose](): void;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 
   /**
@@ -4794,7 +4901,11 @@ declare namespace Deno {
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
@@ -4805,7 +4916,11 @@ declare namespace Deno {
     /** Revokes a permission, and returns the state of the permission.
      *
      * ```ts
+<<<<<<< HEAD
      * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
      *
      * const status = Deno.permissions.revokeSync({ name: "run" });
      * assert(status.state !== "granted")
@@ -4883,14 +4998,22 @@ declare namespace Deno {
    * ### Revoking
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * const status = await Deno.permissions.revoke({ name: "run" });
    * assert(status.state !== "granted")
    * ```
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * const status = Deno.permissions.revokeSync({ name: "run" });
    * assert(status.state !== "granted")
@@ -4986,13 +5109,21 @@ declare namespace Deno {
    * Give the following command line invocation of Deno:
    *
    * ```sh
+<<<<<<< HEAD
    * deno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi
+=======
+   * deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    * ```
    *
    * Then `Deno.args` will contain:
    *
    * ```ts
+<<<<<<< HEAD
    * [ "Sushi" ]
+=======
+   * [ "/etc/passwd" ]
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    * ```
    *
    * If you are looking for a structured way to parse arguments, there is the
@@ -5200,7 +5331,11 @@ declare namespace Deno {
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * const file = await Deno.open("file.txt", { read: true });
    * const fileInfo = await Deno.fstat(file.rid);
@@ -5216,7 +5351,11 @@ declare namespace Deno {
    * stream.
    *
    * ```ts
+<<<<<<< HEAD
    * import { assert } from "https://deno.land/std/assert/mod.ts";
+=======
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
    *
    * const file = Deno.openSync("file.txt", { read: true });
    * const fileInfo = Deno.fstatSync(file.rid);

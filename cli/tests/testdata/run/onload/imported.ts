@@ -1,5 +1,9 @@
 // deno-lint-ignore-file no-window-prefix
+<<<<<<< HEAD
 import { assert } from "../../../../../test_util/std/assert/mod.ts";
+=======
+import { assert } from "../../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import "./nest_imported.ts";
 
 const handler = (e: Event) => {

@@ -1,10 +1,20 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+<<<<<<< HEAD
 import { assert, assertThrows } from "../../../test_util/std/assert/mod.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToAbsoluteFileUrl } from "../unit/test_util.ts";
+=======
+import {
+  assert,
+  assertThrows,
+} from "../../../test_util/std/testing/asserts.ts";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 Deno.test(
   "[node/fs writeFileSync] write file without option",
@@ -44,6 +54,7 @@ Deno.test(
     );
   },
 );
+<<<<<<< HEAD
 
 Deno.test(
   "[node/fs existsSync] path",
@@ -80,3 +91,5 @@ Deno.test(
     assert(!existsSync("bad_filename"));
   },
 );
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

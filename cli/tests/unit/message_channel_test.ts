@@ -1,7 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // NOTE: these are just sometests to test the TypeScript types. Real coverage is
 // provided by WPT.
+<<<<<<< HEAD
 import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
+=======
+import {
+  assert,
+  assertEquals,
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 Deno.test("messagechannel", async () => {
   const mc = new MessageChannel();

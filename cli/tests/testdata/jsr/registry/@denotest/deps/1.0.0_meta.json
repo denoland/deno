@@ -5,13 +5,19 @@
   "moduleGraph1": {
     "/mod.ts": {
       "dependencies": [{
+<<<<<<< HEAD
         "type": "static",
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         "kind": "import",
         "range": [[0, 0], [0, 59]],
         "specifier": "jsr:@denotest/module_graph@1/other",
         "specifierRange": [[0, 22], [0, 58]]
       }, {
+<<<<<<< HEAD
         "type": "static",
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         "kind": "import",
         "range": [[1, 0], [1, 57]],
         "specifier": "jsr:@denotest/no_module_graph@^0.1",

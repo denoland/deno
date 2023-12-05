@@ -62,6 +62,7 @@ function onexit() {
   }
 }
 
+<<<<<<< HEAD
 function resolve(...paths) {
   return path.resolve(tmpPath, ...paths);
 }
@@ -76,4 +77,9 @@ module.exports = {
   refresh,
   hasEnoughSpace,
   resolve,
+=======
+module.exports = {
+  path: tmpPath,
+  refresh
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 };

@@ -210,7 +210,11 @@ export interface JsonWebKeyInput {
   format: "jwk";
 }
 
+<<<<<<< HEAD
 export function prepareAsymmetricKey(key) {
+=======
+function prepareAsymmetricKey(key) {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   if (isStringOrBuffer(key)) {
     return { format: "pem", data: getArrayBufferOrView(key, "key") };
   } else if (typeof key == "object") {

@@ -2,7 +2,11 @@
 
 import * as http2 from "node:http2";
 import * as net from "node:net";
+<<<<<<< HEAD
 import { assertEquals } from "../../../test_util/std/assert/mod.ts";
+=======
+import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {

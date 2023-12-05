@@ -58,7 +58,10 @@ import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
+<<<<<<< HEAD
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { TcpConn } from "ext:deno_net/01_net.js";
 
 enum STATUS_CODES {
@@ -587,6 +590,7 @@ class ClientRequest extends OutgoingMessage {
     const client = this._getClient() ?? createHttpClient({ http2: false });
     this._client = client;
 
+<<<<<<< HEAD
     if (
       this.method === "POST" || this.method === "PATCH" || this.method === "PUT"
     ) {
@@ -602,13 +606,22 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     this._req = core.ops.op_node_http_request(
       this.method,
       url,
       headers,
       client.rid,
+<<<<<<< HEAD
       this._bodyWriteRid,
     );
+=======
+      (this.method === "POST" || this.method === "PATCH" ||
+        this.method === "PUT") && this._contentLength !== 0,
+    );
+    this._bodyWriteRid = this._req.requestBodyRid;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 
   _implicitHeader() {
@@ -652,11 +665,31 @@ class ClientRequest extends OutgoingMessage {
       this._implicitHeader();
       this._send("", "latin1");
     }
+<<<<<<< HEAD
     this._bodyWriter?.close();
 
     (async () => {
       try {
         const res = await core.opAsync("op_fetch_send", this._req.requestRid);
+=======
+
+    (async () => {
+      try {
+        const [res, _] = await Promise.all([
+          core.opAsync("op_fetch_send", this._req.requestRid),
+          (async () => {
+            if (this._bodyWriteRid) {
+              try {
+                await core.shutdown(this._bodyWriteRid);
+              } catch (err) {
+                this._requestSendError = err;
+              }
+
+              core.tryClose(this._bodyWriteRid);
+            }
+          })(),
+        ]);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         try {
           cb?.();
         } catch (_) {

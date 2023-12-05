@@ -4,7 +4,11 @@ import {
   assert,
   assertEquals,
   assertObjectMatch,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";

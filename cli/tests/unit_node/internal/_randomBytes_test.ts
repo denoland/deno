@@ -4,7 +4,11 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
+<<<<<<< HEAD
 } from "../../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { randomBytes } from "node:crypto";
 

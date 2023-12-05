@@ -3,7 +3,10 @@ import {
   assert,
   assertEquals,
   assertRejects,
+<<<<<<< HEAD
   assertThrows,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   delay,
   fail,
   unimplemented,
@@ -524,7 +527,11 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchInitBlobBody() {
+<<<<<<< HEAD
   const data = "const a = 1 🦕";
+=======
+  const data = "const a = 1";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   const blob = new Blob([data], {
     type: "text/javascript",
   });
@@ -556,11 +563,15 @@ Deno.test(
   async function fetchInitFormDataBlobFilenameBody() {
     const form = new FormData();
     form.append("field", "value");
+<<<<<<< HEAD
     form.append(
       "file",
       new Blob([new TextEncoder().encode("deno")]),
       "file name",
     );
+=======
+    form.append("file", new Blob([new TextEncoder().encode("deno")]));
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     const response = await fetch("http://localhost:4545/echo_server", {
       method: "POST",
       body: form,
@@ -569,6 +580,7 @@ Deno.test(
     assertEquals(form.get("field"), resultForm.get("field"));
     const file = resultForm.get("file");
     assert(file instanceof File);
+<<<<<<< HEAD
     assertEquals(file.name, "file name");
   },
 );
@@ -591,6 +603,9 @@ Deno.test(
     const file = resultForm.get("file");
     assert(file instanceof File);
     assertEquals(file.name, "file name");
+=======
+    assertEquals(file.name, "blob");
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   },
 );
 
@@ -1219,8 +1234,15 @@ Deno.test(
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `transfer-encoding: chunked\r\n\r\n`,
+<<<<<<< HEAD
       "B\r\n",
       "hello world\r\n",
+=======
+      "6\r\n",
+      "hello \r\n",
+      "5\r\n",
+      "world\r\n",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       "0\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
@@ -1283,6 +1305,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchNoServerReadableStreamBody() {
+<<<<<<< HEAD
     const completed = Promise.withResolvers<void>();
     const failed = Promise.withResolvers<void>();
     const body = new ReadableStream({
@@ -1296,6 +1319,15 @@ Deno.test(
           await failed.promise;
           assertThrows(() => controller.enqueue(new Uint8Array([2])));
           completed.resolve();
+=======
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        setTimeout(() => {
+          controller.enqueue(new Uint8Array([2]));
+          resolve();
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         }, 1000);
       },
     });
@@ -1303,8 +1335,12 @@ Deno.test(
     await assertRejects(async () => {
       await fetch(nonExistentHostname, { body, method: "POST" });
     }, TypeError);
+<<<<<<< HEAD
     failed.resolve();
     await completed.promise;
+=======
+    await promise;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   },
 );
 
@@ -1884,9 +1920,14 @@ Deno.test(
   async function fetchBlobUrl(): Promise<void> {
     const blob = new Blob(["ok"], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
+<<<<<<< HEAD
     assert(url.startsWith("blob:"), `URL was ${url}`);
     const res = await fetch(url);
     assertEquals(res.url, url);
+=======
+    const res = await fetch(url);
+    assert(res.url.startsWith("blob:http://js-unit-tests/"));
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     assertEquals(res.status, 200);
     assertEquals(res.headers.get("content-length"), "2");
     assertEquals(res.headers.get("content-type"), "text/plain");
@@ -1973,12 +2014,18 @@ Deno.test(
       })
     );
 
+<<<<<<< HEAD
     assert(err instanceof TypeError, `err was not a TypeError ${err}`);
     assert(err.cause, `err.cause was null ${err}`);
     assert(
       err.cause instanceof Error,
       `err.cause was not an Error ${err.cause}`,
     );
+=======
+    assert(err instanceof TypeError);
+    assert(err.cause);
+    assert(err.cause instanceof Error);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     assertEquals(err.cause.message, "foo");
 
     await server;
@@ -2003,12 +2050,16 @@ Deno.test(
           method: "POST",
           signal: controller.signal,
         });
+<<<<<<< HEAD
         try {
           controller.abort();
         } catch (e) {
           console.log(e);
           fail("abort should not throw");
         }
+=======
+        controller.abort();
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         await promise;
       },
       DOMException,

@@ -24,7 +24,11 @@ fn compile_basic() {
         "compile",
         "--output",
         &exe.to_string_lossy(),
+<<<<<<< HEAD
         "../../../cli/tests/testdata/welcome.ts",
+=======
+        "../../../test_util/std/examples/welcome.ts",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       ])
       .run();
     output.assert_exit_code(0);
@@ -798,6 +802,7 @@ testing[WILDCARD]this
     r#"{ "dependencies": { "@denotest/esm-basic": "1" } }"#,
   );
 
+<<<<<<< HEAD
   context
     .new_command()
     .args("compile --output binary main.ts")
@@ -828,6 +833,17 @@ testing[WILDCARD]this
     .name(&binary_path)
     .run()
     .assert_matches_text("2\n");
+=======
+  let output = context
+    .new_command()
+    .args("compile --output binary main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context.new_command().name(binary_path).run();
+  output.assert_matches_text("2\n");
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 #[test]
@@ -1061,6 +1077,7 @@ fn compile_node_modules_symlink_outside() {
   let output = context.new_command().name(binary_path).run();
   output.assert_matches_file("compile/node_modules_symlink_outside/main.out");
 }
+<<<<<<< HEAD
 
 #[test]
 fn dynamic_imports_tmp_lit() {
@@ -1085,3 +1102,5 @@ fn dynamic_imports_tmp_lit() {
   let output = context.new_command().name(&exe).run();
   output.assert_matches_text("a\nb\n{ data: 5 }\n{ data: 1 }\n");
 }
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

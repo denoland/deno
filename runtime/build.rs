@@ -214,7 +214,11 @@ mod startup_snapshot {
 
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
+<<<<<<< HEAD
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+=======
+    // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     let fs = std::sync::Arc::new(deno_fs::RealFs);
     let mut extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),

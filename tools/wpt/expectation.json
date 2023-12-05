@@ -3204,9 +3204,13 @@
       "respond-after-enqueue.any.html": true,
       "respond-after-enqueue.any.worker.html": true,
       "enqueue-with-detached-buffer.any.html": true,
+<<<<<<< HEAD
       "enqueue-with-detached-buffer.any.worker.html": true,
       "read-min.any.html": true,
       "read-min.any.worker.html": true
+=======
+      "enqueue-with-detached-buffer.any.worker.html": true
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     },
     "readable-streams": {
       "async-iterator.any.html": true,

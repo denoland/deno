@@ -162,6 +162,7 @@ assert.throws(
   {
     code: 'ERR_OUT_OF_RANGE',
     name: 'RangeError',
+<<<<<<< HEAD
   }
 );
 
@@ -171,6 +172,10 @@ assert.throws(
   {
     code: 'ERR_OUT_OF_RANGE',
     name: 'RangeError',
+=======
+    message: 'The value of "sourceStart" is out of range. ' +
+             'It must be >= 0. Received -1'
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 );
 

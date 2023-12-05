@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { Server } from "../../../../test_util/std/http/server.ts";
+<<<<<<< HEAD
 import { assertEquals } from "../../../../test_util/std/assert/mod.ts";
+=======
+import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 const addr = Deno.args[1] || "localhost:4555";
 

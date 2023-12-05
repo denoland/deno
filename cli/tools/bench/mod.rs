@@ -42,7 +42,10 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+<<<<<<< HEAD
 use std::time::Duration;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -77,7 +80,10 @@ pub enum BenchEvent {
   Register(BenchDescription),
   Wait(usize),
   Result(usize, BenchResult),
+<<<<<<< HEAD
   UncaughtError(String, Box<JsError>),
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -169,6 +175,7 @@ async fn bench_specifier(
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), AnyError> {
+<<<<<<< HEAD
   match bench_specifier_inner(
     worker_factory,
     permissions,
@@ -201,6 +208,8 @@ async fn bench_specifier_inner(
   sender: &UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), AnyError> {
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   let mut worker = worker_factory
     .create_custom_worker(
       specifier.clone(),
@@ -214,10 +223,13 @@ async fn bench_specifier_inner(
   worker.execute_side_module_possibly_with_npm().await?;
 
   let mut worker = worker.into_main_worker();
+<<<<<<< HEAD
 
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   worker.dispatch_load_event(located_script_name!())?;
 
   let benchmarks = {
@@ -265,11 +277,14 @@ async fn bench_specifier_inner(
   // event loop to continue beyond what's needed to await results.
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
+<<<<<<< HEAD
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   Ok(())
 }
 
@@ -351,11 +366,14 @@ async fn bench_specifiers(
               }
             };
           }
+<<<<<<< HEAD
 
           BenchEvent::UncaughtError(origin, error) => {
             report.failed += 1;
             reporter.report_uncaught_error(&origin, error);
           }
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         }
       }
 

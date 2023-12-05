@@ -44,7 +44,10 @@ const {
   getCallSite,
   mustNotCall,
   mustNotMutateObjectDeep,
+<<<<<<< HEAD
   parseTestFlags,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   printSkipMessage,
   skip,
   nodeProcessAborted,
@@ -96,7 +99,10 @@ export {
   getCallSite,
   mustNotCall,
   mustNotMutateObjectDeep,
+<<<<<<< HEAD
   parseTestFlags,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   printSkipMessage,
   skip,
   nodeProcessAborted,

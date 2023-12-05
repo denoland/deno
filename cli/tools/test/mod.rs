@@ -411,6 +411,7 @@ pub async fn test_specifier(
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+<<<<<<< HEAD
   match test_specifier_inner(
     worker_factory,
     permissions,
@@ -446,6 +447,8 @@ async fn test_specifier_inner(
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
@@ -474,6 +477,7 @@ async fn test_specifier_inner(
   }
 
   // We execute the main module as a side module so that import.meta.main is not set.
+<<<<<<< HEAD
   worker.execute_side_module_possibly_with_npm().await?;
 
   let mut worker = worker.into_main_worker();
@@ -481,6 +485,25 @@ async fn test_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
+=======
+  match worker.execute_side_module_possibly_with_npm().await {
+    Ok(()) => {}
+    Err(error) => {
+      if error.is::<JsError>() {
+        sender.send(TestEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(error.downcast::<JsError>().unwrap()),
+        ))?;
+        return Ok(());
+      } else {
+        return Err(error);
+      }
+    }
+  }
+
+  let mut worker = worker.into_main_worker();
+
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   worker.dispatch_load_event(located_script_name!())?;
 
   run_tests_for_worker(&mut worker, &specifier, &options, &fail_fast_tracker)
@@ -491,10 +514,13 @@ async fn test_specifier_inner(
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
 
+<<<<<<< HEAD
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   if let Some(coverage_collector) = coverage_collector.as_mut() {
     worker
       .js_runtime

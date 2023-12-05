@@ -159,6 +159,7 @@ export function endianness(): "BE" | "LE" {
 
 /** Return free memory amount */
 export function freemem(): number {
+<<<<<<< HEAD
   if (Deno.build.os === "linux") {
     // On linux, use 'available' memory
     // https://github.com/libuv/libuv/blob/a5c01d4de3695e9d9da34cfd643b5ff0ba582ea7/src/unix/linux.c#L2064
@@ -167,6 +168,9 @@ export function freemem(): number {
     // Use 'free' memory on other platforms
     return Deno.systemMemoryInfo().free;
   }
+=======
+  return Deno.systemMemoryInfo().free;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 }
 
 /** Not yet implemented */

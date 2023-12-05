@@ -1,4 +1,11 @@
+<<<<<<< HEAD
 import { assert, assertEquals } from "../../../../test_util/std/assert/mod.ts";
+=======
+import {
+  assert,
+  assertEquals,
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { BufReader } from "../../../../test_util/std/io/buf_reader.ts";
 import { BufWriter } from "../../../../test_util/std/io/buf_writer.ts";
 import { TextProtoReader } from "./textproto.ts";

@@ -320,6 +320,7 @@ impl DenoSubcommand {
     matches!(self, Self::Run(_))
   }
 
+<<<<<<< HEAD
   // Returns `true` if the subcommand depends on testing infrastructure.
   pub fn needs_test(&self) -> bool {
     matches!(
@@ -330,6 +331,10 @@ impl DenoSubcommand {
         | Self::Bench(_)
         | Self::Lsp
     )
+=======
+  pub fn is_test_or_jupyter(&self) -> bool {
+    matches!(self, Self::Test(_) | Self::Jupyter(_))
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 }
 
@@ -844,11 +849,53 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   if matches.get_flag("unstable") {
     flags.unstable = true;
   }
+<<<<<<< HEAD
 
   for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
     if matches.get_flag(&format!("unstable-{}", name)) {
       flags.unstable_features.push(name.to_string());
     }
+=======
+  if matches.get_flag("unstable-broadcast-channel") {
+    flags.unstable_features.push(
+      deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME.to_string(),
+    );
+  }
+  if matches.get_flag("unstable-ffi") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-fs") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-http") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::http::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-kv") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-net") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_net::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-worker-options") {
+    flags
+      .unstable_features
+      .push(deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME.to_string());
+  }
+  if matches.get_flag("unstable-cron") {
+    flags
+      .unstable_features
+      .push(deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME.to_string());
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 
   flags.unstable_bare_node_builtins =
@@ -1109,11 +1156,19 @@ fn bundle_subcommand() -> Command {
     .long_about(
       "Output a single JavaScript file with all dependencies.
 
+<<<<<<< HEAD
   deno bundle https://deno.land/std/http/file_server.ts file_server.bundle.js
 
 If no output file is given, the output is written to standard output:
 
   deno bundle https://deno.land/std/http/file_server.ts",
+=======
+  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
+
+If no output file is given, the output is written to standard output:
+
+  deno bundle https://deno.land/std/examples/colors.ts",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     )
     .defer(|cmd| {
       compile_args(cmd)
@@ -1201,7 +1256,11 @@ fn compile_subcommand() -> Command {
       "Compiles the given script into a self contained executable.
 
   deno compile -A https://deno.land/std/http/file_server.ts
+<<<<<<< HEAD
   deno compile --output file_server https://deno.land/std/http/file_server.ts
+=======
+  deno compile --output color_util https://deno.land/std/examples/colors.ts
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and
@@ -1579,9 +1638,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .help("Set content type of the supplied file")
             // prefer using ts for formatting instead of js because ts works in more scenarios
             .default_value("ts")
+<<<<<<< HEAD
             .value_parser([
               "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "ipynb",
             ]),
+=======
+            .value_parser(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         )
         .arg(
           Arg::new("ignore")
@@ -1654,9 +1717,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .value_parser(value_parser!(bool))
             .default_missing_value("true")
             .require_equals(true)
+<<<<<<< HEAD
             .help(
               "Don't use semicolons except where necessary. Defaults to false.",
             ),
+=======
+            .help("Don't use semicolons except where necessary."),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         )
     })
 }
@@ -1730,7 +1797,11 @@ fn install_subcommand() -> Command {
         "Installs a script as an executable in the installation root's bin directory.
 
   deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+<<<<<<< HEAD
   deno install https://examples.deno.land/color-logging.ts
+=======
+  deno install https://deno.land/std/examples/colors.ts
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 To change the executable name, use -n/--name:
 
@@ -2204,7 +2275,10 @@ update to a different location, use the --output flag
 
   deno upgrade --output $HOME/my_deno",
     )
+<<<<<<< HEAD
     .hide(cfg!(not(feature = "upgrade")))
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     .defer(|cmd| {
       cmd
         .arg(
@@ -2308,8 +2382,12 @@ fn publish_subcommand() -> Command {
       )
       .arg(
         Arg::new("token")
+<<<<<<< HEAD
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
+=======
+          .help("The API token to use when publishing. If unset, interactive authentication will be used.")
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       )
     })
 }
@@ -6365,14 +6443,22 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "install",
+<<<<<<< HEAD
       "https://deno.land/std/http/file_server.ts"
+=======
+      "https://deno.land/std/examples/colors.ts"
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install(InstallFlags {
           name: None,
+<<<<<<< HEAD
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
+=======
+          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           args: vec![],
           root: None,
           force: false,
@@ -7839,14 +7925,22 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "compile",
+<<<<<<< HEAD
       "https://examples.deno.land/color-logging.ts"
+=======
+      "https://deno.land/std/examples/colors.ts"
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
+<<<<<<< HEAD
           source_file: "https://examples.deno.land/color-logging.ts"
             .to_string(),
+=======
+          source_file: "https://deno.land/std/examples/colors.ts".to_string(),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           output: None,
           args: vec![],
           target: None,
@@ -7862,13 +7956,21 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
+<<<<<<< HEAD
     let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+=======
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://deno.land/std/examples/colors.ts", "foo", "bar", "-p", "8080"]);
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
+<<<<<<< HEAD
           source_file: "https://examples.deno.land/color-logging.ts"
             .to_string(),
+=======
+          source_file: "https://deno.land/std/examples/colors.ts".to_string(),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,

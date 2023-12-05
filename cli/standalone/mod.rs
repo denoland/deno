@@ -16,7 +16,10 @@ use crate::module_loader::CliNodeResolver;
 use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
+<<<<<<< HEAD
 use crate::npm::CliNpmResolverByonmCreateOptions;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
@@ -312,6 +315,7 @@ pub async fn run(
     .join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(root_path.clone());
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
+<<<<<<< HEAD
   let cache_setting = CacheSetting::Only;
   let (package_json_deps_provider, fs, npm_resolver, maybe_vfs_root) =
     match metadata.node_modules {
@@ -419,6 +423,63 @@ pub async fn run(
     };
 
   let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
+=======
+  let (fs, vfs_root, maybe_node_modules_path, maybe_snapshot) =
+    if let Some(snapshot) = eszip.take_npm_snapshot() {
+      let vfs_root_dir_path = if metadata.node_modules_dir {
+        root_path
+      } else {
+        npm_cache_dir.registry_folder(&npm_registry_url)
+      };
+      let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+        .context("Failed to load npm vfs.")?;
+      let node_modules_path = if metadata.node_modules_dir {
+        Some(vfs.root().to_path_buf())
+      } else {
+        None
+      };
+      (
+        Arc::new(DenoCompileFileSystem::new(vfs))
+          as Arc<dyn deno_fs::FileSystem>,
+        Some(vfs_root_dir_path),
+        node_modules_path,
+        Some(snapshot),
+      )
+    } else {
+      (
+        Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
+        None,
+        None,
+        None,
+      )
+    };
+
+  let has_node_modules_dir = maybe_node_modules_path.is_some();
+  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
+    metadata
+      .package_json_deps
+      .map(|serialized| serialized.into_deps()),
+  ));
+  let npm_resolver = create_cli_npm_resolver(
+    CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
+      snapshot: CliNpmResolverManagedSnapshotOption::Specified(maybe_snapshot),
+      maybe_lockfile: None,
+      fs: fs.clone(),
+      http_client: http_client.clone(),
+      npm_global_cache_dir,
+      cache_setting: CacheSetting::Only,
+      text_only_progress_bar: progress_bar,
+      maybe_node_modules_path,
+      package_json_installer:
+        CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+          package_json_deps_provider.clone(),
+        ),
+      npm_registry_url,
+      npm_system_info: Default::default(),
+    }),
+  )
+  .await?;
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   let node_resolver = Arc::new(NodeResolver::new(
     fs.clone(),
     npm_resolver.clone().into_npm_resolver(),
@@ -462,7 +523,11 @@ pub async fn run(
   let permissions = {
     let mut permissions = metadata.permissions;
     // if running with an npm vfs, grant read access to it
+<<<<<<< HEAD
     if let Some(vfs_root) = maybe_vfs_root {
+=======
+    if let Some(vfs_root) = vfs_root {
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       match &mut permissions.allow_read {
         Some(vec) if vec.is_empty() => {
           // do nothing, already granted

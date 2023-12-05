@@ -35,7 +35,10 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+<<<<<<< HEAD
 use deno_runtime::deno_fs::FileSystem;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
@@ -117,8 +120,17 @@ pub fn graph_valid(
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
+<<<<<<< HEAD
           message.push_str("\n    at ");
           message.push_str(&format_range_with_colors(range));
+=======
+          message.push_str(&format!(
+            "\n    at {}:{}:{}",
+            colors::cyan(range.specifier.as_str()),
+            colors::yellow(&(range.start.line + 1).to_string()),
+            colors::yellow(&(range.start.character + 1).to_string())
+          ));
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
         }
       }
 
@@ -191,7 +203,10 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
+<<<<<<< HEAD
   fs: Arc<dyn FileSystem>,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -208,7 +223,10 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+<<<<<<< HEAD
     fs: Arc<dyn FileSystem>,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -222,7 +240,10 @@ impl ModuleGraphBuilder {
   ) -> Self {
     Self {
       options,
+<<<<<<< HEAD
       fs,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       resolver,
       npm_resolver,
       module_info_cache,
@@ -295,7 +316,10 @@ impl ModuleGraphBuilder {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
+<<<<<<< HEAD
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
@@ -345,7 +369,10 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
+<<<<<<< HEAD
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
@@ -772,6 +799,7 @@ fn workspace_member_config_try_into_workspace_member(
   })
 }
 
+<<<<<<< HEAD
 pub struct DenoGraphFsAdapter<'a>(
   pub &'a dyn deno_runtime::deno_fs::FileSystem,
 );
@@ -846,6 +874,8 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
   )
 }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 #[cfg(test)]
 mod test {
   use std::sync::Arc;

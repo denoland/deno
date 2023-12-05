@@ -3,7 +3,11 @@ import {
   assertEquals,
   assertThrows,
   fail,
+<<<<<<< HEAD
 } from "../../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { futimes, futimesSync } from "node:fs";
 
 const randomDate = new Date(Date.now() + 1000);

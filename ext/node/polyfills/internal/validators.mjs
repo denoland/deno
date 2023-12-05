@@ -9,12 +9,15 @@ import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
 
+<<<<<<< HEAD
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeJoin,
 } = primordials;
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 /**
  * @param {number} value
  * @returns {boolean}
@@ -288,6 +291,7 @@ const validateArray = hideStackFrames(
   },
 );
 
+<<<<<<< HEAD
 function validateUnion(value, name, union) {
   if (!ArrayPrototypeIncludes(union, value)) {
     throw new ERR_INVALID_ARG_TYPE(
@@ -298,6 +302,8 @@ function validateUnion(value, name, union) {
   }
 }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 export default {
   isInt32,
   isUint32,
@@ -315,7 +321,10 @@ export default {
   validatePort,
   validateString,
   validateUint32,
+<<<<<<< HEAD
   validateUnion,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 };
 export {
   isInt32,
@@ -334,5 +343,8 @@ export {
   validatePort,
   validateString,
   validateUint32,
+<<<<<<< HEAD
   validateUnion,
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 };

@@ -9,7 +9,11 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
+<<<<<<< HEAD
 } from "../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import * as path from "../../../test_util/std/path/mod.ts";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;

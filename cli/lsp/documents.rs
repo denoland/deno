@@ -92,8 +92,20 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .collect()
 });
 
+<<<<<<< HEAD
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
+=======
+pub const DOCUMENT_SCHEMES: [&str; 7] = [
+  "data",
+  "blob",
+  "file",
+  "http",
+  "https",
+  "untitled",
+  "deno-notebook-cell",
+];
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
@@ -256,6 +268,32 @@ impl AssetOrDocument {
   }
 }
 
+<<<<<<< HEAD
+=======
+/// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
+/// ```rust
+/// assert_eq!(
+///   file_like_to_file_specifier(
+///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+///   ),
+///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
+/// );
+pub fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
+  if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
+    if let Ok(mut s) = ModuleSpecifier::parse(&format!(
+      "file://{}",
+      &specifier.as_str()
+        [url::quirks::internal_components(specifier).host_end as usize..],
+    )) {
+      s.query_pairs_mut()
+        .append_pair("scheme", specifier.scheme());
+      return Some(s);
+    }
+  }
+  None
+}
+
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 #[derive(Debug, Default)]
 struct DocumentDependencies {
   deps: IndexMap<String, deno_graph::Dependency>,
@@ -272,10 +310,45 @@ impl DocumentDependencies {
   }
 
   pub fn from_module(module: &deno_graph::EsmModule) -> Self {
+<<<<<<< HEAD
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
     }
+=======
+    let mut deps = Self {
+      deps: module.dependencies.clone(),
+      maybe_types_dependency: module.maybe_types_dependency.clone(),
+    };
+    if file_like_to_file_specifier(&module.specifier).is_some() {
+      for (_, dep) in &mut deps.deps {
+        if let Resolution::Ok(resolved) = &mut dep.maybe_code {
+          if let Some(specifier) =
+            file_like_to_file_specifier(&resolved.specifier)
+          {
+            resolved.specifier = specifier;
+          }
+        }
+        if let Resolution::Ok(resolved) = &mut dep.maybe_type {
+          if let Some(specifier) =
+            file_like_to_file_specifier(&resolved.specifier)
+          {
+            resolved.specifier = specifier;
+          }
+        }
+      }
+      if let Some(dep) = &mut deps.maybe_types_dependency {
+        if let Resolution::Ok(resolved) = &mut dep.dependency {
+          if let Some(specifier) =
+            file_like_to_file_specifier(&resolved.specifier)
+          {
+            resolved.specifier = specifier;
+          }
+        }
+      }
+    }
+    deps
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 }
 
@@ -1743,6 +1816,7 @@ fn analyze_module(
 ) -> ModuleResult {
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
+<<<<<<< HEAD
       deno_graph::ParseModuleFromAstOptions {
         graph_kind: deno_graph::GraphKind::All,
         specifier,
@@ -1754,6 +1828,14 @@ fn analyze_module(
         maybe_resolver: Some(resolver),
         maybe_npm_resolver: Some(npm_resolver),
       },
+=======
+      deno_graph::GraphKind::All,
+      specifier,
+      maybe_headers,
+      parsed_source,
+      Some(resolver),
+      Some(npm_resolver),
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     )),
     Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
       deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),

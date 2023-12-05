@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { assertThrows } from "../../../../../test_util/std/assert/mod.ts";
+=======
+import { assertThrows } from "../../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 console.log("main", import.meta.url, import.meta.main);
 

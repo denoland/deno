@@ -177,12 +177,20 @@ fs.accessSync(readWriteFile, mode);
     () => fs.access(readWriteFile, mode, common.mustNotCall()),
     {
       code: 'ERR_INVALID_ARG_TYPE',
+<<<<<<< HEAD
+=======
+      message: /"mode" argument.+integer/
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
   );
   assert.throws(
     () => fs.accessSync(readWriteFile, mode),
     {
       code: 'ERR_INVALID_ARG_TYPE',
+<<<<<<< HEAD
+=======
+      message: /"mode" argument.+integer/
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
   );
 });
@@ -199,12 +207,20 @@ fs.accessSync(readWriteFile, mode);
     () => fs.access(readWriteFile, mode, common.mustNotCall()),
     {
       code: 'ERR_OUT_OF_RANGE',
+<<<<<<< HEAD
+=======
+      message: /"mode".+It must be an integer >= 0 && <= 7/
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
   );
   assert.throws(
     () => fs.accessSync(readWriteFile, mode),
     {
       code: 'ERR_OUT_OF_RANGE',
+<<<<<<< HEAD
+=======
+      message: /"mode".+It must be an integer >= 0 && <= 7/
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     }
   );
 });

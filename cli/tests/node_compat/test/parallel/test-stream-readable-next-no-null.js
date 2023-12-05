@@ -21,6 +21,10 @@ stream.on('error', expectsError({
   message: 'May not write null values to stream'
 }));
 
+<<<<<<< HEAD
 stream.on('data', mustNotCall());
+=======
+stream.on('data', mustNotCall((chunk) => {}));
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 
 stream.on('end', mustNotCall());

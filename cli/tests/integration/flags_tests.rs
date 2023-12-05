@@ -45,7 +45,10 @@ fn help_output() {
     "Run a task defined in the configuration file",
     "Run tests",
     "Print runtime TypeScript declarations",
+<<<<<<< HEAD
     #[cfg(feature = "upgrade")]
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     "Upgrade deno executable to given version",
     "Vendor remote modules into a local directory",
     "Print this message or the help of the given subcommand(s)",

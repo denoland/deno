@@ -190,46 +190,82 @@ Deno.test(async function readableStream() {
 
 // Close the stream after reading everything
 Deno.test(async function readableStreamClose() {
+<<<<<<< HEAD
   const cancel = Promise.withResolvers();
   const rid = resourceForReadableStream(
     helloWorldStream(false, cancel.resolve),
   );
+=======
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(helloWorldStream(false, cancelResolve));
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   const buffer = new Uint8Array(1024);
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 12);
   core.ops.op_close(rid);
+<<<<<<< HEAD
   assertEquals(await cancel.promise, "resource closed");
+=======
+  assertEquals(await cancelPromise, "resource closed");
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 });
 
 // Close the stream without reading everything
 Deno.test(async function readableStreamClosePartialRead() {
+<<<<<<< HEAD
   const cancel = Promise.withResolvers();
   const rid = resourceForReadableStream(
     helloWorldStream(false, cancel.resolve),
   );
+=======
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(helloWorldStream(false, cancelResolve));
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   const buffer = new Uint8Array(5);
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 5);
   core.ops.op_close(rid);
+<<<<<<< HEAD
   assertEquals(await cancel.promise, "resource closed");
+=======
+  assertEquals(await cancelPromise, "resource closed");
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 });
 
 // Close the stream without reading anything
 Deno.test(async function readableStreamCloseWithoutRead() {
+<<<<<<< HEAD
   const cancel = Promise.withResolvers();
   const rid = resourceForReadableStream(
     helloWorldStream(false, cancel.resolve),
   );
   core.ops.op_close(rid);
   assertEquals(await cancel.promise, "resource closed");
+=======
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(helloWorldStream(false, cancelResolve));
+  core.ops.op_close(rid);
+  assertEquals(await cancelPromise, "resource closed");
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 });
 
 // Close the stream without reading anything
 Deno.test(async function readableStreamCloseWithoutRead2() {
+<<<<<<< HEAD
   const cancel = Promise.withResolvers();
   const rid = resourceForReadableStream(longAsyncStream(cancel.resolve));
   core.ops.op_close(rid);
   assertEquals(await cancel.promise, "resource closed");
+=======
+  const { promise: cancelPromise, resolve: cancelResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(longAsyncStream(cancelResolve));
+  core.ops.op_close(rid);
+  assertEquals(await cancelPromise, "resource closed");
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 });
 
 Deno.test(async function readableStreamPartial() {
@@ -441,6 +477,7 @@ function createStreamTest(
   });
 }
 
+<<<<<<< HEAD
 // 1024 is the size of the internal packet buffer -- we want to make sure we fill the internal pipe fully.
 for (const packetCount of [1, 1024]) {
   Deno.test(`readableStreamWithAggressiveResourceClose_${packetCount}`, async function () {
@@ -476,3 +513,34 @@ for (const packetCount of [1, 1024]) {
     assertEquals(await promise, "resource closed");
   });
 }
+=======
+Deno.test(async function readableStreamWithAggressiveResourceClose() {
+  let first = true;
+  const { promise: reasonPromise, resolve: reasonResolve } = Promise
+    .withResolvers();
+  const rid = resourceForReadableStream(
+    new ReadableStream({
+      pull(controller) {
+        if (first) {
+          // We queue this up and then immediately close the resource (not the reader)
+          controller.enqueue(new Uint8Array(1));
+          core.close(rid);
+          // This doesn't throw, even though the resource is closed
+          controller.enqueue(new Uint8Array(1));
+          first = false;
+        }
+      },
+      cancel(reason) {
+        reasonResolve(reason);
+      },
+    }),
+  );
+  try {
+    await core.ops.op_read(rid, new Uint8Array(1));
+    fail();
+  } catch (e) {
+    assertEquals(e.message, "operation canceled");
+  }
+  assertEquals(await reasonPromise, "resource closed");
+});
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))

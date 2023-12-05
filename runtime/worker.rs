@@ -6,7 +6,10 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+<<<<<<< HEAD
 use std::time::Duration;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -30,7 +33,10 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
+<<<<<<< HEAD
 use deno_core::PollEventLoopOptions;
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -299,7 +305,11 @@ impl MainWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
+<<<<<<< HEAD
     // `runtime/build.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+=======
+    // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     let mut extensions = vec![
       // Web APIs
       deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -550,16 +560,26 @@ impl MainWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
+<<<<<<< HEAD
         maybe_result
+=======
+        maybe_result.expect("Module evaluation result not provided.")
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       }
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
+<<<<<<< HEAD
         receiver.await
+=======
+        let maybe_result = receiver.await;
+        maybe_result.expect("Module evaluation result not provided.")
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
       }
     }
   }
 
+<<<<<<< HEAD
   /// Run the event loop up to a given duration. If the runtime resolves early, returns
   /// early. Will always poll the runtime at least once.
   pub async fn run_up_to_duration(
@@ -581,6 +601,8 @@ impl MainWorker {
     }
   }
 
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   /// Loads, instantiates and executes specified JavaScript module.
   pub async fn execute_side_module(
     &mut self,
@@ -625,6 +647,7 @@ impl MainWorker {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
+<<<<<<< HEAD
     self.js_runtime.poll_event_loop2(
       cx,
       deno_core::PollEventLoopOptions {
@@ -632,12 +655,16 @@ impl MainWorker {
         ..Default::default()
       },
     )
+=======
+    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
+<<<<<<< HEAD
     self
       .js_runtime
       .run_event_loop2(deno_core::PollEventLoopOptions {
@@ -645,6 +672,9 @@ impl MainWorker {
         ..Default::default()
       })
       .await
+=======
+    self.js_runtime.run_event_loop(wait_for_inspector).await
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
   }
 
   /// Return exit code set by the executed code (either in main worker

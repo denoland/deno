@@ -30,7 +30,10 @@
     "cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     "cli/tests/testdata/fmt/badly_formatted.json",
     "cli/tests/testdata/fmt/badly_formatted.md",
+<<<<<<< HEAD
     "cli/tests/testdata/fmt/badly_formatted.ipynb",
+=======
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     "cli/tests/testdata/byte_order_mark.ts",
     "cli/tests/testdata/encoding",
     "cli/tests/testdata/fmt/",
@@ -56,9 +59,15 @@
     "ext/websocket/autobahn/reports"
   ],
   "plugins": [
+<<<<<<< HEAD
     "https://plugins.dprint.dev/typescript-0.88.7.wasm",
     "https://plugins.dprint.dev/json-0.19.1.wasm",
     "https://plugins.dprint.dev/markdown-0.16.3.wasm",
+=======
+    "https://plugins.dprint.dev/typescript-0.88.4.wasm",
+    "https://plugins.dprint.dev/json-0.19.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.16.2.wasm",
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
     "https://plugins.dprint.dev/exec-0.4.4.json@c207bf9b9a4ee1f0ecb75c594f774924baf62e8e53a2ce9d873816a408cecbf7"
   ]

@@ -5,7 +5,11 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
+<<<<<<< HEAD
 } from "../../../../test_util/std/assert/mod.ts";
+=======
+} from "../../../../test_util/std/testing/asserts.ts";
+>>>>>>> 172e5f0a0 (1.38.5 (#21469))
 import { writeFile, writeFileSync } from "node:fs";
 import * as path from "../../../../test_util/std/path/mod.ts";
 
