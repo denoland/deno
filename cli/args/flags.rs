@@ -977,7 +977,7 @@ fn clap_root() -> Command {
       Arg::new("unstable-loose-imports")
         .long("unstable-loose-imports")
         .help(
-          "Enable unstable resolving of file specifiers by extension probing and .js to .ts.",
+          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
         )
         .env("DENO_UNSTABLE_LOOSE_IMPORTS")
         .value_parser(FalseyValueParser::new())

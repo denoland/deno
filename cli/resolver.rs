@@ -225,6 +225,42 @@ impl CliGraphResolver {
     }
     Ok(())
   }
+
+  /// Resolve a specifier that doesn't map to what's found in a package.json or import map.
+  fn resolve_unmapped_specifier(
+    &self,
+    specifier: &str,
+    referrer_range: &deno_graph::Range,
+  ) -> Result<ModuleSpecifier, ResolveError> {
+    deno_graph::resolve_import(specifier, &referrer_range.specifier)
+      .map(|specifier| {
+        // check if we should use loose imports resolution
+        if let Some(loose_imports_resolver) = &self.loose_imports_resolver {
+          match loose_imports_resolver.resolve(&specifier) {
+            Cow::Owned(new_specifier) => {
+              // show a warning when this happens in order to drive
+              // the user towards correcting these specifiers
+              log::warn!(
+                "{} Loose import resolution.\n    at {}",
+                crate::colors::yellow("Warning"),
+                if referrer_range.end == deno_graph::Position::zeroed() {
+                  // not worth showing the range in this case
+                  crate::colors::cyan(referrer_range.specifier.as_str())
+                    .to_string()
+                } else {
+                  format_range_with_colors(referrer_range)
+                },
+              );
+              new_specifier
+            }
+            Cow::Borrowed(_) => specifier, // don't need to clone it again
+          }
+        } else {
+          specifier
+        }
+      })
+      .map_err(|err| err.into())
+  }
 }
 
 impl Resolver for CliGraphResolver {
@@ -265,33 +301,7 @@ impl Resolver for CliGraphResolver {
         Ok(specifier)
       }
       MappedResolution::None => {
-        deno_graph::resolve_import(specifier, referrer)
-          .map(|specifier| {
-            if let Some(loose_imports_resolver) = &self.loose_imports_resolver {
-              match loose_imports_resolver.resolve(&specifier) {
-                Cow::Owned(new_specifier) => {
-                  // show a warning when this happens in order to drive
-                  // the user towards correcting these specifiers
-                  log::warn!(
-                    "{} Loose import resolution.\n    at {}",
-                    crate::colors::yellow("Warning"),
-                    if referrer_range.end == deno_graph::Position::zeroed() {
-                      // not worth showing the range in this case
-                      crate::colors::cyan(referrer_range.specifier.as_str())
-                        .to_string()
-                    } else {
-                      format_range_with_colors(referrer_range)
-                    },
-                  );
-                  new_specifier
-                }
-                Cow::Borrowed(_) => specifier, // don't need to clone it again
-              }
-            } else {
-              specifier
-            }
-          })
-          .map_err(|err| err.into())
+        self.resolve_unmapped_specifier(specifier, referrer_range)
       }
     };
 

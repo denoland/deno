@@ -713,18 +713,17 @@ impl RedirectResolver {
       return None;
     }
 
-    match scheme {
-      "http" | "https" => {
-        let mut redirects = self.redirects.lock();
-        if let Some(specifier) = redirects.get(specifier) {
-          Some(specifier.clone())
-        } else {
-          let redirect = self.resolve_remote(specifier, 10)?;
-          redirects.insert(specifier.clone(), redirect.clone());
-          Some(redirect)
-        }
+    if scheme == "http" || scheme == "https" {
+      let mut redirects = self.redirects.lock();
+      if let Some(specifier) = redirects.get(specifier) {
+        Some(specifier.clone())
+      } else {
+        let redirect = self.resolve_remote(specifier, 10)?;
+        redirects.insert(specifier.clone(), redirect.clone());
+        Some(redirect)
       }
-      _ => Some(specifier.clone()),
+    } else {
+      Some(specifier.clone())
     }
   }
 
@@ -1047,11 +1046,39 @@ impl Documents {
     }
   }
 
-  pub fn resolve_redirected(
+  pub fn resolve_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    self.resolve_specifier(specifier)
+    if specifier.scheme() == "file" && self.unstable_loose_imports {
+      Some(self.resolve_unstable_loose_import(specifier).into_owned())
+    } else {
+      self.redirect_resolver.resolve(specifier)
+    }
+  }
+
+  fn resolve_unstable_loose_import<'a>(
+    &self,
+    specifier: &'a ModuleSpecifier,
+  ) -> Cow<'a, ModuleSpecifier> {
+    UnstableLooseImportsResolver::resolve_with_stat_sync(specifier, |path| {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+        if self.open_docs.contains_key(&specifier)
+          || self.cache.contains(&specifier)
+        {
+          return Some(UnstableLooseImportsFsEntry::File);
+        }
+      }
+      path.metadata().ok().and_then(|m| {
+        if m.is_file() {
+          Some(UnstableLooseImportsFsEntry::File)
+        } else if m.is_dir() {
+          Some(UnstableLooseImportsFsEntry::Dir)
+        } else {
+          None
+        }
+      })
+    })
   }
 
   /// Return `true` if the specifier can be resolved to a document.
@@ -1074,38 +1101,6 @@ impl Documents {
       }
     }
     false
-  }
-
-  fn resolve_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    if specifier.scheme() == "file" && self.unstable_loose_imports {
-      let specifier = UnstableLooseImportsResolver::resolve_with_stat_sync(
-        specifier,
-        |path| {
-          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-            if self.open_docs.contains_key(&specifier)
-              || self.cache.contains(&specifier)
-            {
-              return Some(UnstableLooseImportsFsEntry::File);
-            }
-          }
-          path.metadata().ok().and_then(|m| {
-            if m.is_file() {
-              Some(UnstableLooseImportsFsEntry::File)
-            } else if m.is_dir() {
-              Some(UnstableLooseImportsFsEntry::Dir)
-            } else {
-              None
-            }
-          })
-        },
-      );
-      Some(specifier.into_owned())
-    } else {
-      self.redirect_resolver.resolve(specifier)
-    }
   }
 
   /// Return an array of specifiers, if any, that are dependent upon the
@@ -1728,6 +1723,28 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     }
     None
   }
+
+  fn resolve_unstable_loose_import<'b>(
+    &self,
+    specifier: &'b ModuleSpecifier,
+  ) -> Cow<'b, ModuleSpecifier> {
+    UnstableLooseImportsResolver::resolve_with_stat_sync(specifier, |path| {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+        if self.open_docs.contains_key(&specifier) {
+          return Some(UnstableLooseImportsFsEntry::File);
+        }
+      }
+      path.metadata().ok().and_then(|m| {
+        if m.is_file() {
+          Some(UnstableLooseImportsFsEntry::File)
+        } else if m.is_dir() {
+          Some(UnstableLooseImportsFsEntry::Dir)
+        } else {
+          None
+        }
+      })
+    })
+  }
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
@@ -1742,22 +1759,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
     cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
     let specifier = if self.unstable_loose_imports {
-      UnstableLooseImportsResolver::resolve_with_stat_sync(specifier, |path| {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-          if self.open_docs.contains_key(&specifier) {
-            return Some(UnstableLooseImportsFsEntry::File);
-          }
-        }
-        path.metadata().ok().and_then(|m| {
-          if m.is_file() {
-            Some(UnstableLooseImportsFsEntry::File)
-          } else if m.is_dir() {
-            Some(UnstableLooseImportsFsEntry::Dir)
-          } else {
-            None
-          }
-        })
-      })
+      self.resolve_unstable_loose_import(specifier)
     } else {
       Cow::Borrowed(specifier)
     };

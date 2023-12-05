@@ -112,7 +112,6 @@ pub struct FetchCacher {
 }
 
 impl FetchCacher {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     emit_cache: EmitCache,
     file_fetcher: Arc<FileFetcher>,
