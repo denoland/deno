@@ -3,12 +3,13 @@ import { assertEquals } from "./test_util.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
-let isCI: boolean;
-try {
-  isCI = Deno.env.get("CI") !== undefined;
-} catch {
-  isCI = true;
-}
+// TODO(igorzi): https://github.com/denoland/deno/issues/21437
+// let isCI: boolean;
+// try {
+//   isCI = Deno.env.get("CI") !== undefined;
+// } catch {
+//   isCI = true;
+// }
 
 function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   // TODO(igorzi): https://github.com/denoland/deno/issues/21437
