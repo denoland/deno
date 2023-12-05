@@ -6,6 +6,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
@@ -26,7 +27,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -35,6 +35,7 @@ use std::sync::Arc;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
+use crate::graph_util::format_range_with_colors;
 use crate::module_loader::CjsResolutionStore;
 use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
@@ -116,6 +117,7 @@ impl MappedSpecifierResolver {
 #[derive(Debug)]
 pub struct CliGraphResolver {
   fs: Arc<dyn FileSystem>,
+  loose_imports_resolver: Option<UnstableLooseImportsResolver>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
@@ -130,6 +132,7 @@ pub struct CliGraphResolver {
 pub struct CliGraphResolverOptions<'a> {
   pub fs: Arc<dyn FileSystem>,
   pub cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+  pub loose_imports_resolver: Option<UnstableLooseImportsResolver>,
   pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
@@ -149,6 +152,7 @@ impl CliGraphResolver {
     Self {
       fs: options.fs,
       cjs_resolutions: options.cjs_resolutions,
+      loose_imports_resolver: options.loose_imports_resolver,
       mapped_specifier_resolver: MappedSpecifierResolver::new(
         options.maybe_import_map,
         if is_byonm {
@@ -238,7 +242,7 @@ impl Resolver for CliGraphResolver {
   fn resolve(
     &self,
     specifier: &str,
-    referrer: &ModuleSpecifier,
+    referrer_range: &deno_graph::Range,
     mode: ResolutionMode,
   ) -> Result<ModuleSpecifier, ResolveError> {
     fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
@@ -248,6 +252,7 @@ impl Resolver for CliGraphResolver {
       }
     }
 
+    let referrer = &referrer_range.specifier;
     let result = match self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
@@ -259,8 +264,35 @@ impl Resolver for CliGraphResolver {
         self.found_package_json_dep_flag.raise();
         Ok(specifier)
       }
-      MappedResolution::None => deno_graph::resolve_import(specifier, referrer)
-        .map_err(|err| err.into()),
+      MappedResolution::None => {
+        deno_graph::resolve_import(specifier, referrer)
+          .map(|specifier| {
+            if let Some(loose_imports_resolver) = &self.loose_imports_resolver {
+              match loose_imports_resolver.resolve(&specifier) {
+                Cow::Owned(new_specifier) => {
+                  // show a warning when this happens in order to drive
+                  // the user towards correcting these specifiers
+                  log::warn!(
+                    "{} Loose import resolution.\n    at {}",
+                    crate::colors::yellow("Warning"),
+                    if referrer_range.end == deno_graph::Position::zeroed() {
+                      // not worth showing the range in this case
+                      crate::colors::cyan(referrer_range.specifier.as_str())
+                        .to_string()
+                    } else {
+                      format_range_with_colors(referrer_range)
+                    },
+                  );
+                  new_specifier
+                }
+                Cow::Borrowed(_) => specifier, // don't need to clone it again
+              }
+            } else {
+              specifier
+            }
+          })
+          .map_err(|err| err.into())
+      }
     };
 
     // When the user is vendoring, don't allow them to import directly from the vendor/ directory
@@ -476,7 +508,7 @@ impl NpmResolver for CliGraphResolver {
 #[derive(Debug)]
 struct UnstableLooseImportsStatCache {
   fs: Arc<dyn FileSystem>,
-  cache: RefCell<HashMap<PathBuf, Option<UnstableLooseImportsFsEntry>>>,
+  cache: Mutex<HashMap<PathBuf, Option<UnstableLooseImportsFsEntry>>>,
 }
 
 impl UnstableLooseImportsStatCache {
@@ -488,9 +520,11 @@ impl UnstableLooseImportsStatCache {
   }
 
   pub fn stat_sync(&self, path: &Path) -> Option<UnstableLooseImportsFsEntry> {
-    let mut cache = self.cache.borrow_mut();
+    // there will only ever be one thread in here at a
+    // time, so it's ok to hold the lock for so long
+    let mut cache = self.cache.lock();
     if let Some(entry) = cache.get(path) {
-      return entry.clone();
+      return *entry;
     }
 
     let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
@@ -502,7 +536,7 @@ impl UnstableLooseImportsStatCache {
         None
       }
     });
-    cache.insert(path.to_owned(), entry.clone());
+    cache.insert(path.to_owned(), entry);
     entry
   }
 }
@@ -614,17 +648,9 @@ impl UnstableLooseImportsResolver {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> Cow<'a, ModuleSpecifier> {
-    let new_specifier = Self::resolve_with_stat_sync(specifier, |path| {
+    Self::resolve_with_stat_sync(specifier, |path| {
       self.stat_cache.stat_sync(path)
-    });
-    // if matches!(new_specifier, Cow::Owned(_)) {
-    //   log::warn!(
-    //     "{} Unstable loose import resolution.\n    at {}",
-    //     crate::colors::yellow("Warning"),
-    //   todo....
-    //   );
-    // }
-    new_specifier
+    })
   }
 }
 

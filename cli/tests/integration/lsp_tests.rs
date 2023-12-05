@@ -10511,16 +10511,19 @@ fn lsp_jupyter_byonm_diagnostics() {
 fn lsp_loose_imports_warn() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", r#"{ "unstable": ["loose-imports"] }"#);
+  let temp_dir = temp_dir.path();
+  temp_dir
+    .join("deno.json")
+    .write(r#"{ "unstable": ["loose-imports"] }"#);
   // should work when exists on the fs and when doesn't
-  temp_dir.write("a.ts", "export class A {}");
+  temp_dir.join("a.ts").write("export class A {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
-    builder.set_root_uri(temp_dir.uri());
+    builder.set_root_uri(temp_dir.uri_dir());
   });
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.path().join("b.ts").uri_file(),
+      "uri": temp_dir.join("b.ts").uri_file(),
       "languageId": "typescript",
       "version": 1,
       "text": "export class B {}",
@@ -10528,7 +10531,7 @@ fn lsp_loose_imports_warn() {
   }));
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir.path().join("file.ts").uri_file(),
+      "uri": temp_dir.join("file.ts").uri_file(),
       "languageId": "typescript",
       "version": 1,
       "text": "import * as a from './a';\nimport * as b from './b.js';\nconsole.log(a)\nconsole.log(b);\n",
@@ -10537,7 +10540,7 @@ fn lsp_loose_imports_warn() {
   assert_eq!(
     diagnostics.messages_with_source("deno"),
     lsp::PublishDiagnosticsParams {
-      uri: Url::parse("file:///a/file.ts").unwrap(),
+      uri: temp_dir.join("file.ts").uri_file(),
       diagnostics: vec![
         lsp::Diagnostic {
           range: lsp::Range {
@@ -10547,31 +10550,46 @@ fn lsp_loose_imports_warn() {
             },
             end: lsp::Position {
               line: 0,
-              character: 60
-            }
-          },
-          severity: Some(lsp::DiagnosticSeverity::WARNING),
-          code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
-          source: Some("deno".to_string()),
-          message: "foobar".to_string(),
-          ..Default::default()
-        },
-        lsp::Diagnostic {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 19
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 60
+              character: 24
             }
           },
           severity: Some(lsp::DiagnosticSeverity::INFORMATION),
           code: Some(lsp::NumberOrString::String("redirect".to_string())),
           source: Some("deno".to_string()),
-          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".".to_string(),
-          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"})),
+          message: format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("a").uri_file(),
+            temp_dir.join("a.ts").uri_file()
+          ),
+          data: Some(json!({
+            "specifier": temp_dir.join("a").uri_file(),
+            "redirect": temp_dir.join("a.ts").uri_file()
+          })),
+          ..Default::default()
+        },
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 19
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 27
+            }
+          },
+          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
+          code: Some(lsp::NumberOrString::String("redirect".to_string())),
+          source: Some("deno".to_string()),
+          message: format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("b.js").uri_file(),
+            temp_dir.join("b.ts").uri_file()
+          ),
+          data: Some(json!({
+            "specifier": temp_dir.join("b.js").uri_file(),
+            "redirect": temp_dir.join("b.ts").uri_file()
+          })),
           ..Default::default()
         }
       ],

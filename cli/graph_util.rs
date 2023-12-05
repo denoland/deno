@@ -12,7 +12,6 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
-use crate::resolver::UnstableLooseImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -491,11 +490,6 @@ impl ModuleGraphBuilder {
       self.npm_resolver.clone(),
       self.module_info_cache.clone(),
       permissions,
-      if self.options.unstable_loose_imports() {
-        Some(UnstableLooseImportsResolver::new(self.fs.clone()))
-      } else {
-        None
-      },
     )
   }
 }

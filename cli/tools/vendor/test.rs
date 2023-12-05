@@ -300,6 +300,7 @@ fn build_resolver(
     node_resolver: None,
     npm_resolver: None,
     cjs_resolutions: None,
+    loose_imports_resolver: None,
     package_json_deps_provider: Default::default(),
     maybe_jsx_import_source_config,
     maybe_import_map: original_import_map.map(Arc::new),

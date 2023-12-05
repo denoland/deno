@@ -916,6 +916,7 @@ impl Documents {
         maybe_import_map: None,
         maybe_vendor_dir: None,
         bare_node_builtins_enabled: false,
+        loose_imports_resolver: None,
       })),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
@@ -1029,7 +1030,15 @@ impl Documents {
   ) -> bool {
     let maybe_specifier = self
       .get_resolver()
-      .resolve(specifier, referrer, ResolutionMode::Types)
+      .resolve(
+        specifier,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        ResolutionMode::Types,
+      )
       .ok();
     if let Some(import_specifier) = maybe_specifier {
       self.exists(&import_specifier)
@@ -1369,6 +1378,10 @@ impl Documents {
         .maybe_config_file
         .map(|config| config.has_unstable("bare-node-builtins"))
         .unwrap_or(false),
+      // Don't set this for the LSP because instead we'll use the OpenDocumentsLoader
+      // because it's much easier and we get diagnostics/quick fixes about a redirected
+      // specifier for free.
+      loose_imports_resolver: None,
     }));
     self.redirect_resolver =
       Arc::new(RedirectResolver::new(self.cache.clone()));

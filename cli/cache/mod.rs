@@ -5,7 +5,6 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
-use crate::resolver::UnstableLooseImportsResolver;
 use crate::util::fs::atomic_write_file;
 
 use deno_ast::MediaType;
@@ -110,7 +109,6 @@ pub struct FetchCacher {
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
-  loose_imports_resolver: Option<UnstableLooseImportsResolver>,
 }
 
 impl FetchCacher {
@@ -123,7 +121,6 @@ impl FetchCacher {
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
     permissions: PermissionsContainer,
-    loose_imports_resolver: Option<UnstableLooseImportsResolver>,
   ) -> Self {
     Self {
       emit_cache,
@@ -134,7 +131,6 @@ impl FetchCacher {
       module_info_cache,
       permissions,
       cache_info_enabled: false,
-      loose_imports_resolver,
     }
   }
 
@@ -241,10 +237,7 @@ impl Loader for FetchCacher {
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
     let permissions = self.permissions.clone();
-    let specifier = match &self.loose_imports_resolver {
-      Some(resolver) => resolver.resolve(specifier).into_owned(),
-      None => specifier.clone(),
-    };
+    let specifier = specifier.clone();
 
     async move {
       let maybe_cache_setting = match cache_setting {

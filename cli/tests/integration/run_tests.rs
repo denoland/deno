@@ -4749,8 +4749,7 @@ fn test_unstable_loose_imports() {
   temp_dir.write("f.jsx", "export class F {}");
   temp_dir.write(
     "main.ts",
-    r#"
-import * as a from "./a.js";
+    r#"import * as a from "./a.js";
 import * as b from "./b";
 import * as c from "./c";
 import * as d from "./d";
@@ -4772,7 +4771,21 @@ console.log(f.F);
     .args("run main.ts")
     .run()
     .assert_matches_text(
-      "[class A]
+      "Warning Loose import resolution.
+    at file:///[WILDCARD]/main.ts:1:20
+Warning Loose import resolution.
+    at file:///[WILDCARD]/main.ts:2:20
+Warning Loose import resolution.
+    at file:///[WILDCARD]/main.ts:3:20
+Warning Loose import resolution.
+    at file:///[WILDCARD]/main.ts:4:20
+Warning Loose import resolution.
+    at file:///[WILDCARD]/main.ts:5:20
+Warning Loose import resolution.
+    at file:///[WILDCARD]/main.ts:6:21
+Warning Loose import resolution.
+    at file:///[WILDCARD]/main.ts:7:20
+[class A]
 [class B]
 [class C]
 [class D]
