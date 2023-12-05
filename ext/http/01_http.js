@@ -1,8 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, internals, primordials } from "ext:core/mod.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 const { op_http_write } = Deno.core.ensureFastOps();
 import * as webidl from "ext:deno_webidl/00_webidl.js";

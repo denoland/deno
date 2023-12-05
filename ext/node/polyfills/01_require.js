@@ -2,10 +2,8 @@
 
 // deno-lint-ignore-file
 
-const core = globalThis.Deno.core;
+import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,

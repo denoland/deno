@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
 const ops = core.ops;
 
 import * as timers from "ext:deno_web/02_timers.js";

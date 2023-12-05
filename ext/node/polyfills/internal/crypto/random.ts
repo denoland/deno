@@ -32,7 +32,7 @@ export {
 } from "ext:deno_node/internal/crypto/_randomFill.mjs";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const { StringPrototypePadStart, StringPrototypeToString } = primordials;
 
 const { core } = globalThis.__bootstrap;
