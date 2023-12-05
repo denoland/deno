@@ -69,6 +69,7 @@ const MAX_READ_RANGES: usize = 10;
 const MAX_READ_ENTRIES: usize = 1000;
 const MAX_CHECKS: usize = 100;
 const MAX_MUTATIONS: usize = 1000;
+const MAX_WATCHED_KEYS: usize = 10;
 const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
 const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
 
@@ -393,10 +394,21 @@ where
 {
   let resource = state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
 
-  let keys = keys
+  if keys.len() > MAX_WATCHED_KEYS {
+    return Err(type_error(format!(
+      "too many keys (max {})",
+      MAX_WATCHED_KEYS
+    )));
+  }
+
+  let keys: Vec<Vec<u8>> = keys
     .into_iter()
     .map(encode_v8_key)
     .collect::<std::io::Result<_>>()?;
+
+  for k in &keys {
+    check_read_key_size(k)?;
+  }
 
   let stream = resource.db.watch(keys);
 
