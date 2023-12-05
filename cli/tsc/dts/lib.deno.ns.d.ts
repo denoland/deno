@@ -1624,6 +1624,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to read
    * bytes into an array buffer asynchronously.
    *
+   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Reader}
+   * will be removed in v2.0.0.
+   *
    * @category I/O */
   export interface Reader {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
@@ -1657,6 +1660,9 @@ declare namespace Deno {
   /**
    * An abstract interface which when implemented provides an interface to read
    * bytes into an array buffer synchronously.
+   *
+   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode ReaderSync}
+   * will be removed in v2.0.0.
    *
    * @category I/O */
   export interface ReaderSync {
@@ -1692,6 +1698,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to write
    * bytes from an array buffer to a file/resource asynchronously.
    *
+   * @deprecated Use {@linkcode WritableStream} instead. {@linkcode Writer}
+   * will be removed in v2.0.0.
+   *
    * @category I/O */
   export interface Writer {
     /** Writes `p.byteLength` bytes from `p` to the underlying data stream. It
@@ -1716,6 +1725,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to write
    * bytes from an array buffer to a file/resource synchronously.
    *
+   * @deprecated Use {@linkcode WritableStream} instead. {@linkcode WriterSync}
+   * will be removed in v2.0.0.
+   *
    * @category I/O */
   export interface WriterSync {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
@@ -1733,6 +1745,9 @@ declare namespace Deno {
   /**
    * An abstract interface which when implemented provides an interface to close
    * files/resources that were previously opened.
+   *
+   * @deprecated Use {@linkcode ReadableStream} and {@linkcode WritableStream}
+   * instead. {@linkcode Closer} will be removed in v2.0.0.
    *
    * @category I/O */
   export interface Closer {
