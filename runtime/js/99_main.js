@@ -343,7 +343,7 @@ function processUnhandledPromiseRejection(promise, reason) {
       reason,
     },
   );
-  
+
   // Note that the handler may throw, causing a recursive "error" event
   globalThis_.dispatchEvent(rejectionEvent);
 
@@ -360,7 +360,7 @@ function processUnhandledPromiseRejection(promise, reason) {
   // throw) we will let Rust side handle it.
   if (rejectionEvent.defaultPrevented) {
     return true;
-  } 
+  }
 
   return false;
 }

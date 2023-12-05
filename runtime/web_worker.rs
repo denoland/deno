@@ -183,7 +183,7 @@ impl WebWorkerInternalHandle {
   pub fn terminate(&mut self) {
     self.cancel.cancel();
     self.terminate_waker.wake();
-    
+
     // This function can be called multiple times by whomever holds
     // the handle. However only a single "termination" should occur so
     // we need a guard here.

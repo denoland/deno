@@ -94,7 +94,10 @@ Deno.test({
       resolve(e.message);
     };
 
-    assertMatch(await promise as string, /Uncaught \(in promise\) Error: Thrown error/);
+    assertMatch(
+      await promise as string,
+      /Uncaught \(in promise\) Error: Thrown error/,
+    );
     throwingWorker.terminate();
   },
 });
