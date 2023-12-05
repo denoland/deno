@@ -55,12 +55,12 @@ queueTest("queue with undelivered", async (db) => {
   }
 });
 
-queueTest("throw error if already closed", async (db) => {
+Deno.test({}, async function queueTestDbClose() {
+  const db: Deno.Kv = await Deno.openKv(":memory:");
   db.close();
   await assertRejects(
     async () => {
-      await db.listenQueue(() => {
-      });
+      await db.listenQueue(() => {});
     },
     Error,
     "already closed",
