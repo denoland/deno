@@ -287,8 +287,6 @@ const { Blob } = require('buffer');
   duplex.write('test');
 }
 
-/*
-TODO(kt3k): Enable this test case
 {
   const through = new PassThrough({ objectMode: true });
 
@@ -309,7 +307,6 @@ TODO(kt3k): Enable this test case
     assert.strictEqual(res, 'foobar');
   })).on('close', common.mustCall());
 }
-*/
 
 function makeATestReadableStream(value) {
   return new ReadableStream({

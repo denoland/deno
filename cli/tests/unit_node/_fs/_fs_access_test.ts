@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import {
   assertRejects,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 
 Deno.test(
   "[node/fs.access] Uses the owner permission when the user is the owner",

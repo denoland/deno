@@ -70,7 +70,15 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+  #[inline(always)]
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+    self.check_read_with_api_name(path, None)
+  }
+  fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
 }
 
@@ -84,7 +92,11 @@ impl NodePermissions for AllowAllNodePermissions {
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     Ok(())
   }
   fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
@@ -247,6 +259,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::fs::op_node_fs_exists_sync<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -456,6 +469,7 @@ deno_core::extension!(deno_node,
     "internal/options.ts",
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",
+    "internal/process/report.ts",
     "internal/querystring.ts",
     "internal/readline/callbacks.mjs",
     "internal/readline/emitKeypressEvents.mjs",
@@ -483,6 +497,8 @@ deno_core::extension!(deno_node,
     "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
     "internal/util/inspect.mjs",
+    "internal/util/parse_args/parse_args.js",
+    "internal/util/parse_args/utils.js",
     "internal/util/types.ts",
     "internal/validators.mjs",
     "path/_constants.ts",

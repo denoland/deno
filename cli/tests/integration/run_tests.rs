@@ -2703,6 +2703,11 @@ mod permissions {
     output: "run/064_permissions_revoke_global.ts.out",
   });
 
+  itest!(_065_permissions_revoke_net {
+    args: "run --allow-net run/065_permissions_revoke_net.ts",
+    output: "run/065_permissions_revoke_net.ts.out",
+  });
+
   #[test]
   fn _066_prompt() {
     TestContext::default()

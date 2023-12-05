@@ -26,7 +26,6 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
-  ObjectSetPrototypeOf,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -84,9 +83,8 @@ const _enabled = Symbol("enabled");
  * @returns {MessagePort}
  */
 function createMessagePort(id) {
-  const port = core.createHostObject();
-  ObjectSetPrototypeOf(port, MessagePortPrototype);
-  port[webidl.brand] = webidl.brand;
+  const port = webidl.createBranded(MessagePort);
+  port[core.hostObjectBrand] = core.hostObjectBrand;
   setEventTargetData(port);
   port[_id] = id;
   return port;
