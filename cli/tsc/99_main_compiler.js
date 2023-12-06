@@ -223,6 +223,7 @@ delete Object.prototype.__proto__;
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
+            jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
             impliedNodeFormat: isCjsCache.has(fileName)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
@@ -537,11 +538,12 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
-      const createOptions = getCreateSourceFileOptions(languageVersion);
       if (logDebug) {
         debug(
           `host.getSourceFile("${specifier}", ${
-            ts.ScriptTarget[createOptions.languageVersion]
+            ts.ScriptTarget[
+              getCreateSourceFileOptions(languageVersion).languageVersion
+            ]
           })`,
         );
       }
@@ -568,7 +570,8 @@ delete Object.prototype.__proto__;
         specifier,
         data,
         {
-          ...createOptions,
+          ...getCreateSourceFileOptions(languageVersion),
+          jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
           impliedNodeFormat: isCjsCache.has(specifier)
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
