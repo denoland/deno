@@ -696,12 +696,11 @@ impl CliFactory {
       // to be the name of the binary command instead of deno
       maybe_binary_npm_command_name: match self.options.sub_command() {
         DenoSubcommand::Run(flags) => {
-          const NPM_COMMAND_NAME_ENV_VAR_NAME: &str =
-            "DENO_INTERNAL_NPM_COMMAND_NAME";
-          match std::env::var(NPM_COMMAND_NAME_ENV_VAR_NAME) {
+          const NPM_CMD_NAME_ENV_VAR_NAME: &str = "DENO_INTERNAL_NPM_CMD_NAME";
+          match std::env::var(NPM_CMD_NAME_ENV_VAR_NAME) {
             Ok(var) => {
               // remove the env var so that child sub processes don't pick this up
-              std::env::remove_var(NPM_COMMAND_NAME_ENV_VAR_NAME);
+              std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
               Some(var)
             }
             Err(_) => NpmPackageReqReference::from_str(&flags.script)

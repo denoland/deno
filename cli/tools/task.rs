@@ -326,7 +326,7 @@ impl ShellCommand for NodeModulesFileRunCommand {
     // set this environment variable so that the launched process knows the npm command name
     context
       .state
-      .apply_env_var("DENO_INTERNAL_NPM_COMMAND_NAME", &self.command_name);
+      .apply_env_var("DENO_INTERNAL_NPM_CMD_NAME", &self.command_name);
     executable_command.execute(ShellCommandContext { args, ..context })
   }
 }
