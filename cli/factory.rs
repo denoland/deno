@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -60,7 +59,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
@@ -694,22 +692,9 @@ impl CliFactory {
       location: self.options.location_flag().clone(),
       // if the user ran a binary command, we'll need to set process.argv[0]
       // to be the name of the binary command instead of deno
-      maybe_binary_npm_command_name: match self.options.sub_command() {
-        DenoSubcommand::Run(flags) => {
-          const NPM_CMD_NAME_ENV_VAR_NAME: &str = "DENO_INTERNAL_NPM_CMD_NAME";
-          match std::env::var(NPM_CMD_NAME_ENV_VAR_NAME) {
-            Ok(var) => {
-              // remove the env var so that child sub processes don't pick this up
-              std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
-              Some(var)
-            }
-            Err(_) => NpmPackageReqReference::from_str(&flags.script)
-              .ok()
-              .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
-          }
-        }
-        _ => None,
-      },
+      maybe_binary_npm_command_name: self
+        .options
+        .take_binary_npm_command_name(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self
