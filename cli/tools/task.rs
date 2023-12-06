@@ -333,39 +333,52 @@ fn resolve_npm_commands_from_bin_dir(
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
   let bin_dir = node_modules_dir.join(".bin");
-  if let Ok(entries) = std::fs::read_dir(bin_dir) {
-    for entry in entries {
-      let Ok(entry) = entry else {
-        continue;
-      };
-      if entry.path().extension().is_some() {
-        continue; // only look at files without extensions (even on Windows)
+  log::debug!("Resolving commands in '{}'.", bin_dir.display());
+  match std::fs::read_dir(&bin_dir) {
+    Ok(entries) => {
+      for entry in entries {
+        let Ok(entry) = entry else {
+          continue;
+        };
+        if let Some(command) = resolve_bin_dir_entry_command(entry) {
+          result.insert(command.command_name.clone(), Rc::new(command));
+        }
       }
-      if !entry.file_type().ok().map(|t| t.is_file()).unwrap_or(false) {
-        continue;
-      }
-      let Ok(text) = std::fs::read_to_string(entry.path()) else {
-        continue;
-      };
-      let command_name = entry.file_name().to_string_lossy().to_string();
-      if let Some(path) =
-        resolve_execution_path_from_npx_shim(entry.path(), &text)
-      {
-        log::debug!(
-          "Resolved npx command '{}' to '{}'.",
-          command_name,
-          path.display()
-        );
-        result.insert(
-          command_name.clone(),
-          Rc::new(NodeModulesFileRunCommand { command_name, path }),
-        );
-      } else {
-        log::debug!("Failed resolving npx command '{}'.", command_name);
-      }
+    }
+    Err(err) => {
+      log::debug!("Failed read_dir for '{}': {:#}", bin_dir.display(), err);
     }
   }
   Ok(result)
+}
+
+fn resolve_bin_dir_entry_command(
+  entry: std::fs::DirEntry,
+) -> Option<NodeModulesFileRunCommand> {
+  if entry.path().extension().is_some() {
+    return None; // only look at files without extensions (even on Windows)
+  }
+  let file_type = entry.file_type().ok()?;
+  let path = if file_type.is_file() {
+    entry.path()
+  } else if file_type.is_symlink() {
+    entry.path().canonicalize().ok()?
+  } else {
+    return None;
+  };
+  let text = std::fs::read_to_string(&path).ok()?;
+  let command_name = entry.file_name().to_string_lossy().to_string();
+  if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
+    log::debug!(
+      "Resolved npx command '{}' to '{}'.",
+      command_name,
+      path.display()
+    );
+    Some(NodeModulesFileRunCommand { command_name, path })
+  } else {
+    log::debug!("Failed resolving npx command '{}'.", command_name);
+    None
+  }
 }
 
 /// This is not ideal, but it works ok because it allows us to bypass
