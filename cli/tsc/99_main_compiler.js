@@ -223,10 +223,11 @@ delete Object.prototype.__proto__;
           scriptSnapshot,
           {
             ...getCreateSourceFileOptions(sourceFileOptions),
-            jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
             impliedNodeFormat: isCjsCache.has(fileName)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
+            // in the lsp we want to be able to show documentation
+            jsDocParsingMode: ts.JSDocParsingMode.ParseAll,
           },
           version,
           true,
@@ -571,10 +572,11 @@ delete Object.prototype.__proto__;
         data,
         {
           ...getCreateSourceFileOptions(languageVersion),
-          jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
           impliedNodeFormat: isCjsCache.has(specifier)
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
+          // no need to parse docs for `deno check`
+          jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
         },
         false,
         scriptKind,

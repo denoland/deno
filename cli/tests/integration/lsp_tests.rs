@@ -9109,11 +9109,11 @@ fn lsp_workspace_symbol() {
         "uri": "deno:/asset/lib.decorators.d.ts",
         "range": {
           "start": {
-            "line": 346,
+            "line": 343,
             "character": 0,
           },
           "end": {
-            "line": 388,
+            "line": 385,
             "character": 1,
           },
         },
