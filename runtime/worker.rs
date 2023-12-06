@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -29,6 +30,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -553,9 +555,29 @@ impl MainWorker {
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-
         receiver.await
       }
+    }
+  }
+
+  /// Run the event loop up to a given duration. If the runtime resolves early, returns
+  /// early. Will always poll the runtime at least once.
+  pub async fn run_up_to_duration(
+    &mut self,
+    duration: Duration,
+  ) -> Result<(), AnyError> {
+    match tokio::time::timeout(
+      duration,
+      self.js_runtime.run_event_loop2(PollEventLoopOptions {
+        wait_for_inspector: false,
+        pump_v8_message_loop: true,
+      }),
+    )
+    .await
+    {
+      Ok(Ok(_)) => Ok(()),
+      Err(_) => Ok(()),
+      Ok(Err(e)) => Err(e),
     }
   }
 

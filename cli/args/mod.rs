@@ -1306,6 +1306,25 @@ impl CliOptions {
     &self.flags.strace_ops
   }
 
+  pub fn take_binary_npm_command_name(&self) -> Option<String> {
+    match self.sub_command() {
+      DenoSubcommand::Run(flags) => {
+        const NPM_CMD_NAME_ENV_VAR_NAME: &str = "DENO_INTERNAL_NPM_CMD_NAME";
+        match std::env::var(NPM_CMD_NAME_ENV_VAR_NAME) {
+          Ok(var) => {
+            // remove the env var so that child sub processes won't pick this up
+            std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
+            Some(var)
+          }
+          Err(_) => NpmPackageReqReference::from_str(&flags.script)
+            .ok()
+            .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+        }
+      }
+      _ => None,
+    }
+  }
+
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
   }
