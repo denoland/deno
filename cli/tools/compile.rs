@@ -71,8 +71,9 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)?;
-  binary_writer
+  let mut file = std::fs::File::create(&output_path)
+    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
+  let write_result = binary_writer
     .write_bin(
       &mut file,
       eszip,
@@ -81,8 +82,13 @@ pub async fn compile(
       cli_options,
     )
     .await
-    .with_context(|| format!("Writing {}", output_path.display()))?;
+    .with_context(|| format!("Writing {}", output_path.display()));
   drop(file);
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the output path
+    let _ = std::fs::remove_file(output_path);
+    return Err(err);
+  }
 
   // set it as executable
   #[cfg(unix)]
