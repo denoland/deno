@@ -312,18 +312,20 @@ struct NodeModulesFileRunCommand {
 impl ShellCommand for NodeModulesFileRunCommand {
   fn execute(
     &self,
-    context: ShellCommandContext,
+    mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     let mut args = vec![
       "run".to_string(),
       "--ext=js".to_string(),
-      format!("--internal-bin-name={}", self.command_name),
       "-A".to_string(),
       self.path.to_string_lossy().to_string(),
     ];
     args.extend(context.args);
     let executable_command =
       deno_task_shell::ExecutableCommand::new("deno".to_string());
+    context
+      .state
+      .apply_env_var("DENO_INTERNAL_NPM_COMMAND_NAME", &self.command_name);
     executable_command.execute(ShellCommandContext { args, ..context })
   }
 }

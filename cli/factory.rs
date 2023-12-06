@@ -695,15 +695,20 @@ impl CliFactory {
       // if the user ran a binary command, we'll need to set process.argv[0]
       // to be the name of the binary command instead of deno
       maybe_binary_npm_command_name: match self.options.sub_command() {
-        DenoSubcommand::Run(flags) => flags
-          .npm_bin_command_name
-          .as_ref()
-          .map(ToOwned::to_owned)
-          .or_else(|| {
-            NpmPackageReqReference::from_str(&flags.script)
+        DenoSubcommand::Run(flags) => {
+          const NPM_COMMAND_NAME_ENV_VAR_NAME: &str =
+            "DENO_INTERNAL_NPM_COMMAND_NAME";
+          match std::env::var(NPM_COMMAND_NAME_ENV_VAR_NAME) {
+            Ok(var) => {
+              // remove the env var so that child sub processes don't pick this up
+              std::env::remove_var(NPM_COMMAND_NAME_ENV_VAR_NAME);
+              Some(var)
+            }
+            Err(_) => NpmPackageReqReference::from_str(&flags.script)
               .ok()
-              .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
-          }),
+              .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+          }
+        }
         _ => None,
       },
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),

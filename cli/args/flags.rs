@@ -210,10 +210,6 @@ pub struct ReplFlags {
 pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
-  /// Internal. Sets the npm binary command name.
-  ///
-  /// This is only used for launching binary commands via `deno task` with byonm.
-  pub npm_bin_command_name: Option<String>,
 }
 
 impl RunFlags {
@@ -222,7 +218,6 @@ impl RunFlags {
     Self {
       script,
       watch: None,
-      npm_bin_command_name: None,
     }
   }
 
@@ -2008,13 +2003,6 @@ fn run_subcommand() -> Command {
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
-    .arg(
-      Arg::new("internal-bin-name")
-        .long("internal-bin-name")
-        .num_args(0..=1)
-        .require_equals(true)
-        .hide(true),
-    )
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -3580,7 +3568,6 @@ fn run_parse(
   flags.subcommand = DenoSubcommand::Run(RunFlags {
     script,
     watch: watch_arg_parse_with_paths(matches),
-    npm_bin_command_name: matches.remove_one::<String>("internal-bin-name"),
   });
 
   Ok(())
@@ -4249,7 +4236,6 @@ mod tests {
             paths: vec![],
             no_clear_screen: false,
           }),
-          npm_bin_command_name: None,
         }),
         ..Flags::default()
       }
@@ -4273,7 +4259,6 @@ mod tests {
             paths: vec![],
             no_clear_screen: true,
           }),
-          npm_bin_command_name: None,
         }),
         ..Flags::default()
       }
@@ -4297,7 +4282,6 @@ mod tests {
             paths: vec![],
             no_clear_screen: true,
           }),
-          npm_bin_command_name: None,
         }),
         ..Flags::default()
       }
@@ -4321,7 +4305,6 @@ mod tests {
             paths: vec![PathBuf::from("foo.txt")],
             no_clear_screen: true,
           }),
-          npm_bin_command_name: None,
         }),
         ..Flags::default()
       }
@@ -4347,7 +4330,6 @@ mod tests {
             paths: vec![PathBuf::from("file1"), PathBuf::from("file2")],
             no_clear_screen: false,
           }),
-          npm_bin_command_name: None,
         }),
         ..Flags::default()
       }
@@ -4375,7 +4357,6 @@ mod tests {
             paths: vec![],
             no_clear_screen: true,
           }),
-          npm_bin_command_name: None,
         }),
         ..Flags::default()
       }
