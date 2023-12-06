@@ -404,7 +404,7 @@ fn sloppy_imports_resolve(
   referrer_range: &deno_graph::Range,
 ) -> ModuleSpecifier {
   let resolution = resolver.resolve(&specifier);
-  let message = match &resolution {
+  let hint_message = match &resolution {
     UnstableSloppyImportsResolution::JsToTs(to_specifier) => {
       let from_media_type = MediaType::from_specifier(&specifier);
       let to_media_type = MediaType::from_specifier(to_specifier);
@@ -433,7 +433,7 @@ fn sloppy_imports_resolve(
   log::warn!(
     "{} Sloppy import resolution {}\n    at {}",
     crate::colors::yellow("Warning"),
-    crate::colors::gray(format!("(hint: {})", message)),
+    crate::colors::gray(format!("(hint: {})", hint_message)),
     if referrer_range.end == deno_graph::Position::zeroed() {
       // not worth showing the range in this case
       crate::colors::cyan(referrer_range.specifier.as_str()).to_string()
