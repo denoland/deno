@@ -388,10 +388,13 @@ async fn sync_resolution_with_fs(
       .join("node_modules");
     let mut dep_setup_cache = setup_cache.with_dep(&package_folder_name);
     for (name, dep_id) in &package.dependencies {
-      let dep_cache_folder_id = snapshot
-        .package_from_id(dep_id)
-        .unwrap()
-        .get_package_cache_folder_id();
+      let dep = snapshot.package_from_id(dep_id).unwrap();
+      if package.optional_dependencies.contains(name)
+        && !dep.system.matches_system(system_info)
+      {
+        continue; // this isn't a dependency for the current system
+      }
+      let dep_cache_folder_id = dep.get_package_cache_folder_id();
       let dep_folder_name =
         get_package_folder_id_folder_name(&dep_cache_folder_id);
       if dep_setup_cache.insert(name, &dep_folder_name) {
