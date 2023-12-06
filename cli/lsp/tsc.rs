@@ -36,6 +36,7 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
@@ -70,6 +71,7 @@ use std::thread;
 use text_size::TextRange;
 use text_size::TextSize;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
@@ -219,30 +221,12 @@ impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
-    let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
     let perf = performance.clone();
+    // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
+    // on the `TsServer` struct.
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(perf, cache, specifier_map_);
-
-      let runtime = create_basic_runtime();
-      runtime.block_on(async {
-        let mut started = false;
-        while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
-          if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false).unwrap();
-            started = true;
-          }
-          let value =
-            request(&mut ts_runtime, state_snapshot, req, token.clone());
-          let was_sent = tx.send(value).is_ok();
-          // Don't print the send error if the token is cancelled, it's expected
-          // to fail in that case and this commonly occurs.
-          if !was_sent && !token.is_cancelled() {
-            lsp_warn!("Unable to send result to client.");
-          }
-        }
-      })
+      run_tsc_thread(request_rx, perf, cache, specifier_map_)
     });
 
     Self {
@@ -4009,19 +3993,42 @@ fn op_script_version(
   Ok(state.script_version(&specifier))
 }
 
-/// Create and setup a JsRuntime based on a snapshot. It is expected that the
-/// supplied snapshot is an isolate that contains the TypeScript language
-/// server.
-fn js_runtime(
+fn run_tsc_thread(
+  mut request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
-) -> JsRuntime {
-  JsRuntime::new(RuntimeOptions {
+) {
+  // Create and setup a JsRuntime based on a snapshot. It is expected that the
+  // supplied snapshot is an isolate that contains the TypeScript language
+  // server.
+  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
-  })
+  });
+
+  let tsc_future = async {
+    let mut started = false;
+    while let Some((req, state_snapshot, tx, token)) = request_rx.recv().await {
+      if !started {
+        // TODO(@kitsonk) need to reflect the debug state of the lsp here
+        start(&mut tsc_runtime, false).unwrap();
+        started = true;
+      }
+      let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
+      let was_sent = tx.send(value).is_ok();
+      // Don't print the send error if the token is cancelled, it's expected
+      // to fail in that case and this commonly occurs.
+      if !was_sent && !token.is_cancelled() {
+        lsp_warn!("Unable to send result to client.");
+      }
+    }
+  }
+  .boxed_local();
+
+  let runtime = create_basic_runtime();
+  runtime.block_on(tsc_future)
 }
 
 deno_core::extension!(deno_tsc,
