@@ -17,7 +17,6 @@ and limitations under the License.
 /// <reference no-default-lib="true"/>
 
 declare namespace Intl {
-
     /**
      * An object with some or all properties of the `Intl.Segmenter` constructor `options` parameter.
      *
@@ -90,7 +89,7 @@ declare namespace Intl {
          *
          * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter).
          */
-        new(locales?: BCP47LanguageTag | BCP47LanguageTag[], options?: SegmenterOptions): Segmenter;
+        new (locales?: BCP47LanguageTag | BCP47LanguageTag[], options?: SegmenterOptions): Segmenter;
 
         /**
          * Returns an array containing those of the provided locales that are supported without having to fall back to the runtime's default locale.
