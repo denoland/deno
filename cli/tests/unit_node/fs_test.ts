@@ -1,12 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  assert,
-  assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
+import { assert, assertThrows } from "../../../test_util/std/assert/mod.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToAbsoluteFileUrl } from "../unit/test_util.ts";
 
 Deno.test(
   "[node/fs writeFileSync] write file without option",
@@ -44,5 +42,41 @@ Deno.test(
       () => writeFileSync(filename, data, { encoding: "utf16le" }),
       'The value "utf16le" is invalid for option "encoding"',
     );
+  },
+);
+
+Deno.test(
+  "[node/fs existsSync] path",
+  { permissions: { read: true } },
+  () => {
+    assert(existsSync("cli/tests/testdata/assets/fixture.json"));
+  },
+);
+
+Deno.test(
+  "[node/fs existsSync] url",
+  { permissions: { read: true } },
+  () => {
+    assert(existsSync(
+      pathToAbsoluteFileUrl("cli/tests/testdata/assets/fixture.json"),
+    ));
+  },
+);
+
+Deno.test(
+  "[node/fs existsSync] no permission",
+  { permissions: { read: false } },
+  () => {
+    assertThrows(() => {
+      existsSync("cli/tests/testdata/assets/fixture.json");
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+Deno.test(
+  "[node/fs existsSync] not exists",
+  { permissions: { read: true } },
+  () => {
+    assert(!existsSync("bad_filename"));
   },
 );

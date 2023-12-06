@@ -66,6 +66,15 @@ pub struct PermissionChecker<P: RemoteDbHandlerPermissions> {
   _permissions: PhantomData<P>,
 }
 
+impl<P: RemoteDbHandlerPermissions> Clone for PermissionChecker<P> {
+  fn clone(&self) -> Self {
+    Self {
+      state: self.state.clone(),
+      _permissions: PhantomData,
+    }
+  }
+}
+
 impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
   for PermissionChecker<P>
 {

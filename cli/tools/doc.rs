@@ -28,6 +28,7 @@ use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 async fn generate_doc_nodes_for_builtin_types(
@@ -185,7 +186,11 @@ async fn generate_docs_directory(
   let output_dir_resolved = cwd.join(&html_options.output);
 
   let options = deno_doc::html::GenerateOptions {
-    package_name: html_options.name,
+    package_name: Some(html_options.name),
+    main_entrypoint: None,
+    global_symbols: Default::default(),
+    global_symbol_href_resolver: Rc::new(|_, _| String::new()),
+    url_resolver: Rc::new(deno_doc::html::default_url_resolver),
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)

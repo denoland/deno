@@ -2,4 +2,4 @@
 import {
   assertNotEquals as _a,
   assertStrictEquals as _b,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";

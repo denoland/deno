@@ -24,7 +24,7 @@ fn compile_basic() {
         "compile",
         "--output",
         &exe.to_string_lossy(),
-        "../../../test_util/std/examples/welcome.ts",
+        "../../../cli/tests/testdata/welcome.ts",
       ])
       .run();
     output.assert_exit_code(0);
@@ -1060,4 +1060,28 @@ fn compile_node_modules_symlink_outside() {
     project_dir.join(if cfg!(windows) { "bin.exe" } else { "bin" });
   let output = context.new_command().name(binary_path).run();
   output.assert_matches_file("compile/node_modules_symlink_outside/main.out");
+}
+
+#[test]
+fn dynamic_imports_tmp_lit() {
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
+  let exe = if cfg!(windows) {
+    dir.path().join("app.exe")
+  } else {
+    dir.path().join("app")
+  };
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      "./compile/dynamic_imports_tmp_lit/main.js",
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+  let output = context.new_command().name(&exe).run();
+  output.assert_matches_text("a\nb\n{ data: 5 }\n{ data: 1 }\n");
 }
