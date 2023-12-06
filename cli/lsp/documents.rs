@@ -1051,7 +1051,7 @@ impl Documents {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if specifier.scheme() == "file" && self.unstable_sloppy_imports {
+    if self.unstable_sloppy_imports && specifier.scheme() == "file" {
       Some(
         self
           .resolve_unstable_sloppy_import(specifier)

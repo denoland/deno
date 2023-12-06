@@ -4776,21 +4776,21 @@ console.log(g.G);
     .args("run main.ts")
     .run()
     .assert_matches_text(
-      "Warning Sloppy import resolution (update .js extension to .ts)
+      "Warning Sloppy import resolution (hint: update .js extension to .ts)
     at file:///[WILDCARD]/main.ts:1:20
-Warning Sloppy import resolution (add .js extension)
+Warning Sloppy import resolution (hint: add .js extension)
     at file:///[WILDCARD]/main.ts:2:20
-Warning Sloppy import resolution (add .mts extension)
+Warning Sloppy import resolution (hint: add .mts extension)
     at file:///[WILDCARD]/main.ts:3:20
-Warning Sloppy import resolution (add .mjs extension)
+Warning Sloppy import resolution (hint: add .mjs extension)
     at file:///[WILDCARD]/main.ts:4:20
-Warning Sloppy import resolution (add .tsx extension)
+Warning Sloppy import resolution (hint: add .tsx extension)
     at file:///[WILDCARD]/main.ts:5:20
-Warning Sloppy import resolution (update .js extension to .tsx)
+Warning Sloppy import resolution (hint: update .js extension to .tsx)
     at file:///[WILDCARD]/main.ts:6:21
-Warning Sloppy import resolution (add .jsx extension)
+Warning Sloppy import resolution (hint: add .jsx extension)
     at file:///[WILDCARD]/main.ts:7:20
-Warning Sloppy import resolution (specify path to index.tsx file in directory instead)
+Warning Sloppy import resolution (hint: specify path to index.tsx file in directory instead)
     at file:///[WILDCARD]/main.ts:8:20
 [class A]
 [class B]

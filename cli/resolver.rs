@@ -409,14 +409,14 @@ fn sloppy_imports_resolve(
       let from_media_type = MediaType::from_specifier(&specifier);
       let to_media_type = MediaType::from_specifier(to_specifier);
       format!(
-        "(update {} extension to {})",
+        "update {} extension to {}",
         from_media_type.as_ts_extension(),
         to_media_type.as_ts_extension()
       )
     }
     UnstableSloppyImportsResolution::NoExtension(to_specifier) => {
       let to_media_type = MediaType::from_specifier(to_specifier);
-      format!("(add {} extension)", to_media_type.as_ts_extension())
+      format!("add {} extension", to_media_type.as_ts_extension())
     }
     UnstableSloppyImportsResolution::Directory(to_specifier) => {
       let file_name = to_specifier
@@ -424,7 +424,7 @@ fn sloppy_imports_resolve(
         .rsplit_once('/')
         .map(|(_, file_name)| file_name)
         .unwrap_or(to_specifier.path());
-      format!("(specify path to {} file in directory instead)", file_name)
+      format!("specify path to {} file in directory instead", file_name)
     }
     UnstableSloppyImportsResolution::None(_) => return specifier,
   };
@@ -433,7 +433,7 @@ fn sloppy_imports_resolve(
   log::warn!(
     "{} Sloppy import resolution {}\n    at {}",
     crate::colors::yellow("Warning"),
-    message,
+    crate::colors::gray(format!("(hint: {})", message)),
     if referrer_range.end == deno_graph::Position::zeroed() {
       // not worth showing the range in this case
       crate::colors::cyan(referrer_range.specifier.as_str()).to_string()
