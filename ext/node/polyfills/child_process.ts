@@ -10,6 +10,7 @@ import {
   ChildProcess,
   ChildProcessOptions,
   normalizeSpawnArguments,
+  setupChannel,
   type SpawnOptions,
   spawnSync as _spawnSync,
   type SpawnSyncOptions,
@@ -823,9 +824,11 @@ export function execFileSync(
 
 function setupChildProcessIpcChannel(fd: number) {
   if (typeof fd != "number" || fd < 0) return;
+  setupChannel(process, fd);
 }
 
-globalThis.__bootstrap.internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
+globalThis.__bootstrap.internals.__setupChildProcessIpcChannel =
+  setupChildProcessIpcChannel;
 
 export default {
   fork,

@@ -44,6 +44,9 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 
+const core = globalThis.__bootstrap.core;
+const ops = core.ops;
+
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
   transformer: (value: T) => O,
@@ -254,7 +257,7 @@ export class ChildProcess extends EventEmitter {
       }
 
       if (ipc >= 0) {
-        // 
+        setupChannel(this, 4); //ipc);
       }
 
       (async () => {
@@ -1066,9 +1069,58 @@ function toDenoArgs(args: string[]): string[] {
   return denoArgs;
 }
 
+export function setupChannel(target, channel) {
+  const ipc = ops.op_node_ipc_pipe(channel);
+
+  async function readLoop() {
+    while (true) {
+      const msgs = await core.opAsync("op_node_ipc_read", ipc);
+      for (const msg of msgs) {
+        target.emit("message", msg);
+      }
+    }
+  }
+
+  target.send = function (message, handle, options, callback) {
+    if (typeof handle === "function") {
+      callback = handle;
+      handle = undefined;
+      options = undefined;
+    } else if (typeof options === "function") {
+      callback = options;
+      options = undefined;
+    } else if (options !== undefined) {
+      validateObject(options, "options");
+    }
+
+    options = { swallowErrors: false, ...options };
+
+    if (message === undefined) {
+      throw new TypeError("ERR_MISSING_ARGS", "message");
+    }
+
+    if (handle !== undefined) {
+      notImplemented("ChildProcess.send with handle");
+    }
+
+    core.opAsync("op_node_ipc_write", ipc, message)
+      .then(() => {
+        if (callback) {
+          process.nextTick(callback, null);
+        }
+      });
+  };
+
+  target.connected = true;
+
+  // Start reading messages from the channel.
+  readLoop();
+}
+
 export default {
   ChildProcess,
   normalizeSpawnArguments,
   stdioStringToArray,
   spawnSync,
+  setupChannel,
 };

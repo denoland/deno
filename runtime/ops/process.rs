@@ -251,12 +251,13 @@ fn create_command(
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
-    use nix::{
-      libc::dup2,
-      sys::socket::{socketpair, AddressFamily, SockFlag, SockType},
-    };
+    use nix::libc::dup2;
+    use nix::sys::socket::socketpair;
+    use nix::sys::socket::AddressFamily;
+    use nix::sys::socket::SockFlag;
+    use nix::sys::socket::SockType;
 
-    let (_, fd2) = socketpair(
+    let (fd1, fd2) = socketpair(
       AddressFamily::Unix,
       SockType::Stream,
       None,
@@ -267,6 +268,7 @@ fn create_command(
     command.pre_exec(move || {
       if ipc >= 0 {
         let _ = dup2(fd2, ipc as i32);
+        let _ = dup2(fd1, 4i32);
       }
       libc::setgroups(0, std::ptr::null());
       Ok(())
