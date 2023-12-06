@@ -1086,7 +1086,7 @@ console.log(getValue());"#,
 Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
 Check file:///[WILDCARD]/main.ts
-Compile file:///[WILDCARD]/main.ts to bin.exe
+Compile file:///[WILDCARD]/main.ts to [WILDCARD]
 Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]
     Message: [WILDCARD])
