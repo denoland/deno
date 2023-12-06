@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-window-prefix
-import { assert } from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
   assert(globalThis != null);
@@ -127,4 +127,93 @@ Deno.test(function webApiGlobalThis() {
   assert(globalThis.TextDecoderStream !== null);
   assert(globalThis.CountQueuingStrategy !== null);
   assert(globalThis.ByteLengthQueuingStrategy !== null);
+});
+
+Deno.test(function windowNameIsDefined() {
+  assertEquals(typeof globalThis.name, "string");
+  assertEquals(name, "");
+  assertEquals(window.name, name);
+  name = "foobar";
+  assertEquals(window.name, "foobar");
+  assertEquals(name, "foobar");
+  name = "";
+  assertEquals(window.name, "");
+  assertEquals(name, "");
+});
+
+Deno.test(async function promiseWithResolvers() {
+  {
+    const { promise, resolve } = Promise.withResolvers();
+    resolve(true);
+    assert(await promise);
+  }
+  {
+    const { promise, reject } = Promise.withResolvers();
+    reject(new Error("boom!"));
+    await assertRejects(() => promise, Error, "boom!");
+  }
+});
+
+Deno.test(async function arrayFromAsync() {
+  // Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/fromAsync#examples
+  // Thank you.
+  const asyncIterable = (async function* () {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10 * i));
+      yield i;
+    }
+  })();
+
+  const a = await Array.fromAsync(asyncIterable);
+  assertEquals(a, [0, 1, 2, 3, 4]);
+
+  const b = await Array.fromAsync(new Map([[1, 2], [3, 4]]));
+  assertEquals(b, [[1, 2], [3, 4]]);
+});
+
+// Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/groupBy#examples
+Deno.test(function objectGroupBy() {
+  const inventory = [
+    { name: "asparagus", type: "vegetables", quantity: 5 },
+    { name: "bananas", type: "fruit", quantity: 0 },
+    { name: "goat", type: "meat", quantity: 23 },
+    { name: "cherries", type: "fruit", quantity: 5 },
+    { name: "fish", type: "meat", quantity: 22 },
+  ];
+  const result = Object.groupBy(inventory, ({ type }) => type);
+  assertEquals(result, {
+    vegetables: [
+      { name: "asparagus", type: "vegetables", quantity: 5 },
+    ],
+    fruit: [
+      { name: "bananas", type: "fruit", quantity: 0 },
+      { name: "cherries", type: "fruit", quantity: 5 },
+    ],
+    meat: [
+      { name: "goat", type: "meat", quantity: 23 },
+      { name: "fish", type: "meat", quantity: 22 },
+    ],
+  });
+});
+
+// Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map/groupBy#examples
+Deno.test(function mapGroupBy() {
+  const inventory = [
+    { name: "asparagus", type: "vegetables", quantity: 9 },
+    { name: "bananas", type: "fruit", quantity: 5 },
+    { name: "goat", type: "meat", quantity: 23 },
+    { name: "cherries", type: "fruit", quantity: 12 },
+    { name: "fish", type: "meat", quantity: 22 },
+  ];
+  const restock = { restock: true };
+  const sufficient = { restock: false };
+  const result = Map.groupBy(
+    inventory,
+    ({ quantity }) => quantity < 6 ? restock : sufficient,
+  );
+  assertEquals(result.get(restock), [{
+    name: "bananas",
+    type: "fruit",
+    quantity: 5,
+  }]);
 });

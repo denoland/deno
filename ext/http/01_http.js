@@ -44,6 +44,7 @@ import {
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
 import { serve } from "ext:deno_http/00_serve.js";
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
@@ -69,6 +70,9 @@ const {
 const connErrorSymbol = Symbol("connError");
 const _deferred = Symbol("upgradeHttpDeferred");
 
+/** @type {(self: HttpConn, rid: number) => boolean} */
+let deleteManagedResource;
+
 class HttpConn {
   #rid = 0;
   #closed = false;
@@ -79,7 +83,12 @@ class HttpConn {
   // that were created during lifecycle of this request.
   // When the connection is closed these resources should be closed
   // as well.
-  managedResources = new SafeSet();
+  #managedResources = new SafeSet();
+
+  static {
+    deleteManagedResource = (self, rid) =>
+      SetPrototypeDelete(self.#managedResources, rid);
+  }
 
   constructor(rid, remoteAddr, localAddr) {
     this.#rid = rid;
@@ -123,7 +132,7 @@ class HttpConn {
     }
 
     const { 0: streamRid, 1: method, 2: url } = nextRequest;
-    SetPrototypeAdd(this.managedResources, streamRid);
+    SetPrototypeAdd(this.#managedResources, streamRid);
 
     /** @type {ReadableStream<Uint8Array> | undefined} */
     let body = null;
@@ -167,10 +176,18 @@ class HttpConn {
     if (!this.#closed) {
       this.#closed = true;
       core.close(this.#rid);
-      for (const rid of new SafeSetIterator(this.managedResources)) {
-        SetPrototypeDelete(this.managedResources, rid);
+      for (const rid of new SafeSetIterator(this.#managedResources)) {
+        SetPrototypeDelete(this.#managedResources, rid);
         core.close(rid);
       }
+    }
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
+    for (const rid of new SafeSetIterator(this.#managedResources)) {
+      SetPrototypeDelete(this.#managedResources, rid);
+      core.tryClose(rid);
     }
   }
 
@@ -395,7 +412,7 @@ function createRespondWith(
       abortController.abort(error);
       throw error;
     } finally {
-      if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
+      if (deleteManagedResource(httpConn, streamRid)) {
         core.close(streamRid);
       }
     }

@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, Deferred, deferred, fail } from "./test_util.ts";
+import { assertEquals, fail } from "./test_util.ts";
 
 const {
   core,
@@ -11,8 +11,10 @@ const LOREM =
   "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
 
 // Hello world, with optional close
-// deno-lint-ignore no-explicit-any
-function helloWorldStream(close?: boolean, completion?: Deferred<any>) {
+function helloWorldStream(
+  close?: boolean,
+  cancelResolve?: (value: unknown) => void,
+) {
   return new ReadableStream({
     start(controller) {
       controller.enqueue("hello, world");
@@ -21,7 +23,9 @@ function helloWorldStream(close?: boolean, completion?: Deferred<any>) {
       }
     },
     cancel(reason) {
-      completion?.resolve(reason);
+      if (cancelResolve != undefined) {
+        cancelResolve(reason);
+      }
     },
   }).pipeThrough(new TextEncoderStream());
 }
@@ -55,6 +59,29 @@ function longStream() {
             controller.close();
           }
         }, i * 100);
+      }
+    },
+  }).pipeThrough(new TextEncoderStream());
+}
+
+// Long stream with Lorem Ipsum text.
+function longAsyncStream(cancelResolve?: (value: unknown) => void) {
+  let currentTimeout: number | undefined = undefined;
+  return new ReadableStream({
+    async start(controller) {
+      for (let i = 0; i < 100; i++) {
+        await new Promise((r) => currentTimeout = setTimeout(r, 1));
+        currentTimeout = undefined;
+        controller.enqueue(LOREM);
+      }
+      controller.close();
+    },
+    cancel(reason) {
+      if (cancelResolve != undefined) {
+        cancelResolve(reason);
+      }
+      if (currentTimeout !== undefined) {
+        clearTimeout(currentTimeout);
       }
     },
   }).pipeThrough(new TextEncoderStream());
@@ -99,6 +126,18 @@ function emptyChunkStream() {
       controller.enqueue(new Uint8Array([1]));
       controller.enqueue(new Uint8Array([]));
       controller.enqueue(new Uint8Array([2]));
+      controller.close();
+    },
+  });
+}
+
+// Try to blow up any recursive reads.
+function veryLongTinyPacketStream(length: number) {
+  return new ReadableStream({
+    start(controller) {
+      for (let i = 0; i < length; i++) {
+        controller.enqueue(new Uint8Array([1]));
+      }
       controller.close();
     },
   });
@@ -151,32 +190,46 @@ Deno.test(async function readableStream() {
 
 // Close the stream after reading everything
 Deno.test(async function readableStreamClose() {
-  const cancel = deferred();
-  const rid = resourceForReadableStream(helloWorldStream(false, cancel));
+  const cancel = Promise.withResolvers();
+  const rid = resourceForReadableStream(
+    helloWorldStream(false, cancel.resolve),
+  );
   const buffer = new Uint8Array(1024);
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 12);
   core.ops.op_close(rid);
-  assertEquals(await cancel, "resource closed");
+  assertEquals(await cancel.promise, "resource closed");
 });
 
 // Close the stream without reading everything
 Deno.test(async function readableStreamClosePartialRead() {
-  const cancel = deferred();
-  const rid = resourceForReadableStream(helloWorldStream(false, cancel));
+  const cancel = Promise.withResolvers();
+  const rid = resourceForReadableStream(
+    helloWorldStream(false, cancel.resolve),
+  );
   const buffer = new Uint8Array(5);
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 5);
   core.ops.op_close(rid);
-  assertEquals(await cancel, "resource closed");
+  assertEquals(await cancel.promise, "resource closed");
 });
 
 // Close the stream without reading anything
 Deno.test(async function readableStreamCloseWithoutRead() {
-  const cancel = deferred();
-  const rid = resourceForReadableStream(helloWorldStream(false, cancel));
+  const cancel = Promise.withResolvers();
+  const rid = resourceForReadableStream(
+    helloWorldStream(false, cancel.resolve),
+  );
   core.ops.op_close(rid);
-  assertEquals(await cancel, "resource closed");
+  assertEquals(await cancel.promise, "resource closed");
+});
+
+// Close the stream without reading anything
+Deno.test(async function readableStreamCloseWithoutRead2() {
+  const cancel = Promise.withResolvers();
+  const rid = resourceForReadableStream(longAsyncStream(cancel.resolve));
+  core.ops.op_close(rid);
+  assertEquals(await cancel.promise, "resource closed");
 });
 
 Deno.test(async function readableStreamPartial() {
@@ -194,6 +247,20 @@ Deno.test(async function readableStreamLongReadAll() {
   const rid = resourceForReadableStream(longStream());
   const buffer = await core.ops.op_read_all(rid);
   assertEquals(buffer.length, LOREM.length * 4);
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamLongAsyncReadAll() {
+  const rid = resourceForReadableStream(longAsyncStream());
+  const buffer = await core.ops.op_read_all(rid);
+  assertEquals(buffer.length, LOREM.length * 100);
+  core.ops.op_close(rid);
+});
+
+Deno.test(async function readableStreamVeryLongReadAll() {
+  const rid = resourceForReadableStream(veryLongTinyPacketStream(1_000_000));
+  const buffer = await core.ops.op_read_all(rid);
+  assertEquals(buffer.length, 1_000_000);
   core.ops.op_close(rid);
 });
 
@@ -374,31 +441,38 @@ function createStreamTest(
   });
 }
 
-Deno.test(async function readableStreamWithAggressiveResourceClose() {
-  let first = true;
-  const reasonPromise = deferred();
-  const rid = resourceForReadableStream(
-    new ReadableStream({
-      pull(controller) {
-        if (first) {
-          // We queue this up and then immediately close the resource (not the reader)
-          controller.enqueue(new Uint8Array(1));
-          core.close(rid);
-          // This doesn't throw, even though the resource is closed
-          controller.enqueue(new Uint8Array(1));
-          first = false;
-        }
-      },
-      cancel(reason) {
-        reasonPromise.resolve(reason);
-      },
-    }),
-  );
-  try {
-    await core.ops.op_read(rid, new Uint8Array(1));
-    fail();
-  } catch (e) {
-    assertEquals(e.message, "operation canceled");
-  }
-  assertEquals(await reasonPromise, "resource closed");
-});
+// 1024 is the size of the internal packet buffer -- we want to make sure we fill the internal pipe fully.
+for (const packetCount of [1, 1024]) {
+  Deno.test(`readableStreamWithAggressiveResourceClose_${packetCount}`, async function () {
+    let first = true;
+    const { promise, resolve } = Promise.withResolvers();
+    const rid = resourceForReadableStream(
+      new ReadableStream({
+        pull(controller) {
+          if (first) {
+            // We queue this up and then immediately close the resource (not the reader)
+            for (let i = 0; i < packetCount; i++) {
+              controller.enqueue(new Uint8Array(1));
+            }
+            core.close(rid);
+            // This doesn't throw, even though the resource is closed
+            controller.enqueue(new Uint8Array(1));
+            first = false;
+          }
+        },
+        cancel(reason) {
+          resolve(reason);
+        },
+      }),
+    );
+    try {
+      for (let i = 0; i < packetCount; i++) {
+        await core.ops.op_read(rid, new Uint8Array(1));
+      }
+      fail();
+    } catch (e) {
+      assertEquals(e.message, "operation canceled");
+    }
+    assertEquals(await promise, "resource closed");
+  });
+}

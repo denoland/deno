@@ -2,6 +2,8 @@
 import {
   assert,
   assertEquals,
+  AssertionError,
+  assertIsError,
   assertThrows,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
@@ -149,13 +151,22 @@ Deno.test(
       Error,
       "Is a directory",
     );
-    assertThrows(
-      () => {
-        Deno.renameSync(olddir, fulldir);
-      },
-      Error,
-      "Directory not empty",
-    );
+    try {
+      assertThrows(
+        () => {
+          Deno.renameSync(olddir, fulldir);
+        },
+        Error,
+        "Directory not empty",
+      );
+    } catch (e) {
+      // rename syscall may also return EEXIST, e.g. with XFS
+      assertIsError(
+        e,
+        AssertionError,
+        `Expected error message to include "Directory not empty", but got "File exists`,
+      );
+    }
     assertThrows(
       () => {
         Deno.renameSync(olddir, file);

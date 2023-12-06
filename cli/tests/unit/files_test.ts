@@ -824,3 +824,30 @@ Deno.test(
     assertEquals(res, "hello \uFFFD");
   },
 );
+
+Deno.test(
+  { permissions: { read: true } },
+  async function fsFileExplicitResourceManagement() {
+    let file2: Deno.FsFile;
+
+    {
+      using file = await Deno.open("cli/tests/testdata/assets/hello.txt");
+      file2 = file;
+
+      const stat = file.statSync();
+      assert(stat.isFile);
+    }
+
+    assertThrows(() => file2.statSync(), Deno.errors.BadResource);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function fsFileExplicitResourceManagementManualClose() {
+    using file = await Deno.open("cli/tests/testdata/assets/hello.txt");
+    file.close();
+    assertThrows(() => file.statSync(), Deno.errors.BadResource); // definitely closed
+    // calling [Symbol.dispose] after manual close is a no-op
+  },
+);

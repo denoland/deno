@@ -28,10 +28,11 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 
-function isStringOrBuffer(val) {
+export function isStringOrBuffer(val) {
   return typeof val === "string" ||
     isArrayBufferView(val) ||
-    isAnyArrayBuffer(val);
+    isAnyArrayBuffer(val) ||
+    Buffer.isBuffer(val);
 }
 
 const { ops, encode } = globalThis.__bootstrap.core;
@@ -456,7 +457,7 @@ export function publicEncrypt(
   return ops.op_node_public_encrypt(data, buffer, padding);
 }
 
-function prepareKey(key) {
+export function prepareKey(key) {
   // TODO(@littledivy): handle these cases
   // - node KeyObject
   // - web CryptoKey
@@ -485,5 +486,6 @@ export default {
   publicEncrypt,
   Cipheriv,
   Decipheriv,
+  prepareKey,
   getCipherInfo,
 };

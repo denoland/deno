@@ -4,7 +4,6 @@
 // Copyright 2020 The Evcxr Authors. MIT license.
 
 use bytes::Bytes;
-use chrono::Utc;
 use data_encoding::HEXLOWER;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -14,6 +13,8 @@ use deno_core::serde_json::json;
 use ring::hmac;
 use std::fmt;
 use uuid::Uuid;
+
+use crate::util::time::utc_now;
 
 pub(crate) struct Connection<S> {
   pub(crate) socket: S,
@@ -122,6 +123,7 @@ pub(crate) struct JupyterMessage {
   parent_header: serde_json::Value,
   metadata: serde_json::Value,
   content: serde_json::Value,
+  buffers: Vec<Bytes>,
 }
 
 const DELIMITER: &[u8] = b"<IDS|MSG>";
@@ -146,6 +148,11 @@ impl JupyterMessage {
       parent_header: serde_json::from_slice(&raw_message.jparts[1])?,
       metadata: serde_json::from_slice(&raw_message.jparts[2])?,
       content: serde_json::from_slice(&raw_message.jparts[3])?,
+      buffers: if raw_message.jparts.len() > 4 {
+        raw_message.jparts[4..].to_vec()
+      } else {
+        vec![]
+      },
     })
   }
 
@@ -171,7 +178,7 @@ impl JupyterMessage {
     header["msg_type"] = serde_json::Value::String(msg_type.to_owned());
     header["username"] = serde_json::Value::String("kernel".to_owned());
     header["msg_id"] = serde_json::Value::String(Uuid::new_v4().to_string());
-    header["date"] = serde_json::Value::String(Utc::now().to_rfc3339());
+    header["date"] = serde_json::Value::String(utc_now().to_rfc3339());
 
     JupyterMessage {
       zmq_identities: Vec::new(),
@@ -179,6 +186,7 @@ impl JupyterMessage {
       parent_header: self.header.clone(),
       metadata: json!({}),
       content: json!({}),
+      buffers: vec![],
     }
   }
 
@@ -206,36 +214,51 @@ impl JupyterMessage {
     self
   }
 
+  pub(crate) fn with_metadata(
+    mut self,
+    metadata: serde_json::Value,
+  ) -> JupyterMessage {
+    self.metadata = metadata;
+    self
+  }
+
+  pub(crate) fn with_buffers(mut self, buffers: Vec<Bytes>) -> JupyterMessage {
+    self.buffers = buffers;
+    self
+  }
+
   pub(crate) async fn send<S: zeromq::SocketSend>(
     &self,
     connection: &mut Connection<S>,
   ) -> Result<(), AnyError> {
     // If performance is a concern, we can probably avoid the clone and to_vec calls with a bit
     // of refactoring.
+    let mut jparts: Vec<Bytes> = vec![
+      serde_json::to_string(&self.header)
+        .unwrap()
+        .as_bytes()
+        .to_vec()
+        .into(),
+      serde_json::to_string(&self.parent_header)
+        .unwrap()
+        .as_bytes()
+        .to_vec()
+        .into(),
+      serde_json::to_string(&self.metadata)
+        .unwrap()
+        .as_bytes()
+        .to_vec()
+        .into(),
+      serde_json::to_string(&self.content)
+        .unwrap()
+        .as_bytes()
+        .to_vec()
+        .into(),
+    ];
+    jparts.extend_from_slice(&self.buffers);
     let raw_message = RawMessage {
       zmq_identities: self.zmq_identities.clone(),
-      jparts: vec![
-        serde_json::to_string(&self.header)
-          .unwrap()
-          .as_bytes()
-          .to_vec()
-          .into(),
-        serde_json::to_string(&self.parent_header)
-          .unwrap()
-          .as_bytes()
-          .to_vec()
-          .into(),
-        serde_json::to_string(&self.metadata)
-          .unwrap()
-          .as_bytes()
-          .to_vec()
-          .into(),
-        serde_json::to_string(&self.content)
-          .unwrap()
-          .as_bytes()
-          .to_vec()
-          .into(),
-      ],
+      jparts,
     };
     raw_message.send(connection).await
   }

@@ -5,7 +5,6 @@ use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -115,7 +114,7 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable2(&state, "Deno.connect");
+  super::check_unstable(&state.borrow(), "Deno.connect");
   {
     let mut state_ = state.borrow_mut();
     state_
@@ -159,12 +158,13 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op]
-async fn op_net_send_unixpacket<NP>(
+#[op2(async)]
+#[number]
+pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  path: String,
-  zero_copy: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[string] path: String,
+  #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -194,15 +194,17 @@ where
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
   #[string] path: String,
+  #[string] api_name: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(state, "Deno.listen");
+  super::check_unstable(state, &api_name);
   let permissions = state.borrow_mut::<NP>();
-  permissions.check_read(address_path, "Deno.listen()")?;
-  permissions.check_write(address_path, "Deno.listen()")?;
+  let api_call_expr = format!("{}()", api_name);
+  permissions.check_read(address_path, &api_call_expr)?;
+  permissions.check_write(address_path, &api_call_expr)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;

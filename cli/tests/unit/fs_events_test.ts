@@ -107,3 +107,33 @@ Deno.test(
     assertEquals(events, []);
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsExplicitResourceManagement() {
+    let res;
+    {
+      const testDir = await makeTempDir();
+      using iter = Deno.watchFs(testDir);
+
+      res = iter[Symbol.asyncIterator]().next();
+    }
+
+    const { done } = await res;
+    assert(done);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsExplicitResourceManagementManualClose() {
+    const testDir = await makeTempDir();
+    using iter = Deno.watchFs(testDir);
+
+    const res = iter[Symbol.asyncIterator]().next();
+
+    iter.close();
+    const { done } = await res;
+    assert(done);
+  },
+);

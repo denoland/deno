@@ -19,7 +19,10 @@ import type {
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  KeyObject,
+  prepareAsymmetricKey,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
@@ -77,26 +80,13 @@ export class SignImpl extends Writable {
     privateKey: BinaryLike | SignKeyObjectInput | SignPrivateKeyInput,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    let keyData: Uint8Array;
-    let keyType: KeyType;
-    let keyFormat: KeyFormat;
-    if (typeof privateKey === "string" || isArrayBufferView(privateKey)) {
-      // if the key is BinaryLike, interpret it as a PEM encoded RSA key
-      // deno-lint-ignore no-explicit-any
-      keyData = privateKey as any;
-      keyType = "rsa";
-      keyFormat = "pem";
-    } else {
-      // TODO(kt3k): Add support for the case when privateKey is a KeyObject,
-      // CryptoKey, etc
-      notImplemented("crypto.Sign.prototype.sign with non BinaryLike input");
-    }
+    const { data, format, type } = prepareAsymmetricKey(privateKey);
     const ret = Buffer.from(ops.op_node_sign(
       this.hash.digest(),
       this.#digestType,
-      keyData!,
-      keyType,
-      keyFormat,
+      data!,
+      type,
+      format,
     ));
     return encoding ? ret.toString(encoding) : ret;
   }

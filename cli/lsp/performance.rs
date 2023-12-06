@@ -132,10 +132,7 @@ impl Performance {
       .collect()
   }
 
-  /// Marks the start of a measurement which returns a performance mark
-  /// structure, which is then passed to `.measure()` to finalize the duration
-  /// and add it to the internal buffer.
-  pub fn mark<S: AsRef<str>, V: Serialize>(
+  fn mark_inner<S: AsRef<str>, V: Serialize>(
     &self,
     name: S,
     maybe_args: Option<V>,
@@ -165,6 +162,24 @@ impl Performance {
     }
   }
 
+  /// Marks the start of a measurement which returns a performance mark
+  /// structure, which is then passed to `.measure()` to finalize the duration
+  /// and add it to the internal buffer.
+  pub fn mark<S: AsRef<str>>(&self, name: S) -> PerformanceMark {
+    self.mark_inner(name, None::<()>)
+  }
+
+  /// Marks the start of a measurement which returns a performance mark
+  /// structure, which is then passed to `.measure()` to finalize the duration
+  /// and add it to the internal buffer.
+  pub fn mark_with_args<S: AsRef<str>, V: Serialize>(
+    &self,
+    name: S,
+    args: V,
+  ) -> PerformanceMark {
+    self.mark_inner(name, Some(args))
+  }
+
   /// A function which accepts a previously created performance mark which will
   /// be used to finalize the duration of the span being measured, and add the
   /// measurement to the internal buffer.
@@ -176,7 +191,7 @@ impl Performance {
         "type": "measure",
         "name": measure.name,
         "count": measure.count,
-        "duration": measure.duration.as_millis() as u32,
+        "duration": measure.duration.as_micros() as f64 / 1000.0,
       })
     );
     let duration = measure.duration;
@@ -201,9 +216,9 @@ mod tests {
   #[test]
   fn test_average() {
     let performance = Performance::default();
-    let mark1 = performance.mark("a", None::<()>);
-    let mark2 = performance.mark("a", None::<()>);
-    let mark3 = performance.mark("b", None::<()>);
+    let mark1 = performance.mark("a");
+    let mark2 = performance.mark("a");
+    let mark3 = performance.mark("b");
     performance.measure(mark2);
     performance.measure(mark1);
     performance.measure(mark3);
@@ -217,8 +232,8 @@ mod tests {
   #[test]
   fn test_averages() {
     let performance = Performance::default();
-    let mark1 = performance.mark("a", None::<()>);
-    let mark2 = performance.mark("a", None::<()>);
+    let mark1 = performance.mark("a");
+    let mark2 = performance.mark("a");
     performance.measure(mark2);
     performance.measure(mark1);
     let averages = performance.averages();

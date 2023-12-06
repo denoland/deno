@@ -13,12 +13,15 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafePromiseAll,
-  SymbolFor,
   Symbol,
 } = primordials;
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
-import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
+import {
+  assert,
+  pathFromURL,
+  SymbolAsyncDispose,
+} from "ext:deno_web/00_infra.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   readableStreamCollectIntoUint8Array,
@@ -144,7 +147,6 @@ function run({
 }
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 function spawnChildInner(opFn, command, apiName, {
   args = [],
@@ -199,9 +201,8 @@ function collectOutput(readableStream) {
 
 class ChildProcess {
   #rid;
-  #waitPromiseId;
+  #waitPromise;
   #waitComplete = false;
-  #unrefed = false;
 
   #pid;
   get pid() {
@@ -216,7 +217,6 @@ class ChildProcess {
     return this.#stdin;
   }
 
-  #stdoutRid;
   #stdout = null;
   get stdout() {
     if (this.#stdout == null) {
@@ -225,7 +225,6 @@ class ChildProcess {
     return this.#stdout;
   }
 
-  #stderrRid;
   #stderr = null;
   get stderr() {
     if (this.#stderr == null) {
@@ -254,12 +253,10 @@ class ChildProcess {
     }
 
     if (stdoutRid !== null) {
-      this.#stdoutRid = stdoutRid;
       this.#stdout = readableStreamForRidUnrefable(stdoutRid);
     }
 
     if (stderrRid !== null) {
-      this.#stderrRid = stderrRid;
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
@@ -267,7 +264,7 @@ class ChildProcess {
     signal?.[abortSignal.add](onAbort);
 
     const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
-    this.#waitPromiseId = waitPromise[promiseIdSymbol];
+    this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
       signal?.[abortSignal.remove](onAbort);
       this.#waitComplete = true;
@@ -324,16 +321,23 @@ class ChildProcess {
     ops.op_spawn_kill(this.#rid, signo);
   }
 
+  async [SymbolAsyncDispose]() {
+    try {
+      ops.op_spawn_kill(this.#rid, "SIGTERM");
+    } catch {
+      // ignore errors from killing the process (such as ESRCH or BadResource)
+    }
+    await this.#status;
+  }
+
   ref() {
-    this.#unrefed = false;
-    core.refOp(this.#waitPromiseId);
+    core.refOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
   }
 
   unref() {
-    this.#unrefed = true;
-    core.unrefOp(this.#waitPromiseId);
+    core.unrefOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
   }

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::Engine;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::JsBuffer;
@@ -7,11 +8,11 @@ use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use ring::signature::EcdsaKeyPair;
-use rsa::pkcs1::UIntRef;
+use rsa::pkcs1::UintRef;
+use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decode;
-use spki::der::Encode;
 
 use crate::key::CryptoNamedCurve;
 use crate::shared::*;
@@ -106,14 +107,21 @@ pub fn op_crypto_import_key(
   }
 }
 
-const URL_SAFE_FORGIVING: base64::Config =
-  base64::URL_SAFE_NO_PAD.decode_allow_trailing_bits(true);
+const BASE64_URL_SAFE_FORGIVING:
+  base64::engine::general_purpose::GeneralPurpose =
+  base64::engine::general_purpose::GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    base64::engine::general_purpose::GeneralPurposeConfig::new()
+      .with_decode_allow_trailing_bits(true)
+      .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+  );
 
 macro_rules! jwt_b64_int_or_err {
   ($name:ident, $b64:expr, $err:expr) => {
-    let bytes = base64::decode_config($b64, URL_SAFE_FORGIVING)
+    let bytes = BASE64_URL_SAFE_FORGIVING
+      .decode($b64)
       .map_err(|_| data_error($err))?;
-    let $name = UIntRef::new(&bytes).map_err(|_| data_error($err))?;
+    let $name = UintRef::new(&bytes).map_err(|_| data_error($err))?;
   };
 }
 
@@ -130,9 +138,11 @@ fn import_key_rsa_jwk(
         public_exponent,
       };
 
-      let data = public_key
-        .to_vec()
+      let mut data = Vec::new();
+      public_key
+        .encode_to_vec(&mut data)
         .map_err(|_| data_error("invalid rsa public key"))?;
+
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -174,8 +184,9 @@ fn import_key_rsa_jwk(
         other_prime_infos: None,
       };
 
-      let data = private_key
-        .to_vec()
+      let mut data = Vec::new();
+      private_key
+        .encode_to_vec(&mut data)
         .map_err(|_| data_error("invalid rsa private key"))?;
 
       let public_exponent =
@@ -198,7 +209,7 @@ fn import_key_rsassa(
   match key_data {
     KeyData::Spki(data) => {
       // 2-3.
-      let pk_info = spki::SubjectPublicKeyInfo::from_der(&data)
+      let pk_info = spki::SubjectPublicKeyInfoRef::try_from(&*data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -210,21 +221,24 @@ fn import_key_rsassa(
       }
 
       // 8-9.
-      let public_key =
-        rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)
-          .map_err(|e| data_error(e.to_string()))?;
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )
+      .map_err(|e| data_error(e.to_string()))?;
 
       let bytes_consumed = public_key
         .encoded_len()
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(
+          pk_info.subject_public_key.raw_bytes().len() as u16,
+        )
       {
         return Err(data_error("public key is invalid (too long)"));
       }
 
-      let data = pk_info.subject_public_key.to_vec().into();
+      let data = pk_info.subject_public_key.raw_bytes().to_vec().into();
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -258,7 +272,7 @@ fn import_key_rsassa(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.private_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
       {
         return Err(data_error("private key is invalid (too long)"));
       }
@@ -287,7 +301,7 @@ fn import_key_rsapss(
   match key_data {
     KeyData::Spki(data) => {
       // 2-3.
-      let pk_info = spki::SubjectPublicKeyInfo::from_der(&data)
+      let pk_info = spki::SubjectPublicKeyInfoRef::try_from(&*data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -299,21 +313,24 @@ fn import_key_rsapss(
       }
 
       // 8-9.
-      let public_key =
-        rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)
-          .map_err(|e| data_error(e.to_string()))?;
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )
+      .map_err(|e| data_error(e.to_string()))?;
 
       let bytes_consumed = public_key
         .encoded_len()
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(
+          pk_info.subject_public_key.raw_bytes().len() as u16,
+        )
       {
         return Err(data_error("public key is invalid (too long)"));
       }
 
-      let data = pk_info.subject_public_key.to_vec().into();
+      let data = pk_info.subject_public_key.raw_bytes().to_vec().into();
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -347,7 +364,7 @@ fn import_key_rsapss(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.private_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
       {
         return Err(data_error("private key is invalid (too long)"));
       }
@@ -376,7 +393,7 @@ fn import_key_rsaoaep(
   match key_data {
     KeyData::Spki(data) => {
       // 2-3.
-      let pk_info = spki::SubjectPublicKeyInfo::from_der(&data)
+      let pk_info = spki::SubjectPublicKeyInfoRef::try_from(&*data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -388,21 +405,24 @@ fn import_key_rsaoaep(
       }
 
       // 8-9.
-      let public_key =
-        rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)
-          .map_err(|e| data_error(e.to_string()))?;
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )
+      .map_err(|e| data_error(e.to_string()))?;
 
       let bytes_consumed = public_key
         .encoded_len()
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(
+          pk_info.subject_public_key.raw_bytes().len() as u16,
+        )
       {
         return Err(data_error("public key is invalid (too long)"));
       }
 
-      let data = pk_info.subject_public_key.to_vec().into();
+      let data = pk_info.subject_public_key.raw_bytes().to_vec().into();
       let public_exponent =
         public_key.public_exponent.as_bytes().to_vec().into();
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
@@ -436,7 +456,7 @@ fn import_key_rsaoaep(
         .map_err(|e| data_error(e.to_string()))?;
 
       if bytes_consumed
-        != spki::der::Length::new(pk_info.private_key.len() as u16)
+        != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
       {
         return Err(data_error("private key is invalid (too long)"));
       }
@@ -524,15 +544,17 @@ fn import_key_ec_jwk(
       let pkcs8_der = match named_curve {
         EcNamedCurve::P256 => {
           let d = decode_b64url_to_field_bytes::<p256::NistP256>(&d)?;
-          let pk = p256::SecretKey::from_be_bytes(&d)?;
+          let pk = p256::SecretKey::from_bytes(&d)?;
 
-          pk.to_pkcs8_der()?
+          pk.to_pkcs8_der()
+            .map_err(|_| data_error("invalid JWK private key"))?
         }
         EcNamedCurve::P384 => {
           let d = decode_b64url_to_field_bytes::<p384::NistP384>(&d)?;
-          let pk = p384::SecretKey::from_be_bytes(&d)?;
+          let pk = p384::SecretKey::from_bytes(&d)?;
 
-          pk.to_pkcs8_der()?
+          pk.to_pkcs8_der()
+            .map_err(|_| data_error("invalid JWK private key"))?
         }
         EcNamedCurve::P521 => {
           return Err(data_error("Unsupported named curve"))
@@ -548,10 +570,12 @@ fn import_key_ec_jwk(
         }
       };
 
+      let rng = ring::rand::SystemRandom::new();
       let _key_pair = EcdsaKeyPair::from_private_key_and_public_key(
         key_alg,
         private_d.as_bytes(),
         point_bytes.as_ref(),
+        &rng,
       );
 
       Ok(ImportKeyResult::Ec {
@@ -572,7 +596,7 @@ impl<'a> TryFrom<spki::der::asn1::AnyRef<'a>> for ECParametersSpki {
   fn try_from(
     any: spki::der::asn1::AnyRef<'a>,
   ) -> spki::der::Result<ECParametersSpki> {
-    let x = any.oid()?;
+    let x = any.try_into()?;
 
     Ok(Self { named_curve_alg: x })
   }
@@ -621,7 +645,7 @@ fn import_key_ec(
           pk.algorithm
             .parameters
             .ok_or_else(|| data_error("malformed parameters"))?
-            .oid()
+            .try_into()
             .unwrap()
         }
         EcNamedCurve::P521 => {
@@ -650,8 +674,9 @@ fn import_key_ec(
           }
         };
 
+        let rng = ring::rand::SystemRandom::new();
         // deserialize pkcs8 using ring crate, to VALIDATE public key
-        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data)?;
+        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data, &rng)?;
 
         // 11.
         if named_curve != pk_named_curve {
@@ -667,7 +692,7 @@ fn import_key_ec(
     }
     KeyData::Spki(data) => {
       // 2-3.
-      let pk_info = spki::SubjectPublicKeyInfo::from_der(&data)
+      let pk_info = spki::SubjectPublicKeyInfoRef::try_from(&*data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4.
@@ -704,7 +729,7 @@ fn import_key_ec(
       if let Some(pk_named_curve) = pk_named_curve {
         let pk = pk_info.subject_public_key;
 
-        encoded_key = pk.to_vec();
+        encoded_key = pk.raw_bytes().to_vec();
 
         let bytes_consumed = match named_curve {
           EcNamedCurve::P256 => {
@@ -733,7 +758,7 @@ fn import_key_ec(
           _ => return Err(not_supported_error("Unsupported named curve")),
         };
 
-        if bytes_consumed != pk_info.subject_public_key.len() {
+        if bytes_consumed != pk_info.subject_public_key.raw_bytes().len() {
           return Err(data_error("public key is invalid (too long)"));
         }
 
@@ -759,7 +784,8 @@ fn import_key_ec(
 fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
+      let data = BASE64_URL_SAFE_FORGIVING
+        .decode(k)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RustRawKeyData::Secret(data.into()),
@@ -772,7 +798,8 @@ fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
 fn import_key_hmac(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
+      let data = BASE64_URL_SAFE_FORGIVING
+        .decode(k)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RustRawKeyData::Secret(data.into()),

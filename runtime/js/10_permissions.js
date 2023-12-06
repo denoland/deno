@@ -4,6 +4,7 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
+const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
@@ -111,10 +112,10 @@ class PermissionStatus extends EventTarget {
     return dispatched;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     const object = { state: this.state, onchange: this.onchange };
     if (this.partial) object.partial = this.partial;
-    return `${this.constructor.name} ${inspect(object)}`;
+    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
   }
 }
 
@@ -290,5 +291,7 @@ function serializePermissions(permissions) {
   }
   return permissions;
 }
+
+internals.serializePermissions = serializePermissions;
 
 export { Permissions, permissions, PermissionStatus, serializePermissions };

@@ -5,7 +5,6 @@ use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -250,9 +249,9 @@ fn op_system_memory_info(
   Ok(sys_info::mem_info())
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(not(windows))]
-#[op]
+#[op2]
+#[smi]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -264,9 +263,9 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   }
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(windows)]
-#[op]
+#[op2]
+#[smi]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -274,9 +273,9 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   Ok(None)
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(not(windows))]
-#[op]
+#[op2]
+#[smi]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -288,9 +287,9 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   }
 }
 
-// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(windows)]
-#[op]
+#[op2]
+#[smi]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -476,7 +475,8 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   Ok(sys_info::os_uptime())
 }
 
-#[op]
+#[op2(fast)]
+#[number]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   os_uptime(state)
 }

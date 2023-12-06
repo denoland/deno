@@ -104,7 +104,7 @@ export class Agent extends HttpAgent {
   }
 }
 
-const globalAgent = new Agent({
+export const globalAgent = new Agent({
   keepAlive: true,
   scheduling: "lifo",
   timeout: 5000,

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.110.0"
+version = "0.119.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,6 +21,7 @@ deno_tls.workspace = true
 enum-as-inner = "=0.5.1"
 log.workspace = true
 pin-project.workspace = true
+rustls-tokio-stream.workspace = true
 serde.workspace = true
 socket2.workspace = true
 tokio.workspace = true

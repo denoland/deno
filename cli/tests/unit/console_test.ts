@@ -500,6 +500,7 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   [isArray]: [Function: isArray] { [length]: 1, [name]: "isArray" },
   [from]: [Function: from] { [length]: 1, [name]: "from" },
   [of]: [Function: of] { [length]: 0, [name]: "of" },
+  [fromAsync]: [Function: fromAsync] { [length]: 1, [name]: "fromAsync" },
   [Symbol(Symbol.species)]: [Getter]
 }`,
   );
@@ -1049,6 +1050,18 @@ Deno.test(function consoleTestWithCustomInspectorUsingInspectFunc() {
   }
 
   assertEquals(stringify(new A()), "b { c: 1 }");
+});
+
+Deno.test(function consoleTestWithConstructorError() {
+  const obj = new Proxy({}, {
+    getOwnPropertyDescriptor(_target, name) {
+      if (name == "constructor") {
+        throw "yikes";
+      }
+      return undefined;
+    },
+  });
+  assertEquals(Deno.inspect(obj), "{}");
 });
 
 Deno.test(function consoleTestWithCustomInspectorError() {

@@ -49,7 +49,26 @@ where
     permissions.check_sys("userInfo", "node:os.userInfo()")?;
   }
 
-  Ok(whoami::username())
+  Ok(deno_whoami::username())
+}
+
+#[op2(fast)]
+pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("geteuid", "node:os.geteuid()")?;
+  }
+
+  #[cfg(windows)]
+  let euid = 0;
+  #[cfg(unix)]
+  // SAFETY: Call to libc geteuid.
+  let euid = unsafe { libc::geteuid() };
+
+  Ok(euid)
 }
 
 #[cfg(unix)]

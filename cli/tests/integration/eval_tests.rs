@@ -8,7 +8,7 @@ fn eval_p() {
     .arg("eval")
     .arg("-p")
     .arg("1+2")
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -28,7 +28,7 @@ fn eval_randomness() {
       .arg("eval")
       .arg("-p")
       .arg("Math.random()")
-      .stdout(std::process::Stdio::piped())
+      .stdout_piped()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -76,4 +76,17 @@ itest!(check_local_by_default2 {
   args: "eval --quiet import('./eval/check_local_by_default2.ts').then(console.log);",
   output: "eval/check_local_by_default2.out",
   http_server: true,
+});
+
+itest!(env_file {
+  args: "eval --env=env console.log(Deno.env.get(\"ANOTHER_FOO\"))",
+  output_str: Some("ANOTHER_BAR\n"),
+});
+
+itest!(env_file_missing {
+  args: "eval --env=missing console.log(Deno.env.get(\"ANOTHER_FOO\"))",
+  output_str: Some(
+    "error: Unable to load 'missing' environment variable file\n"
+  ),
+  exit_code: 1,
 });

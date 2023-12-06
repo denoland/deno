@@ -12,6 +12,7 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFill,
+  ArrayPrototypeConcat,
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeForEach,
@@ -41,6 +42,7 @@ const {
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
+  NumberIsNaN,
   MapPrototype,
   MapPrototypeDelete,
   MapPrototypeEntries,
@@ -134,17 +136,32 @@ const {
   Uint8Array,
   WeakMapPrototypeHas,
   WeakSetPrototypeHas,
-  isNaN,
 } = primordials;
 
-let noColor = false;
+// supposed to be in node/internal_binding/util.ts
+export function previewEntries(iter, isKeyValue) {
+  if (isKeyValue) {
+    // deno-lint-ignore prefer-primordials
+    const arr = [...iter];
+    if (ArrayIsArray(arr[0]) && arr[0].length === 2) {
+      // deno-lint-ignore prefer-primordials
+      return [ArrayPrototypeConcat([], ...arr), true];
+    }
+    return [arr, false];
+  } else {
+    // deno-lint-ignore prefer-primordials
+    return [...iter];
+  }
+}
 
-function setNoColor(value) {
-  noColor = value;
+let noColor = () => false;
+
+function setNoColorFn(fn) {
+  noColor = fn;
 }
 
 function getNoColor() {
-  return noColor;
+  return noColor();
 }
 
 function assert(cond, msg = "Assertion failed.") {
@@ -950,7 +967,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
         const date = proxyDetails ? proxyDetails[0] : value;
-        if (isNaN(DatePrototypeGetTime(date))) {
+        if (NumberIsNaN(DatePrototypeGetTime(date))) {
           return ctx.stylize("Invalid Date", "date");
         } else {
           base = DatePrototypeToISOString(date);
@@ -1202,7 +1219,12 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   let firstProto;
   const tmp = obj;
   while (obj || isUndetectableObject(obj)) {
-    const descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
+    let descriptor;
+    try {
+      descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
+    } catch {
+      /* this could fail */
+    }
     if (
       descriptor !== undefined &&
       typeof descriptor.value === "function" &&
@@ -1488,9 +1510,7 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
-  const { 0: entries, 1: isKeyValue } = value;
+  const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
   if (isKeyValue) {
     // Mark entry iterators as such.
     braces[0] = StringPrototypeReplace(
@@ -1699,16 +1719,12 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const entries = previewEntries(value);
-  const entries = value;
+  const entries = previewEntries(value);
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
-  // TODO(wafuwafu13): Implement
-  // const entries = previewEntries(value);
-  const entries = value;
+  const entries = previewEntries(value);
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
@@ -2737,34 +2753,34 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
-  if (MapPrototypeHas(colorKeywords, colorString)) {
-    colorString = MapPrototypeGet(colorKeywords, colorString);
+  if (colorKeywords.has(colorString)) {
+    colorString = colorKeywords.get(colorString);
   }
   // deno-fmt-ignore
   const hashMatch = StringPrototypeMatch(colorString, HASH_PATTERN);
   if (hashMatch != null) {
     return [
-      Number(`0x${hashMatch[1]}`),
-      Number(`0x${hashMatch[2]}`),
-      Number(`0x${hashMatch[3]}`),
+      NumberParseInt(hashMatch[1], 16),
+      NumberParseInt(hashMatch[2], 16),
+      NumberParseInt(hashMatch[3], 16),
     ];
   }
   // deno-fmt-ignore
   const smallHashMatch = StringPrototypeMatch(colorString, SMALL_HASH_PATTERN);
   if (smallHashMatch != null) {
     return [
-      Number(`0x${smallHashMatch[1]}${smallHashMatch[1]}`),
-      Number(`0x${smallHashMatch[2]}${smallHashMatch[2]}`),
-      Number(`0x${smallHashMatch[3]}${smallHashMatch[3]}`),
+      NumberParseInt(`${smallHashMatch[1]}${smallHashMatch[1]}`, 16),
+      NumberParseInt(`${smallHashMatch[2]}${smallHashMatch[2]}`, 16),
+      NumberParseInt(`${smallHashMatch[3]}${smallHashMatch[3]}`, 16),
     ];
   }
   // deno-fmt-ignore
   const rgbMatch = StringPrototypeMatch(colorString, RGB_PATTERN);
   if (rgbMatch != null) {
     return [
-      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[1])))),
-      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[2])))),
-      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[3])))),
+      MathRound(MathMax(0, MathMin(255, rgbMatch[1]))),
+      MathRound(MathMax(0, MathMin(255, rgbMatch[2]))),
+      MathRound(MathMax(0, MathMin(255, rgbMatch[3]))),
     ];
   }
   // deno-fmt-ignore
@@ -2775,8 +2791,8 @@ function parseCssColor(colorString) {
     if (h < 0) {
       h += 360;
     }
-    const s = MathMax(0, MathMin(100, Number(hslMatch[2]))) / 100;
-    const l = MathMax(0, MathMin(100, Number(hslMatch[3]))) / 100;
+    const s = MathMax(0, MathMin(100, hslMatch[2])) / 100;
+    const l = MathMax(0, MathMin(100, hslMatch[3])) / 100;
     const c = (1 - MathAbs(2 * l - 1)) * s;
     const x = c * (1 - MathAbs((h / 60) % 2 - 1));
     const m = l - c / 2;
@@ -3641,7 +3657,7 @@ export {
   inspect,
   inspectArgs,
   quoteString,
-  setNoColor,
+  setNoColorFn,
   styles,
   wrapConsole,
 };

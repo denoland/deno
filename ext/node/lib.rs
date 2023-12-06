@@ -14,13 +14,12 @@ use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
-use deno_npm::resolution::PackageReqNotFoundError;
-use deno_npm::NpmPackageId;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use once_cell::sync::Lazy;
+
+extern crate libz_sys as zlib;
 
 pub mod analyze;
 pub mod errors;
@@ -36,6 +35,7 @@ pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+pub use resolution::parse_npm_pkg_name;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
@@ -50,7 +50,15 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+  #[inline(always)]
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+    self.check_read_with_api_name(path, None)
+  }
+  fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
 }
 
@@ -64,7 +72,11 @@ impl NodePermissions for AllowAllNodePermissions {
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     Ok(())
   }
   fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
@@ -76,6 +88,16 @@ impl NodePermissions for AllowAllNodePermissions {
 pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
 
 pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
+  /// Gets a string containing the serialized npm state of the process.
+  ///
+  /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
+  /// variable when doing a `child_process.fork`. The implementor can then check this environment
+  /// variable on startup to repopulate the internal npm state.
+  fn get_npm_process_state(&self) -> String {
+    // This method is only used in the CLI.
+    String::new()
+  }
+
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -84,26 +106,18 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
-  /// Resolves the npm package folder path from the specified path.
-  fn resolve_package_folder_from_path(
-    &self,
-    path: &Path,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
-  /// Resolves an npm package folder path from a Deno module.
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &PackageNv,
-  ) -> Result<PathBuf, AnyError>;
-
-  fn resolve_pkg_id_from_pkg_req(
-    &self,
-    req: &PackageReq,
-  ) -> Result<NpmPackageId, PackageReqNotFoundError>;
-
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
-  fn in_npm_package_at_path(&self, path: &Path) -> bool {
+  fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
+    let specifier =
+      match ModuleSpecifier::from_directory_path(path.to_path_buf().clean()) {
+        Ok(p) => p,
+        Err(_) => return false,
+      };
+    self.in_npm_package(&specifier)
+  }
+
+  fn in_npm_package_at_file_path(&self, path: &Path) -> bool {
     let specifier =
       match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
@@ -146,6 +160,13 @@ fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
   };
 
   promise.state() == v8::PromiseState::Rejected
+}
+
+#[op2]
+#[string]
+fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
+  let npm_resolver = state.borrow_mut::<NpmResolverRc>();
+  Ok(npm_resolver.get_npm_process_state())
 }
 
 deno_core::extension!(deno_node,
@@ -218,6 +239,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::fs::op_node_fs_exists_sync<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -259,9 +281,11 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
+    ops::os::op_geteuid<P>,
     op_node_build_os,
     op_is_any_arraybuffer,
     op_node_is_promise_rejected,
+    op_npm_process_state,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
@@ -284,6 +308,8 @@ deno_core::extension!(deno_node,
     ops::require::op_require_read_package_scope<P>,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
+    ops::util::op_node_guess_handle_type,
+    ops::crypto::op_node_create_private_key,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -388,7 +414,7 @@ deno_core::extension!(deno_node,
     "internal/constants.ts",
     "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
-    "internal/crypto/_randomFill.ts",
+    "internal/crypto/_randomFill.mjs",
     "internal/crypto/_randomInt.ts",
     "internal/crypto/certificate.ts",
     "internal/crypto/cipher.ts",
@@ -423,6 +449,7 @@ deno_core::extension!(deno_node,
     "internal/options.ts",
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",
+    "internal/process/report.ts",
     "internal/querystring.ts",
     "internal/readline/callbacks.mjs",
     "internal/readline/emitKeypressEvents.mjs",
@@ -450,6 +477,8 @@ deno_core::extension!(deno_node,
     "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
     "internal/util/inspect.mjs",
+    "internal/util/parse_args/parse_args.js",
+    "internal/util/parse_args/utils.js",
     "internal/util/types.ts",
     "internal/validators.mjs",
     "path/_constants.ts",
@@ -504,7 +533,7 @@ deno_core::extension!(deno_node,
     "timers.ts" with_specifier "node:timers",
     "timers/promises.ts" with_specifier "node:timers/promises",
     "tls.ts" with_specifier "node:tls",
-    "tty.ts" with_specifier "node:tty",
+    "tty.js" with_specifier "node:tty",
     "url.ts" with_specifier "node:url",
     "util.ts" with_specifier "node:util",
     "util/types.ts" with_specifier "node:util/types",

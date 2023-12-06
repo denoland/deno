@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   assertRejects,
-  deferred,
+  assertThrows,
   delay,
   fail,
   unimplemented,
@@ -524,7 +524,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchInitBlobBody() {
-  const data = "const a = 1";
+  const data = "const a = 1 🦕";
   const blob = new Blob([data], {
     type: "text/javascript",
   });
@@ -556,7 +556,11 @@ Deno.test(
   async function fetchInitFormDataBlobFilenameBody() {
     const form = new FormData();
     form.append("field", "value");
-    form.append("file", new Blob([new TextEncoder().encode("deno")]));
+    form.append(
+      "file",
+      new Blob([new TextEncoder().encode("deno")]),
+      "file name",
+    );
     const response = await fetch("http://localhost:4545/echo_server", {
       method: "POST",
       body: form,
@@ -565,7 +569,28 @@ Deno.test(
     assertEquals(form.get("field"), resultForm.get("field"));
     const file = resultForm.get("file");
     assert(file instanceof File);
-    assertEquals(file.name, "blob");
+    assertEquals(file.name, "file name");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchInitFormDataFileFilenameBody() {
+    const form = new FormData();
+    form.append("field", "value");
+    form.append(
+      "file",
+      new File([new Blob([new TextEncoder().encode("deno")])], "file name"),
+    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    const file = resultForm.get("file");
+    assert(file instanceof File);
+    assertEquals(file.name, "file name");
   },
 );
 
@@ -1194,10 +1219,8 @@ Deno.test(
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `transfer-encoding: chunked\r\n\r\n`,
-      "6\r\n",
-      "hello \r\n",
-      "5\r\n",
-      "world\r\n",
+      "B\r\n",
+      "hello world\r\n",
       "0\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
@@ -1260,13 +1283,19 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchNoServerReadableStreamBody() {
-    const done = deferred();
+    const completed = Promise.withResolvers<void>();
+    const failed = Promise.withResolvers<void>();
     const body = new ReadableStream({
       start(controller) {
         controller.enqueue(new Uint8Array([1]));
-        setTimeout(() => {
-          controller.enqueue(new Uint8Array([2]));
-          done.resolve();
+        setTimeout(async () => {
+          // This is technically a race. If the fetch has failed by this point, the enqueue will
+          // throw. If not, it will succeed. Windows appears to take a while to time out the fetch,
+          // so we will just wait for that here before we attempt to enqueue so it's consistent
+          // across platforms.
+          await failed.promise;
+          assertThrows(() => controller.enqueue(new Uint8Array([2])));
+          completed.resolve();
         }, 1000);
       },
     });
@@ -1274,7 +1303,8 @@ Deno.test(
     await assertRejects(async () => {
       await fetch(nonExistentHostname, { body, method: "POST" });
     }, TypeError);
-    await done;
+    failed.resolve();
+    await completed.promise;
   },
 );
 
@@ -1588,6 +1618,33 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function createHttpClientExplicitResourceManagement() {
+    using client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/assets/fixture.json", {
+      client,
+    });
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function createHttpClientExplicitResourceManagementDoubleClose() {
+    using client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/assets/fixture.json", {
+      client,
+    });
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    // Close the client even though we declared it with `using` to confirm that
+    // the cleanup done as per `Symbol.dispose` will not throw any errors.
+    client.close();
+  },
+);
+
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
@@ -1752,8 +1809,7 @@ Deno.test(
     // if transfer-encoding is sent, content-length is ignored
     // even if it has an invalid value (content-length > totalLength)
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
-    const response = await fetch(`http://${addr}/`, { client });
+    const response = await fetch(`http://${addr}/`);
 
     const res = await response.arrayBuffer();
     const buf = new TextEncoder().encode(data);
@@ -1761,7 +1817,6 @@ Deno.test(
     assertEquals(new Uint8Array(res), buf);
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1783,17 +1838,15 @@ Deno.test(
 
     // It should fail if multiple content-length headers with different values are sent
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
     await assertRejects(
       async () => {
-        await fetch(`http://${addr}/`, { client });
+        await fetch(`http://${addr}/`);
       },
       TypeError,
       "invalid content-length parsed",
     );
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1811,8 +1864,7 @@ Deno.test(
     );
 
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
-    const response = await fetch(`http://${addr}/`, { client });
+    const response = await fetch(`http://${addr}/`);
 
     // If content-length < totalLength, a maximum of content-length bytes
     // should be returned.
@@ -1822,7 +1874,6 @@ Deno.test(
     assertEquals(new Uint8Array(res), buf.subarray(contentLength));
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1840,8 +1891,7 @@ Deno.test(
     );
 
     const listener = invalidServer(addr, body);
-    const client = Deno.createHttpClient({});
-    const response = await fetch(`http://${addr}/`, { client });
+    const response = await fetch(`http://${addr}/`);
     // If content-length > totalLength, a maximum of content-length bytes
     // should be returned.
     await assertRejects(
@@ -1853,7 +1903,6 @@ Deno.test(
     );
 
     listener.close();
-    client.close();
   },
 );
 
@@ -1862,8 +1911,9 @@ Deno.test(
   async function fetchBlobUrl(): Promise<void> {
     const blob = new Blob(["ok"], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
+    assert(url.startsWith("blob:"), `URL was ${url}`);
     const res = await fetch(url);
-    assert(res.url.startsWith("blob:http://js-unit-tests/"));
+    assertEquals(res.url, url);
     assertEquals(res.status, 200);
     assertEquals(res.headers.get("content-length"), "2");
     assertEquals(res.headers.get("content-type"), "text/plain");
@@ -1943,22 +1993,22 @@ Deno.test(
       },
     });
 
-    const client = Deno.createHttpClient({});
     const err = await assertRejects(() =>
       fetch(`http://localhost:${listenPort}/`, {
         body: stream,
         method: "POST",
-        client,
       })
     );
 
-    assert(err instanceof TypeError);
-    assert(err.cause);
-    assert(err.cause instanceof Error);
+    assert(err instanceof TypeError, `err was not a TypeError ${err}`);
+    assert(err.cause, `err.cause was null ${err}`);
+    assert(
+      err.cause instanceof Error,
+      `err.cause was not an Error ${err.cause}`,
+    );
     assertEquals(err.cause.message, "foo");
 
     await server;
-    client.close();
   },
 );
 
@@ -1980,7 +2030,12 @@ Deno.test(
           method: "POST",
           signal: controller.signal,
         });
-        controller.abort();
+        try {
+          controller.abort();
+        } catch (e) {
+          console.log(e);
+          fail("abort should not throw");
+        }
         await promise;
       },
       DOMException,

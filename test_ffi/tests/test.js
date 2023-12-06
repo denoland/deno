@@ -10,7 +10,7 @@ import {
   assertInstanceOf,
   assertEquals,
   assertFalse,
-} from "../../test_util/std/testing/asserts.ts";
+} from "../../test_util/std/assert/mod.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
@@ -327,6 +327,8 @@ const into2 = new Uint8Array(3);
 const into2ptr = Deno.UnsafePointer.of(into2);
 const into2ptrView = new Deno.UnsafePointerView(into2ptr);
 const into3 = new Uint8Array(3);
+const into4 = new Uint16Array(3);
+ptrView.copyInto(into4);
 ptrView.copyInto(into);
 console.log([...into]);
 ptrView.copyInto(into2, 3);
@@ -341,13 +343,13 @@ const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
 console.log(stringPtrview.getCString(11));
-console.log(dylib.symbols.is_null_ptr(ptr0));
-console.log(dylib.symbols.is_null_ptr(null));
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
+console.log("false", dylib.symbols.is_null_ptr(ptr0));
+console.log("true", dylib.symbols.is_null_ptr(null));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
 const emptyBuffer = new Uint8Array(0);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
+console.log("true", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
 const emptySlice = into.subarray(6);
-console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
+console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
 
 const { is_null_buf } = symbols;
 function isNullBuffer(buffer) { return is_null_buf(buffer); };
@@ -374,11 +376,12 @@ assertEquals(isNullBuffer(new Uint8Array()), false, "isNullBuffer(new Uint8Array
 
 // Externally backed ArrayBuffer has a non-null data pointer, even though its length is zero.
 const externalZeroBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(ptr0, 0));
-// However: V8 Fast calls get null pointers for zero-sized buffers.
-assertEquals(isNullBuffer(externalZeroBuffer), true, "isNullBuffer(externalZeroBuffer) !== true");
-// Also: V8's `Local<ArrayBuffer>->Data()` method returns null pointers for zero-sized buffers.
-// Using `Local<ArrayBuffer>->GetBackingStore()->Data()` would give the original pointer.
-assertEquals(isNullBufferDeopt(externalZeroBuffer), true, "isNullBufferDeopt(externalZeroBuffer) !== true");
+// V8 Fast calls used to get null pointers for all zero-sized buffers no matter their external backing.
+assertEquals(isNullBuffer(externalZeroBuffer), false, "isNullBuffer(externalZeroBuffer) !== false");
+// V8's `Local<ArrayBuffer>->Data()` method also used to similarly return null pointers for all
+// zero-sized buffers which would not match what `Local<ArrayBuffer>->GetBackingStore()->Data()` 
+// API returned. These issues have been fixed in https://bugs.chromium.org/p/v8/issues/detail?id=13488.
+assertEquals(isNullBufferDeopt(externalZeroBuffer), false, "isNullBufferDeopt(externalZeroBuffer) !== false");
 
 // The same pointer with a non-zero byte length for the buffer will return non-null pointers in
 // both Fast call and V8 API calls.
@@ -386,10 +389,9 @@ const externalOneBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(p
 assertEquals(isNullBuffer(externalOneBuffer), false, "isNullBuffer(externalOneBuffer) !== false");
 assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(externalOneBuffer) !== false");
 
-// Due to ops macro using `Local<ArrayBuffer>->Data()` to get the pointer for the slice that is then used to get
-// the pointer of an ArrayBuffer / TypedArray, the same effect can be seen where a zero byte length buffer returns
-// a null pointer as its pointer value.
-assertEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) !== null");
+// UnsafePointer.of uses an exact-pointer fallback for zero-length buffers and slices to ensure that it always gets
+// the underlying pointer right.
+assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
@@ -480,30 +482,12 @@ function test_fill_buffer(fillValue, arr) {
 test_fill_buffer(0, [2, 3, 4]);
 test_fill_buffer(5, [2, 7, 3, 2, 1]);
 
-// Test non blocking calls
-
-function deferred() {
-  let methods;
-  const promise = new Promise((resolve, reject) => {
-    methods = {
-      async resolve(value) {
-        await value;
-        resolve(value);
-      },
-      reject(reason) {
-        reject(reason);
-      },
-    };
-  });
-  return Object.assign(promise, methods);
-}
-
-const promise = deferred();
+const deferred = Promise.withResolvers();
 const buffer3 = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
-  promise.resolve();
+  deferred.resolve();
 });
-await promise;
+await deferred.promise;
 
 let start = performance.now();
 dylib.symbols.sleep_blocking(100);
@@ -726,7 +710,9 @@ assertEquals(view.getUint32(), 55);
   assertThrows(() => Deno.UnsafePointer.offset(null, 5));
   const offsetPointer = Deno.UnsafePointer.offset(createdPointer, 5);
   assertEquals(Deno.UnsafePointer.value(offsetPointer), 6);
-  assertEquals(Deno.UnsafePointer.offset(offsetPointer, -6), null);
+  const zeroPointer = Deno.UnsafePointer.offset(offsetPointer, -6);
+  assertEquals(Deno.UnsafePointer.value(zeroPointer), 0);
+  assertEquals(zeroPointer, null);
 }
 
 // Test non-UTF-8 characters
