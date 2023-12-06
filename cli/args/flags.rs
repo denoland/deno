@@ -946,6 +946,8 @@ fn clap_root() -> Command {
     .max_term_width(80)
     .version(crate::version::deno())
     .long_version(long_version)
+    // cause --unstable flags to display at the bottom of the help text
+    .next_display_order(1000)
     .arg(
       Arg::new("unstable")
         .long("unstable")
@@ -992,6 +994,8 @@ fn clap_root() -> Command {
   }
 
   cmd
+    // reset the display order after the unstable flags
+    .next_display_order(0)
     .arg(
       Arg::new("log-level")
         .short('L')
