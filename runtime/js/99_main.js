@@ -567,7 +567,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     }
   }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 8)) {
     // Removes the `__proto__` for security reasons.
     // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
     delete Object.prototype.__proto__;
@@ -672,7 +672,7 @@ function bootstrapWorkerRuntime(
     }
   }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 9)) {
+  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 8)) {
     // Removes the `__proto__` for security reasons.
     // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
     delete Object.prototype.__proto__;

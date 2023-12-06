@@ -568,9 +568,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
+    fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
+      if system_info != &NpmSystemInfo::default() {
+        log::warn!("{} The node_modules directory may be incompatible with the target system.", crate::colors::yellow("Warning"));
+      }
+    }
+
     match self.npm_resolver.as_inner() {
       InnerCliNpmResolverRef::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
+          maybe_warn_different_system(&self.npm_system_info);
           let mut builder = VfsBuilder::new(node_modules_path.clone())?;
           builder.add_dir_recursive(node_modules_path)?;
           Ok(builder)
@@ -593,6 +600,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
       }
       InnerCliNpmResolverRef::Byonm(npm_resolver) => {
+        maybe_warn_different_system(&self.npm_system_info);
         // the root_node_modules directory will always exist for byonm
         let node_modules_path = npm_resolver.root_node_modules_path().unwrap();
         let parent_path = node_modules_path.parent().unwrap();
