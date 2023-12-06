@@ -1786,7 +1786,11 @@ declare namespace Deno {
      */
     enqueue(
       value: unknown,
-      options?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+      options?: {
+        delay?: number;
+        keysIfUndelivered?: Deno.KvKey[];
+        backoffSchedule?: number[];
+      },
     ): this;
     /**
      * Commit the operation to the KV store. Returns a value indicating whether
@@ -1995,14 +1999,28 @@ declare namespace Deno {
      * listener after several attempts. The values are set to the value of
      * the queued message.
      *
+     * The `backoffSchedule` option can be used to specify the retry policy for
+     * failed message delivery. Each element in the array represents the number of
+     * milliseconds to wait before retrying the delivery. For example,
+     * `[1000, 5000, 10000]` means that a failed delivery will be retried
+     * at most 3 times, with 1 second, 5 seconds, and 10 seconds delay
+     * between each retry.
+     *
      * ```ts
      * const db = await Deno.openKv();
-     * await db.enqueue("bar", { keysIfUndelivered: [["foo", "bar"]] });
+     * await db.enqueue("bar", {
+     *   keysIfUndelivered: [["foo", "bar"]],
+     *   backoffSchedule: [1000, 5000, 10000],
+     * });
      * ```
      */
     enqueue(
       value: unknown,
-      options?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+      options?: {
+        delay?: number;
+        keysIfUndelivered?: Deno.KvKey[];
+        backoffSchedule?: number[];
+      },
     ): Promise<KvCommitResult>;
 
     /**

@@ -72,6 +72,8 @@ const MAX_MUTATIONS: usize = 1000;
 const MAX_WATCHED_KEYS: usize = 10;
 const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
 const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
+const MAX_QUEUE_BACKOFF_INTERVALS: usize = 5;
+const MAX_QUEUE_BACKOFF_MS: u32 = 60 * 60 * 1_000; // 1 hour
 
 deno_core::extension!(deno_kv,
   deps = [ deno_console, deno_web ],
@@ -802,6 +804,18 @@ where
 
   for enqueue in &enqueues {
     total_payload_size += check_enqueue_payload_size(&enqueue.payload)?;
+
+    if let Some(backoff_schedule) = enqueue.backoff_schedule.as_ref() {
+      if backoff_schedule.len() > MAX_QUEUE_BACKOFF_INTERVALS {
+        return Err(type_error("invalid backoffSchedule"));
+      }
+      for interval in backoff_schedule {
+        if *interval > MAX_QUEUE_BACKOFF_MS {
+          return Err(type_error("invalid backoffSchedule"));
+        }
+        total_payload_size += 4;
+      }
+    }
   }
 
   if total_payload_size > MAX_TOTAL_MUTATION_SIZE_BYTES {
