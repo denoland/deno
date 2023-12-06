@@ -339,7 +339,7 @@ pub fn op_read_line_prompt(
   #[string] prompt_text: String,
   #[string] default_value: String,
 ) -> Result<Option<String>, AnyError> {
-  let mut editor = Editor::<(), rustyline::history::MemHistory>::new()
+  let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
   editor.set_keyseq_timeout(1);

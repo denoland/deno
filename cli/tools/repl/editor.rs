@@ -422,7 +422,7 @@ impl Highlighter for EditorHelper {
 
 #[derive(Clone)]
 pub struct ReplEditor {
-  inner: Arc<Mutex<Editor<EditorHelper, rustyline::history::MemHistory>>>,
+  inner: Arc<Mutex<Editor<EditorHelper, rustyline::history::FileHistory>>>,
   history_file_path: Option<PathBuf>,
   errored_on_history_save: Arc<AtomicBool>,
   should_exit_on_interrupt: Arc<AtomicBool>,
