@@ -323,6 +323,7 @@ impl ShellCommand for NodeModulesFileRunCommand {
     args.extend(context.args);
     let executable_command =
       deno_task_shell::ExecutableCommand::new("deno".to_string());
+    // set this environment variable so that the launched process knows the npm command name
     context
       .state
       .apply_env_var("DENO_INTERNAL_NPM_COMMAND_NAME", &self.command_name);
