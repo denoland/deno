@@ -4,6 +4,7 @@ pub mod crypto;
 pub mod http;
 pub mod http2;
 pub mod idna;
+pub mod ipc;
 pub mod os;
 pub mod require;
 pub mod util;

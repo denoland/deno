@@ -167,12 +167,13 @@ export class ChildProcess extends EventEmitter {
       signal,
       windowsVerbatimArguments = false,
     } = options || {};
+    const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
       stdout = "pipe",
       stderr = "pipe",
       _channel, // TODO(kt3k): handle this correctly
-    ] = normalizeStdioOption(stdio);
+    ] = normalizedStdio;
     const [cmd, cmdArgs] = buildCommand(
       command,
       args || [],
@@ -180,6 +181,8 @@ export class ChildProcess extends EventEmitter {
     );
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
+
+    const ipc = normalizedStdio.indexOf("ipc");
 
     const stringEnv = mapValues(env, (value) => value.toString());
     try {
@@ -191,6 +194,7 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        ipc, // internal
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -247,6 +251,10 @@ export class ChildProcess extends EventEmitter {
             () => signal.removeEventListener("abort", onAbortListener),
           );
         }
+      }
+
+      if (ipc >= 0) {
+        // 
       }
 
       (async () => {

@@ -141,6 +141,7 @@ pub struct SpawnArgs {
   uid: Option<u32>,
   #[cfg(windows)]
   windows_raw_arguments: bool,
+  ipc: i32,
 
   #[serde(flatten)]
   stdio: ChildStdio,
@@ -245,14 +246,35 @@ fn create_command(
   if let Some(uid) = args.uid {
     command.uid(uid);
   }
+
   #[cfg(unix)]
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
-    command.pre_exec(|| {
+    use nix::{
+      libc::dup2,
+      sys::socket::{socketpair, AddressFamily, SockFlag, SockType},
+    };
+
+    let (_, fd2) = socketpair(
+      AddressFamily::Unix,
+      SockType::Stream,
+      None,
+      SockFlag::empty(),
+    )?;
+
+    let ipc = args.ipc;
+    command.pre_exec(move || {
+      if ipc >= 0 {
+        let _ = dup2(fd2, ipc as i32);
+      }
       libc::setgroups(0, std::ptr::null());
       Ok(())
     });
+
+    if ipc >= 0 {
+      command.env("DENO_CHANNEL_FD", format!("{}", args.ipc));
+    }
   }
 
   command.stdin(args.stdio.stdin.as_stdio());

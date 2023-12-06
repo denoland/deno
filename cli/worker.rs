@@ -125,6 +125,7 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
+  node_ipc: Option<i32>,
 }
 
 impl SharedWorkerState {
@@ -416,6 +417,7 @@ impl CliMainWorkerFactory {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
+    node_ipc: Option<i32>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -436,6 +438,7 @@ impl CliMainWorkerFactory {
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
+        node_ipc,
       }),
     }
   }
@@ -599,6 +602,7 @@ impl CliMainWorkerFactory {
           .options
           .maybe_binary_npm_command_name
           .clone(),
+        node_ipc_fd: shared.node_ipc,
       },
       extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -793,6 +797,7 @@ fn create_web_worker_callback(
           .options
           .maybe_binary_npm_command_name
           .clone(),
+        node_ipc_fd: None,
       },
       extensions,
       startup_snapshot: crate::js::deno_isolate_init(),

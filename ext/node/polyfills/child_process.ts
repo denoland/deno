@@ -821,6 +821,12 @@ export function execFileSync(
   return ret.stdout as string | Buffer;
 }
 
+function setupChildProcessIpcChannel(fd: number) {
+  if (typeof fd != "number" || fd < 0) return;
+}
+
+globalThis.__bootstrap.internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
+
 export default {
   fork,
   spawn,
