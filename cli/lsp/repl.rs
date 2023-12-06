@@ -64,6 +64,7 @@ impl ReplLanguageServer {
     let language_server = super::language_server::LanguageServer::new(
       Client::new_for_repl(),
       Default::default(),
+      false,
     );
 
     let cwd_uri = get_cwd_uri()?;

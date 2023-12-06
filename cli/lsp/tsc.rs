@@ -53,6 +53,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use lazy_regex::lazy_regex;
 use log::error;
@@ -210,29 +211,64 @@ fn normalize_diagnostic(
   Ok(())
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TsServer {
   performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   specifier_map: Arc<TscSpecifierMap>,
+  maybe_inspector_server: Option<Arc<InspectorServer>>,
+}
+
+impl std::fmt::Debug for TsServer {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("TsServer")
+      .field("performance", &self.performance)
+      .field("sender", &self.sender)
+      .field("specifier_map", &self.specifier_map)
+      .field("inspector_server", &self.maybe_inspector_server.is_some())
+      .finish()
+  }
 }
 
 impl TsServer {
-  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
+  pub fn new(
+    performance: Arc<Performance>,
+    cache: Arc<dyn HttpCache>,
+    start_tsc_inspector: bool,
+  ) -> Self {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
     let perf = performance.clone();
+
+    let maybe_inspector_server = if start_tsc_inspector {
+      let addr = "127.0.0.1:10101";
+      Some(Arc::new(InspectorServer::new(
+        addr.parse().unwrap(),
+        "deno-lsp-tsc",
+      )))
+    } else {
+      None
+    };
+
+    let maybe_inspector_server_ = maybe_inspector_server.clone();
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
     let _join_handle = thread::spawn(move || {
-      run_tsc_thread(request_rx, perf, cache, specifier_map_)
+      run_tsc_thread(
+        request_rx,
+        perf,
+        cache,
+        specifier_map_,
+        maybe_inspector_server_,
+      )
     });
 
     Self {
       performance,
       sender: tx,
       specifier_map,
+      maybe_inspector_server,
     }
   }
 
@@ -3998,6 +4034,7 @@ fn run_tsc_thread(
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
+  maybe_inspector_server: Option<Arc<InspectorServer>>,
 ) {
   // Create and setup a JsRuntime based on a snapshot. It is expected that the
   // supplied snapshot is an isolate that contains the TypeScript language
@@ -4005,8 +4042,17 @@ fn run_tsc_thread(
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
+    inspector: maybe_inspector_server.is_some(),
     ..Default::default()
   });
+
+  if let Some(server) = maybe_inspector_server {
+    server.register_inspector(
+      "ext:deno_tsc/99_main_compiler.js".to_string(),
+      &mut tsc_runtime,
+      false,
+    );
+  }
 
   let tsc_future = async {
     let mut started = false;
@@ -4518,7 +4564,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv));
     let snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let performance = Arc::new(Performance::default());
-    let ts_server = TsServer::new(performance, cache.clone());
+    let ts_server = TsServer::new(performance, cache.clone(), false);
     let ts_config = TsConfig::new(config);
     assert!(ts_server
       .configure(snapshot.clone(), ts_config,)
