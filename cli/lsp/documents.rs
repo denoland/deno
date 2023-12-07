@@ -20,9 +20,9 @@ use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
-use crate::resolver::UnstableSloppyImportsFsEntry;
-use crate::resolver::UnstableSloppyImportsResolution;
-use crate::resolver::UnstableSloppyImportsResolver;
+use crate::resolver::SloppyImportsFsEntry;
+use crate::resolver::SloppyImportsResolution;
+use crate::resolver::SloppyImportsResolver;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -1065,20 +1065,20 @@ impl Documents {
   fn resolve_unstable_sloppy_import<'a>(
     &self,
     specifier: &'a ModuleSpecifier,
-  ) -> UnstableSloppyImportsResolution<'a> {
-    UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
+  ) -> SloppyImportsResolution<'a> {
+    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         if self.open_docs.contains_key(&specifier)
           || self.cache.contains(&specifier)
         {
-          return Some(UnstableSloppyImportsFsEntry::File);
+          return Some(SloppyImportsFsEntry::File);
         }
       }
       path.metadata().ok().and_then(|m| {
         if m.is_file() {
-          Some(UnstableSloppyImportsFsEntry::File)
+          Some(SloppyImportsFsEntry::File)
         } else if m.is_dir() {
-          Some(UnstableSloppyImportsFsEntry::Dir)
+          Some(SloppyImportsFsEntry::Dir)
         } else {
           None
         }
@@ -1732,18 +1732,18 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
   fn resolve_unstable_sloppy_import<'b>(
     &self,
     specifier: &'b ModuleSpecifier,
-  ) -> UnstableSloppyImportsResolution<'b> {
-    UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
+  ) -> SloppyImportsResolution<'b> {
+    SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         if self.open_docs.contains_key(&specifier) {
-          return Some(UnstableSloppyImportsFsEntry::File);
+          return Some(SloppyImportsFsEntry::File);
         }
       }
       path.metadata().ok().and_then(|m| {
         if m.is_file() {
-          Some(UnstableSloppyImportsFsEntry::File)
+          Some(SloppyImportsFsEntry::File)
         } else if m.is_dir() {
-          Some(UnstableSloppyImportsFsEntry::Dir)
+          Some(SloppyImportsFsEntry::Dir)
         } else {
           None
         }
