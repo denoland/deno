@@ -5,7 +5,7 @@ Example:
 ```rust
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::{benchmark_group, Bencher};
-use deno_bench_util::bench_js_sync};
+use deno_bench_util::bench_js_sync;
 
 use deno_core::Extension;
 
