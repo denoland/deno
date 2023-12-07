@@ -523,7 +523,7 @@ pub async fn run(
       )
       .ok()
       .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
-      origin_data_folder_path: None,
+      origin_data_folder_path: metadata.origin_data_folder_path,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,

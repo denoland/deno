@@ -220,6 +220,7 @@ mod test {
         target: Some("x86_64-unknown-linux-gnu".to_string()),
         no_terminal: false,
         include: vec![],
+        origin_data_folder_path: None,
       },
       &std::env::current_dir().unwrap(),
     )
@@ -242,6 +243,7 @@ mod test {
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: vec![],
         no_terminal: false,
+        origin_data_folder_path: None,
       },
       &std::env::current_dir().unwrap(),
     )

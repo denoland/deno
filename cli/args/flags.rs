@@ -68,6 +68,7 @@ pub struct CompileFlags {
   pub target: Option<String>,
   pub no_terminal: bool,
   pub include: Vec<String>,
+  pub origin_data_folder_path: Option<PathBuf>,
 }
 
 impl CompileFlags {
@@ -1284,6 +1285,13 @@ supported in canary.
           .long("no-terminal")
           .help("Hide terminal on Windows")
           .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("origin-data-folder-path")
+        .long("origin-data")
+        .value_parser(value_parser!(PathBuf))
+        .help("Specify origin data folder path (required to use Web Storage)")
+        .value_hint(ValueHint::FilePath),
       )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
@@ -3240,6 +3248,8 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
+  let origin_data_folder_path =
+    matches.remove_one::<PathBuf>("origin-data-folder-path");
   ext_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
@@ -3249,6 +3259,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     target,
     no_terminal,
     include,
+    origin_data_folder_path,
   });
 }
 
@@ -7808,7 +7819,8 @@ mod tests {
           args: vec![],
           target: None,
           no_terminal: false,
-          include: vec![]
+          include: vec![],
+          origin_data_folder_path: None
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -7830,7 +7842,8 @@ mod tests {
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,
           no_terminal: true,
-          include: vec![]
+          include: vec![],
+          origin_data_folder_path: None
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
