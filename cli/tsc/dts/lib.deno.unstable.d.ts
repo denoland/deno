@@ -1190,6 +1190,24 @@ declare namespace Deno {
     privateKey?: string;
   }
 
+  
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
+  export interface StartTlsOptions {
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * PEM formatted client certificate chain.
+     */
+    certChain?: string;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * PEM formatted (RSA or PKCS8) private key of client certificate.
+     */
+    privateKey?: string;
+  }
+  
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category Network
