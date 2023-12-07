@@ -19,11 +19,7 @@ deno_core::extension!(
         op_webgpu_surface_get_current_texture,
         op_webgpu_surface_present,
     ],
-    esm = ["02_surface.js"],
-    options = { unstable: bool },
-    state = |state, options| {
-        state.put(super::Unstable(options.unstable));
-    },
+    esm = ["02_surface.js"]
 );
 
 pub struct WebGpuSurface(pub crate::Instance, pub wgpu_core::id::SurfaceId);
