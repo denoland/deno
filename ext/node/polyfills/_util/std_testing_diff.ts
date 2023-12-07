@@ -1,7 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // This file was vendored from std/testing/_diff.ts
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
+import {
+  bgGreen,
+  bgRed,
+  bold,
+  gray,
+  green,
+  red,
+  white,
+} from "ext:deno_node/_util/std_fmt_colors.ts";
 const {
   ArrayFrom,
   ArrayPrototypeFilter,
@@ -26,15 +35,6 @@ const {
   ObjectFreeze,
   Uint32Array,
 } = primordials;
-import {
-  bgGreen,
-  bgRed,
-  bold,
-  gray,
-  green,
-  red,
-  white,
-} from "ext:deno_node/_util/std_fmt_colors.ts";
 
 interface FarthestPoint {
   y: number;

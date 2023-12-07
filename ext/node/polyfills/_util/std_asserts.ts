@@ -1,7 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // vendored from std/assert/mod.ts
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
+import { URLPrototype } from "ext:deno_url/00_url.js";
+import { red } from "ext:deno_node/_util/std_fmt_colors.ts";
+import {
+  buildMessage,
+  diff,
+  diffstr,
+} from "ext:deno_node/_util/std_testing_diff.ts";
 const {
   DatePrototype,
   ArrayPrototypeJoin,
@@ -29,13 +36,6 @@ const {
   WeakRefPrototype,
   WeakRefPrototypeDeref,
 } = primordials;
-import { URLPrototype } from "ext:deno_url/00_url.js";
-import { red } from "ext:deno_node/_util/std_fmt_colors.ts";
-import {
-  buildMessage,
-  diff,
-  diffstr,
-} from "ext:deno_node/_util/std_testing_diff.ts";
 
 const FORMAT_PATTERN = new SafeRegExp(/(?=["\\])/g);
 
