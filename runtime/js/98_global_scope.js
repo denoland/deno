@@ -143,7 +143,7 @@ const windowOrWorkerGlobalScope = {
   [webidl.brand]: util.nonEnumerable(webidl.brand),
 };
 
-let unstableWindowOrWorkerGlobalScope = {
+const unstableWindowOrWorkerGlobalScope = {
   BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
   WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
 

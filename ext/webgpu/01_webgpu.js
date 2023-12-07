@@ -20,6 +20,9 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypePush,
+  ObjectHasOwn,
+  ArrayPrototypeIncludes,
+  ArrayBufferPrototypeGetByteLength,
   Error,
   MathMax,
   ObjectDefineProperty,
@@ -32,6 +35,7 @@ const {
   SafeArrayIterator,
   SafePromiseAll,
   Set,
+  WeakRef,
   SetPrototypeHas,
   Symbol,
   SymbolFor,
@@ -381,14 +385,16 @@ class GPUAdapter {
     );
 
     const adapterInfo = webidl.createBranded(GPUAdapterInfo);
-    adapterInfo[_vendor] = unmaskHints.includes("vendor") ? vendor : "";
-    adapterInfo[_architecture] = unmaskHints.includes("architecture")
-      ? architecture
+    adapterInfo[_vendor] = ArrayPrototypeIncludes(unmaskHints, "vendor")
+      ? vendor
       : "";
-    adapterInfo[_device] = unmaskHints.includes("device") ? device : "";
-    adapterInfo[_description] = unmaskHints.includes("description")
-      ? description
+    adapterInfo[_architecture] =
+      ArrayPrototypeIncludes(unmaskHints, "architecture") ? architecture : "";
+    adapterInfo[_device] = ArrayPrototypeIncludes(unmaskHints, "device")
+      ? device
       : "";
+    adapterInfo[_description] =
+      ArrayPrototypeIncludes(unmaskHints, "description") ? description : "";
     return adapterInfo;
   }
 
@@ -1093,6 +1099,7 @@ class GPUDevice extends EventTarget {
       const entry = descriptor.entries[i];
 
       let j = 0;
+      // deno-lint-ignore prefer-primordials
       if (entry.buffer) j++;
       if (entry.sampler) j++;
       if (entry.texture) j++;
@@ -1213,7 +1220,9 @@ class GPUDevice extends EventTarget {
           resource: rid,
         };
       } else {
+        // deno-lint-ignore prefer-primordials
         const rid = assertResource(resource.buffer, prefix, context);
+        // deno-lint-ignore prefer-primordials
         assertDeviceMatch(device, resource.buffer, {
           prefix,
           resourceContext: context,
@@ -1956,9 +1965,9 @@ class GPUBuffer {
       throw new DOMException(`${prefix}: invalid state.`, "OperationError");
     }
     for (let i = 0; i < mappedRanges.length; ++i) {
-      const [buffer, _rid, start] = mappedRanges[i];
+      const { 0: buffer, 1: _rid, 2: start } = mappedRanges[i];
       // TODO(lucacasonato): is this logic correct?
-      const end = start + buffer.byteLength;
+      const end = start + ArrayBufferPrototypeGetByteLength(buffer);
       if (
         (start >= offset && start < (offset + rangeSize)) ||
         (end >= offset && end < (offset + rangeSize))
@@ -2025,7 +2034,7 @@ class GPUBuffer {
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
       }
       for (let i = 0; i < mappedRanges.length; ++i) {
-        const [buffer, mappedRid] = mappedRanges[i];
+        const { 0: buffer, 1: mappedRid } = mappedRanges[i];
         const { err } = ops.op_webgpu_buffer_unmap(
           bufferRid,
           mappedRid,
@@ -2863,7 +2872,7 @@ class GPUCommandEncoder {
     if (descriptor.depthStencilAttachment) {
       if (
         descriptor.depthStencilAttachment.depthLoadOp === "clear" &&
-        !("depthClearValue" in descriptor.depthStencilAttachment)
+        !(ObjectHasOwn(descriptor.depthStencilAttachment, "depthClearValue"))
       ) {
         throw webidl.makeException(
           TypeError,
@@ -3120,10 +3129,12 @@ class GPUCommandEncoder {
     const device = assertDevice(this, prefix, "this");
     const commandEncoderRid = assertResource(this, prefix, "this");
     const sourceBufferRid = assertResource(
+      // deno-lint-ignore prefer-primordials
       source.buffer,
       prefix,
       "source in Argument 1",
     );
+    // deno-lint-ignore prefer-primordials
     assertDeviceMatch(device, source.buffer, {
       prefix,
       resourceContext: "source in Argument 1",
@@ -3193,10 +3204,12 @@ class GPUCommandEncoder {
       selfContext: "this",
     });
     const destinationBufferRid = assertResource(
+      // deno-lint-ignore prefer-primordials
       destination.buffer,
       prefix,
       "buffer in Argument 2",
     );
+    // deno-lint-ignore prefer-primordials
     assertDeviceMatch(device, destination.buffer, {
       prefix,
       resourceContext: "buffer in Argument 2",
@@ -4916,12 +4929,12 @@ class GPUQuerySet {
 
   get type() {
     webidl.assertBranded(this, GPUQuerySetPrototype);
-    this[_type]();
+    return this[_type]();
   }
 
   get count() {
     webidl.assertBranded(this, GPUQuerySetPrototype);
-    this[_count]();
+    return this[_count]();
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
