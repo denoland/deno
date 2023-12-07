@@ -68,7 +68,6 @@ import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs
 
 const notImplementedEvents = [
   "disconnect",
-  "message",
   "multipleResolves",
   "rejectionHandled",
   "worker",

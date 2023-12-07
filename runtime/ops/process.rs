@@ -254,7 +254,6 @@ fn create_command(
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     use nix::libc::dup2;
-    use std::os::fd::IntoRawFd;
 
     // SockFlag is broken on macOS
     // https://github.com/nix-rust/nix/issues/861

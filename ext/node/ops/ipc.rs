@@ -1,11 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::io::IoSlice;
-use std::io::IoSliceMut;
-use std::io::{self};
-use std::os::fd::AsRawFd;
+use std::cell::RefCell;
+use std::io;
+use std::os::fd::FromRawFd;
 use std::os::fd::RawFd;
-use tokio::io::unix::AsyncFd;
+use std::rc::Rc;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -16,13 +15,10 @@ use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
-use std::cell::RefCell;
-use std::os::fd::FromRawFd;
-use std::rc::Rc;
-use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
 
 struct IpcPipe {
+  // Better name?
   inner: UnixStream,
 }
 
