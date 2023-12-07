@@ -183,7 +183,7 @@ where
     permissions.check_net(&(hostname, Some(0)), "Deno.startTls()")?;
   }
 
-  let ca_certs = args
+  let mut ca_certs = args
     .ca_certs
     .into_iter()
     .map(|s| s.into_bytes())
