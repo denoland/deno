@@ -1,4 +1,4 @@
-[WILDCARD]error: Uncaught Error: bad
+[WILDCARD]error: Uncaught (in promise) Error: bad
   throw Error("bad");
         ^
     at foo ([WILDCARD]/error_001.ts:2:9)

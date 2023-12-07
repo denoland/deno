@@ -2137,3 +2137,47 @@ Deno.test(
     // calling [Symbol.dispose] after manual close is a no-op
   },
 );
+
+dbTest("key watch", async (db) => {
+  const changeHistory: Deno.KvEntryMaybe<number>[] = [];
+  const watcher: ReadableStream<Deno.KvEntryMaybe<number>[]> = db.watch<
+    number[]
+  >([["key"]]);
+
+  const reader = watcher.getReader();
+  const expectedChanges = 2;
+
+  const work = (async () => {
+    for (let i = 0; i < expectedChanges; i++) {
+      const message = await reader.read();
+      if (message.done) {
+        throw new Error("Unexpected end of stream");
+      }
+      changeHistory.push(message.value[0]);
+    }
+
+    await reader.cancel();
+  })();
+
+  while (changeHistory.length !== 1) {
+    await sleep(100);
+  }
+  assertEquals(changeHistory[0], {
+    key: ["key"],
+    value: null,
+    versionstamp: null,
+  });
+
+  const { versionstamp } = await db.set(["key"], 1);
+  while (changeHistory.length as number !== 2) {
+    await sleep(100);
+  }
+  assertEquals(changeHistory[1], {
+    key: ["key"],
+    value: 1,
+    versionstamp,
+  });
+
+  await work;
+  await reader.cancel();
+});

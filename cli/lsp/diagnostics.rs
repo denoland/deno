@@ -1097,7 +1097,10 @@ impl DenoDiagnostic {
               changes: Some(HashMap::from([(
                 specifier.clone(),
                 vec![lsp::TextEdit {
-                  new_text: format!("\"{}\"", data.redirect),
+                  new_text: format!(
+                    "\"{}\"",
+                    specifier_text_for_redirected(&data.redirect, specifier)
+                  ),
                   range: diagnostic.range,
                 }],
               )])),
@@ -1190,6 +1193,27 @@ impl DenoDiagnostic {
       data,
       ..Default::default()
     }
+  }
+}
+
+fn specifier_text_for_redirected(
+  redirect: &lsp::Url,
+  referrer: &lsp::Url,
+) -> String {
+  if redirect.scheme() == "file" && referrer.scheme() == "file" {
+    // use a relative specifier when it's going to a file url
+    match referrer.make_relative(redirect) {
+      Some(relative) => {
+        if relative.starts_with('.') {
+          relative
+        } else {
+          format!("./{}", relative)
+        }
+      }
+      None => redirect.to_string(),
+    }
+  } else {
+    redirect.to_string()
   }
 }
 
@@ -1831,6 +1855,31 @@ let c: number = "a";
           "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
         },
       ])
+    );
+  }
+
+  #[test]
+  fn test_specifier_text_for_redirected() {
+    #[track_caller]
+    fn run_test(specifier: &str, referrer: &str, expected: &str) {
+      let result = specifier_text_for_redirected(
+        &ModuleSpecifier::parse(specifier).unwrap(),
+        &ModuleSpecifier::parse(referrer).unwrap(),
+      );
+      assert_eq!(result, expected);
+    }
+
+    run_test("file:///a/a.ts", "file:///a/mod.ts", "./a.ts");
+    run_test("file:///a/a.ts", "file:///a/sub_dir/mod.ts", "../a.ts");
+    run_test(
+      "file:///a/sub_dir/a.ts",
+      "file:///a/mod.ts",
+      "./sub_dir/a.ts",
+    );
+    run_test(
+      "https://deno.land/x/example/mod.ts",
+      "file:///a/sub_dir/a.ts",
+      "https://deno.land/x/example/mod.ts",
     );
   }
 }

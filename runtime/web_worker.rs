@@ -182,6 +182,7 @@ impl WebWorkerInternalHandle {
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(&mut self) {
     self.cancel.cancel();
+    self.terminate_waker.wake();
 
     // This function can be called multiple times by whomever holds
     // the handle. However only a single "termination" should occur so
@@ -698,7 +699,6 @@ impl WebWorker {
 
       event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
-
         receiver.await
       }
     }
@@ -730,7 +730,6 @@ impl WebWorker {
            return Ok(());
         }
         event_loop_result?;
-
         receiver.await
       }
     }

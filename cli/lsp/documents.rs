@@ -20,6 +20,9 @@ use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::UnstableSloppyImportsFsEntry;
+use crate::resolver::UnstableSloppyImportsResolution;
+use crate::resolver::UnstableSloppyImportsResolver;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -50,6 +53,7 @@ use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -688,12 +692,12 @@ fn recurse_dependents(
 }
 
 #[derive(Debug)]
-struct SpecifierResolver {
+struct RedirectResolver {
   cache: Arc<dyn HttpCache>,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
 }
 
-impl SpecifierResolver {
+impl RedirectResolver {
   pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache,
@@ -887,7 +891,9 @@ pub struct Documents {
   /// should be injected.
   has_injected_types_node_package: bool,
   /// Resolves a specifier to its final redirected to specifier.
-  specifier_resolver: Arc<SpecifierResolver>,
+  redirect_resolver: Arc<RedirectResolver>,
+  /// If --unstable-sloppy-imports is enabled.
+  unstable_sloppy_imports: bool,
 }
 
 impl Documents {
@@ -910,10 +916,12 @@ impl Documents {
         maybe_import_map: None,
         maybe_vendor_dir: None,
         bare_node_builtins_enabled: false,
+        sloppy_imports_resolver: None,
       })),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
-      specifier_resolver: Arc::new(SpecifierResolver::new(cache)),
+      redirect_resolver: Arc::new(RedirectResolver::new(cache)),
+      unstable_sloppy_imports: false,
     }
   }
 
@@ -1022,7 +1030,15 @@ impl Documents {
   ) -> bool {
     let maybe_specifier = self
       .get_resolver()
-      .resolve(specifier, referrer, ResolutionMode::Types)
+      .resolve(
+        specifier,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        ResolutionMode::Types,
+      )
       .ok();
     if let Some(import_specifier) = maybe_specifier {
       self.exists(&import_specifier)
@@ -1031,16 +1047,48 @@ impl Documents {
     }
   }
 
-  pub fn resolve_redirected(
+  pub fn resolve_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    self.specifier_resolver.resolve(specifier)
+    if self.unstable_sloppy_imports && specifier.scheme() == "file" {
+      Some(
+        self
+          .resolve_unstable_sloppy_import(specifier)
+          .into_owned_specifier(),
+      )
+    } else {
+      self.redirect_resolver.resolve(specifier)
+    }
+  }
+
+  fn resolve_unstable_sloppy_import<'a>(
+    &self,
+    specifier: &'a ModuleSpecifier,
+  ) -> UnstableSloppyImportsResolution<'a> {
+    UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+        if self.open_docs.contains_key(&specifier)
+          || self.cache.contains(&specifier)
+        {
+          return Some(UnstableSloppyImportsFsEntry::File);
+        }
+      }
+      path.metadata().ok().and_then(|m| {
+        if m.is_file() {
+          Some(UnstableSloppyImportsFsEntry::File)
+        } else if m.is_dir() {
+          Some(UnstableSloppyImportsFsEntry::Dir)
+        } else {
+          None
+        }
+      })
+    })
   }
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    let specifier = self.specifier_resolver.resolve(specifier);
+    let specifier = self.resolve_specifier(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
         return true;
@@ -1069,7 +1117,7 @@ impl Documents {
   ) -> Vec<ModuleSpecifier> {
     self.calculate_dependents_if_dirty();
     let mut dependents = HashSet::new();
-    if let Some(specifier) = self.specifier_resolver.resolve(specifier) {
+    if let Some(specifier) = self.resolve_specifier(specifier) {
       recurse_dependents(&specifier, &self.dependents_map, &mut dependents);
       dependents.into_iter().collect()
     } else {
@@ -1091,7 +1139,7 @@ impl Documents {
 
   /// Return a document for the specifier.
   pub fn get(&self, original_specifier: &ModuleSpecifier) -> Option<Document> {
-    let specifier = self.specifier_resolver.resolve(original_specifier)?;
+    let specifier = self.resolve_specifier(original_specifier)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -1221,7 +1269,7 @@ impl Documents {
   pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
     // TODO update resolved dependencies?
     self.cache = cache.clone();
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(cache));
+    self.redirect_resolver = Arc::new(RedirectResolver::new(cache));
     self.dirty = true;
   }
 
@@ -1257,6 +1305,7 @@ impl Documents {
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_vendor_dir: Option<bool>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
+      maybe_unstable_flags: Option<&Vec<String>>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(document_preload_limit);
@@ -1272,6 +1321,7 @@ impl Documents {
       }
       hasher.write_hashable(maybe_vendor_dir);
       hasher.write_hashable(maybe_jsx_config);
+      hasher.write_hashable(maybe_unstable_flags);
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
         // this in order to catch if the type of package_json_deps ever changes
@@ -1307,11 +1357,13 @@ impl Documents {
       maybe_jsx_config.as_ref(),
       options.maybe_config_file.and_then(|c| c.vendor_dir_flag()),
       maybe_package_json_deps.as_ref(),
+      options.maybe_config_file.map(|c| &c.json.unstable),
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
+    let fs = Arc::new(RealFs);
     self.resolver = Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-      fs: Arc::new(RealFs),
+      fs: fs.clone(),
       node_resolver: options.node_resolver,
       npm_resolver: options.npm_resolver,
       cjs_resolutions: None, // only used for runtime
@@ -1324,14 +1376,15 @@ impl Documents {
         .as_ref(),
       bare_node_builtins_enabled: options
         .maybe_config_file
-        .map(|config| {
-          config
-            .json
-            .unstable
-            .contains(&"bare-node-builtins".to_string())
-        })
+        .map(|config| config.has_unstable("bare-node-builtins"))
         .unwrap_or(false),
+      // Don't set this for the LSP because instead we'll use the OpenDocumentsLoader
+      // because it's much easier and we get diagnostics/quick fixes about a redirected
+      // specifier for free.
+      sloppy_imports_resolver: None,
     }));
+    self.redirect_resolver =
+      Arc::new(RedirectResolver::new(self.cache.clone()));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         options.maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1352,6 +1405,10 @@ impl Documents {
         IndexMap::new()
       },
     );
+    self.unstable_sloppy_imports = options
+      .maybe_config_file
+      .map(|c| c.has_unstable("sloppy-imports"))
+      .unwrap_or(false);
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
@@ -1649,6 +1706,7 @@ fn node_resolve_npm_req_ref(
 pub struct OpenDocumentsGraphLoader<'a> {
   pub inner_loader: &'a mut dyn deno_graph::source::Loader,
   pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
+  pub unstable_sloppy_imports: bool,
 }
 
 impl<'a> OpenDocumentsGraphLoader<'a> {
@@ -1670,6 +1728,28 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
     }
     None
   }
+
+  fn resolve_unstable_sloppy_import<'b>(
+    &self,
+    specifier: &'b ModuleSpecifier,
+  ) -> UnstableSloppyImportsResolution<'b> {
+    UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+        if self.open_docs.contains_key(&specifier) {
+          return Some(UnstableSloppyImportsFsEntry::File);
+        }
+      }
+      path.metadata().ok().and_then(|m| {
+        if m.is_file() {
+          Some(UnstableSloppyImportsFsEntry::File)
+        } else if m.is_dir() {
+          Some(UnstableSloppyImportsFsEntry::Dir)
+        } else {
+          None
+        }
+      })
+    })
+  }
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
@@ -1683,9 +1763,19 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
     is_dynamic: bool,
     cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
-    match self.load_from_docs(specifier) {
+    let specifier = if self.unstable_sloppy_imports {
+      self
+        .resolve_unstable_sloppy_import(specifier)
+        .into_specifier()
+    } else {
+      Cow::Borrowed(specifier)
+    };
+
+    match self.load_from_docs(&specifier) {
       Some(fut) => fut,
-      None => self.inner_loader.load(specifier, is_dynamic, cache_setting),
+      None => self
+        .inner_loader
+        .load(&specifier, is_dynamic, cache_setting),
     }
   }
 

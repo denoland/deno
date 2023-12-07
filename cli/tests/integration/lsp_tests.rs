@@ -1095,8 +1095,7 @@ fn lsp_import_attributes() {
           "only": ["quickfix"]
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([{
@@ -9109,11 +9108,11 @@ fn lsp_workspace_symbol() {
         "uri": "deno:/asset/lib.decorators.d.ts",
         "range": {
           "start": {
-            "line": 346,
+            "line": 343,
             "character": 0,
           },
           "end": {
-            "line": 388,
+            "line": 385,
             "character": 1,
           },
         },
@@ -10504,5 +10503,168 @@ fn lsp_jupyter_byonm_diagnostics() {
       },
     ])
   );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_sloppy_imports_warn() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+  temp_dir
+    .join("deno.json")
+    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
+  // should work when exists on the fs and when doesn't
+  temp_dir.join("a.ts").write("export class A {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_root_uri(temp_dir.uri_dir());
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("b.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class B {}",
+    },
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("file.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from './a';\nimport * as b from './b.js';\nconsole.log(a)\nconsole.log(b);\n",
+    },
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    lsp::PublishDiagnosticsParams {
+      uri: temp_dir.join("file.ts").uri_file(),
+      diagnostics: vec![
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 19
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 24
+            }
+          },
+          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
+          code: Some(lsp::NumberOrString::String("redirect".to_string())),
+          source: Some("deno".to_string()),
+          message: format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("a").uri_file(),
+            temp_dir.join("a.ts").uri_file()
+          ),
+          data: Some(json!({
+            "specifier": temp_dir.join("a").uri_file(),
+            "redirect": temp_dir.join("a.ts").uri_file()
+          })),
+          ..Default::default()
+        },
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 19
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 27
+            }
+          },
+          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
+          code: Some(lsp::NumberOrString::String("redirect".to_string())),
+          source: Some("deno".to_string()),
+          message: format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("b.js").uri_file(),
+            temp_dir.join("b.ts").uri_file()
+          ),
+          data: Some(json!({
+            "specifier": temp_dir.join("b.js").uri_file(),
+            "redirect": temp_dir.join("b.ts").uri_file()
+          })),
+          ..Default::default()
+        }
+      ],
+      version: Some(1),
+    }
+  );
+
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.join("file.ts").uri_file()
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 24 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 19 },
+            "end": { "line": 0, "character": 24 }
+          },
+          "severity": 3,
+          "code": "redirect",
+          "source": "deno",
+          "message": format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("a").uri_file(),
+            temp_dir.join("a.ts").uri_file()
+          ),
+          "data": {
+            "specifier": temp_dir.join("a").uri_file(),
+            "redirect": temp_dir.join("a.ts").uri_file()
+          },
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Update specifier to its redirected specifier.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 3,
+        "code": "redirect",
+        "source": "deno",
+        "message": format!(
+          "The import of \"{}\" was redirected to \"{}\".",
+          temp_dir.join("a").uri_file(),
+          temp_dir.join("a.ts").uri_file()
+        ),
+        "data": {
+          "specifier": temp_dir.join("a").uri_file(),
+          "redirect": temp_dir.join("a.ts").uri_file()
+        },
+      }],
+      "edit": {
+        "changes": {
+          temp_dir.join("file.ts").uri_file(): [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 }
+            },
+            "newText": "\"./a.ts\""
+          }]
+        }
+      }
+    }])
+  );
+
   client.shutdown();
 }

@@ -97,11 +97,11 @@ interface ReadonlyArray<T> {
      */
     findLast<S extends T>(
         predicate: (value: T, index: number, array: readonly T[]) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (value: T, index: number, array: readonly T[]) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): T | undefined;
 
     /**
@@ -115,7 +115,7 @@ interface ReadonlyArray<T> {
      */
     findLastIndex(
         predicate: (value: T, index: number, array: readonly T[]) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -177,13 +177,13 @@ interface Int8Array {
         predicate: (
             value: number,
             index: number,
-            array: Int8Array
+            array: Int8Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (value: number, index: number, array: Int8Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -197,7 +197,7 @@ interface Int8Array {
      */
     findLastIndex(
         predicate: (value: number, index: number, array: Int8Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -209,7 +209,7 @@ interface Int8Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Uint8Array.from([11, 2, 22, 1]);
      * myNums.toSorted((a, b) => a - b) // Uint8Array(4) [1, 2, 11, 22]
@@ -241,13 +241,13 @@ interface Uint8Array {
         predicate: (
             value: number,
             index: number,
-            array: Uint8Array
+            array: Uint8Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (value: number, index: number, array: Uint8Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -261,7 +261,7 @@ interface Uint8Array {
      */
     findLastIndex(
         predicate: (value: number, index: number, array: Uint8Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -273,7 +273,7 @@ interface Uint8Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Uint8Array.from([11, 2, 22, 1]);
      * myNums.toSorted((a, b) => a - b) // Uint8Array(4) [1, 2, 11, 22]
@@ -305,17 +305,17 @@ interface Uint8ClampedArray {
         predicate: (
             value: number,
             index: number,
-            array: Uint8ClampedArray
+            array: Uint8ClampedArray,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (
             value: number,
             index: number,
-            array: Uint8ClampedArray
+            array: Uint8ClampedArray,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -331,9 +331,9 @@ interface Uint8ClampedArray {
         predicate: (
             value: number,
             index: number,
-            array: Uint8ClampedArray
+            array: Uint8ClampedArray,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -345,7 +345,7 @@ interface Uint8ClampedArray {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Uint8ClampedArray.from([11, 2, 22, 1]);
      * myNums.toSorted((a, b) => a - b) // Uint8ClampedArray(4) [1, 2, 11, 22]
@@ -377,13 +377,13 @@ interface Int16Array {
         predicate: (
             value: number,
             index: number,
-            array: Int16Array
+            array: Int16Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (value: number, index: number, array: Int16Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -397,7 +397,7 @@ interface Int16Array {
      */
     findLastIndex(
         predicate: (value: number, index: number, array: Int16Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -409,7 +409,7 @@ interface Int16Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Int16Array.from([11, 2, -22, 1]);
      * myNums.toSorted((a, b) => a - b) // Int16Array(4) [-22, 1, 2, 11]
@@ -441,17 +441,17 @@ interface Uint16Array {
         predicate: (
             value: number,
             index: number,
-            array: Uint16Array
+            array: Uint16Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (
             value: number,
             index: number,
-            array: Uint16Array
+            array: Uint16Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -467,9 +467,9 @@ interface Uint16Array {
         predicate: (
             value: number,
             index: number,
-            array: Uint16Array
+            array: Uint16Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -481,7 +481,7 @@ interface Uint16Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Uint16Array.from([11, 2, 22, 1]);
      * myNums.toSorted((a, b) => a - b) // Uint16Array(4) [1, 2, 11, 22]
@@ -513,13 +513,13 @@ interface Int32Array {
         predicate: (
             value: number,
             index: number,
-            array: Int32Array
+            array: Int32Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (value: number, index: number, array: Int32Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -533,7 +533,7 @@ interface Int32Array {
      */
     findLastIndex(
         predicate: (value: number, index: number, array: Int32Array) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -545,7 +545,7 @@ interface Int32Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Int32Array.from([11, 2, -22, 1]);
      * myNums.toSorted((a, b) => a - b) // Int32Array(4) [-22, 1, 2, 11]
@@ -577,17 +577,17 @@ interface Uint32Array {
         predicate: (
             value: number,
             index: number,
-            array: Uint32Array
+            array: Uint32Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (
             value: number,
             index: number,
-            array: Uint32Array
+            array: Uint32Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -603,9 +603,9 @@ interface Uint32Array {
         predicate: (
             value: number,
             index: number,
-            array: Uint32Array
+            array: Uint32Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -617,7 +617,7 @@ interface Uint32Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Uint32Array.from([11, 2, 22, 1]);
      * myNums.toSorted((a, b) => a - b) // Uint32Array(4) [1, 2, 11, 22]
@@ -649,17 +649,17 @@ interface Float32Array {
         predicate: (
             value: number,
             index: number,
-            array: Float32Array
+            array: Float32Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (
             value: number,
             index: number,
-            array: Float32Array
+            array: Float32Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -675,9 +675,9 @@ interface Float32Array {
         predicate: (
             value: number,
             index: number,
-            array: Float32Array
+            array: Float32Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -689,7 +689,7 @@ interface Float32Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Float32Array.from([11.25, 2, -22.5, 1]);
      * myNums.toSorted((a, b) => a - b) // Float32Array(4) [-22.5, 1, 2, 11.5]
@@ -721,17 +721,17 @@ interface Float64Array {
         predicate: (
             value: number,
             index: number,
-            array: Float64Array
+            array: Float64Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (
             value: number,
             index: number,
-            array: Float64Array
+            array: Float64Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number | undefined;
 
     /**
@@ -747,9 +747,9 @@ interface Float64Array {
         predicate: (
             value: number,
             index: number,
-            array: Float64Array
+            array: Float64Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -761,7 +761,7 @@ interface Float64Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = Float64Array.from([11.25, 2, -22.5, 1]);
      * myNums.toSorted((a, b) => a - b) // Float64Array(4) [-22.5, 1, 2, 11.5]
@@ -793,17 +793,17 @@ interface BigInt64Array {
         predicate: (
             value: bigint,
             index: number,
-            array: BigInt64Array
+            array: BigInt64Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (
             value: bigint,
             index: number,
-            array: BigInt64Array
+            array: BigInt64Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): bigint | undefined;
 
     /**
@@ -819,9 +819,9 @@ interface BigInt64Array {
         predicate: (
             value: bigint,
             index: number,
-            array: BigInt64Array
+            array: BigInt64Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -833,7 +833,7 @@ interface BigInt64Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = BigInt64Array.from([11n, 2n, -22n, 1n]);
      * myNums.toSorted((a, b) => Number(a - b)) // BigInt64Array(4) [-22n, 1n, 2n, 11n]
@@ -865,17 +865,17 @@ interface BigUint64Array {
         predicate: (
             value: bigint,
             index: number,
-            array: BigUint64Array
+            array: BigUint64Array,
         ) => value is S,
-        thisArg?: any
+        thisArg?: any,
     ): S | undefined;
     findLast(
         predicate: (
             value: bigint,
             index: number,
-            array: BigUint64Array
+            array: BigUint64Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): bigint | undefined;
 
     /**
@@ -891,9 +891,9 @@ interface BigUint64Array {
         predicate: (
             value: bigint,
             index: number,
-            array: BigUint64Array
+            array: BigUint64Array,
         ) => unknown,
-        thisArg?: any
+        thisArg?: any,
     ): number;
 
     /**
@@ -905,7 +905,7 @@ interface BigUint64Array {
      * Copies and sorts the array.
      * @param compareFn Function used to determine the order of the elements. It is expected to return
      * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
-     * value otherwise. If omitted, the elements are sorted in ascending, ASCII character order.
+     * value otherwise. If omitted, the elements are sorted in ascending order.
      * ```ts
      * const myNums = BigUint64Array.from([11n, 2n, 22n, 1n]);
      * myNums.toSorted((a, b) => Number(a - b)) // BigUint64Array(4) [1n, 2n, 11n, 22n]
