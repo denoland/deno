@@ -4787,7 +4787,8 @@ console.log(g.G);
     .args("run main.ts")
     .run()
     .assert_matches_text(
-      "Warning Sloppy import resolution (hint: update .js extension to .ts)
+      "Warning Sloppy import resolution is not recommended and may have a negative impact on performance.
+Warning Sloppy import resolution (hint: update .js extension to .ts)
     at file:///[WILDCARD]/main.ts:1:20
 Warning Sloppy import resolution (hint: add .js extension)
     at file:///[WILDCARD]/main.ts:2:20
