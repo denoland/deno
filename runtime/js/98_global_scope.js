@@ -172,9 +172,13 @@ let unstableWindowOrWorkerGlobalScope = {
   GPUColorWrite: webGPUNonEnumerable(() => webgpu.GPUColorWrite),
   GPUCommandEncoder: webGPUNonEnumerable(() => webgpu.GPUCommandEncoder),
   GPURenderPassEncoder: webGPUNonEnumerable(() => webgpu.GPURenderPassEncoder),
-  GPUComputePassEncoder: webGPUNonEnumerable(() => webgpu.GPUComputePassEncoder),
+  GPUComputePassEncoder: webGPUNonEnumerable(() =>
+    webgpu.GPUComputePassEncoder
+  ),
   GPUCommandBuffer: webGPUNonEnumerable(() => webgpu.GPUCommandBuffer),
-  GPURenderBundleEncoder: webGPUNonEnumerable(() => webgpu.GPURenderBundleEncoder),
+  GPURenderBundleEncoder: webGPUNonEnumerable(() =>
+    webgpu.GPURenderBundleEncoder
+  ),
   GPURenderBundle: webGPUNonEnumerable(() => webgpu.GPURenderBundle),
   GPUQuerySet: webGPUNonEnumerable(() => webgpu.GPUQuerySet),
   GPUError: webGPUNonEnumerable(() => webgpu.GPUError),
