@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
-use deno_runtime::tokio_util::create_basic_runtime;
 use std::fs;
 use std::io::prelude::*;
 use std::path::PathBuf;
@@ -22,7 +21,7 @@ pub struct LogFile {
 }
 
 impl LogFile {
-  pub fn log(&mut self, s: &str) {
+  pub fn write_line(&mut self, s: &str) {
     self.buffer.push_str(s);
     self.buffer.push('\n');
   }
@@ -44,21 +43,18 @@ pub fn init_log_file(path: PathBuf) {
     path,
     buffer: String::with_capacity(1024),
   });
-  thread::spawn(|| {
-    let runtime = create_basic_runtime();
-    runtime.block_on(async {
-      loop {
-        thread::sleep(std::time::Duration::from_secs(1));
-        if let Some(log_file) = &mut *LOG_FILE.lock() {
-          log_file.commit();
-        }
-      }
-    });
+  thread::spawn(|| loop {
+    thread::sleep(std::time::Duration::from_secs(1));
+    if let Some(log_file) = &mut *LOG_FILE.lock() {
+      log_file.commit();
+    }
   });
 }
 
-pub fn log_file() -> &'static Mutex<Option<LogFile>> {
-  &LOG_FILE
+pub fn write_line_to_log_file(s: &str) {
+  if let Some(log_file) = &mut *LOG_FILE.lock() {
+    log_file.write_line(s);
+  }
 }
 
 pub fn set_lsp_debug_flag(value: bool) {
@@ -106,9 +102,7 @@ macro_rules! lsp_log {
       $crate::lsp::logging::lsp_debug!($($arg)+)
     } else {
       let s = std::format!($($arg)+);
-      if let Some(log_file) = &mut *$crate::lsp::logging::log_file().lock() {
-        log_file.log(&s);
-      }
+      $crate::lsp::logging::write_line_to_log_file(&s);
       log::log!(lsp_log_level, "{}", s)
     }
   )
@@ -124,9 +118,7 @@ macro_rules! lsp_warn {
         $crate::lsp::logging::lsp_debug!($($arg)+)
       } else {
         let s = std::format!($($arg)+);
-        if let Some(log_file) = &mut *$crate::lsp::logging::log_file().lock() {
-          log_file.log(&s);
-        }
+        $crate::lsp::logging::write_line_to_log_file(&s);
         log::log!(lsp_log_level, "{}", s)
       }
     }
@@ -137,10 +129,8 @@ macro_rules! lsp_debug {
   ($($arg:tt)+) => (
     {
       let s = std::format!($($arg)+);
-      if let Some(log_file) = &mut *$crate::lsp::logging::log_file().lock() {
-        log_file.log(&s);
-      }
-      if crate::lsp::logging::lsp_debug_enabled() {
+      $crate::lsp::logging::write_line_to_log_file(&s);
+      if $crate::lsp::logging::lsp_debug_enabled() {
         log::debug!("{}", s)
       }
     }
