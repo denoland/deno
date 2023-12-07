@@ -711,7 +711,7 @@ impl HtmlCoverageReporter {
     timestamp: &str,
     main_content: &str,
   ) -> String {
-    let title = if node == "" {
+    let title = if node.is_empty() {
       "Coverage report for all files".to_string()
     } else {
       let node = if is_dir {
@@ -886,21 +886,21 @@ impl HtmlCoverageReporter {
           report.found_lines.iter().find(|(line, _)| i == *line)
         {
           if *count == 0 {
-            format!("<span class='cline-any cline-no'>&nbsp</span>")
+            "<span class='cline-any cline-no'>&nbsp</span>".to_string()
           } else {
             format!("<span class='cline-any cline-yes'>x{count}</span>")
           }
         } else {
-          format!("<span class='cline-any cline-neutral'>&nbsp</span>")
+          "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()
         }
       })
       .collect::<Vec<_>>()
       .join("\n");
     let branch_coverage = (0..line_num)
       .map(|i| {
-        let branch_is_missed = report.branches.iter().find(|b| b.line_index == i && !b.is_hit).is_some();
+        let branch_is_missed = report.branches.iter().any(|b| b.line_index == i && !b.is_hit);
         if branch_is_missed {
-           format!("<span class='missing-if-branch' title='branch condition is missed in this line'>I</span>")
+          "<span class='missing-if-branch' title='branch condition is missed in this line'>I</span>".to_string()
         } else {
           "".to_string()
         }
