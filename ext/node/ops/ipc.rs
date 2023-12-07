@@ -66,6 +66,9 @@ impl IpcPipe {
   }
 }
 
+// JSON serialization stream over IPC pipe.
+//
+// `\n` is used as a delimiter between messages.
 struct IpcJsonStream {
   pipe: Rc<IpcPipe>,
   buffer: RefCell<Vec<u8>>,
@@ -87,14 +90,16 @@ impl IpcJsonStream {
     loop {
       let n = self.pipe.read(&mut buf).await?;
 
-      let read = &buf[..n];
+      let mut read = &buf[..n];
       let mut chunk_boundary = 0;
-
       for byte in read {
-        if *byte == b'\n' {
+        if *byte == b'\n'
+            /* Ignore empty messages otherwise we enter infinite loop with `\n\n` */
+            && chunk_boundary > 0
+        {
           let chunk = &read[..chunk_boundary];
           self.buffer.borrow_mut().extend_from_slice(chunk);
-
+          read = &read[chunk_boundary + 1..];
           chunk_boundary = 0;
           if chunk.is_empty() {
             // Last chunk.
@@ -176,4 +181,106 @@ pub async fn op_node_ipc_read(
   let cancel = RcRef::map(stream.clone(), |r| &r.cancel);
   let msgs = stream.read().or_cancel(cancel).await??;
   Ok(msgs)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::IpcJsonStream;
+  use super::IpcPipe;
+  use deno_core::serde_json::json;
+  use std::os::unix::io::AsRawFd;
+  use std::rc::Rc;
+
+  #[tokio::test]
+  async fn unix_ipc_raw() -> Result<(), Box<dyn std::error::Error>> {
+    let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+    let child = tokio::spawn(async move {
+      use tokio::io::AsyncReadExt;
+      use tokio::io::AsyncWriteExt;
+
+      let mut buf = [0u8; 1024];
+      let n = fd2.read(&mut buf).await?;
+      assert_eq!(&buf[..n], b"hello");
+      fd2.write_all(b"world").await?;
+      Ok::<_, std::io::Error>(())
+    });
+
+    /* Similar to how ops would use the resource */
+    let ipc = Rc::new(IpcPipe::new(fd1.as_raw_fd())?);
+    ipc.clone().write(b"hello").await?;
+    let mut buf = [0u8; 1024];
+    let n = ipc.read(&mut buf).await?;
+    assert_eq!(&buf[..n], b"world");
+
+    child.await??;
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn unix_ipc_json() -> Result<(), Box<dyn std::error::Error>> {
+    let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+    let child = tokio::spawn(async move {
+      use tokio::io::AsyncReadExt;
+      use tokio::io::AsyncWriteExt;
+
+      let mut buf = [0u8; 1024];
+      let n = fd2.read(&mut buf).await?;
+      assert_eq!(&buf[..n], b"\"hello\"\n");
+      fd2.write_all(b"\"world\"\n").await?;
+      Ok::<_, std::io::Error>(())
+    });
+
+    /* Similar to how ops would use the resource */
+    let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
+    ipc.clone().write(json!("hello")).await?;
+    let msgs = ipc.read().await?;
+    assert_eq!(msgs, vec![json!("world")]);
+
+    child.await??;
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn unix_ipc_json_multi() -> Result<(), Box<dyn std::error::Error>> {
+    let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+    let child = tokio::spawn(async move {
+      use tokio::io::AsyncReadExt;
+      use tokio::io::AsyncWriteExt;
+
+      let mut buf = [0u8; 1024];
+      let n = fd2.read(&mut buf).await?;
+      assert_eq!(&buf[..n], b"\"hello\"\n\"world\"\n");
+      fd2.write_all(b"\"foo\"\n\"bar\"\n").await?;
+      Ok::<_, std::io::Error>(())
+    });
+
+    let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
+    ipc.clone().write(json!("hello")).await?;
+    ipc.clone().write(json!("world")).await?;
+    let msgs = ipc.read().await?;
+    assert_eq!(msgs, vec![json!("foo"), json!("bar")]);
+
+    child.await??;
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn unix_ipc_json_invalid() -> Result<(), Box<dyn std::error::Error>> {
+    let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+    let child = tokio::spawn(async move {
+      tokio::io::AsyncWriteExt::write_all(&mut fd2, b"\n\n").await?;
+      Ok::<_, std::io::Error>(())
+    });
+
+    let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
+    let err = ipc.read().await.unwrap_err();
+    assert!(err.is::<deno_core::serde_json::Error>());
+
+    child.await??;
+
+    Ok(())
+  }
 }
