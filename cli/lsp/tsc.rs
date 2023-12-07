@@ -3897,12 +3897,13 @@ fn op_load<'s>(
 }
 
 #[op2]
-#[serde]
-fn op_resolve(
+fn op_resolve<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[serde] args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, AnyError> {
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
   let specifiers = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
@@ -3931,7 +3932,10 @@ fn op_resolve(
       vec![None; args.specifiers.len()]
     }
   };
-  Ok(specifiers)
+
+  let response = serde_v8::to_v8(scope, specifiers)?;
+  state.performance.measure(mark);
+  Ok(response)
 }
 
 #[op2]
