@@ -206,6 +206,12 @@ class ChildProcess {
   #waitPromise;
   #waitComplete = false;
 
+  #pipeFd;
+  // internal, used by ext/node
+  get _pipeFd() {
+    return this.#pipeFd;
+  }
+
   #pid;
   get pid() {
     return this.#pid;
@@ -242,6 +248,7 @@ class ChildProcess {
     stdinRid,
     stdoutRid,
     stderrRid,
+    pipeFd, // internal
   } = null) {
     if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
@@ -249,6 +256,7 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
+    this.#pipeFd = pipeFd;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);

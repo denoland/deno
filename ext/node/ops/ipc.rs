@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::io::{self};
@@ -9,103 +11,60 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::OpState;
+use deno_core::RcRef;
 use deno_core::ResourceId;
 use std::cell::RefCell;
+use std::os::fd::FromRawFd;
 use std::rc::Rc;
-
-fn sendmsg(fd: RawFd, data: &[u8]) -> Result<usize, std::io::Error> {
-  let iov = [IoSlice::new(&data)];
-  loop {
-    match nix::sys::socket::sendmsg::<()>(
-      fd,
-      &iov,
-      &[],
-      nix::sys::socket::MsgFlags::empty(),
-      None,
-    ) {
-      Ok(n) => {
-        if n == 0 {
-          return Err(io::Error::new(
-            io::ErrorKind::WriteZero,
-            "could not send",
-          ));
-        }
-        return Ok(n);
-      }
-      Err(nix::errno::Errno::EINTR) => continue,
-      Err(e) => return Err(e.into()),
-    }
-  }
-}
-
-fn readmsg(fd: RawFd, data: &mut [u8]) -> Result<usize, std::io::Error> {
-  let mut iov = [IoSliceMut::new(data)];
-  loop {
-    match nix::sys::socket::recvmsg::<()>(
-      fd,
-      &mut iov,
-      None,
-      nix::sys::socket::MsgFlags::empty(),
-    ) {
-      Ok(n) => {
-        if n.bytes == 0 {
-          return Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "could not read",
-          ));
-        }
-        return Ok(n.bytes);
-      }
-      Err(nix::errno::Errno::EINTR) => continue,
-      Err(e) => return Err(e.into()),
-    }
-  }
-}
+use tokio::io::AsyncWriteExt;
+use tokio::net::UnixStream;
 
 struct IpcPipe {
-  inner: AsyncFd<RawFd>,
+  inner: UnixStream,
 }
 
 impl IpcPipe {
   fn new(fd: RawFd) -> Result<Self, std::io::Error> {
     Ok(Self {
-      inner: AsyncFd::new(fd)?,
+      inner: UnixStream::from_std(unsafe {
+        std::os::unix::net::UnixStream::from_raw_fd(fd)
+      })?,
     })
   }
 
   async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, std::io::Error> {
     let mut offset = 0;
     loop {
-      let mut guard = self.inner.writable().await?;
-      match guard.try_io(|inner| sendmsg(inner.as_raw_fd(), &data[offset..])) {
-        Ok(Ok(n)) => {
+      self.inner.writable().await?;
+      match self.inner.try_write(&data[offset..]) {
+        Ok(n) => {
           offset += n;
           if offset >= data.len() {
             return Ok(offset);
           }
         }
-        Ok(Err(e)) => return Err(e),
-        Err(_) => continue,
+        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+          continue;
+        }
+        Err(e) => return Err(e),
       }
     }
   }
 
   async fn read(&self, data: &mut [u8]) -> Result<usize, std::io::Error> {
-    let mut offset = 0;
     loop {
-      let mut guard = self.inner.readable().await?;
-      match guard
-        .try_io(|inner| readmsg(inner.as_raw_fd(), &mut data[offset..]))
-      {
-        Ok(Ok(n)) => {
-          offset += n;
-          if offset >= data.len() {
-            return Ok(offset);
-          }
+      self.inner.readable().await?;
+      match self.inner.try_read(&mut data[..]) {
+        Ok(n) => {
+          return Ok(n);
         }
-        Ok(Err(e)) => return Err(e),
-        Err(_) => continue,
+        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+          continue;
+        }
+        Err(e) => return Err(e),
       }
     }
   }
@@ -114,6 +73,7 @@ impl IpcPipe {
 struct IpcJsonStream {
   pipe: Rc<IpcPipe>,
   buffer: RefCell<Vec<u8>>,
+  cancel: CancelHandle,
 }
 
 impl IpcJsonStream {
@@ -121,25 +81,27 @@ impl IpcJsonStream {
     Ok(Self {
       pipe: Rc::new(IpcPipe::new(fd)?),
       buffer: RefCell::new(Vec::new()),
+      cancel: CancelHandle::default(),
     })
   }
 
   async fn read(self: Rc<Self>) -> Result<Vec<serde_json::Value>, AnyError> {
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; 1024]; // TODO: Use a single growable buffer.
     let mut msgs = Vec::new();
     loop {
-      println!("reading");
       let n = self.pipe.read(&mut buf).await?;
-      println!("read {} bytes", n);
 
       let read = &buf[..n];
       let mut chunk_boundary = 0;
+
       for byte in read {
         if *byte == b'\n' {
-          let chunk = &read[chunk_boundary..];
+          let chunk = &read[..chunk_boundary];
           self.buffer.borrow_mut().extend_from_slice(chunk);
+
           chunk_boundary = 0;
           if chunk.is_empty() {
+            // Last chunk.
             break;
           }
           msgs.push(serde_json::from_slice(&self.buffer.borrow())?);
@@ -150,11 +112,9 @@ impl IpcJsonStream {
       }
 
       if chunk_boundary > 0 {
-        self.buffer.borrow_mut().clear();
-        self
-          .buffer
-          .borrow_mut()
-          .extend_from_slice(&read[..chunk_boundary]);
+        let buffer = &mut self.buffer.borrow_mut();
+        buffer.clear();
+        buffer.extend_from_slice(&read[..chunk_boundary]);
       }
 
       if !msgs.is_empty() {
@@ -175,7 +135,11 @@ impl IpcJsonStream {
   }
 }
 
-impl deno_core::Resource for IpcJsonStream {}
+impl deno_core::Resource for IpcJsonStream {
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
 
 #[op2(fast)]
 #[smi]
@@ -212,6 +176,8 @@ pub async fn op_node_ipc_read(
     .resource_table
     .get::<IpcJsonStream>(rid)
     .map_err(|_| bad_resource_id())?;
-  let msgs = stream.read().await?;
+
+  let cancel = RcRef::map(stream.clone(), |r| &r.cancel);
+  let msgs = stream.read().or_cancel(cancel).await??;
   Ok(msgs)
 }

@@ -256,8 +256,8 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      if (ipc >= 0) {
-        setupChannel(this, 4); //ipc);
+      if (typeof this.#process._pipeFd == "number") {
+        setupChannel(this, this.#process._pipeFd);
       }
 
       (async () => {
@@ -1074,7 +1074,11 @@ export function setupChannel(target, channel) {
 
   async function readLoop() {
     while (true) {
+      if (!target.connected) {
+        return;
+      }
       const msgs = await core.opAsync("op_node_ipc_read", ipc);
+      // We may read multiple messages at once.
       for (const msg of msgs) {
         target.emit("message", msg);
       }
@@ -1112,6 +1116,19 @@ export function setupChannel(target, channel) {
   };
 
   target.connected = true;
+
+  target.disconnect = function () {
+    if (!this.connected) {
+      this.emit("error", new Error("IPC channel is already disconnected"));
+      return;
+    }
+
+    this.connected = false;
+    process.nextTick(() => {
+      core.close(ipc);
+      target.emit("disconnect");
+    });
+  };
 
   // Start reading messages from the channel.
   readLoop();
