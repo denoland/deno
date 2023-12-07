@@ -256,6 +256,7 @@ impl LanguageServer {
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
+        unstable_sloppy_imports: cli_options.unstable_sloppy_imports(),
       };
       let graph = module_graph_builder
         .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
@@ -546,9 +547,9 @@ impl Inner {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Arc<tsc::NavigationTree>, AnyError> {
-    let mark = self.performance.mark(
-      "get_navigation_tree",
-      Some(json!({ "specifier": specifier })),
+    let mark = self.performance.mark_with_args(
+      "lsp.get_navigation_tree",
+      json!({ "specifier": specifier }),
     );
     let asset_or_doc = self.get_asset_or_document(specifier)?;
     let navigation_tree =
@@ -715,7 +716,7 @@ impl Inner {
   }
 
   pub async fn update_cache(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("update_cache", None::<()>);
+    let mark = self.performance.mark("lsp.update_cache");
     self.performance.measure(mark);
     let maybe_cache = &self.config.workspace_settings().cache;
     let maybe_global_cache_path = if let Some(cache_str) = maybe_cache {
@@ -844,7 +845,7 @@ impl Inner {
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("update_import_map", None::<()>);
+    let mark = self.performance.mark("lsp.update_import_map");
 
     let maybe_import_map_url = self.resolve_import_map_specifier()?;
     if let Some(import_map_url) = maybe_import_map_url {
@@ -979,7 +980,7 @@ impl Inner {
   }
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("update_registries", None::<()>);
+    let mark = self.performance.mark("lsp.update_registries");
     self.recreate_http_client_and_dependents().await?;
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
@@ -1035,7 +1036,7 @@ impl Inner {
   }
 
   async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("update_tsconfig", None::<()>);
+    let mark = self.performance.mark("lsp.update_tsconfig");
     let mut tsconfig = TsConfig::new(json!({
       "allowJs": true,
       "esModuleInterop": true,
@@ -1080,7 +1081,7 @@ async fn create_npm_resolver(
   let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
     || maybe_config_file
       .as_ref()
-      .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+      .map(|c| c.has_unstable("byonm"))
       .unwrap_or(false);
   create_cli_npm_resolver_for_lsp(if is_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
@@ -1129,7 +1130,7 @@ impl Inner {
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
     lsp_log!("Starting Deno language server...");
-    let mark = self.performance.mark("initialize", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.initialize", &params);
 
     // exit this process when the parent is lost
     if let Some(parent_pid) = params.process_id {
@@ -1295,7 +1296,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
   ) -> Document {
-    let mark = self.performance.mark("did_open", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.did_open", &params);
     let language_id =
       params
         .text_document
@@ -1324,7 +1325,7 @@ impl Inner {
   }
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
-    let mark = self.performance.mark("did_change", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.did_change", &params);
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1367,7 +1368,7 @@ impl Inner {
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
-    let mark = self.performance.mark("did_close", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.did_close", &params);
     self.diagnostics_state.clear(&params.text_document.uri);
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
@@ -1506,7 +1507,7 @@ impl Inner {
 
     let mark = self
       .performance
-      .mark("did_change_watched_files", Some(&params));
+      .mark_with_args("lsp.did_change_watched_files", &params);
     let mut touched = false;
     let changes: IndexSet<Url> = params
       .changes
@@ -1660,7 +1661,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("document_symbol", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.document_symbol", &params);
     let asset_or_document = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_document.line_index();
 
@@ -1714,7 +1717,7 @@ impl Inner {
       error!("{}", err);
       LspError::invalid_request()
     })?;
-    let mark = self.performance.mark("formatting", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.formatting", &params);
 
     // spawn a blocking task to allow doing other work while this is occurring
     let text_edits = deno_core::unsync::spawn_blocking({
@@ -1780,7 +1783,7 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("hover", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.hover", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
@@ -1861,7 +1864,7 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("code_action", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.code_action", &params);
     let mut all_actions = CodeActionResponse::new();
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
@@ -2044,7 +2047,9 @@ impl Inner {
       return Ok(params);
     }
 
-    let mark = self.performance.mark("code_action_resolve", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.code_action_resolve", &params);
     let kind = params.kind.clone().unwrap();
     let data = params.data.clone().unwrap();
 
@@ -2147,34 +2152,60 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !self.config.enabled_code_lens_for_specifier(&specifier)
     {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("code_lens", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.code_lens", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
-    let navigation_tree =
-      self.get_navigation_tree(&specifier).await.map_err(|err| {
-        error!("Error getting code lenses for \"{}\": {}", specifier, err);
-        LspError::internal_error()
-      })?;
-    let parsed_source = asset_or_doc.maybe_parsed_source().and_then(|r| r.ok());
-    let line_index = asset_or_doc.line_index();
-    let code_lenses = code_lens::collect(
-      &specifier,
-      parsed_source,
-      &self.config,
-      line_index,
-      &navigation_tree,
-    )
-    .await
-    .map_err(|err| {
-      error!("Error getting code lenses for \"{}\": {}", specifier, err);
-      LspError::internal_error()
-    })?;
+    let settings = self.config.workspace_settings_for_specifier(&specifier);
+    let mut code_lenses = Vec::new();
+    if settings.code_lens.test
+      && self.config.specifier_enabled_for_test(&specifier)
+    {
+      if let Some(Ok(parsed_source)) = asset_or_doc.maybe_parsed_source() {
+        code_lenses.extend(
+          code_lens::collect_test(&specifier, parsed_source).map_err(
+            |err| {
+              error!(
+                "Error getting test code lenses for \"{}\": {}",
+                &specifier, err
+              );
+              LspError::internal_error()
+            },
+          )?,
+        );
+      }
+    }
+    if settings.code_lens.implementations || settings.code_lens.references {
+      let navigation_tree =
+        self.get_navigation_tree(&specifier).await.map_err(|err| {
+          error!("Error getting code lenses for \"{}\": {}", specifier, err);
+          LspError::internal_error()
+        })?;
+      let line_index = asset_or_doc.line_index();
+      code_lenses.extend(
+        code_lens::collect_tsc(
+          &specifier,
+          &settings.code_lens,
+          line_index,
+          &navigation_tree,
+        )
+        .await
+        .map_err(|err| {
+          error!(
+            "Error getting ts code lenses for \"{}\": {}",
+            &specifier, err
+          );
+          LspError::internal_error()
+        })?,
+      );
+    }
     self.performance.measure(mark);
 
+    if code_lenses.is_empty() {
+      return Ok(None);
+    }
     Ok(Some(code_lenses))
   }
 
@@ -2182,7 +2213,9 @@ impl Inner {
     &self,
     code_lens: CodeLens,
   ) -> LspResult<CodeLens> {
-    let mark = self.performance.mark("code_lens_resolve", Some(&code_lens));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.code_lens_resolve", &code_lens);
     let result = if code_lens.data.is_some() {
       code_lens::resolve_code_lens(code_lens, self)
         .await
@@ -2213,7 +2246,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("document_highlight", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.document_highlight", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let files_to_search = vec![specifier.clone()];
@@ -2254,7 +2289,7 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("references", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.references", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let maybe_referenced_symbols = self
@@ -2310,7 +2345,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("goto_definition", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.goto_definition", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let maybe_definition = self
@@ -2346,7 +2383,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("goto_definition", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.goto_definition", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let maybe_definition_info = self
@@ -2392,7 +2431,7 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("completion", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.completion", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     // Import specifiers are something wholly internal to Deno, so for
     // completions, we will use internal logic and if there are completions
@@ -2472,7 +2511,9 @@ impl Inner {
     &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
-    let mark = self.performance.mark("completion_resolve", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.completion_resolve", &params);
     let completion_item = if let Some(data) = &params.data {
       let data: completions::CompletionItemData =
         serde_json::from_value(data.clone()).map_err(|err| {
@@ -2554,7 +2595,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("goto_implementation", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.goto_implementation", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2596,7 +2639,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("folding_range", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.folding_range", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
 
     let outlining_spans = self
@@ -2637,7 +2682,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("incoming_calls", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.incoming_calls", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2680,7 +2727,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("outgoing_calls", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.outgoing_calls", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2727,7 +2776,7 @@ impl Inner {
 
     let mark = self
       .performance
-      .mark("prepare_call_hierarchy", Some(&params));
+      .mark_with_args("lsp.prepare_call_hierarchy", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2788,7 +2837,7 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("rename", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.rename", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2831,7 +2880,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("selection_range", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.selection_range", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2864,7 +2915,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("semantic_tokens_full", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.semantic_tokens_full", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2901,7 +2954,7 @@ impl Inner {
 
     let mark = self
       .performance
-      .mark("semantic_tokens_range", Some(&params));
+      .mark_with_args("lsp.semantic_tokens_range", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
@@ -2940,7 +2993,9 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("signature_help", Some(&params));
+    let mark = self
+      .performance
+      .mark_with_args("lsp.signature_help", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let options = if let Some(context) = params.context {
@@ -3021,7 +3076,7 @@ impl Inner {
     &self,
     params: WorkspaceSymbolParams,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
-    let mark = self.performance.mark("symbol", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.symbol", &params);
 
     let navigate_to_items = self
       .ts_server
@@ -3296,7 +3351,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let inner = self.0.read().await;
       inner
         .performance
-        .mark("did_change_configuration", Some(&params))
+        .mark_with_args("lsp.did_change_configuration", &params)
     };
 
     self.refresh_configuration().await;
@@ -3321,7 +3376,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       let mark = ls
         .performance
-        .mark("did_change_workspace_folders", Some(&params));
+        .mark_with_args("lsp.did_change_workspace_folders", &params);
       ls.did_change_workspace_folders(params);
       (ls.performance.clone(), mark)
     };
@@ -3533,7 +3588,7 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("cache", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.cache", &params);
     let roots = if !params.uris.is_empty() {
       params
         .uris
@@ -3639,7 +3694,7 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark("inlay_hint", Some(&params));
+    let mark = self.performance.mark_with_args("lsp.inlay_hint", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let text_span =
@@ -3692,7 +3747,7 @@ impl Inner {
   ) -> LspResult<Option<String>> {
     let mark = self
       .performance
-      .mark("virtual_text_document", Some(&params));
+      .mark_with_args("lsp.virtual_text_document", &params);
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);

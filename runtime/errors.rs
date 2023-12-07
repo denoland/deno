@@ -213,7 +213,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_url_parse_error_class)
     })
     .or_else(|| {
-      e.downcast_ref::<deno_kv::sqlite::TypeError>()
+      e.downcast_ref::<deno_kv::sqlite::SqliteBackendError>()
         .map(|_| "TypeError")
     })
     .or_else(|| {

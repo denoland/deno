@@ -1,8 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -42,6 +41,7 @@ import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
 import * as prompt from "ext:runtime/41_prompt.js";
+import * as imageData from "ext:deno_web/16_image_data.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -67,6 +67,7 @@ const windowOrWorkerGlobalScope = {
   FileReader: util.nonEnumerable(fileReader.FileReader),
   FormData: util.nonEnumerable(formData.FormData),
   Headers: util.nonEnumerable(headers.Headers),
+  ImageData: util.nonEnumerable(imageData.ImageData),
   MessageEvent: util.nonEnumerable(event.MessageEvent),
   Performance: util.nonEnumerable(performance.Performance),
   PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),

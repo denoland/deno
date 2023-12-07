@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   MapPrototypeGet,
   MapPrototypeDelete,

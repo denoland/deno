@@ -5,9 +5,8 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
 const {
   SymbolFor,
   ObjectPrototypeIsPrototypeOf,

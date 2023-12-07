@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
 const ops = core.ops;
 
 import * as timers from "ext:deno_web/02_timers.js";
@@ -159,8 +159,12 @@ const denoNsUnstableById = {
   // BroadcastChannel is always available?
   // 1: {},
 
-  // FFI
   2: {
+    cron: cron.cron,
+  },
+
+  // FFI
+  3: {
     dlopen: ffi.dlopen,
     UnsafeCallback: ffi.UnsafeCallback,
     UnsafePointer: ffi.UnsafePointer,
@@ -169,7 +173,7 @@ const denoNsUnstableById = {
   },
 
   // FS
-  3: {
+  4: {
     flock: fs.flock,
     flockSync: fs.flockSync,
     funlock: fs.funlock,
@@ -177,8 +181,17 @@ const denoNsUnstableById = {
     umask: fs.umask,
   },
 
+  // HTTP
+  5: {
+    HttpClient: httpClient.HttpClient,
+    createHttpClient: httpClient.createHttpClient,
+    // TODO(bartlomieju): why is it needed?
+    http,
+    upgradeHttp: http.upgradeHttp,
+  },
+
   // KV
-  4: {
+  6: {
     openKv: kv.openKv,
     AtomicOperation: kv.AtomicOperation,
     Kv: kv.Kv,
@@ -187,29 +200,17 @@ const denoNsUnstableById = {
   },
 
   // net
-  5: {
+  7: {
     listenDatagram: net.createListenDatagram(
       ops.op_net_listen_udp,
       ops.op_net_listen_unixpacket,
     ),
   },
-
-  // HTTP
-  6: {
-    HttpClient: httpClient.HttpClient,
-    createHttpClient: httpClient.createHttpClient,
-    // TODO(bartlomieju): why is it needed?
-    http,
-    upgradeHttp: http.upgradeHttp,
-  },
-  // Worker options
-  // 7: {}
-
-  8: {
-    cron: cron.cron,
-  },
   // Unsafe proto
-  // 9: {},
+  // 8: {},
+
+  // Worker options
+  // 9: {}
 };
 
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js

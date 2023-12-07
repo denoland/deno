@@ -11,7 +11,7 @@ Error: Error with errors prop.
   ]
 }
 
-error: Uncaught Error: Error with errors prop.
+error: Uncaught (in promise) Error: Error with errors prop.
 const error = new Error("Error with errors prop.");
               ^
     at [WILDCARD]/error_with_errors_prop.js:1:15
