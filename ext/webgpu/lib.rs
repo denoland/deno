@@ -249,6 +249,9 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   if features.contains(wgpu_types::Features::RG11B10UFLOAT_RENDERABLE) {
     return_features.push("rg11b10ufloat-renderable");
   }
+  if features.contains(wgpu_types::Features::BGRA8UNORM_STORAGE) {
+    return_features.push("bgra8unorm-storage");
+  }
 
   // extended from spec
 
@@ -399,6 +402,7 @@ pub async fn op_webgpu_request_adapter(
       wgpu_core::identity::IdentityManagerFactory,
       wgpu_types::InstanceDescriptor {
         backends,
+        flags: wgpu_types::InstanceFlags::from_build_config(),
         dx12_shader_compiler: wgpu_types::Dx12Compiler::Fxc,
         gles_minor_version: wgpu_types::Gles3MinorVersion::default(),
       },
@@ -486,6 +490,10 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
     features.set(
       wgpu_types::Features::RG11B10UFLOAT_RENDERABLE,
       required_features.0.contains("rg11b10ufloat-renderable"),
+    );
+    features.set(
+      wgpu_types::Features::BGRA8UNORM_STORAGE,
+      required_features.0.contains("bgra8unorm-storage"),
     );
 
     // extended from spec

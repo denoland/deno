@@ -102,6 +102,7 @@ enum GPUFeatureName {
     // shader
     "shader-f16",
     "rg11b10ufloat-renderable",
+    "bgra8unorm-storage",
 
     // extended from spec
 

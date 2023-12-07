@@ -10,7 +10,8 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
-const { Symbol } = primordials;
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+const { Symbol, SymbolFor, ObjectPrototypeIsPrototypeOf } = primordials;
 import {
   _device,
   assertDevice,
