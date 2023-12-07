@@ -105,11 +105,13 @@ pub fn get_local_package_json_version_reqs(
 
   let deps = package_json.dependencies.as_ref();
   let dev_deps = package_json.dev_dependencies.as_ref();
+  let overrides_deps = package_json.overrides.as_ref();
   let mut result = IndexMap::new();
 
   // favors the deps over dev_deps
   insert_deps(deps, &mut result);
   insert_deps(dev_deps, &mut result);
+  insert_deps(overrides_deps, &mut result);
 
   result
 }
