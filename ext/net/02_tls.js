@@ -1,9 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import { Conn, Listener } from "ext:deno_net/01_net.js";
-const primordials = globalThis.__bootstrap.primordials;
 const { Number, TypeError } = primordials;
 
 function opStartTls(args) {

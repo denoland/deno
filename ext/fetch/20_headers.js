@@ -19,7 +19,7 @@ import {
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
 } from "ext:deno_web/00_infra.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypePush,
