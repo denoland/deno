@@ -568,7 +568,11 @@ impl ModuleLoader for CliModuleLoader {
     // support in REPL. This should be fixed.
     let resolution = self.shared.resolver.resolve(
       specifier,
-      &referrer,
+      &deno_graph::Range {
+        specifier: referrer.clone(),
+        start: deno_graph::Position::zeroed(),
+        end: deno_graph::Position::zeroed(),
+      },
       ResolutionMode::Execution,
     );
 

@@ -1137,9 +1137,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.73.5"
+version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76d4d2960ce5c7af64e57ec4e7fd99023bd1ab664cedc4ec267db1d294b6002a"
+checksum = "347a6288b9fa4f1ce2d56f04326bc39e1dec243545a89240efeef402d5fbde6b"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1160,9 +1160,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.31.5"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b98917905e9be9740722f89c3b2d3a963beaed8a05dce58e642947d0f6aa17d"
+checksum = "bba6c66922c3953ba465fac215e42c637cc91119618911c0cd84cb994b25d5b7"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1228,9 +1228,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.61.5"
+version = "0.62.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "332e6a1930b3266dc848edeaf1426bbbd3ddca25c5e107e70823efb1b3ce68be"
+checksum = "2b0c15558cd72b534064bf7ae07e0fc99e0693915a4552f67558cc0b2b09c287"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2204,9 +2204,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.55.5"
+version = "0.56.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "455c055f28756fc7ba0d64506e6167b91878f3a39854271d7d63b577deb8b45d"
+checksum = "f50abfc246ed6d7a5e34c9658cac93f959788058c8455c528d69471ef72d8ebf"
 dependencies = [
  "anyhow",
  "base64 0.21.4",

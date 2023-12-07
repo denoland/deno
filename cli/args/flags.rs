@@ -455,6 +455,7 @@ pub struct Flags {
   pub unstable: bool,
   pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
+  pub unstable_sloppy_imports: bool,
   pub unstable_workspaces: bool,
   pub unstable_features: Vec<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -862,6 +863,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   flags.unstable_bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_sloppy_imports = matches.get_flag("unstable-sloppy-imports");
   flags.unstable_workspaces = matches.get_flag("unstable-workspaces");
 
   if matches.get_flag("quiet") {
@@ -977,6 +979,17 @@ fn clap_root() -> Command {
         .long("unstable-byonm")
         .help("Enable unstable 'bring your own node_modules' feature")
         .env("DENO_UNSTABLE_BYONM")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-sloppy-imports")
+        .long("unstable-sloppy-imports")
+        .help(
+          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
+        )
+        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
