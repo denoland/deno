@@ -9,25 +9,6 @@ use deno_core::error::JsError;
 use deno_core::error::JsStackFrame;
 use std::fmt::Write as _;
 
-/// Compares all properties of JsError, except for JsError::cause.
-/// This function is used to detect that 2 JsError objects in a JsError::cause
-/// chain are identical, ie. there is a recursive cause.
-/// 01_console.js, which also detects recursive causes, can use JS object
-/// comparisons to compare errors. We don't have access to JS object identity in
-/// format_js_error().
-fn errors_are_equal_without_cause(a: &JsError, b: &JsError) -> bool {
-  a.name == b.name
-    && a.message == b.message
-    && a.stack == b.stack
-    // `a.cause == b.cause` omitted, because it is absent in recursive errors,
-    // despite the error being identical to a previously seen one.
-    && a.exception_message == b.exception_message
-    && a.frames == b.frames
-    && a.source_line == b.source_line
-    && a.source_line_frame_index == b.source_line_frame_index
-    && a.aggregated == b.aggregated
-}
-
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
   from: &'a JsError,
@@ -191,10 +172,7 @@ fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
   while let Some(cause) = &current_error.cause {
     history.push(current_error);
 
-    if let Some(seen) = history
-      .iter()
-      .find(|&el| errors_are_equal_without_cause(el, cause.as_ref()))
-    {
+    if let Some(seen) = history.iter().find(|&el| cause.is_same_error(el)) {
       return Some(ErrorReference {
         from: current_error,
         to: seen,
@@ -246,7 +224,7 @@ fn format_js_error_inner(
   s.push_str(&js_error.exception_message);
 
   if let Some(circular) = &circular {
-    if errors_are_equal_without_cause(js_error, circular.reference.to) {
+    if js_error.is_same_error(circular.reference.to) {
       write!(s, " {}", cyan(format!("<ref *{}>", circular.index))).unwrap();
     }
   }
@@ -281,9 +259,7 @@ fn format_js_error_inner(
   if let Some(cause) = &js_error.cause {
     let is_caused_by_circular = circular
       .as_ref()
-      .map(|circular| {
-        errors_are_equal_without_cause(circular.reference.from, js_error)
-      })
+      .map(|circular| js_error.is_same_error(circular.reference.from))
       .unwrap_or(false);
 
     let error_string = if is_caused_by_circular {

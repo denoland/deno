@@ -6,7 +6,6 @@
 // and impossible logic branches based on what Deno currently supports.
 
 const core = globalThis.Deno.core;
-const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -1494,7 +1493,7 @@ function reportException(error) {
   });
   // Avoid recursing `reportException()` via error handlers more than once.
   if (reportExceptionStackedCalls > 1 || globalThis_.dispatchEvent(event)) {
-    ops.op_dispatch_exception(error);
+    core.reportUnhandledException(error);
   }
   reportExceptionStackedCalls--;
 }

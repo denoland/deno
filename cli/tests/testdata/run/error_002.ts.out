@@ -1,4 +1,4 @@
-[WILDCARD]error: Uncaught Error: exception from mod1
+[WILDCARD]error: Uncaught (in promise) Error: exception from mod1
   throw Error("exception from mod1");
         ^
     at throwsError ([WILDCARD]/subdir/mod1.ts:16:9)
