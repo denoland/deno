@@ -42,7 +42,7 @@ pub async fn compile(
   if cli_options.unstable_sloppy_imports() {
     log::warn!(
       concat!(
-        "{} Sloppy import resolution is not supported in deno compile. ",
+        "{} Sloppy imports are not supported in deno compile. ",
         "The compiled executable may encouter runtime errors.",
       ),
       crate::colors::yellow("Warning"),
