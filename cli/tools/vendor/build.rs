@@ -15,6 +15,7 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::EsmModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_runtime::deno_fs;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
@@ -134,8 +135,10 @@ pub async fn build<
   }
 
   // surface any errors
+  let fs: Arc<dyn deno_fs::FileSystem> = Arc::new(deno_fs::RealFs);
   graph_util::graph_valid(
     &graph,
+    &fs,
     &graph.roots,
     graph_util::GraphValidOptions {
       is_vendoring: true,
