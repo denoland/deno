@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use chrono::DateTime;
+use chrono::Utc;
 use deno_core::parking_lot::Mutex;
 use std::fs;
 use std::io::prelude::*;
@@ -8,53 +10,80 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::thread;
+use std::time::SystemTime;
 
 static LSP_DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
 static LSP_LOG_LEVEL: AtomicUsize = AtomicUsize::new(log::Level::Info as usize);
 static LSP_WARN_LEVEL: AtomicUsize =
   AtomicUsize::new(log::Level::Warn as usize);
-static LOG_FILE: Mutex<Option<LogFile>> = Mutex::new(None);
+static LOG_FILE: LogFile = LogFile {
+  enabled: AtomicBool::new(true),
+  path: Mutex::new(None),
+  buffer: Mutex::new(String::new()),
+};
 
 pub struct LogFile {
-  path: PathBuf,
-  buffer: String,
+  enabled: AtomicBool,
+  path: Mutex<Option<PathBuf>>,
+  buffer: Mutex<String>,
 }
 
 impl LogFile {
-  pub fn write_line(&mut self, s: &str) {
-    self.buffer.push_str(s);
-    self.buffer.push('\n');
+  pub fn write_line(&self, s: &str) {
+    if LOG_FILE.enabled.load(Ordering::Relaxed) {
+      let mut buffer = self.buffer.lock();
+      buffer.push_str(s);
+      buffer.push('\n');
+    }
   }
 
-  fn commit(&mut self) {
-    if !self.buffer.is_empty() {
-      if let Ok(file) = fs::OpenOptions::new().append(true).open(&self.path) {
-        if write!(&file, "{}", &self.buffer).is_ok() {
-          self.buffer.clear();
-        }
+  fn commit(&self) {
+    let unbuffered = {
+      let mut buffer = self.buffer.lock();
+      if buffer.is_empty() {
+        return;
+      }
+      let unbuffered = buffer.clone();
+      buffer.clear();
+      unbuffered
+    };
+    if let Some(path) = self.path.lock().clone() {
+      if let Ok(file) = fs::OpenOptions::new().append(true).open(path) {
+        write!(&file, "{}", unbuffered).ok();
       }
     }
   }
 }
 
-pub fn init_log_file(path: PathBuf) {
-  fs::write(&path, "").ok();
-  *LOG_FILE.lock() = Some(LogFile {
-    path,
-    buffer: String::with_capacity(1024),
-  });
+pub fn init_log_file(enabled: bool) {
+  if !enabled {
+    LOG_FILE.enabled.store(false, Ordering::Relaxed);
+    LOG_FILE.buffer.lock().clear();
+    return;
+  }
+  let Ok(cwd) = std::env::current_dir() else {
+    return;
+  };
+  let now = SystemTime::now();
+  let now: DateTime<Utc> = now.into();
+  let now = now.to_rfc3339().replace(':', "_");
+  let path = cwd.join(format!(".deno_lsp/log_{}.txt", now));
+  let Some(dir) = path.parent() else { return };
+  let Ok(()) = fs::create_dir_all(dir) else {
+    return;
+  };
+  let Ok(()) = fs::write(&path, "") else {
+    return;
+  };
+  *LOG_FILE.path.lock() = Some(path);
   thread::spawn(|| loop {
+    LOG_FILE.commit();
     thread::sleep(std::time::Duration::from_secs(1));
-    if let Some(log_file) = &mut *LOG_FILE.lock() {
-      log_file.commit();
-    }
   });
 }
 
 pub fn write_line_to_log_file(s: &str) {
-  if let Some(log_file) = &mut *LOG_FILE.lock() {
-    log_file.write_line(s);
-  }
+  LOG_FILE.write_line(s);
 }
 
 pub fn set_lsp_debug_flag(value: bool) {

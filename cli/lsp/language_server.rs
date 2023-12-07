@@ -1230,9 +1230,6 @@ impl Inner {
     if let Err(err) = self.update_cache().await {
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Ok(deno_dir) = DenoDir::new(self.maybe_global_cache_path.clone()) {
-      init_log_file(deno_dir.lsp_log_file_path());
-    };
     if let Err(err) = self.update_config_file().await {
       self.client.show_message(MessageType::WARNING, err);
     }
@@ -3245,6 +3242,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
+      init_log_file(ls.config.persist_log());
       if let Err(err) = ls.update_tsconfig().await {
         ls.client.show_message(MessageType::WARNING, err);
       }
