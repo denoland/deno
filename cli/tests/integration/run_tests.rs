@@ -4740,7 +4740,6 @@ itest!(unsafe_proto_flag {
 fn test_unstable_sloppy_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", r#"{ "unstable": ["sloppy-imports"] }"#);
   temp_dir.write("a.ts", "export class A {}");
   temp_dir.write("b.js", "export class B {}");
   temp_dir.write("c.mts", "export class C {}");
@@ -4771,6 +4770,18 @@ console.log(g.G);
 "#,
   );
 
+  // run without sloppy imports
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text(r#"error: Module not found "file:///[WILDCARD]/a.js". Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
+    at file:///[WILDCARD]/main.ts:1:20
+"#)
+    .assert_exit_code(1);
+
+  // now run with sloppy imports
+  temp_dir.write("deno.json", r#"{ "unstable": ["sloppy-imports"] }"#);
   context
     .new_command()
     .args("run main.ts")

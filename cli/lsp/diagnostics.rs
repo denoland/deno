@@ -37,6 +37,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
@@ -1166,6 +1167,21 @@ impl DenoDiagnostic {
   /// Convert to an lsp Diagnostic when the range the diagnostic applies to is
   /// provided.
   pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
+    fn no_local_message(specifier: &ModuleSpecifier) -> String {
+      let fs: Arc<dyn deno_fs::FileSystem> = Arc::new(deno_fs::RealFs);
+      let mut message =
+        format!("Unable to load a local module: {}\n", specifier);
+      if let Some(additional_message) =
+        graph_util::maybe_sloppy_imports_suggestion_message(&fs, specifier)
+      {
+        message.push_str(&additional_message);
+        message.push('.');
+      } else {
+        message.push_str("Please check the file path.");
+      }
+      message
+    }
+
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
       Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
@@ -1173,7 +1189,7 @@ impl DenoDiagnostic {
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
-      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: {specifier}\n  Please check the file path."), None),
+      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (
         lsp::DiagnosticSeverity::ERROR,

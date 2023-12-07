@@ -117,7 +117,7 @@ impl MappedSpecifierResolver {
 #[derive(Debug)]
 pub struct CliGraphResolver {
   fs: Arc<dyn FileSystem>,
-  sloppy_imports_resolver: Option<UnstableSloppyImportsResolver>,
+  sloppy_imports_resolver: Option<SloppyImportsResolver>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
@@ -132,7 +132,7 @@ pub struct CliGraphResolver {
 pub struct CliGraphResolverOptions<'a> {
   pub fs: Arc<dyn FileSystem>,
   pub cjs_resolutions: Option<Arc<CjsResolutionStore>>,
-  pub sloppy_imports_resolver: Option<UnstableSloppyImportsResolver>,
+  pub sloppy_imports_resolver: Option<SloppyImportsResolver>,
   pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
@@ -399,13 +399,13 @@ impl Resolver for CliGraphResolver {
 }
 
 fn sloppy_imports_resolve(
-  resolver: &UnstableSloppyImportsResolver,
+  resolver: &SloppyImportsResolver,
   specifier: ModuleSpecifier,
   referrer_range: &deno_graph::Range,
 ) -> ModuleSpecifier {
   let resolution = resolver.resolve(&specifier);
   let hint_message = match &resolution {
-    UnstableSloppyImportsResolution::JsToTs(to_specifier) => {
+    SloppyImportsResolution::JsToTs(to_specifier) => {
       let from_media_type = MediaType::from_specifier(&specifier);
       let to_media_type = MediaType::from_specifier(to_specifier);
       format!(
@@ -414,11 +414,11 @@ fn sloppy_imports_resolve(
         to_media_type.as_ts_extension()
       )
     }
-    UnstableSloppyImportsResolution::NoExtension(to_specifier) => {
+    SloppyImportsResolution::NoExtension(to_specifier) => {
       let to_media_type = MediaType::from_specifier(to_specifier);
       format!("add {} extension", to_media_type.as_ts_extension())
     }
-    UnstableSloppyImportsResolution::Directory(to_specifier) => {
+    SloppyImportsResolution::Directory(to_specifier) => {
       let file_name = to_specifier
         .path()
         .rsplit_once('/')
@@ -426,7 +426,7 @@ fn sloppy_imports_resolve(
         .unwrap_or(to_specifier.path());
       format!("specify path to {} file in directory instead", file_name)
     }
-    UnstableSloppyImportsResolution::None(_) => return specifier,
+    SloppyImportsResolution::None(_) => return specifier,
   };
   // show a warning when this happens in order to drive
   // the user towards correcting these specifiers
@@ -541,12 +541,12 @@ impl NpmResolver for CliGraphResolver {
 }
 
 #[derive(Debug)]
-struct UnstableSloppyImportsStatCache {
+struct SloppyImportsStatCache {
   fs: Arc<dyn FileSystem>,
-  cache: Mutex<HashMap<PathBuf, Option<UnstableSloppyImportsFsEntry>>>,
+  cache: Mutex<HashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
 }
 
-impl UnstableSloppyImportsStatCache {
+impl SloppyImportsStatCache {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
       fs,
@@ -554,7 +554,7 @@ impl UnstableSloppyImportsStatCache {
     }
   }
 
-  pub fn stat_sync(&self, path: &Path) -> Option<UnstableSloppyImportsFsEntry> {
+  pub fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
     // there will only ever be one thread in here at a
     // time, so it's ok to hold the lock for so long
     let mut cache = self.cache.lock();
@@ -564,9 +564,9 @@ impl UnstableSloppyImportsStatCache {
 
     let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
       if stat.is_file {
-        Some(UnstableSloppyImportsFsEntry::File)
+        Some(SloppyImportsFsEntry::File)
       } else if stat.is_directory {
-        Some(UnstableSloppyImportsFsEntry::Dir)
+        Some(SloppyImportsFsEntry::Dir)
       } else {
         None
       }
@@ -577,13 +577,13 @@ impl UnstableSloppyImportsStatCache {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnstableSloppyImportsFsEntry {
+pub enum SloppyImportsFsEntry {
   File,
   Dir,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum UnstableSloppyImportsResolution<'a> {
+pub enum SloppyImportsResolution<'a> {
   /// No sloppy resolution was found.
   None(&'a ModuleSpecifier),
   /// Ex. `./file.js` to `./file.ts`
@@ -594,7 +594,7 @@ pub enum UnstableSloppyImportsResolution<'a> {
   Directory(ModuleSpecifier),
 }
 
-impl<'a> UnstableSloppyImportsResolution<'a> {
+impl<'a> SloppyImportsResolution<'a> {
   pub fn into_specifier(self) -> Cow<'a, ModuleSpecifier> {
     match self {
       Self::None(specifier) => Cow::Borrowed(specifier),
@@ -615,35 +615,35 @@ impl<'a> UnstableSloppyImportsResolution<'a> {
 }
 
 #[derive(Debug)]
-pub struct UnstableSloppyImportsResolver {
-  stat_cache: UnstableSloppyImportsStatCache,
+pub struct SloppyImportsResolver {
+  stat_cache: SloppyImportsStatCache,
 }
 
-impl UnstableSloppyImportsResolver {
+impl SloppyImportsResolver {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
-      stat_cache: UnstableSloppyImportsStatCache::new(fs),
+      stat_cache: SloppyImportsStatCache::new(fs),
     }
   }
 
   pub fn resolve_with_stat_sync(
     specifier: &ModuleSpecifier,
-    stat_sync: impl Fn(&Path) -> Option<UnstableSloppyImportsFsEntry>,
-  ) -> UnstableSloppyImportsResolution {
+    stat_sync: impl Fn(&Path) -> Option<SloppyImportsFsEntry>,
+  ) -> SloppyImportsResolution {
     if specifier.scheme() != "file" {
-      return UnstableSloppyImportsResolution::None(specifier);
+      return SloppyImportsResolution::None(specifier);
     }
 
     let Ok(path) = specifier_to_file_path(specifier) else {
-      return UnstableSloppyImportsResolution::None(specifier);
+      return SloppyImportsResolution::None(specifier);
     };
     let mut is_dir_resolution = false;
     let mut is_no_ext_resolution = false;
     let probe_paths = match (stat_sync)(&path) {
-      Some(UnstableSloppyImportsFsEntry::File) => {
-        return UnstableSloppyImportsResolution::None(specifier);
+      Some(SloppyImportsFsEntry::File) => {
+        return SloppyImportsResolution::None(specifier);
       }
-      Some(UnstableSloppyImportsFsEntry::Dir) => {
+      Some(SloppyImportsFsEntry::Dir) => {
         is_dir_resolution = true;
         // try to resolve at the index file
         vec![
@@ -673,7 +673,7 @@ impl UnstableSloppyImportsResolver {
           | MediaType::Wasm
           | MediaType::TsBuildInfo
           | MediaType::SourceMap => {
-            return UnstableSloppyImportsResolution::None(specifier)
+            return SloppyImportsResolution::None(specifier)
           }
           MediaType::Unknown => {
             is_no_ext_resolution = true;
@@ -692,7 +692,7 @@ impl UnstableSloppyImportsResolver {
           MediaType::Unknown => old_path_str,
           _ => match old_path_str.strip_suffix(media_type.as_ts_extension()) {
             Some(s) => Cow::Borrowed(s),
-            None => return UnstableSloppyImportsResolution::None(specifier),
+            None => return SloppyImportsResolution::None(specifier),
           },
         };
         probe_media_type_types
@@ -709,26 +709,26 @@ impl UnstableSloppyImportsResolver {
     };
 
     for probe_path in probe_paths {
-      if (stat_sync)(&probe_path) == Some(UnstableSloppyImportsFsEntry::File) {
+      if (stat_sync)(&probe_path) == Some(SloppyImportsFsEntry::File) {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
           if is_dir_resolution {
-            return UnstableSloppyImportsResolution::Directory(specifier);
+            return SloppyImportsResolution::Directory(specifier);
           } else if is_no_ext_resolution {
-            return UnstableSloppyImportsResolution::NoExtension(specifier);
+            return SloppyImportsResolution::NoExtension(specifier);
           } else {
-            return UnstableSloppyImportsResolution::JsToTs(specifier);
+            return SloppyImportsResolution::JsToTs(specifier);
           }
         }
       }
     }
 
-    UnstableSloppyImportsResolution::None(specifier)
+    SloppyImportsResolution::None(specifier)
   }
 
   pub fn resolve<'a>(
     &self,
     specifier: &'a ModuleSpecifier,
-  ) -> UnstableSloppyImportsResolution<'a> {
+  ) -> SloppyImportsResolution<'a> {
     Self::resolve_with_stat_sync(specifier, |path| {
       self.stat_cache.stat_sync(path)
     })
@@ -806,13 +806,13 @@ mod test {
 
   #[test]
   fn test_unstable_sloppy_imports() {
-    fn resolve(specifier: &ModuleSpecifier) -> UnstableSloppyImportsResolution {
-      UnstableSloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
+    fn resolve(specifier: &ModuleSpecifier) -> SloppyImportsResolution {
+      SloppyImportsResolver::resolve_with_stat_sync(specifier, |path| {
         RealFs.stat_sync(path).ok().and_then(|stat| {
           if stat.is_file {
-            Some(UnstableSloppyImportsFsEntry::File)
+            Some(SloppyImportsFsEntry::File)
           } else if stat.is_directory {
-            Some(UnstableSloppyImportsFsEntry::Dir)
+            Some(SloppyImportsFsEntry::Dir)
           } else {
             None
           }
@@ -830,7 +830,7 @@ mod test {
       let ts_file_uri = ts_file.uri_file();
       assert_eq!(
         resolve(&ts_file.uri_file()),
-        UnstableSloppyImportsResolution::None(&ts_file_uri),
+        SloppyImportsResolution::None(&ts_file_uri),
       );
       assert_eq!(
         resolve(
@@ -839,7 +839,7 @@ mod test {
             .join(&format!("file.{}", ext_from))
             .unwrap()
         ),
-        UnstableSloppyImportsResolution::JsToTs(ts_file.uri_file()),
+        SloppyImportsResolution::JsToTs(ts_file.uri_file()),
       );
       ts_file.remove_file();
     }
@@ -855,7 +855,7 @@ mod test {
             .join("file") // no ext
             .unwrap()
         ),
-        UnstableSloppyImportsResolution::NoExtension(file.uri_file()),
+        SloppyImportsResolution::NoExtension(file.uri_file()),
       );
       file.remove_file();
     }
@@ -869,7 +869,7 @@ mod test {
       let js_file_uri = js_file.uri_file();
       assert_eq!(
         resolve(&js_file.uri_file()),
-        UnstableSloppyImportsResolution::None(&js_file_uri),
+        SloppyImportsResolution::None(&js_file_uri),
       );
     }
 
@@ -881,7 +881,7 @@ mod test {
       index_file.write("");
       assert_eq!(
         resolve(&routes_dir.uri_file()),
-        UnstableSloppyImportsResolution::Directory(index_file.uri_file()),
+        SloppyImportsResolution::Directory(index_file.uri_file()),
       );
     }
   }
