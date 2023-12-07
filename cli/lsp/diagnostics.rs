@@ -19,6 +19,8 @@ use crate::args::LintOptions;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
+use crate::resolver::SloppyImportsResolution;
+use crate::resolver::SloppyImportsResolver;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
@@ -940,6 +942,13 @@ struct DiagnosticDataRedirect {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DiagnosticDataNoLocal {
+  pub to: ModuleSpecifier,
+  pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DiagnosticDataImportMapRemap {
   pub from: String,
   pub to: String,
@@ -1084,6 +1093,32 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
+        "no-local" => {
+          let data = diagnostic
+            .data
+            .clone()
+            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
+          let data: DiagnosticDataNoLocal = serde_json::from_value(data)?;
+          lsp::CodeAction {
+            title: data.message,
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            edit: Some(lsp::WorkspaceEdit {
+              changes: Some(HashMap::from([(
+                specifier.clone(),
+                vec![lsp::TextEdit {
+                  new_text: format!(
+                    "\"{}\"",
+                    relative_specifier(&data.to, specifier)
+                  ),
+                  range: diagnostic.range,
+                }],
+              )])),
+              ..Default::default()
+            }),
+            ..Default::default()
+          }
+        }
         "redirect" => {
           let data = diagnostic
             .data
@@ -1150,15 +1185,16 @@ impl DenoDiagnostic {
   /// diagnostic is fixable or not
   pub fn is_fixable(diagnostic: &lsp_types::Diagnostic) -> bool {
     if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
-      matches!(
-        code.as_str(),
+      match code.as_str() {
         "import-map-remap"
-          | "no-cache"
-          | "no-cache-npm"
-          | "no-attribute-type"
-          | "redirect"
-          | "import-node-prefix-missing"
-      )
+        | "no-cache"
+        | "no-cache-npm"
+        | "no-attribute-type"
+        | "redirect"
+        | "import-node-prefix-missing" => true,
+        "no-local" => diagnostic.data.is_some(),
+        _ => false,
+      }
     } else {
       false
     }
@@ -1167,12 +1203,14 @@ impl DenoDiagnostic {
   /// Convert to an lsp Diagnostic when the range the diagnostic applies to is
   /// provided.
   pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
-    fn no_local_message(specifier: &ModuleSpecifier) -> String {
-      let fs: Arc<dyn deno_fs::FileSystem> = Arc::new(deno_fs::RealFs);
+    fn no_local_message(
+      specifier: &ModuleSpecifier,
+      sloppy_resolution: SloppyImportsResolution,
+    ) -> String {
       let mut message =
         format!("Unable to load a local module: {}\n", specifier);
       if let Some(additional_message) =
-        graph_util::maybe_sloppy_imports_suggestion_message(&fs, specifier)
+        sloppy_resolution.as_suggestion_message()
       {
         message.push_str(&additional_message);
         message.push('.');
@@ -1189,7 +1227,17 @@ impl DenoDiagnostic {
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
-      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier), None),
+      Self::NoLocal(specifier) => {
+        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier);
+        let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
+          json!({
+            "specifier": specifier,
+            "to": sloppy_resolution.as_specifier(),
+            "message": message,
+          })
+        });
+        (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution), data)
+      },
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (
         lsp::DiagnosticSeverity::ERROR,
@@ -1218,18 +1266,22 @@ fn specifier_text_for_redirected(
 ) -> String {
   if redirect.scheme() == "file" && referrer.scheme() == "file" {
     // use a relative specifier when it's going to a file url
-    match referrer.make_relative(redirect) {
-      Some(relative) => {
-        if relative.starts_with('.') {
-          relative
-        } else {
-          format!("./{}", relative)
-        }
-      }
-      None => redirect.to_string(),
-    }
+    relative_specifier(redirect, referrer)
   } else {
     redirect.to_string()
+  }
+}
+
+fn relative_specifier(specifier: &lsp::Url, referrer: &lsp::Url) -> String {
+  match referrer.make_relative(specifier) {
+    Some(relative) => {
+      if relative.starts_with('.') {
+        relative
+      } else {
+        format!("./{}", relative)
+      }
+    }
+    None => specifier.to_string(),
   }
 }
 
