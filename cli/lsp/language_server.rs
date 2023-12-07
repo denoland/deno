@@ -102,6 +102,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_cli_npm_resolver_for_lsp;
@@ -1229,6 +1230,9 @@ impl Inner {
     if let Err(err) = self.update_cache().await {
       self.client.show_message(MessageType::WARNING, err);
     }
+    if let Ok(deno_dir) = DenoDir::new(self.maybe_global_cache_path.clone()) {
+      init_log_file(deno_dir.lsp_log_file_path());
+    };
     if let Err(err) = self.update_config_file().await {
       self.client.show_message(MessageType::WARNING, err);
     }

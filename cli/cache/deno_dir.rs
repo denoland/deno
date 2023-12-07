@@ -154,6 +154,10 @@ impl DenoDir {
   pub fn dl_folder_path(&self) -> PathBuf {
     self.root.join("dl")
   }
+
+  pub fn lsp_log_file_path(&self) -> PathBuf {
+    self.root.join("lsp_log.txt")
+  }
 }
 
 /// To avoid the poorly managed dirs crate

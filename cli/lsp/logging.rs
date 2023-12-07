@@ -1,13 +1,65 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::parking_lot::Mutex;
+use deno_runtime::tokio_util::create_basic_runtime;
+use std::fs;
+use std::io::prelude::*;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::thread;
 
 static LSP_DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
 static LSP_LOG_LEVEL: AtomicUsize = AtomicUsize::new(log::Level::Info as usize);
 static LSP_WARN_LEVEL: AtomicUsize =
   AtomicUsize::new(log::Level::Warn as usize);
+static LOG_FILE: Mutex<Option<LogFile>> = Mutex::new(None);
+
+pub struct LogFile {
+  path: PathBuf,
+  buffer: String,
+}
+
+impl LogFile {
+  pub fn log(&mut self, s: &str) {
+    self.buffer.push_str(s);
+    self.buffer.push('\n');
+  }
+
+  fn commit(&mut self) {
+    if !self.buffer.is_empty() {
+      if let Ok(file) = fs::OpenOptions::new().append(true).open(&self.path) {
+        if write!(&file, "{}", &self.buffer).is_ok() {
+          self.buffer.clear();
+        }
+      }
+    }
+  }
+}
+
+pub fn init_log_file(path: PathBuf) {
+  fs::write(&path, "").ok();
+  *LOG_FILE.lock() = Some(LogFile {
+    path,
+    buffer: String::with_capacity(1024),
+  });
+  thread::spawn(|| {
+    let runtime = create_basic_runtime();
+    runtime.block_on(async {
+      loop {
+        thread::sleep(std::time::Duration::from_secs(1));
+        if let Some(log_file) = &mut *LOG_FILE.lock() {
+          log_file.commit();
+        }
+      }
+    });
+  });
+}
+
+pub fn log_file() -> &'static Mutex<Option<LogFile>> {
+  &LOG_FILE
+}
 
 pub fn set_lsp_debug_flag(value: bool) {
   LSP_DEBUG_FLAG.store(value, Ordering::SeqCst)
@@ -53,7 +105,11 @@ macro_rules! lsp_log {
     if lsp_log_level == log::Level::Debug {
       $crate::lsp::logging::lsp_debug!($($arg)+)
     } else {
-      log::log!(lsp_log_level, $($arg)+)
+      let s = std::format!($($arg)+);
+      if let Some(log_file) = &mut *$crate::lsp::logging::log_file().lock() {
+        log_file.log(&s);
+      }
+      log::log!(lsp_log_level, "{}", s)
     }
   )
 }
@@ -67,7 +123,11 @@ macro_rules! lsp_warn {
       if lsp_log_level == log::Level::Debug {
         $crate::lsp::logging::lsp_debug!($($arg)+)
       } else {
-        log::log!(lsp_log_level, $($arg)+)
+        let s = std::format!($($arg)+);
+        if let Some(log_file) = &mut *$crate::lsp::logging::log_file().lock() {
+          log_file.log(&s);
+        }
+        log::log!(lsp_log_level, "{}", s)
       }
     }
   )
@@ -75,8 +135,14 @@ macro_rules! lsp_warn {
 
 macro_rules! lsp_debug {
   ($($arg:tt)+) => (
-    if crate::lsp::logging::lsp_debug_enabled() {
-      log::debug!($($arg)+)
+    {
+      let s = std::format!($($arg)+);
+      if let Some(log_file) = &mut *$crate::lsp::logging::log_file().lock() {
+        log_file.log(&s);
+      }
+      if crate::lsp::logging::lsp_debug_enabled() {
+        log::debug!("{}", s)
+      }
     }
   )
 }
