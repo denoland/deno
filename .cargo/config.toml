@@ -11,16 +11,10 @@ rustflags = [
   "link-arg=/STACK:4194304",
 ]
 
-[target.x86_64-apple-darwin]
-rustflags = [
-  "-C",
-  "link-args=-weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
-]
-
 [target.aarch64-apple-darwin]
 rustflags = [
   "-C",
-  "link-args=-fuse-ld=lld -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "link-arg=-fuse-ld=lld",
 ]
 
 [target.'cfg(all())']
