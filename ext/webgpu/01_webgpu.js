@@ -34,8 +34,11 @@ const {
   PromiseResolve,
   SafeArrayIterator,
   SafePromiseAll,
-  Set,
-  WeakRef,
+  SafeSet,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  TypedArrayPrototypeGetBuffer,
+  DataViewPrototypeGetBuffer,
+  SafeWeakRef,
   SetPrototypeHas,
   Symbol,
   SymbolFor,
@@ -671,7 +674,7 @@ const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
 function createGPUSupportedFeatures(features) {
   /** @type {GPUSupportedFeatures} */
   const supportedFeatures = webidl.createBranded(GPUSupportedFeatures);
-  supportedFeatures[webidl.setlikeInner] = new Set(features);
+  supportedFeatures[webidl.setlikeInner] = new SafeSet(features);
   webidl.setlike(
     supportedFeatures,
     GPUSupportedFeaturesPrototype,
@@ -801,7 +804,7 @@ class InnerGPUDevice {
   features;
   /** @type {GPUSupportedLimits} */
   limits;
-  /** @type {WeakRef<any>[]} */
+  /** @type {SafeWeakRef<any>[]} */
   resources;
   /** @type {boolean} */
   isLost;
@@ -831,7 +834,7 @@ class InnerGPUDevice {
 
   /** @param {any} resource */
   trackResource(resource) {
-    ArrayPrototypePush(this.resources, new WeakRef(resource));
+    ArrayPrototypePush(this.resources, new SafeWeakRef(resource));
   }
 
   /** @param {{ type: string, value: string | null } | undefined} err */
@@ -1682,13 +1685,26 @@ class GPUQueue {
       selfContext: "this",
       resourceContext: "Argument 1",
     });
+    /** @type {ArrayBufferLike} */
+    let abLike = data;
+    if (ArrayBufferIsView(data)) {
+      if (TypedArrayPrototypeGetSymbolToStringTag(data) !== undefined) {
+        // TypedArray
+        abLike = TypedArrayPrototypeGetBuffer(
+          /** @type {Uint8Array} */ (data),
+        );
+      } else {
+        // DataView
+        abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
+      }
+    }
     const { err } = ops.op_webgpu_write_buffer(
       device.rid,
       bufferRid,
       bufferOffset,
       dataOffset,
       size,
-      new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
+      new Uint8Array(abLike),
     );
     device.pushError(err);
   }
@@ -1722,6 +1738,21 @@ class GPUQueue {
       selfContext: "this",
       resourceContext: "texture",
     });
+
+    /** @type {ArrayBufferLike} */
+    let abLike = data;
+    if (ArrayBufferIsView(data)) {
+      if (TypedArrayPrototypeGetSymbolToStringTag(data) !== undefined) {
+        // TypedArray
+        abLike = TypedArrayPrototypeGetBuffer(
+          /** @type {Uint8Array} */ (data),
+        );
+      } else {
+        // DataView
+        abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
+      }
+    }
+
     const { err } = ops.op_webgpu_write_texture(
       device.rid,
       {
@@ -1734,7 +1765,7 @@ class GPUQueue {
       },
       dataLayout,
       normalizeGPUExtent3D(size),
-      new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
+      new Uint8Array(abLike),
     );
     device.pushError(err);
   }
@@ -2153,7 +2184,7 @@ class GPUTexture {
   [_device];
   /** @type {number | undefined} */
   [_rid];
-  /** @type {WeakRef<GPUTextureView>[]} */
+  /** @type {SafeWeakRef<GPUTextureView>[]} */
   [_views];
 
   /** @type {number} */
@@ -2218,7 +2249,7 @@ class GPUTexture {
       this,
       rid,
     );
-    ArrayPrototypePush(this[_views], new WeakRef(textureView));
+    ArrayPrototypePush(this[_views], new SafeWeakRef(textureView));
     return textureView;
   }
 
@@ -2822,7 +2853,7 @@ class GPUCommandEncoder {
   [_device];
   /** @type {number | undefined} */
   [_rid];
-  /** @type {WeakRef<GPURenderPassEncoder | GPUComputePassEncoder>[]} */
+  /** @type {SafeWeakRef<GPURenderPassEncoder | GPUComputePassEncoder>[]} */
   [_encoders];
 
   [_cleanup]() {
@@ -2997,7 +3028,7 @@ class GPUCommandEncoder {
       this,
       rid,
     );
-    ArrayPrototypePush(this[_encoders], new WeakRef(renderPassEncoder));
+    ArrayPrototypePush(this[_encoders], new SafeWeakRef(renderPassEncoder));
     return renderPassEncoder;
   }
 
@@ -3044,7 +3075,7 @@ class GPUCommandEncoder {
       this,
       rid,
     );
-    ArrayPrototypePush(this[_encoders], new WeakRef(computePassEncoder));
+    ArrayPrototypePush(this[_encoders], new SafeWeakRef(computePassEncoder));
     return computePassEncoder;
   }
 
