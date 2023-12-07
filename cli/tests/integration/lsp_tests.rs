@@ -10668,3 +10668,55 @@ fn lsp_sloppy_imports_warn() {
 
   client.shutdown();
 }
+
+#[test]
+fn sloppy_imports_not_enabled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+  temp_dir.join("deno.json").write(r#"{}"#);
+  // The enhanced, more helpful error message is only available
+  // when the file exists on the file system at the moment because
+  // it's a little more complicated to hook it up otherwise.
+  temp_dir.join("a.ts").write("export class A {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_root_uri(temp_dir.uri_dir());
+  });
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("file.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from './a';\nconsole.log(a)\n",
+    },
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    lsp::PublishDiagnosticsParams {
+      uri: temp_dir.join("file.ts").uri_file(),
+      diagnostics: vec![lsp::Diagnostic {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 19
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 24
+          }
+        },
+        severity: Some(lsp::DiagnosticSeverity::ERROR),
+        code: Some(lsp::NumberOrString::String("no-local".to_string())),
+        source: Some("deno".to_string()),
+        message: format!(
+          "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+          temp_dir.join("a").uri_file(),
+        ),
+        ..Default::default()
+      }],
+      version: Some(1),
+    }
+  );
+  client.shutdown();
+}

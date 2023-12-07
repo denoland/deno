@@ -39,7 +39,7 @@ use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
-use crate::resolver::UnstableSloppyImportsResolver;
+use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -383,7 +383,7 @@ impl CliFactory {
           fs: self.fs().clone(),
           cjs_resolutions: Some(self.cjs_resolutions().clone()),
           sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
-            Some(UnstableSloppyImportsResolver::new(self.fs().clone()))
+            Some(SloppyImportsResolver::new(self.fs().clone()))
           } else {
             None
           },
