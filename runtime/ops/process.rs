@@ -316,7 +316,7 @@ fn create_command(
     let ipc = args.ipc;
     command.pre_exec(move || {
       if ipc >= 0 {
-        let _fd = libc::dup2(fd2, ipc as i32);
+        let _fd = libc::dup2(fd2, ipc);
         libc::close(fd2);
       }
       libc::setgroups(0, std::ptr::null());
@@ -324,7 +324,7 @@ fn create_command(
     });
 
     /* One end returned to parent process (this) */
-    pipe_fd = Some(fd1 as i32);
+    pipe_fd = Some(fd1);
 
     /* The other end passed to child process via DENO_CHANNEL_FD */
     if ipc >= 0 {
