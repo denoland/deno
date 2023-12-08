@@ -793,8 +793,8 @@ impl NodeResolver {
             } else {
               Err(throw_missing_declaration_file(
                 &path,
-                &package_json_path,
-                &package_subpath,
+                package_json_path,
+                package_subpath,
               ))
             }
           } else {
@@ -1469,11 +1469,11 @@ fn throw_invalid_package_target(
 }
 
 fn throw_missing_declaration_file(
-  path: &PathBuf,
+  path: &Path,
   package_json_path: &Path,
   subpath: &str,
 ) -> AnyError {
-  errors::err_missing_declaration_file(&path, &package_json_path, &subpath)
+  errors::err_missing_declaration_file(path, package_json_path, subpath)
 }
 
 fn throw_invalid_subpath(

@@ -94,7 +94,7 @@ pub fn err_invalid_package_target(
 }
 
 pub fn err_missing_declaration_file(
-  path: &PathBuf,
+  path: &Path,
   package_json_path: &Path,
   subpath: &str,
 ) -> AnyError {
@@ -102,7 +102,7 @@ pub fn err_missing_declaration_file(
     "[TS7016] Could not find a declaration file for subpath {} in {}. {} implicitly has an 'any' type.",
     subpath,
     &package_json_path.display(),
-    &path.display()
+    path.display()
   );
 
   generic_error(msg)
