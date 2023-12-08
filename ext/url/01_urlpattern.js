@@ -59,13 +59,32 @@ const COMPONENTS_KEYS = [
  */
 
 /**
+ * This implements a least-recently-used cache that has a pseudo-"young
+ * generation" by using sampling. The idea is that we want to keep the most
+ * recently used items in the cache, but we don't want to pay the cost of
+ * updating the cache on every access. This relies on the fact that the data
+ * we're caching is not uniformly distributed, and that the most recently used
+ * items are more likely to be used again soon (long tail distribution).
+ *
+ * The LRU cache is implemented as a Map, with the key being the cache key and
+ * the value being the cache value. When an item is accessed, it is moved to the
+ * end of the Map. When an item is inserted, if the Map is at capacity, the
+ * first item in the Map is deleted. Because maps iterate using insertion order,
+ * this means that the oldest item is always the first.
+ *
+ * The sampling is implemented by using a random number generator to decide
+ * whether to update the cache on each access. This means that the cache will
+ * not be updated on every access, but will be updated on a random subset of
+ * accesses.
+ *
  * @template K
  * @template V
  */
-class LRUCache {
-  /** @type {Map<K, V>} */
+class SampledLRUCache {
+  /** @type {SafeMap<K, V>} */
   #map = new SafeMap();
   #capacity = 0;
+  #sampleRate = 0.1;
 
   /** @type {K} */
   #lastUsedKey = undefined;
@@ -86,7 +105,7 @@ class LRUCache {
     if (this.#lastUsedKey === key) return this.#lastUsedValue;
     const value = this.#map.get(key);
     if (value !== undefined) {
-      if (MathRandom() < 0.1) {
+      if (MathRandom() < this.#sampleRate) {
         // put the item into the map
         this.#map.delete(key);
         this.#map.set(key, value);
@@ -97,9 +116,10 @@ class LRUCache {
     } else {
       // value doesn't exist yet, create
       const value = factory(key);
-      if (MathRandom() < 0.1) {
+      if (MathRandom() < this.#sampleRate) {
         // if the map is at capacity, delete the oldest (first) element
         if (this.#map.size > this.#capacity) {
+          // deno-lint-ignore prefer-primordials
           this.#map.delete(this.#map.keys().next().value);
         }
         // insert the new value
@@ -112,7 +132,7 @@ class LRUCache {
   }
 }
 
-const matchInputCache = new LRUCache(4096);
+const matchInputCache = new SampledLRUCache(4096);
 
 class URLPattern {
   /** @type {Components} */
@@ -288,7 +308,7 @@ class URLPattern {
           const groupList = component.groupNameList;
           const groups = res.groups;
           for (let i = 0; i < groupList.length; ++i) {
-            // TODO: this should use ObjectDefineProperty
+            // TODO(lucacasonato): this is vulnerable to override mistake
             groups[groupList[i]] = match[i + 1] ?? "";
           }
           break;
