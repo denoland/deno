@@ -264,10 +264,7 @@ mod windows {
 
   #[op2(fast)]
   #[smi]
-  pub fn op_node_ipc_pipe(
-    state: &mut OpState,
-    #[smi] fd: i32,
-  ) -> Result<(), AnyError> {
+  pub fn op_node_ipc_pipe() -> Result<(), AnyError> {
     Err(deno_core::error::not_supported())
   }
 
