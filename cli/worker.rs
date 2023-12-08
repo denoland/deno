@@ -637,9 +637,9 @@ impl CliMainWorkerFactory {
     );
 
     if self.shared.subcommand.needs_test() {
-      worker.js_runtime.execute_script_static(
+      worker.js_runtime.lazy_load_es_module_from_code(
         "ext:cli/40_testing.js",
-        include_str!("js/40_testing.js"),
+        deno_core::FastString::StaticAscii(include_str!("js/40_testing.js")),
       )?;
       worker.js_runtime.execute_script_static(
         "ext:cli/40_jupyter.js",
