@@ -1401,7 +1401,7 @@ Generate html reports from lcov:
         .arg(
           Arg::new("html")
             .long("html")
-            .help("Output coverage report in html format in the given coverage directory")
+            .help("Output coverage report in HTML format in the given directory")
             .action(ArgAction::SetTrue),
         )
         .arg(
