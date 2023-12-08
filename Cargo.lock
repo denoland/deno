@@ -682,6 +682,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
+name = "cooked-waker"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "147be55d677052dabc6b22252d5dd0fd4c29c8c27aa4f2fbef0f94aa003b406f"
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1129,11 +1135,11 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.237.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2ea708c221abdb5734e3c4b72075379c3046eb0ac54afa0ecb5e58509cce72c"
+source = "git+https://github.com/mmastrac/deno_core.git?branch=timer_work#bfda886b80f0657b4c9fcdaca2e6be0d0117e79c"
 dependencies = [
  "anyhow",
  "bytes",
+ "cooked-waker",
  "deno_ops",
  "deno_unsync 0.3.0",
  "futures",
@@ -1557,8 +1563,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.113.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5b9c0f6360795fb625774a8b5955c87c470c43159670cf5d2052df5ce9d84bc"
+source = "git+https://github.com/mmastrac/deno_core.git?branch=timer_work#bfda886b80f0657b4c9fcdaca2e6be0d0117e79c"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4966,8 +4971,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.146.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78309bd1ec4d14d165f271e203bdc45ad5bf45525da57bb70901f57942f6c0f7"
+source = "git+https://github.com/mmastrac/deno_core.git?branch=timer_work#bfda886b80f0657b4c9fcdaca2e6be0d0117e79c"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6560,7 +6564,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -6601,7 +6605,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",

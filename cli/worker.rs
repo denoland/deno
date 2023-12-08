@@ -210,12 +210,9 @@ impl CliMainWorker {
       self
         .worker
         .js_runtime
-        .with_event_loop(
+        .with_event_loop_future(
           coverage_collector.stop_collecting().boxed_local(),
-          PollEventLoopOptions {
-            wait_for_inspector: false,
-            ..Default::default()
-          },
+          PollEventLoopOptions::default(),
         )
         .await?;
     }
@@ -223,12 +220,9 @@ impl CliMainWorker {
       self
         .worker
         .js_runtime
-        .with_event_loop(
+        .with_event_loop_future(
           hmr_runner.stop().boxed_local(),
-          PollEventLoopOptions {
-            wait_for_inspector: false,
-            ..Default::default()
-          },
+          PollEventLoopOptions::default(),
         )
         .await?;
     }
@@ -339,12 +333,9 @@ impl CliMainWorker {
       self
         .worker
         .js_runtime
-        .with_event_loop(
+        .with_event_loop_future(
           coverage_collector.start_collecting().boxed_local(),
-          PollEventLoopOptions {
-            wait_for_inspector: false,
-            ..Default::default()
-          },
+          PollEventLoopOptions::default(),
         )
         .await?;
       Ok(Some(coverage_collector))
@@ -370,12 +361,9 @@ impl CliMainWorker {
     self
       .worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         hmr_runner.start().boxed_local(),
-        PollEventLoopOptions {
-          wait_for_inspector: false,
-          ..Default::default()
-        },
+        PollEventLoopOptions::default(),
       )
       .await?;
 
