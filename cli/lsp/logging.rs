@@ -53,23 +53,22 @@ impl LogFile {
 }
 
 pub fn init_log_file(enabled: bool) {
-  if !enabled {
+  let prepare_path = || {
+    if !enabled {
+      return None;
+    }
+    let cwd = std::env::current_dir().ok()?;
+    let now = SystemTime::now();
+    let now: DateTime<Utc> = now.into();
+    let now = now.to_rfc3339().replace(':', "_");
+    let path = cwd.join(format!(".deno_lsp/log_{}.txt", now));
+    fs::create_dir_all(path.parent()?).ok()?;
+    fs::write(&path, "").ok()?;
+    Some(path)
+  };
+  let Some(path) = prepare_path() else {
     LOG_FILE.enabled.store(false, Ordering::Relaxed);
     LOG_FILE.buffer.lock().clear();
-    return;
-  }
-  let Ok(cwd) = std::env::current_dir() else {
-    return;
-  };
-  let now = SystemTime::now();
-  let now: DateTime<Utc> = now.into();
-  let now = now.to_rfc3339().replace(':', "_");
-  let path = cwd.join(format!(".deno_lsp/log_{}.txt", now));
-  let Some(dir) = path.parent() else { return };
-  let Ok(()) = fs::create_dir_all(dir) else {
-    return;
-  };
-  let Ok(()) = fs::write(&path, "") else {
     return;
   };
   thread::spawn(move || loop {
