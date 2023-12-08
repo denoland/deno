@@ -1666,10 +1666,10 @@ itest!(unstable_webgpu_disabled {
 });
 
 itest!(unstable_webgpu_enabled {
-  args: "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
+  args:
+    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
   output: "run/unstable_webgpu.enabled.out",
 });
-
 
 itest!(import_compression {
   args: "run --quiet --reload --allow-net run/import_compression/main.ts",
