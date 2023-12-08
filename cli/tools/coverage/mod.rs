@@ -728,6 +728,7 @@ impl HtmlCoverageReporter {
       };
       format!("Coverage report for {node}")
     };
+    let title = title.replace(std::path::MAIN_SEPARATOR, "/");
     let head = self.create_html_head(&title);
     let header = self.create_html_header(&title, stats);
     let footer = self.create_html_footer(timestamp);
