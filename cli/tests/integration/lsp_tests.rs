@@ -10622,7 +10622,7 @@ fn lsp_sloppy_imports_warn() {
           ),
           "data": {
             "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file()
+            "redirect": temp_dir.join("a.ts").uri_file(),
           },
         }],
         "only": ["quickfix"]
@@ -10713,10 +10713,84 @@ fn sloppy_imports_not_enabled() {
           "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
           temp_dir.join("a").uri_file(),
         ),
+        data: Some(json!({
+          "specifier": temp_dir.join("a").uri_file(),
+          "to": temp_dir.join("a.ts").uri_file(),
+          "message": "Add a '.ts' extension.",
+        })),
         ..Default::default()
       }],
       version: Some(1),
     }
+  );
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.join("file.ts").uri_file()
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 24 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 19 },
+            "end": { "line": 0, "character": 24 }
+          },
+          "severity": 3,
+          "code": "no-local",
+          "source": "deno",
+          "message": format!(
+            "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+            temp_dir.join("a").uri_file(),
+          ),
+          "data": {
+            "specifier": temp_dir.join("a").uri_file(),
+            "to": temp_dir.join("a.ts").uri_file(),
+            "message": "Add a '.ts' extension.",
+          },
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add a '.ts' extension.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 3,
+        "code": "no-local",
+        "source": "deno",
+        "message": format!(
+          "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+          temp_dir.join("a").uri_file(),
+        ),
+        "data": {
+          "specifier": temp_dir.join("a").uri_file(),
+          "to": temp_dir.join("a.ts").uri_file(),
+          "message": "Add a '.ts' extension.",
+        },
+      }],
+      "edit": {
+        "changes": {
+          temp_dir.join("file.ts").uri_file(): [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 }
+            },
+            "newText": "\"./a.ts\""
+          }]
+        }
+      }
+    }])
   );
   client.shutdown();
 }

@@ -135,10 +135,9 @@ pub async fn build<
   }
 
   // surface any errors
-  let fs: Arc<dyn deno_fs::FileSystem> = Arc::new(deno_fs::RealFs);
   graph_util::graph_valid(
     &graph,
-    &fs,
+    &deno_fs::RealFs,
     &graph.roots,
     graph_util::GraphValidOptions {
       is_vendoring: true,
