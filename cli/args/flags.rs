@@ -85,12 +85,19 @@ pub struct CompletionsFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CoverageType {
+  Pretty,
+  Lcov,
+  Html,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
-  pub lcov: bool,
+  pub r#type: CoverageType,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1396,6 +1403,14 @@ Generate html reports from lcov:
             )
             .require_equals(true)
             .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("html")
+            .long("html")
+            .help(
+              "Output coverage report in HTML format in the given directory",
+            )
+            .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("files")
@@ -3298,7 +3313,13 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let lcov = matches.get_flag("lcov");
+  let r#type = if matches.get_flag("lcov") {
+    CoverageType::Lcov
+  } else if matches.get_flag("html") {
+    CoverageType::Html
+  } else {
+    CoverageType::Pretty
+  };
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
@@ -3308,7 +3329,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     include,
     exclude,
-    lcov,
+    r#type,
   });
 }
 
@@ -7867,7 +7888,7 @@ mod tests {
           output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: false,
+          r#type: CoverageType::Pretty
         }),
         ..Flags::default()
       }
@@ -7893,7 +7914,7 @@ mod tests {
           },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: true,
+          r#type: CoverageType::Lcov,
           output: Some(PathBuf::from("foo.lcov")),
         }),
         ..Flags::default()
