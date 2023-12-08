@@ -31,7 +31,7 @@ impl IpcPipe {
     })
   }
 
-  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, std::io::Error> {
+  async fn write(&self, data: &[u8]) -> Result<usize, std::io::Error> {
     let mut offset = 0;
     loop {
       self.inner.writable().await?;
@@ -70,7 +70,7 @@ impl IpcPipe {
 //
 // `\n` is used as a delimiter between messages.
 struct IpcJsonStream {
-  pipe: Rc<IpcPipe>,
+  pipe: IpcPipe,
   buffer: RefCell<Vec<u8>>,
   cancel: CancelHandle,
 }
@@ -78,13 +78,13 @@ struct IpcJsonStream {
 impl IpcJsonStream {
   fn new(fd: RawFd) -> Result<Self, std::io::Error> {
     Ok(Self {
-      pipe: Rc::new(IpcPipe::new(fd)?),
+      pipe: IpcPipe::new(fd)?,
       buffer: RefCell::new(Vec::new()),
       cancel: CancelHandle::default(),
     })
   }
 
-  async fn read(self: Rc<Self>) -> Result<Vec<serde_json::Value>, AnyError> {
+  async fn read_msgs(&self) -> Result<Vec<serde_json::Value>, AnyError> {
     let mut buf = [0u8; 1024]; // TODO: Use a single growable buffer.
     let mut msgs = Vec::new();
     loop {
@@ -124,14 +124,13 @@ impl IpcJsonStream {
     }
   }
 
-  async fn write(
-    self: Rc<Self>,
-    msg: serde_json::Value,
-  ) -> Result<(), AnyError> {
+  async fn write_msg(&self, msg: serde_json::Value) -> Result<(), AnyError> {
+    // Perf note: We do not benefit from writev here because
+    // we are always allocating a buffer for serialization anyways.
     let mut buf = Vec::new();
     serde_json::to_writer(&mut buf, &msg)?;
     buf.push(b'\n');
-    self.pipe.clone().write(&buf).await?;
+    self.pipe.write(&buf).await?;
     Ok(())
   }
 }
@@ -162,7 +161,7 @@ pub async fn op_node_ipc_write(
     .resource_table
     .get::<IpcJsonStream>(rid)
     .map_err(|_| bad_resource_id())?;
-  stream.write(value).await?;
+  stream.write_msg(value).await?;
   Ok(())
 }
 
@@ -179,7 +178,7 @@ pub async fn op_node_ipc_read(
     .map_err(|_| bad_resource_id())?;
 
   let cancel = RcRef::map(stream.clone(), |r| &r.cancel);
-  let msgs = stream.read().or_cancel(cancel).await??;
+  let msgs = stream.read_msgs().or_cancel(cancel).await??;
   Ok(msgs)
 }
 
@@ -207,7 +206,7 @@ mod tests {
 
     /* Similar to how ops would use the resource */
     let ipc = Rc::new(IpcPipe::new(fd1.as_raw_fd())?);
-    ipc.clone().write(b"hello").await?;
+    ipc.write(b"hello").await?;
     let mut buf = [0u8; 1024];
     let n = ipc.read(&mut buf).await?;
     assert_eq!(&buf[..n], b"world");
@@ -233,8 +232,8 @@ mod tests {
 
     /* Similar to how ops would use the resource */
     let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
-    ipc.clone().write(json!("hello")).await?;
-    let msgs = ipc.read().await?;
+    ipc.write_msg(json!("hello")).await?;
+    let msgs = ipc.read_msgs().await?;
     assert_eq!(msgs, vec![json!("world")]);
 
     child.await??;
@@ -257,9 +256,9 @@ mod tests {
     });
 
     let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
-    ipc.clone().write(json!("hello")).await?;
-    ipc.clone().write(json!("world")).await?;
-    let msgs = ipc.read().await?;
+    ipc.write_msg(json!("hello")).await?;
+    ipc.write_msg(json!("world")).await?;
+    let msgs = ipc.read_msgs().await?;
     assert_eq!(msgs, vec![json!("foo"), json!("bar")]);
 
     child.await??;
@@ -276,7 +275,7 @@ mod tests {
     });
 
     let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
-    let err = ipc.read().await.unwrap_err();
+    let err = ipc.read_msgs().await.unwrap_err();
     assert!(err.is::<deno_core::serde_json::Error>());
 
     child.await??;
