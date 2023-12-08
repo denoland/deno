@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
-use std::io;
 use std::os::fd::FromRawFd;
 use std::os::fd::RawFd;
 use std::rc::Rc;
@@ -10,59 +9,57 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
+use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::unix::OwnedReadHalf;
+use tokio::net::unix::OwnedWriteHalf;
 use tokio::net::UnixStream;
 
-struct IpcPipe {
-  // Better name?
-  inner: UnixStream,
+struct IpcJsonStreamResource {
+  read_half: AsyncRefCell<IpcJsonStream>,
+  write_half: AsyncRefCell<OwnedWriteHalf>,
+  cancel: CancelHandle,
 }
 
-impl IpcPipe {
-  fn new(fd: RawFd) -> Result<Self, std::io::Error> {
+impl deno_core::Resource for IpcJsonStreamResource {
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
+
+impl IpcJsonStreamResource {
+  fn new(stream: RawFd) -> Result<Self, std::io::Error> {
+    // Safety: The fd is part of a pair of connected sockets create by child process
+    // implementation.
+    let unix_stream = UnixStream::from_std(unsafe {
+      std::os::unix::net::UnixStream::from_raw_fd(stream)
+    })?;
+    let (read_half, write_half) = unix_stream.into_split();
     Ok(Self {
-      inner: UnixStream::from_std(unsafe {
-        std::os::unix::net::UnixStream::from_raw_fd(fd)
-      })?,
+      read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
+      write_half: AsyncRefCell::new(write_half),
+      cancel: Default::default(),
     })
   }
 
-  async fn write(&self, data: &[u8]) -> Result<usize, std::io::Error> {
-    let mut offset = 0;
-    loop {
-      self.inner.writable().await?;
-      match self.inner.try_write(&data[offset..]) {
-        Ok(n) => {
-          offset += n;
-          if offset >= data.len() {
-            return Ok(offset);
-          }
-        }
-        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-          continue;
-        }
-        Err(e) => return Err(e),
-      }
-    }
-  }
-
-  async fn read(&self, data: &mut [u8]) -> Result<usize, std::io::Error> {
-    loop {
-      self.inner.readable().await?;
-      match self.inner.try_read(&mut data[..]) {
-        Ok(n) => {
-          return Ok(n);
-        }
-        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-          continue;
-        }
-        Err(e) => return Err(e),
-      }
-    }
+  async fn write_msg(
+    self: Rc<Self>,
+    msg: serde_json::Value,
+  ) -> Result<(), AnyError> {
+    let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
+    // Perf note: We do not benefit from writev here because
+    // we are always allocating a buffer for serialization anyways.
+    let mut buf = Vec::new();
+    serde_json::to_writer(&mut buf, &msg)?;
+    buf.push(b'\n');
+    write_half.write(&buf).await?;
+    Ok(())
   }
 }
 
@@ -70,21 +67,19 @@ impl IpcPipe {
 //
 // `\n` is used as a delimiter between messages.
 struct IpcJsonStream {
-  pipe: IpcPipe,
+  pipe: OwnedReadHalf,
   buffer: RefCell<Vec<u8>>,
-  cancel: CancelHandle,
 }
 
 impl IpcJsonStream {
-  fn new(fd: RawFd) -> Result<Self, std::io::Error> {
-    Ok(Self {
-      pipe: IpcPipe::new(fd)?,
+  fn new(pipe: OwnedReadHalf) -> Self {
+    Self {
+      pipe,
       buffer: RefCell::new(Vec::new()),
-      cancel: CancelHandle::default(),
-    })
+    }
   }
 
-  async fn read_msgs(&self) -> Result<Vec<serde_json::Value>, AnyError> {
+  async fn read_msgs(&mut self) -> Result<Vec<serde_json::Value>, AnyError> {
     let mut buf = [0u8; 1024]; // TODO: Use a single growable buffer.
     let mut msgs = Vec::new();
     loop {
@@ -123,22 +118,6 @@ impl IpcJsonStream {
       }
     }
   }
-
-  async fn write_msg(&self, msg: serde_json::Value) -> Result<(), AnyError> {
-    // Perf note: We do not benefit from writev here because
-    // we are always allocating a buffer for serialization anyways.
-    let mut buf = Vec::new();
-    serde_json::to_writer(&mut buf, &msg)?;
-    buf.push(b'\n');
-    self.pipe.write(&buf).await?;
-    Ok(())
-  }
-}
-
-impl deno_core::Resource for IpcJsonStream {
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-  }
 }
 
 #[op2(fast)]
@@ -147,7 +126,7 @@ pub fn op_node_ipc_pipe(
   state: &mut OpState,
   #[smi] fd: i32,
 ) -> Result<ResourceId, AnyError> {
-  Ok(state.resource_table.add(IpcJsonStream::new(fd)?))
+  Ok(state.resource_table.add(IpcJsonStreamResource::new(fd)?))
 }
 
 #[op2(async)]
@@ -159,7 +138,7 @@ pub async fn op_node_ipc_write(
   let stream = state
     .borrow()
     .resource_table
-    .get::<IpcJsonStream>(rid)
+    .get::<IpcJsonStreamResource>(rid)
     .map_err(|_| bad_resource_id())?;
   stream.write_msg(value).await?;
   Ok(())
@@ -174,10 +153,11 @@ pub async fn op_node_ipc_read(
   let stream = state
     .borrow()
     .resource_table
-    .get::<IpcJsonStream>(rid)
+    .get::<IpcJsonStreamResource>(rid)
     .map_err(|_| bad_resource_id())?;
 
-  let cancel = RcRef::map(stream.clone(), |r| &r.cancel);
+  let cancel = RcRef::map(stream, |r| &r.cancel);
+  let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
   let msgs = stream.read_msgs().or_cancel(cancel).await??;
   Ok(msgs)
 }
