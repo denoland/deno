@@ -624,10 +624,9 @@ impl CoverageReporter for HtmlCoverageReporter {
       fs::write(report_path, html).unwrap();
     }
 
-    println!(
-      "HTML coverage report has been generated at {}/html/index.html",
-      coverage_root.canonicalize().unwrap().display()
-    );
+    let root_report = Url::from_file_path(coverage_root.join("html").join("index.html").canonicalize().unwrap()).unwrap();
+
+    println!("HTML coverage report has been generated at {}", root_report);
   }
 }
 
