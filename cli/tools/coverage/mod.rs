@@ -838,7 +838,7 @@ impl HtmlCoverageReporter {
     let (branch_total, branch_percent, branch_class) =
       util::calc_coverage_display_info(*branch_hit, *branch_miss);
 
-    let path = Path::new(c.strip_prefix(&format!("{node}/")).unwrap_or(c)).display();
+    let path = Path::new(c.strip_prefix(&format!("{node}{}", std::path::MAIN_SEPARATOR)).unwrap_or(c)).display();
     let path_label = if *is_file { format!("{}", path) } else { format!("{}/", path) };
     let path_link = if *is_file { format!("{}.html", path) } else { format!("{}index.html", path_label) };
 
