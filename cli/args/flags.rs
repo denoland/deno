@@ -85,13 +85,19 @@ pub struct CompletionsFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CoverageType {
+  Pretty,
+  Lcov,
+  Html,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
-  pub lcov: bool,
-  pub html: bool,
+  pub r#type: CoverageType,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3305,8 +3311,13 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let lcov = matches.get_flag("lcov");
-  let html = matches.get_flag("html");
+  let r#type = if matches.get_flag("lcov") {
+    CoverageType::Lcov
+  } else if matches.get_flag("html") {
+    CoverageType::Html
+  } else {
+    CoverageType::Pretty
+  };
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
@@ -3316,8 +3327,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     include,
     exclude,
-    lcov,
-    html,
+    r#type,
   });
 }
 
@@ -7876,8 +7886,7 @@ mod tests {
           output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: false,
-          html: false,
+          r#type: CoverageType::Pretty
         }),
         ..Flags::default()
       }
@@ -7903,8 +7912,7 @@ mod tests {
           },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: true,
-          html: false,
+          r#type: CoverageType::Lcov,
           output: Some(PathBuf::from("foo.lcov")),
         }),
         ..Flags::default()

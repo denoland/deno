@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CoverageFlags;
+use crate::args::CoverageType;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
@@ -1024,12 +1025,11 @@ pub async fn cover_files(
     vec![]
   };
 
-  let reporter_kind = if coverage_flags.lcov {
-    CoverageReporterKind::Lcov
-  } else if coverage_flags.html {
-    CoverageReporterKind::Html
-  } else {
-    CoverageReporterKind::Pretty
+
+  let reporter_kind = match coverage_flags.r#type {
+    CoverageType::Pretty => CoverageReporterKind::Pretty,
+    CoverageType::Lcov => CoverageReporterKind::Lcov,
+    CoverageType::Html => CoverageReporterKind::Html,
   };
 
   let mut reporter = create_reporter(reporter_kind);
