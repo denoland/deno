@@ -1055,7 +1055,8 @@ impl Documents {
       Some(
         self
           .resolve_unstable_sloppy_import(specifier)
-          .into_owned_specifier(),
+          .into_specifier()
+          .into_owned(),
       )
     } else {
       self.redirect_resolver.resolve(specifier)

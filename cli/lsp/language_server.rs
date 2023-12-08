@@ -263,7 +263,7 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs(),
+        factory.fs().as_ref(),
         &roots,
         graph_util::GraphValidOptions {
           is_vendoring: false,

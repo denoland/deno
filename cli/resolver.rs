@@ -441,7 +441,7 @@ fn sloppy_imports_resolve(
       format_range_with_colors(referrer_range)
     },
   );
-  resolution.into_owned_specifier()
+  resolution.into_specifier().into_owned()
 }
 
 fn resolve_package_json_dep(
@@ -562,15 +562,11 @@ impl SloppyImportsStatCache {
       return *entry;
     }
 
-    let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
-      if stat.is_file {
-        Some(SloppyImportsFsEntry::File)
-      } else if stat.is_directory {
-        Some(SloppyImportsFsEntry::Dir)
-      } else {
-        None
-      }
-    });
+    let entry = self
+      .fs
+      .stat_sync(path)
+      .ok()
+      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
     cache.insert(path.to_owned(), entry);
     entry
   }
@@ -580,6 +576,20 @@ impl SloppyImportsStatCache {
 pub enum SloppyImportsFsEntry {
   File,
   Dir,
+}
+
+impl SloppyImportsFsEntry {
+  pub fn from_fs_stat(
+    stat: &deno_runtime::deno_io::fs::FsStat,
+  ) -> Option<SloppyImportsFsEntry> {
+    if stat.is_file {
+      Some(SloppyImportsFsEntry::File)
+    } else if stat.is_directory {
+      Some(SloppyImportsFsEntry::Dir)
+    } else {
+      None
+    }
+  }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -595,6 +605,15 @@ pub enum SloppyImportsResolution<'a> {
 }
 
 impl<'a> SloppyImportsResolution<'a> {
+  pub fn as_specifier(&self) -> &ModuleSpecifier {
+    match self {
+      Self::None(specifier) => specifier,
+      Self::JsToTs(specifier) => specifier,
+      Self::NoExtension(specifier) => specifier,
+      Self::Directory(specifier) => specifier,
+    }
+  }
+
   pub fn into_specifier(self) -> Cow<'a, ModuleSpecifier> {
     match self {
       Self::None(specifier) => Cow::Borrowed(specifier),
@@ -604,12 +623,48 @@ impl<'a> SloppyImportsResolution<'a> {
     }
   }
 
-  pub fn into_owned_specifier(self) -> ModuleSpecifier {
+  pub fn as_suggestion_message(&self) -> Option<String> {
+    Some(format!("Maybe {}", self.as_base_message()?))
+  }
+
+  pub fn as_lsp_quick_fix_message(&self) -> Option<String> {
+    let message = self.as_base_message()?;
+    let mut chars = message.chars();
+    Some(format!(
+      "{}{}.",
+      chars.next().unwrap().to_uppercase(),
+      chars.as_str()
+    ))
+  }
+
+  fn as_base_message(&self) -> Option<String> {
     match self {
-      Self::None(specifier) => specifier.clone(),
-      Self::JsToTs(specifier) => specifier,
-      Self::NoExtension(specifier) => specifier,
-      Self::Directory(specifier) => specifier,
+      SloppyImportsResolution::None(_) => None,
+      SloppyImportsResolution::JsToTs(specifier) => {
+        let media_type = MediaType::from_specifier(specifier);
+        Some(format!(
+          "change the extension to '{}'",
+          media_type.as_ts_extension()
+        ))
+      }
+      SloppyImportsResolution::NoExtension(specifier) => {
+        let media_type = MediaType::from_specifier(specifier);
+        Some(format!(
+          "add a '{}' extension",
+          media_type.as_ts_extension()
+        ))
+      }
+      SloppyImportsResolution::Directory(specifier) => {
+        let file_name = specifier
+          .path()
+          .rsplit_once('/')
+          .map(|(_, file_name)| file_name)
+          .unwrap_or(specifier.path());
+        Some(format!(
+          "specify path to '{}' file in directory instead",
+          file_name
+        ))
+      }
     }
   }
 }
@@ -624,6 +679,17 @@ impl SloppyImportsResolver {
     Self {
       stat_cache: SloppyImportsStatCache::new(fs),
     }
+  }
+
+  pub fn resolve_with_fs<'a>(
+    fs: &dyn FileSystem,
+    specifier: &'a ModuleSpecifier,
+  ) -> SloppyImportsResolution<'a> {
+    Self::resolve_with_stat_sync(specifier, |path| {
+      fs.stat_sync(path)
+        .ok()
+        .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat))
+    })
   }
 
   pub fn resolve_with_stat_sync(
@@ -884,5 +950,42 @@ mod test {
         SloppyImportsResolution::Directory(index_file.uri_file()),
       );
     }
+  }
+
+  #[test]
+  fn test_sloppy_import_resolution_suggestion_message() {
+    // none
+    let url = ModuleSpecifier::parse("file:///dir/index.js").unwrap();
+    assert_eq!(
+      SloppyImportsResolution::None(&url).as_suggestion_message(),
+      None,
+    );
+    // directory
+    assert_eq!(
+      SloppyImportsResolution::Directory(
+        ModuleSpecifier::parse("file:///dir/index.js").unwrap()
+      )
+      .as_suggestion_message()
+      .unwrap(),
+      "Maybe specify path to 'index.js' file in directory instead"
+    );
+    // no ext
+    assert_eq!(
+      SloppyImportsResolution::NoExtension(
+        ModuleSpecifier::parse("file:///dir/index.mjs").unwrap()
+      )
+      .as_suggestion_message()
+      .unwrap(),
+      "Maybe add a '.mjs' extension"
+    );
+    // js to ts
+    assert_eq!(
+      SloppyImportsResolution::JsToTs(
+        ModuleSpecifier::parse("file:///dir/index.mts").unwrap()
+      )
+      .as_suggestion_message()
+      .unwrap(),
+      "Maybe change the extension to '.mts'"
+    );
   }
 }
