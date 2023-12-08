@@ -132,6 +132,9 @@ mod node_compat_tests;
 mod node_unit_tests;
 #[path = "npm_tests.rs"]
 mod npm;
+#[path = "publish_tests.rs"]
+mod publish;
+
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
