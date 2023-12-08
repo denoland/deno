@@ -259,23 +259,20 @@ mod unix {
 
 #[cfg(windows)]
 mod windows {
+  use deno_core::error::AnyError;
   use deno_core::op2;
-  use deno_core::AnyError;
 
   #[op2(fast)]
-  #[smi]
   pub fn op_node_ipc_pipe() -> Result<(), AnyError> {
     Err(deno_core::error::not_supported())
   }
 
   #[op2(async)]
-  #[cfg(windows)]
   pub async fn op_node_ipc_write() -> Result<(), AnyError> {
     Err(deno_core::error::not_supported())
   }
 
   #[op2(async)]
-  #[cfg(windows)]
   pub async fn op_node_ipc_read() -> Result<(), AnyError> {
     Err(deno_core::error::not_supported())
   }
