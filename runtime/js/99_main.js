@@ -17,8 +17,10 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
   Symbol,
@@ -47,6 +49,7 @@ import {
   denoNs,
   denoNsUnstable,
   denoNsUnstableById,
+  unstableIds,
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -54,7 +57,7 @@ import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
   mainRuntimeGlobalProperties,
   memoizeLazy,
-  unstableWindowOrWorkerGlobalScope,
+  unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
@@ -370,6 +373,35 @@ let hasBootstrapped = false;
 delete globalThis.console;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+
+// Set up global properties shared by main and worker runtime that are exposed
+// by unstable features if those are enabled.
+function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
+  const { unstableFlag, unstableFeatures } = options;
+  if (unstableFlag) {
+    const all = ObjectValues(unstableForWindowOrWorkerGlobalScope);
+    for (let i = 0; i <= all.length; i++) {
+      const props = all[i];
+      ObjectDefineProperties(globalThis, { ...props });
+    }
+  } else {
+    const featureIds = ArrayPrototypeMap(
+      ObjectKeys(
+        unstableForWindowOrWorkerGlobalScope,
+      ),
+      (k) => k | 0,
+    );
+
+    for (let i = 0; i <= featureIds.length; i++) {
+      const featureId = featureIds[i];
+      if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
+        const props = unstableForWindowOrWorkerGlobalScope[featureId];
+        ObjectDefineProperties(globalThis, { ...props });
+      }
+    }
+  }
+}
+
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
@@ -430,9 +462,10 @@ function bootstrapMainRuntime(runtimeOptions) {
     location.setLocationHref(location_);
   }
 
-  if (unstableFlag) {
-    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
-  }
+  exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
+    unstableFlag,
+    unstableFeatures,
+  });
   ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
     // TODO(bartlomieju): in the future we might want to change the
@@ -501,7 +534,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     }
   }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 8)) {
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
     // Removes the `__proto__` for security reasons.
     // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
     delete Object.prototype.__proto__;
@@ -547,9 +580,10 @@ function bootstrapWorkerRuntime(
   delete globalThis.nodeBootstrap;
   hasBootstrapped = true;
 
-  if (unstableFlag) {
-    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
-  }
+  exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
+    unstableFlag,
+    unstableFeatures,
+  });
   ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
     name: util.writable(name),
@@ -604,7 +638,7 @@ function bootstrapWorkerRuntime(
     }
   }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 8)) {
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
     // Removes the `__proto__` for security reasons.
     // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
     delete Object.prototype.__proto__;
