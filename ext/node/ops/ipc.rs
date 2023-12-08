@@ -24,7 +24,7 @@ use tokio::net::UnixStream;
 struct IpcJsonStreamResource {
   read_half: AsyncRefCell<IpcJsonStream>,
   write_half: AsyncRefCell<OwnedWriteHalf>,
-  cancel: CancelHandle,
+  cancel: Rc<CancelHandle>,
 }
 
 impl deno_core::Resource for IpcJsonStreamResource {
@@ -156,7 +156,7 @@ pub async fn op_node_ipc_read(
     .get::<IpcJsonStreamResource>(rid)
     .map_err(|_| bad_resource_id())?;
 
-  let cancel = RcRef::map(stream, |r| &r.cancel);
+  let cancel = stream.cancel.clone();
   let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
   let msgs = stream.read_msgs().or_cancel(cancel).await??;
   Ok(msgs)
@@ -164,37 +164,11 @@ pub async fn op_node_ipc_read(
 
 #[cfg(test)]
 mod tests {
-  use super::IpcJsonStream;
-  use super::IpcPipe;
+  use super::IpcJsonStreamResource;
   use deno_core::serde_json::json;
+  use deno_core::RcRef;
   use std::os::unix::io::AsRawFd;
   use std::rc::Rc;
-
-  #[tokio::test]
-  async fn unix_ipc_raw() -> Result<(), Box<dyn std::error::Error>> {
-    let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
-    let child = tokio::spawn(async move {
-      use tokio::io::AsyncReadExt;
-      use tokio::io::AsyncWriteExt;
-
-      let mut buf = [0u8; 1024];
-      let n = fd2.read(&mut buf).await?;
-      assert_eq!(&buf[..n], b"hello");
-      fd2.write_all(b"world").await?;
-      Ok::<_, std::io::Error>(())
-    });
-
-    /* Similar to how ops would use the resource */
-    let ipc = Rc::new(IpcPipe::new(fd1.as_raw_fd())?);
-    ipc.write(b"hello").await?;
-    let mut buf = [0u8; 1024];
-    let n = ipc.read(&mut buf).await?;
-    assert_eq!(&buf[..n], b"world");
-
-    child.await??;
-
-    Ok(())
-  }
 
   #[tokio::test]
   async fn unix_ipc_json() -> Result<(), Box<dyn std::error::Error>> {
@@ -211,8 +185,11 @@ mod tests {
     });
 
     /* Similar to how ops would use the resource */
-    let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
-    ipc.write_msg(json!("hello")).await?;
+    let ipc = Rc::new(IpcJsonStreamResource::new(fd1.as_raw_fd())?);
+
+    ipc.clone().write_msg(json!("hello")).await?;
+
+    let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
     let msgs = ipc.read_msgs().await?;
     assert_eq!(msgs, vec![json!("world")]);
 
@@ -235,9 +212,11 @@ mod tests {
       Ok::<_, std::io::Error>(())
     });
 
-    let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
-    ipc.write_msg(json!("hello")).await?;
-    ipc.write_msg(json!("world")).await?;
+    let ipc = Rc::new(IpcJsonStreamResource::new(fd1.as_raw_fd())?);
+    ipc.clone().write_msg(json!("hello")).await?;
+    ipc.clone().write_msg(json!("world")).await?;
+
+    let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
     let msgs = ipc.read_msgs().await?;
     assert_eq!(msgs, vec![json!("foo"), json!("bar")]);
 
@@ -254,7 +233,8 @@ mod tests {
       Ok::<_, std::io::Error>(())
     });
 
-    let ipc = Rc::new(IpcJsonStream::new(fd1.as_raw_fd())?);
+    let ipc = Rc::new(IpcJsonStreamResource::new(fd1.as_raw_fd())?);
+    let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
     let err = ipc.read_msgs().await.unwrap_err();
     assert!(err.is::<deno_core::serde_json::Error>());
 
