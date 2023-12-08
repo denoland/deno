@@ -16,7 +16,7 @@ AggregateError: foo1
 Caused by AggregateError: foo2
     at [WILDCARD]/complex_error.ts:8:12
 
-error: Uncaught AggregateError: foo1
+error: Uncaught (in promise) AggregateError: foo1
     AggregateError
         Error: qux1
             at [WILDCARD]/complex_error.ts:3:25

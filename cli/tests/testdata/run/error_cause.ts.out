@@ -1,4 +1,4 @@
-error: Uncaught Error: foo
+error: Uncaught (in promise) Error: foo
   throw new Error("foo", { cause: new Error("bar", { cause: "deno" as any }) });
         ^
     at a (file:///[WILDCARD]/error_cause.ts:3:9)

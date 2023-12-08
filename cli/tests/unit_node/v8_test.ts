@@ -4,7 +4,7 @@ import {
   getHeapStatistics,
   setFlagsFromString,
 } from "node:v8";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import { assertEquals } from "../../../test_util/std/assert/mod.ts";
 
 // https://github.com/nodejs/node/blob/a2bbe5ff216bc28f8dac1c36a8750025a93c3827/test/parallel/test-v8-version-tag.js#L6
 Deno.test({

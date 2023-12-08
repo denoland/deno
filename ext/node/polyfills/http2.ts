@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";

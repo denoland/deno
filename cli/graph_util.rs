@@ -12,12 +12,15 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::SloppyImportsResolution;
+use crate::resolver::SloppyImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -35,6 +38,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
@@ -57,11 +61,13 @@ pub struct GraphValidOptions {
 /// error statically reachable from `roots` and not a dynamic import.
 pub fn graph_valid_with_cli_options(
   graph: &ModuleGraph,
+  fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: &CliOptions,
 ) -> Result<(), AnyError> {
   graph_valid(
     graph,
+    fs,
     roots,
     GraphValidOptions {
       is_vendoring: false,
@@ -80,6 +86,7 @@ pub fn graph_valid_with_cli_options(
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
+  fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -108,20 +115,18 @@ pub fn graph_valid(
         ModuleGraphError::TypesResolutionError(resolution_error) => {
           format!(
             "Failed resolving types. {}",
-            enhanced_resolution_error_message(resolution_error,)
+            enhanced_resolution_error_message(resolution_error)
           )
         }
-        ModuleGraphError::ModuleError(_) => format!("{error}"),
+        ModuleGraphError::ModuleError(e) => {
+          enhanced_module_error_message(fs, e)
+        }
       };
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!(
-            "\n    at {}:{}:{}",
-            colors::cyan(range.specifier.as_str()),
-            colors::yellow(&(range.start.line + 1).to_string()),
-            colors::yellow(&(range.start.character + 1).to_string())
-          ));
+          message.push_str("\n    at ");
+          message.push_str(&format_range_with_colors(range));
         }
       }
 
@@ -194,6 +199,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
+  fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -210,6 +216,7 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+    fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -223,6 +230,7 @@ impl ModuleGraphBuilder {
   ) -> Self {
     Self {
       options,
+      fs,
       resolver,
       npm_resolver,
       module_info_cache,
@@ -295,6 +303,7 @@ impl ModuleGraphBuilder {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
@@ -344,6 +353,7 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
@@ -354,7 +364,12 @@ impl ModuleGraphBuilder {
       .await?;
 
     let graph = Arc::new(graph);
-    graph_valid_with_cli_options(&graph, &graph.roots, &self.options)?;
+    graph_valid_with_cli_options(
+      &graph,
+      &self.fs,
+      &graph.roots,
+      &self.options,
+    )?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
@@ -520,6 +535,68 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   }
 
   message
+}
+
+pub fn enhanced_module_error_message(
+  fs: &Arc<dyn FileSystem>,
+  error: &ModuleError,
+) -> String {
+  let additional_message = match error {
+    ModuleError::Missing(specifier, _) => {
+      maybe_sloppy_imports_suggestion_message(fs, specifier)
+    }
+    _ => None,
+  };
+  if let Some(message) = additional_message {
+    format!(
+      "{} {} or run with --unstable-sloppy-imports",
+      error, message
+    )
+  } else {
+    format!("{}", error)
+  }
+}
+
+pub fn maybe_sloppy_imports_suggestion_message(
+  fs: &Arc<dyn FileSystem>,
+  original_specifier: &ModuleSpecifier,
+) -> Option<String> {
+  let sloppy_imports_resolver = SloppyImportsResolver::new(fs.clone());
+  let resolution = sloppy_imports_resolver.resolve(original_specifier);
+  sloppy_import_resolution_to_suggestion_message(&resolution)
+}
+
+fn sloppy_import_resolution_to_suggestion_message(
+  resolution: &SloppyImportsResolution,
+) -> Option<String> {
+  match resolution {
+    SloppyImportsResolution::None(_) => None,
+    SloppyImportsResolution::JsToTs(specifier) => {
+      let media_type = MediaType::from_specifier(specifier);
+      Some(format!(
+        "Maybe change the extension to '{}'",
+        media_type.as_ts_extension()
+      ))
+    }
+    SloppyImportsResolution::NoExtension(specifier) => {
+      let media_type = MediaType::from_specifier(specifier);
+      Some(format!(
+        "Maybe add a '{}' extension",
+        media_type.as_ts_extension()
+      ))
+    }
+    SloppyImportsResolution::Directory(specifier) => {
+      let file_name = specifier
+        .path()
+        .rsplit_once('/')
+        .map(|(_, file_name)| file_name)
+        .unwrap_or(specifier.path());
+      Some(format!(
+        "Maybe specify path to '{}' file in directory instead",
+        file_name
+      ))
+    }
+  }
 }
 
 pub fn get_resolution_error_bare_node_specifier(
@@ -770,6 +847,80 @@ fn workspace_member_config_try_into_workspace_member(
   })
 }
 
+pub struct DenoGraphFsAdapter<'a>(
+  pub &'a dyn deno_runtime::deno_fs::FileSystem,
+);
+
+impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
+  fn read_dir(
+    &self,
+    dir_url: &deno_graph::ModuleSpecifier,
+  ) -> Vec<deno_graph::source::DirEntry> {
+    use deno_core::anyhow;
+    use deno_graph::source::DirEntry;
+    use deno_graph::source::DirEntryKind;
+
+    let dir_path = match dir_url.to_file_path() {
+      Ok(path) => path,
+      // ignore, treat as non-analyzable
+      Err(()) => return vec![],
+    };
+    let entries = match self.0.read_dir_sync(&dir_path) {
+      Ok(dir) => dir,
+      Err(err)
+        if matches!(
+          err.kind(),
+          std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+        ) =>
+      {
+        return vec![];
+      }
+      Err(err) => {
+        return vec![DirEntry {
+          kind: DirEntryKind::Error(
+            anyhow::Error::from(err)
+              .context("Failed to read directory.".to_string()),
+          ),
+          url: dir_url.clone(),
+        }];
+      }
+    };
+    let mut dir_entries = Vec::with_capacity(entries.len());
+    for entry in entries {
+      let entry_path = dir_path.join(&entry.name);
+      dir_entries.push(if entry.is_directory {
+        DirEntry {
+          kind: DirEntryKind::Dir,
+          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_file {
+        DirEntry {
+          kind: DirEntryKind::File,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_symlink {
+        DirEntry {
+          kind: DirEntryKind::Symlink,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else {
+        continue;
+      });
+    }
+
+    dir_entries
+  }
+}
+
+pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
+  format!(
+    "{}:{}:{}",
+    colors::cyan(range.specifier.as_str()),
+    colors::yellow(&(range.start.line + 1).to_string()),
+    colors::yellow(&(range.start.character + 1).to_string())
+  )
+}
+
 #[cfg(test)]
 mod test {
   use std::sync::Arc;
@@ -781,7 +932,7 @@ mod test {
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
 
-  use crate::graph_util::get_resolution_error_bare_node_specifier;
+  use super::*;
 
   #[test]
   fn import_map_node_resolution_error() {
@@ -820,5 +971,47 @@ mod test {
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
+  }
+
+  #[test]
+  fn test_sloppy_import_resolution_to_message() {
+    // none
+    let url = ModuleSpecifier::parse("file:///dir/index.js").unwrap();
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::None(&url)
+      ),
+      None,
+    );
+    // directory
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::Directory(
+          ModuleSpecifier::parse("file:///dir/index.js").unwrap()
+        )
+      )
+      .unwrap(),
+      "Maybe specify path to 'index.js' file in directory instead"
+    );
+    // no ext
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::NoExtension(
+          ModuleSpecifier::parse("file:///dir/index.mjs").unwrap()
+        )
+      )
+      .unwrap(),
+      "Maybe add a '.mjs' extension"
+    );
+    // js to ts
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::JsToTs(
+          ModuleSpecifier::parse("file:///dir/index.mts").unwrap()
+        )
+      )
+      .unwrap(),
+      "Maybe change the extension to '.mts'"
+    );
   }
 }

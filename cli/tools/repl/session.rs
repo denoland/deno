@@ -657,13 +657,18 @@ impl ReplSession {
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
+    let referrer_range = deno_graph::Range {
+      specifier: self.referrer.clone(),
+      start: deno_graph::Position::zeroed(),
+      end: deno_graph::Position::zeroed(),
+    };
     let resolved_imports = collector
       .imports
       .iter()
       .flat_map(|i| {
         self
           .resolver
-          .resolve(i, &self.referrer, ResolutionMode::Execution)
+          .resolve(i, &referrer_range, ResolutionMode::Execution)
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })

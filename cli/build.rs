@@ -4,8 +4,6 @@ use std::env;
 use std::path::PathBuf;
 
 use deno_core::snapshot_util::*;
-use deno_core::ExtensionFileSource;
-use deno_core::ExtensionFileSourceCode;
 use deno_runtime::*;
 
 mod ts {
@@ -15,17 +13,10 @@ mod ts {
   use deno_core::op2;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-  use serde::Deserialize;
   use serde::Serialize;
   use std::collections::HashMap;
   use std::path::Path;
   use std::path::PathBuf;
-
-  #[derive(Debug, Deserialize)]
-  struct LoadArgs {
-    /// The fully qualified specifier that should be loaded.
-    specifier: String,
-  }
 
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
@@ -60,17 +51,11 @@ mod ts {
     false
   }
 
-  #[derive(Debug, Deserialize, Serialize)]
-  #[serde(rename_all = "camelCase")]
-  struct ScriptVersionArgs {
-    specifier: String,
-  }
-
   #[op2]
   #[string]
   fn op_script_version(
     _state: &mut OpState,
-    #[serde] _args: ScriptVersionArgs,
+    #[string] _arg: &str,
   ) -> Result<Option<String>, AnyError> {
     Ok(Some("1".to_string()))
   }
@@ -89,7 +74,7 @@ mod ts {
   // files, but a slightly different implementation at build time.
   fn op_load(
     state: &mut OpState,
-    #[serde] args: LoadArgs,
+    #[string] load_specifier: &str,
   ) -> Result<LoadResponse, AnyError> {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
@@ -97,7 +82,7 @@ mod ts {
     let build_specifier = "asset:///bootstrap.ts";
 
     // we need a basic file to send to tsc to warm it up.
-    if args.specifier == build_specifier {
+    if load_specifier == build_specifier {
       Ok(LoadResponse {
         data: r#"Deno.writeTextFile("hello.txt", "hello deno!");"#.to_string(),
         version: "1".to_string(),
@@ -106,7 +91,7 @@ mod ts {
       })
       // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
       // parse out just the name so we can lookup the asset.
-    } else if let Some(caps) = re_asset.captures(&args.specifier) {
+    } else if let Some(caps) = re_asset.captures(load_specifier) {
       if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
         // if it comes from an op crate, we were supplied with the path to the
         // file.
@@ -126,13 +111,13 @@ mod ts {
       } else {
         Err(custom_error(
           "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", args.specifier),
+          format!("An invalid specifier was requested: {}", load_specifier),
         ))
       }
     } else {
       Err(custom_error(
         "InvalidSpecifier",
-        format!("An invalid specifier was requested: {}", args.specifier),
+        format!("An invalid specifier was requested: {}", load_specifier),
       ))
     }
   }
@@ -324,121 +309,31 @@ mod ts {
   }
 }
 
-// Duplicated in `ops/mod.rs`. Keep in sync!
-deno_core::extension!(
-  cli,
-  deps = [runtime],
-  esm_entry_point = "ext:cli/99_main.js",
-  esm = [
-    dir "js",
-    "99_main.js"
-  ],
-  customizer = |ext: &mut deno_core::Extension| {
-    ext.esm_files.to_mut().push(ExtensionFileSource {
-      specifier: "ext:cli/runtime/js/99_main.js",
-      code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-        deno_runtime::js::PATH_FOR_99_MAIN_JS,
-      ),
-    });
-  }
-);
-
 #[cfg(not(feature = "__runtime_js_sources"))]
-#[must_use = "The files listed by create_cli_snapshot should be printed as 'cargo:rerun-if-changed' lines"]
-fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
-  use deno_core::Extension;
-  use deno_runtime::deno_cache::SqliteBackedCache;
-  use deno_runtime::deno_cron::local::LocalCronHandler;
-  use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
-  use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
+fn create_cli_snapshot(snapshot_path: PathBuf) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
-  use deno_runtime::permissions::PermissionsContainer;
-  use std::sync::Arc;
 
   // NOTE(bartlomieju): keep in sync with `cli/version.rs`.
   // Ideally we could deduplicate that code.
   fn deno_version() -> String {
     if env::var("DENO_CANARY").is_ok() {
-      format!(
-        "{}+{}",
-        env!("CARGO_PKG_VERSION"),
-        git_commit_hash()[..7].to_string()
-      )
+      format!("{}+{}", env!("CARGO_PKG_VERSION"), &git_commit_hash()[..7])
     } else {
       env!("CARGO_PKG_VERSION").to_string()
     }
   }
 
-  // NOTE(bartlomieju): ordering is important here, keep it in sync with
-  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
-  let fs = Arc::new(deno_fs::RealFs);
-  let extensions: Vec<Extension> = vec![
-    deno_webidl::deno_webidl::init_ops(),
-    deno_console::deno_console::init_ops(),
-    deno_url::deno_url::init_ops(),
-    deno_web::deno_web::init_ops::<PermissionsContainer>(
-      Default::default(),
-      Default::default(),
-    ),
-    deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
-    deno_cache::deno_cache::init_ops::<SqliteBackedCache>(None),
-    deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
-      "".to_owned(),
-      None,
-      None,
-    ),
-    deno_webstorage::deno_webstorage::init_ops(None),
-    deno_crypto::deno_crypto::init_ops(None),
-    deno_broadcast_channel::deno_broadcast_channel::init_ops(
-      deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-    ),
-    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(),
-    deno_net::deno_net::init_ops::<PermissionsContainer>(None, None),
-    deno_tls::deno_tls::init_ops(),
-    deno_kv::deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(
-      None, None,
-    )),
-    deno_cron::deno_cron::init_ops(LocalCronHandler::new()),
-    deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-    deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
-    deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<PermissionsContainer>(fs.clone()),
-    deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
-    deno_runtime::runtime::init_ops(),
-    deno_runtime::ops::runtime::deno_runtime::init_ops(
-      "deno:runtime".parse().unwrap(),
-    ),
-    deno_runtime::ops::worker_host::deno_worker_host::init_ops(
-      Arc::new(|_| unreachable!("not used in snapshot.")),
-      None,
-    ),
-    deno_runtime::ops::fs_events::deno_fs_events::init_ops(),
-    deno_runtime::ops::os::deno_os::init_ops(Default::default()),
-    deno_runtime::ops::permissions::deno_permissions::init_ops(),
-    deno_runtime::ops::process::deno_process::init_ops(),
-    deno_runtime::ops::signal::deno_signal::init_ops(),
-    deno_runtime::ops::tty::deno_tty::init_ops(),
-    deno_runtime::ops::http::deno_http_runtime::init_ops(),
-    deno_runtime::ops::bootstrap::deno_bootstrap::init_ops(Some(
-      SnapshotOptions {
-        deno_version: deno_version(),
-        ts_version: ts::version(),
-        v8_version: deno_core::v8_version(),
-        target: std::env::var("TARGET").unwrap(),
-      },
-    )),
-    cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
-  ];
+  let snapshot_options = SnapshotOptions {
+    deno_version: deno_version(),
+    ts_version: ts::version(),
+    v8_version: deno_core::v8_version(),
+    target: std::env::var("TARGET").unwrap(),
+  };
 
-  create_snapshot(CreateSnapshotOptions {
-    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+  deno_runtime::snapshot::create_runtime_snapshot(
     snapshot_path,
-    startup_snapshot: deno_runtime::js::deno_isolate_init(),
-    extensions,
-    compression_cb: None,
-    with_runtime_cb: None,
-    skip_op_registration: false,
-  })
+    snapshot_options,
+  );
 }
 
 fn git_commit_hash() -> String {
@@ -533,7 +428,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.2.2"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.3.3"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
@@ -549,10 +444,7 @@ fn main() {
   #[cfg(not(feature = "__runtime_js_sources"))]
   {
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-    let output = create_cli_snapshot(cli_snapshot_path);
-    for path in output.files_loaded_during_snapshot {
-      println!("cargo:rerun-if-changed={}", path.display())
-    }
+    create_cli_snapshot(cli_snapshot_path);
   }
 
   #[cfg(target_os = "windows")]

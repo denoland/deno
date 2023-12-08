@@ -1,8 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  fail,
-} from "../../../../test_util/std/testing/asserts.ts";
+import { assertEquals, fail } from "../../../../test_util/std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { rename, renameSync } from "node:fs";
 import { existsSync } from "node:fs";

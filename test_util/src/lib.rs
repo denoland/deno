@@ -11,6 +11,7 @@ use denokv_proto::datapath::AtomicWriteStatus;
 use denokv_proto::datapath::ReadRangeOutput;
 use denokv_proto::datapath::SnapshotRead;
 use denokv_proto::datapath::SnapshotReadOutput;
+use denokv_proto::datapath::SnapshotReadStatus;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
@@ -1226,6 +1227,7 @@ async fn main_server(
                 .collect(),
               read_disabled: false,
               read_is_strongly_consistent: true,
+              status: SnapshotReadStatus::SrSuccess.into(),
             }
             .encode_to_vec(),
           ))
@@ -1274,7 +1276,7 @@ async fn main_server(
       )
     }
     (&hyper::Method::GET, "/upgrade/sleep/release-latest.txt") => {
-      tokio::time::sleep(Duration::from_secs(45)).await;
+      tokio::time::sleep(Duration::from_secs(95)).await;
       return Ok(
         Response::builder()
           .status(StatusCode::OK)
@@ -1283,7 +1285,7 @@ async fn main_server(
       );
     }
     (&hyper::Method::GET, "/upgrade/sleep/canary-latest.txt") => {
-      tokio::time::sleep(Duration::from_secs(45)).await;
+      tokio::time::sleep(Duration::from_secs(95)).await;
       return Ok(
         Response::builder()
           .status(StatusCode::OK)

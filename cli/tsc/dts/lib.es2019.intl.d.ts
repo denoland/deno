@@ -18,6 +18,6 @@ and limitations under the License.
 
 declare namespace Intl {
     interface DateTimeFormatPartTypesRegistry {
-        unknown: any
+        unknown: any;
     }
 }

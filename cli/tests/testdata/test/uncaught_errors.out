@@ -39,7 +39,7 @@ error: Error: bar 3 message
     at [WILDCARD]/test/uncaught_errors_2.ts:7:9
 
 ./test/uncaught_errors_3.ts (uncaught error)
-error: Error: baz
+error: (in promise) Error: baz
 throw new Error("baz");
       ^
     at [WILDCARD]/test/uncaught_errors_3.ts:1:7

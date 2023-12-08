@@ -12,6 +12,7 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
 }
 
 #[derive(Debug, Serialize)]
@@ -91,6 +92,8 @@ impl BenchReporter for JsonReporter {
       });
     }
   }
+
+  fn report_uncaught_error(&mut self, _origin: &str, _error: Box<JsError>) {}
 }
 
 pub struct ConsoleReporter {
@@ -300,5 +303,16 @@ impl BenchReporter for ConsoleReporter {
 
   fn report_end(&mut self, _: &BenchReport) {
     self.report_group_summary();
+  }
+
+  fn report_uncaught_error(&mut self, _origin: &str, error: Box<JsError>) {
+    println!(
+      "{}: {}",
+      colors::red_bold("error"),
+      format_test_error(&error)
+    );
+    println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
+    println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+    println!();
   }
 }

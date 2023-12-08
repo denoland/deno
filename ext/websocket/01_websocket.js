@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 import { URL } from "ext:deno_url/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -20,7 +20,6 @@ import {
 } from "ext:deno_web/02_event.js";
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,

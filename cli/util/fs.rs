@@ -6,6 +6,7 @@ pub use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
@@ -187,10 +188,19 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
-  canonicalize_path_maybe_not_exists_with_fs(path, canonicalize_path)
+  canonicalize_path_maybe_not_exists_with_custom_fn(path, canonicalize_path)
 }
 
 pub fn canonicalize_path_maybe_not_exists_with_fs(
+  path: &Path,
+  fs: &dyn FileSystem,
+) -> Result<PathBuf, Error> {
+  canonicalize_path_maybe_not_exists_with_custom_fn(path, |path| {
+    fs.realpath_sync(path).map_err(|err| err.into_io_error())
+  })
+}
+
+fn canonicalize_path_maybe_not_exists_with_custom_fn(
   path: &Path,
   canonicalize: impl Fn(&Path) -> Result<PathBuf, Error>,
 ) -> Result<PathBuf, Error> {

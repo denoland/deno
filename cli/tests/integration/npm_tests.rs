@@ -2009,6 +2009,15 @@ fn binary_package_with_optional_dependencies() {
       assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
         .exists());
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-linux")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-mac")
+        .exists());
     }
 
     #[cfg(target_os = "macos")]
@@ -2027,6 +2036,15 @@ fn binary_package_with_optional_dependencies() {
       assert!(project_path
         .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
         .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-linux")
+        .exists());
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-mac")
+        .exists());
     }
 
     #[cfg(target_os = "linux")]
@@ -2043,6 +2061,15 @@ fn binary_package_with_optional_dependencies() {
         .exists());
       assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
+        .exists());
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-linux")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-mac")
         .exists());
     }
   }

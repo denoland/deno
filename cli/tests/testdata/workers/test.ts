@@ -7,7 +7,7 @@ import {
   assertEquals,
   assertMatch,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 
 Deno.test({
   name: "worker terminate",
@@ -94,7 +94,10 @@ Deno.test({
       resolve(e.message);
     };
 
-    assertMatch(await promise as string, /Uncaught Error: Thrown error/);
+    assertMatch(
+      await promise as string,
+      /Uncaught \(in promise\) Error: Thrown error/,
+    );
     throwingWorker.terminate();
   },
 });
