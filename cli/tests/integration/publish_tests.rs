@@ -12,6 +12,15 @@ use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
 
+static TEST_REGISTRY_URL: &str = "http://127.0.0.1:4250";
+
+pub fn env_vars_for_registry() -> Vec<(String, String)> {
+  vec![(
+    "DENO_REGISTRY_URL".to_string(),
+    TEST_REGISTRY_URL.to_string(),
+  )]
+}
+
 itest!(no_token {
   args: "do-not-use-publish publish/missing_deno_json",
   output: "publish/no_token.out",
@@ -21,7 +30,15 @@ itest!(no_token {
 itest!(missing_deno_json {
   args:
     "do-not-use-publish --token 'sadfasdf' $TESTDATA/publish/missing_deno_json",
-  output: "publish/missing_deno_json/missing_deno_json.out",
+  output: "publish/missing_deno_json.out",
   exit_code: 1,
+  temp_cwd: true,
+});
+
+itest!(successful {
+  args: "do-not-use-publish --token 'sadfasdf' $TESTDATA/publish/successful",
+  output: "publish/successful.out",
+  envs: env_vars_for_registry(),
+  http_server: true,
   temp_cwd: true,
 });
