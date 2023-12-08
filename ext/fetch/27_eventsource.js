@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -19,7 +19,6 @@ import { getLocationHref } from "ext:deno_web/12_location.js";
 import { newInnerRequest } from "ext:deno_fetch/23_request.js";
 import { mainFetch } from "ext:deno_fetch/26_fetch.js";
 
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFind,
   Number,

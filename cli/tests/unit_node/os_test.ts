@@ -290,13 +290,18 @@ Deno.test({
   },
 });
 
+// Gets the diff in log_10 scale
+function diffLog10(a: number, b: number): number {
+  return Math.abs(Math.log10(a) - Math.log10(b));
+}
+
 Deno.test({
   name:
     "os.freemem() is equivalent of Deno.systemMemoryInfo().free except on linux",
   ignore: Deno.build.os === "linux",
   fn() {
-    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().free);
-    assert(diff < 10_000);
+    const diff = diffLog10(os.freemem(), Deno.systemMemoryInfo().free);
+    assert(diff < 1);
   },
 });
 
@@ -305,7 +310,7 @@ Deno.test({
     "os.freemem() is equivalent of Deno.systemMemoryInfo().available on linux",
   ignore: Deno.build.os !== "linux",
   fn() {
-    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().available);
-    assert(diff < 10_000);
+    const diff = diffLog10(os.freemem(), Deno.systemMemoryInfo().available);
+    assert(diff < 1);
   },
 });

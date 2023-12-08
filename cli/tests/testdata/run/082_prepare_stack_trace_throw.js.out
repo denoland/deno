@@ -1,2 +1,2 @@
-[WILDCARD]error: Uncaught Error: foo
+[WILDCARD]error: Uncaught (in promise) Error: foo
 [WILDCARD]

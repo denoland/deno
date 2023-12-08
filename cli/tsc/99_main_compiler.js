@@ -226,6 +226,8 @@ delete Object.prototype.__proto__;
             impliedNodeFormat: isCjsCache.has(fileName)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
+            // in the lsp we want to be able to show documentation
+            jsDocParsingMode: ts.JSDocParsingMode.ParseAll,
           },
           version,
           true,
@@ -537,11 +539,12 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
-      const createOptions = getCreateSourceFileOptions(languageVersion);
       if (logDebug) {
         debug(
           `host.getSourceFile("${specifier}", ${
-            ts.ScriptTarget[createOptions.languageVersion]
+            ts.ScriptTarget[
+              getCreateSourceFileOptions(languageVersion).languageVersion
+            ]
           })`,
         );
       }
@@ -568,10 +571,12 @@ delete Object.prototype.__proto__;
         specifier,
         data,
         {
-          ...createOptions,
+          ...getCreateSourceFileOptions(languageVersion),
           impliedNodeFormat: isCjsCache.has(specifier)
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
+          // no need to parse docs for `deno check`
+          jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
         },
         false,
         scriptKind,
