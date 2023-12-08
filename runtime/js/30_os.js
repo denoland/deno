@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const {
@@ -104,8 +104,6 @@ const env = {
 function execPath() {
   return ops.op_exec_path();
 }
-
-internals.setExitHandler = setExitHandler;
 
 export {
   env,

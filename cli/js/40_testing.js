@@ -4,11 +4,10 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 
-const {
-  setExitHandler,
-  Console,
-  serializePermissions,
-} = internals;
+import { setExitHandler } from "ext:runtime/30_os.js";
+import { Console } from "ext:deno_console/01_console.js";
+import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 
 const {
   ArrayPrototypeFilter,
