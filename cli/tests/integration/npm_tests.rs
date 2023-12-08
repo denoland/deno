@@ -424,6 +424,14 @@ itest!(types_exports_import_types {
   exit_code: 1,
 });
 
+itest!(types_export_missing_declaration_file {
+  args: "check --all npm/types_export_missing_declaration_file/main.ts",
+  output: "npm/types_export_missing_declaration_file/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(types_no_types_entry {
   args: "check --all npm/types_no_types_entry/main.ts",
   output: "npm/types_no_types_entry/main.out",

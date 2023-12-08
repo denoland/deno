@@ -8,6 +8,9 @@
       "require": "./lib/foo.js",
       "import": "./lib/foo-esm.js"
     },
+    "./sub": {
+      "default": "./lib/foo.js"
+    },
     "./*": "./*"
   },
   "type": "module"

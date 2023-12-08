@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::error::generic_error;
@@ -88,6 +89,21 @@ pub fn err_invalid_package_target(
   if rel_error {
     msg = format!("{msg}; target must start with \"./\"");
   }
+
+  generic_error(msg)
+}
+
+pub fn err_missing_declaration_file(
+  path: &PathBuf,
+  package_json_path: &Path,
+  subpath: &str,
+) -> AnyError {
+  let msg = format!(
+    "[TS7016] Could not find a declaration file for subpath {} in {}. {} implicitly has an 'any' type.",
+    subpath,
+    &package_json_path.display(),
+    &path.display()
+  );
 
   generic_error(msg)
 }

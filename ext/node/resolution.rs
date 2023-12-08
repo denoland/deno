@@ -340,6 +340,29 @@ impl NodeResolver {
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
+
+    let maybe_resolved_path2 = self.resolve_package_subpath(
+      &package_json,
+      &package_subpath,
+      referrer,
+      node_module_kind,
+      DEFAULT_CONDITIONS,
+      mode,
+      permissions,
+    );
+
+    if !mode.is_types() {
+      maybe_resolved_path2.with_context(|| {
+        format!(
+          "Failed resolving package subpath '{}' for '{}'",
+          package_subpath,
+          package_json.path.display()
+        )
+      })?;
+    } else if maybe_resolved_path2.is_err() {
+      maybe_resolved_path2?;
+    }
+
     let maybe_resolved_path = self
       .resolve_package_subpath(
         &package_json,
@@ -351,11 +374,15 @@ impl NodeResolver {
         permissions,
       )
       .with_context(|| {
-        format!(
-          "Failed resolving package subpath '{}' for '{}'",
-          package_subpath,
-          package_json.path.display()
-        )
+        if !mode.is_types() {
+          format!(
+            "Failed resolving package subpath '{}' for '{}'",
+            package_subpath,
+            package_json.path.display()
+          )
+        } else {
+          "".to_string()
+        }
       })?;
     let resolved_path = match maybe_resolved_path {
       Some(resolved_path) => resolved_path,
@@ -744,27 +771,38 @@ impl NodeResolver {
     permissions: &dyn NodePermissions,
   ) -> Result<Option<PathBuf>, AnyError> {
     if let Some(target) = target.as_str() {
-      return self
-        .resolve_package_target_string(
-          target.to_string(),
-          subpath,
-          package_subpath,
-          package_json_path,
-          referrer,
-          referrer_kind,
-          pattern,
-          internal,
-          conditions,
-          mode,
-          permissions,
-        )
-        .map(|path| {
+      return match self.resolve_package_target_string(
+        target.to_string(),
+        subpath,
+        package_subpath,
+        package_json_path,
+        referrer,
+        referrer_kind,
+        pattern,
+        internal,
+        conditions,
+        mode,
+        permissions,
+      ) {
+        Ok(path) => {
           if mode.is_types() {
-            self.path_to_declaration_path(path, referrer_kind)
+            if let Some(decl_path) =
+              self.path_to_declaration_path(path.to_owned(), referrer_kind)
+            {
+              return Ok(Some(decl_path));
+            } else {
+              Err(throw_missing_declaration_file(
+                &path,
+                &package_json_path,
+                &package_subpath,
+              ))
+            }
           } else {
-            Some(path)
+            Ok(Some(path))
           }
-        });
+        }
+        Err(err) => Err(err),
+      };
     } else if let Some(target_arr) = target.as_array() {
       if target_arr.is_empty() {
         return Ok(None);
@@ -1428,6 +1466,14 @@ fn throw_invalid_package_target(
     internal,
     Some(referrer.to_string()),
   )
+}
+
+fn throw_missing_declaration_file(
+  path: &PathBuf,
+  package_json_path: &Path,
+  subpath: &str,
+) -> AnyError {
+  errors::err_missing_declaration_file(&path, &package_json_path, &subpath)
 }
 
 fn throw_invalid_subpath(
