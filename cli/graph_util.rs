@@ -12,7 +12,6 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
-use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
@@ -20,7 +19,6 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
-use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -61,7 +59,7 @@ pub struct GraphValidOptions {
 /// error statically reachable from `roots` and not a dynamic import.
 pub fn graph_valid_with_cli_options(
   graph: &ModuleGraph,
-  fs: &Arc<dyn FileSystem>,
+  fs: &dyn FileSystem,
   roots: &[ModuleSpecifier],
   options: &CliOptions,
 ) -> Result<(), AnyError> {
@@ -86,7 +84,7 @@ pub fn graph_valid_with_cli_options(
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
-  fs: &Arc<dyn FileSystem>,
+  fs: &dyn FileSystem,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -366,7 +364,7 @@ impl ModuleGraphBuilder {
     let graph = Arc::new(graph);
     graph_valid_with_cli_options(
       &graph,
-      &self.fs,
+      self.fs.as_ref(),
       &graph.roots,
       &self.options,
     )?;
@@ -538,12 +536,13 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 }
 
 pub fn enhanced_module_error_message(
-  fs: &Arc<dyn FileSystem>,
+  fs: &dyn FileSystem,
   error: &ModuleError,
 ) -> String {
   let additional_message = match error {
     ModuleError::Missing(specifier, _) => {
-      maybe_sloppy_imports_suggestion_message(fs, specifier)
+      SloppyImportsResolver::resolve_with_fs(fs, specifier)
+        .as_suggestion_message()
     }
     _ => None,
   };
@@ -554,48 +553,6 @@ pub fn enhanced_module_error_message(
     )
   } else {
     format!("{}", error)
-  }
-}
-
-pub fn maybe_sloppy_imports_suggestion_message(
-  fs: &Arc<dyn FileSystem>,
-  original_specifier: &ModuleSpecifier,
-) -> Option<String> {
-  let sloppy_imports_resolver = SloppyImportsResolver::new(fs.clone());
-  let resolution = sloppy_imports_resolver.resolve(original_specifier);
-  sloppy_import_resolution_to_suggestion_message(&resolution)
-}
-
-fn sloppy_import_resolution_to_suggestion_message(
-  resolution: &SloppyImportsResolution,
-) -> Option<String> {
-  match resolution {
-    SloppyImportsResolution::None(_) => None,
-    SloppyImportsResolution::JsToTs(specifier) => {
-      let media_type = MediaType::from_specifier(specifier);
-      Some(format!(
-        "Maybe change the extension to '{}'",
-        media_type.as_ts_extension()
-      ))
-    }
-    SloppyImportsResolution::NoExtension(specifier) => {
-      let media_type = MediaType::from_specifier(specifier);
-      Some(format!(
-        "Maybe add a '{}' extension",
-        media_type.as_ts_extension()
-      ))
-    }
-    SloppyImportsResolution::Directory(specifier) => {
-      let file_name = specifier
-        .path()
-        .rsplit_once('/')
-        .map(|(_, file_name)| file_name)
-        .unwrap_or(specifier.path());
-      Some(format!(
-        "Maybe specify path to '{}' file in directory instead",
-        file_name
-      ))
-    }
   }
 }
 
@@ -971,47 +928,5 @@ mod test {
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
-  }
-
-  #[test]
-  fn test_sloppy_import_resolution_to_message() {
-    // none
-    let url = ModuleSpecifier::parse("file:///dir/index.js").unwrap();
-    assert_eq!(
-      sloppy_import_resolution_to_suggestion_message(
-        &SloppyImportsResolution::None(&url)
-      ),
-      None,
-    );
-    // directory
-    assert_eq!(
-      sloppy_import_resolution_to_suggestion_message(
-        &SloppyImportsResolution::Directory(
-          ModuleSpecifier::parse("file:///dir/index.js").unwrap()
-        )
-      )
-      .unwrap(),
-      "Maybe specify path to 'index.js' file in directory instead"
-    );
-    // no ext
-    assert_eq!(
-      sloppy_import_resolution_to_suggestion_message(
-        &SloppyImportsResolution::NoExtension(
-          ModuleSpecifier::parse("file:///dir/index.mjs").unwrap()
-        )
-      )
-      .unwrap(),
-      "Maybe add a '.mjs' extension"
-    );
-    // js to ts
-    assert_eq!(
-      sloppy_import_resolution_to_suggestion_message(
-        &SloppyImportsResolution::JsToTs(
-          ModuleSpecifier::parse("file:///dir/index.mts").unwrap()
-        )
-      )
-      .unwrap(),
-      "Maybe change the extension to '.mts'"
-    );
   }
 }

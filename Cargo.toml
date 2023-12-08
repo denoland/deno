@@ -40,7 +40,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.31.6", features = ["transpiling"] }
-deno_core = { version = "0.236.0" }
+deno_core = { version = "0.237.0" }
 
 deno_runtime = { version = "0.135.0", path = "./runtime" }
 napi_sym = { version = "0.57.0", path = "./cli/napi/sym" }
@@ -125,7 +125,7 @@ prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
 lazy-regex = "3"
-reqwest = { version = "0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
+reqwest = { version = "=0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.8"

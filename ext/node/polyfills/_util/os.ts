@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const { ops } = globalThis.__bootstrap.core;
+import { core } from "ext:core/mod.js";
+const ops = core.ops;
 
 export type OSType = "windows" | "linux" | "darwin" | "freebsd" | "openbsd";
 

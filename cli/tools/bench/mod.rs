@@ -497,7 +497,7 @@ pub async fn run_benchmarks_with_watch(
           .await?;
         graph_valid_with_cli_options(
           &graph,
-          factory.fs(),
+          factory.fs().as_ref(),
           &bench_modules,
           cli_options,
         )?;

@@ -42,6 +42,7 @@ import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
 import * as prompt from "ext:runtime/41_prompt.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
+import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -143,8 +144,11 @@ const windowOrWorkerGlobalScope = {
   [webidl.brand]: util.nonEnumerable(webidl.brand),
 };
 
-const unstableWindowOrWorkerGlobalScope = {
+const unstableForWindowOrWorkerGlobalScope = {};
+unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
   BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+};
+unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
 };
 
@@ -312,7 +316,7 @@ const workerRuntimeGlobalProperties = {
 export {
   mainRuntimeGlobalProperties,
   memoizeLazy,
-  unstableWindowOrWorkerGlobalScope,
+  unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 };

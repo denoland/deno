@@ -169,7 +169,12 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    graph_valid_with_cli_options(graph, &self.fs, &roots, &self.options)?;
+    graph_valid_with_cli_options(
+      graph,
+      self.fs.as_ref(),
+      &roots,
+      &self.options,
+    )?;
 
     // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {

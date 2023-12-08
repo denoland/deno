@@ -155,63 +155,68 @@ const denoNs = {
 };
 
 // NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
-const denoNsUnstableById = {
-  // BroadcastChannel is always available?
-  // 1: {},
-
-  2: {
-    cron: cron.cron,
-  },
-
-  // FFI
-  3: {
-    dlopen: ffi.dlopen,
-    UnsafeCallback: ffi.UnsafeCallback,
-    UnsafePointer: ffi.UnsafePointer,
-    UnsafePointerView: ffi.UnsafePointerView,
-    UnsafeFnPointer: ffi.UnsafeFnPointer,
-  },
-
-  // FS
-  4: {
-    flock: fs.flock,
-    flockSync: fs.flockSync,
-    funlock: fs.funlock,
-    funlockSync: fs.funlockSync,
-    umask: fs.umask,
-  },
-
-  // HTTP
-  5: {
-    HttpClient: httpClient.HttpClient,
-    createHttpClient: httpClient.createHttpClient,
-    // TODO(bartlomieju): why is it needed?
-    http,
-    upgradeHttp: http.upgradeHttp,
-  },
-
-  // KV
-  6: {
-    openKv: kv.openKv,
-    AtomicOperation: kv.AtomicOperation,
-    Kv: kv.Kv,
-    KvU64: kv.KvU64,
-    KvListIterator: kv.KvListIterator,
-  },
-
-  // net
-  7: {
-    listenDatagram: net.createListenDatagram(
-      ops.op_net_listen_udp,
-      ops.op_net_listen_unixpacket,
-    ),
-  },
-  // Unsafe proto
-  // 8: {},
-
-  // Worker options
-  // 9: {}
+const unstableIds = {
+  broadcastChannel: 1,
+  cron: 2,
+  ffi: 3,
+  fs: 4,
+  http: 5,
+  kv: 6,
+  net: 7,
+  unsafeProto: 8,
+  workerOptions: 9,
 };
+
+const denoNsUnstableById = {};
+
+// denoNsUnstableById[unstableIds.broadcastChannel] = {}
+
+denoNsUnstableById[unstableIds.cron] = {
+  cron: cron.cron,
+};
+
+denoNsUnstableById[unstableIds.ffi] = {
+  dlopen: ffi.dlopen,
+  UnsafeCallback: ffi.UnsafeCallback,
+  UnsafePointer: ffi.UnsafePointer,
+  UnsafePointerView: ffi.UnsafePointerView,
+  UnsafeFnPointer: ffi.UnsafeFnPointer,
+};
+
+denoNsUnstableById[unstableIds.fs] = {
+  flock: fs.flock,
+  flockSync: fs.flockSync,
+  funlock: fs.funlock,
+  funlockSync: fs.funlockSync,
+  umask: fs.umask,
+};
+
+denoNsUnstableById[unstableIds.http] = {
+  HttpClient: httpClient.HttpClient,
+  createHttpClient: httpClient.createHttpClient,
+  // TODO(bartlomieju): why is it needed?
+  http,
+  upgradeHttp: http.upgradeHttp,
+};
+
+denoNsUnstableById[unstableIds.kv] = {
+  openKv: kv.openKv,
+  AtomicOperation: kv.AtomicOperation,
+  Kv: kv.Kv,
+  KvU64: kv.KvU64,
+  KvListIterator: kv.KvListIterator,
+};
+
+denoNsUnstableById[unstableIds.net] = {
+  listenDatagram: net.createListenDatagram(
+    ops.op_net_listen_udp,
+    ops.op_net_listen_unixpacket,
+  ),
+};
+
+// denoNsUnstableById[unstableIds.unsafeProto] = {}
+
+// denoNsUnstableById[unstableIds.workerOptions] = {}
 
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
@@ -242,4 +247,4 @@ const denoNsUnstable = {
   cron: cron.cron,
 };
 
-export { denoNs, denoNsUnstable, denoNsUnstableById };
+export { denoNs, denoNsUnstable, denoNsUnstableById, unstableIds };
