@@ -12,12 +12,15 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::SloppyImportsResolution;
+use crate::resolver::SloppyImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -58,11 +61,13 @@ pub struct GraphValidOptions {
 /// error statically reachable from `roots` and not a dynamic import.
 pub fn graph_valid_with_cli_options(
   graph: &ModuleGraph,
+  fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: &CliOptions,
 ) -> Result<(), AnyError> {
   graph_valid(
     graph,
+    fs,
     roots,
     GraphValidOptions {
       is_vendoring: false,
@@ -81,6 +86,7 @@ pub fn graph_valid_with_cli_options(
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
+  fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -109,10 +115,12 @@ pub fn graph_valid(
         ModuleGraphError::TypesResolutionError(resolution_error) => {
           format!(
             "Failed resolving types. {}",
-            enhanced_resolution_error_message(resolution_error,)
+            enhanced_resolution_error_message(resolution_error)
           )
         }
-        ModuleGraphError::ModuleError(_) => format!("{error}"),
+        ModuleGraphError::ModuleError(e) => {
+          enhanced_module_error_message(fs, e)
+        }
       };
 
       if let Some(range) = error.maybe_range() {
@@ -356,7 +364,12 @@ impl ModuleGraphBuilder {
       .await?;
 
     let graph = Arc::new(graph);
-    graph_valid_with_cli_options(&graph, &graph.roots, &self.options)?;
+    graph_valid_with_cli_options(
+      &graph,
+      &self.fs,
+      &graph.roots,
+      &self.options,
+    )?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
@@ -522,6 +535,68 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   }
 
   message
+}
+
+pub fn enhanced_module_error_message(
+  fs: &Arc<dyn FileSystem>,
+  error: &ModuleError,
+) -> String {
+  let additional_message = match error {
+    ModuleError::Missing(specifier, _) => {
+      maybe_sloppy_imports_suggestion_message(fs, specifier)
+    }
+    _ => None,
+  };
+  if let Some(message) = additional_message {
+    format!(
+      "{} {} or run with --unstable-sloppy-imports",
+      error, message
+    )
+  } else {
+    format!("{}", error)
+  }
+}
+
+pub fn maybe_sloppy_imports_suggestion_message(
+  fs: &Arc<dyn FileSystem>,
+  original_specifier: &ModuleSpecifier,
+) -> Option<String> {
+  let sloppy_imports_resolver = SloppyImportsResolver::new(fs.clone());
+  let resolution = sloppy_imports_resolver.resolve(original_specifier);
+  sloppy_import_resolution_to_suggestion_message(&resolution)
+}
+
+fn sloppy_import_resolution_to_suggestion_message(
+  resolution: &SloppyImportsResolution,
+) -> Option<String> {
+  match resolution {
+    SloppyImportsResolution::None(_) => None,
+    SloppyImportsResolution::JsToTs(specifier) => {
+      let media_type = MediaType::from_specifier(specifier);
+      Some(format!(
+        "Maybe change the extension to '{}'",
+        media_type.as_ts_extension()
+      ))
+    }
+    SloppyImportsResolution::NoExtension(specifier) => {
+      let media_type = MediaType::from_specifier(specifier);
+      Some(format!(
+        "Maybe add a '{}' extension",
+        media_type.as_ts_extension()
+      ))
+    }
+    SloppyImportsResolution::Directory(specifier) => {
+      let file_name = specifier
+        .path()
+        .rsplit_once('/')
+        .map(|(_, file_name)| file_name)
+        .unwrap_or(specifier.path());
+      Some(format!(
+        "Maybe specify path to '{}' file in directory instead",
+        file_name
+      ))
+    }
+  }
 }
 
 pub fn get_resolution_error_bare_node_specifier(
@@ -857,7 +932,7 @@ mod test {
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
 
-  use crate::graph_util::get_resolution_error_bare_node_specifier;
+  use super::*;
 
   #[test]
   fn import_map_node_resolution_error() {
@@ -896,5 +971,47 @@ mod test {
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
+  }
+
+  #[test]
+  fn test_sloppy_import_resolution_to_message() {
+    // none
+    let url = ModuleSpecifier::parse("file:///dir/index.js").unwrap();
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::None(&url)
+      ),
+      None,
+    );
+    // directory
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::Directory(
+          ModuleSpecifier::parse("file:///dir/index.js").unwrap()
+        )
+      )
+      .unwrap(),
+      "Maybe specify path to 'index.js' file in directory instead"
+    );
+    // no ext
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::NoExtension(
+          ModuleSpecifier::parse("file:///dir/index.mjs").unwrap()
+        )
+      )
+      .unwrap(),
+      "Maybe add a '.mjs' extension"
+    );
+    // js to ts
+    assert_eq!(
+      sloppy_import_resolution_to_suggestion_message(
+        &SloppyImportsResolution::JsToTs(
+          ModuleSpecifier::parse("file:///dir/index.mts").unwrap()
+        )
+      )
+      .unwrap(),
+      "Maybe change the extension to '.mts'"
+    );
   }
 }

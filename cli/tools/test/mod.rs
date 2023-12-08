@@ -1280,7 +1280,12 @@ pub async fn run_tests_with_watch(
         let graph = module_graph_builder
           .create_graph(graph_kind, test_modules.clone())
           .await?;
-        graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
+        graph_valid_with_cli_options(
+          &graph,
+          factory.fs(),
+          &test_modules,
+          &cli_options,
+        )?;
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {

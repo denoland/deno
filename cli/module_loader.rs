@@ -169,7 +169,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    graph_valid_with_cli_options(graph, &roots, &self.options)?;
+    graph_valid_with_cli_options(graph, &self.fs, &roots, &self.options)?;
 
     // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {
@@ -568,7 +568,11 @@ impl ModuleLoader for CliModuleLoader {
     // support in REPL. This should be fixed.
     let resolution = self.shared.resolver.resolve(
       specifier,
-      &referrer,
+      &deno_graph::Range {
+        specifier: referrer.clone(),
+        start: deno_graph::Position::zeroed(),
+        end: deno_graph::Position::zeroed(),
+      },
       ResolutionMode::Execution,
     );
 

@@ -1,10 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import { isatty } from "ext:runtime/40_tty.js";
 import { stdin } from "ext:deno_io/12_io.js";
 import { getNoColor } from "ext:deno_console/01_console.js";
-const primordials = globalThis.__bootstrap.primordials;
 const { Uint8Array, StringFromCodePoint } = primordials;
 
 const ESC = "\x1b";

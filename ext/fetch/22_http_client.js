@@ -10,7 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
 const ops = core.ops;
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 

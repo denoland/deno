@@ -48,3 +48,5 @@ globals.checkWindowGlobal();
 (globalThis as any).foo = "bar";
 console.log((globalThis as any).foo);
 console.log(globals.getFoo());
+
+console.log(Reflect.ownKeys(globalThis).includes("console")); // non-enumerable keys are included

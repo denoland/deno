@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -14,7 +14,6 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,

@@ -3,8 +3,10 @@
 // Most of the tests for this are in deno_task_shell.
 // These tests are intended to only test integration.
 
+use deno_core::serde_json::json;
 use test_util::env_vars_for_npm_tests;
 use test_util::TestContext;
+use test_util::TestContextBuilder;
 
 itest!(task_no_args {
   args: "task -q --config task/deno_json/deno.json",
@@ -287,3 +289,57 @@ itest!(task_deno_no_pre_post {
   exit_code: 0,
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
+
+#[test]
+fn task_byonm() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("package.json").write_json(&json!({
+    "name": "example",
+    "scripts": {
+      "say": "cowsay 'do make say'",
+      "think": "cowthink think"
+    },
+    "dependencies": {
+      "cowsay": "*"
+    }
+  }));
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["byonm"],
+  }));
+  context.run_npm("install");
+
+  context
+    .new_command()
+    .args_vec(["task", "say"])
+    .run()
+    .assert_matches_text(
+      r#"Task say cowsay 'do make say'
+ _____________
+< do make say >
+ -------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
+"#,
+    );
+
+  context
+    .new_command()
+    .args_vec(["task", "think"])
+    .run()
+    .assert_matches_text(
+      r#"Task think cowthink think
+ _______
+( think )
+ -------
+        o   ^__^
+         o  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
+"#,
+    );
+}

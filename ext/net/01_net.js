@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 import {
   readableStreamForRidUnrefable,
@@ -11,7 +11,6 @@ import {
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
-const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
   Number,
