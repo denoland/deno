@@ -3243,7 +3243,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
-      init_log_file(ls.config.persist_log());
+      init_log_file(ls.config.log_file());
       if let Err(err) = ls.update_tsconfig().await {
         ls.client.show_message(MessageType::WARNING, err);
       }

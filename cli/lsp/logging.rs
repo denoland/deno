@@ -5,7 +5,7 @@ use chrono::Utc;
 use deno_core::parking_lot::Mutex;
 use std::fs;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -18,13 +18,11 @@ static LSP_WARN_LEVEL: AtomicUsize =
   AtomicUsize::new(log::Level::Warn as usize);
 static LOG_FILE: LogFile = LogFile {
   enabled: AtomicBool::new(true),
-  path: Mutex::new(None),
   buffer: Mutex::new(String::new()),
 };
 
 pub struct LogFile {
   enabled: AtomicBool,
-  path: Mutex<Option<PathBuf>>,
   buffer: Mutex<String>,
 }
 
@@ -37,20 +35,19 @@ impl LogFile {
     }
   }
 
-  fn commit(&self) {
+  fn commit(&self, path: &Path) {
     let unbuffered = {
       let mut buffer = self.buffer.lock();
       if buffer.is_empty() {
         return;
       }
+      // We clone here rather than take so the buffer can retain its capacity.
       let unbuffered = buffer.clone();
       buffer.clear();
       unbuffered
     };
-    if let Some(path) = self.path.lock().clone() {
-      if let Ok(file) = fs::OpenOptions::new().append(true).open(path) {
-        write!(&file, "{}", unbuffered).ok();
-      }
+    if let Ok(file) = fs::OpenOptions::new().append(true).open(path) {
+      write!(&file, "{}", unbuffered).ok();
     }
   }
 }
@@ -75,9 +72,8 @@ pub fn init_log_file(enabled: bool) {
   let Ok(()) = fs::write(&path, "") else {
     return;
   };
-  *LOG_FILE.path.lock() = Some(path);
-  thread::spawn(|| loop {
-    LOG_FILE.commit();
+  thread::spawn(move || loop {
+    LOG_FILE.commit(&path);
     thread::sleep(std::time::Duration::from_secs(1));
   });
 }

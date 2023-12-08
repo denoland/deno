@@ -456,7 +456,7 @@ pub struct WorkspaceSettings {
 
   /// Write logs to a file in a project-local directory.
   #[serde(default)]
-  pub persist_log: bool,
+  pub log_file: bool,
 
   /// A flag that indicates if linting is enabled for the workspace.
   #[serde(default = "default_to_true")]
@@ -506,7 +506,7 @@ impl Default for WorkspaceSettings {
       import_map: None,
       code_lens: Default::default(),
       internal_debug: false,
-      persist_log: false,
+      log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
@@ -1076,8 +1076,8 @@ impl Config {
     paths
   }
 
-  pub fn persist_log(&self) -> bool {
-    self.settings.unscoped.persist_log
+  pub fn log_file(&self) -> bool {
+    self.settings.unscoped.log_file
   }
 
   pub fn update_capabilities(
@@ -1330,7 +1330,7 @@ mod tests {
           test: true,
         },
         internal_debug: false,
-        persist_log: false,
+        log_file: false,
         lint: true,
         document_preload_limit: 1_000,
         suggest: DenoCompletionSettings {
