@@ -431,7 +431,7 @@ fn sloppy_imports_resolve(
   // show a warning when this happens in order to drive
   // the user towards correcting these specifiers
   log::warn!(
-    "{} Sloppy import resolution {}\n    at {}",
+    "{} Sloppy module resolution {}\n    at {}",
     crate::colors::yellow("Warning"),
     crate::colors::gray(format!("(hint: {})", hint_message)),
     if referrer_range.end == deno_graph::Position::zeroed() {
