@@ -2,8 +2,8 @@
 
 This op crate implements the WebGPU API as defined in
 https://gpuweb.github.io/gpuweb/ in Deno. The implementation targets the spec
-draft as of October 4, 2023. The spec is still very much in flux. This op
-crate tries to stay up to date with the spec, but is constrained by the features
+draft as of October 4, 2023. The spec is still very much in flux. This op crate
+tries to stay up to date with the spec, but is constrained by the features
 implemented in our GPU backend library [wgpu](https://github.com/gfx-rs/wgpu).
 
 The spec is still very bare bones, and is still missing many details. As the
