@@ -10,8 +10,9 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
 const ops = core.ops;
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -33,8 +34,13 @@ class HttpClient {
   constructor(rid) {
     this.rid = rid;
   }
+
   close() {
     core.close(this.rid);
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.rid);
   }
 }
 const HttpClientPrototype = HttpClient.prototype;

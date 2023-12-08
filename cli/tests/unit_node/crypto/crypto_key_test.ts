@@ -14,7 +14,7 @@ import { Buffer } from "node:buffer";
 import {
   assertEquals,
   assertThrows,
-} from "../../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/assert/mod.ts";
 import { createHmac } from "node:crypto";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";

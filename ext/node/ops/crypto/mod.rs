@@ -19,6 +19,7 @@ use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
+use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
@@ -363,23 +364,32 @@ pub fn op_node_sign(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[serde] key: StringOrBuffer,
-  #[string] key_type: &str,
-  #[string] key_format: &str,
+  #[string] _type: &str,
+  #[string] format: &str,
 ) -> Result<ToJsBuffer, AnyError> {
-  match key_type {
-    "rsa" => {
+  let (label, doc) =
+    pkcs8::SecretDocument::from_pem(std::str::from_utf8(&key).unwrap())?;
+
+  let oid;
+  let pkey = match format {
+    "pem" => {
+      if label == "PRIVATE KEY" {
+        let pk_info = pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?;
+        oid = pk_info.algorithm.oid;
+        pk_info.private_key
+      } else if label == "RSA PRIVATE KEY" {
+        oid = RSA_ENCRYPTION_OID;
+        doc.as_bytes()
+      } else {
+        return Err(type_error("Invalid PEM label"));
+      }
+    }
+    _ => return Err(type_error("Unsupported key format")),
+  };
+  match oid {
+    RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
-      let key = match key_format {
-        "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
-          .map_err(|_| type_error("Invalid RSA private key"))?,
-        // TODO(kt3k): Support der and jwk formats
-        _ => {
-          return Err(type_error(format!(
-            "Unsupported key format: {}",
-            key_format
-          )))
-        }
-      };
+      let key = RsaPrivateKey::from_pkcs1_der(pkey)?;
       Ok(
         match digest_type {
           "sha224" => {
@@ -408,10 +418,7 @@ pub fn op_node_sign(
         .into(),
       )
     }
-    _ => Err(type_error(format!(
-      "Signing with {} keys is not supported yet",
-      key_type
-    ))),
+    _ => Err(type_error("Unsupported signing key")),
   }
 }
 
@@ -1345,8 +1352,6 @@ fn parse_private_key(
   format: &str,
   type_: &str,
 ) -> Result<pkcs8::SecretDocument, AnyError> {
-  use rsa::pkcs1::DecodeRsaPrivateKey;
-
   match format {
     "pem" => {
       let (label, doc) =

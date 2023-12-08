@@ -4,25 +4,25 @@ use std::fmt::Write;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_config::ConfigFile;
 use deno_core::anyhow;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
-use import_map::ImportMapWithDiagnostics;
+use import_map::ImportMap;
+use lsp_types::Url;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::Digest;
@@ -72,9 +72,8 @@ pub struct PublishingTask {
 async fn prepare_publish(
   initial_cwd: &Path,
   directory: PathBuf,
+  import_map: &ImportMap,
 ) -> Result<PreparedPublishPackage, AnyError> {
-  // TODO: handle publishing without deno.json
-
   let directory_path = initial_cwd.join(directory);
   // TODO: doesn't handle jsonc
   let deno_json_path = directory_path.join("deno.json");
@@ -97,17 +96,6 @@ async fn prepare_publish(
   let Some((scope, package_name)) = name.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-
-  // TODO: support `importMap` field in deno.json
-  assert!(deno_json.to_import_map_path().is_none());
-
-  let deno_json_url = Url::from_file_path(&deno_json_path)
-    .map_err(|_| anyhow!("deno.json path is not a valid file URL"))?;
-  let ImportMapWithDiagnostics { import_map, .. } =
-    import_map::parse_from_value(
-      &deno_json_url,
-      deno_json.to_import_map_value(),
-    )?;
 
   let unfurler = ImportMapUnfurler::new(import_map);
 
@@ -240,23 +228,23 @@ async fn perform_publish(
   let client = http_client.client()?;
   let registry_url = crate::cache::DENO_REGISTRY_URL.to_string();
 
-  let authorization = match auth_method {
+  let permissions = packages
+    .iter()
+    .map(|package| Permission::VersionPublish {
+      scope: &package.scope,
+      package: &package.package,
+      version: &package.version,
+      tarball_hash: &package.tarball_hash,
+    })
+    .collect::<Vec<_>>();
+
+  let authorizations = match auth_method {
     AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
 
-      let permissions = packages
-        .iter()
-        .map(|package| Permission::VersionPublish {
-          scope: &package.scope,
-          package: &package.package,
-          version: &package.version,
-          tarball_hash: &package.tarball_hash,
-        })
-        .collect::<Vec<_>>();
-
       let response = client
-        .post(format!("{}/authorizations", registry_url))
+        .post(format!("{}authorizations", registry_url))
         .json(&serde_json::json!({
           "challenge": challenge,
           "permissions": permissions,
@@ -285,7 +273,7 @@ async fn perform_publish(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}/authorizations/exchange", registry_url))
+          .post(format!("{}authorizations/exchange", registry_url))
           .json(&serde_json::json!({
             "exchangeToken": auth.exchange_token,
             "verifier": verifier,
@@ -303,7 +291,12 @@ async fn perform_publish(
               colors::gray("Authenticated as"),
               colors::cyan(res.user.name)
             );
-            break format!("Bearer {}", res.token);
+            let authorization: Rc<str> = format!("Bearer {}", res.token).into();
+            let mut authorizations = Vec::new();
+            for _ in &packages {
+              authorizations.push(authorization.clone());
+            }
+            break authorizations;
           }
           Err(err) => {
             if err.code == "authorizationPending" {
@@ -315,54 +308,65 @@ async fn perform_publish(
         }
       }
     }
-    AuthMethod::Token(token) => format!("Bearer {}", token),
-    AuthMethod::Oidc(oidc_config) => {
-      let permissions = packages
-        .iter()
-        .map(|package| Permission::VersionPublish {
-          scope: &package.scope,
-          package: &package.package,
-          version: &package.version,
-          tarball_hash: &package.tarball_hash,
-        })
-        .collect::<Vec<_>>();
-      let audience = json!({ "permissions": permissions }).to_string();
-
-      let url = format!(
-        "{}&audience={}",
-        oidc_config.url,
-        percent_encoding::percent_encode(
-          audience.as_bytes(),
-          percent_encoding::NON_ALPHANUMERIC
-        )
-      );
-
-      let response = client
-        .get(url)
-        .bearer_auth(oidc_config.token)
-        .send()
-        .await
-        .context("Failed to get OIDC token")?;
-      let status = response.status();
-      let text = response.text().await.with_context(|| {
-        format!("Failed to get OIDC token: status {}", status)
-      })?;
-      if !status.is_success() {
-        bail!(
-          "Failed to get OIDC token: status {}, response: '{}'",
-          status,
-          text
-        );
+    AuthMethod::Token(token) => {
+      let authorization: Rc<str> = format!("Bearer {}", token).into();
+      let mut authorizations = Vec::new();
+      for _ in &packages {
+        authorizations.push(authorization.clone());
       }
-      let OidcTokenResponse { value } = serde_json::from_str(&text)
-        .with_context(|| {
-          format!("Failed to parse OIDC token: '{}' (status {})", text, status)
+      authorizations
+    }
+    AuthMethod::Oidc(oidc_config) => {
+      let mut authorizations = Vec::new();
+      for permissions in permissions.chunks(16) {
+        let audience = json!({ "permissions": permissions }).to_string();
+        let url = format!(
+          "{}&audience={}",
+          oidc_config.url,
+          percent_encoding::percent_encode(
+            audience.as_bytes(),
+            percent_encoding::NON_ALPHANUMERIC
+          )
+        );
+
+        let response = client
+          .get(url)
+          .bearer_auth(&oidc_config.token)
+          .send()
+          .await
+          .context("Failed to get OIDC token")?;
+        let status = response.status();
+        let text = response.text().await.with_context(|| {
+          format!("Failed to get OIDC token: status {}", status)
         })?;
-      format!("githuboidc {}", value)
+        if !status.is_success() {
+          bail!(
+            "Failed to get OIDC token: status {}, response: '{}'",
+            status,
+            text
+          );
+        }
+        let OidcTokenResponse { value } = serde_json::from_str(&text)
+          .with_context(|| {
+            format!(
+              "Failed to parse OIDC token: '{}' (status {})",
+              text, status
+            )
+          })?;
+
+        let authorization: Rc<str> = format!("githuboidc {}", value).into();
+        for _ in permissions {
+          authorizations.push(authorization.clone());
+        }
+      }
+      authorizations
     }
   };
 
-  for package in packages {
+  assert_eq!(packages.len(), authorizations.len());
+  for (package, authorization) in
+    packages.into_iter().zip(authorizations.into_iter())
+  {
     println!(
       "{} @{}/{}@{} ...",
       colors::intense_blue("Publishing"),
@@ -372,32 +376,46 @@ async fn perform_publish(
     );
 
     let url = format!(
-      "{}/scopes/{}/packages/{}/versions/{}",
+      "{}scopes/{}/packages/{}/versions/{}",
       registry_url, package.scope, package.package, package.version
     );
 
     let response = client
       .post(url)
-      .header(AUTHORIZATION, &authorization)
+      .header(AUTHORIZATION, &*authorization)
       .header(CONTENT_ENCODING, "gzip")
       .body(package.tarball)
       .send()
       .await?;
 
-    let mut task = parse_response::<PublishingTask>(response)
-      .await
-      .with_context(|| {
-        format!(
-          "Failed to publish @{}/{} at {}",
-          package.scope, package.package, package.version
-        )
-      })?;
+    let res = parse_response::<PublishingTask>(response).await;
+    let mut task = match res {
+      Ok(task) => task,
+      Err(err) if err.code == "duplicateVersionPublish" => {
+        println!(
+          "{} @{}/{}@{}",
+          colors::yellow("Skipping, already published"),
+          package.scope,
+          package.package,
+          package.version
+        );
+        continue;
+      }
+      Err(err) => {
+        return Err(err).with_context(|| {
+          format!(
+            "Failed to publish @{}/{} at {}",
+            package.scope, package.package, package.version
+          )
+        })
+      }
+    };
 
     let interval = std::time::Duration::from_secs(2);
     while task.status != "success" && task.status != "failure" {
       tokio::time::sleep(interval).await;
       let resp = client
-        .get(format!("{}/publish_status/{}", registry_url, task.id))
+        .get(format!("{}publish_status/{}", registry_url, task.id))
         .send()
         .await
         .with_context(|| {
@@ -478,6 +496,14 @@ pub async fn publish(
     },
   };
 
+  let import_map = cli_factory
+    .maybe_import_map()
+    .await?
+    .clone()
+    .unwrap_or_else(|| {
+      Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
+    });
+
   let initial_cwd =
     std::env::current_dir().with_context(|| "Failed getting cwd.")?;
 
@@ -496,12 +522,14 @@ pub async fn publish(
 
   let members = &deno_json.json.workspaces;
   if members.is_empty() {
-    packages.push(prepare_publish(&initial_cwd, directory_path).await?);
+    packages
+      .push(prepare_publish(&initial_cwd, directory_path, &import_map).await?);
   } else {
     println!("Publishing a workspace...");
     for member in members {
       let member_dir = directory_path.join(member);
-      packages.push(prepare_publish(&initial_cwd, member_dir).await?);
+      packages
+        .push(prepare_publish(&initial_cwd, member_dir, &import_map).await?);
     }
   }
 

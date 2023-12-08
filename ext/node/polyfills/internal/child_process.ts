@@ -855,7 +855,7 @@ export function spawnSync(
       windowsRawArguments: windowsVerbatimArguments,
     }).outputSync();
 
-    const status = output.signal ? null : 0;
+    const status = output.signal ? null : output.code;
     let stdout = parseSpawnSyncOutputStreams(output, "stdout");
     let stderr = parseSpawnSyncOutputStreams(output, "stderr");
 

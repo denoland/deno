@@ -223,23 +223,29 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
-/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
+/// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   let ext = get_extension(file_path).unwrap_or_default();
-  if matches!(
-    ext.as_str(),
-    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
-  ) {
-    format_markdown(file_text, fmt_options)
-  } else if matches!(ext.as_str(), "json" | "jsonc") {
-    format_json(file_path, file_text, fmt_options)
-  } else {
-    let config = get_resolved_typescript_config(fmt_options);
-    dprint_plugin_typescript::format_text(file_path, file_text, &config)
+
+  match ext.as_str() {
+    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
+      format_markdown(file_text, fmt_options)
+    }
+    "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "ipynb" => dprint_plugin_jupyter::format_text(
+      file_text,
+      |file_path: &Path, file_text: String| {
+        format_file(file_path, &file_text, fmt_options)
+      },
+    ),
+    _ => {
+      let config = get_resolved_typescript_config(fmt_options);
+      dprint_plugin_typescript::format_text(file_path, file_text, &config)
+    }
   }
 }
 
@@ -517,7 +523,7 @@ fn get_resolved_typescript_config(
   if let Some(single_quote) = options.single_quote {
     if single_quote {
       builder.quote_style(
-        dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
+        dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
       );
     }
   }
@@ -667,7 +673,7 @@ where
 /// This function is similar to is_supported_ext but adds additional extensions
 /// supported by `deno fmt`.
 fn is_supported_ext_fmt(path: &Path) -> bool {
-  if let Some(ext) = get_extension(path) {
+  get_extension(path).is_some_and(|ext| {
     matches!(
       ext.as_str(),
       "ts"
@@ -686,10 +692,9 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mdwn"
         | "mdown"
         | "markdown"
+        | "ipynb"
     )
-  } else {
-    false
-  }
+  })
 }
 
 #[cfg(test)]
@@ -721,6 +726,7 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
   }
 
   #[test]
@@ -785,5 +791,24 @@ mod test {
     .unwrap();
 
     assert_eq!(result, Some("11".to_string()));
+  }
+
+  #[test]
+  fn test_single_quote_true_prefers_single_quote() {
+    let file_text = format_file(
+      &PathBuf::from("test.ts"),
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log(\"bye\")\n",
+      &FmtOptionsConfig {
+        single_quote: Some(true),
+        ..Default::default()
+      },
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      // should use double quotes for the string with a single quote
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log('bye');\n",
+    );
   }
 }

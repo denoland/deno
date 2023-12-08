@@ -122,14 +122,9 @@ impl LocalNpmPackageResolver {
     };
     // Canonicalize the path so it's not pointing to the symlinked directory
     // in `node_modules` directory of the referrer.
-    canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
-      self
-        .fs
-        .realpath_sync(path)
-        .map_err(|err| err.into_io_error())
-    })
-    .map(Some)
-    .map_err(|err| err.into())
+    canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
+      .map(Some)
+      .map_err(|err| err.into())
   }
 }
 
@@ -139,8 +134,8 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self.root_node_modules_url
   }
 
-  fn node_modules_path(&self) -> Option<PathBuf> {
-    Some(self.root_node_modules_path.clone())
+  fn node_modules_path(&self) -> Option<&PathBuf> {
+    Some(&self.root_node_modules_path)
   }
 
   fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
@@ -393,10 +388,13 @@ async fn sync_resolution_with_fs(
       .join("node_modules");
     let mut dep_setup_cache = setup_cache.with_dep(&package_folder_name);
     for (name, dep_id) in &package.dependencies {
-      let dep_cache_folder_id = snapshot
-        .package_from_id(dep_id)
-        .unwrap()
-        .get_package_cache_folder_id();
+      let dep = snapshot.package_from_id(dep_id).unwrap();
+      if package.optional_dependencies.contains(name)
+        && !dep.system.matches_system(system_info)
+      {
+        continue; // this isn't a dependency for the current system
+      }
+      let dep_cache_folder_id = dep.get_package_cache_folder_id();
       let dep_folder_name =
         get_package_folder_id_folder_name(&dep_cache_folder_id);
       if dep_setup_cache.insert(name, &dep_folder_name) {
