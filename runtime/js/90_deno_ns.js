@@ -164,7 +164,8 @@ const unstableIds = {
   kv: 6,
   net: 7,
   unsafeProto: 8,
-  workerOptions: 9,
+  webgpu: 9,
+  workerOptions: 10,
 };
 
 const denoNsUnstableById = {};
@@ -215,6 +216,8 @@ denoNsUnstableById[unstableIds.net] = {
 };
 
 // denoNsUnstableById[unstableIds.unsafeProto] = {}
+
+// denoNsUnstableById[unstableIds.webgpu] = {}
 
 // denoNsUnstableById[unstableIds.workerOptions] = {}
 

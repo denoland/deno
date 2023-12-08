@@ -150,7 +150,8 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
-
+};
+unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
   GPU: webGPUNonEnumerable(() => webgpu.GPU),
   GPUAdapter: webGPUNonEnumerable(() => webgpu.GPUAdapter),
   GPUAdapterInfo: webGPUNonEnumerable(() => webgpu.GPUAdapterInfo),

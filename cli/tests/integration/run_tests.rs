@@ -1660,6 +1660,17 @@ itest!(unstable_kv_enabled {
   output: "run/unstable_kv.enabled.out",
 });
 
+itest!(unstable_webgpu_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.disabled.out",
+});
+
+itest!(unstable_webgpu_enabled {
+  args: "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.enabled.out",
+});
+
+
 itest!(import_compression {
   args: "run --quiet --reload --allow-net run/import_compression/main.ts",
   output: "run/import_compression/main.out",
