@@ -47,7 +47,7 @@ To grant permissions, set them before the script argument. For example:
 
   if cli_options.unstable_sloppy_imports() {
     log::warn!(
-      "{} Sloppy imports are not recommended and may have a negative impact on performance.",
+      "{} Sloppy imports are not recommended and have a negative impact on performance.",
       crate::colors::yellow("Warning"),
     );
   }
