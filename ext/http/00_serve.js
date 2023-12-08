@@ -1,8 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const primordials = globalThis.__bootstrap.primordials;
-const internals = globalThis.__bootstrap.internals;
+import { core, internals, primordials } from "ext:core/mod.js";
 
 const { BadResourcePrototype, InterruptedPrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";

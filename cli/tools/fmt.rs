@@ -523,7 +523,7 @@ fn get_resolved_typescript_config(
   if let Some(single_quote) = options.single_quote {
     if single_quote {
       builder.quote_style(
-        dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
+        dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
       );
     }
   }
@@ -791,5 +791,24 @@ mod test {
     .unwrap();
 
     assert_eq!(result, Some("11".to_string()));
+  }
+
+  #[test]
+  fn test_single_quote_true_prefers_single_quote() {
+    let file_text = format_file(
+      &PathBuf::from("test.ts"),
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log(\"bye\")\n",
+      &FmtOptionsConfig {
+        single_quote: Some(true),
+        ..Default::default()
+      },
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      // should use double quotes for the string with a single quote
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log('bye');\n",
+    );
   }
 }

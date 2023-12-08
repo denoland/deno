@@ -898,26 +898,6 @@ impl Config {
       || settings.inlay_hints.enum_member_values.enabled
   }
 
-  /// Determine if any code lenses are enabled at all.  This allows short
-  /// circuiting when there are no code lenses enabled.
-  pub fn enabled_code_lens_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> bool {
-    let settings = self.workspace_settings_for_specifier(specifier);
-    settings.code_lens.implementations
-      || settings.code_lens.references
-      || settings.code_lens.test
-  }
-
-  pub fn enabled_code_lens_test_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> bool {
-    let settings = self.workspace_settings_for_specifier(specifier);
-    settings.code_lens.test
-  }
-
   pub fn root_uri(&self) -> Option<&Url> {
     self.workspace_folders.get(0).map(|p| &p.0)
   }

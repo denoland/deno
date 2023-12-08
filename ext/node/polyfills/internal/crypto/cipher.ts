@@ -31,7 +31,8 @@ import {
 export function isStringOrBuffer(val) {
   return typeof val === "string" ||
     isArrayBufferView(val) ||
-    isAnyArrayBuffer(val);
+    isAnyArrayBuffer(val) ||
+    Buffer.isBuffer(val);
 }
 
 const { ops, encode } = globalThis.__bootstrap.core;

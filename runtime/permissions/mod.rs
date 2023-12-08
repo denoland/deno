@@ -559,8 +559,14 @@ impl FromStr for NetDescriptor {
   type Err = AnyError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    let url = url::Url::parse(&format!("http://{s}"))?;
-    let hostname = url.host_str().unwrap().to_string();
+    // Set the scheme to `unknown` to parse the URL, as we really don't know
+    // what the scheme is. We only using Url::parse to parse the host and port
+    // and don't care about the scheme.
+    let url = url::Url::parse(&format!("unknown://{s}"))?;
+    let hostname = url
+      .host_str()
+      .ok_or(url::ParseError::EmptyHost)?
+      .to_string();
 
     Ok(NetDescriptor(hostname, url.port()))
   }
@@ -856,7 +862,7 @@ impl UnaryPermission<NetDescriptor> {
     &mut self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.revoke_desc(&Some(NetDescriptor::new(&host.unwrap())))
+    self.revoke_desc(&host.map(|h| NetDescriptor::new(&h)))
   }
 
   pub fn check<T: AsRef<str>>(
@@ -1370,8 +1376,12 @@ impl deno_node::NodePermissions for PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
-    self.0.lock().read.check(path, None)
+  fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, api_name)
   }
 
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {
@@ -2273,7 +2283,9 @@ mod tests {
         "github.com:3000",
         "127.0.0.1",
         "172.16.0.2:8000",
-        "www.github.com:443"
+        "www.github.com:443",
+        "80.example.com:80",
+        "443.example.com:443"
       ]),
       ..Default::default()
     })
@@ -2297,6 +2309,9 @@ mod tests {
       ("172.16.0.2", 0, false),
       ("172.16.0.2", 6000, false),
       ("172.16.0.1", 8000, false),
+      ("443.example.com", 444, false),
+      ("80.example.com", 81, false),
+      ("80.example.com", 80, true),
       // Just some random hosts that should err
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),

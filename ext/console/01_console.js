@@ -2,9 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   AggregateErrorPrototype,
   Array,
@@ -2753,34 +2751,34 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
-  if (MapPrototypeHas(colorKeywords, colorString)) {
-    colorString = MapPrototypeGet(colorKeywords, colorString);
+  if (colorKeywords.has(colorString)) {
+    colorString = colorKeywords.get(colorString);
   }
   // deno-fmt-ignore
   const hashMatch = StringPrototypeMatch(colorString, HASH_PATTERN);
   if (hashMatch != null) {
     return [
-      Number(`0x${hashMatch[1]}`),
-      Number(`0x${hashMatch[2]}`),
-      Number(`0x${hashMatch[3]}`),
+      NumberParseInt(hashMatch[1], 16),
+      NumberParseInt(hashMatch[2], 16),
+      NumberParseInt(hashMatch[3], 16),
     ];
   }
   // deno-fmt-ignore
   const smallHashMatch = StringPrototypeMatch(colorString, SMALL_HASH_PATTERN);
   if (smallHashMatch != null) {
     return [
-      Number(`0x${smallHashMatch[1]}${smallHashMatch[1]}`),
-      Number(`0x${smallHashMatch[2]}${smallHashMatch[2]}`),
-      Number(`0x${smallHashMatch[3]}${smallHashMatch[3]}`),
+      NumberParseInt(`${smallHashMatch[1]}${smallHashMatch[1]}`, 16),
+      NumberParseInt(`${smallHashMatch[2]}${smallHashMatch[2]}`, 16),
+      NumberParseInt(`${smallHashMatch[3]}${smallHashMatch[3]}`, 16),
     ];
   }
   // deno-fmt-ignore
   const rgbMatch = StringPrototypeMatch(colorString, RGB_PATTERN);
   if (rgbMatch != null) {
     return [
-      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[1])))),
-      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[2])))),
-      MathRound(MathMax(0, MathMin(255, Number(rgbMatch[3])))),
+      MathRound(MathMax(0, MathMin(255, rgbMatch[1]))),
+      MathRound(MathMax(0, MathMin(255, rgbMatch[2]))),
+      MathRound(MathMax(0, MathMin(255, rgbMatch[3]))),
     ];
   }
   // deno-fmt-ignore
@@ -2791,8 +2789,8 @@ function parseCssColor(colorString) {
     if (h < 0) {
       h += 360;
     }
-    const s = MathMax(0, MathMin(100, Number(hslMatch[2]))) / 100;
-    const l = MathMax(0, MathMin(100, Number(hslMatch[3]))) / 100;
+    const s = MathMax(0, MathMin(100, hslMatch[2])) / 100;
+    const l = MathMax(0, MathMin(100, hslMatch[3])) / 100;
     const c = (1 - MathAbs(2 * l - 1)) * s;
     const x = c * (1 - MathAbs((h / 60) % 2 - 1));
     const m = l - c / 2;
