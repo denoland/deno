@@ -58,7 +58,7 @@ impl IpcJsonStreamResource {
     let mut buf = Vec::new();
     serde_json::to_writer(&mut buf, &msg)?;
     buf.push(b'\n');
-    write_half.write(&buf).await?;
+    write_half.write_all(&buf).await?;
     Ok(())
   }
 }
@@ -84,6 +84,9 @@ impl IpcJsonStream {
     let mut msgs = Vec::new();
     loop {
       let n = self.pipe.read(&mut buf).await?;
+      if n == 0 {
+        break Ok(vec![]); // EOF
+      }
 
       let mut read = &buf[..n];
       let mut chunk_boundary = 0;

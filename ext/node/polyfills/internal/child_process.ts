@@ -1078,6 +1078,11 @@ export function setupChannel(target, channel) {
         return;
       }
       const msgs = await core.opAsync("op_node_ipc_read", ipc);
+      if (msgs.length == 0) {
+        // Channel closed.
+        target.disconnect();
+        return;
+      }
       // We may read multiple messages at once.
       for (const msg of msgs) {
         target.emit("message", msg);
