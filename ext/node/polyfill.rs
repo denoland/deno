@@ -19,10 +19,6 @@ macro_rules! generate_builtin_node_module_lists {
       $(
         concat!("node:", $module_name),
       )+
-    "ext:deno_webidl/00_webidl.js",
-    "ext:deno_web/02_event.js",
-    "ext:deno_web/01_dom_exception.js",
-    "ext:deno_console/01_console.js",
     ];
   };
 }

@@ -6,10 +6,9 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const { Symbol, SymbolFor, ObjectPrototypeIsPrototypeOf } = primordials;
 import {
