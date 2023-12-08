@@ -2146,12 +2146,14 @@ Directory arguments are expanded to all contained files matching the glob
     .arg(
       Arg::new("coverage")
         .long("coverage")
-        .require_equals(true)
         .value_name("DIR")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("coverage")
         .conflicts_with("inspect")
         .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data into DIR"),
+        .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
     )
     .arg(
       Arg::new("parallel")
@@ -7407,6 +7409,23 @@ mod tests {
           }),
           reporter: Default::default(),
           junit_path: None,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_coverage_default_dir() {
+    let r = flags_from_vec(svec!["deno", "test", "--coverage"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          coverage_dir: Some("coverage".to_string()),
+          ..TestFlags::default()
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
