@@ -836,7 +836,7 @@ Deno.test("[node/https] node:https exports globalAgent", async () => {
   );
 });
 
-Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw", async () => {
+Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw", () => {
   {
     const req = http.request("http://localhost:4545/");
     req.on("error", () => {});
