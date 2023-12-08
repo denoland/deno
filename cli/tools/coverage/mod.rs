@@ -625,7 +625,14 @@ impl CoverageReporter for HtmlCoverageReporter {
       fs::write(report_path, html).unwrap();
     }
 
-    let root_report = Url::from_file_path(coverage_root.join("html").join("index.html").canonicalize().unwrap()).unwrap();
+    let root_report = Url::from_file_path(
+      coverage_root
+        .join("html")
+        .join("index.html")
+        .canonicalize()
+        .unwrap(),
+    )
+    .unwrap();
 
     println!("HTML coverage report has been generated at {}", root_report);
   }
@@ -1024,7 +1031,6 @@ pub async fn cover_files(
   } else {
     vec![]
   };
-
 
   let reporter_kind = match coverage_flags.r#type {
     CoverageType::Pretty => CoverageReporterKind::Pretty,
