@@ -85,12 +85,19 @@ pub struct CompletionsFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CoverageType {
+  Pretty,
+  Lcov,
+  Html,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
-  pub lcov: bool,
+  pub r#type: CoverageType,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1399,6 +1406,14 @@ Generate html reports from lcov:
             .value_hint(ValueHint::FilePath),
         )
         .arg(
+          Arg::new("html")
+            .long("html")
+            .help(
+              "Output coverage report in HTML format in the given directory",
+            )
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
           Arg::new("files")
             .num_args(1..)
             .value_parser(value_parser!(PathBuf))
@@ -2147,12 +2162,14 @@ Directory arguments are expanded to all contained files matching the glob
     .arg(
       Arg::new("coverage")
         .long("coverage")
-        .require_equals(true)
         .value_name("DIR")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("coverage")
         .conflicts_with("inspect")
         .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data into DIR"),
+        .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
     )
     .arg(
       Arg::new("parallel")
@@ -3299,7 +3316,13 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let lcov = matches.get_flag("lcov");
+  let r#type = if matches.get_flag("lcov") {
+    CoverageType::Lcov
+  } else if matches.get_flag("html") {
+    CoverageType::Html
+  } else {
+    CoverageType::Pretty
+  };
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
@@ -3309,7 +3332,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     include,
     exclude,
-    lcov,
+    r#type,
   });
 }
 
@@ -7417,6 +7440,23 @@ mod tests {
   }
 
   #[test]
+  fn test_coverage_default_dir() {
+    let r = flags_from_vec(svec!["deno", "test", "--coverage"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          coverage_dir: Some("coverage".to_string()),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn bundle_with_cafile() {
     let r = flags_from_vec(svec![
       "deno",
@@ -7868,7 +7908,7 @@ mod tests {
           output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: false,
+          r#type: CoverageType::Pretty
         }),
         ..Flags::default()
       }
@@ -7894,7 +7934,7 @@ mod tests {
           },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: true,
+          r#type: CoverageType::Lcov,
           output: Some(PathBuf::from("foo.lcov")),
         }),
         ..Flags::default()
