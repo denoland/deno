@@ -131,6 +131,10 @@ impl LspStdoutReader {
       let messages = messages.clone();
       move || {
         while let Ok(Some(msg_buf)) = read_message(&mut buf_reader) {
+          eprintln!(
+            "received: {}",
+            std::str::from_utf8(msg_buf.as_slice()).unwrap()
+          );
           let msg = LspMessage::from(msg_buf.as_slice());
           let cvar = &messages.1;
           {
@@ -749,8 +753,17 @@ impl LspClient {
     self.read_diagnostics()
   }
 
+  pub fn notebook_did_open(&mut self, params: Value) -> CollectedDiagnostics {
+    self.notebook_did_open_raw(params);
+    self.read_diagnostics()
+  }
+
   pub fn did_open_raw(&mut self, params: Value) {
     self.write_notification("textDocument/didOpen", params);
+  }
+
+  pub fn notebook_did_open_raw(&mut self, params: Value) {
+    self.write_notification("notebookDocument/didOpen", params);
   }
 
   pub fn change_configuration(&mut self, config: Value) {
@@ -914,6 +927,7 @@ impl LspClient {
       value_str.as_bytes().len(),
       value_str
     );
+    eprintln!("sent: {}", msg);
     self.writer.write_all(msg.as_bytes()).unwrap();
     self.writer.flush().unwrap();
   }

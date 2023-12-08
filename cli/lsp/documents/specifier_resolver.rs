@@ -6,7 +6,7 @@ use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub const DOCUMENT_SCHEMES: [&str; 7] = [
+pub const DOCUMENT_SCHEMES: [&str; 8] = [
   "data",
   "blob",
   "file",
@@ -14,6 +14,7 @@ pub const DOCUMENT_SCHEMES: [&str; 7] = [
   "https",
   "untitled",
   "deno-notebook-cell",
+  "vscode-notebook-cell",
 ];
 
 #[derive(Debug)]

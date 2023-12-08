@@ -3730,6 +3730,8 @@ impl TscSpecifierMap {
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
       specifier += media_type.as_ts_extension();
     }
+    eprintln!("denormalize: {} -> {}", original, specifier);
+    println!("denormalize: {} -> {}", original, specifier);
     if specifier != original.as_str() {
       self
         .normalized_specifiers

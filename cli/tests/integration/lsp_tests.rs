@@ -8171,16 +8171,17 @@ fn lsp_npm_missing_type_imports_diagnostics() {
 #[test]
 fn lsp_jupyter_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().print_stderr().build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "deno-notebook-cell:/a/file.ts#abc",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "Deno.readTextFileSync(1234);",
-    },
-  }));
+  let diagnostics: test_util::lsp::CollectedDiagnostics =
+    client.did_open(json!({
+      "textDocument": {
+        "uri": "deno-notebook-cell:/a/file.ts#abc",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "Deno.readTextFileSync(1234);",
+      },
+    }));
   assert_eq!(
     json!(diagnostics.all_messages()),
     json!([
@@ -8204,6 +8205,271 @@ fn lsp_jupyter_diagnostics() {
             "message": "Argument of type 'number' is not assignable to parameter of type 'string | URL'.",
           },
         ],
+        "version": 1,
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_logged_entrypoint() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  assert!(false);
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jupyter_diagnostics_correct_line_number_with_multiple_cells() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().print_stderr().build();
+  client.initialize_default();
+  let diagnostics = client.notebook_did_open(json!({
+    "notebookDocument": {
+      "uri": "file:///some/random/path/notebook.ipynb",
+      "notebookType": "jupyter-notebook",
+      "version": 0,
+      "cells": [
+        {
+          "kind": 2,
+          "document": "vscode-notebook-cell:/some/random/path/notebook.ipynb#W0sZmlsZQ%3D%3D",
+          "metadata": {
+            "custom": {
+              "metadata": {}
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "custom": {
+          "cells": [],
+          "metadata": {
+            "kernelspec": {
+              "display_name": "Deno",
+              "language": "typescript",
+              "name": "deno"
+            },
+            "language_info": {
+              "file_extension": ".ts",
+              "mimetype": "text/x.typescript",
+              "name": "typescript",
+              "nb_converter": "script",
+              "pygments_lexer": "typescript",
+              "version": "5.2.2"
+            }
+          },
+          "nbformat": 4,
+          "nbformat_minor": 2
+        },
+        "indentAmount": " "
+      }
+    },
+    "cellTextDocuments": [
+      {
+        "uri": "vscode-notebook-cell:/some/random/path/notebook.ipynb#W0sZmlsZQ%3D%3D",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "const x = 1;\nconsole.log(x);"
+      },
+      {
+        "uri": "vscode-notebook-cell:/some/random/path/notebook.ipynb#beta",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "Deno.readTextFileSync(1234);"
+      }
+    ]
+}));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": "vscode-notebook-cell:/some/random/path/notebook.ipynb#beta",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 22,
+              },
+              "end": {
+                "line": 0,
+                "character": 26,
+              },
+            },
+            "severity": 1,
+            "code": 2345,
+            "source": "deno-ts",
+            "message": "Argument of type 'number' is not assignable to parameter of type 'string | URL'.",
+          },
+        ],
+        "version": 1,
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_new_jupyter_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().print_stderr().build();
+  client.initialize_default();
+  let diagnostics = client.notebook_did_open(json!({
+    "notebookDocument": {
+      "uri": "file:///some/random/path/notebook.ipynb",
+      "notebookType": "jupyter-notebook",
+      "version": 0,
+      "cells": [
+        {
+          "kind": 2,
+          "document": "vscode-notebook-cell:/some/random/path/notebook.ipynb#W0sZmlsZQ%3D%3D",
+          "metadata": {
+            "custom": {
+              "metadata": {}
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "custom": {
+          "cells": [],
+          "metadata": {
+            "kernelspec": {
+              "display_name": "Deno",
+              "language": "typescript",
+              "name": "deno"
+            },
+            "language_info": {
+              "file_extension": ".ts",
+              "mimetype": "text/x.typescript",
+              "name": "typescript",
+              "nb_converter": "script",
+              "pygments_lexer": "typescript",
+              "version": "5.2.2"
+            }
+          },
+          "nbformat": 4,
+          "nbformat_minor": 2
+        },
+        "indentAmount": " "
+      }
+    },
+    "cellTextDocuments": [
+      {
+        "uri": "vscode-notebook-cell:/some/random/path/notebook.ipynb#W0sZmlsZQ%3D%3D",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "Deno.readTextFileSync(1234);"
+      }
+    ]
+}));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": "vscode-notebook-cell:/some/random/path/notebook.ipynb#W0sZmlsZQ%3D%3D",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 22,
+              },
+              "end": {
+                "line": 0,
+                "character": 26,
+              },
+            },
+            "severity": 1,
+            "code": 2345,
+            "source": "deno-ts",
+            "message": "Argument of type 'number' is not assignable to parameter of type 'string | URL'.",
+          },
+        ],
+        "version": 1,
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_jupyter_no_warning_for_unused_variable() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.notebook_did_open(json!({
+      "notebookDocument": {
+        "uri": "file:///home/lennart/Documents/deno-notebook/notebook.ipynb",
+        "notebookType": "jupyter-notebook",
+        "version": 0,
+        "cells": [
+          {
+            "kind": 2,
+            "document": "vscode-notebook-cell:/home/lennart/Documents/deno-notebook/notebook.ipynb#W0sZmlsZQ%3D%3D",
+            "metadata": {
+              "custom": {
+                "metadata": {}
+              }
+            }
+          },
+          {
+            "kind": 2,
+            "document": "vscode-notebook-cell:/home/lennart/Documents/deno-notebook/notebook.ipynb#W1sZmlsZQ%3D%3D",
+            "metadata": {
+              "custom": {
+                "metadata": {}
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "custom": {
+            "cells": [],
+            "metadata": {
+              "kernelspec": {
+                "display_name": "Deno",
+                "language": "typescript",
+                "name": "deno"
+              },
+              "language_info": {
+                "file_extension": ".ts",
+                "mimetype": "text/x.typescript",
+                "name": "typescript",
+                "nb_converter": "script",
+                "pygments_lexer": "typescript",
+                "version": "5.2.2"
+              }
+            },
+            "nbformat": 4,
+            "nbformat_minor": 2
+          },
+          "indentAmount": " "
+        }
+      },
+      "cellTextDocuments": [
+        {
+          "uri": "vscode-notebook-cell:/home/lennart/Documents/deno-notebook/notebook.ipynb#W0sZmlsZQ%3D%3D",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "console.log(\"hi\")\nconst x = 5;"
+        },
+        {
+          "uri": "vscode-notebook-cell:/home/lennart/Documents/deno-notebook/notebook.ipynb#W1sZmlsZQ%3D%3D",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "console.log(x)"
+        }
+      ]
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": "deno-notebook-cell:/a/file.ts#abc",
+        "diagnostics": [],
         "version": 1,
       },
     ])

@@ -158,7 +158,11 @@ impl LineIndex {
     &self,
     position: lsp::Position,
   ) -> Result<TextSize, AnyError> {
-    if let Some(line_offset) = self.utf16_offsets.get(position.line as usize) {
+    if let Some(line_offset) = self
+      .utf16_offsets
+      .get(position.line as usize)
+      .map(|l| TextSize::from(u32::from(l.clone()).saturating_sub(4)))
+    {
       Ok(line_offset + TextSize::from(position.character))
     } else {
       Err(custom_error("OutOfRange", "The position is out of range."))

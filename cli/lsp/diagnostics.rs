@@ -714,8 +714,14 @@ fn to_lsp_range(
   end: &crate::tsc::Position,
 ) -> lsp::Range {
   lsp::Range {
-    start: start.into(),
-    end: end.into(),
+    start: lsp::Position {
+      line: (start.line as u32),
+      character: start.character as u32,
+    },
+    end: lsp::Position {
+      line: (end.line as u32),
+      character: end.character as u32,
+    },
   }
 }
 

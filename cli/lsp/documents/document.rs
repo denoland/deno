@@ -89,6 +89,12 @@ type ModuleResult = Result<deno_graph::EsmModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
 
 #[derive(Debug)]
+struct Notebook {
+  // /// The specifiers of all the cells in the notebook.
+  // cells: Vec<ModuleSpecifier>,
+}
+
+#[derive(Debug)]
 struct DocumentInner {
   /// Contains the last-known-good set of dependencies from parsing the module.
   dependencies: Arc<DocumentDependencies>,
@@ -106,6 +112,8 @@ struct DocumentInner {
   maybe_parsed_source: Option<ParsedSourceResult>,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
+  /// The associated notebook if this document is a notebook cell.
+  maybe_notebook: Option<Arc<Notebook>>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,6 +156,7 @@ impl Document {
       maybe_parsed_source,
       text_info,
       specifier,
+      maybe_notebook: None,
     }))
   }
 
@@ -184,6 +193,7 @@ impl Document {
       maybe_lsp_version: self.0.maybe_lsp_version,
       text_info: self.0.text_info.clone(),
       specifier: self.0.specifier.clone(),
+      maybe_notebook: self.0.maybe_notebook.clone(),
     })))
   }
 
@@ -228,6 +238,7 @@ impl Document {
       maybe_parsed_source,
       text_info,
       specifier,
+      maybe_notebook: None,
     }))
   }
 
@@ -300,6 +311,7 @@ impl Document {
       maybe_parsed_source,
       maybe_lsp_version: Some(version),
       maybe_navigation_tree: Mutex::new(None),
+      maybe_notebook: self.0.maybe_notebook.clone(),
     })))
   }
 
@@ -317,6 +329,7 @@ impl Document {
       maybe_parsed_source: self.0.maybe_parsed_source.clone(),
       maybe_lsp_version: self.0.maybe_lsp_version,
       maybe_navigation_tree: Mutex::new(None),
+      maybe_notebook: self.0.maybe_notebook.clone(),
     }))
   }
 

@@ -8,6 +8,8 @@ use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use lsp_types::NotebookDocumentClientCapabilities;
+use lsp_types::NotebookDocumentSyncClientCapabilities;
 use tower_lsp::lsp_types::ClientCapabilities;
 use tower_lsp::lsp_types::ClientInfo;
 use tower_lsp::lsp_types::CompletionContext;
@@ -84,6 +86,12 @@ impl ReplLanguageServer {
           general: None,
           experimental: None,
           offset_encoding: None,
+          notebook_document: Some(NotebookDocumentClientCapabilities {
+            synchronization: NotebookDocumentSyncClientCapabilities {
+              dynamic_registration: Some(true),
+              execution_summary_report: Some(true),
+            },
+          }),
         },
         trace: None,
         workspace_folders: None,

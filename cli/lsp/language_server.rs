@@ -4,6 +4,7 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::future::join_all;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde_json;
@@ -1324,6 +1325,71 @@ impl Inner {
     document
   }
 
+  async fn notebook_did_open(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    params: DidOpenNotebookDocumentParams,
+  ) {
+    let mark = self.performance.mark("did_open", Some(&params));
+    // TODO: Make sure all cell sare the same language
+    let language_id_string = params
+      .cell_text_documents
+      .first()
+      .map(|cell| cell.language_id.as_str())
+      .unwrap_or("unknown".into());
+    let language_id = language_id_string.parse().unwrap_or_else(|err| {
+      error!("{}", err);
+      LanguageId::Unknown
+    });
+    if language_id == LanguageId::Unknown {
+      lsp_warn!(
+        "Unsupported language id \"{}\" received for document \"{}\".",
+        language_id_string,
+        params.notebook_document.uri
+      );
+    }
+    let content = params
+      .cell_text_documents
+      .iter()
+      .map(|cell| cell.text.clone())
+      .collect::<Vec<String>>()
+      .join("\n\n");
+
+    params.cell_text_documents.iter().for_each(|cell| {
+      let language_id_string = cell.language_id.as_str();
+      let language_id = language_id_string.parse().unwrap_or_else(|err| {
+        error!("{}", err);
+        LanguageId::Unknown
+      });
+      if language_id == LanguageId::Unknown {
+        lsp_warn!(
+          "Unsupported language id \"{}\" received for document \"{}\".",
+          language_id_string,
+          params.notebook_document.uri
+        );
+      }
+      let specifier = self.url_map.normalize_url(&cell.uri, LspUrlKind::File);
+      self.documents.open(
+        specifier,
+        cell.version,
+        language_id,
+        content.clone().into(),
+      );
+    });
+
+    self.refresh_npm_specifiers().await;
+    let specifiers = self.documents.dependents(&specifier);
+    self.diagnostics_server.invalidate(&specifiers);
+    self.send_diagnostics_update();
+    self.send_testing_update();
+
+    self.performance.measure(mark);
+  }
+
+  async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
+    todo!();
+  }
+
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change", Some(&params));
     let specifier = self
@@ -1347,6 +1413,10 @@ impl Inner {
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
+  }
+
+  async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
+    todo!();
   }
 
   async fn refresh_npm_specifiers(&mut self) {
@@ -3247,8 +3317,20 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
   }
 
+  async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
+    let mut inner = self.0.write().await;
+    let specifier = inner
+      .url_map
+      .normalize_url(&params.notebook_document.uri, LspUrlKind::File);
+    let document = inner.notebook_did_open(&specifier, params).await;
+  }
+
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     self.0.write().await.did_change(params).await
+  }
+
+  async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
+    self.0.write().await.notebook_did_change(params).await
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
@@ -3285,8 +3367,46 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
   }
 
+  async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
+    // let uri = &params.notebook_document.uri;
+    // {
+    //   let mut inner = self.0.write().await;
+    //   let specifier = inner.url_map.normalize_url(uri, LspUrlKind::File);
+    //   inner.documents.save(&specifier);
+    //   if !inner
+    //     .config
+    //     .workspace_settings_for_specifier(&specifier)
+    //     .cache_on_save
+    //     || !inner.config.specifier_enabled(&specifier)
+    //     || !inner.diagnostics_state.has_no_cache_diagnostics(&specifier)
+    //   {
+    //     return;
+    //   }
+    //   match specifier_to_file_path(&specifier) {
+    //     Ok(path) if is_importable_ext(&path) => {}
+    //     _ => return,
+    //   }
+    // }
+    // if let Err(err) = self
+    //   .cache_request(Some(
+    //     serde_json::to_value(lsp_custom::CacheParams {
+    //       referrer: TextDocumentIdentifier { uri: uri.clone() },
+    //       uris: vec![TextDocumentIdentifier { uri: uri.clone() }],
+    //     })
+    //     .unwrap(),
+    //   ))
+    //   .await
+    // {
+    //   lsp_warn!("Failed to cache \"{}\" on save: {}", uri.to_string(), err);
+    // }
+  }
+
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     self.0.write().await.did_close(params).await
+  }
+
+  async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
+    self.0.write().await.notebook_did_close(params).await
   }
 
   async fn did_change_configuration(

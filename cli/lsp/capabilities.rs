@@ -89,6 +89,26 @@ pub fn server_capabilities(
       },
     }),
     declaration_provider: None,
+    notebook_document_sync: Some(OneOf::Left(NotebookDocumentSyncOptions {
+      save: Some(true),
+      notebook_selector: vec![NotebookSelector {
+        notebook: Some(Notebook::String("*".into())),
+        cells: Some(vec![
+          NotebookCellSelector {
+            language: "typescript".into(),
+          },
+          NotebookCellSelector {
+            language: "typescriptreact".into(),
+          },
+          NotebookCellSelector {
+            language: "javascript".into(),
+          },
+          NotebookCellSelector {
+            language: "javascriptreact".into(),
+          },
+        ]),
+      }],
+    })),
     definition_provider: Some(OneOf::Left(true)),
     type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(
       true,

@@ -1,11 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 mod asset_or_document;
-pub mod document;
+mod document;
+mod file_like_to_file_specifier;
 mod file_system_documents;
 mod language_id;
 mod open_documents_graph_loader;
 mod preload_document_finder;
 mod to_lsp_range;
+pub use file_like_to_file_specifier::file_like_to_file_specifier;
 use preload_document_finder::{
   PreloadDocumentFinder, PreloadDocumentFinderOptions,
 };
@@ -37,7 +39,6 @@ use deno_ast::MediaType;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::GraphImport;
@@ -52,7 +53,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use lsp::Url;
 use package_json::PackageJsonDepsProvider;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -823,29 +823,6 @@ impl Documents {
     }
     None
   }
-}
-
-/// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
-/// ```rust
-/// assert_eq!(
-///   file_like_to_file_specifier(
-///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
-///   ),
-///   Some(Url::parse("file:///path/to/file.ipynb#abc").unwrap()),
-/// );
-pub fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
-  if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
-    if let Ok(mut s) = ModuleSpecifier::parse(&format!(
-      "file://{}",
-      &specifier.as_str()
-        [url::quirks::internal_components(specifier).host_end as usize..],
-    )) {
-      s.query_pairs_mut()
-        .append_pair("scheme", specifier.scheme());
-      return Some(s);
-    }
-  }
-  None
 }
 
 /// Recurse and collect specifiers that appear in the dependent map.

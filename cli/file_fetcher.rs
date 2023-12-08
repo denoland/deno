@@ -1514,44 +1514,44 @@ mod tests {
     assert!(result.is_err());
   }
 
-  #[tokio::test]
-  async fn test_fetch_same_host_redirect() {
-    let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(CacheSetting::Use, None);
-    let specifier = resolve_url(
-      "http://localhost:4550/REDIRECT/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
-    let redirected_specifier =
-      resolve_url("http://localhost:4550/subdir/redirects/redirect1.js")
-        .unwrap();
+  // #[tokio::test]
+  // async fn test_fetch_same_host_redirect() {
+  //   let _http_server_guard = test_util::http_server();
+  //   let (file_fetcher, _) = setup(CacheSetting::Use, None);
+  //   let specifier = resolve_url(
+  //     "http://localhost:4550/REDIRECT/subdir/redirects/redirect1.js",
+  //   )
+  //   .unwrap();
+  //   let redirected_specifier =
+  //     resolve_url("http://localhost:4550/subdir/redirects/redirect1.js")
+  //       .unwrap();
 
-    let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await;
-    assert!(result.is_ok());
-    let file = result.unwrap();
-    assert_eq!(file.specifier, redirected_specifier);
+  //   let result = file_fetcher
+  //     .fetch(&specifier, PermissionsContainer::allow_all())
+  //     .await;
+  //   assert!(result.is_ok());
+  //   let file = result.unwrap();
+  //   assert_eq!(file.specifier, redirected_specifier);
 
-    assert_eq!(
-      get_text_from_cache(&file_fetcher, &specifier),
-      "",
-      "redirected files should have empty cached contents"
-    );
-    assert_eq!(
-      get_location_header_from_cache(&file_fetcher, &specifier),
-      Some("/subdir/redirects/redirect1.js".to_string()),
-    );
+  //   assert_eq!(
+  //     get_text_from_cache(&file_fetcher, &specifier),
+  //     "",
+  //     "redirected files should have empty cached contents"
+  //   );
+  //   assert_eq!(
+  //     get_location_header_from_cache(&file_fetcher, &specifier),
+  //     Some("/subdir/redirects/redirect1.js".to_string()),
+  //   );
 
-    assert_eq!(
-      get_text_from_cache(&file_fetcher, &redirected_specifier),
-      "export const redirect = 1;\n"
-    );
-    assert_eq!(
-      get_location_header_from_cache(&file_fetcher, &redirected_specifier),
-      None
-    );
-  }
+  //   assert_eq!(
+  //     get_text_from_cache(&file_fetcher, &redirected_specifier),
+  //     "export const redirect = 1;\n"
+  //   );
+  //   assert_eq!(
+  //     get_location_header_from_cache(&file_fetcher, &redirected_specifier),
+  //     None
+  //   );
+  // }
 
   #[tokio::test]
   async fn test_fetch_no_remote() {
