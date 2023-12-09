@@ -1577,6 +1577,100 @@ itest!(unstable_worker {
   output: "run/unstable_worker.ts.out",
 });
 
+itest!(unstable_worker_options_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_worker_options.js",
+  output: "run/unstable_worker_options.disabled.out",
+  exit_code: 70,
+});
+
+itest!(unstable_worker_options_enabled {
+  args: "run --quiet --reload --allow-read --unstable-worker-options run/unstable_worker_options.js",
+  output: "run/unstable_worker_options.enabled.out",
+});
+
+itest!(unstable_broadcast_channel_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_broadcast_channel.js",
+  output: "run/unstable_broadcast_channel.disabled.out",
+});
+
+itest!(unstable_broadcast_channel_enabled {
+  args: "run --quiet --reload --allow-read --unstable-broadcast-channel run/unstable_broadcast_channel.js",
+  output: "run/unstable_broadcast_channel.enabled.out",
+});
+
+itest!(unstable_cron_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_cron.js",
+  output: "run/unstable_cron.disabled.out",
+});
+
+itest!(unstable_cron_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-cron run/unstable_cron.js",
+  output: "run/unstable_cron.enabled.out",
+});
+
+itest!(unstable_ffi_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
+  output: "run/unstable_ffi.disabled.out",
+});
+
+itest!(unstable_ffi_enabled {
+  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
+  output: "run/unstable_ffi.enabled.out",
+});
+
+itest!(unstable_fs_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_fs.js",
+  output: "run/unstable_fs.disabled.out",
+});
+
+itest!(unstable_fs_enabled {
+  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
+  output: "run/unstable_fs.enabled.out",
+});
+
+itest!(unstable_http_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_http.js",
+  output: "run/unstable_http.disabled.out",
+});
+
+itest!(unstable_http_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-http run/unstable_http.js",
+  output: "run/unstable_http.enabled.out",
+});
+
+itest!(unstable_net_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_net.js",
+  output: "run/unstable_net.disabled.out",
+});
+
+itest!(unstable_net_enabled {
+  args: "run --quiet --reload --allow-read --unstable-net run/unstable_net.js",
+  output: "run/unstable_net.enabled.out",
+});
+
+itest!(unstable_kv_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_kv.js",
+  output: "run/unstable_kv.disabled.out",
+});
+
+itest!(unstable_kv_enabled {
+  args: "run --quiet --reload --allow-read --unstable-kv run/unstable_kv.js",
+  output: "run/unstable_kv.enabled.out",
+});
+
+itest!(unstable_webgpu_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.disabled.out",
+});
+
+itest!(unstable_webgpu_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.enabled.out",
+});
+
 itest!(import_compression {
   args: "run --quiet --reload --allow-net run/import_compression/main.ts",
   output: "run/import_compression/main.out",

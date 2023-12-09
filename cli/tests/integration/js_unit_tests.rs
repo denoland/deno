@@ -101,6 +101,7 @@ util::unit_test_factory!(
     version_test,
     wasm_test,
     webcrypto_test,
+    webgpu_test,
     websocket_test,
     webstorage_test,
     worker_permissions_test,

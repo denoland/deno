@@ -1282,7 +1282,7 @@ pub async fn run_tests_with_watch(
           .await?;
         graph_valid_with_cli_options(
           &graph,
-          factory.fs(),
+          factory.fs().as_ref(),
           &test_modules,
           &cli_options,
         )?;
