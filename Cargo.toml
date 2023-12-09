@@ -25,6 +25,7 @@ members = [
   "ext/node",
   "ext/url",
   "ext/web",
+  "ext/webgpu",
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
@@ -71,6 +72,7 @@ deno_kv = { version = "0.35.0", path = "./ext/kv" }
 deno_tls = { version = "0.114.0", path = "./ext/tls" }
 deno_url = { version = "0.127.0", path = "./ext/url" }
 deno_web = { version = "0.158.0", path = "./ext/web" }
+deno_webgpu = { version = "0.94.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.127.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.132.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.122.0", path = "./ext/webstorage" }
@@ -163,6 +165,12 @@ p384 = { version = "0.13.0", features = ["ecdh"] }
 # crypto
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 hkdf = "0.12.3"
+
+# webgpu
+raw-window-handle = "0.5.0"
+wgpu-core = "=0.18"
+wgpu-types = "=0.18"
+wgpu-hal = "=0.18"
 
 # macros
 proc-macro2 = "1"
