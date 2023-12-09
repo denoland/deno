@@ -114,63 +114,47 @@ mod unix {
     }
   }
 
+  fn memchr(needle: u8, haystack: &[u8]) -> Option<usize> {
+    haystack.iter().position(|&b| b == needle)
+  }
   // JSON serialization stream over IPC pipe.
   //
   // `\n` is used as a delimiter between messages.
   struct IpcJsonStream {
     pipe: OwnedReadHalf,
-    buffer: RefCell<Vec<u8>>,
+    buffer: Vec<u8>,
   }
 
   impl IpcJsonStream {
     fn new(pipe: OwnedReadHalf) -> Self {
       Self {
         pipe,
-        buffer: RefCell::new(Vec::new()),
+        buffer: Vec::new(),
       }
     }
 
     async fn read_msgs(&mut self) -> Result<Vec<serde_json::Value>, AnyError> {
-      let mut buf = [0u8; 1024]; // TODO: Use a single growable buffer.
-      let mut msgs = Vec::new();
-      loop {
-        let n = self.pipe.read(&mut buf).await?;
-        if n == 0 {
-          break Ok(vec![]); // EOF
-        }
-
-        let mut read = &buf[..n];
-        let mut chunk_boundary = 0;
-        for byte in read {
-          if *byte == b'\n'
-            /* Ignore empty messages otherwise we enter infinite loop with `\n\n` */
-            && chunk_boundary > 0
-          {
-            let chunk = &read[..chunk_boundary];
-            self.buffer.borrow_mut().extend_from_slice(chunk);
-            read = &read[chunk_boundary + 1..];
-            chunk_boundary = 0;
-            if chunk.is_empty() {
-              // Last chunk.
-              break;
-            }
-            msgs.push(serde_json::from_slice(&self.buffer.borrow())?);
-            self.buffer.borrow_mut().clear();
-          } else {
-            chunk_boundary += 1;
+        // Divide stream into messages delimited by `\n`. 
+        // If there is no `\n` in the stream, the message is buffered.
+        let mut msgs = Vec::with_capacity(1);
+        loop {
+          let n = self.pipe.read_buf(&mut self.buffer).await?;
+          if n == 0 {
+            break;
+          }
+          let mut start = 0;
+          while let Some(end) = memchr(b'\n', &self.buffer[start..]) {
+            let serde_msg: serde_json::Value = serde_json::from_slice(&self.buffer[start..start + end])?;
+            msgs.push(serde_msg);
+            start += end + 1;
+          }
+          self.buffer.drain(..start);
+          if !msgs.is_empty() {
+            break;
           }
         }
 
-        if chunk_boundary > 0 {
-          let buffer = &mut self.buffer.borrow_mut();
-          buffer.clear();
-          buffer.extend_from_slice(&read[..chunk_boundary]);
-        }
-
-        if !msgs.is_empty() {
-          return Ok(msgs);
-        }
-      }
+        Ok(msgs)
     }
   }
 
