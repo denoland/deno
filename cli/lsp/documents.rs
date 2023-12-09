@@ -3,6 +3,7 @@
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
 use super::language_server::StateNpmSnapshot;
+use super::performance::Performance;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -894,10 +895,12 @@ pub struct Documents {
   redirect_resolver: Arc<RedirectResolver>,
   /// If --unstable-sloppy-imports is enabled.
   unstable_sloppy_imports: bool,
+  /// A collection of measurements which instrument that performance of the LSP.
+  performance: Arc<Performance>,
 }
 
 impl Documents {
-  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>, performance: Arc<Performance>) -> Self {
     Self {
       cache: cache.clone(),
       dirty: true,
@@ -922,6 +925,7 @@ impl Documents {
       has_injected_types_node_package: false,
       redirect_resolver: Arc::new(RedirectResolver::new(cache)),
       unstable_sloppy_imports: false,
+      performance,
     }
   }
 
@@ -1140,8 +1144,9 @@ impl Documents {
 
   /// Return a document for the specifier.
   pub fn get(&self, original_specifier: &ModuleSpecifier) -> Option<Document> {
+    let mark = self.performance.mark("lsp.get_document");
     let specifier = self.resolve_specifier(original_specifier)?;
-    if let Some(document) = self.open_docs.get(&specifier) {
+    let d = if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
@@ -1151,7 +1156,9 @@ impl Documents {
         &specifier,
         self.get_npm_resolver(),
       )
-    }
+    };
+    self.performance.measure(mark);
+    d
   }
 
   /// Return a collection of documents that are contained in the document store
@@ -2107,7 +2114,7 @@ mod tests {
       location.to_path_buf(),
       RealDenoCacheEnv,
     ));
-    let documents = Documents::new(cache);
+    let documents = Documents::new(cache, Default::default());
     (documents, location)
   }
 

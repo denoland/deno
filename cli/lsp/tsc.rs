@@ -4045,7 +4045,7 @@ deno_core::extension!(deno_tsc,
         assets: Default::default(),
         cache_metadata: CacheMetadata::new(options.cache.clone()),
         config: Default::default(),
-        documents: Documents::new(options.cache.clone()),
+        documents: Documents::new(options.cache.clone(), options.performance.clone()),
         maybe_import_map: None,
         npm: None,
       }),
@@ -4480,7 +4480,7 @@ mod tests {
       location.to_path_buf(),
       RealDenoCacheEnv,
     ));
-    let mut documents = Documents::new(cache.clone());
+    let mut documents = Documents::new(cache.clone(), Default::default());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

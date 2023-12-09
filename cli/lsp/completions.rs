@@ -683,7 +683,7 @@ mod tests {
       location.to_path_buf(),
       crate::cache::RealDenoCacheEnv,
     ));
-    let mut documents = Documents::new(cache);
+    let mut documents = Documents::new(cache, Default::default());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

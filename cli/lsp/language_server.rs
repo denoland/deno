@@ -470,9 +470,10 @@ impl Inner {
       location,
       crate::cache::RealDenoCacheEnv,
     ));
-    let documents = Documents::new(deps_http_cache.clone());
-    let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
+    let documents =
+      Documents::new(deps_http_cache.clone(), performance.clone());
+    let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let ts_server =
       Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();

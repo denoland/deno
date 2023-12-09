@@ -8303,6 +8303,7 @@ fn lsp_performance() {
     averages,
     vec![
       "lsp.did_open",
+      "lsp.get_document",
       "lsp.hover",
       "lsp.initialize",
       "lsp.testing_update",
