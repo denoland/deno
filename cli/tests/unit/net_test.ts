@@ -987,6 +987,37 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true, net: true } },
+  async function netUdpListenUnrefAndRef() {
+    const p = execCode2(`
+      async function main() {
+        const listener = Deno.listenDatagram({ port: ${listenPort}, transport: "udp", hostname: "0.0.0.0" });
+        listener.unref();
+        listener.ref();
+        console.log("started");
+        await listener.receive();
+        console.log("accepted");
+      }
+      main();
+    `);
+    await p.waitStdoutText("started");
+
+    const bob = Deno.listenDatagram({
+      port: listenPort2,
+      transport: "udp",
+      hostname: "0.0.0.0",
+    });
+    const sent = new Uint8Array([1, 2, 3]);
+    await bob.send(sent, { port: listenPort, hostname: "127.0.0.1", transport: "udp" });
+    bob.close();
+
+    const [statusCode, output] = await p.finished();
+    assertEquals(statusCode, 0);
+    assertEquals(output.trim(), "started\naccepted");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, run: true, net: true } },
   async function netListenUnrefAndRef() {
     const p = execCode2(`
       async function main() {
