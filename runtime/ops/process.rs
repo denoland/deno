@@ -141,6 +141,7 @@ pub struct SpawnArgs {
   uid: Option<u32>,
   #[cfg(windows)]
   windows_raw_arguments: bool,
+  #[cfg(unix)]
   ipc: i32,
 
   #[serde(flatten)]
@@ -254,8 +255,16 @@ fn create_command(
     command.uid(uid);
   }
 
-  #[allow(unused_assignments)]
-  let mut pipe_fd = None;
+  command.stdin(args.stdio.stdin.as_stdio());
+  command.stdout(match args.stdio.stdout {
+    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
+    value => value.as_stdio(),
+  });
+  command.stderr(match args.stdio.stderr {
+    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
+    value => value.as_stdio(),
+  });
+
   #[cfg(unix)]
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
@@ -324,25 +333,17 @@ fn create_command(
     });
 
     /* One end returned to parent process (this) */
-    pipe_fd = Some(fd1);
+    let pipe_fd = Some(fd1);
 
     /* The other end passed to child process via DENO_CHANNEL_FD */
     if ipc >= 0 {
       command.env("DENO_CHANNEL_FD", format!("{}", args.ipc));
     }
+
+    return Ok((command, pipe_fd));
   }
 
-  command.stdin(args.stdio.stdin.as_stdio());
-  command.stdout(match args.stdio.stdout {
-    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
-  command.stderr(match args.stdio.stderr {
-    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
-
-  Ok((command, pipe_fd))
+  Ok((command, None))
 }
 
 #[derive(Serialize)]
