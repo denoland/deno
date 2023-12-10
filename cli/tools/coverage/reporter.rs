@@ -221,14 +221,6 @@ struct HtmlCoverageReporter {
   file_reports: Vec<(CoverageReport, String)>,
 }
 
-impl HtmlCoverageReporter {
-  pub fn new() -> HtmlCoverageReporter {
-    HtmlCoverageReporter {
-      file_reports: Vec::new(),
-    }
-  }
-}
-
 impl CoverageReporter for HtmlCoverageReporter {
   fn report(
     &mut self,
@@ -271,6 +263,12 @@ impl CoverageReporter for HtmlCoverageReporter {
 }
 
 impl HtmlCoverageReporter {
+  pub fn new() -> HtmlCoverageReporter {
+    HtmlCoverageReporter {
+      file_reports: Vec::new(),
+    }
+  }
+
   /// Collects the coverage summary of each file or directory.
   pub fn collect_summary(&self) -> CoverageSummary {
     let urls = self.file_reports.iter().map(|rep| &rep.0.url).collect();
