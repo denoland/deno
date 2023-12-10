@@ -270,6 +270,7 @@ mod unix {
     }
   }
 
+  #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
   mod neon {
     use std::arch::aarch64::*;
 
