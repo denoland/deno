@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 
@@ -29,4 +30,27 @@ pub fn op_v8_get_heap_statistics(
   buffer[11] = stats.total_global_handles_size() as f64;
   buffer[12] = stats.used_global_handles_size() as f64;
   buffer[13] = stats.external_memory() as f64;
+}
+
+#[op2]
+pub fn op_vm_run_in_new_context<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  script: v8::Local<v8::String>,
+  ctx_val: v8::Local<v8::Value>,
+) -> Result<v8::Local<'a, v8::Value>, AnyError> {
+  let _ctx_obj = if ctx_val.is_undefined() || ctx_val.is_null() {
+    v8::Object::new(scope)
+  } else {
+    ctx_val.try_into()?
+  };
+
+  let template = v8::ObjectTemplate::new(scope);
+  let ctx = v8::Context::new_from_template(scope, template);
+
+  let scope = &mut v8::ContextScope::new(scope, ctx);
+
+  let script = v8::Script::compile(scope, script, None).unwrap();
+  let result = script.run(scope).unwrap();
+
+  Ok(result)
 }
