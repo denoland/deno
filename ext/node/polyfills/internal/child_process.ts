@@ -1074,7 +1074,7 @@ export function setupChannel(target, channel) {
 
   async function readLoop() {
     while (true) {
-      if (!target.connected) {
+      if (!target.connected || target.killed) {
         return;
       }
       const msgs = await core.opAsync("op_node_ipc_read", ipc);

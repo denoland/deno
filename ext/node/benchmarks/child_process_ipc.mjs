@@ -49,13 +49,6 @@ if (process.env.CHILD) {
 
   const len = [
     64,
-    256,
-    1024,
-    4096,
-    16384,
-    65536,
-    65536 << 4,
-    65536 << 6 - 1,
   ];
 
   for (const l of len) {
