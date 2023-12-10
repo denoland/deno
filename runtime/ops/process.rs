@@ -340,7 +340,7 @@ fn create_command(
       command.env("DENO_CHANNEL_FD", format!("{}", args.ipc));
     }
 
-    return Ok((command, pipe_fd));
+    Ok((command, pipe_fd))
   }
 
   #[cfg(not(unix))]
