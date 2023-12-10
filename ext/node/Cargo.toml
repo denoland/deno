@@ -55,6 +55,7 @@ p256.workspace = true
 p384.workspace = true
 path-clean = "=0.1.0"
 pbkdf2 = "0.12.1"
+pin-project-lite = "*"
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
@@ -66,6 +67,7 @@ serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true
 signature.workspace = true
+simd-json = "*"
 tokio.workspace = true
 typenum = "1.15.0"
 url.workspace = true

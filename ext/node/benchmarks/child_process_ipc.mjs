@@ -12,49 +12,51 @@ if (process.env.CHILD) {
   };
   send();
 } else {
-
   function main(dur, len) {
     const p = new Promise((resolve) => {
-    const start = performance.now();
+      const start = performance.now();
 
-    const options = { 
-      "stdio": ["inherit", "inherit", "inherit", "ipc"],
-      "env": { "CHILD": len.toString() },
-    };
-    const path = new URL("child_process_ipc.mjs", import.meta.url).pathname;
-    const child = fork(
-      path,
-      options,
-    );
+      const options = {
+        "stdio": ["inherit", "inherit", "inherit", "ipc"],
+        "env": { "CHILD": len.toString() },
+      };
+      const path = new URL("child_process_ipc.mjs", import.meta.url).pathname;
+      const child = fork(
+        path,
+        options,
+      );
 
-    let bytes = 0;
-    child.on("message", (msg) => {
-      bytes += msg.length;
-    });
+      let bytes = 0;
+      let total = 0;
+      child.on("message", (msg) => {
+        bytes += msg.length;
+        total += 1;
+      });
 
-    setTimeout(() => {
-      child.kill();
-      const end = performance.now();
-      const mb = bytes / 1024 / 1024;
-      const sec = (end - start) / 1000;
-      const mbps = mb / sec;
-      console.log(`${len} bytes: ${mbps.toFixed(2)} MB/s`);
+      setTimeout(() => {
+        child.kill();
+        const end = performance.now();
+        const mb = bytes / 1024 / 1024;
+        const sec = (end - start) / 1000;
+        const mbps = mb / sec;
+        console.log(`${len} bytes: ${mbps.toFixed(2)} MB/s`);
+        console.log(`${total} messages`);
         resolve();
-    }, dur * 1000);
-  });
+      }, dur * 1000);
+    });
     return p;
   }
 
-   const len = [
-      64,
-      256,
-      1024,
-      4096,
-      16384,
-      65536,
-      65536 << 4,
-      65536 << 6 - 1,
-    ];
+  const len = [
+    64,
+    256,
+    1024,
+    4096,
+    16384,
+    65536,
+    65536 << 4,
+    65536 << 6 - 1,
+  ];
 
   for (const l of len) {
     await main(5, l);
