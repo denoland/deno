@@ -52,7 +52,6 @@ use crate::args::StorageKeyResolver;
 use crate::emit::Emitter;
 use crate::errors;
 use crate::npm::CliNpmResolver;
-use crate::ops;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::run::hmr::HmrRunner;
@@ -462,7 +461,7 @@ impl CliMainWorkerFactory {
     &self,
     main_module: ModuleSpecifier,
     permissions: PermissionsContainer,
-    mut custom_extensions: Vec<Extension>,
+    custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
   ) -> Result<CliMainWorker, AnyError> {
     let shared = &self.shared;
@@ -567,13 +566,11 @@ impl CliMainWorkerFactory {
         .join(checksum::gen(&[key.as_bytes()]))
     });
 
-    let mut extensions = ops::cli_exts();
-    extensions.append(&mut custom_extensions);
-
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
     // list of enabled features.
     let feature_checker = shared.feature_checker.clone();
-    let mut unstable_features = Vec::with_capacity(8);
+    let mut unstable_features =
+      Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
     for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
       if feature_checker.check(feature_name) {
         unstable_features.push(*id);
@@ -604,7 +601,7 @@ impl CliMainWorkerFactory {
           .clone(),
         node_ipc_fd: shared.node_ipc,
       },
-      extensions,
+      extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
       create_params: None,
       unsafely_ignore_certificate_errors: shared
@@ -643,10 +640,14 @@ impl CliMainWorkerFactory {
       options,
     );
 
-    if self.shared.subcommand.is_test_or_jupyter() {
-      worker.js_runtime.execute_script_static(
-        "40_jupyter.js",
-        include_str!("js/40_jupyter.js"),
+    if self.shared.subcommand.needs_test() {
+      worker.js_runtime.lazy_load_es_module_from_code(
+        "ext:cli/40_testing.js",
+        deno_core::FastString::StaticAscii(include_str!("js/40_testing.js")),
+      )?;
+      worker.js_runtime.lazy_load_es_module_from_code(
+        "ext:cli/40_jupyter.js",
+        deno_core::FastString::StaticAscii(include_str!("js/40_jupyter.js")),
       )?;
     }
 
@@ -752,8 +753,6 @@ fn create_web_worker_callback(
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
 
-    let extensions = ops::cli_exts();
-
     let maybe_storage_key = shared
       .storage_key_resolver
       .resolve_storage_key(&args.main_module);
@@ -768,7 +767,8 @@ fn create_web_worker_callback(
     // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
     // list of enabled features.
     let feature_checker = shared.feature_checker.clone();
-    let mut unstable_features = Vec::with_capacity(8);
+    let mut unstable_features =
+      Vec::with_capacity(crate::UNSTABLE_GRANULAR_FLAGS.len());
     for (feature_name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS {
       if feature_checker.check(feature_name) {
         unstable_features.push(*id);
@@ -799,7 +799,7 @@ fn create_web_worker_callback(
           .clone(),
         node_ipc_fd: None,
       },
-      extensions,
+      extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
       unsafely_ignore_certificate_errors: shared
         .options

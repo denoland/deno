@@ -544,7 +544,7 @@ declare namespace Deno {
      * Examples:
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "inherit",
@@ -559,7 +559,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "true",
@@ -574,7 +574,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "false",
@@ -589,7 +589,7 @@ declare namespace Deno {
      * ```
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "localhost:8080",
@@ -818,7 +818,7 @@ declare namespace Deno {
    * `fn` can be async if required.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.test({
    *   name: "example test",
@@ -859,7 +859,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test({
      *   name: "example test",
@@ -896,7 +896,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test("My test description", () => {
      *   assertEquals("hello", "hello");
@@ -922,7 +922,7 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test(function myTestName() {
      *   assertEquals("hello", "hello");
@@ -945,7 +945,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+     * import {assert, fail, assertEquals} from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test("My test description", { permissions: { read: true } }, (): void => {
      *   assertEquals("hello", "hello");
@@ -972,7 +972,7 @@ declare namespace Deno {
      * `fn` can be async if required.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test(
      *   {
@@ -1010,7 +1010,7 @@ declare namespace Deno {
      * `fn` can be async if required. Declared function must have a name.
      *
      * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
      *
      * Deno.test(
      *   { permissions: { read: true } },
@@ -1234,7 +1234,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench({
    *   name: "example test",
@@ -1273,7 +1273,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench("My test description", () => {
    *   assertEquals("hello", "hello");
@@ -1301,7 +1301,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(function myTestName() {
    *   assertEquals("hello", "hello");
@@ -1326,7 +1326,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(
    *   "My test description",
@@ -1363,7 +1363,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(
    *   { name: "My test description", permissions: { read: true } },
@@ -1397,7 +1397,7 @@ declare namespace Deno {
    * will await resolution to consider the test complete.
    *
    * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.bench(
    *   { permissions: { read: true } },
@@ -2451,7 +2451,7 @@ declare namespace Deno {
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const file = await Deno.open("hello.txt");
      * const fileInfo = await file.stat();
@@ -2463,7 +2463,7 @@ declare namespace Deno {
     /** Synchronously returns a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const file = Deno.openSync("hello.txt")
      * const fileInfo = file.statSync();
@@ -3289,10 +3289,10 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     ino: number | null;
-    /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
+    /** The underlying raw `st_mode` bits that contain the standard Unix
+     * permissions for this file/directory.
      *
-     * The underlying raw `st_mode` bits that contain the standard Unix
-     * permissions for this file/directory. */
+     * _Linux/Mac OS only._ */
     mode: number | null;
     /** Number of hard links pointing to this file.
      *
@@ -3513,7 +3513,7 @@ declare namespace Deno {
    * of what it points to.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = await Deno.lstat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3530,7 +3530,7 @@ declare namespace Deno {
    * returned instead of what it points to.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = Deno.lstatSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3546,7 +3546,7 @@ declare namespace Deno {
    * always follow symlinks.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = await Deno.stat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -3562,7 +3562,7 @@ declare namespace Deno {
    * `path`. Will always follow symlinks.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = Deno.statSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -4312,7 +4312,7 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
-  export class ChildProcess implements Disposable {
+  export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array>;
     get stdout(): ReadableStream<Uint8Array>;
     get stderr(): ReadableStream<Uint8Array>;
@@ -4338,7 +4338,7 @@ declare namespace Deno {
      * process from exiting. */
     unref(): void;
 
-    [Symbol.dispose](): void;
+    [Symbol.asyncDispose](): Promise<void>;
   }
 
   /**
@@ -4794,7 +4794,7 @@ declare namespace Deno {
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
@@ -4805,7 +4805,7 @@ declare namespace Deno {
     /** Revokes a permission, and returns the state of the permission.
      *
      * ```ts
-     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
      * const status = Deno.permissions.revokeSync({ name: "run" });
      * assert(status.state !== "granted")
@@ -4883,14 +4883,14 @@ declare namespace Deno {
    * ### Revoking
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const status = await Deno.permissions.revoke({ name: "run" });
    * assert(status.state !== "granted")
    * ```
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const status = Deno.permissions.revokeSync({ name: "run" });
    * assert(status.state !== "granted")
@@ -4986,13 +4986,13 @@ declare namespace Deno {
    * Give the following command line invocation of Deno:
    *
    * ```sh
-   * deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+   * deno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi
    * ```
    *
    * Then `Deno.args` will contain:
    *
    * ```ts
-   * [ "/etc/passwd" ]
+   * [ "Sushi" ]
    * ```
    *
    * If you are looking for a structured way to parse arguments, there is the
@@ -5200,7 +5200,7 @@ declare namespace Deno {
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const file = await Deno.open("file.txt", { read: true });
    * const fileInfo = await Deno.fstat(file.rid);
@@ -5216,7 +5216,7 @@ declare namespace Deno {
    * stream.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    *
    * const file = Deno.openSync("file.txt", { read: true });
    * const fileInfo = Deno.fstatSync(file.rid);
@@ -5939,6 +5939,50 @@ declare namespace Deno {
     handler: ServeHandler;
   }
 
+  export interface ServeUnixOptions {
+    /** The unix domain socket path to listen on. */
+    path: string;
+
+    /** An {@linkcode AbortSignal} to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server starts listening. */
+    onListen?: (params: { path: string }) => void;
+  }
+
+  /** Information for a unix domain socket HTTP request.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeUnixHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.UnixAddr;
+  }
+
+  /** A handler for unix domain socket HTTP requests. Consumes a request and returns a response.
+   *
+   * If a handler throws, the server calling the handler will assume the impact
+   * of the error is isolated to the individual request. It will catch the error
+   * and if necessary will close the underlying connection.
+   *
+   * @category HTTP Server
+   */
+  export type ServeUnixHandler = (
+    request: Request,
+    info: ServeUnixHandlerInfo,
+  ) => Response | Promise<Response>;
+
+  /**
+   * @category HTTP Server
+   */
+  export interface ServeUnixInit {
+    /** The handler to invoke to process each incoming request. */
+    handler: ServeUnixHandler;
+  }
+
   /** An instance of the server created using `Deno.serve()` API.
    *
    * @category HTTP Server
@@ -5959,6 +6003,11 @@ declare namespace Deno {
 
     /** Make the server not block the event loop from finishing. */
     unref(): void;
+
+    /** Gracefully close the server. No more new connections will be accepted,
+     * while pending requests will be allowed to finish.
+     */
+    shutdown(): Promise<void>;
   }
 
   /**
@@ -5978,6 +6027,55 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(handler: ServeHandler): HttpServer;
+  /** Serves HTTP requests with the given option bag and handler.
+   *
+   * You can specify the socket path with `path` option.
+   *
+   * ```ts
+   * Deno.serve(
+   *   { path: "path/to/socket" },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * ```
+   *
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve(
+   *    { signal: ac.signal, path: "path/to/socket" },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message
+   * `Listening on path/to/socket` on listening. If you like to
+   * change this behavior, you can specify a custom `onListen` callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   path: "path/to/socket",
+   * }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeUnixOptions,
+    handler: ServeUnixHandler,
+  ): HttpServer;
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -6037,6 +6135,33 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
+  ): HttpServer;
+  /** Serves HTTP requests with the given option bag.
+   *
+   * You can specify an object with the path option, which is the
+   * unix domain socket to listen on.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve({
+   *   path: "path/to/socket",
+   *   handler: (_req) => new Response("Hello, world"),
+   *   signal: ac.signal,
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
+   *   },
+   * });
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeUnixInit & ServeUnixOptions,
   ): HttpServer;
   /** Serves HTTP requests with the given option bag.
    *

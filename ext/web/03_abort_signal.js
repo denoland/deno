@@ -13,7 +13,7 @@ import {
   listenerCount,
   setIsTrusted,
 } from "ext:deno_web/02_event.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,

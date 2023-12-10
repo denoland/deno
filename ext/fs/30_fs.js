@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 const {
   op_fs_chmod_async,
@@ -9,7 +9,6 @@ const {
   op_fs_link_async,
   op_fs_flock_async,
 } = Deno.core.ensureFastOps();
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
   Date,

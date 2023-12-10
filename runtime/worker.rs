@@ -1,11 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -29,6 +29,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -38,7 +39,6 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
-use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
@@ -297,7 +297,7 @@ impl MainWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    // `runtime/build.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let mut extensions = vec![
       // Web APIs
       deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -307,6 +307,7 @@ impl MainWorker {
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -419,11 +420,6 @@ impl MainWorker {
     #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
     options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
 
-    // Clear extension modules from the module map, except preserve `node:*`
-    // modules.
-    let preserve_snapshotted_modules =
-      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options
@@ -436,7 +432,6 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
-      preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
@@ -548,14 +543,34 @@ impl MainWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        maybe_result
       }
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+        receiver.await
       }
+    }
+  }
+
+  /// Run the event loop up to a given duration. If the runtime resolves early, returns
+  /// early. Will always poll the runtime at least once.
+  pub async fn run_up_to_duration(
+    &mut self,
+    duration: Duration,
+  ) -> Result<(), AnyError> {
+    match tokio::time::timeout(
+      duration,
+      self.js_runtime.run_event_loop2(PollEventLoopOptions {
+        wait_for_inspector: false,
+        pump_v8_message_loop: true,
+      }),
+    )
+    .await
+    {
+      Ok(Ok(_)) => Ok(()),
+      Err(_) => Ok(()),
+      Ok(Err(e)) => Err(e),
     }
   }
 
@@ -603,14 +618,26 @@ impl MainWorker {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
+    self.js_runtime.poll_event_loop2(
+      cx,
+      deno_core::PollEventLoopOptions {
+        wait_for_inspector,
+        ..Default::default()
+      },
+    )
   }
 
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    self.js_runtime.run_event_loop(wait_for_inspector).await
+    self
+      .js_runtime
+      .run_event_loop2(deno_core::PollEventLoopOptions {
+        wait_for_inspector,
+        ..Default::default()
+      })
+      .await
   }
 
   /// Return exit code set by the executed code (either in main worker

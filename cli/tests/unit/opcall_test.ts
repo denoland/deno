@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import { assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { assert, assertStringIncludes, unreachable } from "./test_util.ts";
 
 Deno.test(async function sendAsyncStackTrace() {

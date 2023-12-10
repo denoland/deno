@@ -33,6 +33,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsSummaryTracker;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
@@ -42,7 +43,6 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
-use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -181,6 +181,7 @@ impl WebWorkerInternalHandle {
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(&mut self) {
     self.cancel.cancel();
+    self.terminate_waker.wake();
 
     // This function can be called multiple times by whomever holds
     // the handle. However only a single "termination" should occur so
@@ -396,7 +397,7 @@ impl WebWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
+    // `runtime/build.rs`, `runtime/worker.rs` and `runtime/snapshot.rs`!
 
     let mut extensions = vec![
       // Web APIs
@@ -407,6 +408,7 @@ impl WebWorker {
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -521,11 +523,6 @@ impl WebWorker {
         (None, None)
       };
 
-    // Clear extension modules from the module map, except preserve `node:*`
-    // modules as `node:` specifiers.
-    let preserve_snapshotted_modules =
-      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options
@@ -537,7 +534,6 @@ impl WebWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
-      preserve_snapshotted_modules,
       feature_checker: Some(options.feature_checker.clone()),
       op_metrics_factory_fn,
       ..Default::default()
@@ -692,13 +688,12 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        maybe_result
       }
 
       event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+        receiver.await
       }
     }
   }
@@ -711,24 +706,25 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
+    let poll_options = PollEventLoopOptions {
+      wait_for_inspector: false,
+      ..Default::default()
+    };
+
     tokio::select! {
       biased;
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
-        // If `None` is returned it means that runtime was destroyed before
-        // evaluation was complete. This can happen in Web Worker when `self.close()`
-        // is called at top level.
-        maybe_result.unwrap_or(Ok(()))
+        maybe_result
       }
 
-      event_loop_result = self.run_event_loop(false) => {
+      event_loop_result = self.run_event_loop(poll_options) => {
         if self.internal_handle.is_terminated() {
            return Ok(());
         }
         event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.unwrap_or(Ok(()))
+        receiver.await
       }
     }
   }
@@ -736,7 +732,7 @@ impl WebWorker {
   fn poll_event_loop(
     &mut self,
     cx: &mut Context,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.terminate_if_needed() {
@@ -745,7 +741,7 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
-    match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
+    match self.js_runtime.poll_event_loop2(cx, poll_options) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {
@@ -773,9 +769,9 @@ impl WebWorker {
 
   pub async fn run_event_loop(
     &mut self,
-    wait_for_inspector: bool,
+    poll_options: PollEventLoopOptions,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    poll_fn(|cx| self.poll_event_loop(cx, poll_options)).await
   }
 
   // Starts polling for messages from worker host from JavaScript.
@@ -851,7 +847,12 @@ pub fn run_web_worker(
     }
 
     let result = if result.is_ok() {
-      worker.run_event_loop(true).await
+      worker
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+          ..Default::default()
+        })
+        .await
     } else {
       result
     };

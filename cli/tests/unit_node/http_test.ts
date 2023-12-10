@@ -7,7 +7,7 @@ import {
   assert,
   assertEquals,
   fail,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
@@ -834,4 +834,23 @@ Deno.test("[node/https] node:https exports globalAgent", async () => {
     https.default.globalAgent,
     "node:https must export 'globalAgent' on module default export",
   );
+});
+
+Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw", () => {
+  {
+    const req = http.request("http://localhost:4545/");
+    req.on("error", () => {});
+    // @ts-expect-error - null is not a valid header value
+    req.setHeader("foo", null);
+    req.end();
+    req.destroy();
+  }
+  {
+    const req = https.request("https://localhost:4545/");
+    req.on("error", () => {});
+    // @ts-expect-error - null is not a valid header value
+    req.setHeader("foo", null);
+    req.end();
+    req.destroy();
+  }
 });

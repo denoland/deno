@@ -3204,7 +3204,9 @@
       "respond-after-enqueue.any.html": true,
       "respond-after-enqueue.any.worker.html": true,
       "enqueue-with-detached-buffer.any.html": true,
-      "enqueue-with-detached-buffer.any.worker.html": true
+      "enqueue-with-detached-buffer.any.worker.html": true,
+      "read-min.any.html": true,
+      "read-min.any.worker.html": true
     },
     "readable-streams": {
       "async-iterator.any.html": true,
@@ -7009,6 +7011,11 @@
         }
       },
       "embedded-content": {
+        "the-canvas-element": {
+          "imagedata.html": [
+            "ImageData(buffer, w, opt h), Uint8ClampedArray argument type check"
+          ]
+        },
         "the-iframe-element": {
           "cross-origin-to-whom-part-2.window.html": false,
           "cross-origin-to-whom.window.html": false,
@@ -8387,7 +8394,6 @@
       "interface-objects": {
         "001.worker.html": [
           "The SharedWorker interface object should be exposed.",
-          "The ImageData interface object should be exposed.",
           "The ImageBitmap interface object should be exposed.",
           "The CanvasGradient interface object should be exposed.",
           "The CanvasPattern interface object should be exposed.",

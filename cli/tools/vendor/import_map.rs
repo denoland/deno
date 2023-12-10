@@ -216,7 +216,11 @@ pub fn build_import_map(
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
       if let Ok(resolved_url) = resolver.resolve(
         &specifier_text,
-        &jsx_import_source.base_url,
+        &deno_graph::Range {
+          specifier: jsx_import_source.base_url.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
         ResolutionMode::Execution,
       ) {
         builder.imports.add(specifier_text, &resolved_url);

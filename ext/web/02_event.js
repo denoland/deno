@@ -5,12 +5,10 @@
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
+import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -1494,7 +1492,7 @@ function reportException(error) {
   });
   // Avoid recursing `reportException()` via error handlers more than once.
   if (reportExceptionStackedCalls > 1 || globalThis_.dispatchEvent(event)) {
-    ops.op_dispatch_exception(error);
+    core.reportUnhandledException(error);
   }
   reportExceptionStackedCalls--;
 }

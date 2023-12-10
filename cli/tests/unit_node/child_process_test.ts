@@ -9,7 +9,7 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
@@ -721,4 +721,13 @@ Deno.test(function spawnSyncStdioUndefined() {
   assertEquals(ret.status, 0);
   assertEquals(ret.stdout.toString("utf-8").trim(), "hello");
   assertEquals(ret.stderr.toString("utf-8").trim(), "world");
+});
+
+Deno.test(function spawnSyncExitNonZero() {
+  const ret = spawnSync(
+    `"${Deno.execPath()}" eval "Deno.exit(22)"`,
+    { shell: true },
+  );
+
+  assertEquals(ret.status, 22);
 });

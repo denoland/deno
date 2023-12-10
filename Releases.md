@@ -6,9 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.38.5 / 2023.12.05
+
+- feat(unstable): kv.watch() (#21147)
+- perf(lsp): better op performance logging (#21423)
+- perf(lsp): check tsc request cancellation before execution (#21447)
+- perf(lsp): fix redundant clones for ts responses (#21445)
+- perf(lsp): fix redundant serialization of sources (#21435)
+
+### 1.38.4 / 2023.11.30
+
+- fix(node): `spawnSync`'s `status` was incorrect (#21359)
+- perf(lsp): add performance marks for TSC requests (#21383)
+- perf(lsp): avoid redundant getNavigationTree() calls (#21396)
+- perf(lsp): cancel ts requests on future drop (#21387)
+- perf(lsp): remove throttling of cancellation token (#21395)
+
 ### 1.38.3 / 2023.11.24
 
-- feat(unstable): tar up directory with deno.json  (#21228)
+- feat(unstable): tar up directory with deno.json (#21228)
 - fix(ext,runtime): add missing custom inspections (#21219)
 - fix(ext/http): avoid lockup in graceful shutdown (#21253)
 - fix(ext/http): fix crash in dropped Deno.serve requests (#21252)

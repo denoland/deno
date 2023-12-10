@@ -454,6 +454,10 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub internal_debug: bool,
 
+  /// Write logs to a file in a project-local directory.
+  #[serde(default)]
+  pub log_file: bool,
+
   /// A flag that indicates if linting is enabled for the workspace.
   #[serde(default = "default_to_true")]
   pub lint: bool,
@@ -502,6 +506,7 @@ impl Default for WorkspaceSettings {
       import_map: None,
       code_lens: Default::default(),
       internal_debug: false,
+      log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
@@ -859,9 +864,6 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> Option<&LanguageWorkspaceSettings> {
     let workspace_settings = self.workspace_settings_for_specifier(specifier);
-    if specifier.scheme() == "deno-notebook-cell" {
-      return Some(&workspace_settings.typescript);
-    }
     match MediaType::from_specifier(specifier) {
       MediaType::JavaScript
       | MediaType::Jsx
@@ -899,26 +901,6 @@ impl Config {
       || settings.inlay_hints.property_declaration_types.enabled
       || settings.inlay_hints.function_like_return_types.enabled
       || settings.inlay_hints.enum_member_values.enabled
-  }
-
-  /// Determine if any code lenses are enabled at all.  This allows short
-  /// circuiting when there are no code lenses enabled.
-  pub fn enabled_code_lens_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> bool {
-    let settings = self.workspace_settings_for_specifier(specifier);
-    settings.code_lens.implementations
-      || settings.code_lens.references
-      || settings.code_lens.test
-  }
-
-  pub fn enabled_code_lens_test_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> bool {
-    let settings = self.workspace_settings_for_specifier(specifier);
-    settings.code_lens.test
   }
 
   pub fn root_uri(&self) -> Option<&Url> {
@@ -1092,6 +1074,10 @@ impl Config {
     paths.sort();
     paths.dedup();
     paths
+  }
+
+  pub fn log_file(&self) -> bool {
+    self.settings.unscoped.log_file
   }
 
   pub fn update_capabilities(
@@ -1344,6 +1330,7 @@ mod tests {
           test: true,
         },
         internal_debug: false,
+        log_file: false,
         lint: true,
         document_preload_limit: 1_000,
         suggest: DenoCompletionSettings {

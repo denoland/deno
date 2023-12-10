@@ -12,6 +12,7 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::SloppyImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -35,6 +36,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
@@ -57,11 +59,13 @@ pub struct GraphValidOptions {
 /// error statically reachable from `roots` and not a dynamic import.
 pub fn graph_valid_with_cli_options(
   graph: &ModuleGraph,
+  fs: &dyn FileSystem,
   roots: &[ModuleSpecifier],
   options: &CliOptions,
 ) -> Result<(), AnyError> {
   graph_valid(
     graph,
+    fs,
     roots,
     GraphValidOptions {
       is_vendoring: false,
@@ -80,6 +84,7 @@ pub fn graph_valid_with_cli_options(
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
+  fs: &dyn FileSystem,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -108,20 +113,18 @@ pub fn graph_valid(
         ModuleGraphError::TypesResolutionError(resolution_error) => {
           format!(
             "Failed resolving types. {}",
-            enhanced_resolution_error_message(resolution_error,)
+            enhanced_resolution_error_message(resolution_error)
           )
         }
-        ModuleGraphError::ModuleError(_) => format!("{error}"),
+        ModuleGraphError::ModuleError(e) => {
+          enhanced_module_error_message(fs, e)
+        }
       };
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!(
-            "\n    at {}:{}:{}",
-            colors::cyan(range.specifier.as_str()),
-            colors::yellow(&(range.start.line + 1).to_string()),
-            colors::yellow(&(range.start.character + 1).to_string())
-          ));
+          message.push_str("\n    at ");
+          message.push_str(&format_range_with_colors(range));
         }
       }
 
@@ -194,6 +197,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
+  fs: Arc<dyn FileSystem>,
   resolver: Arc<CliGraphResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -210,6 +214,7 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+    fs: Arc<dyn FileSystem>,
     resolver: Arc<CliGraphResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -223,6 +228,7 @@ impl ModuleGraphBuilder {
   ) -> Self {
     Self {
       options,
+      fs,
       resolver,
       npm_resolver,
       module_info_cache,
@@ -295,6 +301,7 @@ impl ModuleGraphBuilder {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
@@ -344,6 +351,7 @@ impl ModuleGraphBuilder {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
@@ -354,7 +362,12 @@ impl ModuleGraphBuilder {
       .await?;
 
     let graph = Arc::new(graph);
-    graph_valid_with_cli_options(&graph, &graph.roots, &self.options)?;
+    graph_valid_with_cli_options(
+      &graph,
+      self.fs.as_ref(),
+      &graph.roots,
+      &self.options,
+    )?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
@@ -520,6 +533,27 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   }
 
   message
+}
+
+pub fn enhanced_module_error_message(
+  fs: &dyn FileSystem,
+  error: &ModuleError,
+) -> String {
+  let additional_message = match error {
+    ModuleError::Missing(specifier, _) => {
+      SloppyImportsResolver::resolve_with_fs(fs, specifier)
+        .as_suggestion_message()
+    }
+    _ => None,
+  };
+  if let Some(message) = additional_message {
+    format!(
+      "{} {} or run with --unstable-sloppy-imports",
+      error, message
+    )
+  } else {
+    format!("{}", error)
+  }
 }
 
 pub fn get_resolution_error_bare_node_specifier(
@@ -770,6 +804,80 @@ fn workspace_member_config_try_into_workspace_member(
   })
 }
 
+pub struct DenoGraphFsAdapter<'a>(
+  pub &'a dyn deno_runtime::deno_fs::FileSystem,
+);
+
+impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
+  fn read_dir(
+    &self,
+    dir_url: &deno_graph::ModuleSpecifier,
+  ) -> Vec<deno_graph::source::DirEntry> {
+    use deno_core::anyhow;
+    use deno_graph::source::DirEntry;
+    use deno_graph::source::DirEntryKind;
+
+    let dir_path = match dir_url.to_file_path() {
+      Ok(path) => path,
+      // ignore, treat as non-analyzable
+      Err(()) => return vec![],
+    };
+    let entries = match self.0.read_dir_sync(&dir_path) {
+      Ok(dir) => dir,
+      Err(err)
+        if matches!(
+          err.kind(),
+          std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+        ) =>
+      {
+        return vec![];
+      }
+      Err(err) => {
+        return vec![DirEntry {
+          kind: DirEntryKind::Error(
+            anyhow::Error::from(err)
+              .context("Failed to read directory.".to_string()),
+          ),
+          url: dir_url.clone(),
+        }];
+      }
+    };
+    let mut dir_entries = Vec::with_capacity(entries.len());
+    for entry in entries {
+      let entry_path = dir_path.join(&entry.name);
+      dir_entries.push(if entry.is_directory {
+        DirEntry {
+          kind: DirEntryKind::Dir,
+          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_file {
+        DirEntry {
+          kind: DirEntryKind::File,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else if entry.is_symlink {
+        DirEntry {
+          kind: DirEntryKind::Symlink,
+          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+        }
+      } else {
+        continue;
+      });
+    }
+
+    dir_entries
+  }
+}
+
+pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
+  format!(
+    "{}:{}:{}",
+    colors::cyan(range.specifier.as_str()),
+    colors::yellow(&(range.start.line + 1).to_string()),
+    colors::yellow(&(range.start.character + 1).to_string())
+  )
+}
+
 #[cfg(test)]
 mod test {
   use std::sync::Arc;
@@ -781,7 +889,7 @@ mod test {
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
 
-  use crate::graph_util::get_resolution_error_bare_node_specifier;
+  use super::*;
 
   #[test]
   fn import_map_node_resolution_error() {

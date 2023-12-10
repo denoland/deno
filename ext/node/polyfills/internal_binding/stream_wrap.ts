@@ -40,7 +40,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
 const { ops } = core;
 
 interface Reader {

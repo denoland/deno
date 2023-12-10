@@ -226,6 +226,8 @@ delete Object.prototype.__proto__;
             impliedNodeFormat: isCjsCache.has(fileName)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
+            // in the lsp we want to be able to show documentation
+            jsDocParsingMode: ts.JSDocParsingMode.ParseAll,
           },
           version,
           true,
@@ -485,26 +487,13 @@ delete Object.prototype.__proto__;
   class OperationCanceledError extends Error {
   }
 
-  // todo(dsherret): we should investigate if throttling is really necessary
   /**
-   * Inspired by ThrottledCancellationToken in ts server.
-   *
-   * We don't want to continually call back into Rust and so
-   * we throttle cancellation checks to only occur once
-   * in a while.
+   * This implementation calls into Rust to check if Tokio's cancellation token
+   * has already been canceled.
    * @implements {ts.CancellationToken}
    */
-  class ThrottledCancellationToken {
-    #lastCheckTimeMs = 0;
-
+  class CancellationToken {
     isCancellationRequested() {
-      const timeMs = Date.now();
-      // TypeScript uses 20ms
-      if ((timeMs - this.#lastCheckTimeMs) < 20) {
-        return false;
-      }
-
-      this.#lastCheckTimeMs = timeMs;
       return ops.op_is_cancelled();
     }
 
@@ -538,11 +527,11 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
-      return ops.op_load({ specifier }).data;
+      return ops.op_load(specifier).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
-      return new ThrottledCancellationToken();
+      return new CancellationToken();
     },
     getSourceFile(
       specifier,
@@ -550,11 +539,12 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
-      const createOptions = getCreateSourceFileOptions(languageVersion);
       if (logDebug) {
         debug(
           `host.getSourceFile("${specifier}", ${
-            ts.ScriptTarget[createOptions.languageVersion]
+            ts.ScriptTarget[
+              getCreateSourceFileOptions(languageVersion).languageVersion
+            ]
           })`,
         );
       }
@@ -568,9 +558,11 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = ops.op_load(
-        { specifier },
-      );
+      const fileInfo = ops.op_load(specifier);
+      if (!fileInfo) {
+        return undefined;
+      }
+      const { data, scriptKind, version } = fileInfo;
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
@@ -579,10 +571,12 @@ delete Object.prototype.__proto__;
         specifier,
         data,
         {
-          ...createOptions,
+          ...getCreateSourceFileOptions(languageVersion),
           impliedNodeFormat: isCjsCache.has(specifier)
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
+          // no need to parse docs for `deno check`
+          jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
         },
         false,
         scriptKind,
@@ -726,16 +720,12 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptVersion("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
-      if (sourceFile) {
-        return sourceFile.version ?? "1";
-      }
       // tsc requests the script version multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = ops.op_script_version({ specifier });
+      const scriptVersion = ops.op_script_version(specifier);
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -743,30 +733,26 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptSnapshot("${specifier}")`);
       }
-      const sourceFile = sourceFileCache.get(specifier);
+      let sourceFile = sourceFileCache.get(specifier);
+      if (
+        !specifier.startsWith(ASSETS_URL_PREFIX) &&
+        sourceFile?.version != this.getScriptVersion(specifier)
+      ) {
+        sourceFileCache.delete(specifier);
+        sourceFile = undefined;
+      }
+      if (!sourceFile) {
+        sourceFile = this.getSourceFile(
+          specifier,
+          specifier.endsWith(".json")
+            ? ts.ScriptTarget.JSON
+            : ts.ScriptTarget.ESNext,
+        );
+      }
       if (sourceFile) {
-        return {
-          getText(start, end) {
-            return sourceFile.text.substring(start, end);
-          },
-          getLength() {
-            return sourceFile.text.length;
-          },
-          getChangeRange() {
-            return undefined;
-          },
-        };
+        return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
-
-      const fileInfo = ops.op_load(
-        { specifier },
-      );
-      if (fileInfo) {
-        scriptVersionCache.set(specifier, fileInfo.version);
-        return ts.ScriptSnapshot.fromString(fileInfo.data);
-      } else {
-        return undefined;
-      }
+      return undefined;
     },
   };
 

@@ -92,6 +92,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.url",
     "deno.web",
     "deno.fetch",
+    "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
     "deno.crypto",
@@ -414,12 +415,6 @@ fn op_emit(state: &mut OpState, #[serde] args: EmitArgs) -> bool {
   true
 }
 
-#[derive(Debug, Deserialize)]
-struct LoadArgs {
-  /// The fully qualified specifier that should be loaded.
-  specifier: String,
-}
-
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   match media_type {
     MediaType::JavaScript => 1,
@@ -453,36 +448,37 @@ struct LoadResponse {
 #[serde]
 fn op_load(
   state: &mut OpState,
-  #[serde] v: LoadArgs,
+  #[string] load_specifier: &str,
 ) -> Result<LoadResponse, AnyError> {
   let state = state.borrow_mut::<State>();
 
-  let specifier = normalize_specifier(&v.specifier, &state.current_dir)
+  let specifier = normalize_specifier(load_specifier, &state.current_dir)
     .context("Error converting a string module specifier for \"op_load\".")?;
 
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
   let graph = &state.graph;
 
-  let data = if &v.specifier == "internal:///.tsbuildinfo" {
+  let data = if load_specifier == "internal:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
-  } else if &v.specifier == "internal:///missing_dependency.d.ts" {
+  } else if load_specifier == "internal:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
-  } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
+  } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, state.hash_data);
-    media_type = MediaType::from_str(&v.specifier);
+    media_type = MediaType::from_str(load_specifier);
     maybe_source.map(Cow::Borrowed)
   } else {
     let specifier = if let Some(remapped_specifier) =
-      state.remapped_specifiers.get(&v.specifier)
+      state.remapped_specifiers.get(load_specifier)
     {
       remapped_specifier
-    } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
+    } else if let Some(remapped_specifier) = state.root_map.get(load_specifier)
+    {
       remapped_specifier
     } else {
       &specifier
@@ -1062,13 +1058,8 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(
-      &mut state,
-      LoadArgs {
-        specifier: "https://deno.land/x/mod.ts".to_string(),
-      },
-    )
-    .unwrap();
+    let actual =
+      op_load::call(&mut state, "https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
       serde_json::to_value(actual).unwrap(),
       json!({
@@ -1087,13 +1078,8 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(
-      &mut state,
-      LoadArgs {
-        specifier: "asset:///lib.dom.d.ts".to_string(),
-      },
-    )
-    .expect("should have invoked op");
+    let actual = op_load::call(&mut state, "asset:///lib.dom.d.ts")
+      .expect("should have invoked op");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data.unwrap(), expected);
     assert!(actual.version.is_some());
@@ -1108,13 +1094,8 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(
-      &mut state,
-      LoadArgs {
-        specifier: "internal:///.tsbuildinfo".to_string(),
-      },
-    )
-    .expect("should have invoked op");
+    let actual = op_load::call(&mut state, "internal:///.tsbuildinfo")
+      .expect("should have invoked op");
     assert_eq!(
       serde_json::to_value(actual).unwrap(),
       json!({
@@ -1128,13 +1109,8 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_load::call(
-      &mut state,
-      LoadArgs {
-        specifier: "https://deno.land/x/mod.ts".to_string(),
-      },
-    )
-    .expect("should have invoked op");
+    let actual = op_load::call(&mut state, "https://deno.land/x/mod.ts")
+      .expect("should have invoked op");
     assert_eq!(
       serde_json::to_value(actual).unwrap(),
       json!({

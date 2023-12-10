@@ -9,6 +9,7 @@ use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::workspace_config_to_workspace_members;
+use crate::graph_util::DenoGraphFsAdapter;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
@@ -64,6 +65,7 @@ use std::sync::Arc;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -79,6 +81,7 @@ impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -91,6 +94,7 @@ impl ModuleLoadPreparer {
   ) -> Self {
     Self {
       options,
+      fs,
       graph_container,
       lockfile,
       maybe_file_watcher_reporter,
@@ -155,6 +159,7 @@ impl ModuleLoadPreparer {
         deno_graph::BuildOptions {
           is_dynamic,
           imports: maybe_imports,
+          file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
@@ -164,7 +169,12 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    graph_valid_with_cli_options(graph, &roots, &self.options)?;
+    graph_valid_with_cli_options(
+      graph,
+      self.fs.as_ref(),
+      &roots,
+      &self.options,
+    )?;
 
     // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {
@@ -563,7 +573,11 @@ impl ModuleLoader for CliModuleLoader {
     // support in REPL. This should be fixed.
     let resolution = self.shared.resolver.resolve(
       specifier,
-      &referrer,
+      &deno_graph::Range {
+        specifier: referrer.clone(),
+        start: deno_graph::Position::zeroed(),
+        end: deno_graph::Position::zeroed(),
+      },
       ResolutionMode::Execution,
     );
 

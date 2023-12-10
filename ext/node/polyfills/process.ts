@@ -10,6 +10,7 @@ const { ops } = core;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
+import { report } from "ext:deno_node/internal/process/report.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -74,15 +75,16 @@ const notImplementedEvents = [
 ];
 
 export const argv: string[] = [];
+let globalProcessExitCode: number | undefined = undefined;
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
     if (typeof code === "string") {
       const parsedCode = parseInt(code);
-      process.exitCode = isNaN(parsedCode) ? undefined : parsedCode;
+      globalProcessExitCode = isNaN(parsedCode) ? undefined : parsedCode;
     } else {
-      process.exitCode = code;
+      globalProcessExitCode = code;
     }
   }
 
@@ -361,6 +363,10 @@ class Process extends EventEmitter {
     return arch;
   }
 
+  get report() {
+    return report;
+  }
+
   get title() {
     return "deno";
   }
@@ -420,7 +426,17 @@ class Process extends EventEmitter {
   _exiting = _exiting;
 
   /** https://nodejs.org/api/process.html#processexitcode_1 */
-  exitCode: undefined | number = undefined;
+  get exitCode() {
+    return globalProcessExitCode;
+  }
+
+  set exitCode(code: number | undefined) {
+    globalProcessExitCode = code;
+    code = parseInt(code) || 0;
+    if (!isNaN(code)) {
+      ops.op_set_exit_code(code);
+    }
+  }
 
   // Typed as any to avoid importing "module" module for types
   // deno-lint-ignore no-explicit-any

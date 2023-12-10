@@ -247,6 +247,8 @@ impl LspUrlMap {
           LspUrlKind::File => Url::from_file_path(path).unwrap(),
         });
       }
+    } else if let Some(s) = file_like_to_file_specifier(url) {
+      specifier = Some(s);
     } else if let Some(s) = from_deno_url(url) {
       specifier = Some(s);
     }
@@ -254,6 +256,30 @@ impl LspUrlMap {
     inner.put(specifier.clone(), LspClientUrl(url.clone()));
     specifier
   }
+}
+
+/// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
+/// ```rust
+/// assert_eq!(
+///   file_like_to_file_specifier(
+///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+///   ),
+///   Some(Url::parse("file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc").unwrap()),
+/// );
+fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
+  if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
+    if let Ok(mut s) = ModuleSpecifier::parse(&format!(
+      "file://{}",
+      &specifier.as_str()[deno_core::url::quirks::internal_components(specifier)
+        .host_end as usize..],
+    )) {
+      s.query_pairs_mut()
+        .append_pair("scheme", specifier.scheme());
+      s.set_path(&format!("{}.ts", s.path()));
+      return Some(s);
+    }
+  }
+  None
 }
 
 #[cfg(test)]
@@ -388,5 +414,29 @@ mod tests {
     let fixture = resolve_url("deno:/status.md").unwrap();
     let actual = map.normalize_url(&fixture, LspUrlKind::File);
     assert_eq!(actual, fixture);
+  }
+
+  #[test]
+  fn test_file_like_to_file_specifier() {
+    assert_eq!(
+      file_like_to_file_specifier(
+        &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+      ),
+      Some(
+        Url::parse(
+          "file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc"
+        )
+        .unwrap()
+      ),
+    );
+    assert_eq!(
+      file_like_to_file_specifier(
+        &Url::parse("untitled:/path/to/file.ipynb#123").unwrap(),
+      ),
+      Some(
+        Url::parse("file:///path/to/file.ipynb.ts?scheme=untitled#123")
+          .unwrap()
+      ),
+    );
   }
 }

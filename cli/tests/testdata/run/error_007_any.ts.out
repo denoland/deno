@@ -1,1 +1,1 @@
-[WILDCARD]error: Uncaught { foo: "bar" }
+[WILDCARD]error: Uncaught (in promise) { foo: "bar" }

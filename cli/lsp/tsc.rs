@@ -3,7 +3,6 @@
 use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
-use super::documents::file_like_to_file_specifier;
 use super::documents::AssetOrDocument;
 use super::documents::DocumentsFilter;
 use super::language_server;
@@ -47,6 +46,8 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -209,6 +210,7 @@ fn normalize_diagnostic(
 
 #[derive(Clone, Debug)]
 pub struct TsServer {
+  performance: Arc<Performance>,
   sender: mpsc::UnboundedSender<Request>,
   specifier_map: Arc<TscSpecifierMap>,
 }
@@ -218,8 +220,9 @@ impl TsServer {
     let specifier_map = Arc::new(TscSpecifierMap::new());
     let specifier_map_ = specifier_map.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let perf = performance.clone();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance, cache, specifier_map_);
+      let mut ts_runtime = js_runtime(perf, cache, specifier_map_);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -230,8 +233,12 @@ impl TsServer {
             start(&mut ts_runtime, false).unwrap();
             started = true;
           }
-          let value = request(&mut ts_runtime, state_snapshot, req, token);
-          if tx.send(value).is_err() {
+          let value =
+            request(&mut ts_runtime, state_snapshot, req, token.clone());
+          let was_sent = tx.send(value).is_ok();
+          // Don't print the send error if the token is cancelled, it's expected
+          // to fail in that case and this commonly occurs.
+          if !was_sent && !token.is_cancelled() {
             lsp_warn!("Unable to send result to client.");
           }
         }
@@ -239,6 +246,7 @@ impl TsServer {
     });
 
     Self {
+      performance,
       sender: tx,
       specifier_map,
     }
@@ -257,9 +265,9 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<String>>(),]),
     };
-    let diagnostics_map_ = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
-    let mut diagnostics_map = HashMap::new();
-    for (mut specifier, mut diagnostics) in diagnostics_map_ {
+    let raw_diagnostics = self.request_with_cancellation::<HashMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot, req, token).await?;
+    let mut diagnostics_map = HashMap::with_capacity(raw_diagnostics.len());
+    for (mut specifier, mut diagnostics) in raw_diagnostics {
       specifier = self.specifier_map.normalize(&specifier)?.to_string();
       for diagnostic in &mut diagnostics {
         normalize_diagnostic(diagnostic, &self.specifier_map)?;
@@ -947,9 +955,12 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    self
+    let mark = self.performance.mark(format!("tsc.request.{}", req.method));
+    let r = self
       .request_with_cancellation(snapshot, req, Default::default())
-      .await
+      .await;
+    self.performance.measure(mark);
+    r
   }
 
   async fn request_with_cancellation<R>(
@@ -961,11 +972,24 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    // When an LSP request is cancelled by the client, the future this is being
+    // executed under and any local variables here will be dropped at the next
+    // await point. To pass on that cancellation to the TS thread, we make this
+    // wrapper which cancels the request's token on drop.
+    struct DroppableToken(CancellationToken);
+    impl Drop for DroppableToken {
+      fn drop(&mut self) {
+        self.0.cancel();
+      }
+    }
+    let token = token.child_token();
+    let droppable_token = DroppableToken(token.clone());
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
     if self.sender.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     let value = rx.await??;
+    drop(droppable_token);
     Ok(serde_json::from_value::<R>(value)?)
   }
 }
@@ -3715,16 +3739,8 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.denormalized_specifiers.get(original) {
       return specifier.to_string();
     }
-    let mut specifier = if let Some(s) = file_like_to_file_specifier(original) {
-      s.to_string()
-    } else {
-      original.to_string()
-    };
-    let media_type = if original.scheme() == "deno-notebook-cell" {
-      MediaType::TypeScript
-    } else {
-      MediaType::from_specifier(original)
-    };
+    let mut specifier = original.to_string();
+    let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
     if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
@@ -3819,12 +3835,6 @@ impl State {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SpecifierArgs {
-  specifier: String,
-}
-
 #[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
@@ -3854,71 +3864,78 @@ struct LoadResponse {
 }
 
 #[op2]
-#[serde]
-fn op_load(
+fn op_load<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
-  #[serde] args: SpecifierArgs,
-) -> Result<Option<LoadResponse>, AnyError> {
+  #[string] specifier: &str,
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_load", Some(&args));
-  let specifier = state.specifier_map.normalize(args.specifier)?;
-  if specifier.as_str() == "internal:///missing_dependency.d.ts" {
-    return Ok(Some(LoadResponse {
-      data: Arc::from("declare const __: any;\nexport = __;\n"),
-      script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
-      version: Some("1".to_string()),
-    }));
-  }
-  let asset_or_document = state.get_asset_or_document(&specifier);
+  let mark = state
+    .performance
+    .mark_with_args("tsc.op.op_load", specifier);
+  let specifier = state.specifier_map.normalize(specifier)?;
+  let maybe_load_response =
+    if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+      Some(LoadResponse {
+        data: Arc::from("declare const __: any;\nexport = __;\n"),
+        script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
+        version: Some("1".to_string()),
+      })
+    } else {
+      let asset_or_document = state.get_asset_or_document(&specifier);
+      asset_or_document.map(|doc| LoadResponse {
+        data: doc.text(),
+        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+        version: state.script_version(&specifier),
+      })
+    };
+
+  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+
   state.performance.measure(mark);
-  Ok(asset_or_document.map(|doc| LoadResponse {
-    data: doc.text(),
-    script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-    version: state.script_version(&specifier),
-  }))
+  Ok(serialized)
 }
 
 #[op2]
-#[serde]
-fn op_resolve(
+fn op_resolve<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[serde] args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, AnyError> {
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_resolve", Some(&args));
+  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
-  let result = match state.get_asset_or_document(&referrer) {
+  let specifiers = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
         state.state_snapshot.npm.as_ref(),
       );
-      Ok(
-        resolved
-          .into_iter()
-          .map(|o| {
-            o.map(|(s, mt)| {
-              (
-                state.specifier_map.denormalize(&s),
-                mt.as_ts_extension().to_string(),
-              )
-            })
+      resolved
+        .into_iter()
+        .map(|o| {
+          o.map(|(s, mt)| {
+            (
+              state.specifier_map.denormalize(&s),
+              mt.as_ts_extension().to_string(),
+            )
           })
-          .collect(),
-      )
+        })
+        .collect()
     }
     None => {
       lsp_warn!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       );
-      Ok(vec![None; args.specifiers.len()])
+      vec![None; args.specifiers.len()]
     }
   };
 
+  let response = serde_v8::to_v8(scope, specifiers)?;
   state.performance.measure(mark);
-  result
+  Ok(response)
 }
 
 #[op2]
@@ -3960,7 +3977,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     );
     for specifier in specifiers {
       if seen.insert(specifier.as_str()) {
-        if let Some(specifier) = documents.resolve_redirected(specifier) {
+        if let Some(specifier) = documents.resolve_specifier(specifier) {
           // only include dependencies we know to exist otherwise typescript will error
           if documents.exists(&specifier) {
             result.push(specifier.to_string());
@@ -3979,22 +3996,16 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     .collect()
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ScriptVersionArgs {
-  specifier: String,
-}
-
 #[op2]
 #[string]
 fn op_script_version(
   state: &mut OpState,
-  #[serde] args: ScriptVersionArgs,
+  #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
-  let specifier = state.specifier_map.normalize(args.specifier)?;
+  let specifier = state.specifier_map.normalize(specifier)?;
   Ok(state.script_version(&specifier))
 }
 
@@ -4403,6 +4414,9 @@ fn request(
   request: TscRequest,
   token: CancellationToken,
 ) -> Result<Value, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("Operation was cancelled."));
+  }
   let (performance, id) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -4413,8 +4427,10 @@ fn request(
     let id = state.last_id;
     (state.performance.clone(), id)
   };
-  let mark =
-    performance.mark("request", Some((request.method, request.args.clone())));
+  let mark = performance.mark_with_args(
+    format!("tsc.host.{}", request.method),
+    request.args.clone(),
+  );
   assert!(
     request.args.is_array(),
     "Internal error: expected args to be array"
@@ -4430,8 +4446,7 @@ fn request(
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.clone() {
-    state.response = None;
+  if let Some(response) = state.response.take() {
     Ok(response.data)
   } else {
     Err(custom_error(
