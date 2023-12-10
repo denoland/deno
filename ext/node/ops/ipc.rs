@@ -228,6 +228,9 @@ mod unix {
         if let Some(i) = memchr(b'\n', available) {
           if *read == 0 {
             // Fast path: parse and put into the json slot directly.
+            //
+            // Safety: It is ok to overwrite the  contents because
+            // we don't need to copy it into the buffer and the length will be reset.
             let available = unsafe {
               std::slice::from_raw_parts_mut(
                 available.as_ptr() as *mut u8,
@@ -289,7 +292,7 @@ mod unix {
       let search_char = vdupq_n_u8(c);
 
       while ptr.wrapping_add(16) <= end {
-        let chunk = vld1q_u8(ptr as *const u8);
+        let chunk = vld1q_u8(ptr);
         let comparison = vceqq_u8(chunk, search_char);
 
         // Check first 64 bits
@@ -348,7 +351,7 @@ mod unix {
       let child = tokio::spawn(async move {
         use tokio::io::AsyncWriteExt;
 
-        let size = 1024 * 1024 * 1;
+        let size = 1024 * 1024;
 
         let stri = "x".repeat(size);
         let data = format!("\"{}\"\n", stri);
