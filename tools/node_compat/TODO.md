@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2999
+Total: 2996
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -270,8 +270,6 @@ Total: 2999
 - [parallel/test-child-process-fork-net-socket.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-net-socket.js)
 - [parallel/test-child-process-fork-net.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-net.js)
 - [parallel/test-child-process-fork-no-shell.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-no-shell.js)
-- [parallel/test-child-process-fork-ref.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-ref.js)
-- [parallel/test-child-process-fork-ref2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-ref2.js)
 - [parallel/test-child-process-fork-stdio-string-variant.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-stdio-string-variant.js)
 - [parallel/test-child-process-fork-stdio.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-stdio.js)
 - [parallel/test-child-process-fork-timeout-kill-signal.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork-timeout-kill-signal.js)
@@ -279,7 +277,6 @@ Total: 2999
 - [parallel/test-child-process-fork3.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-fork3.js)
 - [parallel/test-child-process-http-socket-leak.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-http-socket-leak.js)
 - [parallel/test-child-process-internal.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-internal.js)
-- [parallel/test-child-process-ipc-next-tick.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-ipc-next-tick.js)
 - [parallel/test-child-process-ipc.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-ipc.js)
 - [parallel/test-child-process-no-deprecation.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-no-deprecation.js)
 - [parallel/test-child-process-pipe-dataflow.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-pipe-dataflow.js)

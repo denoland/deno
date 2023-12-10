@@ -1073,18 +1073,32 @@ export function setupChannel(target, channel) {
   const ipc = ops.op_node_ipc_pipe(channel);
 
   async function readLoop() {
-    while (true) {
-      if (!target.connected || target.killed) {
+    try {
+      while (true) {
+        if (!target.connected || target.killed) {
+          return;
+        }
+        const msg = await core.opAsync("op_node_ipc_read", ipc);
+        if (msg == null) {
+          // Channel closed.
+          target.disconnect();
+          return;
+        }
+
+        process.nextTick(handleMessage, msg);
+      }
+    } catch (err) {
+      if (
+        err instanceof Deno.errors.Interrupted ||
+        err instanceof Deno.errors.BadResource
+      ) {
         return;
       }
-      const msgs = await core.opAsync("op_node_ipc_read", ipc);
-      if (msgs == null) {
-        // Channel closed.
-        target.disconnect();
-        return;
-      }
-      target.emit("message", msgs);
     }
+  }
+
+  function handleMessage(msg) {
+    target.emit("message", msg);
   }
 
   target.send = function (message, handle, options, callback) {

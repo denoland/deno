@@ -39,6 +39,9 @@
       "test-child-process-execfile.js",
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-exit-code.js",
+      // TODO(littledivy): windows ipc streams not yet implemented
+      "test-child-process-fork-ref.js",
+      "test-child-process-fork-ref2.js",
       "test-child-process-ipc.js",
       "test-child-process-spawnsync-env.js",
       "test-child-process-stdio-inherit.js",
@@ -230,6 +233,7 @@
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-flush-stdio.js",
       "test-child-process-kill.js",
+      "test-child-process-ipc-next-tick.js",
       "test-child-process-set-blocking.js",
       "test-child-process-spawn-args.js",
       "test-child-process-spawn-event.js",
