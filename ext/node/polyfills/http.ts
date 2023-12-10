@@ -1459,6 +1459,10 @@ export class ServerResponse extends NodeWritable {
     return super.end(chunk, encoding, cb);
   }
 
+  flushHeaders() {
+    // no-op
+  }
+
   // Undocumented API used by `npm:compression`.
   _implicitHeader() {
     this.writeHead(this.statusCode);
