@@ -343,7 +343,8 @@ fn create_command(
     return Ok((command, pipe_fd));
   }
 
-  Ok((command, None))
+  #[cfg(not(unix))]
+  return Ok((command, None));
 }
 
 #[derive(Serialize)]
