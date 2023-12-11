@@ -553,6 +553,8 @@ fn test_html_reporter() {
   let bar_ts_html =
     fs::read_to_string(tempdir.join("html").join("bar.ts.html")).unwrap();
   assert!(bar_ts_html.contains("<h1>Coverage report for bar.ts</h1>"));
+  // Check <T> in source code is escaped to &lt;T&gt;
+  assert!(bar_ts_html.contains("&lt;T&gt;"));
 
   let baz_index_html =
     fs::read_to_string(tempdir.join("html").join("baz").join("index.html"))

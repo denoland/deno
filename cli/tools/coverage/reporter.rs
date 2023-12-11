@@ -512,7 +512,7 @@ impl HtmlCoverageReporter {
   /// Creates <table> of single file code coverage.
   pub fn create_html_code_table(
     &self,
-    file_text: &String,
+    file_text: &str,
     report: &CoverageReport,
   ) -> String {
     let line_num = file_text.lines().count();
@@ -547,6 +547,11 @@ impl HtmlCoverageReporter {
       })
       .collect::<Vec<_>>()
       .join("\n");
+
+    let file_text = file_text
+      .replace('&', "&amp;")
+      .replace('<', "&lt;")
+      .replace('>', "&gt;");
 
     // TODO(kt3k): Add syntax highlight to source code
     format!(
