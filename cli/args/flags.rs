@@ -7917,7 +7917,7 @@ mod tests {
           output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          r#type: CoverageType::Pretty
+          r#type: CoverageType::Summary
         }),
         ..Flags::default()
       }
