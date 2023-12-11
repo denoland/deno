@@ -129,7 +129,8 @@ impl TsFn {
           };
           let func: v8::Local<v8::Value> =
             func.open(scope).to_object(scope).unwrap().into();
-          // SAFETY: We're calling the provided callback with valid args
+          // SAFETY: env is valid for the duration of the callback.
+          //         data lifetime is users responsibility.
           unsafe {
             call_js_cb(env.0 as _, func.into(), context.0 as _, data.0 as _)
           }
