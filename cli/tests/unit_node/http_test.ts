@@ -855,7 +855,6 @@ Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw",
   }
 });
 
-
 Deno.test("[node/http] ServerResponse getHeader", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {
