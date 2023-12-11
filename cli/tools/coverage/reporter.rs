@@ -128,8 +128,11 @@ impl SummaryCoverageReporter {
     let (_, branch_percent, branch_class) =
       util::calc_coverage_display_info(*branch_hit, *branch_miss);
 
-    let file_name =
-      format!("{node:node_max$}", node = node, node_max = node_max);
+    let file_name = format!(
+      "{node:node_max$}",
+      node = node.replace('\\', "/"),
+      node_max = node_max
+    );
     let file_name = if line_class == "high" {
       format!("{}", colors::green(&file_name))
     } else if line_class == "medium" {
