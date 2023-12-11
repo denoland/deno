@@ -39,7 +39,7 @@ fn make_context<'a>(
 ) -> v8::Local<'a, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
   let context = v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap();
-  scope.escape(context).into()
+  scope.escape(context)
 }
 
 #[op2]

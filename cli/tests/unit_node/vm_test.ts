@@ -17,6 +17,7 @@ Deno.test({
   name: "vm runInNewContext sandbox",
   fn() {
     assertThrows(() => runInNewContext("Deno"));
+    // deno-lint-ignore no-var
     var a = 1;
     assertThrows(() => runInNewContext("a + 1"));
 
@@ -46,7 +47,7 @@ Deno.test({
       const result = webpackCommentRegExp.test(comment);
       assertEquals(result, true);
 
-      const [[key, value]]: [string, string][] = Object.entries(
+      const [[key, _value]]: [string, string][] = Object.entries(
         runInNewContext(`(function(){return {${comment}};})()`),
       );
       const expectedKey = comment.split(":")[0].trim();
