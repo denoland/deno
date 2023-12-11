@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-window-prefix no-prototype-builtins
-import { assert } from "../../../../../test_util/std/testing/asserts.ts";
+import { assert } from "../../../../../test_util/std/assert/mod.ts";
 import "./imported.ts";
 
 assert(window.hasOwnProperty("onload"));

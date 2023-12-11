@@ -46,6 +46,8 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -224,13 +226,9 @@ impl TsServer {
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let mut started = false;
+        start_tsc(&mut ts_runtime, false).unwrap();
+
         while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
-          if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false).unwrap();
-            started = true;
-          }
           let value =
             request(&mut ts_runtime, state_snapshot, req, token.clone());
           let was_sent = tx.send(value).is_ok();
@@ -953,9 +951,7 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    let mark = self
-      .performance
-      .mark(format!("tsc {}", req.method), None::<()>);
+    let mark = self.performance.mark(format!("tsc.request.{}", req.method));
     let r = self
       .request_with_cancellation(snapshot, req, Default::default())
       .await;
@@ -3778,6 +3774,8 @@ impl TscSpecifierMap {
   }
 }
 
+// TODO(bartlomieju): we have similar struct in `cli/tsc/mod.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
@@ -3835,12 +3833,6 @@ impl State {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SpecifierArgs {
-  specifier: String,
-}
-
 #[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
@@ -3850,7 +3842,8 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 #[op2(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  let mark = state.performance.mark("tsc.op.op_is_node_file");
+  let r = match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
       .npm
@@ -3858,7 +3851,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
       .map(|n| n.npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
-  }
+  };
+  state.performance.measure(mark);
+  r
 }
 
 #[derive(Debug, Serialize)]
@@ -3870,71 +3865,78 @@ struct LoadResponse {
 }
 
 #[op2]
-#[serde]
-fn op_load(
+fn op_load<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
-  #[serde] args: SpecifierArgs,
-) -> Result<Option<LoadResponse>, AnyError> {
+  #[string] specifier: &str,
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_load", Some(&args));
-  let specifier = state.specifier_map.normalize(args.specifier)?;
-  if specifier.as_str() == "internal:///missing_dependency.d.ts" {
-    return Ok(Some(LoadResponse {
-      data: Arc::from("declare const __: any;\nexport = __;\n"),
-      script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
-      version: Some("1".to_string()),
-    }));
-  }
-  let asset_or_document = state.get_asset_or_document(&specifier);
+  let mark = state
+    .performance
+    .mark_with_args("tsc.op.op_load", specifier);
+  let specifier = state.specifier_map.normalize(specifier)?;
+  let maybe_load_response =
+    if specifier.as_str() == "internal:///missing_dependency.d.ts" {
+      Some(LoadResponse {
+        data: Arc::from("declare const __: any;\nexport = __;\n"),
+        script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
+        version: Some("1".to_string()),
+      })
+    } else {
+      let asset_or_document = state.get_asset_or_document(&specifier);
+      asset_or_document.map(|doc| LoadResponse {
+        data: doc.text(),
+        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+        version: state.script_version(&specifier),
+      })
+    };
+
+  let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
+
   state.performance.measure(mark);
-  Ok(asset_or_document.map(|doc| LoadResponse {
-    data: doc.text(),
-    script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-    version: state.script_version(&specifier),
-  }))
+  Ok(serialized)
 }
 
 #[op2]
-#[serde]
-fn op_resolve(
+fn op_resolve<'s>(
+  scope: &'s mut v8::HandleScope,
   state: &mut OpState,
   #[serde] args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, AnyError> {
+) -> Result<v8::Local<'s, v8::Value>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_resolve", Some(&args));
+  let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
-  let result = match state.get_asset_or_document(&referrer) {
+  let specifiers = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
         state.state_snapshot.npm.as_ref(),
       );
-      Ok(
-        resolved
-          .into_iter()
-          .map(|o| {
-            o.map(|(s, mt)| {
-              (
-                state.specifier_map.denormalize(&s),
-                mt.as_ts_extension().to_string(),
-              )
-            })
+      resolved
+        .into_iter()
+        .map(|o| {
+          o.map(|(s, mt)| {
+            (
+              state.specifier_map.denormalize(&s),
+              mt.as_ts_extension().to_string(),
+            )
           })
-          .collect(),
-      )
+        })
+        .collect()
     }
     None => {
       lsp_warn!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       );
-      Ok(vec![None; args.specifiers.len()])
+      vec![None; args.specifiers.len()]
     }
   };
 
+  let response = serde_v8::to_v8(scope, specifiers)?;
   state.performance.measure(mark);
-  result
+  Ok(response)
 }
 
 #[op2]
@@ -3947,6 +3949,7 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
   let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
@@ -3976,7 +3979,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     );
     for specifier in specifiers {
       if seen.insert(specifier.as_str()) {
-        if let Some(specifier) = documents.resolve_redirected(specifier) {
+        if let Some(specifier) = documents.resolve_specifier(specifier) {
           // only include dependencies we know to exist otherwise typescript will error
           if documents.exists(&specifier) {
             result.push(specifier.to_string());
@@ -3986,32 +3989,29 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  result
+  let r = result
     .into_iter()
     .map(|s| match ModuleSpecifier::parse(&s) {
       Ok(s) => state.specifier_map.denormalize(&s),
       Err(_) => s,
     })
-    .collect()
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ScriptVersionArgs {
-  specifier: String,
+    .collect();
+  state.performance.measure(mark);
+  r
 }
 
 #[op2]
 #[string]
 fn op_script_version(
   state: &mut OpState,
-  #[serde] args: ScriptVersionArgs,
+  #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
-  // this op is very "noisy" and measuring its performance is not useful, so we
-  // don't measure it uniquely anymore.
-  let specifier = state.specifier_map.normalize(args.specifier)?;
-  Ok(state.script_version(&specifier))
+  let mark = state.performance.mark("tsc.op.op_script_version");
+  let specifier = state.specifier_map.normalize(specifier)?;
+  let r = state.script_version(&specifier);
+  state.performance.measure(mark);
+  Ok(r)
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
@@ -4062,7 +4062,7 @@ deno_core::extension!(deno_tsc,
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
@@ -4419,6 +4419,9 @@ fn request(
   request: TscRequest,
   token: CancellationToken,
 ) -> Result<Value, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("Operation was cancelled."));
+  }
   let (performance, id) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -4429,8 +4432,10 @@ fn request(
     let id = state.last_id;
     (state.performance.clone(), id)
   };
-  let mark =
-    performance.mark("request", Some((request.method, request.args.clone())));
+  let mark = performance.mark_with_args(
+    format!("tsc.host.{}", request.method),
+    request.args.clone(),
+  );
   assert!(
     request.args.is_array(),
     "Internal error: expected args to be array"
@@ -4446,8 +4451,7 @@ fn request(
   let state = op_state.borrow_mut::<State>();
 
   performance.measure(mark);
-  if let Some(response) = state.response.clone() {
-    state.response = None;
+  if let Some(response) = state.response.take() {
     Ok(response.data)
   } else {
     Err(custom_error(

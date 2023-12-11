@@ -7,7 +7,7 @@ import {
   assert,
   assertEquals,
   fail,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/assert/mod.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 
 import { gzip } from "node:zlib";
@@ -482,6 +482,26 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
   await promise;
 });
 
+// https://github.com/denoland/deno/issues/21509
+Deno.test("[node/http] ServerResponse flushHeaders", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.flushHeaders(); // no-op
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] server unref", async () => {
   const [statusCode, _output] = await execCode(`
   import http from "node:http";
@@ -834,4 +854,44 @@ Deno.test("[node/https] node:https exports globalAgent", async () => {
     https.default.globalAgent,
     "node:https must export 'globalAgent' on module default export",
   );
+});
+
+Deno.test("[node/http] node:http request.setHeader(header, null) doesn't throw", () => {
+  {
+    const req = http.request("http://localhost:4545/");
+    req.on("error", () => {});
+    // @ts-expect-error - null is not a valid header value
+    req.setHeader("foo", null);
+    req.end();
+    req.destroy();
+  }
+  {
+    const req = https.request("https://localhost:4545/");
+    req.on("error", () => {});
+    // @ts-expect-error - null is not a valid header value
+    req.setHeader("foo", null);
+    req.end();
+    req.destroy();
+  }
+});
+
+Deno.test("[node/http] ServerResponse getHeader", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("foo", "bar");
+    assertEquals(res.getHeader("foo"), "bar");
+    assertEquals(res.getHeader("ligma"), undefined);
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
 });

@@ -1,4 +1,4 @@
-error: Uncaught Error: bar <ref *1>
+error: Uncaught (in promise) Error: bar <ref *1>
 const y = new Error("bar", { cause: x });
           ^
     at file:///[WILDCARD]/error_cause_recursive.ts:2:11
