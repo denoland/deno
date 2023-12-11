@@ -766,8 +766,8 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
-// TODO(bartlomieju): this mrchanism is questionable. Can't we use something more
-// efficient here?
+// TODO(bartlomieju): this mechanism is questionable.
+// Can't we use something more efficient here?
 #[op2]
 fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   let state = state.borrow_mut::<State>();
