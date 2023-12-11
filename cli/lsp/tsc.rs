@@ -3844,7 +3844,8 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 #[op2(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  let mark = state.performance.mark("tsc.op.op_is_node_file");
+  let r = match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
       .npm
@@ -3852,7 +3853,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
       .map(|n| n.npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
-  }
+  };
+  state.performance.measure(mark);
+  r
 }
 
 #[derive(Debug, Serialize)]
@@ -3948,6 +3951,7 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
   let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
@@ -3987,13 +3991,15 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  result
+  let r = result
     .into_iter()
     .map(|s| match ModuleSpecifier::parse(&s) {
       Ok(s) => state.specifier_map.denormalize(&s),
       Err(_) => s,
     })
-    .collect()
+    .collect();
+  state.performance.measure(mark);
+  r
 }
 
 #[op2]
@@ -4003,10 +4009,13 @@ fn op_script_version(
   #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_script_version");
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
   let specifier = state.specifier_map.normalize(specifier)?;
-  Ok(state.script_version(&specifier))
+  let r = state.script_version(&specifier);
+  state.performance.measure(mark);
+  Ok(r)
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
