@@ -142,19 +142,19 @@ impl SummaryCoverageReporter {
     };
 
     let branch_percent = if branch_class == "high" {
-      format!("{}", colors::green(&format!("{:>8.2}", branch_percent)))
+      format!("{}", colors::green(&format!("{:>8.1}", branch_percent)))
     } else if branch_class == "medium" {
-      format!("{}", colors::yellow(&format!("{:>8.2}", branch_percent)))
+      format!("{}", colors::yellow(&format!("{:>8.1}", branch_percent)))
     } else {
-      format!("{}", colors::red(&format!("{:>8.2}", branch_percent)))
+      format!("{}", colors::red(&format!("{:>8.1}", branch_percent)))
     };
 
     let line_percent = if line_class == "high" {
-      format!("{}", colors::green(&format!("{:>6.2}", line_percent)))
+      format!("{}", colors::green(&format!("{:>6.1}", line_percent)))
     } else if line_class == "medium" {
-      format!("{}", colors::yellow(&format!("{:>6.2}", line_percent)))
+      format!("{}", colors::yellow(&format!("{:>6.1}", line_percent)))
     } else {
-      format!("{}", colors::red(&format!("{:>6.2}", line_percent)))
+      format!("{}", colors::red(&format!("{:>6.1}", line_percent)))
     };
 
     println!(
