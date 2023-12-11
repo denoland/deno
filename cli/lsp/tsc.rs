@@ -3778,6 +3778,8 @@ impl TscSpecifierMap {
   }
 }
 
+// TODO(bartlomieju): we have similar struct in `cli/tsc/mod.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 struct State {
   last_id: usize,
   performance: Arc<Performance>,

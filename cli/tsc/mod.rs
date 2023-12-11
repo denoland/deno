@@ -326,6 +326,8 @@ pub struct Response {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): we have similar struct in `tsc.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 #[derive(Debug)]
 struct State {
   hash_data: u64,
@@ -764,6 +766,8 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): this mrchanism is questionable. Can't we use something more
+// efficient here?
 #[op2]
 fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   let state = state.borrow_mut::<State>();
@@ -822,7 +826,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     },
   );
 
-  let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
   let request_value = json!({
     "config": request.config,
     "debug": request.debug,
@@ -841,9 +844,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     ..Default::default()
   });
 
-  runtime
-    .execute_script(located_script_name!(), startup_source)
-    .context("Could not properly start the compiler runtime.")?;
   runtime.execute_script(located_script_name!(), exec_source)?;
 
   let op_state = runtime.op_state();
@@ -1007,7 +1007,7 @@ mod tests {
       .execute_script_static(
         "<anon>",
         r#"
-      if (!(startup)) {
+      if (!(globalThis.exec)) {
           throw Error("bad");
         }
         console.log(`ts version: ${ts.version}`);

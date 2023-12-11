@@ -519,6 +519,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.fileExists("${specifier}")`);
       }
+      // TODO(bartlomieju): is this assumption still valid?
       // this is used by typescript to find the libs path
       // so we can completely ignore it
       return false;
@@ -963,6 +964,9 @@ delete Object.prototype.__proto__;
    * @param {number} id
    * @param {any} data
    */
+  // TODO(bartlomieju): this feels needslessly generic, both type chcking
+  // and language server use it with inefficient serialization. Id is not used
+  // anyway...
   function respond(id, data = null) {
     ops.op_respond({ id, data });
   }
@@ -1046,6 +1050,7 @@ delete Object.prototype.__proto__;
     }
   }
 
+  let hasStarted = false;
   /** @param {{ debug: boolean; }} init */
   function serverInit({ debug: debugFlag }) {
     if (hasStarted) {
@@ -1061,19 +1066,6 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host, documentRegistry);
     isNodeSourceFileCache.clear();
     debug("serverRestart()");
-  }
-
-  let hasStarted = false;
-
-  /** Startup the runtime environment, setting various flags.
-   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg
-   */
-  function startup({ debugFlag = false }) {
-    if (hasStarted) {
-      throw new Error("The compiler runtime already started.");
-    }
-    hasStarted = true;
-    setLogDebug(!!debugFlag, "TS");
   }
 
   // A build time only op that provides some setup information that is used to
@@ -1161,12 +1153,12 @@ delete Object.prototype.__proto__;
   // checking TypeScript.
   /** @type {any} */
   const global = globalThis;
-  global.startup = startup;
   global.exec = exec;
   global.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
+  // TODO: not needed to be lazy called from Rust - call it eagerly
   global.serverInit = serverInit;
   global.serverRequest = serverRequest;
 })(this);
