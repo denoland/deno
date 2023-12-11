@@ -26,7 +26,12 @@ export class Script {
     notImplemented("Script.prototype.runInContext");
   }
 
-  runInNewContext(contextObject: any, _options: any) {
+  runInNewContext(contextObject: any, options: any) {
+    if (options) {
+      console.warn(
+        "Script.runInNewContext options are currently not supported",
+      );
+    }
     return ops.op_vm_run_in_new_context(this.code, contextObject);
   }
 
@@ -54,8 +59,11 @@ export function runInContext(
 export function runInNewContext(
   code: string,
   contextObject: any,
-  _options: any,
+  options: any,
 ) {
+  if (options) {
+    console.warn("vm.runInNewContext options are currently not supported");
+  }
   return ops.op_vm_run_in_new_context(code, contextObject);
 }
 
