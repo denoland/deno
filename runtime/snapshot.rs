@@ -7,6 +7,7 @@ use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::snapshot_util::*;
+use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
 use std::path::Path;
@@ -261,7 +262,13 @@ pub fn create_runtime_snapshot(
     startup_snapshot: None,
     extensions,
     compression_cb: None,
-    with_runtime_cb: None,
+    with_runtime_cb: Some(Box::new(|rt| {
+      let isolate = rt.v8_isolate();
+      let scope = &mut v8::HandleScope::new(isolate);
+
+      let ctx = v8::Context::new(scope);
+      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+    })),
     skip_op_registration: false,
   });
   for path in output.files_loaded_during_snapshot {

@@ -30,6 +30,7 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use ops::v8::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;

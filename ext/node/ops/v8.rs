@@ -32,6 +32,16 @@ pub fn op_v8_get_heap_statistics(
   buffer[13] = stats.external_memory() as f64;
 }
 
+pub const VM_CONTEXT_INDEX: usize = 0;
+
+fn make_context<'a>(
+  scope: &mut v8::HandleScope<'a>,
+) -> v8::Local<'a, v8::Context> {
+  let scope = &mut v8::EscapableHandleScope::new(scope);
+  let context = v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap();
+  scope.escape(context).into()
+}
+
 #[op2]
 pub fn op_vm_run_in_new_context<'a>(
   scope: &mut v8::HandleScope<'a>,
@@ -44,13 +54,27 @@ pub fn op_vm_run_in_new_context<'a>(
     ctx_val.try_into()?
   };
 
-  let template = v8::ObjectTemplate::new(scope);
-  let ctx = v8::Context::new_from_template(scope, template);
+  let ctx = make_context(scope);
 
   let scope = &mut v8::ContextScope::new(scope, ctx);
 
-  let script = v8::Script::compile(scope, script, None).unwrap();
-  let result = script.run(scope).unwrap();
+  let tc_scope = &mut v8::TryCatch::new(scope);
+  let script = match v8::Script::compile(tc_scope, script, None) {
+    Some(s) => s,
+    None => {
+      assert!(tc_scope.has_caught());
+      tc_scope.rethrow();
+      return Ok(v8::undefined(tc_scope).into());
+    }
+  };
 
-  Ok(result)
+  Ok(match script.run(tc_scope) {
+    Some(result) => result,
+    None => {
+      assert!(tc_scope.has_caught());
+      tc_scope.rethrow();
+
+      v8::undefined(tc_scope).into()
+    }
+  })
 }
