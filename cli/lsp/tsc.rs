@@ -4010,8 +4010,6 @@ fn op_script_version(
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_version");
-  // this op is very "noisy" and measuring its performance is not useful, so we
-  // don't measure it uniquely anymore.
   let specifier = state.specifier_map.normalize(specifier)?;
   let r = state.script_version(&specifier);
   state.performance.measure(mark);

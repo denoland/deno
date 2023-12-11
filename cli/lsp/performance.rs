@@ -51,7 +51,12 @@ pub struct PerformanceMeasure {
 
 impl fmt::Display for PerformanceMeasure {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{} ({}ms)", self.name, self.duration.as_millis())
+    write!(
+      f,
+      "{} ({}ms)",
+      self.name,
+      self.duration.as_micros() as f64 / 1000.0
+    )
   }
 }
 
@@ -128,6 +133,24 @@ impl Performance {
           count,
           average_duration: a.as_millis() as u32,
         }
+      })
+      .collect()
+  }
+
+  pub fn averages_as_f64(&self) -> Vec<(String, u32, f64)> {
+    let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
+    for measure in self.measures.lock().iter() {
+      averages
+        .entry(measure.name.clone())
+        .or_default()
+        .push(measure.duration);
+    }
+    averages
+      .into_iter()
+      .map(|(k, d)| {
+        let count = d.len() as u32;
+        let a = d.into_iter().sum::<Duration>() / count;
+        (k, count, a.as_micros() as f64 / 1000.0)
       })
       .collect()
   }
