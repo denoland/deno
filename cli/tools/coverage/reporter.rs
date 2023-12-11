@@ -548,6 +548,8 @@ impl HtmlCoverageReporter {
       .collect::<Vec<_>>()
       .join("\n");
 
+    let file_text = file_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+
     // TODO(kt3k): Add syntax highlight to source code
     format!(
       "<table class='coverage'>
