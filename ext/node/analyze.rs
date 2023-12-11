@@ -351,6 +351,7 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
     "interface",
     "let",
     "long",
+    "mod",
     "native",
     "new",
     "null",
