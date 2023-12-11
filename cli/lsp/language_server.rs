@@ -3809,15 +3809,11 @@ impl Inner {
       .unwrap();
       contents
         .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
-      let mut averages = self.performance.averages();
-      averages.sort();
-      for average in averages {
-        writeln!(
-          contents,
-          "|{}|{}ms|{}|",
-          average.name, average.average_duration, average.count
-        )
-        .unwrap();
+      let mut averages = self.performance.averages_as_f64();
+      averages.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, count, average_duration) in averages {
+        writeln!(contents, "|{}|{}ms|{}|", name, average_duration, count)
+          .unwrap();
       }
       Some(contents)
     } else {
