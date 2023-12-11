@@ -290,7 +290,7 @@ fn create_command(
       }
 
       if cfg!(target_os = "macos") {
-        let fcntl = 
+        let fcntl =
           |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
             let flags = libc::fcntl(fd, libc::F_GETFL, 0);
 
