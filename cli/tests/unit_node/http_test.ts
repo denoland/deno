@@ -482,6 +482,26 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
   await promise;
 });
 
+// https://github.com/denoland/deno/issues/21509
+Deno.test("[node/http] ServerResponse flushHeaders", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.flushHeaders(); // no-op
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] server unref", async () => {
   const [statusCode, _output] = await execCode(`
   import http from "node:http";
