@@ -6,8 +6,7 @@
 /// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_arraybuffer_was_detached,
   op_transfer_arraybuffer,
@@ -29,7 +28,6 @@ import {
   remove,
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
   ArrayBufferIsView,

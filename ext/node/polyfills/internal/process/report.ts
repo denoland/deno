@@ -3,7 +3,7 @@
 import { arch, versions } from "ext:deno_node/_process/process.ts";
 import { cpus, hostname, networkInterfaces } from "node:os";
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   Error,
   StringPrototypeToUpperCase,

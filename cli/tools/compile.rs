@@ -37,6 +37,18 @@ pub async fn compile(
     vec
   };
 
+  // this is not supported, so show a warning about it, but don't error in order
+  // to allow someone to still run `deno compile` when this is in a deno.json
+  if cli_options.unstable_sloppy_imports() {
+    log::warn!(
+      concat!(
+        "{} Sloppy imports are not supported in deno compile. ",
+        "The compiled executable may encouter runtime errors.",
+      ),
+      crate::colors::yellow("Warning"),
+    );
+  }
+
   let output_path = resolve_compile_executable_output_path(
     &compile_flags,
     cli_options.initial_cwd(),

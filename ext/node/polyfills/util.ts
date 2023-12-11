@@ -16,7 +16,7 @@ import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import process from "node:process";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,

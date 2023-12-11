@@ -1,0 +1,16 @@
+main [class HttpClient]
+main [Function: createHttpClient]
+main [class HttpConn]
+main Symbol("[[associated_ws]]")
+main [Function: serve]
+main [Function: upgradeHttp]
+main [Function: upgradeWebSocket]
+main [Function: upgradeHttp]
+worker [class HttpClient]
+worker [Function: createHttpClient]
+worker [class HttpConn]
+worker Symbol("[[associated_ws]]")
+worker [Function: serve]
+worker [Function: upgradeHttp]
+worker [Function: upgradeWebSocket]
+worker [Function: upgradeHttp]

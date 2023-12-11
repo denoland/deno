@@ -1,4 +1,4 @@
-error: TypeError: Cannot read properties of undefined (reading 'fn')
+error: (in promise) TypeError: Cannot read properties of undefined (reading 'fn')
 Deno.bench();
      ^
     at [WILDCARD]

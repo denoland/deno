@@ -85,12 +85,19 @@ pub struct CompletionsFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CoverageType {
+  Pretty,
+  Lcov,
+  Html,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
-  pub lcov: bool,
+  pub r#type: CoverageType,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -455,6 +462,7 @@ pub struct Flags {
   pub unstable: bool,
   pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
+  pub unstable_sloppy_imports: bool,
   pub unstable_workspaces: bool,
   pub unstable_features: Vec<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -807,6 +815,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
     DENO_V8_FLAGS        Set V8 command line options
+    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
@@ -862,6 +871,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   flags.unstable_bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_sloppy_imports = matches.get_flag("unstable-sloppy-imports");
   flags.unstable_workspaces = matches.get_flag("unstable-workspaces");
 
   if matches.get_flag("quiet") {
@@ -977,6 +987,17 @@ fn clap_root() -> Command {
         .long("unstable-byonm")
         .help("Enable unstable 'bring your own node_modules' feature")
         .env("DENO_UNSTABLE_BYONM")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true),
+    )
+    .arg(
+      Arg::new("unstable-sloppy-imports")
+        .long("unstable-sloppy-imports")
+        .help(
+          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
+        )
+        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
@@ -1383,6 +1404,14 @@ Generate html reports from lcov:
             )
             .require_equals(true)
             .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("html")
+            .long("html")
+            .help(
+              "Output coverage report in HTML format in the given directory",
+            )
+            .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("files")
@@ -2133,12 +2162,14 @@ Directory arguments are expanded to all contained files matching the glob
     .arg(
       Arg::new("coverage")
         .long("coverage")
-        .require_equals(true)
         .value_name("DIR")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("coverage")
         .conflicts_with("inspect")
         .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data into DIR"),
+        .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
     )
     .arg(
       Arg::new("parallel")
@@ -3285,7 +3316,13 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let lcov = matches.get_flag("lcov");
+  let r#type = if matches.get_flag("lcov") {
+    CoverageType::Lcov
+  } else if matches.get_flag("html") {
+    CoverageType::Html
+  } else {
+    CoverageType::Pretty
+  };
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
@@ -3295,7 +3332,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     include,
     exclude,
-    lcov,
+    r#type,
   });
 }
 
@@ -7403,6 +7440,23 @@ mod tests {
   }
 
   #[test]
+  fn test_coverage_default_dir() {
+    let r = flags_from_vec(svec!["deno", "test", "--coverage"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          coverage_dir: Some("coverage".to_string()),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn bundle_with_cafile() {
     let r = flags_from_vec(svec![
       "deno",
@@ -7854,7 +7908,7 @@ mod tests {
           output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: false,
+          r#type: CoverageType::Pretty
         }),
         ..Flags::default()
       }
@@ -7880,7 +7934,7 @@ mod tests {
           },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: true,
+          r#type: CoverageType::Lcov,
           output: Some(PathBuf::from("foo.lcov")),
         }),
         ..Flags::default()

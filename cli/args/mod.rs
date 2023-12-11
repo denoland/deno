@@ -1342,7 +1342,7 @@ impl CliOptions {
       || self
         .maybe_config_file()
         .as_ref()
-        .map(|c| c.json.unstable.contains(&"bare-node-builtins".to_string()))
+        .map(|c| c.has_unstable("bare-node-builtins"))
         .unwrap_or(false)
   }
 
@@ -1355,7 +1355,16 @@ impl CliOptions {
       || self
         .maybe_config_file()
         .as_ref()
-        .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+        .map(|c| c.has_unstable("byonm"))
+        .unwrap_or(false)
+  }
+
+  pub fn unstable_sloppy_imports(&self) -> bool {
+    self.flags.unstable_sloppy_imports
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.has_unstable("sloppy-imports"))
         .unwrap_or(false)
   }
 

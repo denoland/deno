@@ -149,6 +149,7 @@ mod ts {
     op_crate_libs.insert("deno.url", deno_url::get_declaration());
     op_crate_libs.insert("deno.web", deno_web::get_declaration());
     op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
+    op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
     op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
@@ -428,7 +429,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.2.2"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.3.3"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
@@ -457,4 +458,12 @@ fn main() {
     ));
     res.compile().unwrap();
   }
+}
+
+fn deno_webgpu_get_declaration() -> PathBuf {
+  let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+  manifest_dir
+    .join("tsc")
+    .join("dts")
+    .join("lib.deno_webgpu.d.ts")
 }

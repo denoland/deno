@@ -495,7 +495,12 @@ pub async fn run_benchmarks_with_watch(
         let graph = module_graph_builder
           .create_graph(graph_kind, bench_modules.clone())
           .await?;
-        graph_valid_with_cli_options(&graph, &bench_modules, cli_options)?;
+        graph_valid_with_cli_options(
+          &graph,
+          factory.fs().as_ref(),
+          &bench_modules,
+          cli_options,
+        )?;
 
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {

@@ -3,18 +3,12 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-const core = globalThis.Deno.core;
+import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeIndexOf,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
-  ArrayPrototypePush,
-  ArrayPrototypeShift,
-  ArrayPrototypeSplice,
   DateNow,
   Error,
   ErrorPrototype,
@@ -23,17 +17,15 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
-  SafeWeakMap,
   Symbol,
   SymbolIterator,
   TypeError,
-  WeakMapPrototypeDelete,
-  WeakMapPrototypeGet,
-  WeakMapPrototypeSet,
 } = primordials;
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
@@ -57,6 +49,7 @@ import {
   denoNs,
   denoNsUnstable,
   denoNsUnstableById,
+  unstableIds,
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -64,7 +57,7 @@ import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
   mainRuntimeGlobalProperties,
   memoizeLazy,
-  unstableWindowOrWorkerGlobalScope,
+  unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
@@ -328,7 +321,6 @@ function runtimeStart(
   target,
 ) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
-  core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   ops.op_set_format_exception_callback(formatException);
@@ -340,91 +332,38 @@ function runtimeStart(
   core.setBuildInfo(target);
 }
 
-const pendingRejections = [];
-const pendingRejectionsReasons = new SafeWeakMap();
-
-function promiseRejectCallback(type, promise, reason) {
-  switch (type) {
-    case 0: {
-      ops.op_store_pending_promise_rejection(promise, reason);
-      ArrayPrototypePush(pendingRejections, promise);
-      WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
-      break;
-    }
-    case 1: {
-      ops.op_remove_pending_promise_rejection(promise);
-      const index = ArrayPrototypeIndexOf(pendingRejections, promise);
-      if (index > -1) {
-        ArrayPrototypeSplice(pendingRejections, index, 1);
-        WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
-      }
-      break;
-    }
-    default:
-      return false;
-  }
-
-  return !!globalThis_.onunhandledrejection ||
-    event.listenerCount(globalThis_, "unhandledrejection") > 0 ||
-    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined";
-}
-
-function promiseRejectMacrotaskCallback() {
-  // We have no work to do, tell the runtime that we don't
-  // need to perform microtask checkpoint.
-  if (pendingRejections.length === 0) {
-    return undefined;
-  }
-
-  while (pendingRejections.length > 0) {
-    const promise = ArrayPrototypeShift(pendingRejections);
-    const hasPendingException = ops.op_has_pending_promise_rejection(
+core.setUnhandledPromiseRejectionHandler(processUnhandledPromiseRejection);
+// Notification that the core received an unhandled promise rejection that is about to
+// terminate the runtime. If we can handle it, attempt to do so.
+function processUnhandledPromiseRejection(promise, reason) {
+  const rejectionEvent = new event.PromiseRejectionEvent(
+    "unhandledrejection",
+    {
+      cancelable: true,
       promise,
-    );
-    const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
-    WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
+      reason,
+    },
+  );
 
-    if (!hasPendingException) {
-      continue;
-    }
+  // Note that the handler may throw, causing a recursive "error" event
+  globalThis_.dispatchEvent(rejectionEvent);
 
-    const rejectionEvent = new event.PromiseRejectionEvent(
-      "unhandledrejection",
-      {
-        cancelable: true,
-        promise,
-        reason,
-      },
-    );
-
-    const errorEventCb = (event) => {
-      if (event.error === reason) {
-        ops.op_remove_pending_promise_rejection(promise);
-      }
-    };
-    // Add a callback for "error" event - it will be dispatched
-    // if error is thrown during dispatch of "unhandledrejection"
-    // event.
-    globalThis_.addEventListener("error", errorEventCb);
-    globalThis_.dispatchEvent(rejectionEvent);
-    globalThis_.removeEventListener("error", errorEventCb);
-
-    // If event was not yet prevented, try handing it off to Node compat layer
-    // (if it was initialized)
-    if (
-      !rejectionEvent.defaultPrevented &&
-      typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
-    ) {
-      internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
-    }
-
-    // If event was not prevented (or "unhandledrejection" listeners didn't
-    // throw) we will let Rust side handle it.
-    if (rejectionEvent.defaultPrevented) {
-      ops.op_remove_pending_promise_rejection(promise);
-    }
+  // If event was not yet prevented, try handing it off to Node compat layer
+  // (if it was initialized)
+  if (
+    !rejectionEvent.defaultPrevented &&
+    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
+  ) {
+    internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
   }
-  return true;
+
+  // If event was not prevented (or "unhandledrejection" listeners didn't
+  // throw) we will let Rust side handle it.
+  if (rejectionEvent.defaultPrevented) {
+    return true;
+  }
+
+  return false;
 }
 
 let hasBootstrapped = false;
@@ -434,6 +373,35 @@ let hasBootstrapped = false;
 delete globalThis.console;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+
+// Set up global properties shared by main and worker runtime that are exposed
+// by unstable features if those are enabled.
+function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
+  const { unstableFlag, unstableFeatures } = options;
+  if (unstableFlag) {
+    const all = ObjectValues(unstableForWindowOrWorkerGlobalScope);
+    for (let i = 0; i <= all.length; i++) {
+      const props = all[i];
+      ObjectDefineProperties(globalThis, { ...props });
+    }
+  } else {
+    const featureIds = ArrayPrototypeMap(
+      ObjectKeys(
+        unstableForWindowOrWorkerGlobalScope,
+      ),
+      (k) => k | 0,
+    );
+
+    for (let i = 0; i <= featureIds.length; i++) {
+      const featureId = featureIds[i];
+      if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
+        const props = unstableForWindowOrWorkerGlobalScope[featureId];
+        ObjectDefineProperties(globalThis, { ...props });
+      }
+    }
+  }
+}
+
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
@@ -494,9 +462,10 @@ function bootstrapMainRuntime(runtimeOptions) {
     location.setLocationHref(location_);
   }
 
-  if (unstableFlag) {
-    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
-  }
+  exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
+    unstableFlag,
+    unstableFeatures,
+  });
   ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
     // TODO(bartlomieju): in the future we might want to change the
@@ -522,8 +491,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   event.defineEventHandler(globalThis, "beforeunload");
   event.defineEventHandler(globalThis, "unload");
   event.defineEventHandler(globalThis, "unhandledrejection");
-
-  core.setPromiseRejectCallback(promiseRejectCallback);
 
   runtimeStart(
     denoVersion,
@@ -567,7 +534,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     }
   }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 8)) {
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
     // Removes the `__proto__` for security reasons.
     // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
     delete Object.prototype.__proto__;
@@ -613,9 +580,10 @@ function bootstrapWorkerRuntime(
   delete globalThis.nodeBootstrap;
   hasBootstrapped = true;
 
-  if (unstableFlag) {
-    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
-  }
+  exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
+    unstableFlag,
+    unstableFeatures,
+  });
   ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
     name: util.writable(name),
@@ -641,8 +609,6 @@ function bootstrapWorkerRuntime(
   event.defineEventHandler(self, "message");
   event.defineEventHandler(self, "error", undefined, true);
   event.defineEventHandler(self, "unhandledrejection");
-
-  core.setPromiseRejectCallback(promiseRejectCallback);
 
   // `Deno.exit()` is an alias to `self.close()`. Setting and exit
   // code using an op in worker context is a no-op.
@@ -672,7 +638,7 @@ function bootstrapWorkerRuntime(
     }
   }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, /* unsafe-proto */ 8)) {
+  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
     // Removes the `__proto__` for security reasons.
     // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
     delete Object.prototype.__proto__;
