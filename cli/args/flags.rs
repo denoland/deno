@@ -86,6 +86,7 @@ pub struct CompletionsFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CoverageType {
+  Summary,
   Pretty,
   Lcov,
   Html,
@@ -1411,6 +1412,12 @@ Generate html reports from lcov:
             .help(
               "Output coverage report in HTML format in the given directory",
             )
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("pretty")
+            .long("pretty")
+            .help("Output coverage report in pretty format in the terminal.")
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3320,8 +3327,10 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     CoverageType::Lcov
   } else if matches.get_flag("html") {
     CoverageType::Html
-  } else {
+  } else if matches.get_flag("pretty") {
     CoverageType::Pretty
+  } else {
+    CoverageType::Summary
   };
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
