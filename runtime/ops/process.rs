@@ -269,78 +269,82 @@ fn create_command(
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
-    // SockFlag is broken on macOS
-    // https://github.com/nix-rust/nix/issues/861
-    let mut fds = [-1, -1];
-    #[cfg(not(target_os = "macos"))]
-    let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
+    if args.ipc >= -1 {
+      // SockFlag is broken on macOS
+      // https://github.com/nix-rust/nix/issues/861
+      let mut fds = [-1, -1];
+      #[cfg(not(target_os = "macos"))]
+      let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
 
-    #[cfg(target_os = "macos")]
-    let flags = 0;
+      #[cfg(target_os = "macos")]
+      let flags = 0;
 
-    let ret = libc::socketpair(
-      libc::AF_UNIX,
-      libc::SOCK_STREAM | flags,
-      0,
-      fds.as_mut_ptr(),
-    );
-    if ret != 0 {
-      return Err(std::io::Error::last_os_error().into());
-    }
+      let ret = libc::socketpair(
+        libc::AF_UNIX,
+        libc::SOCK_STREAM | flags,
+        0,
+        fds.as_mut_ptr(),
+      );
+      if ret != 0 {
+        return Err(std::io::Error::last_os_error().into());
+      }
 
-    if cfg!(target_os = "macos") {
-      let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
-        let flags = libc::fcntl(fd, libc::F_GETFL, 0);
+      if cfg!(target_os = "macos") {
+        let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
+          let flags = libc::fcntl(fd, libc::F_GETFL, 0);
 
-        if flags == -1 {
-          return Err(fail(fds));
+          if flags == -1 {
+            return Err(fail(fds));
+          }
+          let ret = libc::fcntl(fd, libc::F_SETFL, flags | flag);
+          if ret == -1 {
+            return Err(fail(fds));
+          }
+          Ok(())
+        };
+
+        fn fail(fds: [i32; 2]) -> std::io::Error {
+          unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+          }
+          std::io::Error::last_os_error()
         }
-        let ret = libc::fcntl(fd, libc::F_SETFL, flags | flag);
-        if ret == -1 {
-          return Err(fail(fds));
+
+        // SOCK_NONBLOCK is not supported on macOS.
+        (fcntl)(fds[0], libc::O_NONBLOCK)?;
+        (fcntl)(fds[1], libc::O_NONBLOCK)?;
+
+        // SOCK_CLOEXEC is not supported on macOS.
+        (fcntl)(fds[0], libc::FD_CLOEXEC)?;
+        (fcntl)(fds[1], libc::FD_CLOEXEC)?;
+      }
+
+      let fd1 = fds[0];
+      let fd2 = fds[1];
+
+      let ipc = args.ipc;
+      command.pre_exec(move || {
+        if ipc >= 0 {
+          let _fd = libc::dup2(fd2, ipc);
+          libc::close(fd2);
         }
+        libc::setgroups(0, std::ptr::null());
         Ok(())
-      };
+      });
 
-      fn fail(fds: [i32; 2]) -> std::io::Error {
-        unsafe {
-          libc::close(fds[0]);
-          libc::close(fds[1]);
-        }
-        std::io::Error::last_os_error()
-      }
+      /* One end returned to parent process (this) */
+      let pipe_fd = Some(fd1);
 
-      // SOCK_NONBLOCK is not supported on macOS.
-      (fcntl)(fds[0], libc::O_NONBLOCK)?;
-      (fcntl)(fds[1], libc::O_NONBLOCK)?;
-
-      // SOCK_CLOEXEC is not supported on macOS.
-      (fcntl)(fds[0], libc::FD_CLOEXEC)?;
-      (fcntl)(fds[1], libc::FD_CLOEXEC)?;
-    }
-
-    let fd1 = fds[0];
-    let fd2 = fds[1];
-
-    let ipc = args.ipc;
-    command.pre_exec(move || {
+      /* The other end passed to child process via DENO_CHANNEL_FD */
       if ipc >= 0 {
-        let _fd = libc::dup2(fd2, ipc);
-        libc::close(fd2);
+        command.env("DENO_CHANNEL_FD", format!("{}", args.ipc));
       }
-      libc::setgroups(0, std::ptr::null());
-      Ok(())
-    });
 
-    /* One end returned to parent process (this) */
-    let pipe_fd = Some(fd1);
-
-    /* The other end passed to child process via DENO_CHANNEL_FD */
-    if ipc >= 0 {
-      command.env("DENO_CHANNEL_FD", format!("{}", args.ipc));
+      return Ok((command, pipe_fd));
     }
 
-    Ok((command, pipe_fd))
+    Ok((command, None))
   }
 
   #[cfg(not(unix))]
