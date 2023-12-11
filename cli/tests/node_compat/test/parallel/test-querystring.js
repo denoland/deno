@@ -155,14 +155,13 @@ const qsWeirdObjects = [
   [{ a: 1, b: [] }, 'a=1', { 'a': '1' }],
 ];
 
-// TODO(wafuwafu13): Enable this when `vm` is implemented.
-// const vm = require('vm');
-// const foreignObject = vm.runInNewContext('({"foo": ["bar", "baz"]})');
+const vm = require('vm');
+const foreignObject = vm.runInNewContext('({"foo": ["bar", "baz"]})');
 
 const qsNoMungeTestCases = [
   ['', {}],
   ['foo=bar&foo=baz', { 'foo': ['bar', 'baz'] }],
-  // ['foo=bar&foo=baz', foreignObject],
+  ['foo=bar&foo=baz', foreignObject],
   ['blah=burp', { 'blah': 'burp' }],
   ['a=!-._~\'()*', { 'a': '!-._~\'()*' }],
   ['a=abcdefghijklmnopqrstuvwxyz', { 'a': 'abcdefghijklmnopqrstuvwxyz' }],
