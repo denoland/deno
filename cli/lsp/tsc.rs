@@ -4056,18 +4056,29 @@ fn run_tsc_thread(
 
   let tsc_future = async {
     let mut started = false;
-    while let Some((req, state_snapshot, tx, token)) = request_rx.recv().await {
-      if !started {
-        // TODO(@kitsonk) need to reflect the debug state of the lsp here
-        start(&mut tsc_runtime, false).unwrap();
-        started = true;
-      }
-      let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
-      let was_sent = tx.send(value).is_ok();
-      // Don't print the send error if the token is cancelled, it's expected
-      // to fail in that case and this commonly occurs.
-      if !was_sent && !token.is_cancelled() {
-        lsp_warn!("Unable to send result to client.");
+
+    loop {
+      tokio::select! {
+        biased;
+
+        maybe_request = request_rx.recv() => {
+          if let Some((req, state_snapshot, tx, token)) = maybe_request {
+            if !started {
+              // TODO(@kitsonk) need to reflect the debug state of the lsp here
+              start(&mut tsc_runtime, false).unwrap();
+              started = true;
+            }
+            let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
+            let was_sent = tx.send(value).is_ok();
+            // Don't print the send error if the token is cancelled, it's expected
+            // to fail in that case and this commonly occurs.
+            if !was_sent && !token.is_cancelled() {
+              lsp_warn!("Unable to send result to client.");
+            }
+          }
+        },
+
+        _ = tsc_runtime.run_event_loop(true) => {}
       }
     }
   }

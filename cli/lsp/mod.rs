@@ -41,7 +41,8 @@ pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
-  let start_tsc_inspector = std::env::var("DENO_LSP_INSPECTOR").ok().is_some();
+  // let start_tsc_inspector = std::env::var("DENO_LSP_INSPECTOR").ok().is_some();
+  let start_tsc_inspector = true;
 
   let token = CancellationToken::new();
   let builder = LspService::build(|client| {
