@@ -190,6 +190,7 @@ async fn generate_docs_directory(
     main_entrypoint: None,
     global_symbols: Default::default(),
     global_symbol_href_resolver: Rc::new(|_, _| String::new()),
+    rewrite_map: None,
     url_resolver: Rc::new(deno_doc::html::default_url_resolver),
   };
 

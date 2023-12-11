@@ -1,8 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
+use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -353,7 +355,7 @@ fn get_tsc_roots(
     for dep in import.dependencies.values() {
       let specifier = dep.get_type().or_else(|| dep.get_code());
       if let Some(specifier) = &specifier {
-        if seen_roots.insert(*specifier) {
+        if seen_roots.insert((*specifier).clone()) {
           let maybe_entry = graph
             .get(specifier)
             .and_then(|m| maybe_get_check_entry(m, check_js));
@@ -367,8 +369,8 @@ fn get_tsc_roots(
 
   // then the roots
   for root in &graph.roots {
-    if let Some(module) = graph.get(root) {
-      if seen_roots.insert(root) {
+    if seen_roots.insert((*root).clone()) {
+      if let Some(module) = graph.get(root) {
         if let Some(entry) = maybe_get_check_entry(module, check_js) {
           result.push(entry);
         }
@@ -377,13 +379,37 @@ fn get_tsc_roots(
   }
 
   // now the rest
-  result.extend(graph.modules().filter_map(|module| {
-    if seen_roots.contains(module.specifier()) {
-      None
-    } else {
-      maybe_get_check_entry(module, check_js)
+  let mut pending = seen_roots.clone().into_iter().collect::<VecDeque<_>>();
+  while let Some(specifier) = pending.pop_front() {
+    let module = graph.get(&specifier).unwrap();
+    if let Some(entry) = maybe_get_check_entry(module, check_js) {
+      result.push(entry);
+      if let Some(module) = module.esm() {
+        let deps = module.dependencies_prefer_low_res();
+        let referrer = &specifier;
+        for (specifier_text, _) in deps {
+          let specifier = graph.resolve_dependency(
+            specifier_text,
+            referrer,
+            true, /* prefer types */
+          );
+          if let Some(specifier) = specifier {
+            if seen_roots.insert(specifier.clone()) {
+              pending.push_back(specifier);
+            }
+          }
+        }
+      }
     }
-  }));
+  }
+
+  // result.extend(graph.modules().filter_map(|module| {
+  //   if seen_roots.contains(module.specifier()) {
+  //     None
+  //   } else {
+  //     maybe_get_check_entry(module, check_js)
+  //   }
+  // }));
 
   result
 }

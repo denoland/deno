@@ -433,7 +433,7 @@ impl ModuleGraphBuilder {
               .strip_prefix("jsr:")
               .and_then(|value| PackageNv::from_str(value).ok())
             {
-              graph.packages.add(key, value);
+              graph.packages.add_nv(key, value);
             }
           }
         }

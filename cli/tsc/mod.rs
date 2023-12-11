@@ -487,7 +487,13 @@ fn op_load(
       match module {
         Module::Esm(module) => {
           media_type = module.media_type;
-          Some(Cow::Borrowed(&*module.source))
+          let source = module
+            .low_res
+            .as_ref()
+            .map(|l| &*l.source)
+            .unwrap_or(&*module.source);
+          eprintln!("SOURCE: {}", source);
+          Some(Cow::Borrowed(source))
         }
         Module::Json(module) => {
           media_type = MediaType::Json;
