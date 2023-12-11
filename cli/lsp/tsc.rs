@@ -226,13 +226,9 @@ impl TsServer {
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let mut started = false;
+        start_tsc(&mut ts_runtime, false).unwrap();
+
         while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
-          if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false).unwrap();
-            started = true;
-          }
           let value =
             request(&mut ts_runtime, state_snapshot, req, token.clone());
           let was_sent = tx.send(value).is_ok();
@@ -4059,7 +4055,7 @@ deno_core::extension!(deno_tsc,
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 

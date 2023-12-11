@@ -1158,7 +1158,6 @@ delete Object.prototype.__proto__;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
-  // TODO: not needed to be lazy called from Rust - call it eagerly
   global.serverInit = serverInit;
   global.serverRequest = serverRequest;
 })(this);
