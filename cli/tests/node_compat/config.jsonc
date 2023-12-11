@@ -42,8 +42,8 @@
       // TODO(littledivy): windows ipc streams not yet implemented
       "test-child-process-fork-ref.js",
       "test-child-process-fork-ref2.js",
-      "test-child-process-ipc.js",
       "test-child-process-ipc-next-tick.js",
+      "test-child-process-ipc.js",
       "test-child-process-spawnsync-env.js",
       "test-child-process-stdio-inherit.js",
       "test-child-process-stdout-flush-exit.js",
@@ -114,9 +114,7 @@
       "test-zlib-zero-windowBits.js"
     ],
     "pummel": [],
-    "sequential": [
-      "test-child-process-exit.js"
-    ]
+    "sequential": ["test-child-process-exit.js"]
   },
   "tests": {
     "common": [
@@ -143,11 +141,7 @@
       "print-chars.js",
       "x.txt"
     ],
-    "fixtures/keys": [
-      "agent1-cert.pem",
-      "agent1-key.pem",
-      "ca1-cert.pem"
-    ],
+    "fixtures/keys": ["agent1-cert.pem", "agent1-key.pem", "ca1-cert.pem"],
     "internet": [
       "test-dns-any.js",
       "test-dns-idna2008.js",
@@ -700,9 +694,7 @@
       "test-tty-stdout-end.js"
     ],
     "pummel": [],
-    "sequential": [
-      "test-child-process-exit.js"
-    ]
+    "sequential": ["test-child-process-exit.js"]
   },
   "windowsIgnore": {
     "parallel": [
