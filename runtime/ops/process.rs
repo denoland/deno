@@ -290,18 +290,19 @@ fn create_command(
       }
 
       if cfg!(target_os = "macos") {
-        let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
-          let flags = libc::fcntl(fd, libc::F_GETFL, 0);
+        let fcntl = 
+          |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
+            let flags = libc::fcntl(fd, libc::F_GETFL, 0);
 
-          if flags == -1 {
-            return Err(fail(fds));
-          }
-          let ret = libc::fcntl(fd, libc::F_SETFL, flags | flag);
-          if ret == -1 {
-            return Err(fail(fds));
-          }
-          Ok(())
-        };
+            if flags == -1 {
+              return Err(fail(fds));
+            }
+            let ret = libc::fcntl(fd, libc::F_SETFL, flags | flag);
+            if ret == -1 {
+              return Err(fail(fds));
+            }
+            Ok(())
+          };
 
         fn fail(fds: [i32; 2]) -> std::io::Error {
           unsafe {
