@@ -195,10 +195,11 @@ impl CoverageReporter for SummaryCoverageReporter {
     println!("{}", separator);
     println!("{}", header);
     println!("{}", separator);
-    self.print_coverage_line("All files", node_max, root_stats);
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
+    println!("{}", separator);
+    self.print_coverage_line("All files", node_max, root_stats);
     println!("{}", separator);
   }
 }
