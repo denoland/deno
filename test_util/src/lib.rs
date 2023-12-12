@@ -2728,33 +2728,9 @@ async fn registry_server_handler(
     return Ok(res);
   }
 
-  return match (req.method(), req.uri().path()) {
-    (&hyper::Method::POST, "/echo_multipart_file") => {
-      let body = req.into_body();
-      let bytes = &hyper::body::to_bytes(body).await.unwrap()[0..];
-      let start = b"--boundary\t \r\n\
-                    Content-Disposition: form-data; name=\"field_1\"\r\n\
-                    \r\n\
-                    value_1 \r\n\
-                    \r\n--boundary\r\n\
-                    Content-Disposition: form-data; name=\"file\"; \
-                    filename=\"file.bin\"\r\n\
-                    Content-Type: application/octet-stream\r\n\
-                    \r\n";
-      let end = b"\r\n--boundary--\r\n";
-      let b = [start as &[u8], bytes, end].concat();
-
-      let mut response = Response::new(Body::from(b));
-      response.headers_mut().insert(
-        "content-type",
-        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
-      );
-      Ok(response)
-    }
-    _ => Response::builder()
-      .status(StatusCode::NOT_FOUND)
-      .body(Body::empty()),
-  };
+  Response::builder()
+    .status(StatusCode::NOT_FOUND)
+    .body(Body::empty())
 }
 
 async fn registry_server() {
