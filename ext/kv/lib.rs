@@ -802,9 +802,9 @@ where
 
   for enqueue in &enqueues {
     total_payload_size += check_enqueue_payload_size(&enqueue.payload)?;
-    enqueue.backoff_schedule.as_ref().map(|schedule| {
+    if let Some(schedule) = enqueue.backoff_schedule.as_ref() {
       total_payload_size += 4 * schedule.len();
-    });
+    }
   }
 
   if total_payload_size > MAX_TOTAL_MUTATION_SIZE_BYTES {
