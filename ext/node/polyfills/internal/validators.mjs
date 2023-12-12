@@ -9,7 +9,7 @@ import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeJoin,

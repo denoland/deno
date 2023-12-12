@@ -12,6 +12,7 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::SloppyImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -58,11 +59,13 @@ pub struct GraphValidOptions {
 /// error statically reachable from `roots` and not a dynamic import.
 pub fn graph_valid_with_cli_options(
   graph: &ModuleGraph,
+  fs: &dyn FileSystem,
   roots: &[ModuleSpecifier],
   options: &CliOptions,
 ) -> Result<(), AnyError> {
   graph_valid(
     graph,
+    fs,
     roots,
     GraphValidOptions {
       is_vendoring: false,
@@ -81,6 +84,7 @@ pub fn graph_valid_with_cli_options(
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
+  fs: &dyn FileSystem,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -109,10 +113,12 @@ pub fn graph_valid(
         ModuleGraphError::TypesResolutionError(resolution_error) => {
           format!(
             "Failed resolving types. {}",
-            enhanced_resolution_error_message(resolution_error,)
+            enhanced_resolution_error_message(resolution_error)
           )
         }
-        ModuleGraphError::ModuleError(_) => format!("{error}"),
+        ModuleGraphError::ModuleError(e) => {
+          enhanced_module_error_message(fs, e)
+        }
       };
 
       if let Some(range) = error.maybe_range() {
@@ -356,7 +362,12 @@ impl ModuleGraphBuilder {
       .await?;
 
     let graph = Arc::new(graph);
-    graph_valid_with_cli_options(&graph, &graph.roots, &self.options)?;
+    graph_valid_with_cli_options(
+      &graph,
+      self.fs.as_ref(),
+      &graph.roots,
+      &self.options,
+    )?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
@@ -522,6 +533,27 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   }
 
   message
+}
+
+pub fn enhanced_module_error_message(
+  fs: &dyn FileSystem,
+  error: &ModuleError,
+) -> String {
+  let additional_message = match error {
+    ModuleError::Missing(specifier, _) => {
+      SloppyImportsResolver::resolve_with_fs(fs, specifier)
+        .as_suggestion_message()
+    }
+    _ => None,
+  };
+  if let Some(message) = additional_message {
+    format!(
+      "{} {} or run with --unstable-sloppy-imports",
+      error, message
+    )
+  } else {
+    format!("{}", error)
+  }
 }
 
 pub fn get_resolution_error_bare_node_specifier(
@@ -857,7 +889,7 @@ mod test {
   use deno_graph::ResolutionError;
   use deno_graph::SpecifierError;
 
-  use crate::graph_util::get_resolution_error_bare_node_specifier;
+  use super::*;
 
   #[test]
   fn import_map_node_resolution_error() {

@@ -226,13 +226,9 @@ impl TsServer {
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let mut started = false;
+        start_tsc(&mut ts_runtime, false).unwrap();
+
         while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
-          if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false).unwrap();
-            started = true;
-          }
           let value =
             request(&mut ts_runtime, state_snapshot, req, token.clone());
           let was_sent = tx.send(value).is_ok();
@@ -3778,6 +3774,8 @@ impl TscSpecifierMap {
   }
 }
 
+// TODO(bartlomieju): we have similar struct in `cli/tsc/mod.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
@@ -3844,7 +3842,8 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 #[op2(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  let mark = state.performance.mark("tsc.op.op_is_node_file");
+  let r = match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
       .npm
@@ -3852,7 +3851,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
       .map(|n| n.npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
-  }
+  };
+  state.performance.measure(mark);
+  r
 }
 
 #[derive(Debug, Serialize)]
@@ -3876,11 +3877,7 @@ fn op_load<'s>(
   let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
     if specifier.as_str() == "internal:///missing_dependency.d.ts" {
-      Some(LoadResponse {
-        data: Arc::from("declare const __: any;\nexport = __;\n"),
-        script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
-        version: Some("1".to_string()),
-      })
+      None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
       asset_or_document.map(|doc| LoadResponse {
@@ -3948,6 +3945,7 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
   let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
@@ -3977,7 +3975,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     );
     for specifier in specifiers {
       if seen.insert(specifier.as_str()) {
-        if let Some(specifier) = documents.resolve_redirected(specifier) {
+        if let Some(specifier) = documents.resolve_specifier(specifier) {
           // only include dependencies we know to exist otherwise typescript will error
           if documents.exists(&specifier) {
             result.push(specifier.to_string());
@@ -3987,13 +3985,15 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  result
+  let r = result
     .into_iter()
     .map(|s| match ModuleSpecifier::parse(&s) {
       Ok(s) => state.specifier_map.denormalize(&s),
       Err(_) => s,
     })
-    .collect()
+    .collect();
+  state.performance.measure(mark);
+  r
 }
 
 #[op2]
@@ -4003,10 +4003,11 @@ fn op_script_version(
   #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
-  // this op is very "noisy" and measuring its performance is not useful, so we
-  // don't measure it uniquely anymore.
+  let mark = state.performance.mark("tsc.op.op_script_version");
   let specifier = state.specifier_map.normalize(specifier)?;
-  Ok(state.script_version(&specifier))
+  let r = state.script_version(&specifier);
+  state.performance.measure(mark);
+  Ok(r)
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
@@ -4057,7 +4058,7 @@ deno_core::extension!(deno_tsc,
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 

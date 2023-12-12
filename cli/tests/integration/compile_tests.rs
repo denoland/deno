@@ -105,7 +105,7 @@ fn standalone_error() {
   let stderr = output.stderr();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught Error: boom!");
+  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
   assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at boom (file://");
   assert_contains!(stderr, "standalone_error.ts:2:9");
@@ -145,7 +145,7 @@ fn standalone_error_module_with_imports() {
   let stderr = output.stderr();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught Error: boom!");
+  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
   assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at file://");
   assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
@@ -1060,6 +1060,44 @@ fn compile_node_modules_symlink_outside() {
     project_dir.join(if cfg!(windows) { "bin.exe" } else { "bin" });
   let output = context.new_command().name(binary_path).run();
   output.assert_matches_file("compile/node_modules_symlink_outside/main.out");
+}
+
+#[test]
+fn compile_node_modules_symlink_non_existent() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("main.ts").write(
+    r#"import { getValue, setValue } from "npm:@denotest/esm-basic";
+setValue(4);
+console.log(getValue());"#,
+  );
+  let node_modules_dir = temp_dir.join("node_modules");
+  node_modules_dir.create_dir_all();
+  // create a symlink that points to a non_existent file
+  node_modules_dir.symlink_dir("non_existent", "folder");
+  // compile folder
+  let output = context
+    .new_command()
+    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_text(
+    r#"Download http://localhost:4545/npm/registry/@denotest/esm-basic
+Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz
+Initialize @denotest/esm-basic@1.0.0
+Check file:///[WILDCARD]/main.ts
+Compile file:///[WILDCARD]/main.ts to [WILDCARD]
+Warning Failed resolving symlink. Ignoring.
+    Path: [WILDCARD]
+    Message: [WILDCARD])
+"#,
+  );
+
+  // run
+  let binary_path =
+    temp_dir.join(if cfg!(windows) { "bin.exe" } else { "bin" });
+  let output = context.new_command().name(binary_path).run();
+  output.assert_matches_text("4\n");
 }
 
 #[test]

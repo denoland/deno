@@ -104,6 +104,64 @@ pub fn npm_registry_default_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
+pub fn deno_registry_url() -> &'static Url {
+  static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "DENO_REGISTRY_URL";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
+      }
+    }
+
+    deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+  });
+
+  &DENO_REGISTRY_URL
+}
+
+pub fn deno_registry_api_url() -> &'static Url {
+  static DENO_REGISTRY_API_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "DENO_REGISTRY_API_URL";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
+      }
+    }
+
+    let host = deno_graph::source::DEFAULT_DENO_REGISTRY_URL
+      .host_str()
+      .unwrap();
+
+    let mut url = deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone();
+    url.set_host(Some(&format!("api.{}", host))).unwrap();
+    url
+  });
+
+  &DENO_REGISTRY_API_URL
+}
+
 pub fn ts_config_to_emit_options(
   config: deno_config::TsConfig,
 ) -> deno_ast::EmitOptions {
@@ -1306,6 +1364,25 @@ impl CliOptions {
     &self.flags.strace_ops
   }
 
+  pub fn take_binary_npm_command_name(&self) -> Option<String> {
+    match self.sub_command() {
+      DenoSubcommand::Run(flags) => {
+        const NPM_CMD_NAME_ENV_VAR_NAME: &str = "DENO_INTERNAL_NPM_CMD_NAME";
+        match std::env::var(NPM_CMD_NAME_ENV_VAR_NAME) {
+          Ok(var) => {
+            // remove the env var so that child sub processes won't pick this up
+            std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
+            Some(var)
+          }
+          Err(_) => NpmPackageReqReference::from_str(&flags.script)
+            .ok()
+            .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+        }
+      }
+      _ => None,
+    }
+  }
+
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
   }
@@ -1323,7 +1400,7 @@ impl CliOptions {
       || self
         .maybe_config_file()
         .as_ref()
-        .map(|c| c.json.unstable.contains(&"bare-node-builtins".to_string()))
+        .map(|c| c.has_unstable("bare-node-builtins"))
         .unwrap_or(false)
   }
 
@@ -1336,7 +1413,16 @@ impl CliOptions {
       || self
         .maybe_config_file()
         .as_ref()
-        .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+        .map(|c| c.has_unstable("byonm"))
+        .unwrap_or(false)
+  }
+
+  pub fn unstable_sloppy_imports(&self) -> bool {
+    self.flags.unstable_sloppy_imports
+      || self
+        .maybe_config_file()
+        .as_ref()
+        .map(|c| c.has_unstable("sloppy-imports"))
         .unwrap_or(false)
   }
 
@@ -1826,5 +1912,13 @@ mod test {
         temp_dir_path.join("nested/foo/bazz.ts"),
       ]
     )
+  }
+
+  #[test]
+  fn deno_registry_urls() {
+    let reg_url = deno_registry_url();
+    assert!(reg_url.as_str().ends_with('/'));
+    let reg_api_url = deno_registry_api_url();
+    assert!(reg_api_url.as_str().ends_with('/'));
   }
 }

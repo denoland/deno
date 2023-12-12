@@ -6,8 +6,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,

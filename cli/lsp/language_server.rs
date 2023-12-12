@@ -102,6 +102,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_cli_npm_resolver_for_lsp;
@@ -256,12 +257,14 @@ impl LanguageServer {
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
+        unstable_sloppy_imports: cli_options.unstable_sloppy_imports(),
       };
       let graph = module_graph_builder
         .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
         &graph,
+        factory.fs().as_ref(),
         &roots,
         graph_util::GraphValidOptions {
           is_vendoring: false,
@@ -1080,7 +1083,7 @@ async fn create_npm_resolver(
   let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
     || maybe_config_file
       .as_ref()
-      .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+      .map(|c| c.has_unstable("byonm"))
       .unwrap_or(false);
   create_cli_npm_resolver_for_lsp(if is_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
@@ -3240,6 +3243,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
+      init_log_file(ls.config.log_file());
       if let Err(err) = ls.update_tsconfig().await {
         ls.client.show_message(MessageType::WARNING, err);
       }
@@ -3803,18 +3807,30 @@ impl Inner {
           .join("\n    - ")
       )
       .unwrap();
+
       contents
-        .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
-      let mut averages = self.performance.averages();
-      averages.sort();
-      for average in averages {
+        .push_str("\n## Performance (last 3 000 entries)\n\n|Name|Count|Duration|\n|---|---|---|\n");
+      let mut averages = self.performance.averages_as_f64();
+      averages.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, count, average_duration) in averages {
+        writeln!(contents, "|{}|{}|{}ms|", name, count, average_duration)
+          .unwrap();
+      }
+
+      contents.push_str(
+        "\n## Performance (total)\n\n|Name|Count|Duration|\n|---|---|---|\n",
+      );
+      let mut measurements_by_type = self.performance.measurements_by_type();
+      measurements_by_type.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, total_count, total_duration) in measurements_by_type {
         writeln!(
           contents,
-          "|{}|{}ms|{}|",
-          average.name, average.average_duration, average.count
+          "|{}|{}|{:.3}ms|",
+          name, total_count, total_duration
         )
         .unwrap();
       }
+
       Some(contents)
     } else {
       let asset_or_doc = self.get_maybe_asset_or_document(&specifier);

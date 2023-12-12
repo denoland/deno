@@ -87,6 +87,11 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
+// NOTE(bartlomieju): currently we don't have any unstable HTTP features,
+// but let's keep this const here, because:
+//   a) we still need to support `--unstable-http` flag to not break user's CLI;
+//   b) we might add more unstable features in the future.
+#[allow(dead_code)]
 pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
 /// All HTTP/2 connections start with this byte string.
@@ -1183,16 +1188,6 @@ pub async fn op_http_close(
 
   if graceful {
     http_general_trace!("graceful shutdown");
-    // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
-    // once we phase out `check_or_exit_with_legacy_fallback`
-    state
-      .borrow()
-      .feature_checker
-      .check_or_exit_with_legacy_fallback(
-        UNSTABLE_FEATURE_NAME,
-        "Deno.Server.shutdown",
-      );
-
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
     poll_fn(|cx| join_handle.server_state.poll_complete(cx)).await;
