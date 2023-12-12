@@ -289,7 +289,9 @@ const test6 = await import(`${expr}`);
       let (unfurled_source, d) = unfurler
         .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
         .unwrap();
-      assert!(d.is_empty());
+      assert_eq!(d.len(), 2);
+      assert!(d[0].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
+      assert!(d[1].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
       let expected_source = r#"import express from "npm:express@5";"
 import foo from "./lib/foo.ts";
 import bar from "./lib/bar.ts";
