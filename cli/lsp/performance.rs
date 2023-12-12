@@ -79,6 +79,8 @@ impl From<PerformanceMark> for PerformanceMeasure {
 #[derive(Debug)]
 pub struct Performance {
   counts: Mutex<HashMap<String, u32>>,
+  measurements_by_type:
+    Mutex<HashMap<String, (/* count */ u32, /* duration */ f64)>>,
   max_size: usize,
   measures: Mutex<VecDeque<PerformanceMeasure>>,
 }
@@ -87,6 +89,7 @@ impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
+      measurements_by_type: Default::default(),
       max_size: 3_000,
       measures: Default::default(),
     }
@@ -137,6 +140,14 @@ impl Performance {
       .collect()
   }
 
+  pub fn measurements_by_type(&self) -> Vec<(String, u32, f64)> {
+    let measurements_by_type = self.measurements_by_type.lock();
+    measurements_by_type
+      .iter()
+      .map(|(name, (count, duration))| (name.to_string(), *count, *duration))
+      .collect::<Vec<_>>()
+  }
+
   pub fn averages_as_f64(&self) -> Vec<(String, u32, f64)> {
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
     for measure in self.measures.lock().iter() {
@@ -164,6 +175,13 @@ impl Performance {
     let mut counts = self.counts.lock();
     let count = counts.entry(name.to_string()).or_insert(0);
     *count += 1;
+    {
+      let mut measurements_by_type = self.measurements_by_type.lock();
+      let measurement = measurements_by_type
+        .entry(name.to_string())
+        .or_insert((0, 0.0));
+      measurement.0 += 1;
+    }
     let msg = if let Some(args) = maybe_args {
       json!({
         "type": "mark",
@@ -218,6 +236,13 @@ impl Performance {
       })
     );
     let duration = measure.duration;
+    {
+      let mut measurements_by_type = self.measurements_by_type.lock();
+      let measurement = measurements_by_type
+        .entry(measure.name.to_string())
+        .or_insert((0, 0.0));
+      measurement.1 += duration.as_micros() as f64 / 1000.0;
+    }
     let mut measures = self.measures.lock();
     measures.push_front(measure);
     while measures.len() > self.max_size {
