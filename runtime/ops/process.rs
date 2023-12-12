@@ -142,7 +142,7 @@ pub struct SpawnArgs {
   #[cfg(windows)]
   windows_raw_arguments: bool,
   #[cfg(unix)]
-  ipc: i32,
+  ipc: Option<i32>,
 
   #[serde(flatten)]
   stdio: ChildStdio,
@@ -269,7 +269,10 @@ fn create_command(
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
-    if args.ipc > -1 {
+    if let Some(ipc) = args.ipc {
+      if ipc < 0 {
+        return Ok((command, None));
+      }
       // SockFlag is broken on macOS
       // https://github.com/nix-rust/nix/issues/861
       let mut fds = [-1, -1];
@@ -324,7 +327,6 @@ fn create_command(
       let fd1 = fds[0];
       let fd2 = fds[1];
 
-      let ipc = args.ipc;
       command.pre_exec(move || {
         if ipc >= 0 {
           let _fd = libc::dup2(fd2, ipc);
@@ -338,9 +340,7 @@ fn create_command(
       let pipe_fd = Some(fd1);
 
       /* The other end passed to child process via DENO_CHANNEL_FD */
-      if ipc >= 0 {
-        command.env("DENO_CHANNEL_FD", format!("{}", args.ipc));
-      }
+      command.env("DENO_CHANNEL_FD", format!("{}", ipc));
 
       return Ok((command, pipe_fd));
     }
