@@ -1111,16 +1111,8 @@ mod tests {
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
     let actual = op_load::call(&mut state, "https://deno.land/x/mod.ts")
-      .expect("should have invoked op")
-      .expect("load should have succeeded");
-    assert_eq!(
-      serde_json::to_value(actual).unwrap(),
-      json!({
-        "data": null,
-        "version": null,
-        "scriptKind": 0,
-      })
-    )
+      .expect("should have invoked op");
+    assert_eq!(serde_json::to_value(actual).unwrap(), json!(null));
   }
 
   #[tokio::test]
