@@ -721,6 +721,11 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptVersion("${specifier}")`);
       }
+
+      if (specifier.startsWith("asset") || specifier.startsWith("http")) {
+        return "1";
+      }
+
       // tsc requests the script version multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptVersionCache.has(specifier)) {
@@ -1065,6 +1070,8 @@ delete Object.prototype.__proto__;
   function serverRestart() {
     languageService = ts.createLanguageService(host, documentRegistry);
     isNodeSourceFileCache.clear();
+    scriptFileNamesCache = undefined;
+    scriptVersionCache.clear();
     debug("serverRestart()");
   }
 
