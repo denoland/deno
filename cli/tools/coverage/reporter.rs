@@ -32,7 +32,7 @@ pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
   match kind {
     CoverageType::Summary => Box::new(SummaryCoverageReporter::new()),
     CoverageType::Lcov => Box::new(LcovCoverageReporter::new()),
-    CoverageType::Pretty => Box::new(PrettyCoverageReporter::new()),
+    CoverageType::Detailed => Box::new(DetailedCoverageReporter::new()),
     CoverageType::Html => Box::new(HtmlCoverageReporter::new()),
   }
 }
@@ -304,15 +304,15 @@ impl CoverageReporter for LcovCoverageReporter {
   }
 }
 
-struct PrettyCoverageReporter {}
+struct DetailedCoverageReporter {}
 
-impl PrettyCoverageReporter {
-  pub fn new() -> PrettyCoverageReporter {
-    PrettyCoverageReporter {}
+impl DetailedCoverageReporter {
+  pub fn new() -> DetailedCoverageReporter {
+    DetailedCoverageReporter {}
   }
 }
 
-impl CoverageReporter for PrettyCoverageReporter {
+impl CoverageReporter for DetailedCoverageReporter {
   fn report(
     &mut self,
     coverage_report: &CoverageReport,
