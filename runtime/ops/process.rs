@@ -269,7 +269,7 @@ fn create_command(
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
-    if args.ipc >= -1 {
+    if args.ipc > -1 {
       // SockFlag is broken on macOS
       // https://github.com/nix-rust/nix/issues/861
       let mut fds = [-1, -1];
