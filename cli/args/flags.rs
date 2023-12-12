@@ -87,7 +87,7 @@ pub struct CompletionsFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CoverageType {
   Summary,
-  Pretty,
+  Detailed,
   Lcov,
   Html,
 }
@@ -1415,9 +1415,9 @@ Generate html reports from lcov:
             .action(ArgAction::SetTrue),
         )
         .arg(
-          Arg::new("pretty")
-            .long("pretty")
-            .help("Output coverage report in pretty format in the terminal.")
+          Arg::new("detailed")
+            .long("detailed")
+            .help("Output coverage report in detailed format in the terminal.")
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3327,8 +3327,8 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     CoverageType::Lcov
   } else if matches.get_flag("html") {
     CoverageType::Html
-  } else if matches.get_flag("pretty") {
-    CoverageType::Pretty
+  } else if matches.get_flag("detailed") {
+    CoverageType::Detailed
   } else {
     CoverageType::Summary
   };
