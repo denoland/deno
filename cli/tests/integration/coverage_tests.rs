@@ -117,7 +117,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .new_command()
     .args_vec(vec![
       "coverage".to_string(),
-      "--pretty".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
@@ -190,7 +190,7 @@ fn multifile_coverage() {
     .new_command()
     .args_vec(vec![
       "coverage".to_string(),
-      "--pretty".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
@@ -263,7 +263,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       "--include=no_snaps_included.ts".to_string(),
-      "--pretty".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
@@ -312,7 +312,7 @@ fn no_tests_included(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       format!("--exclude={}", util::std_path().canonicalize()),
-      "--pretty".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
@@ -362,7 +362,7 @@ fn no_npm_cache_coverage() {
     .new_command()
     .args_vec(vec![
       "coverage".to_string(),
-      "--pretty".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
@@ -411,7 +411,7 @@ fn no_transpiled_lines() {
     .args_vec(vec![
       "coverage".to_string(),
       "--include=no_transpiled_lines/index.ts".to_string(),
-      "--pretty".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .run();
