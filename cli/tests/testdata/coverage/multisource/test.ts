@@ -5,6 +5,7 @@ import { quux } from "./baz/quux.ts";
 
 Deno.test("foo", () => {
   foo(true);
+  foo(false);
 });
 
 Deno.test("bar", () => {
@@ -13,6 +14,7 @@ Deno.test("bar", () => {
 
 Deno.test("qux", () => {
   qux(true);
+  qux(false);
 });
 
 Deno.test("quux", () => {

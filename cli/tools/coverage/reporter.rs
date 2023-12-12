@@ -16,7 +16,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 #[derive(Default)]
-struct CoverageStats<'a> {
+pub struct CoverageStats<'a> {
   pub line_hit: usize,
   pub line_miss: usize,
   pub branch_hit: usize,
@@ -30,6 +30,7 @@ type CoverageSummary<'a> = HashMap<String, CoverageStats<'a>>;
 
 pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
   match kind {
+    CoverageType::Summary => Box::new(SummaryCoverageReporter::new()),
     CoverageType::Lcov => Box::new(LcovCoverageReporter::new()),
     CoverageType::Pretty => Box::new(PrettyCoverageReporter::new()),
     CoverageType::Html => Box::new(HtmlCoverageReporter::new()),
@@ -44,6 +45,163 @@ pub trait CoverageReporter {
   ) -> Result<(), AnyError>;
 
   fn done(&mut self, _coverage_root: &Path) {}
+
+  /// Collects the coverage summary of each file or directory.
+  fn collect_summary<'a>(
+    &'a self,
+    file_reports: &'a Vec<(CoverageReport, String)>,
+  ) -> CoverageSummary {
+    let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
+    let root = util::find_root(urls).unwrap().to_file_path().unwrap();
+    // summary by file or directory
+    // tuple of (line hit, line miss, branch hit, branch miss, parent)
+    let mut summary = HashMap::new();
+    summary.insert("".to_string(), CoverageStats::default()); // root entry
+    for (report, file_text) in file_reports {
+      let path = report.url.to_file_path().unwrap();
+      let relative_path = path.strip_prefix(&root).unwrap();
+      let mut file_text = Some(file_text.to_string());
+
+      let mut summary_path = Some(relative_path);
+      // From leaf to root, adds up the coverage stats
+      while let Some(path) = summary_path {
+        let path_str = path.to_str().unwrap().to_string();
+        let parent = path
+          .parent()
+          .and_then(|p| p.to_str())
+          .map(|p| p.to_string());
+        let stats = summary.entry(path_str).or_insert(CoverageStats {
+          parent,
+          file_text,
+          report: Some(report),
+          ..CoverageStats::default()
+        });
+
+        stats.line_hit += report
+          .found_lines
+          .iter()
+          .filter(|(_, count)| *count > 0)
+          .count();
+        stats.line_miss += report
+          .found_lines
+          .iter()
+          .filter(|(_, count)| *count == 0)
+          .count();
+        stats.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
+        stats.branch_miss +=
+          report.branches.iter().filter(|b| !b.is_hit).count();
+
+        file_text = None;
+        summary_path = path.parent();
+      }
+    }
+    summary
+  }
+}
+
+struct SummaryCoverageReporter {
+  file_reports: Vec<(CoverageReport, String)>,
+}
+
+impl SummaryCoverageReporter {
+  pub fn new() -> SummaryCoverageReporter {
+    SummaryCoverageReporter {
+      file_reports: Vec::new(),
+    }
+  }
+
+  fn print_coverage_line(
+    &self,
+    node: &str,
+    node_max: usize,
+    stats: &CoverageStats,
+  ) {
+    let CoverageStats {
+      line_hit,
+      line_miss,
+      branch_hit,
+      branch_miss,
+      ..
+    } = stats;
+    let (_, line_percent, line_class) =
+      util::calc_coverage_display_info(*line_hit, *line_miss);
+    let (_, branch_percent, branch_class) =
+      util::calc_coverage_display_info(*branch_hit, *branch_miss);
+
+    let file_name = format!(
+      "{node:node_max$}",
+      node = node.replace('\\', "/"),
+      node_max = node_max
+    );
+    let file_name = if line_class == "high" {
+      format!("{}", colors::green(&file_name))
+    } else if line_class == "medium" {
+      format!("{}", colors::yellow(&file_name))
+    } else {
+      format!("{}", colors::red(&file_name))
+    };
+
+    let branch_percent = if branch_class == "high" {
+      format!("{}", colors::green(&format!("{:>8.1}", branch_percent)))
+    } else if branch_class == "medium" {
+      format!("{}", colors::yellow(&format!("{:>8.1}", branch_percent)))
+    } else {
+      format!("{}", colors::red(&format!("{:>8.1}", branch_percent)))
+    };
+
+    let line_percent = if line_class == "high" {
+      format!("{}", colors::green(&format!("{:>6.1}", line_percent)))
+    } else if line_class == "medium" {
+      format!("{}", colors::yellow(&format!("{:>6.1}", line_percent)))
+    } else {
+      format!("{}", colors::red(&format!("{:>6.1}", line_percent)))
+    };
+
+    println!(
+      " {file_name} | {branch_percent} | {line_percent} |",
+      file_name = file_name,
+      branch_percent = branch_percent,
+      line_percent = line_percent,
+    );
+  }
+}
+
+impl CoverageReporter for SummaryCoverageReporter {
+  fn report(
+    &mut self,
+    coverage_report: &CoverageReport,
+    file_text: &str,
+  ) -> Result<(), AnyError> {
+    self
+      .file_reports
+      .push((coverage_report.clone(), file_text.to_string()));
+    Ok(())
+  }
+
+  fn done(&mut self, _coverage_root: &Path) {
+    let summary = self.collect_summary(&self.file_reports);
+    let root_stats = summary.get("").unwrap();
+
+    let mut entries = summary
+      .iter()
+      .filter(|(_, stats)| stats.file_text.is_some())
+      .collect::<Vec<_>>();
+    entries.sort_by_key(|(node, _)| node.to_owned());
+    let node_max = entries.iter().map(|(node, _)| node.len()).max().unwrap();
+
+    let header =
+      format!("{node:node_max$}  | Branch % | Line % |", node = "File");
+    let separator = "-".repeat(header.len());
+    println!("{}", separator);
+    println!("{}", header);
+    println!("{}", separator);
+    entries.iter().for_each(|(node, stats)| {
+      self.print_coverage_line(node, node_max, stats);
+    });
+    println!("{}", separator);
+    self.print_coverage_line("All files", node_max, root_stats);
+    println!("{}", separator);
+  }
 }
 
 struct LcovCoverageReporter {}
@@ -232,7 +390,7 @@ impl CoverageReporter for HtmlCoverageReporter {
   }
 
   fn done(&mut self, coverage_root: &Path) {
-    let summary = self.collect_summary();
+    let summary = self.collect_summary(&self.file_reports);
     let now = crate::util::time::utc_now().to_rfc2822();
 
     for (node, stats) in &summary {
@@ -267,56 +425,6 @@ impl HtmlCoverageReporter {
     HtmlCoverageReporter {
       file_reports: Vec::new(),
     }
-  }
-
-  /// Collects the coverage summary of each file or directory.
-  pub fn collect_summary(&self) -> CoverageSummary {
-    let urls = self.file_reports.iter().map(|rep| &rep.0.url).collect();
-    let root = util::find_root(urls).unwrap().to_file_path().unwrap();
-    // summary by file or directory
-    // tuple of (line hit, line miss, branch hit, branch miss, parent)
-    let mut summary = HashMap::new();
-    summary.insert("".to_string(), CoverageStats::default()); // root entry
-    for (report, file_text) in &self.file_reports {
-      let path = report.url.to_file_path().unwrap();
-      let relative_path = path.strip_prefix(&root).unwrap();
-      let mut file_text = Some(file_text.to_string());
-
-      let mut summary_path = Some(relative_path);
-      // From leaf to root, adds up the coverage stats
-      while let Some(path) = summary_path {
-        let path_str = path.to_str().unwrap().to_string();
-        let parent = path
-          .parent()
-          .and_then(|p| p.to_str())
-          .map(|p| p.to_string());
-        let stats = summary.entry(path_str).or_insert(CoverageStats {
-          parent,
-          file_text,
-          report: Some(report),
-          ..CoverageStats::default()
-        });
-
-        stats.line_hit += report
-          .found_lines
-          .iter()
-          .filter(|(_, count)| *count > 0)
-          .count();
-        stats.line_miss += report
-          .found_lines
-          .iter()
-          .filter(|(_, count)| *count == 0)
-          .count();
-        stats.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
-        stats.branch_miss +=
-          report.branches.iter().filter(|b| !b.is_hit).count();
-
-        file_text = None;
-        summary_path = path.parent();
-      }
-    }
-
-    summary
   }
 
   /// Gets the report path for a single file
