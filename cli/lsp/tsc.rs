@@ -3798,6 +3798,8 @@ impl TscSpecifierMap {
   }
 }
 
+// TODO(bartlomieju): we have similar struct in `cli/tsc/mod.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
@@ -3864,7 +3866,8 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 #[op2(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  let mark = state.performance.mark("tsc.op.op_is_node_file");
+  let r = match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
       .npm
@@ -3872,7 +3875,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
       .map(|n| n.npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
-  }
+  };
+  state.performance.measure(mark);
+  r
 }
 
 #[derive(Debug, Serialize)]
@@ -3968,6 +3973,7 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
   let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
@@ -4007,13 +4013,15 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  result
+  let r = result
     .into_iter()
     .map(|s| match ModuleSpecifier::parse(&s) {
       Ok(s) => state.specifier_map.denormalize(&s),
       Err(_) => s,
     })
-    .collect()
+    .collect();
+  state.performance.measure(mark);
+  r
 }
 
 #[op2]
@@ -4023,10 +4031,11 @@ fn op_script_version(
   #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
-  // this op is very "noisy" and measuring its performance is not useful, so we
-  // don't measure it uniquely anymore.
+  let mark = state.performance.mark("tsc.op.op_script_version");
   let specifier = state.specifier_map.normalize(specifier)?;
-  Ok(state.script_version(&specifier))
+  let r = state.script_version(&specifier);
+  state.performance.measure(mark);
+  Ok(r)
 }
 
 fn run_tsc_thread(
@@ -4055,7 +4064,9 @@ fn run_tsc_thread(
   }
 
   let tsc_future = async {
-    let mut started = false;
+    start_tsc(&mut tsc_runtime, false).unwrap();
+
+    let mut event_loop_finished = false;
 
     loop {
       tokio::select! {
@@ -4063,11 +4074,6 @@ fn run_tsc_thread(
 
         maybe_request = request_rx.recv() => {
           if let Some((req, state_snapshot, tx, token)) = maybe_request {
-            if !started {
-              // TODO(@kitsonk) need to reflect the debug state of the lsp here
-              start(&mut tsc_runtime, false).unwrap();
-              started = true;
-            }
             let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
             let was_sent = tx.send(value).is_ok();
             // Don't print the send error if the token is cancelled, it's expected
@@ -4075,10 +4081,15 @@ fn run_tsc_thread(
             if !was_sent && !token.is_cancelled() {
               lsp_warn!("Unable to send result to client.");
             }
+            event_loop_finished = false;
+          } else {
+            break;
           }
         },
 
-        _ = tsc_runtime.run_event_loop(true) => {}
+        _ = tsc_runtime.run_event_loop(true), if !event_loop_finished => {
+          event_loop_finished = true;
+        }
       }
     }
   }
@@ -4121,7 +4132,7 @@ deno_core::extension!(deno_tsc,
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 

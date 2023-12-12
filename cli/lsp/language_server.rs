@@ -3817,18 +3817,30 @@ impl Inner {
           .join("\n    - ")
       )
       .unwrap();
+
       contents
-        .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
-      let mut averages = self.performance.averages();
-      averages.sort();
-      for average in averages {
+        .push_str("\n## Performance (last 3 000 entries)\n\n|Name|Count|Duration|\n|---|---|---|\n");
+      let mut averages = self.performance.averages_as_f64();
+      averages.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, count, average_duration) in averages {
+        writeln!(contents, "|{}|{}|{}ms|", name, count, average_duration)
+          .unwrap();
+      }
+
+      contents.push_str(
+        "\n## Performance (total)\n\n|Name|Count|Duration|\n|---|---|---|\n",
+      );
+      let mut measurements_by_type = self.performance.measurements_by_type();
+      measurements_by_type.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, total_count, total_duration) in measurements_by_type {
         writeln!(
           contents,
-          "|{}|{}ms|{}|",
-          average.name, average.average_duration, average.count
+          "|{}|{}|{:.3}ms|",
+          name, total_count, total_duration
         )
         .unwrap();
       }
+
       Some(contents)
     } else {
       let asset_or_doc = self.get_maybe_asset_or_document(&specifier);
