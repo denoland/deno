@@ -33,6 +33,7 @@ use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::util::import_map::ImportMapUnfurler;
 
+mod analyze;
 mod tar;
 
 enum AuthMethod {
