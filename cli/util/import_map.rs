@@ -25,7 +25,8 @@ impl<'a> ImportMapUnfurler<'a> {
     &self,
     url: &ModuleSpecifier,
     data: Vec<u8>,
-  ) -> Result<Vec<u8>, AnyError> {
+  ) -> Result<(Vec<u8>, Vec<String>), AnyError> {
+    let mut diagnostics = vec![];
     let media_type = MediaType::from_specifier(url);
 
     match media_type {
@@ -48,7 +49,7 @@ impl<'a> ImportMapUnfurler<'a> {
       | MediaType::Wasm
       | MediaType::TsBuildInfo => {
         // not unfurlable data
-        return Ok(data);
+        return Ok((data, diagnostics));
       }
     }
 
@@ -94,14 +95,14 @@ impl<'a> ImportMapUnfurler<'a> {
           );
 
           if !success {
-            log::warn!(
-              "{} Dynamic import was not analyzable and won't use the import map once published.\n    at {}",
-              crate::colors::yellow("Warning"),
-              format_range_with_colors(&deno_graph::Range {
-                specifier: url.clone(),
-                start: dep.range.start.clone(),
-                end: dep.range.end.clone(),
-              })
+            diagnostics.push(
+              format!("Dynamic import was not analyzable and won't use the import map once published.\n    at {}",
+                format_range_with_colors(&deno_graph::Range {
+                  specifier: url.clone(),
+                  start: dep.range.start.clone(),
+                  end: dep.range.end.clone(),
+                })
+              )
             );
           }
         }
@@ -132,13 +133,14 @@ impl<'a> ImportMapUnfurler<'a> {
         &mut text_changes,
       );
     }
-    Ok(
+    Ok((
       deno_ast::apply_text_changes(
         parsed_source.text_info().text_str(),
         text_changes,
       )
       .into_bytes(),
-    )
+      diagnostics,
+    ))
   }
 
   #[cfg(test)]
@@ -146,10 +148,10 @@ impl<'a> ImportMapUnfurler<'a> {
     &self,
     url: &ModuleSpecifier,
     data: Vec<u8>,
-  ) -> Result<String, AnyError> {
-    let data = self.unfurl(url, data)?;
+  ) -> Result<(String, Vec<String>), AnyError> {
+    let (data, diagnostics) = self.unfurl(url, data)?;
     let content = String::from_utf8(data)?;
-    Ok(content)
+    Ok((content, diagnostics))
   }
 }
 
@@ -284,9 +286,10 @@ const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
 "#;
       let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
-      let unfurled_source = unfurler
+      let (unfurled_source, d) = unfurler
         .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
         .unwrap();
+      assert!(d.is_empty());
       let expected_source = r#"import express from "npm:express@5";"
 import foo from "./lib/foo.ts";
 import bar from "./lib/bar.ts";
@@ -311,9 +314,10 @@ import bar from "lib/bar.ts";
 import fizz from "fizz";
 "#;
       let specifier = ModuleSpecifier::parse("file:///dev/mod").unwrap();
-      let unfurled_source = unfurler
+      let (unfurled_source, d) = unfurler
         .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
         .unwrap();
+      assert!(d.is_empty());
       assert_eq!(unfurled_source, source_code);
     }
   }
