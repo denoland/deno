@@ -2719,7 +2719,7 @@ async fn registry_server_handler(
     return Ok(res);
   } else if path.starts_with("/publish_status/") {
     let body = serde_json::to_string_pretty(&json!({
-      "id": "sdfwqer-sffg-qwerasdf",
+      "id": "sdfwqer-qwer-qwerasdf",
       "status": "success",
       "error": null
     }))

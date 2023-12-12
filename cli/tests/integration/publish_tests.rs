@@ -1,17 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::serde_json::json;
-use deno_core::url;
-use deno_runtime::deno_fetch::reqwest;
-use pretty_assertions::assert_eq;
-use std::io::Read;
-use std::io::Write;
-use std::process::Command;
-use std::process::Stdio;
-use std::time::Duration;
-use test_util as util;
-use test_util::TempDir;
-
 static TEST_REGISTRY_URL: &str = "http://127.0.0.1:4250";
 
 pub fn env_vars_for_registry() -> Vec<(String, String)> {
