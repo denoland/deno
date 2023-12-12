@@ -1134,8 +1134,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.237.0"
-source = "git+https://github.com/mmastrac/deno_core.git?branch=timer_work#bfda886b80f0657b4c9fcdaca2e6be0d0117e79c"
+version = "0.238.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ded8b759e4435aa0929913909dd6c482ed6042dae19c53260e1caf9d55b37a9"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1562,8 +1563,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.113.0"
-source = "git+https://github.com/mmastrac/deno_core.git?branch=timer_work#bfda886b80f0657b4c9fcdaca2e6be0d0117e79c"
+version = "0.114.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "168a929496191fdd8e91f898c8454429df4d5489597777d89f47897f6a37da6b"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -4970,8 +4972,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.146.0"
-source = "git+https://github.com/mmastrac/deno_core.git?branch=timer_work#bfda886b80f0657b4c9fcdaca2e6be0d0117e79c"
+version = "0.147.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2af950d83e1c70b762d48fa7a869d6db9a4f191548dfd666fa4e62f2229e1dce"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6564,7 +6567,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -6605,7 +6608,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle",
