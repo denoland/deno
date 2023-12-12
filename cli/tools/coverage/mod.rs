@@ -4,7 +4,6 @@ use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
-use crate::colors;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
@@ -27,9 +26,7 @@ use regex::Regex;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::Error;
 use std::io::Write;
-use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
 use text_lines::TextLines;
@@ -37,6 +34,8 @@ use uuid::Uuid;
 
 mod merge;
 mod range_tree;
+mod reporter;
+mod util;
 use merge::ProcessCoverage;
 
 pub struct CoverageCollector {
@@ -156,6 +155,7 @@ impl CoverageCollector {
   }
 }
 
+#[derive(Debug, Clone)]
 struct BranchCoverageItem {
   line_index: usize,
   block_number: usize,
@@ -164,16 +164,19 @@ struct BranchCoverageItem {
   is_hit: bool,
 }
 
+#[derive(Debug, Clone)]
 struct FunctionCoverageItem {
   name: String,
   line_index: usize,
   execution_count: i64,
 }
 
-struct CoverageReport {
+#[derive(Debug, Clone)]
+pub struct CoverageReport {
   url: ModuleSpecifier,
   named_functions: Vec<FunctionCoverageItem>,
   branches: Vec<BranchCoverageItem>,
+  /// (line_index, number_of_hits)
   found_lines: Vec<(usize, i64)>,
   output: Option<PathBuf>,
 }
@@ -368,205 +371,6 @@ fn generate_coverage_report(
   coverage_report
 }
 
-enum CoverageReporterKind {
-  Pretty,
-  Lcov,
-}
-
-fn create_reporter(
-  kind: CoverageReporterKind,
-) -> Box<dyn CoverageReporter + Send> {
-  match kind {
-    CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
-    CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
-  }
-}
-
-trait CoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError>;
-
-  fn done(&mut self);
-}
-
-struct LcovCoverageReporter {}
-
-impl LcovCoverageReporter {
-  pub fn new() -> LcovCoverageReporter {
-    LcovCoverageReporter {}
-  }
-}
-
-impl CoverageReporter for LcovCoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    _file_text: &str,
-  ) -> Result<(), AnyError> {
-    // pipes output to stdout if no file is specified
-    let out_mode: Result<Box<dyn Write>, Error> = match coverage_report.output {
-      // only append to the file as the file should be created already
-      Some(ref path) => File::options()
-        .append(true)
-        .open(path)
-        .map(|f| Box::new(f) as Box<dyn Write>),
-      None => Ok(Box::new(io::stdout())),
-    };
-    let mut out_writer = out_mode?;
-
-    let file_path = coverage_report
-      .url
-      .to_file_path()
-      .ok()
-      .and_then(|p| p.to_str().map(|p| p.to_string()))
-      .unwrap_or_else(|| coverage_report.url.to_string());
-    writeln!(out_writer, "SF:{file_path}")?;
-
-    for function in &coverage_report.named_functions {
-      writeln!(
-        out_writer,
-        "FN:{},{}",
-        function.line_index + 1,
-        function.name
-      )?;
-    }
-
-    for function in &coverage_report.named_functions {
-      writeln!(
-        out_writer,
-        "FNDA:{},{}",
-        function.execution_count, function.name
-      )?;
-    }
-
-    let functions_found = coverage_report.named_functions.len();
-    writeln!(out_writer, "FNF:{functions_found}")?;
-    let functions_hit = coverage_report
-      .named_functions
-      .iter()
-      .filter(|f| f.execution_count > 0)
-      .count();
-    writeln!(out_writer, "FNH:{functions_hit}")?;
-
-    for branch in &coverage_report.branches {
-      let taken = if let Some(taken) = &branch.taken {
-        taken.to_string()
-      } else {
-        "-".to_string()
-      };
-
-      writeln!(
-        out_writer,
-        "BRDA:{},{},{},{}",
-        branch.line_index + 1,
-        branch.block_number,
-        branch.branch_number,
-        taken
-      )?;
-    }
-
-    let branches_found = coverage_report.branches.len();
-    writeln!(out_writer, "BRF:{branches_found}")?;
-    let branches_hit =
-      coverage_report.branches.iter().filter(|b| b.is_hit).count();
-    writeln!(out_writer, "BRH:{branches_hit}")?;
-    for (index, count) in &coverage_report.found_lines {
-      writeln!(out_writer, "DA:{},{}", index + 1, count)?;
-    }
-
-    let lines_hit = coverage_report
-      .found_lines
-      .iter()
-      .filter(|(_, count)| *count != 0)
-      .count();
-    writeln!(out_writer, "LH:{lines_hit}")?;
-
-    let lines_found = coverage_report.found_lines.len();
-    writeln!(out_writer, "LF:{lines_found}")?;
-
-    writeln!(out_writer, "end_of_record")?;
-    Ok(())
-  }
-
-  fn done(&mut self) {}
-}
-
-struct PrettyCoverageReporter {}
-
-impl PrettyCoverageReporter {
-  pub fn new() -> PrettyCoverageReporter {
-    PrettyCoverageReporter {}
-  }
-}
-
-impl CoverageReporter for PrettyCoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError> {
-    let lines = file_text.split('\n').collect::<Vec<_>>();
-    print!("cover {} ... ", coverage_report.url);
-
-    let hit_lines = coverage_report
-      .found_lines
-      .iter()
-      .filter(|(_, count)| *count > 0)
-      .map(|(index, _)| *index);
-
-    let missed_lines = coverage_report
-      .found_lines
-      .iter()
-      .filter(|(_, count)| *count == 0)
-      .map(|(index, _)| *index);
-
-    let lines_found = coverage_report.found_lines.len();
-    let lines_hit = hit_lines.count();
-    let line_ratio = lines_hit as f32 / lines_found as f32;
-
-    let line_coverage =
-      format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found);
-
-    if line_ratio >= 0.9 {
-      println!("{}", colors::green(&line_coverage));
-    } else if line_ratio >= 0.75 {
-      println!("{}", colors::yellow(&line_coverage));
-    } else {
-      println!("{}", colors::red(&line_coverage));
-    }
-
-    let mut last_line = None;
-    for line_index in missed_lines {
-      const WIDTH: usize = 4;
-      const SEPARATOR: &str = "|";
-
-      // Put a horizontal separator between disjoint runs of lines
-      if let Some(last_line) = last_line {
-        if last_line + 1 != line_index {
-          let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
-        }
-      }
-
-      println!(
-        "{:width$} {} {}",
-        line_index + 1,
-        colors::gray(SEPARATOR),
-        colors::red(&lines[line_index]),
-        width = WIDTH
-      );
-
-      last_line = Some(line_index);
-    }
-    Ok(())
-  }
-
-  fn done(&mut self) {}
-}
-
 fn collect_coverages(
   files: FileFlags,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
@@ -645,6 +449,11 @@ pub async fn cover_files(
   let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
 
+  assert!(!coverage_flags.files.include.is_empty());
+
+  // Use the first include path as the default output path.
+  let coverage_root = coverage_flags.files.include[0].clone();
+
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     script_coverages,
@@ -665,13 +474,7 @@ pub async fn cover_files(
     vec![]
   };
 
-  let reporter_kind = if coverage_flags.lcov {
-    CoverageReporterKind::Lcov
-  } else {
-    CoverageReporterKind::Pretty
-  };
-
-  let mut reporter = create_reporter(reporter_kind);
+  let mut reporter = reporter::create(coverage_flags.r#type);
 
   let out_mode = match coverage_flags.output {
     Some(ref path) => match File::create(path) {
@@ -748,7 +551,7 @@ pub async fn cover_files(
     }
   }
 
-  reporter.done();
+  reporter.done(&coverage_root);
 
   Ok(())
 }

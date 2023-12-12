@@ -92,6 +92,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.url",
     "deno.web",
     "deno.fetch",
+    "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
     "deno.crypto",
@@ -325,6 +326,8 @@ pub struct Response {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): we have similar struct in `tsc.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 #[derive(Debug)]
 struct State {
   hash_data: u64,
@@ -438,7 +441,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: Option<String>,
+  data: String,
   version: Option<String>,
   script_kind: i32,
 }
@@ -448,7 +451,7 @@ struct LoadResponse {
 fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,
-) -> Result<LoadResponse, AnyError> {
+) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
 
   let specifier = normalize_specifier(load_specifier, &state.current_dir)
@@ -463,9 +466,7 @@ fn op_load(
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if load_specifier == "internal:///missing_dependency.d.ts" {
-    hash = Some("1".to_string());
-    media_type = MediaType::Dts;
-    Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
+    None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, state.hash_data);
@@ -518,18 +519,19 @@ fn op_load(
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
       Some(Cow::Owned(code))
     } else {
-      media_type = MediaType::Unknown;
       None
     };
     hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     maybe_source
   };
-
-  Ok(LoadResponse {
-    data: data.map(String::from),
+  let Some(data) = data else {
+    return Ok(None);
+  };
+  Ok(Some(LoadResponse {
+    data: data.into_owned(),
     version: hash,
     script_kind: as_ts_script_kind(media_type),
-  })
+  }))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -763,6 +765,8 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): this mechanism is questionable.
+// Can't we use something more efficient here?
 #[op2]
 fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   let state = state.borrow_mut::<State>();
@@ -821,7 +825,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     },
   );
 
-  let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
   let request_value = json!({
     "config": request.config,
     "debug": request.debug,
@@ -840,9 +843,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     ..Default::default()
   });
 
-  runtime
-    .execute_script(located_script_name!(), startup_source)
-    .context("Could not properly start the compiler runtime.")?;
   runtime.execute_script(located_script_name!(), exec_source)?;
 
   let op_state = runtime.op_state();
@@ -1006,7 +1006,7 @@ mod tests {
       .execute_script_static(
         "<anon>",
         r#"
-      if (!(startup)) {
+      if (!(globalThis.exec)) {
           throw Error("bad");
         }
         console.log(`ts version: ${ts.version}`);
@@ -1078,9 +1078,10 @@ mod tests {
     )
     .await;
     let actual = op_load::call(&mut state, "asset:///lib.dom.d.ts")
-      .expect("should have invoked op");
+      .expect("should have invoked op")
+      .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
-    assert_eq!(actual.data.unwrap(), expected);
+    assert_eq!(actual.data, expected);
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
@@ -1094,7 +1095,8 @@ mod tests {
     )
     .await;
     let actual = op_load::call(&mut state, "internal:///.tsbuildinfo")
-      .expect("should have invoked op");
+      .expect("should have invoked op")
+      .expect("load should have succeeded");
     assert_eq!(
       serde_json::to_value(actual).unwrap(),
       json!({
@@ -1110,14 +1112,7 @@ mod tests {
     let mut state = setup(None, None, None).await;
     let actual = op_load::call(&mut state, "https://deno.land/x/mod.ts")
       .expect("should have invoked op");
-    assert_eq!(
-      serde_json::to_value(actual).unwrap(),
-      json!({
-        "data": null,
-        "version": null,
-        "scriptKind": 0,
-      })
-    )
+    assert_eq!(serde_json::to_value(actual).unwrap(), json!(null));
   }
 
   #[tokio::test]

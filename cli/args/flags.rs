@@ -85,12 +85,20 @@ pub struct CompletionsFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CoverageType {
+  Summary,
+  Detailed,
+  Lcov,
+  Html,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
-  pub lcov: bool,
+  pub r#type: CoverageType,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -808,6 +816,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
     DENO_V8_FLAGS        Set V8 command line options
+    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
@@ -1396,6 +1405,20 @@ Generate html reports from lcov:
             )
             .require_equals(true)
             .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("html")
+            .long("html")
+            .help(
+              "Output coverage report in HTML format in the given directory",
+            )
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("detailed")
+            .long("detailed")
+            .help("Output coverage report in detailed format in the terminal.")
+            .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("files")
@@ -2146,12 +2169,14 @@ Directory arguments are expanded to all contained files matching the glob
     .arg(
       Arg::new("coverage")
         .long("coverage")
-        .require_equals(true)
         .value_name("DIR")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("coverage")
         .conflicts_with("inspect")
         .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data into DIR"),
+        .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
     )
     .arg(
       Arg::new("parallel")
@@ -3298,7 +3323,15 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let lcov = matches.get_flag("lcov");
+  let r#type = if matches.get_flag("lcov") {
+    CoverageType::Lcov
+  } else if matches.get_flag("html") {
+    CoverageType::Html
+  } else if matches.get_flag("detailed") {
+    CoverageType::Detailed
+  } else {
+    CoverageType::Summary
+  };
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
@@ -3308,7 +3341,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     include,
     exclude,
-    lcov,
+    r#type,
   });
 }
 
@@ -7416,6 +7449,23 @@ mod tests {
   }
 
   #[test]
+  fn test_coverage_default_dir() {
+    let r = flags_from_vec(svec!["deno", "test", "--coverage"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          coverage_dir: Some("coverage".to_string()),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn bundle_with_cafile() {
     let r = flags_from_vec(svec![
       "deno",
@@ -7867,7 +7917,7 @@ mod tests {
           output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: false,
+          r#type: CoverageType::Summary
         }),
         ..Flags::default()
       }
@@ -7893,7 +7943,7 @@ mod tests {
           },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          lcov: true,
+          r#type: CoverageType::Lcov,
           output: Some(PathBuf::from("foo.lcov")),
         }),
         ..Flags::default()

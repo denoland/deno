@@ -1394,7 +1394,7 @@ export class ServerResponse extends NodeWritable {
   }
 
   getHeader(name: string) {
-    return this.#headers.get(name);
+    return this.#headers.get(name) ?? undefined;
   }
   removeHeader(name: string) {
     return this.#headers.delete(name);
@@ -1457,6 +1457,10 @@ export class ServerResponse extends NodeWritable {
 
     // @ts-expect-error The signature for cb is stricter than the one implemented here
     return super.end(chunk, encoding, cb);
+  }
+
+  flushHeaders() {
+    // no-op
   }
 
   // Undocumented API used by `npm:compression`.

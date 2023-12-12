@@ -6,6 +6,7 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 const { core } = globalThis.__bootstrap;
+const ops = core.ops;
 
 export class Script {
   code: string;
@@ -25,8 +26,13 @@ export class Script {
     notImplemented("Script.prototype.runInContext");
   }
 
-  runInNewContext(_contextObject: any, _options: any) {
-    notImplemented("Script.prototype.runInNewContext");
+  runInNewContext(contextObject: any, options: any) {
+    if (options) {
+      console.warn(
+        "Script.runInNewContext options are currently not supported",
+      );
+    }
+    return ops.op_vm_run_in_new_context(this.code, contextObject);
   }
 
   createCachedData() {
@@ -51,11 +57,14 @@ export function runInContext(
 }
 
 export function runInNewContext(
-  _code: string,
-  _contextObject: any,
-  _options: any,
+  code: string,
+  contextObject: any,
+  options: any,
 ) {
-  notImplemented("runInNewContext");
+  if (options) {
+    console.warn("vm.runInNewContext options are currently not supported");
+  }
+  return ops.op_vm_run_in_new_context(code, contextObject);
 }
 
 export function runInThisContext(

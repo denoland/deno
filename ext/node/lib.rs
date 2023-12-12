@@ -30,6 +30,7 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use ops::v8::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
@@ -243,6 +244,7 @@ deno_core::extension!(deno_node,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_vm_run_in_new_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_decode,

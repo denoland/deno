@@ -39,7 +39,6 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
-use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
@@ -308,6 +307,7 @@ impl MainWorker {
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -420,11 +420,6 @@ impl MainWorker {
     #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
     options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
 
-    // Clear extension modules from the module map, except preserve `node:*`
-    // modules.
-    let preserve_snapshotted_modules =
-      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options
@@ -437,7 +432,6 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
-      preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
