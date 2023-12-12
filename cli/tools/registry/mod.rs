@@ -71,6 +71,9 @@ pub struct PublishingTask {
   pub error: Option<PublishingTaskError>,
 }
 
+static SUGGESTED_ENTRYPOINTS: [&str; 4] =
+  ["mod.ts", "mod.js", "index.ts", "index.js"];
+
 async fn prepare_publish(
   initial_cwd: &Path,
   directory: PathBuf,
@@ -92,6 +95,34 @@ async fn prepare_publish(
   let Some(name) = deno_json.json.name.clone() else {
     bail!("{} is missing 'name' field", deno_json_path.display());
   };
+  if deno_json.json.exports.is_none() {
+    let mut suggested_entrypoint = None;
+
+    for entrypoint in SUGGESTED_ENTRYPOINTS {
+      if directory_path.join(entrypoint).exists() {
+        suggested_entrypoint = Some(entrypoint);
+        break;
+      }
+    }
+
+    let exports_content = format!(
+      r#"{{
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
+      name,
+      version,
+      suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
+    );
+
+    bail!(
+      "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+      name,
+      deno_json_path.display(),
+      exports_content
+    );
+  }
   let Some(name) = name.strip_prefix('@') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
