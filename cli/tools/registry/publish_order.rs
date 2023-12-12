@@ -30,15 +30,15 @@ pub async fn analyze_workspace_publish_order(
   Ok(publish_batches)
 }
 
-struct MemberRoot {
+struct MemberRoots {
   name: String,
-  root: ModuleSpecifier,
+  dir_url: ModuleSpecifier,
   exports: Vec<ModuleSpecifier>,
 }
 
 fn get_workspace_roots(
   config: &WorkspaceConfig,
-) -> Result<Vec<MemberRoot>, AnyError> {
+) -> Result<Vec<MemberRoots>, AnyError> {
   let mut members = Vec::with_capacity(config.members.len());
   for member in &config.members {
     let exports_config = member
@@ -51,9 +51,9 @@ fn get_workspace_roots(
         )
       })?
       .into_map();
-    let mut member_root = MemberRoot {
+    let mut member_root = MemberRoots {
       name: member.package_name.clone(),
-      root: member.config_file.specifier.join("../").unwrap().clone(),
+      dir_url: member.config_file.specifier.join("../").unwrap().clone(),
       exports: Vec::with_capacity(exports_config.len()),
     };
     for (_, value) in exports_config {
@@ -73,7 +73,7 @@ fn get_workspace_roots(
 
 fn build_pkg_deps(
   graph: deno_graph::ModuleGraph,
-  roots: Vec<MemberRoot>,
+  roots: Vec<MemberRoots>,
 ) -> HashMap<String, HashSet<String>> {
   let mut members = HashMap::with_capacity(roots.len());
   let mut seen_modules = HashSet::with_capacity(graph.modules().count());
@@ -105,14 +105,14 @@ fn build_pkg_deps(
         if specifier.scheme() != "file" {
           continue;
         }
-        if specifier.as_str().starts_with(root.root.as_str()) {
+        if specifier.as_str().starts_with(root.dir_url.as_str()) {
           if seen_modules.insert(specifier.clone()) {
             pending.push_back(specifier.clone());
           }
         } else {
           let found_root = roots
             .iter()
-            .find(|root| specifier.as_str().starts_with(root.root.as_str()));
+            .find(|root| specifier.as_str().starts_with(root.dir_url.as_str()));
           if let Some(root) = found_root {
             deps.insert(root.name.clone());
           }
