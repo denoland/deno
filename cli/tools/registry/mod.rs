@@ -53,6 +53,7 @@ struct PreparedPublishPackage {
   version: String,
   tarball_hash: String,
   tarball: Bytes,
+  diagnostics: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -100,8 +101,9 @@ async fn prepare_publish(
 
   let unfurler = ImportMapUnfurler::new(import_map);
 
-  let tarball = tar::create_gzipped_tarball(directory_path, unfurler)
-    .context("Failed to create a tarball")?;
+  let (tarball, diagnostics) =
+    tar::create_gzipped_tarball(directory_path, unfurler)
+      .context("Failed to create a tarball")?;
 
   let tarball_hash_bytes: Vec<u8> =
     sha2::Sha256::digest(&tarball).iter().cloned().collect();
@@ -116,6 +118,7 @@ async fn prepare_publish(
     version: version.to_string(),
     tarball_hash,
     tarball,
+    diagnostics,
   })
 }
 
@@ -221,6 +224,47 @@ struct OidcTokenResponse {
   value: String,
 }
 
+/// Prints diagnostics like so:
+/// ```
+///
+/// Warning
+/// ├╌ Dynamic import was not analyzable...
+/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
+/// |
+/// ├╌ Dynamic import was not analyzable...
+/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
+/// |
+/// ├╌ Dynamic import was not analyzable...
+/// └╌╌ at file:///dev/foo/bar/foo.ts:4:5
+///
+/// ```
+fn print_diagnostics(diagnostics: Vec<String>) {
+  if !diagnostics.is_empty() {
+    let len = diagnostics.len();
+    log::warn!("");
+    log::warn!("{}", crate::colors::yellow("Warning"));
+    for (i, diagnostic) in diagnostics.iter().enumerate() {
+      let last_diagnostic = i == len - 1;
+      let lines = diagnostic.split('\n').collect::<Vec<_>>();
+      let lines_len = lines.len();
+      if i != 0 {
+        log::warn!("|");
+      }
+      for (j, line) in lines.iter().enumerate() {
+        let last_line = j == lines_len - 1;
+        if j == 0 {
+          log::warn!("├╌ {}", line);
+        } else if last_line && last_diagnostic {
+          log::warn!("└╌╌ {}", line);
+        } else {
+          log::warn!("├╌╌ {}", line);
+        }
+      }
+    }
+    log::warn!("");
+  }
+}
+
 async fn perform_publish(
   http_client: &Arc<HttpClient>,
   packages: Vec<PreparedPublishPackage>,
@@ -228,6 +272,12 @@ async fn perform_publish(
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_url = deno_registry_api_url().to_string();
+
+  let diagnostics = packages
+    .iter()
+    .flat_map(|p| p.diagnostics.clone())
+    .collect::<Vec<_>>();
+  print_diagnostics(diagnostics);
 
   let permissions = packages
     .iter()
@@ -267,6 +317,8 @@ async fn perform_publish(
         println!(" @{}/{}", packages[0].scope, packages[0].package);
       }
 
+      // ASCII code for the bell character.
+      print!("\x07");
       println!("{}", colors::gray("Waiting..."));
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
