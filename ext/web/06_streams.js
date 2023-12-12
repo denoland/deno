@@ -6,12 +6,12 @@
 /// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_arraybuffer_was_detached,
   op_transfer_arraybuffer,
   op_readable_stream_resource_allocate,
+  op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_get_sink,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_buf,
@@ -28,7 +28,6 @@ import {
   remove,
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
   ArrayBufferIsView,
@@ -863,13 +862,16 @@ function readableStreamReadFn(reader, sink) {
  * read operations, and those read operations will be fed by the output of the
  * ReadableStream source.
  * @param {ReadableStream<Uint8Array>} stream
+ * @param {number | undefined} length
  * @returns {number}
  */
-function resourceForReadableStream(stream) {
+function resourceForReadableStream(stream, length) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
-  const rid = op_readable_stream_resource_allocate();
+  const rid = typeof length == "number"
+    ? op_readable_stream_resource_allocate_sized(length)
+    : op_readable_stream_resource_allocate();
 
   // Close the Reader we get from the ReadableStream when the resource is closed, ignoring any errors
   PromisePrototypeCatch(

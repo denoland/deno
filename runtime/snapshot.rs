@@ -1,11 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops;
+use crate::ops::bootstrap::SnapshotOptions;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::snapshot_util::*;
+use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
 use std::path::Path;
@@ -75,7 +77,11 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
-  fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
+  fn check_read_with_api_name(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
@@ -183,9 +189,12 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
   }
 }
 
-pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
+pub fn create_runtime_snapshot(
+  snapshot_path: PathBuf,
+  snapshot_options: SnapshotOptions,
+) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
-  // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   let mut extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -195,6 +204,7 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
       Default::default(),
       Default::default(),
     ),
+    deno_webgpu::deno_webgpu::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
@@ -234,7 +244,7 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     ops::signal::deno_signal::init_ops(),
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
-    ops::bootstrap::deno_bootstrap::init_ops(None),
+    ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
   ];
 
   for extension in &mut extensions {
@@ -252,7 +262,13 @@ pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     startup_snapshot: None,
     extensions,
     compression_cb: None,
-    with_runtime_cb: None,
+    with_runtime_cb: Some(Box::new(|rt| {
+      let isolate = rt.v8_isolate();
+      let scope = &mut v8::HandleScope::new(isolate);
+
+      let ctx = v8::Context::new(scope);
+      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+    })),
     skip_op_registration: false,
   });
   for path in output.files_loaded_during_snapshot {

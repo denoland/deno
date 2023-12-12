@@ -4,7 +4,7 @@
 
 import { URL } from "ext:deno_url/00_url.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   Error,
   ObjectDefineProperties,

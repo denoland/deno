@@ -1577,6 +1577,100 @@ itest!(unstable_worker {
   output: "run/unstable_worker.ts.out",
 });
 
+itest!(unstable_worker_options_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_worker_options.js",
+  output: "run/unstable_worker_options.disabled.out",
+  exit_code: 70,
+});
+
+itest!(unstable_worker_options_enabled {
+  args: "run --quiet --reload --allow-read --unstable-worker-options run/unstable_worker_options.js",
+  output: "run/unstable_worker_options.enabled.out",
+});
+
+itest!(unstable_broadcast_channel_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_broadcast_channel.js",
+  output: "run/unstable_broadcast_channel.disabled.out",
+});
+
+itest!(unstable_broadcast_channel_enabled {
+  args: "run --quiet --reload --allow-read --unstable-broadcast-channel run/unstable_broadcast_channel.js",
+  output: "run/unstable_broadcast_channel.enabled.out",
+});
+
+itest!(unstable_cron_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_cron.js",
+  output: "run/unstable_cron.disabled.out",
+});
+
+itest!(unstable_cron_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-cron run/unstable_cron.js",
+  output: "run/unstable_cron.enabled.out",
+});
+
+itest!(unstable_ffi_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
+  output: "run/unstable_ffi.disabled.out",
+});
+
+itest!(unstable_ffi_enabled {
+  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
+  output: "run/unstable_ffi.enabled.out",
+});
+
+itest!(unstable_fs_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_fs.js",
+  output: "run/unstable_fs.disabled.out",
+});
+
+itest!(unstable_fs_enabled {
+  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
+  output: "run/unstable_fs.enabled.out",
+});
+
+itest!(unstable_http_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_http.js",
+  output: "run/unstable_http.disabled.out",
+});
+
+itest!(unstable_http_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-http run/unstable_http.js",
+  output: "run/unstable_http.enabled.out",
+});
+
+itest!(unstable_net_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_net.js",
+  output: "run/unstable_net.disabled.out",
+});
+
+itest!(unstable_net_enabled {
+  args: "run --quiet --reload --allow-read --unstable-net run/unstable_net.js",
+  output: "run/unstable_net.enabled.out",
+});
+
+itest!(unstable_kv_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_kv.js",
+  output: "run/unstable_kv.disabled.out",
+});
+
+itest!(unstable_kv_enabled {
+  args: "run --quiet --reload --allow-read --unstable-kv run/unstable_kv.js",
+  output: "run/unstable_kv.enabled.out",
+});
+
+itest!(unstable_webgpu_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.disabled.out",
+});
+
+itest!(unstable_webgpu_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.enabled.out",
+});
+
 itest!(import_compression {
   args: "run --quiet --reload --allow-net run/import_compression/main.ts",
   output: "run/import_compression/main.out",
@@ -2701,6 +2795,11 @@ mod permissions {
   itest!(_064_permissions_revoke_global_sync {
     args: "run --allow-read=foo,bar run/064_permissions_revoke_global_sync.ts",
     output: "run/064_permissions_revoke_global.ts.out",
+  });
+
+  itest!(_065_permissions_revoke_net {
+    args: "run --allow-net run/065_permissions_revoke_net.ts",
+    output: "run/065_permissions_revoke_net.ts.out",
   });
 
   #[test]
@@ -3921,7 +4020,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -3942,7 +4041,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4062,7 +4161,7 @@ fn broken_stdout() {
 
   assert!(!output.status.success());
   let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
-  assert!(stderr.contains("Uncaught BrokenPipe"));
+  assert!(stderr.contains("Uncaught (in promise) BrokenPipe"));
   assert!(!stderr.contains("panic"));
 }
 
@@ -4730,3 +4829,83 @@ itest!(unsafe_proto_flag {
   http_server: false,
   exit_code: 0,
 });
+
+#[test]
+fn test_unstable_sloppy_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("a.ts", "export class A {}");
+  temp_dir.write("b.js", "export class B {}");
+  temp_dir.write("c.mts", "export class C {}");
+  temp_dir.write("d.mjs", "export class D {}");
+  temp_dir.write("e.tsx", "export class E {}");
+  temp_dir.write("f.jsx", "export class F {}");
+  let dir = temp_dir.path().join("dir");
+  dir.create_dir_all();
+  dir.join("index.tsx").write("export class G {}");
+  temp_dir.write(
+    "main.ts",
+    r#"import * as a from "./a.js";
+import * as b from "./b";
+import * as c from "./c";
+import * as d from "./d";
+import * as e from "./e";
+import * as e2 from "./e.js";
+import * as f from "./f";
+import * as g from "./dir";
+console.log(a.A);
+console.log(b.B);
+console.log(c.C);
+console.log(d.D);
+console.log(e.E);
+console.log(e2.E);
+console.log(f.F);
+console.log(g.G);
+"#,
+  );
+
+  // run without sloppy imports
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text(r#"error: Module not found "file:///[WILDCARD]/a.js". Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
+    at file:///[WILDCARD]/main.ts:1:20
+"#)
+    .assert_exit_code(1);
+
+  // now run with sloppy imports
+  temp_dir.write("deno.json", r#"{ "unstable": ["sloppy-imports"] }"#);
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text(
+      "Warning Sloppy imports are not recommended and have a negative impact on performance.
+Warning Sloppy module resolution (hint: update .js extension to .ts)
+    at file:///[WILDCARD]/main.ts:1:20
+Warning Sloppy module resolution (hint: add .js extension)
+    at file:///[WILDCARD]/main.ts:2:20
+Warning Sloppy module resolution (hint: add .mts extension)
+    at file:///[WILDCARD]/main.ts:3:20
+Warning Sloppy module resolution (hint: add .mjs extension)
+    at file:///[WILDCARD]/main.ts:4:20
+Warning Sloppy module resolution (hint: add .tsx extension)
+    at file:///[WILDCARD]/main.ts:5:20
+Warning Sloppy module resolution (hint: update .js extension to .tsx)
+    at file:///[WILDCARD]/main.ts:6:21
+Warning Sloppy module resolution (hint: add .jsx extension)
+    at file:///[WILDCARD]/main.ts:7:20
+Warning Sloppy module resolution (hint: specify path to index.tsx file in directory instead)
+    at file:///[WILDCARD]/main.ts:8:20
+[class A]
+[class B]
+[class C]
+[class D]
+[class E]
+[class E]
+[class F]
+[class G]
+",
+    );
+}

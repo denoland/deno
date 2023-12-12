@@ -25,6 +25,7 @@ members = [
   "ext/node",
   "ext/url",
   "ext/web",
+  "ext/webgpu",
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
@@ -40,41 +41,42 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.31.6", features = ["transpiling"] }
-deno_core = { version = "0.234.0" }
+deno_core = { version = "0.237.0" }
 
-deno_runtime = { version = "0.133.0", path = "./runtime" }
-napi_sym = { version = "0.55.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.119.0", path = "./bench_util" }
+deno_runtime = { version = "0.135.0", path = "./runtime" }
+napi_sym = { version = "0.57.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.121.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
-denokv_proto = "0.4.0"
+denokv_proto = "0.5.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.4.0" }
-denokv_remote = "0.4.0"
+denokv_sqlite = { default-features = false, version = "0.5.0" }
+denokv_remote = "0.5.0"
 
 # exts
-deno_broadcast_channel = { version = "0.119.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.57.0", path = "./ext/cache" }
-deno_console = { version = "0.125.0", path = "./ext/console" }
-deno_cron = { version = "0.5.0", path = "./ext/cron" }
-deno_crypto = { version = "0.139.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.149.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.112.0", path = "./ext/ffi" }
-deno_fs = { version = "0.35.0", path = "./ext/fs" }
-deno_http = { version = "0.122.0", path = "./ext/http" }
-deno_io = { version = "0.35.0", path = "./ext/io" }
-deno_net = { version = "0.117.0", path = "./ext/net" }
-deno_node = { version = "0.62.0", path = "./ext/node" }
-deno_kv = { version = "0.33.0", path = "./ext/kv" }
-deno_tls = { version = "0.112.0", path = "./ext/tls" }
-deno_url = { version = "0.125.0", path = "./ext/url" }
-deno_web = { version = "0.156.0", path = "./ext/web" }
-deno_webidl = { version = "0.125.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.130.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.120.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.55.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.121.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.59.0", path = "./ext/cache" }
+deno_console = { version = "0.127.0", path = "./ext/console" }
+deno_cron = { version = "0.7.0", path = "./ext/cron" }
+deno_crypto = { version = "0.141.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.151.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.114.0", path = "./ext/ffi" }
+deno_fs = { version = "0.37.0", path = "./ext/fs" }
+deno_http = { version = "0.124.0", path = "./ext/http" }
+deno_io = { version = "0.37.0", path = "./ext/io" }
+deno_net = { version = "0.119.0", path = "./ext/net" }
+deno_node = { version = "0.64.0", path = "./ext/node" }
+deno_kv = { version = "0.35.0", path = "./ext/kv" }
+deno_tls = { version = "0.114.0", path = "./ext/tls" }
+deno_url = { version = "0.127.0", path = "./ext/url" }
+deno_web = { version = "0.158.0", path = "./ext/web" }
+deno_webgpu = { version = "0.94.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.127.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.132.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.122.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.57.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -125,7 +127,7 @@ prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
 lazy-regex = "3"
-reqwest = { version = "0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
+reqwest = { version = "=0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.8"
@@ -163,6 +165,12 @@ p384 = { version = "0.13.0", features = ["ecdh"] }
 # crypto
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 hkdf = "0.12.3"
+
+# webgpu
+raw-window-handle = "0.5.0"
+wgpu-core = "=0.18"
+wgpu-types = "=0.18"
+wgpu-hal = "=0.18"
 
 # macros
 proc-macro2 = "1"

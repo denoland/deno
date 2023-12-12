@@ -1,8 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -42,6 +41,8 @@ import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
 import * as prompt from "ext:runtime/41_prompt.js";
+import * as imageData from "ext:deno_web/16_image_data.js";
+import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -67,6 +68,7 @@ const windowOrWorkerGlobalScope = {
   FileReader: util.nonEnumerable(fileReader.FileReader),
   FormData: util.nonEnumerable(formData.FormData),
   Headers: util.nonEnumerable(headers.Headers),
+  ImageData: util.nonEnumerable(imageData.ImageData),
   MessageEvent: util.nonEnumerable(event.MessageEvent),
   Performance: util.nonEnumerable(performance.Performance),
   PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
@@ -142,9 +144,51 @@ const windowOrWorkerGlobalScope = {
   [webidl.brand]: util.nonEnumerable(webidl.brand),
 };
 
-const unstableWindowOrWorkerGlobalScope = {
+const unstableForWindowOrWorkerGlobalScope = {};
+unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
   BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+};
+unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
+};
+unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
+  GPU: webGPUNonEnumerable(() => webgpu.GPU),
+  GPUAdapter: webGPUNonEnumerable(() => webgpu.GPUAdapter),
+  GPUAdapterInfo: webGPUNonEnumerable(() => webgpu.GPUAdapterInfo),
+  GPUSupportedLimits: webGPUNonEnumerable(() => webgpu.GPUSupportedLimits),
+  GPUSupportedFeatures: webGPUNonEnumerable(() => webgpu.GPUSupportedFeatures),
+  GPUDeviceLostInfo: webGPUNonEnumerable(() => webgpu.GPUDeviceLostInfo),
+  GPUDevice: webGPUNonEnumerable(() => webgpu.GPUDevice),
+  GPUQueue: webGPUNonEnumerable(() => webgpu.GPUQueue),
+  GPUBuffer: webGPUNonEnumerable(() => webgpu.GPUBuffer),
+  GPUBufferUsage: webGPUNonEnumerable(() => webgpu.GPUBufferUsage),
+  GPUMapMode: webGPUNonEnumerable(() => webgpu.GPUMapMode),
+  GPUTextureUsage: webGPUNonEnumerable(() => webgpu.GPUTextureUsage),
+  GPUTexture: webGPUNonEnumerable(() => webgpu.GPUTexture),
+  GPUTextureView: webGPUNonEnumerable(() => webgpu.GPUTextureView),
+  GPUSampler: webGPUNonEnumerable(() => webgpu.GPUSampler),
+  GPUBindGroupLayout: webGPUNonEnumerable(() => webgpu.GPUBindGroupLayout),
+  GPUPipelineLayout: webGPUNonEnumerable(() => webgpu.GPUPipelineLayout),
+  GPUBindGroup: webGPUNonEnumerable(() => webgpu.GPUBindGroup),
+  GPUShaderModule: webGPUNonEnumerable(() => webgpu.GPUShaderModule),
+  GPUShaderStage: webGPUNonEnumerable(() => webgpu.GPUShaderStage),
+  GPUComputePipeline: webGPUNonEnumerable(() => webgpu.GPUComputePipeline),
+  GPURenderPipeline: webGPUNonEnumerable(() => webgpu.GPURenderPipeline),
+  GPUColorWrite: webGPUNonEnumerable(() => webgpu.GPUColorWrite),
+  GPUCommandEncoder: webGPUNonEnumerable(() => webgpu.GPUCommandEncoder),
+  GPURenderPassEncoder: webGPUNonEnumerable(() => webgpu.GPURenderPassEncoder),
+  GPUComputePassEncoder: webGPUNonEnumerable(() =>
+    webgpu.GPUComputePassEncoder
+  ),
+  GPUCommandBuffer: webGPUNonEnumerable(() => webgpu.GPUCommandBuffer),
+  GPURenderBundleEncoder: webGPUNonEnumerable(() =>
+    webgpu.GPURenderBundleEncoder
+  ),
+  GPURenderBundle: webGPUNonEnumerable(() => webgpu.GPURenderBundle),
+  GPUQuerySet: webGPUNonEnumerable(() => webgpu.GPUQuerySet),
+  GPUError: webGPUNonEnumerable(() => webgpu.GPUError),
+  GPUValidationError: webGPUNonEnumerable(() => webgpu.GPUValidationError),
+  GPUOutOfMemoryError: webGPUNonEnumerable(() => webgpu.GPUOutOfMemoryError),
 };
 
 class Navigator {
@@ -185,7 +229,49 @@ const numCpus = memoizeLazy(() => ops.op_bootstrap_numcpus());
 const userAgent = memoizeLazy(() => ops.op_bootstrap_user_agent());
 const language = memoizeLazy(() => ops.op_bootstrap_language());
 
+let webgpu;
+
+function webGPUNonEnumerable(getter) {
+  let valueIsSet = false;
+  let value;
+
+  return {
+    get() {
+      loadWebGPU();
+
+      if (valueIsSet) {
+        return value;
+      } else {
+        return getter();
+      }
+    },
+    set(v) {
+      loadWebGPU();
+
+      valueIsSet = true;
+      value = v;
+    },
+    enumerable: false,
+    configurable: true,
+  };
+}
+
+function loadWebGPU() {
+  if (!webgpu) {
+    webgpu = ops.op_lazy_load_esm("ext:deno_webgpu/01_webgpu.js");
+  }
+}
+
 ObjectDefineProperties(Navigator.prototype, {
+  gpu: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, NavigatorPrototype);
+      loadWebGPU();
+      return webgpu.gpu;
+    },
+  },
   hardwareConcurrency: {
     configurable: true,
     enumerable: true,
@@ -246,6 +332,15 @@ class WorkerNavigator {
 const workerNavigator = webidl.createBranded(WorkerNavigator);
 
 ObjectDefineProperties(WorkerNavigator.prototype, {
+  gpu: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      loadWebGPU();
+      return webgpu.gpu;
+    },
+  },
   hardwareConcurrency: {
     configurable: true,
     enumerable: true,
@@ -311,7 +406,7 @@ const workerRuntimeGlobalProperties = {
 export {
   mainRuntimeGlobalProperties,
   memoizeLazy,
-  unstableWindowOrWorkerGlobalScope,
+  unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 };

@@ -1,10 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
   FunctionPrototypeBind,
@@ -106,8 +104,6 @@ const env = {
 function execPath() {
   return ops.op_exec_path();
 }
-
-internals.setExitHandler = setExitHandler;
 
 export {
   env,

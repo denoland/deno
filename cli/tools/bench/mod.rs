@@ -42,6 +42,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -76,6 +77,7 @@ pub enum BenchEvent {
   Register(BenchDescription),
   Wait(usize),
   Result(usize, BenchResult),
+  UncaughtError(String, Box<JsError>),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -167,6 +169,38 @@ async fn bench_specifier(
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Result<(), AnyError> {
+  match bench_specifier_inner(
+    worker_factory,
+    permissions,
+    specifier.clone(),
+    &sender,
+    filter,
+  )
+  .await
+  {
+    Ok(()) => Ok(()),
+    Err(error) => {
+      if error.is::<JsError>() {
+        sender.send(BenchEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(error.downcast::<JsError>().unwrap()),
+        ))?;
+        Ok(())
+      } else {
+        Err(error)
+      }
+    }
+  }
+}
+
+/// Run a single specifier as an executable bench module.
+async fn bench_specifier_inner(
+  worker_factory: Arc<CliMainWorkerFactory>,
+  permissions: Permissions,
+  specifier: ModuleSpecifier,
+  sender: &UnboundedSender<BenchEvent>,
+  filter: TestFilter,
+) -> Result<(), AnyError> {
   let mut worker = worker_factory
     .create_custom_worker(
       specifier.clone(),
@@ -180,6 +214,10 @@ async fn bench_specifier(
   worker.execute_side_module_possibly_with_npm().await?;
 
   let mut worker = worker.into_main_worker();
+
+  // Ensure that there are no pending exceptions before we start running tests
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
+
   worker.dispatch_load_event(located_script_name!())?;
 
   let benchmarks = {
@@ -227,6 +265,11 @@ async fn bench_specifier(
   // event loop to continue beyond what's needed to await results.
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
+
+  // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
+  // want to wait forever here.
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
+
   Ok(())
 }
 
@@ -307,6 +350,11 @@ async fn bench_specifiers(
                 report.failures.push((desc.clone(), failure));
               }
             };
+          }
+
+          BenchEvent::UncaughtError(origin, error) => {
+            report.failed += 1;
+            reporter.report_uncaught_error(&origin, error);
           }
         }
       }
@@ -447,7 +495,12 @@ pub async fn run_benchmarks_with_watch(
         let graph = module_graph_builder
           .create_graph(graph_kind, bench_modules.clone())
           .await?;
-        graph_valid_with_cli_options(&graph, &bench_modules, cli_options)?;
+        graph_valid_with_cli_options(
+          &graph,
+          factory.fs().as_ref(),
+          &bench_modules,
+          cli_options,
+        )?;
 
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {

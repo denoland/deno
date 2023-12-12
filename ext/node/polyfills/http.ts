@@ -58,6 +58,7 @@ import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
+import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 
 enum STATUS_CODES {
@@ -586,15 +587,28 @@ class ClientRequest extends OutgoingMessage {
     const client = this._getClient() ?? createHttpClient({ http2: false });
     this._client = client;
 
+    if (
+      this.method === "POST" || this.method === "PATCH" || this.method === "PUT"
+    ) {
+      const { readable, writable } = new TransformStream({
+        cancel: (e) => {
+          this._requestSendError = e;
+        },
+      });
+
+      this._bodyWritable = writable;
+      this._bodyWriter = writable.getWriter();
+
+      this._bodyWriteRid = resourceForReadableStream(readable);
+    }
+
     this._req = core.ops.op_node_http_request(
       this.method,
       url,
       headers,
       client.rid,
-      (this.method === "POST" || this.method === "PATCH" ||
-        this.method === "PUT") && this._contentLength !== 0,
+      this._bodyWriteRid,
     );
-    this._bodyWriteRid = this._req.requestBodyRid;
   }
 
   _implicitHeader() {
@@ -638,23 +652,11 @@ class ClientRequest extends OutgoingMessage {
       this._implicitHeader();
       this._send("", "latin1");
     }
+    this._bodyWriter?.close();
 
     (async () => {
       try {
-        const [res, _] = await Promise.all([
-          core.opAsync("op_fetch_send", this._req.requestRid),
-          (async () => {
-            if (this._bodyWriteRid) {
-              try {
-                await core.shutdown(this._bodyWriteRid);
-              } catch (err) {
-                this._requestSendError = err;
-              }
-
-              core.tryClose(this._bodyWriteRid);
-            }
-          })(),
-        ]);
+        const res = await core.opAsync("op_fetch_send", this._req.requestRid);
         try {
           cb?.();
         } catch (_) {
@@ -1392,7 +1394,7 @@ export class ServerResponse extends NodeWritable {
   }
 
   getHeader(name: string) {
-    return this.#headers.get(name);
+    return this.#headers.get(name) ?? undefined;
   }
   removeHeader(name: string) {
     return this.#headers.delete(name);
@@ -1455,6 +1457,10 @@ export class ServerResponse extends NodeWritable {
 
     // @ts-expect-error The signature for cb is stricter than the one implemented here
     return super.end(chunk, encoding, cb);
+  }
+
+  flushHeaders() {
+    // no-op
   }
 
   // Undocumented API used by `npm:compression`.

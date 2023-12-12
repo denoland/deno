@@ -847,7 +847,7 @@ declare namespace Deno {
    *
    * @category Fetch API
    */
-  export interface HttpClient {
+  export interface HttpClient extends Disposable {
     /** The resource ID associated with the client. */
     rid: number;
     /** Close the HTTP client. */
@@ -1319,8 +1319,99 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * CronScheduleExpression is used as the type of `minute`, `hour`,
+   * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
+   * @category Cron
+   */
+  type CronScheduleExpression = number | { exact: number | number[] } | {
+    start?: number;
+    end?: number;
+    every?: number;
+  };
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * CronSchedule is the interface used for JSON format
+   * cron `schedule`.
+   * @category Cron
+   */
+  export interface CronSchedule {
+    minute?: CronScheduleExpression;
+    hour?: CronScheduleExpression;
+    dayOfMonth?: CronScheduleExpression;
+    month?: CronScheduleExpression;
+    dayOfWeek?: CronScheduleExpression;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Create a cron job that will periodically execute the provided handler
    * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * ```ts
+   * Deno.cron("sample cron", { hour: { every: 6 } }, () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string | CronSchedule,
+    handler: () => Promise<void> | void,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * ```ts
+   * Deno.cron("sample cron", "20 * * * *", {
+   *   backoffSchedule: [10, 20]
+   * }, () => {
+   *   console.log("cron job executed");
+   * });
+   * ```
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
+   *
+   * `backoffSchedule` option can be used to specify the retry policy for failed
+   * executions. Each element in the array represents the number of milliseconds
+   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
+   * means that a failed execution will be retried at most 3 times, with 1
+   * second, 5 seconds, and 10 seconds delay between each retry.
+   *
+   * @category Cron
+   */
+  export function cron(
+    name: string,
+    schedule: string | CronSchedule,
+    options: { backoffSchedule?: number[]; signal?: AbortSignal },
+    handler: () => Promise<void> | void,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a cron job that will periodically execute the provided handler
+   * callback based on the specified schedule.
+   *
+   * `schedule` can be a string in the Unix cron format or in JSON format
+   * as specified by interface {@linkcode CronSchedule}, where time is specified
+   * using UTC time zone.
    *
    * ```ts
    * Deno.cron("sample cron", "20 * * * *", () => {
@@ -1339,62 +1430,9 @@ declare namespace Deno {
    */
   export function cron(
     name: string,
-    schedule: string,
+    schedule: string | CronSchedule,
     handler: () => Promise<void> | void,
     options: { backoffSchedule?: number[]; signal?: AbortSignal },
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
-   * callback based on the specified schedule.
-   *
-   * ```ts
-   * Deno.cron("sample cron", "20 * * * *", () => {
-   *   console.log("cron job executed");
-   * });
-   * ```
-   *
-   * `schedule` is a Unix cron format expression, where time is specified
-   * using UTC time zone.
-   *
-   * @category Cron
-   */
-  export function cron(
-    name: string,
-    schedule: string,
-    handler: () => Promise<void> | void,
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
-   * callback based on the specified schedule.
-   *
-   * ```ts
-   * Deno.cron("sample cron", "20 * * * *", {
-   *   backoffSchedule: [10, 20]
-   * }, () => {
-   *   console.log("cron job executed");
-   * });
-   * ```
-   *
-   * `schedule` is a Unix cron format expression, where time is specified
-   * using UTC time zone.
-   *
-   * `backoffSchedule` option can be used to specify the retry policy for failed
-   * executions. Each element in the array represents the number of milliseconds
-   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
-   * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
-   *
-   * @category Cron
-   */
-  export function cron(
-    name: string,
-    schedule: string,
-    options: { backoffSchedule?: number[]; signal?: AbortSignal },
-    handler: () => Promise<void> | void,
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1995,6 +2033,48 @@ declare namespace Deno {
     atomic(): AtomicOperation;
 
     /**
+     * Watch for changes to the given keys in the database. The returned stream
+     * is a {@linkcode ReadableStream} that emits a new value whenever any of
+     * the watched keys change their versionstamp. The emitted value is an array
+     * of {@linkcode Deno.KvEntryMaybe} objects, with the same length and order
+     * as the `keys` array. If no value exists for a given key, the returned
+     * entry will have a `null` value and versionstamp.
+     *
+     * The returned stream does not return every single intermediate state of
+     * the watched keys, but rather only keeps you up to date with the latest
+     * state of the keys. This means that if a key is modified multiple times
+     * quickly, you may not receive a notification for every single change, but
+     * rather only the latest state of the key.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     *
+     * const stream = db.watch([["foo"], ["bar"]]);
+     * for await (const entries of stream) {
+     *   entries[0].key; // ["foo"]
+     *   entries[0].value; // "bar"
+     *   entries[0].versionstamp; // "00000000000000010000"
+     *   entries[1].key; // ["bar"]
+     *   entries[1].value; // null
+     *   entries[1].versionstamp; // null
+     * }
+     * ```
+     *
+     * The `options` argument can be used to specify additional options for the
+     * watch operation. The `raw` option can be used to specify whether a new
+     * value should be emitted whenever a mutation occurs on any of the watched
+     * keys (even if the value of the key does not change, such as deleting a
+     * deleted key), or only when entries have observably changed in some way.
+     * When `raw: true` is used, it is possible for the stream to occasionally
+     * emit values even if no mutations have occurred on any of the watched
+     * keys. The default value for this option is `false`.
+     */
+    watch<T extends readonly unknown[]>(
+      keys: readonly [...{ [K in keyof T]: KvKey }],
+      options?: { raw?: boolean },
+    ): ReadableStream<{ [K in keyof T]: KvEntryMaybe<T[K]> }>;
+
+    /**
      * Close the database connection. This will prevent any further operations
      * from being performed on the database, and interrupt any in-flight
      * operations immediately.
@@ -2018,138 +2098,6 @@ declare namespace Deno {
     /** The value of this unsigned 64-bit integer, represented as a bigint. */
     readonly value: bigint;
   }
-
-  /** An instance of the server created using `Deno.serve()` API.
-   *
-   * @category HTTP Server
-   */
-  export interface HttpServer {
-    /** Gracefully close the server. No more new connections will be accepted,
-     * while pending requests will be allowed to finish.
-     */
-    shutdown(): Promise<void>;
-  }
-
-  export interface ServeUnixOptions {
-    /** The unix domain socket path to listen on. */
-    path: string;
-
-    /** An {@linkcode AbortSignal} to close the server and all connections. */
-    signal?: AbortSignal;
-
-    /** The handler to invoke when route handlers throw an error. */
-    onError?: (error: unknown) => Response | Promise<Response>;
-
-    /** The callback which is called when the server starts listening. */
-    onListen?: (params: { path: string }) => void;
-  }
-
-  /** Information for a unix domain socket HTTP request.
-   *
-   * @category HTTP Server
-   */
-  export interface ServeUnixHandlerInfo {
-    /** The remote address of the connection. */
-    remoteAddr: Deno.UnixAddr;
-  }
-
-  /** A handler for unix domain socket HTTP requests. Consumes a request and returns a response.
-   *
-   * If a handler throws, the server calling the handler will assume the impact
-   * of the error is isolated to the individual request. It will catch the error
-   * and if necessary will close the underlying connection.
-   *
-   * @category HTTP Server
-   */
-  export type ServeUnixHandler = (
-    request: Request,
-    info: ServeUnixHandlerInfo,
-  ) => Response | Promise<Response>;
-
-  /**
-   * @category HTTP Server
-   */
-  export interface ServeUnixInit {
-    /** The handler to invoke to process each incoming request. */
-    handler: ServeUnixHandler;
-  }
-
-  /** Serves HTTP requests with the given option bag and handler.
-   *
-   * You can specify the socket path with `path` option.
-   *
-   * ```ts
-   * Deno.serve(
-   *   { path: "path/to/socket" },
-   *   (_req) => new Response("Hello, world")
-   * );
-   * ```
-   *
-   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
-   * needs to be passed as the `signal` option in the options bag. The server
-   * aborts when the abort signal is aborted. To wait for the server to close,
-   * await the promise returned from the `Deno.serve` API.
-   *
-   * ```ts
-   * const ac = new AbortController();
-   *
-   * const server = Deno.serve(
-   *    { signal: ac.signal, path: "path/to/socket" },
-   *    (_req) => new Response("Hello, world")
-   * );
-   * server.finished.then(() => console.log("Server closed"));
-   *
-   * console.log("Closing server...");
-   * ac.abort();
-   * ```
-   *
-   * By default `Deno.serve` prints the message
-   * `Listening on path/to/socket` on listening. If you like to
-   * change this behavior, you can specify a custom `onListen` callback.
-   *
-   * ```ts
-   * Deno.serve({
-   *   onListen({ path }) {
-   *     console.log(`Server started at ${path}`);
-   *     // ... more info specific to your server ..
-   *   },
-   *   path: "path/to/socket",
-   * }, (_req) => new Response("Hello, world"));
-   * ```
-   *
-   * @category HTTP Server
-   */
-  export function serve(
-    options: ServeUnixOptions,
-    handler: ServeUnixHandler,
-  ): Server;
-  /** Serves HTTP requests with the given option bag.
-   *
-   * You can specify an object with the path option, which is the
-   * unix domain socket to listen on.
-   *
-   * ```ts
-   * const ac = new AbortController();
-   *
-   * const server = Deno.serve({
-   *   path: "path/to/socket",
-   *   handler: (_req) => new Response("Hello, world"),
-   *   signal: ac.signal,
-   *   onListen({ path }) {
-   *     console.log(`Server started at ${path}`);
-   *   },
-   * });
-   * server.finished.then(() => console.log("Server closed"));
-   *
-   * console.log("Closing server...");
-   * ac.abort();
-   * ```
-   *
-   * @category HTTP Server
-   */
-  export function serve(
-    options: ServeUnixInit & ServeUnixOptions,
-  ): Server;
 
   /**
    * A namespace containing runtime APIs available in Jupyter notebooks.

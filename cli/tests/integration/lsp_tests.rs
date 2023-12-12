@@ -1095,8 +1095,7 @@ fn lsp_import_attributes() {
           "only": ["quickfix"]
         }
       }),
-    )
-    ;
+    );
   assert_eq!(
     res,
     json!([{
@@ -1302,7 +1301,7 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"/etc/passwd\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -8303,23 +8302,30 @@ fn lsp_performance() {
   assert_eq!(
     averages,
     vec![
-      "did_open",
-      "hover",
-      "initialize",
-      "op_load",
-      "request",
-      "testing_update",
-      "tsc $configure",
-      "tsc $getAssets",
-      "tsc $getSupportedCodeFixes",
-      "tsc getQuickInfoAtPosition",
-      "update_cache",
-      "update_diagnostics_deps",
-      "update_diagnostics_lint",
-      "update_diagnostics_ts",
-      "update_import_map",
-      "update_registries",
-      "update_tsconfig",
+      "lsp.did_open",
+      "lsp.hover",
+      "lsp.initialize",
+      "lsp.testing_update",
+      "lsp.update_cache",
+      "lsp.update_diagnostics_deps",
+      "lsp.update_diagnostics_lint",
+      "lsp.update_diagnostics_ts",
+      "lsp.update_import_map",
+      "lsp.update_registries",
+      "lsp.update_tsconfig",
+      "tsc.host.$configure",
+      "tsc.host.$getAssets",
+      "tsc.host.$getDiagnostics",
+      "tsc.host.$getSupportedCodeFixes",
+      "tsc.host.getQuickInfoAtPosition",
+      "tsc.op.op_is_node_file",
+      "tsc.op.op_load",
+      "tsc.op.op_script_names",
+      "tsc.op.op_script_version",
+      "tsc.request.$configure",
+      "tsc.request.$getAssets",
+      "tsc.request.$getSupportedCodeFixes",
+      "tsc.request.getQuickInfoAtPosition",
     ]
   );
   client.shutdown();
@@ -9105,11 +9111,11 @@ fn lsp_workspace_symbol() {
         "uri": "deno:/asset/lib.decorators.d.ts",
         "range": {
           "start": {
-            "line": 346,
+            "line": 343,
             "character": 0,
           },
           "end": {
-            "line": 388,
+            "line": 385,
             "character": 1,
           },
         },
@@ -10499,6 +10505,295 @@ fn lsp_jupyter_byonm_diagnostics() {
         "version": 1,
       },
     ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_sloppy_imports_warn() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+  temp_dir
+    .join("deno.json")
+    .write(r#"{ "unstable": ["sloppy-imports"] }"#);
+  // should work when exists on the fs and when doesn't
+  temp_dir.join("a.ts").write("export class A {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_root_uri(temp_dir.uri_dir());
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("b.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class B {}",
+    },
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("file.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from './a';\nimport * as b from './b.js';\nconsole.log(a)\nconsole.log(b);\n",
+    },
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    lsp::PublishDiagnosticsParams {
+      uri: temp_dir.join("file.ts").uri_file(),
+      diagnostics: vec![
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 19
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 24
+            }
+          },
+          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
+          code: Some(lsp::NumberOrString::String("redirect".to_string())),
+          source: Some("deno".to_string()),
+          message: format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("a").uri_file(),
+            temp_dir.join("a.ts").uri_file()
+          ),
+          data: Some(json!({
+            "specifier": temp_dir.join("a").uri_file(),
+            "redirect": temp_dir.join("a.ts").uri_file()
+          })),
+          ..Default::default()
+        },
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 19
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 27
+            }
+          },
+          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
+          code: Some(lsp::NumberOrString::String("redirect".to_string())),
+          source: Some("deno".to_string()),
+          message: format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("b.js").uri_file(),
+            temp_dir.join("b.ts").uri_file()
+          ),
+          data: Some(json!({
+            "specifier": temp_dir.join("b.js").uri_file(),
+            "redirect": temp_dir.join("b.ts").uri_file()
+          })),
+          ..Default::default()
+        }
+      ],
+      version: Some(1),
+    }
+  );
+
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.join("file.ts").uri_file()
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 24 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 19 },
+            "end": { "line": 0, "character": 24 }
+          },
+          "severity": 3,
+          "code": "redirect",
+          "source": "deno",
+          "message": format!(
+            "The import of \"{}\" was redirected to \"{}\".",
+            temp_dir.join("a").uri_file(),
+            temp_dir.join("a.ts").uri_file()
+          ),
+          "data": {
+            "specifier": temp_dir.join("a").uri_file(),
+            "redirect": temp_dir.join("a.ts").uri_file(),
+          },
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Update specifier to its redirected specifier.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 3,
+        "code": "redirect",
+        "source": "deno",
+        "message": format!(
+          "The import of \"{}\" was redirected to \"{}\".",
+          temp_dir.join("a").uri_file(),
+          temp_dir.join("a.ts").uri_file()
+        ),
+        "data": {
+          "specifier": temp_dir.join("a").uri_file(),
+          "redirect": temp_dir.join("a.ts").uri_file()
+        },
+      }],
+      "edit": {
+        "changes": {
+          temp_dir.join("file.ts").uri_file(): [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 }
+            },
+            "newText": "\"./a.ts\""
+          }]
+        }
+      }
+    }])
+  );
+
+  client.shutdown();
+}
+
+#[test]
+fn sloppy_imports_not_enabled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let temp_dir = temp_dir.path();
+  temp_dir.join("deno.json").write(r#"{}"#);
+  // The enhanced, more helpful error message is only available
+  // when the file exists on the file system at the moment because
+  // it's a little more complicated to hook it up otherwise.
+  temp_dir.join("a.ts").write("export class A {}");
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_root_uri(temp_dir.uri_dir());
+  });
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("file.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from './a';\nconsole.log(a)\n",
+    },
+  }));
+  assert_eq!(
+    diagnostics.messages_with_source("deno"),
+    lsp::PublishDiagnosticsParams {
+      uri: temp_dir.join("file.ts").uri_file(),
+      diagnostics: vec![lsp::Diagnostic {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 19
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 24
+          }
+        },
+        severity: Some(lsp::DiagnosticSeverity::ERROR),
+        code: Some(lsp::NumberOrString::String("no-local".to_string())),
+        source: Some("deno".to_string()),
+        message: format!(
+          "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+          temp_dir.join("a").uri_file(),
+        ),
+        data: Some(json!({
+          "specifier": temp_dir.join("a").uri_file(),
+          "to": temp_dir.join("a.ts").uri_file(),
+          "message": "Add a '.ts' extension.",
+        })),
+        ..Default::default()
+      }],
+      version: Some(1),
+    }
+  );
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.join("file.ts").uri_file()
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 24 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 19 },
+            "end": { "line": 0, "character": 24 }
+          },
+          "severity": 3,
+          "code": "no-local",
+          "source": "deno",
+          "message": format!(
+            "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+            temp_dir.join("a").uri_file(),
+          ),
+          "data": {
+            "specifier": temp_dir.join("a").uri_file(),
+            "to": temp_dir.join("a.ts").uri_file(),
+            "message": "Add a '.ts' extension.",
+          },
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add a '.ts' extension.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 3,
+        "code": "no-local",
+        "source": "deno",
+        "message": format!(
+          "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+          temp_dir.join("a").uri_file(),
+        ),
+        "data": {
+          "specifier": temp_dir.join("a").uri_file(),
+          "to": temp_dir.join("a.ts").uri_file(),
+          "message": "Add a '.ts' extension.",
+        },
+      }],
+      "edit": {
+        "changes": {
+          temp_dir.join("file.ts").uri_file(): [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 }
+            },
+            "newText": "\"./a.ts\""
+          }]
+        }
+      }
+    }])
   );
   client.shutdown();
 }
