@@ -315,7 +315,9 @@ async fn perform_publish(
     .collect::<Vec<_>>();
   let packages_len = package_batches.iter().map(|b| b.len()).sum::<usize>();
 
-  let authorizations = match auth_method {
+  let mut authorizations = HashMap::new();
+
+  match auth_method {
     AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
@@ -374,11 +376,13 @@ async fn perform_publish(
               colors::cyan(res.user.name)
             );
             let authorization: Rc<str> = format!("Bearer {}", res.token).into();
-            let mut authorizations = Vec::new();
-            for _ in &package_batches {
-              authorizations.push(authorization.clone());
+            for pkg in package_batches.iter().flatten() {
+              authorizations.insert(
+                (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
+                authorization.clone(),
+              );
             }
-            break authorizations;
+            break;
           }
           Err(err) => {
             if err.code == "authorizationPending" {
@@ -392,14 +396,16 @@ async fn perform_publish(
     }
     AuthMethod::Token(token) => {
       let authorization: Rc<str> = format!("Bearer {}", token).into();
-      let mut authorizations = Vec::new();
-      for _ in &package_batches {
-        authorizations.push(authorization.clone());
+      for pkg in package_batches.iter().flatten() {
+        authorizations.insert(
+          (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
+          authorization.clone(),
+        );
       }
-      authorizations
     }
     AuthMethod::Oidc(oidc_config) => {
-      let mut authorizations = Vec::new();
+      let packages = package_batches.iter().flatten().collect::<Vec<_>>();
+      let mut aligned_package_batches = packages.chunks(16);
       for permissions in permissions.chunks(16) {
         let audience = json!({ "permissions": permissions }).to_string();
         let url = format!(
@@ -437,21 +443,28 @@ async fn perform_publish(
           })?;
 
         let authorization: Rc<str> = format!("githuboidc {}", value).into();
-        for _ in permissions {
-          authorizations.push(authorization.clone());
+        for pkg in aligned_package_batches.next().unwrap() {
+          authorizations.insert(
+            (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
+            authorization.clone(),
+          );
         }
       }
-      authorizations
     }
   };
 
   assert_eq!(packages_len, authorizations.len());
-  let mut authorizations = authorizations.into_iter();
   for batch in package_batches {
     let futures = batch
       .into_iter()
       .map(|package| {
-        let authorization = authorizations.next().unwrap();
+        let authorization = authorizations
+          .remove(&(
+            package.scope.clone(),
+            package.package.clone(),
+            package.version.clone(),
+          ))
+          .unwrap();
         let registry_url = registry_url.clone();
         let http_client = http_client.clone();
         deno_core::unsync::spawn(async move {
