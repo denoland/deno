@@ -27,6 +27,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::Digest;
 
+use crate::args::deno_registry_api_url;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
@@ -226,7 +227,7 @@ async fn perform_publish(
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  let registry_url = crate::cache::DENO_REGISTRY_URL.to_string();
+  let registry_url = deno_registry_api_url().to_string();
 
   let permissions = packages
     .iter()
