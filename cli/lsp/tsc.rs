@@ -3877,11 +3877,7 @@ fn op_load<'s>(
   let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
     if specifier.as_str() == "internal:///missing_dependency.d.ts" {
-      Some(LoadResponse {
-        data: Arc::from("declare const __: any;\nexport = __;\n"),
-        script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
-        version: Some("1".to_string()),
-      })
+      None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
       asset_or_document.map(|doc| LoadResponse {
