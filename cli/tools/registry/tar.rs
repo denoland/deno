@@ -6,13 +6,13 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use hyper::body::Bytes;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::Path;
 use tar::Header;
 
 use crate::util::import_map::ImportMapUnfurler;
 
 pub fn create_gzipped_tarball(
-  dir: PathBuf,
+  dir: &Path,
   // TODO(bartlomieju): this is too specific, factor it out into a callback that
   // returns data
   unfurler: ImportMapUnfurler,

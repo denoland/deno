@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -13,7 +15,7 @@ use crate::graph_util::ModuleGraphBuilder;
 pub async fn analyze_workspace_publish_order(
   workspace_config: &WorkspaceConfig,
   module_graph_builder: &ModuleGraphBuilder,
-) -> Result<Vec<String>, AnyError> {
+) -> Result<Vec<Vec<String>>, AnyError> {
   let roots = get_workspace_roots(workspace_config)?;
   let graph = module_graph_builder
     .create_graph(
@@ -23,9 +25,9 @@ pub async fn analyze_workspace_publish_order(
     .await?;
 
   let packages = build_pkg_deps(graph, roots);
-  let sorted_package_names = sort_packages_by_publish_order(&packages)?;
+  let publish_batches = batch_packages_by_publish_order(&packages)?;
 
-  Ok(sorted_package_names)
+  Ok(publish_batches)
 }
 
 struct MemberRoot {
@@ -69,22 +71,14 @@ fn get_workspace_roots(
   Ok(members)
 }
 
-struct PackageNameWithDeps {
-  name: String,
-  deps: HashSet<String>,
-}
-
 fn build_pkg_deps(
   graph: deno_graph::ModuleGraph,
   roots: Vec<MemberRoot>,
-) -> Vec<PackageNameWithDeps> {
-  let mut members = Vec::with_capacity(roots.len());
+) -> HashMap<String, HashSet<String>> {
+  let mut members = HashMap::with_capacity(roots.len());
   let mut seen_modules = HashSet::with_capacity(graph.modules().count());
   for root in &roots {
-    let mut member = PackageNameWithDeps {
-      name: root.name.clone(),
-      deps: HashSet::new(),
-    };
+    let mut deps = HashSet::new();
     let mut pending = VecDeque::new();
     pending.extend(root.exports.clone());
     while let Some(specifier) = pending.pop_front() {
@@ -120,79 +114,93 @@ fn build_pkg_deps(
             .iter()
             .find(|root| specifier.as_str().starts_with(root.root.as_str()));
           if let Some(root) = found_root {
-            member.deps.insert(root.name.clone());
+            deps.insert(root.name.clone());
           }
         }
       }
     }
-    members.push(member);
+    members.insert(root.name.clone(), deps);
   }
   members
 }
 
-fn sort_packages_by_publish_order(
-  packages: &[PackageNameWithDeps],
-) -> Result<Vec<String>, AnyError> {
-  let mut graph: HashMap<&String, Vec<&String>> = HashMap::new();
+fn batch_packages_by_publish_order(
+  packages: &HashMap<String, HashSet<String>>,
+) -> Result<Vec<Vec<String>>, AnyError> {
+  // this is inefficient, but that's ok because it's simple and will
+  // only ever happen when there's an error
+  fn identify_cycle<'a>(
+    current_name: &'a String,
+    mut visited: HashSet<&'a String>,
+    packages: &HashMap<String, HashSet<String>>,
+  ) -> Option<Vec<String>> {
+    if visited.insert(current_name) {
+      let deps = packages.get(current_name).unwrap();
+      for dep in deps {
+        if let Some(mut cycle) = identify_cycle(dep, visited.clone(), packages)
+        {
+          cycle.push(current_name.to_string());
+          return Some(cycle);
+        }
+      }
+      None
+    } else {
+      Some(vec![current_name.to_string()])
+    }
+  }
+
   let mut in_degree = HashMap::new();
-  let mut all_nodes = HashSet::new();
+  let mut reverse_map: HashMap<&String, Vec<&String>> = HashMap::new();
 
   // build the graph, in-degree map, and set of all nodes
-  for package in packages {
-    all_nodes.insert(&package.name);
-    in_degree.entry(&package.name).or_insert(0);
-    for dep in &package.deps {
-      graph.entry(dep).or_default().push(&package.name);
-      *in_degree.entry(&package.name).or_insert(0) += 1;
+  for (pkg_name, deps) in packages {
+    in_degree.insert(pkg_name, deps.len());
+    for dep in deps {
+      reverse_map.entry(dep).or_default().push(pkg_name);
     }
   }
 
   // queue for nodes with no incoming edges
-  let mut queue = VecDeque::new();
+  let mut next = Vec::new();
   for (node, &degree) in &in_degree {
     if degree == 0 {
-      queue.push_back((*node, vec![*node]));
+      next.push(*node);
     }
   }
 
   // perform the topological sort
   let mut sorted = Vec::new();
-  while let Some((node, mut path)) = queue.pop_front() {
-    sorted.push(node.to_string());
-
-    if let Some(neighbors) = graph.get(node) {
-      for neighbor in neighbors {
-        let degree = in_degree.entry(neighbor).or_default();
-        *degree -= 1;
-        if *degree == 0 {
-          let mut new_path = path.clone();
-          new_path.push(neighbor);
-          queue.push_back((*neighbor, new_path));
-        }
-      }
-    }
-  }
-
-  // check if all nodes were visited and identify cycles
-  if sorted.len() != all_nodes.len() {
-    for package in all_nodes {
-      if !sorted.contains(package) {
-        let mut cycle = Vec::new();
-        for (node, path) in &queue {
-          if path.contains(&package) && *node == package {
-            cycle = path.iter().map(ToString::to_string).collect();
-            break;
+  while !next.is_empty() {
+    let mut current = next.drain(..).cloned().collect::<Vec<_>>();
+    current.sort(); // determinism
+    for package_name in &current {
+      if let Some(deps) = reverse_map.get(package_name) {
+        for dep in deps {
+          let degree = in_degree.entry(dep).or_default();
+          *degree -= 1;
+          if *degree == 0 {
+            next.push(dep);
           }
         }
-        if !cycle.is_empty() {
-          bail!("Circular dependency detected: {}", cycle.join(" -> "));
-        }
       }
     }
+    sorted.push(current);
+  }
 
-    // bug in the code above
+  // Check if all nodes were visited and identify cycles
+  if sorted.iter().map(|s| s.len()).sum::<usize>() != packages.len() {
+    let sorted_names = sorted.iter().flatten().collect::<HashSet<_>>();
+    let mut pkg_names = packages
+      .keys()
+      .filter(|name| !sorted_names.contains(name))
+      .collect::<Vec<_>>();
+    pkg_names.sort(); // determinism
+    let mut cycle =
+      identify_cycle(pkg_names[0], HashSet::new(), packages).unwrap();
+    cycle.reverse();
     bail!(
-      "Circular dependency detected, but specific path could not be determined"
+      "Circular package dependency detected: {}",
+      cycle.join(" -> ")
     );
   }
 
@@ -204,24 +212,68 @@ mod test {
   use super::*;
 
   #[test]
-  fn test_circular() {
-    let result = sort_packages_by_publish_order(&[
-      PackageNameWithDeps {
-        name: "a".to_string(),
-        deps: HashSet::from(["b".to_string()]),
-      },
-      PackageNameWithDeps {
-        name: "b".to_string(),
-        deps: HashSet::from(["c".to_string()]),
-      },
-      PackageNameWithDeps {
-        name: "c".to_string(),
-        deps: HashSet::from(["a".to_string()]),
-      },
-    ]);
+  fn test_batch_no_deps() {
+    let result = batch_packages_by_publish_order(&HashMap::from([
+      ("a".to_string(), HashSet::new()),
+      ("b".to_string(), HashSet::new()),
+      ("c".to_string(), HashSet::new()),
+    ]));
+    assert_eq!(
+      result.unwrap(),
+      vec![vec!["a".to_string(), "b".to_string(), "c".to_string()]],
+    );
+  }
+
+  #[test]
+  fn test_batch_single_dep() {
+    let result = batch_packages_by_publish_order(&HashMap::from([
+      ("a".to_string(), HashSet::from(["b".to_string()])),
+      ("b".to_string(), HashSet::from(["c".to_string()])),
+      ("c".to_string(), HashSet::new()),
+    ]));
+    assert_eq!(
+      result.unwrap(),
+      vec![
+        vec!["c".to_string()],
+        vec!["b".to_string()],
+        vec!["a".to_string()]
+      ],
+    );
+  }
+
+  #[test]
+  fn test_batch_multiple_dep() {
+    let result = batch_packages_by_publish_order(&HashMap::from([
+      (
+        "a".to_string(),
+        HashSet::from(["b".to_string(), "c".to_string()]),
+      ),
+      ("b".to_string(), HashSet::from(["c".to_string()])),
+      ("c".to_string(), HashSet::new()),
+      ("d".to_string(), HashSet::new()),
+      ("e".to_string(), HashSet::from(["f".to_string()])),
+      ("f".to_string(), HashSet::new()),
+    ]));
+    assert_eq!(
+      result.unwrap(),
+      vec![
+        vec!["c".to_string(), "d".to_string(), "f".to_string()],
+        vec!["b".to_string(), "e".to_string()],
+        vec!["a".to_string()]
+      ],
+    );
+  }
+
+  #[test]
+  fn test_batch_circular_dep() {
+    let result = batch_packages_by_publish_order(&HashMap::from([
+      ("a".to_string(), HashSet::from(["b".to_string()])),
+      ("b".to_string(), HashSet::from(["c".to_string()])),
+      ("c".to_string(), HashSet::from(["a".to_string()])),
+    ]));
     assert_eq!(
       result.unwrap_err().to_string(),
-      "Circular dependency detected: a -> b -> c"
+      "Circular dependency detected: a -> b -> c -> a"
     );
   }
 }
