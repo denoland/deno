@@ -318,7 +318,7 @@ async fn perform_publish(
     })
     .collect::<Vec<_>>();
 
-  let mut authorizations = HashMap::new();
+  let mut authorizations = HashMap::with_capacity(packages.len());
 
   match auth_method {
     AuthMethod::Interactive => {
@@ -456,11 +456,6 @@ async fn perform_publish(
   let mut futures: JoinSet<Result<String, AnyError>> = JoinSet::default();
   loop {
     let next_batch = publish_order_graph.next();
-    if futures.is_empty() && next_batch.is_empty() {
-      // ensure no circular dependency
-      publish_order_graph.ensure_no_pending()?;
-      break;
-    }
 
     for package_name in next_batch {
       let package = prepared_package_by_name.remove(&package_name).unwrap();
@@ -474,16 +469,21 @@ async fn perform_publish(
       let registry_url = registry_url.clone();
       let http_client = http_client.clone();
       futures.spawn(async move {
-        let package_name =
+        let display_name =
           format!("@{}/{}@{}", package.scope, package.package, package.version);
         publish_package(&http_client, package, &registry_url, &authorization)
           .await
-          .with_context(|| format!("Failed to publish {}", package_name))?;
+          .with_context(|| format!("Failed to publish {}", display_name))?;
         Ok(package_name)
       });
     }
 
-    let result = futures.join_next().await.unwrap();
+    let Some(result) = futures.join_next().await else {
+      // done, ensure no circular dependency
+      publish_order_graph.ensure_no_pending()?;
+      break;
+    };
+
     let package_name = result??;
     publish_order_graph.finish_package(&package_name);
   }
