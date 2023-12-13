@@ -493,6 +493,65 @@ async fn publish_package(
   Ok(())
 }
 
+async fn prepare_packages_for_publishing(
+  cli_factory: &CliFactory,
+  deno_json: ConfigFile,
+  import_map: Arc<ImportMap>,
+) -> Result<
+  (
+    PublishOrderGraph,
+    HashMap<String, Rc<PreparedPublishPackage>>,
+  ),
+  AnyError,
+> {
+  let maybe_workspace_config = deno_json.to_workspace_config()?;
+
+  let Some(workspace_config) = maybe_workspace_config else {
+    let mut prepared_package_by_name = HashMap::with_capacity(1);
+    let package = prepare_publish(&deno_json, import_map).await?;
+    let package_name = package.package.clone();
+    let publish_order_graph =
+      PublishOrderGraph::new_single(package_name.clone());
+    prepared_package_by_name.insert(package_name, package);
+    return Ok((publish_order_graph, prepared_package_by_name));
+  };
+
+  println!("Publishing a workspace...");
+  let mut prepared_package_by_name =
+    HashMap::with_capacity(workspace_config.members.len());
+  let publish_order_graph = publish_order::build_publish_graph(
+    &workspace_config,
+    cli_factory.module_graph_builder().await?.as_ref(),
+  )
+  .await?;
+
+  let results =
+    workspace_config
+      .members
+      .iter()
+      .cloned()
+      .map(|member| {
+        let import_map = import_map.clone();
+        deno_core::unsync::spawn(async move {
+          let package = prepare_publish(&member.config_file, import_map)
+            .await
+            .with_context(|| {
+              format!("Failed preparing '{}'.", member.package_name)
+            })?;
+          Ok((member.package_name, package))
+        })
+      })
+      .collect::<Vec<
+        JoinHandle<Result<(String, Rc<PreparedPublishPackage>), AnyError>>,
+      >>();
+  let results = deno_core::futures::future::join_all(results).await;
+  for result in results {
+    let (package_name, package) = result??;
+    prepared_package_by_name.insert(package_name, package);
+  }
+  Ok((publish_order_graph, prepared_package_by_name))
+}
+
 pub async fn publish(
   flags: Flags,
   publish_flags: PublishFlags,
@@ -522,55 +581,9 @@ pub async fn publish(
     )
   })?;
 
-  let workspace_config = deno_json.to_workspace_config()?;
-
-  let (publish_order_graph, prepared_package_by_name) = match workspace_config {
-    Some(workspace_config) => {
-      println!("Publishing a workspace...");
-      let mut prepared_package_by_name =
-        HashMap::with_capacity(workspace_config.members.len());
-      let publish_order_graph = publish_order::build_publish_graph(
-        &workspace_config,
-        cli_factory.module_graph_builder().await?.as_ref(),
-      )
+  let (publish_order_graph, prepared_package_by_name) =
+    prepare_packages_for_publishing(&cli_factory, deno_json, import_map)
       .await?;
-
-      let results =
-        workspace_config
-          .members
-          .iter()
-          .cloned()
-          .map(|member| {
-            let import_map = import_map.clone();
-            deno_core::unsync::spawn(async move {
-              let package = prepare_publish(&member.config_file, import_map)
-                .await
-                .with_context(|| {
-                  format!("Failed preparing '{}'.", member.package_name)
-                })?;
-              Ok((member.package_name, package))
-            })
-          })
-          .collect::<Vec<
-            JoinHandle<Result<(String, Rc<PreparedPublishPackage>), AnyError>>,
-          >>();
-      let results = deno_core::futures::future::join_all(results).await;
-      for result in results {
-        let (package_name, package) = result??;
-        prepared_package_by_name.insert(package_name, package);
-      }
-      (publish_order_graph, prepared_package_by_name)
-    }
-    None => {
-      let mut prepared_package_by_name = HashMap::with_capacity(1);
-      let package = prepare_publish(&deno_json, import_map).await?;
-      let package_name = package.package.clone();
-      let publish_order_graph =
-        PublishOrderGraph::new_single(package_name.clone());
-      prepared_package_by_name.insert(package_name, package);
-      (publish_order_graph, prepared_package_by_name)
-    }
-  };
 
   if prepared_package_by_name.is_empty() {
     bail!("No packages to publish");
