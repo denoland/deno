@@ -19,6 +19,7 @@ use deno_core::serde_json::json;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
+use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
@@ -116,14 +117,14 @@ async fn prepare_publish(
     write!(&mut tarball_hash, "{:02x}", byte).unwrap();
   }
 
-  Ok(PreparedPublishPackage {
+  Ok(Rc::new(PreparedPublishPackage {
     scope: scope.to_string(),
     package: package_name.to_string(),
     version: version.to_string(),
     tarball_hash,
     tarball,
     diagnostics,
-  })
+  }))
 }
 
 #[derive(Serialize)]
