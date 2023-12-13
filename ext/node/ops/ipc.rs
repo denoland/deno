@@ -412,7 +412,7 @@ mod unix {
       });
 
       /* Similar to how ops would use the resource */
-      let ipc = Rc::new(IpcJsonStreamResource::new(fd1.as_raw_fd())?);
+      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
 
       ipc.clone().write_msg(json!("hello")).await?;
 
