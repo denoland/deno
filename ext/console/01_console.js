@@ -1395,7 +1395,7 @@ function formatTypedArray(
 ) {
   const maxLength = MathMin(MathMax(0, ctx.maxArrayLength), length);
   const remaining = value.length - maxLength;
-  const output = new Array(maxLength);
+  const output = [];
   const elementFormatter = value.length > 0 && typeof value[0] === "number"
     ? formatNumber
     : formatBigInt;
@@ -1555,7 +1555,7 @@ function inspectError(value, ctx) {
 
 const hexSliceLookupTable = function () {
   const alphabet = "0123456789abcdef";
-  const table = new Array(256);
+  const table = [];
   for (let i = 0; i < 16; ++i) {
     const i16 = i * 16;
     for (let j = 0; j < 16; ++j) {
@@ -1773,7 +1773,7 @@ function formatNamespaceObject(
   value,
   recurseTimes,
 ) {
-  const output = new Array(keys.length);
+  const output = [];
   for (let i = 0; i < keys.length; i++) {
     try {
       output[i] = formatProperty(
@@ -1992,7 +1992,7 @@ function groupArrayElements(ctx, output, value) {
     outputLength--;
   }
   const separatorSpace = 2; // Add 1 for the space and 1 for the separator.
-  const dataLen = new Array(outputLength);
+  const dataLen = [];
   // Calculate the total length of all output entries and the individual max
   // entries length of all output entries. We have to remove colors first,
   // otherwise the length would not be calculated properly.
@@ -2106,7 +2106,7 @@ function formatMapIterInner(
   const len = entries.length / 2;
   const remaining = len - maxArrayLength;
   const maxLength = MathMin(maxArrayLength, len);
-  const output = new Array(maxLength);
+  const output = [];
   let i = 0;
   ctx.indentationLvl += 2;
   if (state === kWeak) {
@@ -2157,7 +2157,7 @@ function formatSetIterInner(
 ) {
   const maxArrayLength = MathMax(ctx.maxArrayLength, 0);
   const maxLength = MathMin(maxArrayLength, entries.length);
-  const output = new Array(maxLength);
+  const output = [];
   ctx.indentationLvl += 2;
   for (let i = 0; i < maxLength; i++) {
     output[i] = formatValue(ctx, entries[i], recurseTimes);
