@@ -530,6 +530,9 @@ fn mutation_from_v8(
     ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
+    ("setSuffixVersionstampedKey", Some(value)) => {
+      MutationKind::SetSuffixVersionstampedKey(value.try_into()?)
+    }
     (op, Some(_)) => {
       return Err(type_error(format!("invalid mutation '{op}' with value")))
     }
