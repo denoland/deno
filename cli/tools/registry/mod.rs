@@ -16,6 +16,7 @@ use deno_core::serde_json::json;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
+use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
@@ -176,22 +177,12 @@ fn print_diagnostics(diagnostics: Vec<String>) {
   }
 }
 
-async fn perform_publish(
-  http_client: &Arc<HttpClient>,
-  mut publish_order_graph: PublishOrderGraph,
-  mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
+async fn get_auth_headers(
+  client: &reqwest::Client,
+  registry_url: String,
+  packages: Vec<Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
-) -> Result<(), AnyError> {
-  let client = http_client.client()?;
-  let registry_url = deno_registry_api_url().to_string();
-
-  let packages = prepared_package_by_name.values().collect::<Vec<_>>();
-  let diagnostics = packages
-    .iter()
-    .flat_map(|p| p.diagnostics.clone())
-    .collect::<Vec<_>>();
-  print_diagnostics(diagnostics);
-
+) -> Result<HashMap<(String, String, String), Rc<str>>, AnyError> {
   let permissions = packages
     .iter()
     .map(|package| Permission::VersionPublish {
@@ -337,6 +328,32 @@ async fn perform_publish(
       }
     }
   };
+
+  Ok(authorizations)
+}
+
+async fn perform_publish(
+  http_client: &Arc<HttpClient>,
+  mut publish_order_graph: PublishOrderGraph,
+  mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
+  auth_method: AuthMethod,
+) -> Result<(), AnyError> {
+  let client = http_client.client()?;
+  let registry_url = deno_registry_api_url().to_string();
+
+  let packages = prepared_package_by_name
+    .values()
+    .cloned()
+    .collect::<Vec<_>>();
+  let diagnostics = packages
+    .iter()
+    .flat_map(|p| p.diagnostics.clone())
+    .collect::<Vec<_>>();
+  print_diagnostics(diagnostics);
+
+  let mut authorizations =
+    get_auth_headers(client, registry_url.clone(), packages, auth_method)
+      .await?;
 
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
   let mut futures: JoinSet<Result<String, AnyError>> = JoinSet::default();
