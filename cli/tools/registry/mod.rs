@@ -2,9 +2,6 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::io::IsTerminal;
-use std::path::Path;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -19,7 +16,6 @@ use deno_core::serde_json::json;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
-use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
@@ -59,7 +55,7 @@ static SUGGESTED_ENTRYPOINTS: [&str; 4] =
 async fn prepare_publish(
   deno_json: &ConfigFile,
   import_map: Arc<ImportMap>,
-) -> Result<PreparedPublishPackage, AnyError> {
+) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
   let dir_path = config_path.parent().unwrap().to_path_buf();
   let Some(version) = deno_json.json.version.clone() else {
@@ -183,7 +179,7 @@ fn print_diagnostics(diagnostics: Vec<String>) {
 async fn perform_publish(
   http_client: &Arc<HttpClient>,
   mut publish_order_graph: PublishOrderGraph,
-  mut prepared_package_by_name: HashMap<String, PreparedPublishPackage>,
+  mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
@@ -383,7 +379,7 @@ async fn perform_publish(
 
 async fn publish_package(
   http_client: &HttpClient,
-  package: PreparedPublishPackage,
+  package: Rc<PreparedPublishPackage>,
   registry_url: &str,
   authorization: &str,
 ) -> Result<(), AnyError> {
@@ -405,11 +401,11 @@ async fn publish_package(
     .post(url)
     .header(AUTHORIZATION, authorization)
     .header(CONTENT_ENCODING, "gzip")
-    .body(package.tarball)
+    .body(package.tarball.clone())
     .send()
     .await?;
 
-  let res = parse_response::<PublishingTask>(response).await;
+  let res = api::parse_response::<api::PublishingTask>(response).await;
   let mut task = match res {
     Ok(task) => task,
     Err(err) if err.code == "duplicateVersionPublish" => {
@@ -445,7 +441,7 @@ async fn publish_package(
           package.scope, package.package, package.version
         )
       })?;
-    task = parse_response::<PublishingTask>(resp)
+    task = api::parse_response::<api::PublishingTask>(resp)
       .await
       .with_context(|| {
         format!(
@@ -522,22 +518,25 @@ pub async fn publish(
       )
       .await?;
 
-      let results = workspace_config
-        .members
-        .iter()
-        .cloned()
-        .map(|member| {
-          let import_map = import_map.clone();
-          deno_core::unsync::spawn(async move {
-            let package = prepare_publish(&member.config_file, import_map)
-              .await
-              .with_context(|| {
-                format!("Failed preparing '{}'.", member.package_name)
-              })?;
-            Ok((member.package_name, package))
+      let results =
+        workspace_config
+          .members
+          .iter()
+          .cloned()
+          .map(|member| {
+            let import_map = import_map.clone();
+            deno_core::unsync::spawn(async move {
+              let package = prepare_publish(&member.config_file, import_map)
+                .await
+                .with_context(|| {
+                  format!("Failed preparing '{}'.", member.package_name)
+                })?;
+              Ok((member.package_name, package))
+            })
           })
-        })
-        .collect::<Vec<JoinHandle<Result<(String, PreparedPublishPackage), AnyError>>>>();
+          .collect::<Vec<
+            JoinHandle<Result<(String, Rc<PreparedPublishPackage>), AnyError>>,
+          >>();
       let results = deno_core::futures::future::join_all(results).await;
       for result in results {
         let (package_name, package) = result??;
