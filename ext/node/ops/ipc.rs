@@ -106,6 +106,15 @@ mod unix {
       })
     }
 
+    fn from_unix_stream(stream: UnixStream) -> Self {
+      let (read_half, write_half) = stream.into_split();
+      Self {
+        read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
+        write_half: AsyncRefCell::new(write_half),
+        cancel: Default::default(),
+      }
+    }
+
     async fn write_msg(
       self: Rc<Self>,
       msg: serde_json::Value,
@@ -362,7 +371,7 @@ mod unix {
         Ok::<_, std::io::Error>(())
       });
 
-      let ipc = Rc::new(IpcJsonStreamResource::new(fd1.as_raw_fd())?);
+      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
 
       let start = std::time::Instant::now();
       let mut bytes = 0;
@@ -429,7 +438,7 @@ mod unix {
         Ok::<_, std::io::Error>(())
       });
 
-      let ipc = Rc::new(IpcJsonStreamResource::new(fd1.as_raw_fd())?);
+      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
       ipc.clone().write_msg(json!("hello")).await?;
       ipc.clone().write_msg(json!("world")).await?;
 
@@ -450,7 +459,7 @@ mod unix {
         Ok::<_, std::io::Error>(())
       });
 
-      let ipc = Rc::new(IpcJsonStreamResource::new(fd1.as_raw_fd())?);
+      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
       let _err = ipc.read_msg().await.unwrap_err();
 
