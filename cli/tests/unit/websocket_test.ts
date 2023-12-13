@@ -368,21 +368,22 @@ Deno.test(async function websocketTlsSocketWorks() {
 
 // https://github.com/denoland/deno/issues/15340
 Deno.test(
-  { sanitizeOps: false, sanitizeResources: false },
   async function websocketServerFieldInit() {
     const ac = new AbortController();
     const listeningDeferred = Promise.withResolvers<void>();
 
     const server = Deno.serve({
       handler: (req) => {
-        const { socket, response } = Deno.upgradeWebSocket(req);
+        const { socket, response } = Deno.upgradeWebSocket(req, {
+          idleTimeout: 0,
+        });
         socket.onopen = function () {
           assert(typeof socket.url == "string");
           assert(socket.readyState == WebSocket.OPEN);
           assert(socket.protocol == "");
           socket.close();
-          ac.abort();
         };
+        socket.onclose = () => ac.abort();
         return response;
       },
       signal: ac.signal,
@@ -401,6 +402,5 @@ Deno.test(
     };
 
     await Promise.all([deferred.promise, server.finished]);
-    ws.close();
   },
 );
