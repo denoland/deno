@@ -48,6 +48,7 @@ use pty::Pty;
 use regex::Regex;
 use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
+use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -120,6 +121,7 @@ const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
+const REGISTRY_SERVER_PORT: u16 = 4250;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -1815,6 +1817,8 @@ pub async fn run_all_servers() {
   let h2_only_server_fut = wrap_http_h2_only_server();
   let h2_grpc_server_fut = h2_grpc_server();
 
+  let registry_server_fut = registry_server();
+
   let server_fut = async {
     futures::join!(
       redirect_server_fut,
@@ -1840,6 +1844,7 @@ pub async fn run_all_servers() {
       h1_only_server_fut,
       h2_only_server_fut,
       h2_grpc_server_fut,
+      registry_server_fut,
     )
   }
   .boxed_local();
@@ -2696,6 +2701,49 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   }
 
   None
+}
+
+async fn registry_server_handler(
+  req: Request<Body>,
+) -> Result<Response<Body>, hyper::http::Error> {
+  let path = req.uri().path();
+
+  if path.starts_with("/scopes/") {
+    let body = serde_json::to_string_pretty(&json!({
+      "id": "sdfwqer-sffg-qwerasdf",
+      "status": "success",
+      "error": null
+    }))
+    .unwrap();
+    let res = Response::new(Body::from(body));
+    return Ok(res);
+  } else if path.starts_with("/publish_status/") {
+    let body = serde_json::to_string_pretty(&json!({
+      "id": "sdfwqer-qwer-qwerasdf",
+      "status": "success",
+      "error": null
+    }))
+    .unwrap();
+    let res = Response::new(Body::from(body));
+    return Ok(res);
+  }
+
+  Response::builder()
+    .status(StatusCode::NOT_FOUND)
+    .body(Body::empty())
+}
+
+async fn registry_server() {
+  let registry_server_addr =
+    SocketAddr::from(([127, 0, 0, 1], REGISTRY_SERVER_PORT));
+  let registry_server_svc = make_service_fn(|_| async {
+    Ok::<_, Infallible>(service_fn(registry_server_handler))
+  });
+  let registry_server =
+    Server::bind(&registry_server_addr).serve(registry_server_svc);
+  if let Err(e) = registry_server.await {
+    eprintln!("Registry server error: {:?}", e);
+  }
 }
 
 pub(crate) mod colors {

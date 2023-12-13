@@ -582,6 +582,20 @@ defineEventHandler(WebSocket.prototype, "open");
 webidl.configureInterface(WebSocket);
 const WebSocketPrototype = WebSocket.prototype;
 
+function createWebSocketBranded() {
+  const socket = webidl.createBranded(WebSocket);
+  socket[_rid] = undefined;
+  socket[_role] = undefined;
+  socket[_readyState] = CONNECTING;
+  socket[_extensions] = "";
+  socket[_protocol] = "";
+  socket[_url] = "";
+  socket[_binaryType] = "blob";
+  socket[_idleTimeoutDuration] = 0;
+  socket[_idleTimeoutTimeout] = undefined;
+  return socket;
+}
+
 export {
   _eventLoop,
   _idleTimeoutDuration,
@@ -592,6 +606,7 @@ export {
   _role,
   _server,
   _serverHandleIdleTimeout,
+  createWebSocketBranded,
   SERVER,
   WebSocket,
 };

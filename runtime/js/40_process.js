@@ -159,6 +159,7 @@ function spawnChildInner(opFn, command, apiName, {
   stderr = "piped",
   signal = undefined,
   windowsRawArguments = false,
+  ipc = -1,
 } = {}) {
   const child = opFn({
     cmd: pathFromURL(command),
@@ -172,6 +173,7 @@ function spawnChildInner(opFn, command, apiName, {
     stdout,
     stderr,
     windowsRawArguments,
+    ipc,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
@@ -202,6 +204,12 @@ class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
+
+  #pipeFd;
+  // internal, used by ext/node
+  get _pipeFd() {
+    return this.#pipeFd;
+  }
 
   #pid;
   get pid() {
@@ -239,6 +247,7 @@ class ChildProcess {
     stdinRid,
     stdoutRid,
     stderrRid,
+    pipeFd, // internal
   } = null) {
     if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
@@ -246,6 +255,7 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
+    this.#pipeFd = pipeFd;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
