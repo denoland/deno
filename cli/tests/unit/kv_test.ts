@@ -2216,3 +2216,29 @@ dbTest("key watch", async (db) => {
   await work;
   await reader.cancel();
 });
+
+dbTest("set with key versionstamp suffix", async (db) => {
+  const result1 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result1, []);
+
+  const setRes1 = await db.set(["a", db.commitVersionstamp()], "b");
+  assert(setRes1.ok);
+  assert(setRes1.versionstamp > ZERO_VERSIONSTAMP);
+
+  const result2 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result2.length, 1);
+  assertEquals(result2[0].key[1], setRes1.versionstamp);
+  assertEquals(result2[0].value, "b");
+  assertEquals(result2[0].versionstamp, setRes1.versionstamp);
+
+  const setRes2 = await db.atomic().set(["a", db.commitVersionstamp()], "c")
+    .commit();
+  assert(setRes2.ok);
+  assert(setRes2.versionstamp > setRes1.versionstamp);
+
+  const result3 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result3.length, 2);
+  assertEquals(result3[1].key[1], setRes2.versionstamp);
+  assertEquals(result3[1].value, "c");
+  assertEquals(result3[1].versionstamp, setRes2.versionstamp);
+});
