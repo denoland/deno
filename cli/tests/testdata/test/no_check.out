@@ -3,10 +3,10 @@ Uncaught error from ./test/no_check.ts FAILED
  ERRORS 
 
 ./test/no_check.ts (uncaught error)
-error: TypeError: Cannot read properties of undefined (reading 'fn')
+error: (in promise) TypeError: Cannot read properties of undefined (reading 'fn')
 Deno.test();
      ^
-    at [WILDCARD]/test/no_check.ts:1:6
+    at [WILDCARD]
 This error was not caught from a test and caused the test runner to fail on the referenced module.
 It most likely originated from a dangling promise, event/timeout handler or top-level code.
 

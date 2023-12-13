@@ -8,7 +8,6 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
-  deferred,
   delay,
   fail,
 } from "./test_util.ts";
@@ -216,8 +215,8 @@ Deno.test(
     writer.write(new TextEncoder().encode("world"));
     writer.close();
 
+    const listener = Deno.listen({ port: listenPort });
     const promise = (async () => {
-      const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
       const evt = await httpConn.nextRequest();
@@ -349,13 +348,13 @@ Deno.test(
     const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://${hostname}:${port}/`, {
-      client,
       headers: { "connection": "close" },
+      client,
     });
+    client.close();
     const respBody = await resp.text();
     assertEquals("Hello World", respBody);
     await promise;
-    client.close();
   },
 );
 
@@ -592,9 +591,9 @@ Deno.test(
     let counter = 0;
 
     const deferreds = [
-      deferred(),
-      deferred(),
-      deferred(),
+      Promise.withResolvers<void>(),
+      Promise.withResolvers<void>(),
+      Promise.withResolvers<void>(),
     ];
 
     async function writeRequest(conn: Deno.Conn) {
@@ -639,7 +638,7 @@ Deno.test(
             return controller.close();
           }
 
-          await deferreds[counter - 1];
+          await deferreds[counter - 1].promise;
 
           controller.enqueue(`${counter}\n`);
           counter++;
@@ -788,16 +787,20 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
       socket.send(m.data);
       socket.close(1001);
     };
+    const close = new Promise<void>((resolve) => {
+      socket.onclose = () => resolve();
+    });
     await respondWith(response);
+    await close;
   })();
 
-  const def = deferred();
+  const def = Promise.withResolvers<void>();
   const ws = new WebSocket(`ws://localhost:${listenPort}`);
   ws.onmessage = (m) => assertEquals(m.data, "foo");
   ws.onerror = () => fail();
   ws.onclose = () => def.resolve();
   ws.onopen = () => ws.send("foo");
-  await def;
+  await def.promise;
   await promise;
 });
 
@@ -1132,7 +1135,7 @@ Deno.test(
   { permissions: { net: true } },
   async function droppedConnSenderNoPanic() {
     async function server() {
-      const listener = Deno.listen({ port: 8000 });
+      const listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const http = Deno.serveHttp(conn);
       const evt = await http.nextRequest();
@@ -1147,7 +1150,7 @@ Deno.test(
 
     async function client() {
       try {
-        const resp = await fetch("http://127.0.0.1:8000/");
+        const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
         await resp.body?.cancel();
       } catch {
         // Ignore error
@@ -1228,11 +1231,15 @@ Deno.test(
     async function client() {
       const socket = new WebSocket(`ws://${hostname}:${port}/`);
       socket.onopen = () => socket.send("bla bla");
+      const closed = new Promise<void>((resolve) => {
+        socket.onclose = () => resolve();
+      });
       const { data } = await new Promise<MessageEvent<string>>((res) =>
         socket.onmessage = res
       );
       assertStrictEquals(data, "bla bla");
       socket.close();
+      await closed;
     }
 
     await Promise.all([server(), client()]);
@@ -2279,7 +2286,7 @@ Deno.test("upgradeHttp unix", {
   ignore: Deno.build.os === "windows",
 }, async () => {
   const filePath = tmpUnixSocketPath();
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
 
   async function client() {
     const unixConn = await Deno.connect({ path: filePath, transport: "unix" });
@@ -2295,7 +2302,7 @@ Deno.test("upgradeHttp unix", {
         ),
       );
       unixConn.close();
-      promise.resolve();
+      resolve();
     }, 500);
     await promise;
   }
@@ -2808,6 +2815,24 @@ Deno.test({
     httpConn!.close();
   },
 });
+
+Deno.test(
+  async function httpConnExplicitResourceManagement() {
+    let promise;
+
+    {
+      const listen = Deno.listen({ port: listenPort });
+      promise = fetch(`http://localhost:${listenPort}/`).catch(() => null);
+      const serverConn = await listen.accept();
+      listen.close();
+
+      using _httpConn = Deno.serveHttp(serverConn);
+    }
+
+    const response = await promise;
+    assertEquals(response, null);
+  },
+);
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6

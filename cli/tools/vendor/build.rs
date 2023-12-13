@@ -11,9 +11,11 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
+use deno_graph::source::ResolutionMode;
 use deno_graph::EsmModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_runtime::deno_fs;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
@@ -111,9 +113,15 @@ pub async fn build<
   // add the jsx import source to the entry points to ensure it is always vendored
   if let Some(jsx_import_source) = jsx_import_source {
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
-      if let Ok(specifier) =
-        resolver.resolve(&specifier_text, &jsx_import_source.base_url)
-      {
+      if let Ok(specifier) = resolver.resolve(
+        &specifier_text,
+        &deno_graph::Range {
+          specifier: jsx_import_source.base_url.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        ResolutionMode::Execution,
+      ) {
         entry_points.push(specifier);
       }
     }
@@ -129,6 +137,7 @@ pub async fn build<
   // surface any errors
   graph_util::graph_valid(
     &graph,
+    &deno_fs::RealFs,
     &graph.roots,
     graph_util::GraphValidOptions {
       is_vendoring: true,

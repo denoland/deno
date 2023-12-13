@@ -1,10 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -111,10 +110,10 @@ class PermissionStatus extends EventTarget {
     return dispatched;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     const object = { state: this.state, onchange: this.onchange };
     if (this.partial) object.partial = this.partial;
-    return `${this.constructor.name} ${inspect(object)}`;
+    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
   }
 }
 

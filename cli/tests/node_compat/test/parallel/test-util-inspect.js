@@ -33,8 +33,7 @@ const assert = require('assert');
 // const { internalBinding } = require('internal/test/binding');
 // const JSStream = internalBinding('js_stream').JSStream;
 const util = require('util');
-// TODO(wafuwafu13): Implement 'vm'
-// const vm = require('vm');
+const vm = require('vm');
 // TODO(wafuwafu13): Implement 'v8'
 // const v8 = require('v8');
 // TODO(wafuwafu13): Implement 'internal/test/binding'
@@ -566,16 +565,15 @@ assert.strictEqual(
                      '2010-02-14T11:48:40.000Z { aprop: 42 }');
 }
 
-// TODO(wafuwafu13): Implement 'vm'
-// // Test the internal isDate implementation.
-// {
-//   const Date2 = vm.runInNewContext('Date');
-//   const d = new Date2();
-//   const orig = util.inspect(d);
-//   Date2.prototype.foo = 'bar';
-//   const after = util.inspect(d);
-//   assert.strictEqual(orig, after);
-// }
+// Test the internal isDate implementation.
+{
+  const Date2 = vm.runInNewContext('Date');
+  const d = new Date2();
+  const orig = util.inspect(d);
+  Date2.prototype.foo = 'bar';
+  const after = util.inspect(d);
+  assert.strictEqual(orig, after);
+}
 
 // Test positive/negative zero.
 assert.strictEqual(util.inspect(0), '0');

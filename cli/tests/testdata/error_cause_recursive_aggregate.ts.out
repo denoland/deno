@@ -1,5 +1,4 @@
-[WILDCARD]
-error: Uncaught AggregateError
+error: Uncaught (in promise) AggregateError
     Error: bar <ref *1>
         at file:///[WILDCARD]/error_cause_recursive_aggregate.ts:2:13
     Caused by: Error: foo

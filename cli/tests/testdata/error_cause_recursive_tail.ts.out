@@ -1,5 +1,4 @@
-[WILDCARD]
-error: Uncaught Error: baz
+error: Uncaught (in promise) Error: baz
 const baz = new Error("baz", { cause: bar });
             ^
     at file:///[WILDCARD]/error_cause_recursive_tail.ts:3:13
@@ -8,4 +7,3 @@ Caused by: Error: bar <ref *1>
 Caused by: Error: foo
     at file:///[WILDCARD]/error_cause_recursive_tail.ts:1:13
 Caused by: [Circular *1]
-[WILDCARD]

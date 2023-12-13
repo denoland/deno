@@ -19,14 +19,16 @@ import {
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
 } from "ext:deno_web/00_infra.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
+  ObjectFromEntries,
   ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
   Symbol,
   SymbolFor,
@@ -40,6 +42,7 @@ const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
+const _brand = webidl.brand;
 
 /**
  * @typedef Header
@@ -286,12 +289,17 @@ class Headers {
 
   /** @param {HeadersInit} [init] */
   constructor(init = undefined) {
+    if (init === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Headers'";
     if (init !== undefined) {
       init = webidl.converters["HeadersInit"](init, prefix, "Argument 1");
     }
 
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_guard] = "none";
     if (init !== undefined) {
       fillHeaders(this, init);
@@ -435,19 +443,20 @@ class Headers {
     }
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    const headers = {};
-    // deno-lint-ignore prefer-primordials
-    for (const header of this) {
-      headers[header[0]] = header[1];
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    if (ObjectPrototypeIsPrototypeOf(HeadersPrototype, this)) {
+      return `${this.constructor.name} ${
+        inspect(ObjectFromEntries(this), inspectOptions)
+      }`;
+    } else {
+      return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
     }
-    return `Headers ${inspect(headers)}`;
   }
 }
 
 webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 
-webidl.configurePrototype(Headers);
+webidl.configureInterface(Headers);
 const HeadersPrototype = Headers.prototype;
 
 webidl.converters["HeadersInit"] = (V, prefix, context, opts) => {
@@ -486,7 +495,7 @@ webidl.converters["Headers"] = webidl.createInterfaceConverter(
  * @returns {Headers}
  */
 function headersFromHeaderList(list, guard) {
-  const headers = webidl.createBranded(Headers);
+  const headers = new Headers(_brand);
   headers[_headerList] = list;
   headers[_guard] = guard;
   return headers;

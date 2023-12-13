@@ -21,7 +21,6 @@
       "test-assert.js",
       "test-buffer-alloc.js",
       "test-buffer-arraybuffer.js",
-      "test-buffer-bytelength.js",
       "test-buffer-from.js",
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
@@ -39,6 +38,10 @@
       "test-child-process-execfile.js",
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-exit-code.js",
+      // TODO(littledivy): windows ipc streams not yet implemented
+      "test-child-process-fork-ref.js",
+      "test-child-process-fork-ref2.js",
+      "test-child-process-ipc-next-tick.js",
       "test-child-process-ipc.js",
       "test-child-process-spawnsync-env.js",
       "test-child-process-stdio-inherit.js",
@@ -72,7 +75,7 @@
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-fs-write.js",
-      "test-http-content-length.js",
+      "test-http-url.parse-https.request.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
       "test-net-connect-buffer2.js",
@@ -88,6 +91,8 @@
       "test-querystring.js",
       "test-readline-interface.js",
       "test-stdin-from-file-spawn.js",
+      "test-stream-duplex-from.js",
+      "test-ttywrap-invalid-fd.js",
       "test-url-urltooptions.js",
       "test-util-format.js",
       "test-util-inspect-namespace.js",
@@ -108,9 +113,7 @@
       "test-zlib-zero-windowBits.js"
     ],
     "pummel": [],
-    "sequential": [
-      "test-child-process-exit.js"
-    ]
+    "sequential": ["test-child-process-exit.js"]
   },
   "tests": {
     "common": [
@@ -137,11 +140,7 @@
       "print-chars.js",
       "x.txt"
     ],
-    "fixtures/keys": [
-      "agent1-cert.pem",
-      "agent1-key.pem",
-      "ca1-cert.pem"
-    ],
+    "fixtures/keys": ["agent1-cert.pem", "agent1-key.pem", "ca1-cert.pem"],
     "internet": [
       "test-dns-any.js",
       "test-dns-idna2008.js",
@@ -161,6 +160,7 @@
       "test-assert.js",
       "test-bad-unicode.js",
       "test-btoa-atob.js",
+      "test-buffer-alloc.js",
       "test-buffer-arraybuffer.js",
       "test-buffer-ascii.js",
       "test-buffer-badhex.js",
@@ -175,6 +175,7 @@
       "test-buffer-fakes.js",
       "test-buffer-from.js",
       "test-buffer-includes.js",
+      "test-buffer-indexof.js",
       "test-buffer-inheritance.js",
       "test-buffer-isencoding.js",
       "test-buffer-iterator.js",
@@ -364,7 +365,6 @@
       // TODO(lev): ClientRequest.socket is not polyfilled so this test keeps
       //            failing
       //"test-http-client-set-timeout.js",
-      "test-http-content-length.js",
       "test-http-localaddress.js",
       // TODO(bartlomieju): temporarily disabled while we iterate on the HTTP client
       // "test-http-outgoing-buffer.js",
@@ -375,6 +375,14 @@
       // "test-http-outgoing-message-inheritance.js",
       "test-http-outgoing-renderHeaders.js",
       "test-http-outgoing-settimeout.js",
+      "test-http-url.parse-auth-with-header-in-request.js",
+      "test-http-url.parse-auth.js",
+      "test-http-url.parse-basic.js",
+      "test-http-url.parse-https.request.js",
+      "test-http-url.parse-only-support-http-https-protocol.js",
+      "test-http-url.parse-path.js",
+      "test-http-url.parse-post.js",
+      "test-http-url.parse-search.js",
       "test-net-access-byteswritten.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
@@ -419,6 +427,7 @@
       "test-nodeeventtarget.js",
       "test-outgoing-message-destroy.js",
       "test-outgoing-message-pipe.js",
+      "test-parse-args.mjs",
       "test-path-basename.js",
       "test-path-dirname.js",
       "test-path-extname.js",
@@ -616,6 +625,7 @@
       "test-timers-unref-throw-then-ref.js",
       "test-timers-user-call.js",
       "test-timers-zero-timeout.js",
+      "test-tty-stdin-end.js",
       "test-url-domain-ascii-unicode.js",
       "test-url-fileurltopath.js",
       "test-url-format-invalid-input.js",
@@ -683,9 +693,7 @@
       "test-tty-stdout-end.js"
     ],
     "pummel": [],
-    "sequential": [
-      "test-child-process-exit.js"
-    ]
+    "sequential": ["test-child-process-exit.js"]
   },
   "windowsIgnore": {
     "parallel": [

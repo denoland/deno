@@ -120,7 +120,7 @@ class Zlib {
     core.opAsync(
       "op_zlib_write_async",
       this.#handle,
-      flush,
+      flush ?? Z_NO_FLUSH,
       input,
       in_off,
       in_len,

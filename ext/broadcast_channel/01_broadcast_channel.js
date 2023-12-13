@@ -2,9 +2,10 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   EventTarget,
@@ -12,12 +13,14 @@ import {
   setTarget,
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIndexOf,
-  ArrayPrototypeSplice,
   ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
   Symbol,
+  SymbolFor,
   Uint8Array,
 } = primordials;
 
@@ -70,7 +73,7 @@ function dispatch(source, name, data) {
 // for that reason: it lets promises make forward progress but can
 // still starve other parts of the event loop.
 function defer(go) {
-  setTimeout(go, 1);
+  PromisePrototypeThen(core.ops.op_void_async_deferred(), () => go());
 }
 
 class BroadcastChannel extends EventTarget {
@@ -139,6 +142,21 @@ class BroadcastChannel extends EventTarget {
     if (channels.length === 0) {
       ops.op_broadcast_unsubscribe(rid);
     }
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(BroadcastChannelPrototype, this),
+        keys: [
+          "name",
+          "onmessage",
+          "onmessageerror",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

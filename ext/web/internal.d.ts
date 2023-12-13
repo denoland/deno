@@ -41,6 +41,8 @@ declare module "ext:deno_web/00_infra.js" {
   };
   function forgivingBase64Encode(data: Uint8Array): string;
   function forgivingBase64Decode(data: string): Uint8Array;
+  function forgivingBase64UrlEncode(data: Uint8Array | string): string;
+  function forgivingBase64UrlDecode(data: string): Uint8Array;
   function serializeJSValueToJSONString(value: unknown): string;
 }
 
@@ -108,4 +110,8 @@ declare module "ext:deno_web/13_message_port.js" {
     data: Uint8Array;
     transferables: Transferable[];
   }
+}
+
+declare module "ext:deno_web/16_image_data.js" {
+  const ImageData: typeof ImageData;
 }

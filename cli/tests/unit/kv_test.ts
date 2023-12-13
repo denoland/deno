@@ -6,8 +6,6 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
-  Deferred,
-  deferred,
 } from "./test_util.ts";
 import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
 
@@ -55,9 +53,7 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void> | void) {
     // https://github.com/denoland/deno/issues/18363
     ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
-      const db: Deno.Kv = await Deno.openKv(
-        ":memory:",
-      );
+      const db: Deno.Kv = await Deno.openKv(":memory:");
       try {
         await fn(db);
       } finally {
@@ -73,13 +69,13 @@ function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
     // https://github.com/denoland/deno/issues/18363
     ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
-      const db: Deno.Kv = await Deno.openKv(
-        ":memory:",
-      );
+      const db: Deno.Kv = await Deno.openKv(":memory:");
       await fn(db);
     },
   });
 }
+
+const ZERO_VERSIONSTAMP = "00000000000000000000";
 
 dbTest("basic read-write-delete and versionstamps", async (db) => {
   const result1 = await db.get(["a"]);
@@ -89,17 +85,19 @@ dbTest("basic read-write-delete and versionstamps", async (db) => {
 
   const setRes = await db.set(["a"], "b");
   assert(setRes.ok);
-  assertEquals(setRes.versionstamp, "00000000000000010000");
+  assert(setRes.versionstamp > ZERO_VERSIONSTAMP);
   const result2 = await db.get(["a"]);
   assertEquals(result2.key, ["a"]);
   assertEquals(result2.value, "b");
-  assertEquals(result2.versionstamp, "00000000000000010000");
+  assertEquals(result2.versionstamp, setRes.versionstamp);
 
-  await db.set(["a"], "c");
+  const setRes2 = await db.set(["a"], "c");
+  assert(setRes2.ok);
+  assert(setRes2.versionstamp > setRes.versionstamp);
   const result3 = await db.get(["a"]);
   assertEquals(result3.key, ["a"]);
   assertEquals(result3.value, "c");
-  assertEquals(result3.versionstamp, "00000000000000020000");
+  assertEquals(result3.versionstamp, setRes2.versionstamp);
 
   await db.delete(["a"]);
   const result4 = await db.get(["a"]);
@@ -230,17 +228,18 @@ dbTest("compare and mutate", async (db) => {
   await db.set(["t"], "1");
 
   const currentValue = await db.get(["t"]);
-  assertEquals(currentValue.versionstamp, "00000000000000010000");
+  assert(currentValue.versionstamp);
+  assert(currentValue.versionstamp > ZERO_VERSIONSTAMP);
 
   let res = await db.atomic()
     .check({ key: ["t"], versionstamp: currentValue.versionstamp })
     .set(currentValue.key, "2")
     .commit();
   assert(res.ok);
-  assertEquals(res.versionstamp, "00000000000000020000");
+  assert(res.versionstamp > currentValue.versionstamp);
 
   const newValue = await db.get(["t"]);
-  assertEquals(newValue.versionstamp, "00000000000000020000");
+  assertEquals(newValue.versionstamp, res.versionstamp);
   assertEquals(newValue.value, "2");
 
   res = await db.atomic()
@@ -250,7 +249,7 @@ dbTest("compare and mutate", async (db) => {
   assert(!res.ok);
 
   const newValue2 = await db.get(["t"]);
-  assertEquals(newValue2.versionstamp, "00000000000000020000");
+  assertEquals(newValue2.versionstamp, newValue.versionstamp);
   assertEquals(newValue2.value, "2");
 });
 
@@ -260,9 +259,10 @@ dbTest("compare and mutate not exists", async (db) => {
     .set(["t"], "1")
     .commit();
   assert(res.ok);
+  assert(res.versionstamp > ZERO_VERSIONSTAMP);
 
   const newValue = await db.get(["t"]);
-  assertEquals(newValue.versionstamp, "00000000000000010000");
+  assertEquals(newValue.versionstamp, res.versionstamp);
   assertEquals(newValue.value, "1");
 
   res = await db.atomic()
@@ -303,13 +303,17 @@ dbTest("atomic mutation helper (max)", async (db) => {
 });
 
 dbTest("compare multiple and mutate", async (db) => {
-  await db.set(["t1"], "1");
-  await db.set(["t2"], "2");
+  const setRes1 = await db.set(["t1"], "1");
+  const setRes2 = await db.set(["t2"], "2");
+  assert(setRes1.ok);
+  assert(setRes1.versionstamp > ZERO_VERSIONSTAMP);
+  assert(setRes2.ok);
+  assert(setRes2.versionstamp > ZERO_VERSIONSTAMP);
 
   const currentValue1 = await db.get(["t1"]);
-  assertEquals(currentValue1.versionstamp, "00000000000000010000");
+  assertEquals(currentValue1.versionstamp, setRes1.versionstamp);
   const currentValue2 = await db.get(["t2"]);
-  assertEquals(currentValue2.versionstamp, "00000000000000020000");
+  assertEquals(currentValue2.versionstamp, setRes2.versionstamp);
 
   const res = await db.atomic()
     .check({ key: ["t1"], versionstamp: currentValue1.versionstamp })
@@ -318,12 +322,13 @@ dbTest("compare multiple and mutate", async (db) => {
     .set(currentValue2.key, "4")
     .commit();
   assert(res.ok);
+  assert(res.versionstamp > setRes2.versionstamp);
 
   const newValue1 = await db.get(["t1"]);
-  assertEquals(newValue1.versionstamp, "00000000000000030000");
+  assertEquals(newValue1.versionstamp, res.versionstamp);
   assertEquals(newValue1.value, "3");
   const newValue2 = await db.get(["t2"]);
-  assertEquals(newValue2.versionstamp, "00000000000000030000");
+  assertEquals(newValue2.versionstamp, res.versionstamp);
   assertEquals(newValue2.value, "4");
 
   // just one of the two checks failed
@@ -336,10 +341,10 @@ dbTest("compare multiple and mutate", async (db) => {
   assert(!res2.ok);
 
   const newValue3 = await db.get(["t1"]);
-  assertEquals(newValue3.versionstamp, "00000000000000030000");
+  assertEquals(newValue3.versionstamp, res.versionstamp);
   assertEquals(newValue3.value, "3");
   const newValue4 = await db.get(["t2"]);
-  assertEquals(newValue4.versionstamp, "00000000000000030000");
+  assertEquals(newValue4.versionstamp, res.versionstamp);
   assertEquals(newValue4.value, "4");
 });
 
@@ -635,8 +640,8 @@ async function collect<T>(
   return entries;
 }
 
-async function setupData(db: Deno.Kv) {
-  await db.atomic()
+async function setupData(db: Deno.Kv): Promise<string> {
+  const res = await db.atomic()
     .set(["a"], -1)
     .set(["a", "a"], 0)
     .set(["a", "b"], 1)
@@ -646,27 +651,29 @@ async function setupData(db: Deno.Kv) {
     .set(["b"], 99)
     .set(["b", "a"], 100)
     .commit();
+  assert(res.ok);
+  return res.versionstamp;
 }
 
 dbTest("get many", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await db.getMany([["b", "a"], ["a"], ["c"]]);
   assertEquals(entries, [
-    { key: ["b", "a"], value: 100, versionstamp: "00000000000000010000" },
-    { key: ["a"], value: -1, versionstamp: "00000000000000010000" },
+    { key: ["b", "a"], value: 100, versionstamp },
+    { key: ["a"], value: -1, versionstamp },
     { key: ["c"], value: null, versionstamp: null },
   ]);
 });
 
 dbTest("list prefix", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"] }));
   assertEquals(entries, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "e"], value: 4, versionstamp },
   ]);
 });
 
@@ -680,12 +687,12 @@ dbTest("list prefix empty", async (db) => {
 });
 
 dbTest("list prefix with start", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"], start: ["a", "c"] }));
   assertEquals(entries, [
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "e"], value: 4, versionstamp },
   ]);
 });
 
@@ -696,11 +703,11 @@ dbTest("list prefix with start empty", async (db) => {
 });
 
 dbTest("list prefix with end", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"], end: ["a", "c"] }));
   assertEquals(entries, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
   ]);
 });
 
@@ -711,35 +718,34 @@ dbTest("list prefix with end empty", async (db) => {
 });
 
 dbTest("list prefix with empty prefix", async (db) => {
-  await db.set(["a"], 1);
+  const res = await db.set(["a"], 1);
   const entries = await collect(db.list({ prefix: [] }));
   assertEquals(entries, [
-    { key: ["a"], value: 1, versionstamp: "00000000000000010000" },
+    { key: ["a"], value: 1, versionstamp: res.versionstamp },
   ]);
 });
 
 dbTest("list prefix reverse", async (db) => {
-  await setupData(db);
-
+  const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"] }, { reverse: true }));
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "a"], value: 0, versionstamp },
   ]);
 });
 
 dbTest("list prefix reverse with start", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(
     db.list({ prefix: ["a"], start: ["a", "c"] }, { reverse: true }),
   );
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 });
 
@@ -752,13 +758,13 @@ dbTest("list prefix reverse with start empty", async (db) => {
 });
 
 dbTest("list prefix reverse with end", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(
     db.list({ prefix: ["a"], end: ["a", "c"] }, { reverse: true }),
   );
   assertEquals(entries, [
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "a"], value: 0, versionstamp },
   ]);
 });
 
@@ -771,83 +777,82 @@ dbTest("list prefix reverse with end empty", async (db) => {
 });
 
 dbTest("list prefix limit", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"] }, { limit: 2 }));
   assertEquals(entries, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
   ]);
 });
 
 dbTest("list prefix limit reverse", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(
     db.list({ prefix: ["a"] }, { limit: 2, reverse: true }),
   );
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
   ]);
 });
 
 dbTest("list prefix with small batch size", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"] }, { batchSize: 2 }));
   assertEquals(entries, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "e"], value: 4, versionstamp },
   ]);
 });
 
 dbTest("list prefix with small batch size reverse", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(
     db.list({ prefix: ["a"] }, { batchSize: 2, reverse: true }),
   );
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "a"], value: 0, versionstamp },
   ]);
 });
 
 dbTest("list prefix with small batch size and limit", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(
     db.list({ prefix: ["a"] }, { batchSize: 2, limit: 3 }),
   );
   assertEquals(entries, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 });
 
 dbTest("list prefix with small batch size and limit reverse", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
   const entries = await collect(
     db.list({ prefix: ["a"] }, { batchSize: 2, limit: 3, reverse: true }),
   );
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 });
 
 dbTest("list prefix with manual cursor", async (db) => {
-  await setupData(db);
-
+  const versionstamp = await setupData(db);
   const iterator = db.list({ prefix: ["a"] }, { limit: 2 });
   const values = await collect(iterator);
   assertEquals(values, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
   ]);
 
   const cursor = iterator.cursor;
@@ -856,20 +861,20 @@ dbTest("list prefix with manual cursor", async (db) => {
   const iterator2 = db.list({ prefix: ["a"] }, { cursor });
   const values2 = await collect(iterator2);
   assertEquals(values2, [
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "e"], value: 4, versionstamp },
   ]);
 });
 
 dbTest("list prefix with manual cursor reverse", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const iterator = db.list({ prefix: ["a"] }, { limit: 2, reverse: true });
   const values = await collect(iterator);
   assertEquals(values, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
   ]);
 
   const cursor = iterator.cursor;
@@ -878,57 +883,57 @@ dbTest("list prefix with manual cursor reverse", async (db) => {
   const iterator2 = db.list({ prefix: ["a"] }, { cursor, reverse: true });
   const values2 = await collect(iterator2);
   assertEquals(values2, [
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "a"], value: 0, versionstamp },
   ]);
 });
 
 dbTest("list range", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const entries = await collect(
     db.list({ start: ["a", "a"], end: ["a", "z"] }),
   );
   assertEquals(entries, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "e"], value: 4, versionstamp },
   ]);
 });
 
 dbTest("list range reverse", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const entries = await collect(
     db.list({ start: ["a", "a"], end: ["a", "z"] }, { reverse: true }),
   );
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "a"], value: 0, versionstamp },
   ]);
 });
 
 dbTest("list range with limit", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const entries = await collect(
     db.list({ start: ["a", "a"], end: ["a", "z"] }, { limit: 3 }),
   );
   assertEquals(entries, [
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 });
 
 dbTest("list range with limit reverse", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const entries = await collect(
     db.list({ start: ["a", "a"], end: ["a", "z"] }, {
@@ -937,46 +942,46 @@ dbTest("list range with limit reverse", async (db) => {
     }),
   );
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 });
 
 dbTest("list range nesting", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const entries = await collect(db.list({ start: ["a"], end: ["a", "d"] }));
   assertEquals(entries, [
-    { key: ["a"], value: -1, versionstamp: "00000000000000010000" },
-    { key: ["a", "a"], value: 0, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a"], value: -1, versionstamp },
+    { key: ["a", "a"], value: 0, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 });
 
 dbTest("list range short", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const entries = await collect(
     db.list({ start: ["a", "b"], end: ["a", "d"] }),
   );
   assertEquals(entries, [
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 });
 
 dbTest("list range with manual cursor", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const iterator = db.list({ start: ["a", "b"], end: ["a", "z"] }, {
     limit: 2,
   });
   const entries = await collect(iterator);
   assertEquals(entries, [
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
+    { key: ["a", "b"], value: 1, versionstamp },
+    { key: ["a", "c"], value: 2, versionstamp },
   ]);
 
   const cursor = iterator.cursor;
@@ -985,13 +990,13 @@ dbTest("list range with manual cursor", async (db) => {
   });
   const entries2 = await collect(iterator2);
   assertEquals(entries2, [
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
+    { key: ["a", "d"], value: 3, versionstamp },
+    { key: ["a", "e"], value: 4, versionstamp },
   ]);
 });
 
 dbTest("list range with manual cursor reverse", async (db) => {
-  await setupData(db);
+  const versionstamp = await setupData(db);
 
   const iterator = db.list({ start: ["a", "b"], end: ["a", "z"] }, {
     limit: 2,
@@ -999,8 +1004,8 @@ dbTest("list range with manual cursor reverse", async (db) => {
   });
   const entries = await collect(iterator);
   assertEquals(entries, [
-    { key: ["a", "e"], value: 4, versionstamp: "00000000000000010000" },
-    { key: ["a", "d"], value: 3, versionstamp: "00000000000000010000" },
+    { key: ["a", "e"], value: 4, versionstamp },
+    { key: ["a", "d"], value: 3, versionstamp },
   ]);
 
   const cursor = iterator.cursor;
@@ -1010,8 +1015,8 @@ dbTest("list range with manual cursor reverse", async (db) => {
   });
   const entries2 = await collect(iterator2);
   assertEquals(entries2, [
-    { key: ["a", "c"], value: 2, versionstamp: "00000000000000010000" },
-    { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
+    { key: ["a", "c"], value: 2, versionstamp },
+    { key: ["a", "b"], value: 1, versionstamp },
   ]);
 });
 
@@ -1110,12 +1115,12 @@ dbTest("key size limit", async (db) => {
   const lastValidKey = new Uint8Array(2046).fill(1);
   const firstInvalidKey = new Uint8Array(2047).fill(1);
 
-  await db.set([lastValidKey], 1);
+  const res = await db.set([lastValidKey], 1);
 
   assertEquals(await db.get([lastValidKey]), {
     key: [lastValidKey],
     value: 1,
-    versionstamp: "00000000000000010000",
+    versionstamp: res.versionstamp,
   });
 
   await assertRejects(
@@ -1135,11 +1140,11 @@ dbTest("value size limit", async (db) => {
   const lastValidValue = new Uint8Array(65536);
   const firstInvalidValue = new Uint8Array(65537);
 
-  await db.set(["a"], lastValidValue);
+  const res = await db.set(["a"], lastValidValue);
   assertEquals(await db.get(["a"]), {
     key: ["a"],
     value: lastValidValue,
-    versionstamp: "00000000000000010000",
+    versionstamp: res.versionstamp,
   });
 
   await assertRejects(
@@ -1155,6 +1160,10 @@ dbTest("operation size limit", async (db) => {
     i,
   ) => ["a", i]);
   const firstInvalidKeys: Deno.KvKey[] = new Array(11).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+  const invalidCheckKeys: Deno.KvKey[] = new Array(101).fill(0).map((
     _,
     i,
   ) => ["a", i]);
@@ -1199,7 +1208,7 @@ dbTest("operation size limit", async (db) => {
   await assertRejects(
     async () => {
       await db.atomic()
-        .check(...firstInvalidKeys.map((key) => ({
+        .check(...invalidCheckKeys.map((key) => ({
           key,
           versionstamp: null,
         })))
@@ -1211,7 +1220,7 @@ dbTest("operation size limit", async (db) => {
         .commit();
     },
     TypeError,
-    "too many checks (max 10)",
+    "too many checks (max 100)",
   );
 
   const validMutateKeys: Deno.KvKey[] = new Array(1000).fill(0).map((
@@ -1280,6 +1289,21 @@ dbTest("total mutation size limit", async (db) => {
     },
     TypeError,
     "total mutation size too large (max 819200 bytes)",
+  );
+});
+
+dbTest("total key size limit", async (db) => {
+  const longString = new Array(1100).fill("a").join("");
+  const keys: Deno.KvKey[] = new Array(80).fill(0).map(() => [longString]);
+
+  const atomic = db.atomic();
+  for (const key of keys) {
+    atomic.set(key, "foo");
+  }
+  await assertRejects(
+    () => atomic.commit(),
+    TypeError,
+    "total key size too large (max 81920 bytes)",
   );
 });
 
@@ -1378,11 +1402,11 @@ async function _typeCheckingTests() {
 }
 
 queueTest("basic listenQueue and enqueue", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
   try {
     const res = await db.enqueue("test");
@@ -1400,21 +1424,19 @@ for (const { name, value } of VALUE_CASES) {
   queueTest(`listenQueue and enqueue ${name}`, async (db) => {
     const numEnqueues = 10;
     let count = 0;
-    const promises: Deferred<void>[] = [];
-    const dequeuedMessages: unknown[] = [];
+    const deferreds: ReturnType<typeof Promise.withResolvers<unknown>>[] = [];
     const listeners: Promise<void>[] = [];
-    listeners.push(db.listenQueue((msg) => {
-      dequeuedMessages.push(msg);
-      promises[count++].resolve();
+    listeners.push(db.listenQueue((msg: unknown) => {
+      deferreds[count++].resolve(msg);
     }));
     try {
       for (let i = 0; i < numEnqueues; i++) {
-        promises.push(deferred());
+        deferreds.push(Promise.withResolvers<unknown>());
         await db.enqueue(value);
       }
-      for (let i = 0; i < numEnqueues; i++) {
-        await promises[i];
-      }
+      const dequeuedMessages = await Promise.all(
+        deferreds.map(({ promise }) => promise),
+      );
       for (let i = 0; i < numEnqueues; i++) {
         assertEquals(dequeuedMessages[i], value);
       }
@@ -1428,17 +1450,17 @@ for (const { name, value } of VALUE_CASES) {
 }
 
 queueTest("queue mixed types", async (db) => {
-  let promise: Deferred<void>;
+  let deferred: ReturnType<typeof Promise.withResolvers<void>>;
   let dequeuedMessage: unknown = null;
-  const listener = db.listenQueue((msg) => {
+  const listener = db.listenQueue((msg: unknown) => {
     dequeuedMessage = msg;
-    promise.resolve();
+    deferred.resolve();
   });
   try {
     for (const item of VALUE_CASES) {
-      promise = deferred();
+      deferred = Promise.withResolvers<void>();
       await db.enqueue(item.value);
-      await promise;
+      await deferred.promise;
       assertEquals(dequeuedMessage, item.value);
     }
   } finally {
@@ -1449,12 +1471,12 @@ queueTest("queue mixed types", async (db) => {
 
 queueTest("queue delay", async (db) => {
   let dequeueTime: number | undefined;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeueTime = Date.now();
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
   try {
     const enqueueTime = Date.now();
@@ -1471,12 +1493,12 @@ queueTest("queue delay", async (db) => {
 
 queueTest("queue delay with atomic", async (db) => {
   let dequeueTime: number | undefined;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeueTime = Date.now();
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
   try {
     const enqueueTime = Date.now();
@@ -1498,14 +1520,14 @@ queueTest("queue delay with atomic", async (db) => {
 queueTest("queue delay and now", async (db) => {
   let count = 0;
   let dequeueTime: number | undefined;
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     count += 1;
     if (count == 2) {
       dequeueTime = Date.now();
       dequeuedMessage = msg;
-      promise.resolve();
+      resolve();
     }
   });
   try {
@@ -1535,19 +1557,19 @@ dbTest("queue nan delay", async (db) => {
 });
 
 dbTest("queue large delay", async (db) => {
-  await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 });
+  await db.enqueue("test", { delay: 30 * 24 * 60 * 60 * 1000 });
   await assertRejects(async () => {
-    await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 + 1 });
+    await db.enqueue("test", { delay: 30 * 24 * 60 * 60 * 1000 + 1 });
   }, TypeError);
 });
 
 queueTest("listenQueue with async callback", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue(async (msg) => {
     dequeuedMessage = msg;
     await sleep(100);
-    promise.resolve();
+    resolve();
   });
   try {
     await db.enqueue("test");
@@ -1578,23 +1600,41 @@ queueTest("queue retries", async (db) => {
   assertEquals(4, count);
 });
 
+queueTest("queue retries with backoffSchedule", async (db) => {
+  let count = 0;
+  const listener = db.listenQueue((_msg) => {
+    count += 1;
+    throw new TypeError("dequeue error");
+  });
+  try {
+    await db.enqueue("test", { backoffSchedule: [1] });
+    await sleep(2000);
+  } finally {
+    db.close();
+    await listener;
+  }
+
+  // There should have been 1 attempt + 1 retry
+  assertEquals(2, count);
+});
+
 queueTest("multiple listenQueues", async (db) => {
   const numListens = 10;
   let count = 0;
-  const promises: Deferred<void>[] = [];
+  const deferreds: ReturnType<typeof Promise.withResolvers<void>>[] = [];
   const dequeuedMessages: unknown[] = [];
   const listeners: Promise<void>[] = [];
   for (let i = 0; i < numListens; i++) {
     listeners.push(db.listenQueue((msg) => {
       dequeuedMessages.push(msg);
-      promises[count++].resolve();
+      deferreds[count++].resolve();
     }));
   }
   try {
     for (let i = 0; i < numListens; i++) {
-      promises.push(deferred());
+      deferreds.push(Promise.withResolvers<void>());
       await db.enqueue("msg_" + i);
-      await promises[i];
+      await deferreds[i].promise;
       const msg = dequeuedMessages[i];
       assertEquals("msg_" + i, msg);
     }
@@ -1607,11 +1647,11 @@ queueTest("multiple listenQueues", async (db) => {
 });
 
 queueTest("enqueue with atomic", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     dequeuedMessage = msg;
-    promise.resolve();
+    resolve();
   });
 
   try {
@@ -1639,7 +1679,7 @@ queueTest("enqueue with atomic", async (db) => {
 });
 
 queueTest("enqueue with atomic nonce", async (db) => {
-  const promise = deferred();
+  const { promise, resolve } = Promise.withResolvers<void>();
   let dequeuedMessage: unknown = null;
 
   const nonce = crypto.randomUUID();
@@ -1650,7 +1690,7 @@ queueTest("enqueue with atomic nonce", async (db) => {
     const nonceValue = await db.get(["nonces", nonce]);
     if (nonceValue.versionstamp === null) {
       dequeuedMessage = message.msg;
-      promise.resolve();
+      resolve();
       return;
     }
 
@@ -1698,43 +1738,49 @@ Deno.test({
       let db: Deno.Kv = await Deno.openKv(filename);
 
       let count = 0;
-      let promise = deferred();
+      let deferred = Promise.withResolvers<void>();
 
       // Register long-running handler.
       let listener = db.listenQueue(async (_msg) => {
         count += 1;
         if (count == 3) {
-          promise.resolve();
+          deferred.resolve();
         }
-        await sleep(60000);
+        await new Promise(() => {});
       });
 
       // Enqueue 3 messages.
       await db.enqueue("msg0");
       await db.enqueue("msg1");
       await db.enqueue("msg2");
-      await promise;
+      await deferred.promise;
 
       // Close the database and wait for the listener to finish.
       db.close();
       await listener;
 
+      // Wait at least MESSAGE_DEADLINE_TIMEOUT before reopening the database.
+      // This ensures that inflight messages are requeued immediately after
+      // the database is reopened.
+      // https://github.com/denoland/denokv/blob/efb98a1357d37291a225ed5cf1fc4ecc7c737fab/sqlite/backend.rs#L120
+      await sleep(6000);
+
       // Now reopen the database.
       db = await Deno.openKv(filename);
 
       count = 0;
-      promise = deferred();
+      deferred = Promise.withResolvers<void>();
 
       // Register a handler that will complete quickly.
       listener = db.listenQueue((_msg) => {
         count += 1;
         if (count == 3) {
-          promise.resolve();
+          deferred.resolve();
         }
       });
 
       // Wait for the handlers to finish.
-      await promise;
+      await deferred.promise;
       assertEquals(3, count);
       db.close();
       await listener;
@@ -1761,7 +1807,7 @@ Deno.test({
       let db: Deno.Kv = await Deno.openKv(filename);
 
       let count = 0;
-      let promise = deferred();
+      let deferred = Promise.withResolvers<void>();
 
       // Register long-running handler.
       let listener = db.listenQueue((_msg) => {});
@@ -1779,18 +1825,18 @@ Deno.test({
       db = await Deno.openKv(filename);
 
       count = 0;
-      promise = deferred();
+      deferred = Promise.withResolvers<void>();
 
       // Register a handler that will complete quickly.
       listener = db.listenQueue((_msg) => {
         count += 1;
         if (count == 3) {
-          promise.resolve();
+          deferred.resolve();
         }
       });
 
       // Wait for the handlers to finish.
-      await promise;
+      await deferred.promise;
       assertEquals(3, count);
       db.close();
       await listener;
@@ -1802,6 +1848,67 @@ Deno.test({
       }
     }
   },
+});
+
+Deno.test({
+  name: "different kv instances for enqueue and queueListen",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "queue_db" });
+    try {
+      const db0 = await Deno.openKv(filename);
+      const db1 = await Deno.openKv(filename);
+      const { promise, resolve } = Promise.withResolvers<void>();
+      let dequeuedMessage: unknown = null;
+      const listener = db0.listenQueue((msg) => {
+        dequeuedMessage = msg;
+        resolve();
+      });
+      try {
+        const res = await db1.enqueue("test");
+        assert(res.ok);
+        assertNotEquals(res.versionstamp, null);
+        await promise;
+        assertEquals(dequeuedMessage, "test");
+      } finally {
+        db0.close();
+        await listener;
+        db1.close();
+      }
+    } finally {
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "queue graceful close",
+  async fn() {
+    const db: Deno.Kv = await Deno.openKv(":memory:");
+    const listener = db.listenQueue((_msg) => {});
+    db.close();
+    await listener;
+  },
+});
+
+dbTest("invalid backoffSchedule", async (db) => {
+  await assertRejects(
+    async () => {
+      await db.enqueue("foo", { backoffSchedule: [1, 1, 1, 1, 1, 1] });
+    },
+    TypeError,
+    "invalid backoffSchedule",
+  );
+  await assertRejects(
+    async () => {
+      await db.enqueue("foo", { backoffSchedule: [3600001] });
+    },
+    TypeError,
+    "invalid backoffSchedule",
+  );
 });
 
 dbTest("atomic operation is exposed", (db) => {
@@ -2007,25 +2114,16 @@ Deno.test({
     const db = await Deno.openKv(
       "http://localhost:4545/kv_remote_authorize_invalid_format",
     );
-    let ok = false;
-    try {
-      await db.set(["some-key"], 1);
-    } catch (e) {
-      if (
-        e.name === "TypeError" &&
-        e.message.startsWith("Metadata error: Failed to decode metadata: ")
-      ) {
-        ok = true;
-      } else {
-        throw e;
-      }
-    } finally {
-      db.close();
-    }
 
-    if (!ok) {
-      throw new Error("did not get expected error");
-    }
+    await assertRejects(
+      async () => {
+        await db.set(["some-key"], 1);
+      },
+      Error,
+      "Failed to parse metadata: ",
+    );
+
+    db.close();
   },
 });
 
@@ -2035,24 +2133,118 @@ Deno.test({
     const db = await Deno.openKv(
       "http://localhost:4545/kv_remote_authorize_invalid_version",
     );
-    let ok = false;
-    try {
-      await db.set(["some-key"], 1);
-    } catch (e) {
-      if (
-        e.name === "TypeError" &&
-        e.message === "Metadata error: Unsupported metadata version: 2"
-      ) {
-        ok = true;
-      } else {
-        throw e;
-      }
-    } finally {
-      db.close();
+
+    await assertRejects(
+      async () => {
+        await db.set(["some-key"], 1);
+      },
+      Error,
+      "Failed to parse metadata: unsupported metadata version: 1000",
+    );
+
+    db.close();
+  },
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function kvExplicitResourceManagement() {
+    let kv2: Deno.Kv;
+
+    {
+      using kv = await Deno.openKv(":memory:");
+      kv2 = kv;
+
+      const res = await kv.get(["a"]);
+      assertEquals(res.versionstamp, null);
     }
 
-    if (!ok) {
-      throw new Error("did not get expected error");
-    }
+    await assertRejects(() => kv2.get(["a"]), Deno.errors.BadResource);
   },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function kvExplicitResourceManagementManualClose() {
+    using kv = await Deno.openKv(":memory:");
+    kv.close();
+    await assertRejects(() => kv.get(["a"]), Deno.errors.BadResource);
+    // calling [Symbol.dispose] after manual close is a no-op
+  },
+);
+
+dbTest("key watch", async (db) => {
+  const changeHistory: Deno.KvEntryMaybe<number>[] = [];
+  const watcher: ReadableStream<Deno.KvEntryMaybe<number>[]> = db.watch<
+    number[]
+  >([["key"]]);
+
+  const reader = watcher.getReader();
+  const expectedChanges = 2;
+
+  const work = (async () => {
+    for (let i = 0; i < expectedChanges; i++) {
+      const message = await reader.read();
+      if (message.done) {
+        throw new Error("Unexpected end of stream");
+      }
+      changeHistory.push(message.value[0]);
+    }
+
+    await reader.cancel();
+  })();
+
+  while (changeHistory.length !== 1) {
+    await sleep(100);
+  }
+  assertEquals(changeHistory[0], {
+    key: ["key"],
+    value: null,
+    versionstamp: null,
+  });
+
+  const { versionstamp } = await db.set(["key"], 1);
+  while (changeHistory.length as number !== 2) {
+    await sleep(100);
+  }
+  assertEquals(changeHistory[1], {
+    key: ["key"],
+    value: 1,
+    versionstamp,
+  });
+
+  await work;
+  await reader.cancel();
+});
+
+dbTest("set with key versionstamp suffix", async (db) => {
+  const result1 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result1, []);
+
+  const setRes1 = await db.set(["a", db.commitVersionstamp()], "b");
+  assert(setRes1.ok);
+  assert(setRes1.versionstamp > ZERO_VERSIONSTAMP);
+
+  const result2 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result2.length, 1);
+  assertEquals(result2[0].key[1], setRes1.versionstamp);
+  assertEquals(result2[0].value, "b");
+  assertEquals(result2[0].versionstamp, setRes1.versionstamp);
+
+  const setRes2 = await db.atomic().set(["a", db.commitVersionstamp()], "c")
+    .commit();
+  assert(setRes2.ok);
+  assert(setRes2.versionstamp > setRes1.versionstamp);
+
+  const result3 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result3.length, 2);
+  assertEquals(result3[1].key[1], setRes2.versionstamp);
+  assertEquals(result3[1].value, "c");
+  assertEquals(result3[1].versionstamp, setRes2.versionstamp);
+
+  await assertRejects(
+    async () => await db.set(["a", db.commitVersionstamp(), "a"], "x"),
+    TypeError,
+    "expected string, number, bigint, ArrayBufferView, boolean",
+  );
 });

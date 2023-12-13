@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file camelcase
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -7,15 +6,16 @@
 /// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_arraybuffer_was_detached,
   op_transfer_arraybuffer,
   op_readable_stream_resource_allocate,
+  op_readable_stream_resource_allocate_sized,
   op_readable_stream_resource_get_sink,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_buf,
+  op_readable_stream_resource_write_sync,
   op_readable_stream_resource_close,
   op_readable_stream_resource_await_close,
 } = core.ensureFastOps();
@@ -28,7 +28,6 @@ import {
   remove,
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
   ArrayBufferIsView,
@@ -54,10 +53,8 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   ObjectCreate,
-  ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
-  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
@@ -81,6 +78,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
@@ -220,6 +218,50 @@ function uponPromise(promise, onFulfilled, onRejected) {
   );
 }
 
+class Queue {
+  #head = null;
+  #tail = null;
+  #size = 0;
+
+  enqueue(value) {
+    const node = { value, next: null };
+    if (this.#head === null) {
+      this.#head = node;
+      this.#tail = node;
+    } else {
+      this.#tail.next = node;
+      this.#tail = node;
+    }
+    return ++this.#size;
+  }
+
+  dequeue() {
+    const node = this.#head;
+    if (node === null) {
+      return null;
+    }
+
+    if (this.#head === this.#tail) {
+      this.#tail = null;
+    }
+    this.#head = this.#head.next;
+    this.#size--;
+    return node.value;
+  }
+
+  peek() {
+    if (this.#head === null) {
+      return null;
+    }
+
+    return this.#head.value;
+  }
+
+  get size() {
+    return this.#size;
+  }
+}
+
 /**
  * @param {ArrayBufferLike} O
  * @returns {boolean}
@@ -319,6 +361,7 @@ const _controller = Symbol("[[controller]]");
 const _detached = Symbol("[[Detached]]");
 const _disturbed = Symbol("[[disturbed]]");
 const _errorSteps = Symbol("[[ErrorSteps]]");
+const _finishPromise = Symbol("[[finishPromise]]");
 const _flushAlgorithm = Symbol("[[flushAlgorithm]]");
 const _globalObject = Symbol("[[globalObject]]");
 const _highWaterMark = Symbol("[[highWaterMark]]");
@@ -352,6 +395,17 @@ const _writable = Symbol("[[writable]]");
 const _writeAlgorithm = Symbol("[[writeAlgorithm]]");
 const _writer = Symbol("[[writer]]");
 const _writeRequests = Symbol("[[writeRequests]]");
+const _brand = webidl.brand;
+
+function noop() {}
+async function noopAsync() {}
+const _defaultStartAlgorithm = noop;
+const _defaultWriteAlgorithm = noopAsync;
+const _defaultCloseAlgorithm = noopAsync;
+const _defaultAbortAlgorithm = noopAsync;
+const _defaultPullAlgorithm = noopAsync;
+const _defaultFlushAlgorithm = noopAsync;
+const _defaultCancelAlgorithm = noopAsync;
 
 /**
  * @template R
@@ -359,7 +413,9 @@ const _writeRequests = Symbol("[[writeRequests]]");
  * @returns {ReadableStreamDefaultReader<R>}
  */
 function acquireReadableStreamDefaultReader(stream) {
-  return new ReadableStreamDefaultReader(stream);
+  const reader = new ReadableStreamDefaultReader(_brand);
+  setUpReadableStreamDefaultReader(reader, stream);
+  return reader;
 }
 
 /**
@@ -368,7 +424,7 @@ function acquireReadableStreamDefaultReader(stream) {
  * @returns {ReadableStreamBYOBReader<R>}
  */
 function acquireReadableStreamBYOBReader(stream) {
-  const reader = webidl.createBranded(ReadableStreamBYOBReader);
+  const reader = new ReadableStreamBYOBReader(_brand);
   setUpReadableStreamBYOBReader(reader, stream);
   return reader;
 }
@@ -400,9 +456,9 @@ function createReadableStream(
 ) {
   assert(isNonNegativeNumber(highWaterMark));
   /** @type {ReadableStream} */
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   initializeReadableStream(stream);
-  const controller = webidl.createBranded(ReadableStreamDefaultController);
+  const controller = new ReadableStreamDefaultController(_brand);
   setUpReadableStreamDefaultController(
     stream,
     controller,
@@ -434,9 +490,9 @@ function createWritableStream(
   sizeAlgorithm,
 ) {
   assert(isNonNegativeNumber(highWaterMark));
-  const stream = webidl.createBranded(WritableStream);
+  const stream = new WritableStream(_brand);
   initializeWritableStream(stream);
-  const controller = webidl.createBranded(WritableStreamDefaultController);
+  const controller = new WritableStreamDefaultController(_brand);
   setUpWritableStreamDefaultController(
     stream,
     controller,
@@ -456,19 +512,15 @@ function createWritableStream(
  * @returns {T}
  */
 function dequeueValue(container) {
-  assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
-  );
-  assert(container[_queue].length);
-  const valueWithSize = ArrayPrototypeShift(container[_queue]);
+  assert(container[_queue] && typeof container[_queueTotalSize] === "number");
+  assert(container[_queue].size);
+  const valueWithSize = container[_queue].dequeue();
   container[_queueTotalSize] -= valueWithSize.size;
   if (container[_queueTotalSize] < 0) {
     container[_queueTotalSize] = 0;
   }
   return valueWithSize.value;
 }
-
 /**
  * @template T
  * @param {{ [_queue]: Array<ValueWithSize<T | _close>>, [_queueTotalSize]: number }} container
@@ -477,17 +529,14 @@ function dequeueValue(container) {
  * @returns {void}
  */
 function enqueueValueWithSize(container, value, size) {
-  assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
-  );
+  assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   if (isNonNegativeNumber(size) === false) {
     throw RangeError("chunk size isn't a positive number");
   }
   if (size === Infinity) {
     throw RangeError("chunk size is invalid");
   }
-  ArrayPrototypePush(container[_queue], { value, size });
+  container[_queue].enqueue({ value, size });
   container[_queueTotalSize] += size;
 }
 
@@ -538,9 +587,9 @@ function createReadableByteStream(
   pullAlgorithm,
   cancelAlgorithm,
 ) {
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   initializeReadableStream(stream);
-  const controller = webidl.createBranded(ReadableByteStreamController);
+  const controller = new ReadableByteStreamController(_brand);
   setUpReadableByteStreamController(
     stream,
     controller,
@@ -611,8 +660,7 @@ function initializeTransformStream(
   }
 
   function cancelAlgorithm(reason) {
-    transformStreamErrorWritableAndUnblockWrite(stream, reason);
-    return resolvePromiseWith(undefined);
+    return transformStreamDefaultSourceCancelAlgorithm(stream, reason);
   }
 
   stream[_readable] = createReadableStream(
@@ -648,16 +696,7 @@ function initializeWritableStream(stream) {
  * @returns {v is number}
  */
 function isNonNegativeNumber(v) {
-  if (typeof v !== "number") {
-    return false;
-  }
-  if (NumberIsNaN(v)) {
-    return false;
-  }
-  if (v < 0) {
-    return false;
-  }
-  return true;
+  return typeof v === "number" && v >= 0;
 }
 
 /**
@@ -665,8 +704,7 @@ function isNonNegativeNumber(v) {
  * @returns {value is ReadableStream}
  */
 function isReadableStream(value) {
-  return !(typeof value !== "object" || value === null ||
-    !ReflectHas(value, _controller));
+  return !(typeof value !== "object" || value === null || !value[_controller]);
 }
 
 /**
@@ -674,10 +712,7 @@ function isReadableStream(value) {
  * @returns {boolean}
  */
 function isReadableStreamLocked(stream) {
-  if (stream[_reader] === undefined) {
-    return false;
-  }
-  return true;
+  return stream[_reader] !== undefined;
 }
 
 /**
@@ -686,7 +721,7 @@ function isReadableStreamLocked(stream) {
  */
 function isReadableStreamDefaultReader(value) {
   return !(typeof value !== "object" || value === null ||
-    !ReflectHas(value, _readRequests));
+    !value[_readRequests]);
 }
 
 /**
@@ -708,17 +743,135 @@ function isReadableStreamDisturbed(stream) {
 }
 
 /**
+ * @param {Error | string | undefined} error
+ * @returns {string}
+ */
+function extractStringErrorFromError(error) {
+  if (typeof error == "string") {
+    return error;
+  }
+  const message = error?.message;
+  const stringMessage = typeof message == "string" ? message : String(message);
+  return stringMessage;
+}
+
+// We don't want to leak resources associated with our sink, even if something bad happens
+const READABLE_STREAM_SOURCE_REGISTRY = new SafeFinalizationRegistry(
+  (external) => {
+    op_readable_stream_resource_close(external);
+  },
+);
+
+class ResourceStreamResourceSink {
+  external;
+  constructor(external) {
+    this.external = external;
+    READABLE_STREAM_SOURCE_REGISTRY.register(this, external, this);
+  }
+  close() {
+    if (this.external === undefined) {
+      return;
+    }
+    READABLE_STREAM_SOURCE_REGISTRY.unregister(this);
+    op_readable_stream_resource_close(this.external);
+    this.external = undefined;
+  }
+}
+
+/**
+ * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+ * @param {any} sink
+ * @param {Uint8Array} chunk
+ */
+function readableStreamWriteChunkFn(reader, sink, chunk) {
+  // Empty chunk. Re-read.
+  if (chunk.length == 0) {
+    readableStreamReadFn(reader, sink);
+    return;
+  }
+
+  const res = op_readable_stream_resource_write_sync(sink.external, chunk);
+  if (res == 0) {
+    // Closed
+    reader.cancel("resource closed");
+    sink.close();
+  } else if (res == 1) {
+    // Successfully written (synchronous). Re-read.
+    readableStreamReadFn(reader, sink);
+  } else if (res == 2) {
+    // Full. If the channel is full, we perform an async await until we can write, and then return
+    // to a synchronous loop.
+    (async () => {
+      if (
+        await op_readable_stream_resource_write_buf(
+          sink.external,
+          chunk,
+        )
+      ) {
+        readableStreamReadFn(reader, sink);
+      } else {
+        reader.cancel("resource closed");
+        sink.close();
+      }
+    })();
+  }
+}
+
+/**
+ * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+ * @param {any} sink
+ */
+function readableStreamReadFn(reader, sink) {
+  // The ops here look like op_write_all/op_close, but we're not actually writing to a
+  // real resource.
+  let reentrant = true;
+  let gotChunk = undefined;
+  readableStreamDefaultReaderRead(reader, {
+    chunkSteps(chunk) {
+      // If the chunk has non-zero length, write it
+      if (reentrant) {
+        gotChunk = chunk;
+      } else {
+        readableStreamWriteChunkFn(reader, sink, chunk);
+      }
+    },
+    closeSteps() {
+      sink.close();
+    },
+    errorSteps(error) {
+      const success = op_readable_stream_resource_write_error(
+        sink.external,
+        extractStringErrorFromError(error),
+      );
+      // We don't cancel the reader if there was an error reading. We'll let the downstream
+      // consumer close the resource after it receives the error.
+      if (!success) {
+        reader.cancel("resource closed");
+      }
+      sink.close();
+    },
+  });
+  reentrant = false;
+  if (gotChunk) {
+    readableStreamWriteChunkFn(reader, sink, gotChunk);
+  }
+}
+
+/**
  * Create a new resource that wraps a ReadableStream. The resource will support
  * read operations, and those read operations will be fed by the output of the
  * ReadableStream source.
  * @param {ReadableStream<Uint8Array>} stream
+ * @param {number | undefined} length
  * @returns {number}
  */
-function resourceForReadableStream(stream) {
+function resourceForReadableStream(stream, length) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
-  const rid = op_readable_stream_resource_allocate();
+  const rid = typeof length == "number"
+    ? op_readable_stream_resource_allocate_sized(length)
+    : op_readable_stream_resource_allocate();
 
   // Close the Reader we get from the ReadableStream when the resource is closed, ignoring any errors
   PromisePrototypeCatch(
@@ -729,51 +882,14 @@ function resourceForReadableStream(stream) {
     () => {},
   );
 
-  // The ops here look like op_write_all/op_close, but we're not actually writing to a
-  // real resource.
-  (async () => {
-    try {
-      // This allocation is freed in the finally block below, guaranteeing it won't leak
-      const sink = op_readable_stream_resource_get_sink(rid);
-      try {
-        while (true) {
-          let value;
-          try {
-            const read = await reader.read();
-            value = read.value;
-            if (read.done) {
-              break;
-            }
-          } catch (err) {
-            const message = err?.message;
-            const success = (message && (typeof message == "string"))
-              ? await op_readable_stream_resource_write_error(sink, message)
-              : await op_readable_stream_resource_write_error(
-                sink,
-                String(err),
-              );
-            // We don't cancel the reader if there was an error reading. We'll let the downstream
-            // consumer close the resource after it receives the error.
-            if (!success) {
-              reader.cancel("resource closed");
-            }
-            break;
-          }
-          // If the chunk has non-zero length, write it
-          if (value.length > 0) {
-            if (!await op_readable_stream_resource_write_buf(sink, value)) {
-              reader.cancel("resource closed");
-            }
-          }
-        }
-      } finally {
-        op_readable_stream_resource_close(sink);
-      }
-    } catch (err) {
-      // Something went terribly wrong with this stream -- log and continue
-      console.error("Unexpected internal error on stream", err);
-    }
-  })();
+  // This allocation is freed when readableStreamReadFn is completed
+  const sink = new ResourceStreamResourceSink(
+    op_readable_stream_resource_get_sink(rid),
+  );
+
+  // Trigger the first read
+  readableStreamReadFn(reader, sink);
+
   return rid;
 }
 
@@ -797,7 +913,7 @@ const _original = Symbol("[[original]]");
  * @returns {ReadableStream<Uint8Array>}
  */
 function readableStreamForRid(rid, autoClose = true) {
-  const stream = webidl.createBranded(ReadableStream);
+  const stream = new ReadableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -854,7 +970,7 @@ function readableStreamForRid(rid, autoClose = true) {
   return stream;
 }
 
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+const promiseSymbol = SymbolFor("__promise");
 const _isUnref = Symbol("isUnref");
 /**
  * Create a new ReadableStream object that is backed by a Resource that
@@ -867,8 +983,8 @@ const _isUnref = Symbol("isUnref");
  * @returns {ReadableStream<Uint8Array>}
  */
 function readableStreamForRidUnrefable(rid) {
-  const stream = webidl.createBranded(ReadableStream);
-  stream[promiseIdSymbol] = undefined;
+  const stream = new ReadableStream(_brand);
+  stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
   stream[_resourceBackingUnrefable] = { rid, autoClose: true };
   const underlyingSource = {
@@ -877,10 +993,10 @@ function readableStreamForRidUnrefable(rid) {
       const v = controller.byobRequest.view;
       try {
         const promise = core.read(rid, v);
-        const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
-        if (stream[_isUnref]) core.unrefOp(promiseId);
+        stream[promiseSymbol] = promise;
+        if (stream[_isUnref]) core.unrefOpPromise(promise);
         const bytesRead = await promise;
-        stream[promiseIdSymbol] = undefined;
+        stream[promiseSymbol] = undefined;
         if (bytesRead === 0) {
           core.tryClose(rid);
           controller.close();
@@ -917,8 +1033,8 @@ function readableStreamForRidUnrefableRef(stream) {
     throw new TypeError("Not an unrefable stream");
   }
   stream[_isUnref] = false;
-  if (stream[promiseIdSymbol] !== undefined) {
-    core.refOp(stream[promiseIdSymbol]);
+  if (stream[promiseSymbol] !== undefined) {
+    core.refOpPromise(stream[promiseSymbol]);
   }
 }
 
@@ -927,8 +1043,8 @@ function readableStreamForRidUnrefableUnref(stream) {
     throw new TypeError("Not an unrefable stream");
   }
   stream[_isUnref] = true;
-  if (stream[promiseIdSymbol] !== undefined) {
-    core.unrefOp(stream[promiseIdSymbol]);
+  if (stream[promiseSymbol] !== undefined) {
+    core.unrefOpPromise(stream[promiseSymbol]);
   }
 }
 
@@ -951,10 +1067,11 @@ async function readableStreamCollectIntoUint8Array(stream) {
       readableStreamDisturb(stream);
       const promise = core.opAsync("op_read_all", resourceBacking.rid);
       if (readableStreamIsUnrefable(stream)) {
-        const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
-        if (stream[_isUnref]) core.unrefOp(promiseId);
+        stream[promiseSymbol] = promise;
+        if (stream[_isUnref]) core.unrefOpPromise(promise);
       }
       const buf = await promise;
+      stream[promiseSymbol] = undefined;
       readableStreamThrowIfErrored(stream);
       readableStreamClose(stream);
       return buf;
@@ -1018,7 +1135,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * @returns {ReadableStream<Uint8Array>}
  */
 function writableStreamForRid(rid, autoClose = true) {
-  const stream = webidl.createBranded(WritableStream);
+  const stream = new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -1097,11 +1214,11 @@ function isWritableStreamLocked(stream) {
  */
 function peekQueueValue(container) {
   assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
+    container[_queue] &&
+      typeof container[_queueTotalSize] === "number",
   );
-  assert(container[_queue].length);
-  const valueWithSize = container[_queue][0];
+  assert(container[_queue].size);
+  const valueWithSize = container[_queue].peek();
   return valueWithSize.value;
 }
 
@@ -1189,7 +1306,9 @@ function readableByteStreamControllerClose(controller) {
   }
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
-    if (firstPendingPullInto.bytesFilled > 0) {
+    if (
+      firstPendingPullInto.bytesFilled % firstPendingPullInto.elementSize !== 0
+    ) {
       const e = new TypeError(
         "Insufficient bytes to fill elements in the given buffer",
       );
@@ -1271,7 +1390,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
         byteLength,
       );
     } else {
-      assert(controller[_queue].length === 0);
+      assert(controller[_queue].size === 0);
       if (controller[_pendingPullIntos].length !== 0) {
         assert(controller[_pendingPullIntos][0].readerType === "default");
         readableByteStreamControllerShiftPendingPullInto(controller);
@@ -1318,7 +1437,7 @@ function readableByteStreamControllerEnqueueChunkToQueue(
   byteOffset,
   byteLength,
 ) {
-  ArrayPrototypePush(controller[_queue], { buffer, byteOffset, byteLength });
+  controller[_queue].enqueue({ buffer, byteOffset, byteLength });
   controller[_queueTotalSize] += byteLength;
 }
 
@@ -1400,7 +1519,7 @@ function readableByteStreamControllerGetBYOBRequest(controller) {
       // deno-lint-ignore prefer-primordials
       firstDescriptor.byteLength - firstDescriptor.bytesFilled,
     );
-    const byobRequest = webidl.createBranded(ReadableStreamBYOBRequest);
+    const byobRequest = new ReadableStreamBYOBRequest(_brand);
     byobRequest[_controller] = controller;
     byobRequest[_view] = view;
     controller[_byobRequest] = byobRequest;
@@ -1428,7 +1547,7 @@ function readableByteStreamControllerGetDesiredSize(controller) {
  * @returns {void}
  */
 function resetQueue(container) {
-  container[_queue] = [];
+  container[_queue] = new Queue();
   container[_queueTotalSize] = 0;
 }
 
@@ -1488,7 +1607,7 @@ function readableByteStreamControllerShouldCallPull(controller) {
 function readableStreamAddReadRequest(stream, readRequest) {
   assert(isReadableStreamDefaultReader(stream[_reader]));
   assert(stream[_state] === "readable");
-  ArrayPrototypePush(stream[_reader][_readRequests], readRequest);
+  stream[_reader][_readRequests].enqueue(readRequest);
 }
 
 /**
@@ -1511,7 +1630,7 @@ function readableStreamAddReadIntoRequest(stream, readRequest) {
 function readableStreamCancel(stream, reason) {
   stream[_disturbed] = true;
   if (stream[_state] === "closed") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (stream[_state] === "errored") {
     return PromiseReject(stream[_storedError]);
@@ -1528,7 +1647,7 @@ function readableStreamCancel(stream, reason) {
   }
   /** @type {Promise<void>} */
   const sourceCancelPromise = stream[_controller][_cancelSteps](reason);
-  return PromisePrototypeThen(sourceCancelPromise, () => undefined);
+  return PromisePrototypeThen(sourceCancelPromise, noop);
 }
 
 /**
@@ -1547,9 +1666,8 @@ function readableStreamClose(stream) {
   if (isReadableStreamDefaultReader(reader)) {
     /** @type {Array<ReadRequest<R>>} */
     const readRequests = reader[_readRequests];
-    reader[_readRequests] = [];
-    for (let i = 0; i < readRequests.length; ++i) {
-      const readRequest = readRequests[i];
+    while (readRequests.size !== 0) {
+      const readRequest = readRequests.dequeue();
       readRequest.closeSteps();
     }
   }
@@ -1600,11 +1718,7 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
  */
 function readableStreamDefaultControllerCanCloseOrEnqueue(controller) {
   const state = controller[_stream][_state];
-  if (controller[_closeRequested] === false && state === "readable") {
-    return true;
-  } else {
-    return false;
-  }
+  return controller[_closeRequested] === false && state === "readable";
 }
 
 /** @param {ReadableStreamDefaultController<any>} controller */
@@ -1623,7 +1737,7 @@ function readableStreamDefaultControllerClose(controller) {
   }
   const stream = controller[_stream];
   controller[_closeRequested] = true;
-  if (controller[_queue].length === 0) {
+  if (controller[_queue].size === 0) {
     readableStreamDefaultControllerClearAlgorithms(controller);
     readableStreamClose(stream);
   }
@@ -1709,7 +1823,6 @@ function readableStreamDefaultcontrollerHasBackpressure(controller) {
  * @returns {boolean}
  */
 function readableStreamDefaultcontrollerShouldCallPull(controller) {
-  const stream = controller[_stream];
   if (
     readableStreamDefaultControllerCanCloseOrEnqueue(controller) === false
   ) {
@@ -1718,6 +1831,7 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
   if (controller[_started] === false) {
     return false;
   }
+  const stream = controller[_stream];
   if (
     isReadableStreamLocked(stream) &&
     readableStreamGetNumReadRequests(stream) > 0
@@ -1727,20 +1841,22 @@ function readableStreamDefaultcontrollerShouldCallPull(controller) {
   const desiredSize = readableStreamDefaultControllerGetDesiredSize(
     controller,
   );
-  assert(desiredSize !== null);
+
   if (desiredSize > 0) {
     return true;
   }
+  assert(desiredSize !== null);
   return false;
 }
 
 /**
  * @param {ReadableStreamBYOBReader} reader
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
-function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
+function readableStreamBYOBReaderRead(reader, view, min, readIntoRequest) {
   const stream = reader[_stream];
   assert(stream);
   stream[_disturbed] = true;
@@ -1750,6 +1866,7 @@ function readableStreamBYOBReaderRead(reader, view, readIntoRequest) {
     readableByteStreamControllerPullInto(
       stream[_controller],
       view,
+      min,
       readIntoRequest,
     );
   }
@@ -1770,9 +1887,8 @@ function readableStreamBYOBReaderRelease(reader) {
  */
 function readableStreamDefaultReaderErrorReadRequests(reader, e) {
   const readRequests = reader[_readRequests];
-  reader[_readRequests] = [];
-  for (let i = 0; i < readRequests.length; ++i) {
-    const readRequest = readRequests[i];
+  while (readRequests.size !== 0) {
+    const readRequest = readRequests.dequeue();
     readRequest.errorSteps(e);
   }
 }
@@ -1811,11 +1927,11 @@ function readableByteStreamControllerProcessReadRequestsUsingQueue(
 ) {
   const reader = controller[_stream][_reader];
   assert(isReadableStreamDefaultReader(reader));
-  while (reader[_readRequests].length !== 0) {
+  while (reader[_readRequests].size !== 0) {
     if (controller[_queueTotalSize] === 0) {
       return;
     }
-    const readRequest = ArrayPrototypeShift(reader[_readRequests]);
+    const readRequest = reader[_readRequests].dequeue();
     readableByteStreamControllerFillReadRequestFromQueue(
       controller,
       readRequest,
@@ -1826,12 +1942,14 @@ function readableByteStreamControllerProcessReadRequestsUsingQueue(
 /**
  * @param {ReadableByteStreamController} controller
  * @param {ArrayBufferView} view
+ * @param {number} min
  * @param {ReadIntoRequest} readIntoRequest
  * @returns {void}
  */
 function readableByteStreamControllerPullInto(
   controller,
   view,
+  min,
   readIntoRequest,
 ) {
   const stream = controller[_stream];
@@ -1901,6 +2019,10 @@ function readableByteStreamControllerPullInto(
     );
   }
 
+  const minimumFill = min * elementSize;
+  assert(minimumFill >= 0 && minimumFill <= byteLength);
+  assert(minimumFill % elementSize === 0);
+
   try {
     buffer = transferArrayBuffer(buffer);
   } catch (e) {
@@ -1915,6 +2037,7 @@ function readableByteStreamControllerPullInto(
     byteOffset,
     byteLength,
     bytesFilled: 0,
+    minimumFill,
     elementSize,
     viewConstructor: ctor,
     readerType: "byob",
@@ -2030,7 +2153,7 @@ function readableByteStreamControllerRespondInReadableState(
     );
     return;
   }
-  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize) {
+  if (pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill) {
     return;
   }
   readableByteStreamControllerShiftPendingPullInto(controller);
@@ -2110,7 +2233,7 @@ function readableByteStreamControllerRespondInClosedState(
   controller,
   firstDescriptor,
 ) {
-  assert(firstDescriptor.bytesFilled === 0);
+  assert(firstDescriptor.bytesFilled % firstDescriptor.elementSize === 0);
   if (firstDescriptor.readerType === "none") {
     readableByteStreamControllerShiftPendingPullInto(controller);
   }
@@ -2140,7 +2263,9 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
   assert(pullIntoDescriptor.readerType !== "none");
   let done = false;
   if (stream[_state] === "closed") {
-    assert(pullIntoDescriptor.bytesFilled === 0);
+    assert(
+      pullIntoDescriptor.bytesFilled % pullIntoDescriptor.elementSize === 0,
+    );
     done = true;
   }
   const filledView = readableByteStreamControllerConvertPullIntoDescriptor(
@@ -2231,26 +2356,25 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   controller,
   pullIntoDescriptor,
 ) {
-  const elementSize = pullIntoDescriptor.elementSize;
-  const currentAlignedBytes = pullIntoDescriptor.bytesFilled -
-    (pullIntoDescriptor.bytesFilled % elementSize);
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
     // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
-  const maxAlignedBytes = maxBytesFilled - (maxBytesFilled % elementSize);
   let totalBytesToCopyRemaining = maxBytesToCopy;
   let ready = false;
-  if (maxAlignedBytes > currentAlignedBytes) {
+  assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
+  const maxAlignedBytes = maxBytesFilled -
+    (maxBytesFilled % pullIntoDescriptor.elementSize);
+  if (maxAlignedBytes >= pullIntoDescriptor.minimumFill) {
     totalBytesToCopyRemaining = maxAlignedBytes -
       pullIntoDescriptor.bytesFilled;
     ready = true;
   }
   const queue = controller[_queue];
   while (totalBytesToCopyRemaining > 0) {
-    const headOfQueue = queue[0];
+    const headOfQueue = queue.peek();
     const bytesToCopy = MathMin(
       totalBytesToCopyRemaining,
       // deno-lint-ignore prefer-primordials
@@ -2277,7 +2401,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
 
     // deno-lint-ignore prefer-primordials
     if (headOfQueue.byteLength === bytesToCopy) {
-      ArrayPrototypeShift(queue);
+      queue.dequeue();
     } else {
       headOfQueue.byteOffset += bytesToCopy;
       headOfQueue.byteLength -= bytesToCopy;
@@ -2293,7 +2417,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   if (!ready) {
     assert(controller[_queueTotalSize] === 0);
     assert(pullIntoDescriptor.bytesFilled > 0);
-    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.elementSize);
+    assert(pullIntoDescriptor.bytesFilled < pullIntoDescriptor.minimumFill);
   }
   return ready;
 }
@@ -2308,7 +2432,7 @@ function readableByteStreamControllerFillReadRequestFromQueue(
   readRequest,
 ) {
   assert(controller[_queueTotalSize] > 0);
-  const entry = ArrayPrototypeShift(controller[_queue]);
+  const entry = controller[_queue].dequeue();
   // deno-lint-ignore prefer-primordials
   controller[_queueTotalSize] -= entry.byteLength;
   readableByteStreamControllerHandleQueueDrain(controller);
@@ -2450,9 +2574,9 @@ function readableStreamFulfillReadRequest(stream, chunk, done) {
   assert(readableStreamHasDefaultReader(stream) === true);
   /** @type {ReadableStreamDefaultReader<R>} */
   const reader = stream[_reader];
-  assert(reader[_readRequests].length);
+  assert(reader[_readRequests].size);
   /** @type {ReadRequest<R>} */
-  const readRequest = ArrayPrototypeShift(reader[_readRequests]);
+  const readRequest = reader[_readRequests].dequeue();
   if (done) {
     readRequest.closeSteps();
   } else {
@@ -2475,7 +2599,7 @@ function readableStreamGetNumReadIntoRequests(stream) {
  */
 function readableStreamGetNumReadRequests(stream) {
   assert(readableStreamHasDefaultReader(stream) === true);
-  return stream[_reader][_readRequests].length;
+  return stream[_reader][_readRequests].size;
 }
 
 /**
@@ -2545,7 +2669,7 @@ function readableStreamPipeTo(
   const writer = acquireWritableStreamDefaultWriter(dest);
   source[_disturbed] = true;
   let shuttingDown = false;
-  let currentWrite = resolvePromiseWith(undefined);
+  let currentWrite = PromiseResolve(undefined);
   /** @type {Deferred<void>} */
   const promise = new Deferred();
   /** @type {() => void} */
@@ -2560,7 +2684,7 @@ function readableStreamPipeTo(
           if (dest[_state] === "writable") {
             return writableStreamAbort(dest, error);
           } else {
-            return resolvePromiseWith(undefined);
+            return PromiseResolve(undefined);
           }
         });
       }
@@ -2569,7 +2693,7 @@ function readableStreamPipeTo(
           if (source[_state] === "readable") {
             return readableStreamCancel(source, error);
           } else {
-            return resolvePromiseWith(undefined);
+            return PromiseResolve(undefined);
           }
         });
       }
@@ -2604,7 +2728,7 @@ function readableStreamPipeTo(
   /** @returns {Promise<boolean>} */
   function pipeStep() {
     if (shuttingDown === true) {
-      return resolvePromiseWith(true);
+      return PromiseResolve(true);
     }
 
     return transformPromiseWith(writer[_readyPromise].promise, () => {
@@ -2921,7 +3045,7 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
   function pullAlgorithm() {
     if (reading === true) {
       readAgain = true;
-      return resolvePromiseWith(undefined);
+      return PromiseResolve(undefined);
     }
     reading = true;
     /** @type {ReadRequest<R>} */
@@ -2997,7 +3121,7 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
       },
     };
     readableStreamDefaultReaderRead(reader, readRequest);
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
 
   /**
@@ -3173,7 +3297,7 @@ function readableByteStreamTee(stream) {
 
   function pullWithBYOBReader(view, forBranch2) {
     if (isReadableStreamDefaultReader(reader)) {
-      assert(reader[_readRequests].length === 0);
+      assert(reader[_readRequests].size === 0);
       readableStreamDefaultReaderRelease(reader);
       reader = acquireReadableStreamBYOBReader(stream);
       forwardReaderError(reader);
@@ -3266,7 +3390,7 @@ function readableByteStreamTee(stream) {
         reading = false;
       },
     };
-    readableStreamBYOBReaderRead(reader, view, readIntoRequest);
+    readableStreamBYOBReaderRead(reader, view, 1, readIntoRequest);
   }
 
   function pull1Algorithm() {
@@ -3382,7 +3506,7 @@ function setUpReadableByteStreamController(
   controller[_pendingPullIntos] = [];
   stream[_controller] = controller;
   const startResult = startAlgorithm();
-  const startPromise = resolvePromiseWith(startResult);
+  const startPromise = PromiseResolve(startResult);
   setPromiseIsHandledToTrue(
     PromisePrototypeThen(
       startPromise,
@@ -3411,13 +3535,13 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   underlyingSourceDict,
   highWaterMark,
 ) {
-  const controller = webidl.createBranded(ReadableByteStreamController);
+  const controller = new ReadableByteStreamController(_brand);
   /** @type {() => void} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => resolvePromiseWith(undefined);
+  let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason: any) => Promise<void>} */
-  let cancelAlgorithm = (_reason) => resolvePromiseWith(undefined);
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
@@ -3498,7 +3622,7 @@ function setUpReadableStreamDefaultController(
   controller[_cancelAlgorithm] = cancelAlgorithm;
   stream[_controller] = controller;
   const startResult = startAlgorithm(controller);
-  const startPromise = resolvePromiseWith(startResult);
+  const startPromise = PromiseResolve(startResult);
   uponPromise(startPromise, () => {
     controller[_started] = true;
     assert(controller[_pulling] === false);
@@ -3524,13 +3648,13 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
   highWaterMark,
   sizeAlgorithm,
 ) {
-  const controller = webidl.createBranded(ReadableStreamDefaultController);
+  const controller = new ReadableStreamDefaultController(_brand);
   /** @type {() => Promise<void>} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {() => Promise<void>} */
-  let pullAlgorithm = () => resolvePromiseWith(undefined);
+  let pullAlgorithm = _defaultPullAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
-  let cancelAlgorithm = () => resolvePromiseWith(undefined);
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (underlyingSourceDict.start !== undefined) {
     startAlgorithm = () =>
       webidl.invokeCallbackFunction(
@@ -3605,7 +3729,7 @@ function setUpReadableStreamDefaultReader(reader, stream) {
     throw new TypeError("ReadableStream is locked.");
   }
   readableStreamReaderGenericInitialize(reader, stream);
-  reader[_readRequests] = [];
+  reader[_readRequests] = new Queue();
 }
 
 /**
@@ -3614,12 +3738,14 @@ function setUpReadableStreamDefaultReader(reader, stream) {
  * @param {TransformStreamDefaultController<O>} controller
  * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm
  * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm
+ * @param {(reason: any) => Promise<void>} cancelAlgorithm
  */
 function setUpTransformStreamDefaultController(
   stream,
   controller,
   transformAlgorithm,
   flushAlgorithm,
+  cancelAlgorithm,
 ) {
   assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
   assert(stream[_controller] === undefined);
@@ -3627,6 +3753,7 @@ function setUpTransformStreamDefaultController(
   stream[_controller] = controller;
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
+  controller[_cancelAlgorithm] = cancelAlgorithm;
 }
 
 /**
@@ -3642,7 +3769,7 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   transformerDict,
 ) {
   /** @type {TransformStreamDefaultController<O>} */
-  const controller = webidl.createBranded(TransformStreamDefaultController);
+  const controller = new TransformStreamDefaultController(_brand);
   /** @type {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} */
   let transformAlgorithm = (chunk) => {
     try {
@@ -3650,10 +3777,11 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     } catch (e) {
       return PromiseReject(e);
     }
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   };
   /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
-  let flushAlgorithm = () => resolvePromiseWith(undefined);
+  let flushAlgorithm = _defaultFlushAlgorithm;
+  let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
     transformAlgorithm = (chunk, controller) =>
       webidl.invokeCallbackFunction(
@@ -3676,11 +3804,23 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         true,
       );
   }
+  if (transformerDict.cancel !== undefined) {
+    cancelAlgorithm = (reason) =>
+      webidl.invokeCallbackFunction(
+        transformerDict.cancel,
+        [reason],
+        transformer,
+        webidl.converters["Promise<undefined>"],
+        "Failed to call 'cancelAlgorithm' on 'TransformStreamDefaultController'",
+        true,
+      );
+  }
   setUpTransformStreamDefaultController(
     stream,
     controller,
     transformAlgorithm,
     flushAlgorithm,
+    cancelAlgorithm,
   );
 }
 
@@ -3749,14 +3889,14 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
   highWaterMark,
   sizeAlgorithm,
 ) {
-  const controller = webidl.createBranded(WritableStreamDefaultController);
+  const controller = new WritableStreamDefaultController(_brand);
   /** @type {(controller: WritableStreamDefaultController<W>) => any} */
-  let startAlgorithm = () => undefined;
+  let startAlgorithm = _defaultStartAlgorithm;
   /** @type {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} */
-  let writeAlgorithm = () => resolvePromiseWith(undefined);
-  let closeAlgorithm = () => resolvePromiseWith(undefined);
+  let writeAlgorithm = _defaultWriteAlgorithm;
+  let closeAlgorithm = _defaultCloseAlgorithm;
   /** @type {(reason?: any) => Promise<void>} */
-  let abortAlgorithm = () => resolvePromiseWith(undefined);
+  let abortAlgorithm = _defaultAbortAlgorithm;
 
   if (underlyingSinkDict.start !== undefined) {
     startAlgorithm = () =>
@@ -3862,6 +4002,7 @@ function setUpWritableStreamDefaultWriter(writer, stream) {
 function transformStreamDefaultControllerClearAlgorithms(controller) {
   controller[_transformAlgorithm] = undefined;
   controller[_flushAlgorithm] = undefined;
+  controller[_cancelAlgorithm] = undefined;
 }
 
 /**
@@ -3931,13 +4072,33 @@ function transformStreamDefaultControllerTerminate(controller) {
 }
 
 /**
- * @param {TransformStream} stream
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
  * @param {any=} reason
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
-  transformStreamError(stream, reason);
-  return resolvePromiseWith(undefined);
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (readable[_state] === "errored") {
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerError(readable[_controller], reason);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -3947,21 +4108,26 @@ function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultSinkCloseAlgorithm(stream) {
-  const readable = stream[_readable];
   const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const readable = stream[_readable];
+  controller[_finishPromise] = new Deferred();
   const flushPromise = controller[_flushAlgorithm](controller);
   transformStreamDefaultControllerClearAlgorithms(controller);
-  return transformPromiseWith(flushPromise, () => {
+  transformPromiseWith(flushPromise, () => {
     if (readable[_state] === "errored") {
-      throw readable[_storedError];
+      controller[_finishPromise].reject(readable[_storedError]);
+    } else {
+      readableStreamDefaultControllerClose(readable[_controller]);
+      controller[_finishPromise].resolve(undefined);
     }
-    readableStreamDefaultControllerClose(
-      /** @type {ReadableStreamDefaultController} */ readable[_controller],
-    );
   }, (r) => {
-    transformStreamError(stream, r);
-    throw readable[_storedError];
+    readableStreamDefaultControllerError(readable[_controller], r);
+    controller[_finishPromise].reject(r);
   });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -3991,6 +4157,41 @@ function transformStreamDefaultSinkWriteAlgorithm(stream, chunk) {
     });
   }
   return transformStreamDefaultControllerPerformTransform(controller, chunk);
+}
+
+/**
+ * @template I
+ * @template O
+ * @param {TransformStream<I, O>} stream
+ * @param {any=} reason
+ * @returns {Promise<void>}
+ */
+function transformStreamDefaultSourceCancelAlgorithm(stream, reason) {
+  const controller = stream[_controller];
+  if (controller[_finishPromise] !== undefined) {
+    return controller[_finishPromise].promise;
+  }
+  const writable = stream[_writable];
+  controller[_finishPromise] = new Deferred();
+  const cancelPromise = controller[_cancelAlgorithm](reason);
+  transformStreamDefaultControllerClearAlgorithms(controller);
+  transformPromiseWith(cancelPromise, () => {
+    if (writable[_state] === "errored") {
+      controller[_finishPromise].reject(writable[_storedError]);
+    } else {
+      writableStreamDefaultControllerErrorIfNeeded(
+        writable[_controller],
+        reason,
+      );
+      transformStreamUnblockWrite(stream);
+      controller[_finishPromise].resolve(undefined);
+    }
+  }, (r) => {
+    writableStreamDefaultControllerErrorIfNeeded(writable[_controller], r);
+    transformStreamUnblockWrite(stream);
+    controller[_finishPromise].reject(r);
+  });
+  return controller[_finishPromise].promise;
 }
 
 /**
@@ -4028,9 +4229,7 @@ function transformStreamErrorWritableAndUnblockWrite(stream, e) {
     stream[_writable][_controller],
     e,
   );
-  if (stream[_backpressure] === true) {
-    transformStreamSetBackpressure(stream, false);
-  }
+  transformStreamUnblockWrite(stream);
 }
 
 /**
@@ -4047,6 +4246,15 @@ function transformStreamSetBackpressure(stream, backpressure) {
 }
 
 /**
+ * @param {TransformStream} stream
+ */
+function transformStreamUnblockWrite(stream) {
+  if (stream[_backpressure] === true) {
+    transformStreamSetBackpressure(stream, false);
+  }
+}
+
+/**
  * @param {WritableStream} stream
  * @param {any=} reason
  * @returns {Promise<void>}
@@ -4054,11 +4262,11 @@ function transformStreamSetBackpressure(stream, backpressure) {
 function writableStreamAbort(stream, reason) {
   const state = stream[_state];
   if (state === "closed" || state === "errored") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   stream[_controller][_signal][signalAbort](reason);
   if (state === "closed" || state === "errored") {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (stream[_pendingAbortRequest] !== undefined) {
     return stream[_pendingAbortRequest].deferred.promise;
@@ -4168,7 +4376,7 @@ function writableStreamDefaultControllerAdvanceQueueIfNeeded(controller) {
     writableStreamFinishErroring(stream);
     return;
   }
-  if (controller[_queue].length === 0) {
+  if (controller[_queue].size === 0) {
     return;
   }
   const value = peekQueueValue(controller);
@@ -4254,7 +4462,7 @@ function writableStreamDefaultControllerProcessClose(controller) {
   const stream = controller[_stream];
   writableStreamMarkCloseRequestInFlight(stream);
   dequeueValue(controller);
-  assert(controller[_queue].length === 0);
+  assert(controller[_queue].size === 0);
   const sinkClosePromise = controller[_closeAlgorithm]();
   writableStreamDefaultControllerClearAlgorithms(controller);
   uponPromise(sinkClosePromise, () => {
@@ -4354,7 +4562,7 @@ function writableStreamDefaultWriterCloseWithErrorPropagation(writer) {
   if (
     writableStreamCloseQueuedOrInFlight(stream) === true || state === "closed"
   ) {
-    return resolvePromiseWith(undefined);
+    return PromiseResolve(undefined);
   }
   if (state === "errored") {
     return PromiseReject(stream[_storedError]);
@@ -4652,31 +4860,40 @@ function writableStreamUpdateBackpressure(stream, backpressure) {
   stream[_backpressure] = backpressure;
 }
 
-/**
- * @template T
- * @param {T} value
- * @param {boolean} done
- * @returns {IteratorResult<T>}
- */
-function createIteratorResult(value, done) {
-  const result = ObjectCreate(ObjectPrototype);
-  ObjectDefineProperties(result, {
-    value: { value, writable: true, enumerable: true, configurable: true },
-    done: {
-      value: done,
-      writable: true,
-      enumerable: true,
-      configurable: true,
-    },
-  });
-  return result;
-}
-
 /** @type {AsyncIterator<unknown, unknown>} */
 const asyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
 
 const _iteratorNext = Symbol("[[iteratorNext]]");
 const _iteratorFinished = Symbol("[[iteratorFinished]]");
+
+class ReadableStreamAsyncIteratorReadRequest {
+  #reader;
+  #promise;
+
+  constructor(reader, promise) {
+    this.#reader = reader;
+    this.#promise = promise;
+  }
+
+  chunkSteps(chunk) {
+    this.#reader[_iteratorNext] = null;
+    this.#promise.resolve({ value: chunk, done: false });
+  }
+
+  closeSteps() {
+    this.#reader[_iteratorNext] = null;
+    this.#reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.#reader);
+    this.#promise.resolve({ value: undefined, done: true });
+  }
+
+  errorSteps(e) {
+    this.#reader[_iteratorNext] = null;
+    this.#reader[_iteratorFinished] = true;
+    readableStreamDefaultReaderRelease(this.#reader);
+    this.#promise.reject(e);
+  }
+}
 
 /** @type {AsyncIterator<unknown>} */
 const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
@@ -4686,7 +4903,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
     const reader = this[_reader];
     function nextSteps() {
       if (reader[_iteratorFinished]) {
-        return PromiseResolve(createIteratorResult(undefined, true));
+        return PromiseResolve({ value: undefined, done: true });
       }
 
       if (reader[_stream] === undefined) {
@@ -4699,41 +4916,21 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
 
       /** @type {Deferred<IteratorResult<any>>} */
       const promise = new Deferred();
-      /** @type {ReadRequest} */
-      const readRequest = {
-        chunkSteps(chunk) {
-          promise.resolve(createIteratorResult(chunk, false));
-        },
-        closeSteps() {
-          readableStreamDefaultReaderRelease(reader);
-          promise.resolve(createIteratorResult(undefined, true));
-        },
-        errorSteps(e) {
-          readableStreamDefaultReaderRelease(reader);
-          promise.reject(e);
-        },
-      };
+      // internal values (_iteratorNext & _iteratorFinished) are modified inside
+      // ReadableStreamAsyncIteratorReadRequest methods
+      // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
+      const readRequest = new ReadableStreamAsyncIteratorReadRequest(
+        reader,
+        promise,
+      );
 
       readableStreamDefaultReaderRead(reader, readRequest);
-      return PromisePrototypeThen(promise.promise, (result) => {
-        reader[_iteratorNext] = null;
-        if (result.done === true) {
-          reader[_iteratorFinished] = true;
-          return createIteratorResult(undefined, true);
-        }
-        return result;
-      }, (reason) => {
-        reader[_iteratorNext] = null;
-        reader[_iteratorFinished] = true;
-        throw reason;
-      });
+      return PromisePrototypeThen(promise.promise);
     }
 
-    reader[_iteratorNext] = reader[_iteratorNext]
+    return reader[_iteratorNext] = reader[_iteratorNext]
       ? PromisePrototypeThen(reader[_iteratorNext], nextSteps, nextSteps)
       : nextSteps();
-
-    return reader[_iteratorNext];
   },
   /**
    * @param {unknown} arg
@@ -4744,21 +4941,21 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
     const reader = this[_reader];
     const returnSteps = () => {
       if (reader[_iteratorFinished]) {
-        return PromiseResolve(createIteratorResult(arg, true));
+        return PromiseResolve({ value: arg, done: true });
       }
       reader[_iteratorFinished] = true;
 
       if (reader[_stream] === undefined) {
-        return PromiseResolve(createIteratorResult(undefined, true));
+        return PromiseResolve({ value: undefined, done: true });
       }
-      assert(reader[_readRequests].length === 0);
+      assert(reader[_readRequests].size === 0);
       if (this[_preventCancel] === false) {
         const result = readableStreamReaderGenericCancel(reader, arg);
         readableStreamDefaultReaderRelease(reader);
         return result;
       }
       readableStreamDefaultReaderRelease(reader);
-      return PromiseResolve(createIteratorResult(undefined, true));
+      return PromiseResolve({ value: undefined, done: true });
     };
 
     const returnPromise = reader[_iteratorNext]
@@ -4766,7 +4963,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       : returnSteps();
     return PromisePrototypeThen(
       returnPromise,
-      () => createIteratorResult(arg, true),
+      () => ({ value: arg, done: true }),
     );
   },
 }, asyncIteratorPrototype);
@@ -4777,7 +4974,7 @@ class ByteLengthQueuingStrategy {
     const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
@@ -4795,22 +4992,25 @@ class ByteLengthQueuingStrategy {
     return WeakMapPrototypeGet(byteSizeFunctionWeakMap, this[_globalObject]);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        ByteLengthQueuingStrategyPrototype,
-        this,
-      ),
-      keys: [
-        "highWaterMark",
-        "size",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ByteLengthQueuingStrategyPrototype,
+          this,
+        ),
+        keys: [
+          "highWaterMark",
+          "size",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(ByteLengthQueuingStrategy);
+webidl.configureInterface(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
@@ -4831,7 +5031,7 @@ class CountQueuingStrategy {
     const prefix = "Failed to construct 'CountQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
@@ -4849,22 +5049,25 @@ class CountQueuingStrategy {
     return WeakMapPrototypeGet(countSizeFunctionWeakMap, this[_globalObject]);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        CountQueuingStrategyPrototype,
-        this,
-      ),
-      keys: [
-        "highWaterMark",
-        "size",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          CountQueuingStrategyPrototype,
+          this,
+        ),
+        keys: [
+          "highWaterMark",
+          "size",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(CountQueuingStrategy);
+webidl.configureInterface(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
@@ -4929,34 +5132,36 @@ class ReadableStream {
    * @param {QueuingStrategy<R>=} strategy
    */
   constructor(underlyingSource = undefined, strategy = undefined) {
+    if (underlyingSource === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'ReadableStream'";
-    if (underlyingSource !== undefined) {
-      underlyingSource = webidl.converters.object(
+    underlyingSource = underlyingSource !== undefined
+      ? webidl.converters.object(
         underlyingSource,
         prefix,
         "Argument 1",
-      );
-    } else {
-      underlyingSource = null;
-    }
-    if (strategy !== undefined) {
-      strategy = webidl.converters.QueuingStrategy(
+      )
+      : null;
+    strategy = strategy !== undefined
+      ? webidl.converters.QueuingStrategy(
         strategy,
         prefix,
         "Argument 2",
-      );
-    } else {
-      strategy = {};
-    }
-    this[webidl.brand] = webidl.brand;
-    let underlyingSourceDict = {};
-    if (underlyingSource !== undefined) {
-      underlyingSourceDict = webidl.converters.UnderlyingSource(
+      )
+      : {};
+
+    const underlyingSourceDict = underlyingSource !== undefined
+      ? webidl.converters.UnderlyingSource(
         underlyingSource,
         prefix,
         "underlyingSource",
-      );
-    }
+      )
+      : {};
+    this[_brand] = _brand;
+
     initializeReadableStream(this);
     if (underlyingSourceDict.type === "bytes") {
       if (strategy.size !== undefined) {
@@ -4973,7 +5178,6 @@ class ReadableStream {
         highWaterMark,
       );
     } else {
-      assert(!(ReflectHas(underlyingSourceDict, "type")));
       const sizeAlgorithm = extractSizeAlgorithm(strategy);
       const highWaterMark = extractHighWaterMark(strategy, 1);
       setUpReadableStreamDefaultControllerFromUnderlyingSource(
@@ -4996,7 +5200,7 @@ class ReadableStream {
 
     const iterator = getIterator(asyncIterable, true);
 
-    const stream = createReadableStream(() => undefined, async () => {
+    const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
       const res = await iterator.next();
       if (typeof res !== "object") {
@@ -5169,24 +5373,38 @@ class ReadableStream {
    * @param {ReadableStreamIteratorOptions=} options
    * @returns {AsyncIterableIterator<R>}
    */
-  values(options = {}) {
+  values(options = undefined) {
     webidl.assertBranded(this, ReadableStreamPrototype);
-    const prefix = "Failed to execute 'values' on 'ReadableStream'";
-    options = webidl.converters.ReadableStreamIteratorOptions(
-      options,
-      prefix,
-      "Argument 1",
-    );
+    let preventCancel = false;
+    if (options !== undefined) {
+      const prefix = "Failed to execute 'values' on 'ReadableStream'";
+      options = webidl.converters.ReadableStreamIteratorOptions(
+        options,
+        prefix,
+        "Argument 1",
+      );
+      preventCancel = options.preventCancel;
+    }
     /** @type {AsyncIterableIterator<R>} */
     const iterator = ObjectCreate(readableStreamAsyncIteratorPrototype);
     const reader = acquireReadableStreamDefaultReader(this);
     iterator[_reader] = reader;
-    iterator[_preventCancel] = options.preventCancel;
+    iterator[_preventCancel] = preventCancel;
     return iterator;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamPrototype,
+          this,
+        ),
+        keys: ["locked"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -5198,7 +5416,7 @@ ObjectDefineProperty(ReadableStream.prototype, SymbolAsyncIterator, {
   configurable: true,
 });
 
-webidl.configurePrototype(ReadableStream);
+webidl.configureInterface(ReadableStream);
 const ReadableStreamPrototype = ReadableStream.prototype;
 
 function errorReadableStream(stream, e) {
@@ -5216,10 +5434,14 @@ class ReadableStreamDefaultReader {
 
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
+    if (stream === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpReadableStreamDefaultReader(this, stream);
   }
 
@@ -5293,12 +5515,22 @@ class ReadableStreamDefaultReader {
     return readableStreamReaderGenericCancel(this, reason);
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamDefaultReaderPrototype,
+          this,
+        ),
+        keys: ["closed"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultReader);
+webidl.configureInterface(ReadableStreamDefaultReader);
 const ReadableStreamDefaultReaderPrototype =
   ReadableStreamDefaultReader.prototype;
 
@@ -5313,22 +5545,32 @@ class ReadableStreamBYOBReader {
 
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
+    if (stream === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'ReadableStreamBYOBReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpReadableStreamBYOBReader(this, stream);
   }
 
   /**
    * @param {ArrayBufferView} view
+   * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view) {
+  read(view, options = {}) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
       view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
+      options = webidl.converters.ReadableStreamBYOBReaderReadOptions(
+        options,
+        prefix,
+        "Argument 2",
+      );
     } catch (err) {
       return PromiseReject(err);
     }
@@ -5350,16 +5592,36 @@ class ReadableStreamBYOBReader {
         new TypeError("view must have non-zero byteLength"),
       );
     }
+
     if (getArrayBufferByteLength(buffer) === 0) {
+      if (isDetachedBuffer(buffer)) {
+        return PromiseReject(
+          new TypeError("view's buffer has been detached"),
+        );
+      }
+
       return PromiseReject(
         new TypeError("view's buffer must have non-zero byteLength"),
       );
     }
-    if (isDetachedBuffer(buffer)) {
-      return PromiseReject(
-        new TypeError("view's buffer has been detached"),
-      );
+
+    if (options.min === 0) {
+      return PromiseReject(new TypeError("options.min must be non-zero"));
     }
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) !== undefined) {
+      if (options.min > TypedArrayPrototypeGetLength(view)) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
+    } else {
+      if (options.min > DataViewPrototypeGetByteLength(view)) {
+        return PromiseReject(
+          new RangeError("options.min must be smaller or equal to view's size"),
+        );
+      }
+    }
+
     if (this[_stream] === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
@@ -5379,7 +5641,7 @@ class ReadableStreamBYOBReader {
         promise.reject(e);
       },
     };
-    readableStreamBYOBReaderRead(this, view, readIntoRequest);
+    readableStreamBYOBReaderRead(this, view, options.min, readIntoRequest);
     return promise.promise;
   }
 
@@ -5423,12 +5685,22 @@ class ReadableStreamBYOBReader {
     return readableStreamReaderGenericCancel(this, reason);
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamBYOBReaderPrototype,
+          this,
+        ),
+        keys: ["closed"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBReader);
+webidl.configureInterface(ReadableStreamBYOBReader);
 const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 
 class ReadableStreamBYOBRequest {
@@ -5443,8 +5715,11 @@ class ReadableStreamBYOBRequest {
     return this[_view];
   }
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   respond(bytesWritten) {
@@ -5508,7 +5783,7 @@ class ReadableStreamBYOBRequest {
   }
 }
 
-webidl.configurePrototype(ReadableStreamBYOBRequest);
+webidl.configureInterface(ReadableStreamBYOBRequest);
 const ReadableStreamBYOBRequestPrototype = ReadableStreamBYOBRequest.prototype;
 
 class ReadableByteStreamController {
@@ -5539,8 +5814,11 @@ class ReadableByteStreamController {
   /** @type {ReadableStream<ArrayBuffer>} */
   [_stream];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {ReadableStreamBYOBRequest | null} */
@@ -5633,15 +5911,18 @@ class ReadableByteStreamController {
     readableByteStreamControllerError(this, e);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamControllerPrototype,
-        this,
-      ),
-      keys: ["desiredSize"],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableByteStreamControllerPrototype,
+          this,
+        ),
+        keys: ["desiredSize"],
+      }),
+      inspectOptions,
+    );
   }
 
   /**
@@ -5686,6 +5967,7 @@ class ReadableByteStreamController {
         byteLength: autoAllocateChunkSize,
         bytesFilled: 0,
         elementSize: 1,
+        minimumFill: 1,
         viewConstructor: Uint8Array,
         readerType: "default",
       };
@@ -5705,7 +5987,7 @@ class ReadableByteStreamController {
   }
 }
 
-webidl.configurePrototype(ReadableByteStreamController);
+webidl.configureInterface(ReadableByteStreamController);
 const ReadableByteStreamControllerPrototype =
   ReadableByteStreamController.prototype;
 
@@ -5734,8 +6016,11 @@ class ReadableStreamDefaultController {
   /** @type {ReadableStream<R>} */
   [_stream];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {number | null} */
@@ -5780,15 +6065,18 @@ class ReadableStreamDefaultController {
     readableStreamDefaultControllerError(this, e);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        ReadableStreamDefaultController.prototype,
-        this,
-      ),
-      keys: ["desiredSize"],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamDefaultControllerPrototype,
+          this,
+        ),
+        keys: ["desiredSize"],
+      }),
+      inspectOptions,
+    );
   }
 
   /**
@@ -5808,9 +6096,9 @@ class ReadableStreamDefaultController {
    */
   [_pullSteps](readRequest) {
     const stream = this[_stream];
-    if (this[_queue].length) {
+    if (this[_queue].size) {
       const chunk = dequeueValue(this);
-      if (this[_closeRequested] && this[_queue].length === 0) {
+      if (this[_closeRequested] && this[_queue].size === 0) {
         readableStreamDefaultControllerClearAlgorithms(this);
         readableStreamClose(stream);
       } else {
@@ -5828,7 +6116,7 @@ class ReadableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(ReadableStreamDefaultController);
+webidl.configureInterface(ReadableStreamDefaultController);
 const ReadableStreamDefaultControllerPrototype =
   ReadableStreamDefaultController.prototype;
 
@@ -5874,7 +6162,7 @@ class TransformStream {
       prefix,
       "Argument 3",
     );
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     if (transformer === undefined) {
       transformer = null;
     }
@@ -5939,18 +6227,30 @@ class TransformStream {
     return this[_writable];
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({ readable: this.readable, writable: this.writable })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TransformStreamPrototype,
+          this,
+        ),
+        keys: ["readable", "writable"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(TransformStream);
+webidl.configureInterface(TransformStream);
 const TransformStreamPrototype = TransformStream.prototype;
 
 /** @template O */
 class TransformStreamDefaultController {
+  /** @type {(reason: any) => Promise<void>} */
+  [_cancelAlgorithm];
+  /** @type {Promise<void> | undefined} */
+  [_finishPromise];
   /** @type {(controller: this) => Promise<void>} */
   [_flushAlgorithm];
   /** @type {TransformStream<O>} */
@@ -5958,8 +6258,11 @@ class TransformStreamDefaultController {
   /** @type {(chunk: O, controller: this) => Promise<void>} */
   [_transformAlgorithm];
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /** @returns {number | null} */
@@ -6001,19 +6304,22 @@ class TransformStreamDefaultController {
     transformStreamDefaultControllerTerminate(this);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        TransformStreamDefaultController.prototype,
-        this,
-      ),
-      keys: ["desiredSize"],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TransformStreamDefaultControllerPrototype,
+          this,
+        ),
+        keys: ["desiredSize"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(TransformStreamDefaultController);
+webidl.configureInterface(TransformStreamDefaultController);
 const TransformStreamDefaultControllerPrototype =
   TransformStreamDefaultController.prototype;
 
@@ -6046,7 +6352,11 @@ class WritableStream {
    * @param {UnderlyingSink<W>=} underlyingSink
    * @param {QueuingStrategy<W>=} strategy
    */
-  constructor(underlyingSink = undefined, strategy = {}) {
+  constructor(underlyingSink = undefined, strategy = undefined) {
+    if (underlyingSink === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'WritableStream'";
     if (underlyingSink !== undefined) {
       underlyingSink = webidl.converters.object(
@@ -6055,12 +6365,14 @@ class WritableStream {
         "Argument 1",
       );
     }
-    strategy = webidl.converters.QueuingStrategy(
-      strategy,
-      prefix,
-      "Argument 2",
-    );
-    this[webidl.brand] = webidl.brand;
+    strategy = strategy !== undefined
+      ? webidl.converters.QueuingStrategy(
+        strategy,
+        prefix,
+        "Argument 2",
+      )
+      : {};
+    this[_brand] = _brand;
     if (underlyingSink === undefined) {
       underlyingSink = null;
     }
@@ -6143,12 +6455,22 @@ class WritableStream {
     return acquireWritableStreamDefaultWriter(this);
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamPrototype,
+          this,
+        ),
+        keys: ["locked"],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(WritableStream);
+webidl.configureInterface(WritableStream);
 const WritableStreamPrototype = WritableStream.prototype;
 
 /** @template W */
@@ -6169,7 +6491,7 @@ class WritableStreamDefaultWriter {
     const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.WritableStream(stream, prefix, "Argument 1");
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
     setUpWritableStreamDefaultWriter(this, stream);
   }
 
@@ -6278,23 +6600,26 @@ class WritableStreamDefaultWriter {
     return writableStreamDefaultWriterWrite(this, chunk);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        WritableStreamDefaultWriter.prototype,
-        this,
-      ),
-      keys: [
-        "closed",
-        "desiredSize",
-        "ready",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamDefaultWriterPrototype,
+          this,
+        ),
+        keys: [
+          "closed",
+          "desiredSize",
+          "ready",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultWriter);
+webidl.configureInterface(WritableStreamDefaultWriter);
 const WritableStreamDefaultWriterPrototype =
   WritableStreamDefaultWriter.prototype;
 
@@ -6326,8 +6651,11 @@ class WritableStreamDefaultController {
     return this[_signal];
   }
 
-  constructor() {
-    webidl.illegalConstructor();
+  constructor(brand = undefined) {
+    if (brand !== _brand) {
+      webidl.illegalConstructor();
+    }
+    this[_brand] = _brand;
   }
 
   /**
@@ -6346,15 +6674,18 @@ class WritableStreamDefaultController {
     writableStreamDefaultControllerError(this, e);
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        WritableStreamDefaultController.prototype,
-        this,
-      ),
-      keys: [],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamDefaultControllerPrototype,
+          this,
+        ),
+        keys: ["signal"],
+      }),
+      inspectOptions,
+    );
   }
 
   /**
@@ -6372,7 +6703,7 @@ class WritableStreamDefaultController {
   }
 }
 
-webidl.configurePrototype(WritableStreamDefaultController);
+webidl.configureInterface(WritableStreamDefaultController);
 const WritableStreamDefaultControllerPrototype =
   WritableStreamDefaultController.prototype;
 
@@ -6458,6 +6789,10 @@ webidl.converters.Transformer = webidl
       converter: webidl.converters.Function,
     },
     {
+      key: "cancel",
+      converter: webidl.converters.Function,
+    },
+    {
       key: "readableType",
       converter: webidl.converters.any,
     },
@@ -6501,6 +6836,17 @@ webidl.converters.ReadableStreamGetReaderOptions = webidl
   .createDictionaryConverter("ReadableStreamGetReaderOptions", [{
     key: "mode",
     converter: webidl.converters.ReadableStreamReaderMode,
+  }]);
+
+webidl.converters.ReadableStreamBYOBReaderReadOptions = webidl
+  .createDictionaryConverter("ReadableStreamBYOBReaderReadOptions", [{
+    key: "min",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    defaultValue: 1,
   }]);
 
 webidl.converters.ReadableWritablePair = webidl

@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const ops = core.ops;
 const {
   Promise,
   SafeArrayIterator,
@@ -14,18 +15,18 @@ const LogLevel = {
   Debug: 4,
 };
 
-let logLevel = 3;
-let logSource = "JS";
+const logSource = "JS";
 
-function setLogLevel(level, source) {
-  logLevel = level;
-  if (source) {
-    logSource = source;
+let logLevel_ = null;
+function logLevel() {
+  if (logLevel_ === null) {
+    logLevel_ = ops.op_bootstrap_log_level() || 3;
   }
+  return logLevel_;
 }
 
 function log(...args) {
-  if (logLevel >= LogLevel.Debug) {
+  if (logLevel() >= LogLevel.Debug) {
     // if we destructure `console` off `globalThis` too early, we don't bind to
     // the right console, therefore we don't log anything out.
     globalThis.console.error(
@@ -83,12 +84,4 @@ function getterOnly(getter) {
   };
 }
 
-export {
-  createResolvable,
-  getterOnly,
-  log,
-  nonEnumerable,
-  readOnly,
-  setLogLevel,
-  writable,
-};
+export { createResolvable, getterOnly, log, nonEnumerable, readOnly, writable };

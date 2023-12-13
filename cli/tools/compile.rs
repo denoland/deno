@@ -25,7 +25,7 @@ pub async fn compile(
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let module_graph_builder = factory.module_graph_builder().await?;
-  let parsed_source_cache = factory.parsed_source_cache()?;
+  let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
@@ -36,6 +36,18 @@ pub async fn compile(
     }
     vec
   };
+
+  // this is not supported, so show a warning about it, but don't error in order
+  // to allow someone to still run `deno compile` when this is in a deno.json
+  if cli_options.unstable_sloppy_imports() {
+    log::warn!(
+      concat!(
+        "{} Sloppy imports are not supported in deno compile. ",
+        "The compiled executable may encouter runtime errors.",
+      ),
+      crate::colors::yellow("Warning"),
+    );
+  }
 
   let output_path = resolve_compile_executable_output_path(
     &compile_flags,
@@ -71,8 +83,9 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)?;
-  binary_writer
+  let mut file = std::fs::File::create(&output_path)
+    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
+  let write_result = binary_writer
     .write_bin(
       &mut file,
       eszip,
@@ -81,8 +94,13 @@ pub async fn compile(
       cli_options,
     )
     .await
-    .with_context(|| format!("Writing {}", output_path.display()))?;
+    .with_context(|| format!("Writing {}", output_path.display()));
   drop(file);
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the output path
+    let _ = std::fs::remove_file(output_path);
+    return Err(err);
+  }
 
   // set it as executable
   #[cfg(unix)]

@@ -5,10 +5,10 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -17,6 +17,7 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
@@ -324,7 +325,7 @@ class URLSearchParams {
 
 webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 
-webidl.configurePrototype(URLSearchParams);
+webidl.configureInterface(URLSearchParams);
 const URLSearchParamsPrototype = URLSearchParams.prototype;
 
 webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
@@ -410,20 +411,26 @@ class URL {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    const object = {
-      href: this.href,
-      origin: this.origin,
-      protocol: this.protocol,
-      username: this.username,
-      password: this.password,
-      host: this.host,
-      hostname: this.hostname,
-      port: this.port,
-      pathname: this.pathname,
-      hash: this.hash,
-      search: this.search,
-    };
-    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(URLPrototype, this),
+        keys: [
+          "href",
+          "origin",
+          "protocol",
+          "username",
+          "password",
+          "host",
+          "hostname",
+          "port",
+          "pathname",
+          "hash",
+          "search",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   #updateSearchParams() {
@@ -806,7 +813,7 @@ class URL {
   }
 }
 
-webidl.configurePrototype(URL);
+webidl.configureInterface(URL);
 const URLPrototype = URL.prototype;
 
 /**

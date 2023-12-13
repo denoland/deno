@@ -4,6 +4,7 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
+use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -13,15 +14,13 @@ use deno_core::anyhow::Context;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -93,6 +92,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.url",
     "deno.web",
     "deno.fetch",
+    "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
     "deno.crypto",
@@ -292,6 +292,12 @@ pub struct EmittedFile {
   pub media_type: MediaType,
 }
 
+#[derive(Debug)]
+pub struct RequestNpmState {
+  pub node_resolver: Arc<NodeResolver>,
+  pub npm_resolver: Arc<dyn CliNpmResolver>,
+}
+
 /// A structure representing a request to be sent to the tsc runtime.
 #[derive(Debug)]
 pub struct Request {
@@ -302,7 +308,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: u64,
-  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
+  pub maybe_npm: Option<RequestNpmState>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -320,13 +326,15 @@ pub struct Response {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): we have similar struct in `tsc.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 #[derive(Debug)]
 struct State {
   hash_data: u64,
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
-  maybe_node_resolver: Option<Arc<NodeResolver>>,
+  maybe_npm: Option<RequestNpmState>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
@@ -339,7 +347,7 @@ impl Default for State {
       graph: Arc::new(ModuleGraph::new(GraphKind::All)),
       maybe_tsbuildinfo: Default::default(),
       maybe_response: Default::default(),
-      maybe_node_resolver: Default::default(),
+      maybe_npm: Default::default(),
       remapped_specifiers: Default::default(),
       root_map: Default::default(),
       current_dir: Default::default(),
@@ -351,7 +359,7 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: u64,
-    maybe_node_resolver: Option<Arc<NodeResolver>>,
+    maybe_npm: Option<RequestNpmState>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
@@ -360,7 +368,7 @@ impl State {
     State {
       hash_data,
       graph,
-      maybe_node_resolver,
+      maybe_npm,
       maybe_tsbuildinfo,
       maybe_response: None,
       remapped_specifiers,
@@ -377,8 +385,9 @@ fn normalize_specifier(
   resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
-#[op]
-fn op_create_hash(s: &mut OpState, text: &str) -> String {
+#[op2]
+#[string]
+fn op_create_hash(s: &mut OpState, #[string] text: &str) -> String {
   let state = s.borrow_mut::<State>();
   get_hash(text, state.hash_data)
 }
@@ -393,8 +402,8 @@ struct EmitArgs {
   file_name: String,
 }
 
-#[op]
-fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
+#[op2]
+fn op_emit(state: &mut OpState, #[serde] args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -406,12 +415,6 @@ fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   }
 
   true
-}
-
-#[derive(Debug, Deserialize)]
-struct LoadArgs {
-  /// The fully qualified specifier that should be loaded.
-  specifier: String,
 }
 
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
@@ -435,35 +438,47 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   }
 }
 
-#[op]
-fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadResponse {
+  data: String,
+  version: Option<String>,
+  script_kind: i32,
+}
+
+#[op2]
+#[serde]
+fn op_load(
+  state: &mut OpState,
+  #[string] load_specifier: &str,
+) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let v: LoadArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = normalize_specifier(&v.specifier, &state.current_dir)
+
+  let specifier = normalize_specifier(load_specifier, &state.current_dir)
     .context("Error converting a string module specifier for \"op_load\".")?;
+
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
   let graph = &state.graph;
-  let data = if &v.specifier == "internal:///.tsbuildinfo" {
+
+  let data = if load_specifier == "internal:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
-  } else if &v.specifier == "internal:///missing_dependency.d.ts" {
-    hash = Some("1".to_string());
-    media_type = MediaType::Dts;
-    Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
-  } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
+  } else if load_specifier == "internal:///missing_dependency.d.ts" {
+    None
+  } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, state.hash_data);
-    media_type = MediaType::from_str(&v.specifier);
+    media_type = MediaType::from_str(load_specifier);
     maybe_source.map(Cow::Borrowed)
   } else {
     let specifier = if let Some(remapped_specifier) =
-      state.remapped_specifiers.get(&v.specifier)
+      state.remapped_specifiers.get(load_specifier)
     {
       remapped_specifier
-    } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
+    } else if let Some(remapped_specifier) = state.root_map.get(load_specifier)
+    {
       remapped_specifier
     } else {
       &specifier
@@ -493,9 +508,9 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
         }
       }
     } else if state
-      .maybe_node_resolver
+      .maybe_npm
       .as_ref()
-      .map(|resolver| resolver.in_npm_package(specifier))
+      .map(|npm| npm.node_resolver.in_npm_package(specifier))
       .unwrap_or(false)
     {
       media_type = MediaType::from_specifier(specifier);
@@ -504,17 +519,18 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
       Some(Cow::Owned(code))
     } else {
-      media_type = MediaType::Unknown;
       None
     };
     hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     maybe_source
   };
-
-  Ok(json!({
-    "data": data,
-    "version": hash,
-    "scriptKind": as_ts_script_kind(media_type),
+  let Some(data) = data else {
+    return Ok(None);
+  };
+  Ok(Some(LoadResponse {
+    data: data.into_owned(),
+    version: hash,
+    script_kind: as_ts_script_kind(media_type),
   }))
 }
 
@@ -528,10 +544,11 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_resolve(
   state: &mut OpState,
-  args: ResolveArgs,
+  #[serde] args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> =
@@ -575,7 +592,7 @@ fn op_resolve(
 
     let maybe_result = match resolved_dep {
       Some(ResolutionResolved { specifier, .. }) => {
-        resolve_graph_specifier_types(specifier, state)?
+        resolve_graph_specifier_types(specifier, &referrer, state)?
       }
       _ => resolve_non_graph_specifier_types(&specifier, &referrer, state)?,
     };
@@ -618,6 +635,7 @@ fn op_resolve(
 
 fn resolve_graph_specifier_types(
   specifier: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let graph = &state.graph;
@@ -646,12 +664,20 @@ fn resolve_graph_specifier_types(
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
     Some(Module::Npm(module)) => {
-      if let Some(node_resolver) = &state.maybe_node_resolver {
-        let maybe_resolution = node_resolver.resolve_npm_reference(
-          &module.nv_reference,
-          NodeResolutionMode::Types,
-          &PermissionsContainer::allow_all(),
-        )?;
+      if let Some(npm) = &state.maybe_npm.as_ref() {
+        let package_folder = npm
+          .npm_resolver
+          .as_managed()
+          .unwrap() // should never be byonm because it won't create Module::Npm
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+        let maybe_resolution =
+          npm.node_resolver.resolve_package_subpath_from_deno_module(
+            &package_folder,
+            module.nv_reference.sub_path(),
+            referrer,
+            NodeResolutionMode::Types,
+            &PermissionsContainer::allow_all(),
+          )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
         )))
@@ -661,11 +687,11 @@ fn resolve_graph_specifier_types(
     }
     Some(Module::External(module)) => {
       // we currently only use "External" for when the module is in an npm package
-      Ok(state.maybe_node_resolver.as_ref().map(|node_resolver| {
+      Ok(state.maybe_npm.as_ref().map(|npm| {
         let specifier =
           node::resolve_specifier_into_node_modules(&module.specifier);
         NodeResolution::into_specifier_and_media_type(
-          node_resolver.url_to_node_resolution(specifier).ok(),
+          npm.node_resolver.url_to_node_resolution(specifier).ok(),
         )
       }))
     }
@@ -678,10 +704,11 @@ fn resolve_non_graph_specifier_types(
   referrer: &ModuleSpecifier,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
-  let node_resolver = match state.maybe_node_resolver.as_ref() {
-    Some(node_resolver) => node_resolver,
+  let npm = match state.maybe_npm.as_ref() {
+    Some(npm) => npm,
     None => return Ok(None), // we only support non-graph types for npm packages
   };
+  let node_resolver = &npm.node_resolver;
   if node_resolver.in_npm_package(referrer) {
     // we're in an npm package, so use node resolution
     Ok(Some(NodeResolution::into_specifier_and_media_type(
@@ -695,16 +722,22 @@ fn resolve_non_graph_specifier_types(
         .ok()
         .flatten(),
     )))
-  } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+  } else if let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier) {
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let maybe_resolution = node_resolver.resolve_npm_req_reference(
-      &npm_ref,
-      NodeResolutionMode::Types,
-      &PermissionsContainer::allow_all(),
-    )?;
+    let package_folder = npm
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
+    let maybe_resolution = node_resolver
+      .resolve_package_subpath_from_deno_module(
+        &package_folder,
+        npm_req_ref.sub_path(),
+        referrer,
+        NodeResolutionMode::Types,
+        &PermissionsContainer::allow_all(),
+      )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,
     )))
@@ -713,14 +746,14 @@ fn resolve_non_graph_specifier_types(
   }
 }
 
-#[op]
-fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
+#[op2(fast)]
+fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
   let state = state.borrow::<State>();
   match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
-      .maybe_node_resolver
+      .maybe_npm
       .as_ref()
-      .map(|r| r.in_npm_package(&specifier))
+      .map(|n| n.node_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
   }
@@ -732,13 +765,12 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
-#[op]
-fn op_respond(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
+// TODO(bartlomieju): this mechanism is questionable.
+// Can't we use something more efficient here?
+#[op2]
+fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   let state = state.borrow_mut::<State>();
-  let v: RespondArgs = serde_json::from_value(args)
-    .context("Error converting the result for \"op_respond\".")?;
-  state.maybe_response = Some(v);
-  Ok(json!(true))
+  state.maybe_response = Some(args);
 }
 
 /// Execute a request on the supplied snapshot, returning a response which
@@ -782,7 +814,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       state.put(State::new(
         options.request.graph,
         options.request.hash_data,
-        options.request.maybe_node_resolver,
+        options.request.maybe_npm,
         options.request.maybe_tsbuildinfo,
         options.root_map,
         options.remapped_specifiers,
@@ -793,7 +825,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     },
   );
 
-  let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
   let request_value = json!({
     "config": request.config,
     "debug": request.debug,
@@ -812,9 +843,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     ..Default::default()
   });
 
-  runtime
-    .execute_script(located_script_name!(), startup_source)
-    .context("Could not properly start the compiler runtime.")?;
   runtime.execute_script(located_script_name!(), exec_source)?;
 
   let op_state = runtime.op_state();
@@ -855,6 +883,7 @@ mod tests {
   use super::*;
   use crate::args::TsConfig;
   use deno_core::futures::future;
+  use deno_core::serde_json;
   use deno_core::OpState;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
@@ -870,6 +899,7 @@ mod tests {
       &mut self,
       specifier: &ModuleSpecifier,
       _is_dynamic: bool,
+      _cache_setting: deno_graph::source::CacheSetting,
     ) -> deno_graph::source::LoadFuture {
       let specifier_text = specifier
         .to_string()
@@ -913,7 +943,7 @@ mod tests {
         .context("Unable to get CWD")
         .unwrap(),
     );
-    let mut op_state = OpState::new(1);
+    let mut op_state = OpState::new(None);
     op_state.put(state);
     op_state
   }
@@ -950,7 +980,7 @@ mod tests {
       debug: false,
       graph: Arc::new(graph),
       hash_data,
-      maybe_node_resolver: None,
+      maybe_npm: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,
@@ -976,7 +1006,7 @@ mod tests {
       .execute_script_static(
         "<anon>",
         r#"
-      if (!(startup)) {
+      if (!(globalThis.exec)) {
           throw Error("bad");
         }
         console.log(`ts version: ${ts.version}`);
@@ -1027,27 +1057,16 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(
-      &mut state,
-      json!({ "specifier": "https://deno.land/x/mod.ts"}),
-    )
-    .unwrap();
+    let actual =
+      op_load::call(&mut state, "https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
-      actual,
+      serde_json::to_value(actual).unwrap(),
       json!({
         "data": "console.log(\"hello deno\");\n",
         "version": "7821807483407828376",
         "scriptKind": 3,
       })
     );
-  }
-
-  #[derive(Debug, Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct LoadResponse {
-    data: String,
-    version: Option<String>,
-    script_kind: i64,
   }
 
   #[tokio::test]
@@ -1058,13 +1077,9 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let value = op_load::call(
-      &mut state,
-      json!({ "specifier": "asset:///lib.dom.d.ts" }),
-    )
-    .expect("should have invoked op");
-    let actual: LoadResponse =
-      serde_json::from_value(value).expect("failed to deserialize");
+    let actual = op_load::call(&mut state, "asset:///lib.dom.d.ts")
+      .expect("should have invoked op")
+      .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data, expected);
     assert!(actual.version.is_some());
@@ -1079,13 +1094,11 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(
-      &mut state,
-      json!({ "specifier": "internal:///.tsbuildinfo"}),
-    )
-    .expect("should have invoked op");
+    let actual = op_load::call(&mut state, "internal:///.tsbuildinfo")
+      .expect("should have invoked op")
+      .expect("load should have succeeded");
     assert_eq!(
-      actual,
+      serde_json::to_value(actual).unwrap(),
       json!({
         "data": "some content",
         "version": null,
@@ -1097,19 +1110,9 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_load::call(
-      &mut state,
-      json!({ "specifier": "https://deno.land/x/mod.ts"}),
-    )
-    .expect("should have invoked op");
-    assert_eq!(
-      actual,
-      json!({
-        "data": null,
-        "version": null,
-        "scriptKind": 0,
-      })
-    )
+    let actual = op_load::call(&mut state, "https://deno.land/x/mod.ts")
+      .expect("should have invoked op");
+    assert_eq!(serde_json::to_value(actual).unwrap(), json!(null));
   }
 
   #[tokio::test]
@@ -1159,21 +1162,18 @@ mod tests {
   #[tokio::test]
   async fn test_respond() {
     let mut state = setup(None, None, None).await;
-    let actual = op_respond::call(
-      &mut state,
-      json!({
-        "diagnostics": [
-          {
-            "messageText": "Unknown compiler option 'invalid'.",
-            "category": 1,
-            "code": 5023
-          }
-        ],
-        "stats": [["a", 12]]
-      }),
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    let args = serde_json::from_value(json!({
+      "diagnostics": [
+        {
+          "messageText": "Unknown compiler option 'invalid'.",
+          "category": 1,
+          "code": 5023
+        }
+      ],
+      "stats": [["a", 12]]
+    }))
+    .unwrap();
+    op_respond::call(&mut state, args);
     let state = state.borrow::<State>();
     assert_eq!(
       state.maybe_response,

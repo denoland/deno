@@ -3,6 +3,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
+/// <reference lib="deno.webgpu" />
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
@@ -37,6 +38,7 @@ declare interface Window extends EventTarget {
   localStorage: Storage;
   sessionStorage: Storage;
   caches: CacheStorage;
+  name: string;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -101,6 +103,7 @@ declare var caches: CacheStorage;
 
 /** @category Web APIs */
 declare interface Navigator {
+  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;
@@ -292,3 +295,6 @@ declare var Location: {
 // The types there must first be split into window, worker and global types.
 /** @category Web APIs */
 declare var location: Location;
+
+/** @category Web APIs */
+declare var name: string;

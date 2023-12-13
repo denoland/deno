@@ -103,6 +103,9 @@ export function arch(): string {
 }
 
 // deno-lint-ignore no-explicit-any
+(availableParallelism as any)[Symbol.toPrimitive] = (): number =>
+  availableParallelism();
+// deno-lint-ignore no-explicit-any
 (arch as any)[Symbol.toPrimitive] = (): string => process.arch;
 // deno-lint-ignore no-explicit-any
 (endianness as any)[Symbol.toPrimitive] = (): string => endianness();
@@ -126,7 +129,7 @@ export function arch(): string {
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
 
 export function cpus(): CPUCoreInfo[] {
-  return Array.from(Array(navigator.hardwareConcurrency)).map(() => {
+  return Array.from(Array(navigator.hardwareConcurrency), () => {
     return {
       model: "",
       speed: 0,
@@ -156,7 +159,14 @@ export function endianness(): "BE" | "LE" {
 
 /** Return free memory amount */
 export function freemem(): number {
-  return Deno.systemMemoryInfo().free;
+  if (Deno.build.os === "linux") {
+    // On linux, use 'available' memory
+    // https://github.com/libuv/libuv/blob/a5c01d4de3695e9d9da34cfd643b5ff0ba582ea7/src/unix/linux.c#L2064
+    return Deno.systemMemoryInfo().available;
+  } else {
+    // Use 'free' memory on other platforms
+    return Deno.systemMemoryInfo().free;
+  }
 }
 
 /** Not yet implemented */
@@ -354,10 +364,16 @@ export function userInfo(
   };
 }
 
+/* Returns an estimate of the default amount of parallelism a program should use. */
+export function availableParallelism(): number {
+  return navigator.hardwareConcurrency;
+}
+
 export const EOL = isWindows ? "\r\n" : "\n";
 export const devNull = isWindows ? "\\\\.\\nul" : "/dev/null";
 
 export default {
+  availableParallelism,
   arch,
   cpus,
   endianness,

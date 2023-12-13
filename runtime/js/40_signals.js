@@ -1,14 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
 const {
   SafeSet,
   SafeSetIterator,
   SetPrototypeAdd,
   SetPrototypeDelete,
-  SymbolFor,
   TypeError,
 } = primordials;
 
@@ -18,7 +16,7 @@ function bindSignal(signo) {
 
 function pollSignal(rid) {
   const promise = core.opAsync("op_signal_poll", rid);
-  core.unrefOp(promise[SymbolFor("Deno.core.internalPromiseId")]);
+  core.unrefOpPromise(promise);
   return promise;
 }
 

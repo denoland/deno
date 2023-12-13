@@ -38,8 +38,17 @@ impl Pty {
     };
     if args.is_empty() || args[0] == "repl" && !args.contains(&"--quiet") {
       // wait for the repl to start up before writing to it
-      pty.expect("exit using ctrl+d, ctrl+c, or close()");
+      pty.read_until_condition_with_timeout(
+        |pty| {
+          pty
+            .all_output()
+            .contains("exit using ctrl+d, ctrl+c, or close()")
+        },
+        // it sometimes takes a while to startup on the CI, so use a longer timeout
+        Duration::from_secs(60),
+      );
     }
+
     pty
   }
 
@@ -176,16 +185,35 @@ impl Pty {
   }
 
   #[track_caller]
-  fn read_until_condition(
+  fn read_until_condition(&mut self, condition: impl FnMut(&mut Self) -> bool) {
+    self.read_until_condition_with_timeout(condition, Duration::from_secs(15));
+  }
+
+  #[track_caller]
+  fn read_until_condition_with_timeout(
+    &mut self,
+    condition: impl FnMut(&mut Self) -> bool,
+    timeout_duration: Duration,
+  ) {
+    if self.try_read_until_condition_with_timeout(condition, timeout_duration) {
+      return;
+    }
+
+    panic!("Timed out.")
+  }
+
+  /// Reads until the specified condition with a timeout duration returning
+  /// `true` on success or `false` on timeout.
+  fn try_read_until_condition_with_timeout(
     &mut self,
     mut condition: impl FnMut(&mut Self) -> bool,
-  ) {
-    let timeout_time =
-      Instant::now().checked_add(Duration::from_secs(15)).unwrap();
+    timeout_duration: Duration,
+  ) -> bool {
+    let timeout_time = Instant::now().checked_add(timeout_duration).unwrap();
     while Instant::now() < timeout_time {
       self.fill_more_bytes();
       if condition(self) {
-        return;
+        return true;
       }
     }
 
@@ -195,7 +223,8 @@ impl Pty {
       String::from_utf8_lossy(&self.read_bytes)
     );
     eprintln!("Next text: {:?}", text);
-    panic!("Timed out.")
+
+    false
   }
 
   fn next_text(&self) -> String {
@@ -206,10 +235,13 @@ impl Pty {
 
   fn fill_more_bytes(&mut self) {
     let mut buf = [0; 256];
-    if let Ok(count) = self.pty.read(&mut buf) {
-      self.read_bytes.extend(&buf[..count]);
-    } else {
-      std::thread::sleep(Duration::from_millis(10));
+    match self.pty.read(&mut buf) {
+      Ok(count) if count > 0 => {
+        self.read_bytes.extend(&buf[..count]);
+      }
+      _ => {
+        std::thread::sleep(Duration::from_millis(15));
+      }
     }
   }
 }

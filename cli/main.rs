@@ -3,6 +3,7 @@
 mod args;
 mod auth_tokens;
 mod cache;
+mod cdp;
 mod deno_std;
 mod emit;
 mod errors;
@@ -76,7 +77,10 @@ impl SubcommandOutput for Result<(), std::io::Error> {
 fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {
-  deno_core::unsync::spawn(f.map(|r| r.output()))
+  // the boxed_local() is important in order to get windows to not blow the stack in debug
+  deno_core::unsync::spawn(
+    async move { f.map(|r| r.output()).await }.boxed_local(),
+  )
 }
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
@@ -92,7 +96,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::bundle::bundle(flags, bundle_flags).await
     }),
     DenoSubcommand::Doc(doc_flags) => {
-      spawn_subcommand(async { tools::doc::print_docs(flags, doc_flags).await })
+      spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
     DenoSubcommand::Eval(eval_flags) => spawn_subcommand(async {
       tools::run::eval_command(flags, eval_flags).await
@@ -133,6 +137,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(flags, install_flags).await
+    }),
+    DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
+      tools::jupyter::kernel(flags, jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
@@ -191,11 +198,21 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       let types = tsc::get_types_declaration_file_text(flags.unstable);
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
+    #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
       tools::upgrade::upgrade(flags, upgrade_flags).await
     }),
+    #[cfg(not(feature = "upgrade"))]
+    DenoSubcommand::Upgrade(_) => exit_with_message(
+      "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
+      1,
+    ),
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
+    }),
+    // TODO:
+    DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
+      tools::registry::publish(flags, publish_flags).await
     }),
   };
 
@@ -226,6 +243,15 @@ fn setup_panic_hook() {
   }));
 }
 
+fn exit_with_message(message: &str, code: i32) -> ! {
+  eprintln!(
+    "{}: {}",
+    colors::red_bold("error"),
+    message.trim_start_matches("error: ")
+  );
+  std::process::exit(code);
+}
+
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
@@ -240,14 +266,85 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
         error_code = 10;
       }
 
-      eprintln!(
-        "{}: {}",
-        colors::red_bold("error"),
-        error_string.trim_start_matches("error: ")
-      );
-      std::process::exit(error_code);
+      exit_with_message(&error_string, error_code);
     }
   }
+}
+
+// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
+pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
+  // flag name
+  &str,
+  // help text
+  &str,
+  // id to enable it in runtime/99_main.js
+  i32,
+)] = &[
+  (
+    deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
+    "Enable unstable `BroadcastChannel` API",
+    1,
+  ),
+  (
+    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Deno.cron API",
+    2,
+  ),
+  (
+    deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
+    "Enable unstable FFI APIs",
+    3,
+  ),
+  (
+    deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
+    "Enable unstable file system APIs",
+    4,
+  ),
+  (
+    deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
+    "Enable unstable HTTP APIs",
+    5,
+  ),
+  (
+    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Key-Value store APIs",
+    6,
+  ),
+  (
+    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
+    "Enable unstable net APIs",
+    7,
+  ),
+  (
+    "unsafe-proto",
+    "Enable unsafe __proto__ support. This is a security risk.",
+    // This number is used directly in the JS code. Search
+    // for "unstableFeatures" to see where it's used.
+    8,
+  ),
+  (
+    deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
+    "Enable unstable `WebGPU` API",
+    9,
+  ),
+  (
+    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Web Worker APIs",
+    10,
+  ),
+];
+
+pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
+  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
+  eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
+  std::process::exit(70);
+}
+
+#[allow(dead_code)]
+pub(crate) fn unstable_warn_cb(feature: &str) {
+  eprintln!(
+    "The `--unstable` flag is deprecated, use --unstable-{feature} instead."
+  );
 }
 
 pub fn main() {
@@ -263,6 +360,10 @@ pub fn main() {
   );
 
   let args: Vec<String> = env::args().collect();
+
+  // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
+  // initalize the V8 platform on a parent thread of all threads that will spawn
+  // V8 isolates.
 
   let future = async move {
     let current_exe_path = current_exe()?;
@@ -296,6 +397,7 @@ pub fn main() {
       _ => vec![],
     };
     init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
+    deno_core::JsRuntime::init_platform(None);
 
     util::logger::init(flags.log_level);
 
@@ -306,4 +408,21 @@ pub fn main() {
     unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
 
   std::process::exit(exit_code);
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn unstable_granular_flag_names_sorted() {
+    let flags = UNSTABLE_GRANULAR_FLAGS
+      .iter()
+      .map(|(name, _, _)| name.to_string())
+      .collect::<Vec<_>>();
+    let mut sorted_flags = flags.clone();
+    sorted_flags.sort();
+    // sort the flags by name so they appear nicely in the help text
+    assert_eq!(flags, sorted_flags);
+  }
 }

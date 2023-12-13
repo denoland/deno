@@ -13,3 +13,43 @@ Deno.test(
     assertEquals(output, "1\n");
   },
 );
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function denoNoColorIsNotAffectedByNonTty() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "console.log(Deno.noColor)"],
+    }).output();
+    const output = new TextDecoder().decode(stdout);
+    assertEquals(output, "false\n");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function denoNoColorTrueEmptyVar() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "console.log(Deno.noColor)"],
+      env: {
+        // https://no-color.org/ -- should not be true when empty
+        NO_COLOR: "",
+      },
+    }).output();
+    const output = new TextDecoder().decode(stdout);
+    assertEquals(output, "false\n");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function denoNoColorTrueEmptyVar() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "console.log(Deno.noColor)"],
+      env: {
+        NO_COLOR: "1",
+      },
+    }).output();
+    const output = new TextDecoder().decode(stdout);
+    assertEquals(output, "true\n");
+  },
+);

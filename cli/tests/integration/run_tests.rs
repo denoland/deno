@@ -15,7 +15,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::env_vars_for_npm_tests_no_sync_download;
+use util::env_vars_for_npm_tests;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -331,8 +331,7 @@ itest!(webstorage_serialization {
 fn webstorage_location_shares_origin() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--location")
@@ -346,8 +345,7 @@ fn webstorage_location_shares_origin() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--location")
@@ -359,146 +357,76 @@ fn webstorage_location_shares_origin() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+  assert_eq!(output.stdout, b"Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // test to ensure that when a --config file is set, but no --location, that
 // storage persists against unique configuration files.
 #[test]
 fn webstorage_config_file() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--config")
-    .arg("run/webstorage/config_a.jsonc")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args(
+      "run --config run/webstorage/config_a.jsonc run/webstorage/fixture.ts",
+    )
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--config")
-    .arg("run/webstorage/config_b.jsonc")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args("run --config run/webstorage/config_b.jsonc run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--config")
-    .arg("run/webstorage/config_a.jsonc")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+  context
+    .new_command()
+    .args("run --config run/webstorage/config_a.jsonc run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // tests to ensure `--config` does not effect persisted storage when a
 // `--location` is provided.
 #[test]
 fn webstorage_location_precedes_config() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--location")
-    .arg("https://example.com/a.ts")
-    .arg("--config")
-    .arg("run/webstorage/config_a.jsonc")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context.new_command()
+    .args("run --location https://example.com/a.ts --config run/webstorage/config_a.jsonc run/webstorage/fixture.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--location")
-    .arg("https://example.com/b.ts")
-    .arg("--config")
-    .arg("run/webstorage/config_b.jsonc")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+  context.new_command()
+    .args("run --location https://example.com/b.ts --config run/webstorage/config_b.jsonc run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 // test to ensure that when there isn't a configuration or location, that the
 // main module is used to determine how to persist storage data.
 #[test]
 fn webstorage_main_module() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args("run run/webstorage/fixture.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("run/webstorage/logger.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+  context
+    .new_command()
+    .args("run run/webstorage/logger.ts")
+    .run()
+    .assert_matches_text("Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("run/webstorage/fixture.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+  context
+    .new_command()
+    .args("run run/webstorage/fixture.ts")
+    .run()
+    .assert_matches_text("Storage { hello: \"deno\", length: 1 }\n");
 }
 
 itest!(_075_import_local_query_hash {
@@ -808,6 +736,19 @@ fn permissions_cache() {
     });
 }
 
+itest!(env_file {
+  args: "run --env=env --allow-env run/env_file.ts",
+  output: "run/env_file.out",
+});
+
+itest!(env_file_missing {
+  args: "run --env=missing --allow-env run/env_file.ts",
+  output_str: Some(
+    "error: Unable to load 'missing' environment variable file\n"
+  ),
+  exit_code: 1,
+});
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
@@ -870,7 +811,7 @@ itest!(lock_write_fetch {
 
 itest!(lock_check_ok {
   args:
-    "run --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -917,7 +858,7 @@ itest!(lock_flag_overrides_config_file_lock_path {
 
 itest!(lock_v2_check_ok {
   args:
-    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -967,11 +908,7 @@ fn lock_no_declaration_files() {
     .run();
   output.assert_matches_file("lockfile/no_dts/main.cache.out");
   let lockfile = context.temp_dir().path().join("deno.lock");
-  lockfile.assert_matches_file(
-    context
-      .testdata_path()
-      .join("lockfile/no_dts/deno.lock.out"),
-  );
+  lockfile.assert_matches_file("lockfile/no_dts/deno.lock.out");
 }
 
 #[test]
@@ -993,7 +930,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "2",
+  "version": "3",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -1012,7 +949,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "2",
+  "version": "3",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -1044,24 +981,24 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "2",
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": "sha512-[WILDCARD]",
+        "dependencies": {}
+      }
+    }
+  },
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
   "remote": {
     "http://localhost:4545/echo.ts": "829eb4d67015a695d70b2a33c78b631b29eea1dbac491a6bfcf394af2a2671c2",
     "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
-  },
-  "npm": {
-    "specifiers": {
-      "@denotest/esm-basic": "@denotest/esm-basic@1.0.0"
-    },
-    "packages": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-[WILDCARD]",
-        "dependencies": {}
-      }
-    }
   }
 }
 "#,
@@ -1640,6 +1577,100 @@ itest!(unstable_worker {
   output: "run/unstable_worker.ts.out",
 });
 
+itest!(unstable_worker_options_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_worker_options.js",
+  output: "run/unstable_worker_options.disabled.out",
+  exit_code: 70,
+});
+
+itest!(unstable_worker_options_enabled {
+  args: "run --quiet --reload --allow-read --unstable-worker-options run/unstable_worker_options.js",
+  output: "run/unstable_worker_options.enabled.out",
+});
+
+itest!(unstable_broadcast_channel_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_broadcast_channel.js",
+  output: "run/unstable_broadcast_channel.disabled.out",
+});
+
+itest!(unstable_broadcast_channel_enabled {
+  args: "run --quiet --reload --allow-read --unstable-broadcast-channel run/unstable_broadcast_channel.js",
+  output: "run/unstable_broadcast_channel.enabled.out",
+});
+
+itest!(unstable_cron_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_cron.js",
+  output: "run/unstable_cron.disabled.out",
+});
+
+itest!(unstable_cron_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-cron run/unstable_cron.js",
+  output: "run/unstable_cron.enabled.out",
+});
+
+itest!(unstable_ffi_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_ffi.js",
+  output: "run/unstable_ffi.disabled.out",
+});
+
+itest!(unstable_ffi_enabled {
+  args: "run --quiet --reload --allow-read --unstable-ffi run/unstable_ffi.js",
+  output: "run/unstable_ffi.enabled.out",
+});
+
+itest!(unstable_fs_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_fs.js",
+  output: "run/unstable_fs.disabled.out",
+});
+
+itest!(unstable_fs_enabled {
+  args: "run --quiet --reload --allow-read --unstable-fs run/unstable_fs.js",
+  output: "run/unstable_fs.enabled.out",
+});
+
+itest!(unstable_http_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_http.js",
+  output: "run/unstable_http.disabled.out",
+});
+
+itest!(unstable_http_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-http run/unstable_http.js",
+  output: "run/unstable_http.enabled.out",
+});
+
+itest!(unstable_net_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_net.js",
+  output: "run/unstable_net.disabled.out",
+});
+
+itest!(unstable_net_enabled {
+  args: "run --quiet --reload --allow-read --unstable-net run/unstable_net.js",
+  output: "run/unstable_net.enabled.out",
+});
+
+itest!(unstable_kv_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_kv.js",
+  output: "run/unstable_kv.disabled.out",
+});
+
+itest!(unstable_kv_enabled {
+  args: "run --quiet --reload --allow-read --unstable-kv run/unstable_kv.js",
+  output: "run/unstable_kv.enabled.out",
+});
+
+itest!(unstable_webgpu_disabled {
+  args: "run --quiet --reload --allow-read run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.disabled.out",
+});
+
+itest!(unstable_webgpu_enabled {
+  args:
+    "run --quiet --reload --allow-read --unstable-webgpu run/unstable_webgpu.js",
+  output: "run/unstable_webgpu.enabled.out",
+});
+
 itest!(import_compression {
   args: "run --quiet --reload --allow-net run/import_compression/main.ts",
   output: "run/import_compression/main.out",
@@ -1763,6 +1794,12 @@ itest!(jsx_import_source_pragma_import_map {
 itest!(jsx_import_source_pragma_import_map_dev {
   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_pragma_import_map.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_precompile_import_map {
+  args: "run --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc run/jsx_precompile/no_pragma.tsx",
+  output: "run/jsx_precompile/no_pragma.out",
   http_server: true,
 });
 
@@ -2066,14 +2103,14 @@ itest!(shebang_swc {
 });
 
 itest!(shebang_with_json_imports_tsc {
-  args: "run --quiet import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
 itest!(shebang_with_json_imports_swc {
-  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet --no-check import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
@@ -2083,8 +2120,7 @@ fn no_validate_asm() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/no_validate_asm.js")
-    .stderr(Stdio::piped())
-    .stdout(Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -2127,7 +2163,7 @@ console.log("executing typescript");
     .arg("--check")
     .arg("-")
     .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdin = p.stdin.as_mut().unwrap();
@@ -2147,12 +2183,9 @@ console.log("executing javascript");
 "#;
 
   let mut p = util::deno_cmd()
-    .arg("run")
-    .args(["--ext", "js"])
-    .arg("--check")
-    .arg("-")
+    .args("run --ext js --check -")
     .stdin(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdin = p.stdin.as_mut().unwrap();
@@ -2271,7 +2304,7 @@ fn rust_log() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("run/001_hello.js")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -2285,7 +2318,7 @@ fn rust_log() {
     .arg("run")
     .arg("run/001_hello.js")
     .env("RUST_LOG", "debug")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -2296,36 +2329,24 @@ fn rust_log() {
 
 #[test]
 fn dont_cache_on_check_fail() {
-  let deno_dir = util::new_deno_dir();
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("run --check=all --reload run/error_003_typescript.ts")
+    .split_output()
+    .run();
+  assert!(!output.stderr().is_empty());
+  output.skip_stdout_check();
+  output.assert_exit_code(1);
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--check=all")
-    .arg("--reload")
-    .arg("run/error_003_typescript.ts")
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(!output.stderr.is_empty());
-
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--check=all")
-    .arg("run/error_003_typescript.ts")
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(!output.stderr.is_empty());
+  let output = context
+    .new_command()
+    .args("run --check=all run/error_003_typescript.ts")
+    .split_output()
+    .run();
+  assert!(!output.stderr().is_empty());
+  output.skip_stdout_check();
+  output.assert_exit_code(1);
 }
 
 mod permissions {
@@ -2776,44 +2797,164 @@ mod permissions {
     output: "run/064_permissions_revoke_global.ts.out",
   });
 
+  itest!(_065_permissions_revoke_net {
+    args: "run --allow-net run/065_permissions_revoke_net.ts",
+    output: "run/065_permissions_revoke_net.ts.out",
+  });
+
   #[test]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .args_vec(["repl"])
       .with_pty(|mut console| {
-        console.expect("What is your name? [Jane Doe] ");
-        console.write_line_raw("John Doe");
-        console.expect("Your name is John Doe.");
-        console.expect("What is your name? [Jane Doe] ");
-        console.write_line_raw("");
-        console.expect("Your name is Jane Doe.");
+        // alert with no message displays default "Alert"
+        // alert displays "[Press any key to continue]"
+        // alert can be closed with Enter key
+        console.write_line_raw("alert()");
+        console.expect("Alert [Press any key to continue]");
+        console.write_raw("\r"); // Enter
+        console.expect("undefined");
+
+        // alert can be closed with Escape key
+        console.write_line_raw("alert()");
+        console.expect("Alert [Press any key to continue]");
+        console.write_raw("\x1b"); // Escape
+        console.expect("undefined");
+
+        // alert can display custom text
+        // alert can be closed with arbitrary keyboard key (x)
+        if !cfg!(windows) {
+          // it seems to work on windows, just not in the tests
+          console.write_line_raw("alert('foo')");
+          console.expect("foo [Press any key to continue]");
+          console.write_raw("x");
+          console.expect("undefined");
+        }
+
+        // confirm with no message displays default "Confirm"
+        // confirm returns true by immediately pressing Enter
+        console.write_line_raw("confirm()");
+        console.expect("Confirm [Y/n]");
+        console.write_raw("\r"); // Enter
+        console.expect("true");
+
+        // tese seem to work on windows, just not in the tests
+        if !cfg!(windows) {
+          // confirm returns false by pressing Escape
+          console.write_line_raw("confirm()");
+          console.expect("Confirm [Y/n]");
+          console.write_raw("\x1b"); // Escape
+          console.expect("false");
+
+          // confirm can display custom text
+          // confirm returns true by pressing y
+          console.write_line_raw("confirm('continue?')");
+          console.expect("continue? [Y/n]");
+          console.write_raw("y");
+          console.expect("true");
+
+          // confirm returns false by pressing n
+          console.write_line_raw("confirm('continue?')");
+          console.expect("continue? [Y/n]");
+          console.write_raw("n");
+          console.expect("false");
+
+          // confirm can display custom text
+          // confirm returns true by pressing Y
+          console.write_line_raw("confirm('continue?')");
+          console.expect("continue? [Y/n]");
+          console.write_raw("Y");
+          console.expect("true");
+
+          // confirm returns false by pressing N
+          console.write_line_raw("confirm('continue?')");
+          console.expect("continue? [Y/n]");
+          console.write_raw("N");
+          console.expect("false");
+        }
+
+        // prompt with no message displays default "Prompt"
+        // prompt returns user-inserted text
+        console.write_line_raw("prompt()");
         console.expect("Prompt ");
-        console.write_line_raw("foo");
-        console.expect("Your input is foo.");
-        console.expect("Question 0 [y/N] ");
-        console.write_line_raw("Y");
-        console.expect("Your answer is true");
-        console.expect("Question 1 [y/N] ");
-        console.write_line_raw("N");
-        console.expect("Your answer is false");
-        console.expect("Question 2 [y/N] ");
-        console.write_line_raw("yes");
-        console.expect("Your answer is false");
-        console.expect("Confirm [y/N] ");
-        console.write_line("");
-        console.expect("Your answer is false");
-        console.expect("What is Windows EOL? ");
-        console.write_line("windows");
-        console.expect("Your answer is \"windows\"");
-        console.expect("Hi [Enter] ");
-        console.write_line("");
-        console.expect("Alert [Enter] ");
-        console.write_line("");
-        console.expect("The end of test");
-        console.expect("What is EOF? ");
-        console.write_line("");
-        console.expect("Your answer is null");
+        console.write_line_raw("abc");
+        console.expect("\"abc\"");
+
+        // prompt can display custom text
+        // prompt with no default value returns empty string when immediately pressing Enter
+        console.write_line_raw("prompt('foo')");
+        console.expect("foo ");
+        console.write_raw("\r"); // Enter
+        console.expect("\"\"");
+
+        // prompt with non-string default value converts it to string
+        console.write_line_raw("prompt('foo', 1)");
+        console.expect("foo 1");
+        console.write_raw("\r"); // Enter
+        console.expect("\"1\"");
+
+        // prompt with non-string default value that can't be converted throws an error
+        console.write_line_raw("prompt('foo', Symbol())");
+        console.expect(
+          "Uncaught TypeError: Cannot convert a Symbol value to a string",
+        );
+
+        // prompt with empty-string default value returns empty string when immediately pressing Enter
+        console.write_line_raw("prompt('foo', '')");
+        console.expect("foo ");
+        console.write_raw("\r"); // Enter
+        console.expect("\"\"");
+
+        // prompt with contentful default value returns default value when immediately pressing Enter
+        console.write_line_raw("prompt('foo', 'bar')");
+        console.expect("foo bar");
+        console.write_raw("\r"); // Enter
+        console.expect("\"bar\"");
+
+        // prompt with contentful default value allows editing of default value
+        console.write_line_raw("prompt('foo', 'bar')");
+        console.expect("foo bar");
+        console.write_raw("\x1b[D"); // Left arrow
+        console.write_raw("\x1b[D"); // Left arrow
+        console.write_raw("\x7f"); // Backspace
+        console.write_raw("c");
+        console.expect("foo car");
+        console.write_raw("\r"); // Enter
+        console.expect("\"car\"");
+
+        // prompt returns null by pressing Escape
+        console.write_line_raw("prompt()");
+        console.expect("Prompt ");
+        console.write_raw("\x1b"); // Escape
+        console.expect("null");
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+          // confirm returns false by pressing Ctrl+C
+          console.write_line_raw("confirm()");
+          console.expect("Confirm [Y/n] ");
+          console.write_raw("\x03"); // Ctrl+C
+          console.expect("false");
+
+          // confirm returns false by pressing Ctrl+D
+          console.write_line_raw("confirm()");
+          console.expect("Confirm [Y/n] ");
+          console.write_raw("\x04"); // Ctrl+D
+          console.expect("false");
+
+          // prompt returns null by pressing Ctrl+C
+          console.write_line_raw("prompt()");
+          console.expect("Prompt ");
+          console.write_raw("\x03"); // Ctrl+C
+          console.expect("null");
+
+          // prompt returns null by pressing Ctrl+D
+          console.write_line_raw("prompt()");
+          console.expect("Prompt ");
+          console.write_raw("\x04"); // Ctrl+D
+          console.expect("null");
+        }
       });
   }
 
@@ -2979,9 +3120,8 @@ fn issue12740() {
   let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
-  let mut deno_cmd = util::deno_cmd();
-  std::fs::write(&mod1_path, "").unwrap();
-  let status = deno_cmd
+  mod1_path.write("");
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
@@ -2992,9 +3132,9 @@ fn issue12740() {
     .wait()
     .unwrap();
   assert!(status.success());
-  std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
-  std::fs::write(mod2_path, "(").unwrap();
-  let status = deno_cmd
+  mod1_path.write("export { foo } from \"./mod2.ts\";");
+  mod2_path.write("(");
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
@@ -3013,11 +3153,10 @@ fn issue12807() {
   let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
-  let mut deno_cmd = util::deno_cmd();
   // With a fresh `DENO_DIR`, run a module with a dependency and a type error.
-  std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit('0');").unwrap();
-  std::fs::write(mod2_path, "console.log('Hello, world!');").unwrap();
-  let status = deno_cmd
+  mod1_path.write("import './mod2.ts'; Deno.exit('0');");
+  mod2_path.write("console.log('Hello, world!');");
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--check")
@@ -3031,7 +3170,7 @@ fn issue12807() {
   assert!(!status.success());
   // Fix the type error and run again.
   std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit(0);").unwrap();
-  let status = deno_cmd
+  let status = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--check")
@@ -3050,36 +3189,36 @@ itest!(issue_13562 {
   output: "run/issue13562.ts.out",
 });
 
-itest!(import_assertions_static_import {
-  args: "run --allow-read import_assertions/static_import.ts",
-  output: "import_assertions/static_import.out",
+itest!(import_attributes_static_import {
+  args: "run --allow-read import_attributes/static_import.ts",
+  output: "import_attributes/static_import.out",
 });
 
-itest!(import_assertions_static_export {
-  args: "run --allow-read import_assertions/static_export.ts",
-  output: "import_assertions/static_export.out",
+itest!(import_attributes_static_export {
+  args: "run --allow-read import_attributes/static_export.ts",
+  output: "import_attributes/static_export.out",
 });
 
-itest!(import_assertions_static_error {
-  args: "run --allow-read import_assertions/static_error.ts",
-  output: "import_assertions/static_error.out",
+itest!(import_attributes_static_error {
+  args: "run --allow-read import_attributes/static_error.ts",
+  output: "import_attributes/static_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_dynamic_import {
-  args: "run --allow-read import_assertions/dynamic_import.ts",
-  output: "import_assertions/dynamic_import.out",
+itest!(import_attributes_dynamic_import {
+  args: "run --allow-read --check import_attributes/dynamic_import.ts",
+  output: "import_attributes/dynamic_import.out",
 });
 
-itest!(import_assertions_dynamic_error {
-  args: "run --allow-read import_assertions/dynamic_error.ts",
-  output: "import_assertions/dynamic_error.out",
+itest!(import_attributes_dynamic_error {
+  args: "run --allow-read import_attributes/dynamic_error.ts",
+  output: "import_attributes/dynamic_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_type_check {
-  args: "run --allow-read --check import_assertions/type_check.ts",
-  output: "import_assertions/type_check.out",
+itest!(import_attributes_type_check {
+  args: "run --allow-read --check import_attributes/type_check.ts",
+  output: "import_attributes/type_check.out",
   exit_code: 1,
 });
 
@@ -3122,7 +3261,7 @@ itest!(package_json_auto_discovered_for_local_script_arg {
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -3134,7 +3273,7 @@ itest!(
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
     copy_temp_dir: Some("run/with_package_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
     exit_code: 1,
   }
@@ -3165,7 +3304,7 @@ itest!(
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
     copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
   }
 );
@@ -3175,7 +3314,7 @@ itest!(package_json_auto_discovered_for_npm_binary {
   output: "run/with_package_json/npm_binary/main.out",
   cwd: Some("run/with_package_json/npm_binary/"),
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -3406,11 +3545,6 @@ itest!(unstable_ffi_19 {
   exit_code: 70,
 });
 
-itest!(future_check2 {
-  args: "run --check run/future_check.ts",
-  output: "run/future_check2.out",
-});
-
 itest!(event_listener_error {
   args: "run --quiet run/event_listener_error.ts",
   output: "run/event_listener_error.ts.out",
@@ -3494,7 +3628,7 @@ fn check_local_then_remote() {
     .arg("--check=all")
     .arg("run/remote_type_error/main.ts")
     .env("NO_COLOR", "1")
-    .stderr(Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3584,20 +3718,18 @@ itest!(config_json_import {
 
 #[test]
 fn running_declaration_files() {
-  let temp_dir = TempDir::new();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
   let files = vec!["file.d.ts", "file.d.cts", "file.d.mts"];
 
   for file in files {
     temp_dir.write(file, "");
-    let mut deno_cmd = util::deno_cmd_with_deno_dir(&temp_dir);
-    let output = deno_cmd
-      .current_dir(temp_dir.path())
-      .args(["run", file])
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(output.status.success());
+    context
+      .new_command()
+      .args_vec(["run", file])
+      .run()
+      .skip_output_check()
+      .assert_exit_code(0);
   }
 }
 
@@ -3832,8 +3964,7 @@ fn basic_auth_tokens() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("http://127.0.0.1:4554/run/001_hello.js")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3855,8 +3986,7 @@ fn basic_auth_tokens() {
     .arg("run")
     .arg("http://127.0.0.1:4554/run/001_hello.js")
     .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
+    .piped_output()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3940,8 +4070,7 @@ async fn test_resolve_dns() {
       .arg("--check")
       .arg("--allow-net")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -3968,8 +4097,7 @@ async fn test_resolve_dns() {
       .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -3998,8 +4126,7 @@ async fn test_resolve_dns() {
       .arg("--check")
       .arg("--allow-net=deno.land")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -4008,7 +4135,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4020,8 +4147,7 @@ async fn test_resolve_dns() {
       .arg("run")
       .arg("--check")
       .arg("run/resolve_dns.ts")
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
+      .piped_output()
       .spawn()
       .unwrap()
       .wait_with_output()
@@ -4030,7 +4156,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -4048,7 +4174,7 @@ async fn http2_request_url() {
     .arg("--allow-read")
     .arg("./run/http2_request_url.ts")
     .arg("4506")
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdout = child.stdout.as_mut().unwrap();
@@ -4088,7 +4214,7 @@ fn set_raw_should_not_panic_on_no_tty() {
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())
     // stderr is piped so we can capture output.
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -4142,7 +4268,7 @@ fn broken_stdout() {
     .arg("eval")
     .arg("console.log(3.14)")
     .stdout(writer)
-    .stderr(std::process::Stdio::piped())
+    .stderr_piped()
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -4150,7 +4276,7 @@ fn broken_stdout() {
 
   assert!(!output.status.success());
   let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
-  assert!(stderr.contains("Uncaught BrokenPipe"));
+  assert!(stderr.contains("Uncaught (in promise) BrokenPipe"));
   assert!(!stderr.contains("panic"));
 }
 
@@ -4291,7 +4417,7 @@ async fn websocketstream_ping() {
     .arg("--cert")
     .arg(root_ca)
     .arg(script)
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let server = tokio::net::TcpListener::bind("127.0.0.1:4513")
@@ -4336,7 +4462,7 @@ async fn websocket_server_multi_field_connection_header() {
     .arg("--cert")
     .arg(root_ca)
     .arg(script)
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
 
@@ -4391,7 +4517,7 @@ async fn websocket_server_idletimeout() {
     .arg("--cert")
     .arg(root_ca)
     .arg(script)
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
 
@@ -4467,57 +4593,96 @@ itest!(permission_args_quiet {
 // Regression test for https://github.com/denoland/deno/issues/16772
 #[test]
 fn file_fetcher_preserves_permissions() {
-  let _guard = util::http_server();
-  util::with_pty(&["repl", "--quiet"], |mut console| {
-    console.write_line(
-      "const a = await import('http://localhost:4545/run/019_media_types.ts');",
-    );
-    console.expect("Allow?");
-    console.write_line_raw("y");
-    console.expect_all(&["success", "true"]);
-  });
-}
-
-#[test]
-fn stdio_streams_are_locked_in_permission_prompt() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_copy_temp_dir("run/stdio_streams_are_locked_in_permission_prompt")
-    .build();
+  let context = TestContext::with_http_server();
   context
     .new_command()
-    .args("repl --allow-read")
+    .args("repl --quiet")
     .with_pty(|mut console| {
-      console.write_line(r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/run/stdio_streams_are_locked_in_permission_prompt/worker.js";"#);
-      console.expect("undefined");
-      // ensure this file exists
-      console.write_line(r#"const _file = Deno.readTextFileSync("./run/stdio_streams_are_locked_in_permission_prompt/worker.js");"#);
-      console.expect("undefined");
-      console.write_line(r#"new Worker(url, { type: "module" }); await Deno.writeTextFile("./text.txt", "some code");"#);
-      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
-      std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
-      console.write_line_raw("invalid");
-      console.expect("Unrecognized option.");
-      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
+      console.write_line(
+      "const a = await import('http://localhost:4545/run/019_media_types.ts');",
+    );
+      console.expect("Allow?");
       console.write_line_raw("y");
-      console.expect("Granted write access to");
-
-      // this output should now be shown below and not above
-      let expected_output = r#"Are you sure you want to continue?"#;
-      console.expect(expected_output);
+      console.expect_all(&["success", "true"]);
     });
 }
 
 #[test]
+fn stdio_streams_are_locked_in_permission_prompt() {
+  if !util::pty::Pty::is_supported() {
+    // Don't deal with the logic below if the with_pty
+    // block doesn't even run (ex. on Windows CI)
+    return;
+  }
+
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_copy_temp_dir("run/stdio_streams_are_locked_in_permission_prompt")
+    .build();
+  let mut passed_test = false;
+  let mut i = 0;
+  while !passed_test {
+    i += 1;
+    if i > 5 {
+      panic!("Output happened before permission prompt too many times");
+    }
+
+    context
+      .new_command()
+      .args("repl --allow-read")
+      .with_pty(|mut console| {
+        let malicious_output = r#"Are you sure you want to continue?"#;
+
+        console.write_line(r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/run/stdio_streams_are_locked_in_permission_prompt/worker.js";"#);
+        console.expect("undefined");
+        // ensure this file exists
+        console.write_line(r#"const _file = Deno.readTextFileSync("./run/stdio_streams_are_locked_in_permission_prompt/worker.js");"#);
+        console.expect("undefined");
+        console.write_line(r#"new Worker(url, { type: "module" }); await Deno.writeTextFile("./text.txt", "some code");"#);
+        console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
+
+        // Due to the main thread being slow, it may occur that the worker thread outputs
+        // before the permission prompt is shown. This is not a bug and just a timing issue
+        // when dealing with multiple threads. If this occurs, detect such a case and then
+        // retry running the test.
+        if let Some(malicious_index) = console.all_output().find(malicious_output) {
+          let prompt_index = console.all_output().find("Allow?").unwrap();
+          // Ensure the malicious output is shown before the prompt as we
+          // expect in this scenario. If not, that would indicate a bug.
+          assert!(malicious_index < prompt_index);
+          return;
+        }
+
+        std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
+        console.write_line_raw("invalid");
+        console.expect("Unrecognized option.");
+        console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
+        console.write_line_raw("y");
+        console.expect("Granted write access to");
+
+        // this output should now be shown below and not above
+        console.expect(malicious_output);
+        passed_test = true;
+      });
+  }
+}
+
+#[test]
 fn permission_prompt_strips_ansi_codes_and_control_chars() {
-  let _guard = util::http_server();
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
-      r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
-    );
-    console.expect(
-      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\".",
-    )
+        r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
+      );
+    // will be uppercase on windows
+    let env_name = if cfg!(windows) {
+      "DO YOU LIKE ICE CREAM? Y/N"
+    } else {
+      "Do you like ice cream? y/n"
+    };
+    console.expect(format!(
+      "┌ ⚠️  Deno requests env access to \"{}\".",
+      env_name
+    ))
   });
 
   util::with_pty(&["repl"], |mut console| {
@@ -4558,22 +4723,59 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
 itest!(node_builtin_modules_ts {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_builtin_modules_js {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
   output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
+});
+
+itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled {
+  args: "run --unstable-bare-node-builtins run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+});
+
+itest!(
+  node_prefix_missing_unstable_bare_node_builtins_enbaled_by_env {
+    args: "run run/node_prefix_missing/main.ts",
+    output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+    envs: [
+      env_vars_for_npm_tests(),
+      vec![(
+        "DENO_UNSTABLE_BARE_NODE_BUILTINS".to_string(),
+        "1".to_string()
+      )]
+    ]
+    .concat(),
+    exit_code: 0,
+  }
+);
+
+itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_by_config {
+  args: "run --config=run/node_prefix_missing/config.json run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+});
+
+itest!(node_prefix_missing_unstable_bare_node_builtins_enbaled_with_import_map {
+  args: "run --unstable-bare-node-builtins --import-map run/node_prefix_missing/import_map.json run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out_feature_enabled",
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
 });
 
 itest!(dynamic_import_syntax_error {
@@ -4693,4 +4895,132 @@ console.log(returnsHi());"#,
     at [WILDCARD]/main.ts:1:27
 ")
     .assert_exit_code(1);
+}
+
+itest!(explicit_resource_management {
+  args: "run --quiet --check run/explicit_resource_management/main.ts",
+  output: "run/explicit_resource_management/main.out",
+});
+
+itest!(workspaces_basic {
+  args: "run -L debug -A --unstable-workspaces main.ts",
+  output: "run/workspaces/basic/main.out",
+  cwd: Some("run/workspaces/basic/"),
+  copy_temp_dir: Some("run/workspaces/basic/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(workspaces_member_outside_root_dir {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/member_outside_root_dir/main.out",
+  cwd: Some("run/workspaces/member_outside_root_dir/"),
+  copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(workspaces_nested_member {
+  args: "run -A --unstable-workspaces main.ts",
+  output: "run/workspaces/nested_member/main.out",
+  cwd: Some("run/workspaces/nested_member/"),
+  copy_temp_dir: Some("run/workspaces/nested_member/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(unsafe_proto {
+  args: "run -A run/unsafe_proto/main.js",
+  output: "run/unsafe_proto/main.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+itest!(unsafe_proto_flag {
+  args: "run -A --unstable-unsafe-proto run/unsafe_proto/main.js",
+  output: "run/unsafe_proto/main_with_unsafe_proto_flag.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+#[test]
+fn test_unstable_sloppy_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("a.ts", "export class A {}");
+  temp_dir.write("b.js", "export class B {}");
+  temp_dir.write("c.mts", "export class C {}");
+  temp_dir.write("d.mjs", "export class D {}");
+  temp_dir.write("e.tsx", "export class E {}");
+  temp_dir.write("f.jsx", "export class F {}");
+  let dir = temp_dir.path().join("dir");
+  dir.create_dir_all();
+  dir.join("index.tsx").write("export class G {}");
+  temp_dir.write(
+    "main.ts",
+    r#"import * as a from "./a.js";
+import * as b from "./b";
+import * as c from "./c";
+import * as d from "./d";
+import * as e from "./e";
+import * as e2 from "./e.js";
+import * as f from "./f";
+import * as g from "./dir";
+console.log(a.A);
+console.log(b.B);
+console.log(c.C);
+console.log(d.D);
+console.log(e.E);
+console.log(e2.E);
+console.log(f.F);
+console.log(g.G);
+"#,
+  );
+
+  // run without sloppy imports
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text(r#"error: Module not found "file:///[WILDCARD]/a.js". Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
+    at file:///[WILDCARD]/main.ts:1:20
+"#)
+    .assert_exit_code(1);
+
+  // now run with sloppy imports
+  temp_dir.write("deno.json", r#"{ "unstable": ["sloppy-imports"] }"#);
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text(
+      "Warning Sloppy imports are not recommended and have a negative impact on performance.
+Warning Sloppy module resolution (hint: update .js extension to .ts)
+    at file:///[WILDCARD]/main.ts:1:20
+Warning Sloppy module resolution (hint: add .js extension)
+    at file:///[WILDCARD]/main.ts:2:20
+Warning Sloppy module resolution (hint: add .mts extension)
+    at file:///[WILDCARD]/main.ts:3:20
+Warning Sloppy module resolution (hint: add .mjs extension)
+    at file:///[WILDCARD]/main.ts:4:20
+Warning Sloppy module resolution (hint: add .tsx extension)
+    at file:///[WILDCARD]/main.ts:5:20
+Warning Sloppy module resolution (hint: update .js extension to .tsx)
+    at file:///[WILDCARD]/main.ts:6:21
+Warning Sloppy module resolution (hint: add .jsx extension)
+    at file:///[WILDCARD]/main.ts:7:20
+Warning Sloppy module resolution (hint: specify path to index.tsx file in directory instead)
+    at file:///[WILDCARD]/main.ts:8:20
+[class A]
+[class B]
+[class C]
+[class D]
+[class E]
+[class E]
+[class F]
+[class G]
+",
+    );
 }

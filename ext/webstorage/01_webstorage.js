@@ -2,17 +2,16 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
-  SafeArrayIterator,
   Symbol,
   SymbolFor,
-  ObjectDefineProperty,
   ObjectFromEntries,
   ObjectEntries,
+  ReflectDefineProperty,
+  ReflectDeleteProperty,
   ReflectGet,
   ReflectHas,
   Proxy,
@@ -83,51 +82,54 @@ function createStorage(persistent) {
 
   const proxy = new Proxy(storage, {
     deleteProperty(target, key) {
-      if (typeof key == "symbol") {
-        delete target[key];
-      } else {
-        target.removeItem(key);
+      if (typeof key === "symbol") {
+        return ReflectDeleteProperty(target, key);
       }
+      target.removeItem(key);
       return true;
     },
+
     defineProperty(target, key, descriptor) {
-      if (typeof key == "symbol") {
-        ObjectDefineProperty(target, key, descriptor);
-      } else {
-        target.setItem(key, descriptor.value);
+      if (typeof key === "symbol") {
+        return ReflectDefineProperty(target, key, descriptor);
       }
+      target.setItem(key, descriptor.value);
       return true;
     },
-    get(target, key) {
-      if (typeof key == "symbol") return target[key];
-      if (ReflectHas(target, key)) {
-        return ReflectGet(...new SafeArrayIterator(arguments));
-      } else {
-        return target.getItem(key) ?? undefined;
+
+    get(target, key, receiver) {
+      if (typeof key === "symbol") {
+        return target[key];
       }
+      if (ReflectHas(target, key)) {
+        return ReflectGet(target, key, receiver);
+      }
+      return target.getItem(key) ?? undefined;
     },
+
     set(target, key, value) {
-      if (typeof key == "symbol") {
-        ObjectDefineProperty(target, key, {
+      if (typeof key === "symbol") {
+        return ReflectDefineProperty(target, key, {
           value,
           configurable: true,
         });
-      } else {
-        target.setItem(key, value);
       }
+      target.setItem(key, value);
       return true;
     },
-    has(target, p) {
-      return p === SymbolFor("Deno.customInspect") ||
-        (typeof target.getItem(p)) === "string";
+
+    has(target, key) {
+      if (ReflectHas(target, key)) {
+        return true;
+      }
+      return typeof key === "string" && typeof target.getItem(key) === "string";
     },
+
     ownKeys() {
       return ops.op_webstorage_iterate_keys(persistent);
     },
+
     getOwnPropertyDescriptor(target, key) {
-      if (arguments.length === 1) {
-        return undefined;
-      }
       if (ReflectHas(target, key)) {
         return undefined;
       }
@@ -144,12 +146,15 @@ function createStorage(persistent) {
     },
   });
 
-  proxy[SymbolFor("Deno.customInspect")] = function (inspect) {
+  storage[SymbolFor("Deno.privateCustomInspect")] = function (
+    inspect,
+    inspectOptions,
+  ) {
     return `${this.constructor.name} ${
       inspect({
-        length: this.length,
         ...ObjectFromEntries(ObjectEntries(proxy)),
-      })
+        length: this.length,
+      }, inspectOptions)
     }`;
   };
 

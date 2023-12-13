@@ -7,7 +7,7 @@
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
-const core = globalThis.Deno.core;
+import { core } from "ext:core/mod.js";
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
@@ -102,7 +102,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v18.17.1";
+export const version = "v18.18.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions

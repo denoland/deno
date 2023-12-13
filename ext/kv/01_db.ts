@@ -11,7 +11,10 @@ const {
   SymbolFor,
   SymbolToStringTag,
   Uint8ArrayPrototype,
+  Error,
 } = globalThis.__bootstrap.primordials;
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+import { ReadableStream } from "ext:deno_web/06_streams.js";
 const core = Deno.core;
 const ops = core.ops;
 
@@ -26,17 +29,31 @@ async function openKv(path: string) {
   return new Kv(rid, kvSymbol);
 }
 
-const millisecondsInOneWeek = 7 * 24 * 60 * 60 * 1000;
+const maxQueueDelay = 30 * 24 * 60 * 60 * 1000;
 
 function validateQueueDelay(delay: number) {
   if (delay < 0) {
     throw new TypeError("delay cannot be negative");
   }
-  if (delay > millisecondsInOneWeek) {
-    throw new TypeError("delay cannot be greater than one week");
+  if (delay > maxQueueDelay) {
+    throw new TypeError("delay cannot be greater than 30 days");
   }
   if (isNaN(delay)) {
     throw new TypeError("delay cannot be NaN");
+  }
+}
+
+const maxQueueBackoffIntervals = 5;
+const maxQueueBackoffInterval = 60 * 60 * 1000;
+
+function validateBackoffSchedule(backoffSchedule: number[]) {
+  if (backoffSchedule.length > maxQueueBackoffIntervals) {
+    throw new TypeError("invalid backoffSchedule");
+  }
+  for (const interval of backoffSchedule) {
+    if (interval < 0 || interval > maxQueueBackoffInterval || isNaN(interval)) {
+      throw new TypeError("invalid backoffSchedule");
+    }
   }
 }
 
@@ -58,10 +75,11 @@ type RawValue = {
 };
 
 const kvSymbol = Symbol("KvRid");
+const commitVersionstampSymbol = Symbol("KvCommitVersionstamp");
 
 class Kv {
   #rid: number;
-  #closed: boolean;
+  #isClosed: boolean;
 
   constructor(rid: number = undefined, symbol: symbol = undefined) {
     if (kvSymbol !== symbol) {
@@ -70,11 +88,15 @@ class Kv {
       );
     }
     this.#rid = rid;
-    this.#closed = false;
+    this.#isClosed = false;
   }
 
   atomic() {
     return new AtomicOperation(this.#rid);
+  }
+
+  commitVersionstamp(): symbol {
+    return commitVersionstampSymbol;
   }
 
   async get(key: Deno.KvKey, opts?: { consistency?: Deno.KvConsistencyLevel }) {
@@ -131,21 +153,10 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }) {
-    value = serializeValue(value);
-
-    const checks: Deno.AtomicCheck[] = [];
-    const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
-      : undefined;
-    const mutations = [
-      [key, "set", value, expireAt],
-    ];
-
-    const versionstamp = await core.opAsync(
-      "op_kv_atomic_write",
+    const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
-      checks,
-      mutations,
+      [],
+      [[key, "set", serializeValue(value), options?.expireIn]],
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
@@ -153,16 +164,10 @@ class Kv {
   }
 
   async delete(key: Deno.KvKey) {
-    const checks: Deno.AtomicCheck[] = [];
-    const mutations = [
-      [key, "delete", null, undefined],
-    ];
-
-    const result = await core.opAsync(
-      "op_kv_atomic_write",
+    const result = await doAtomicWriteInPlace(
       this.#rid,
-      checks,
-      mutations,
+      [],
+      [[key, "delete", null, undefined]],
       [],
     );
     if (!result) throw new TypeError("Failed to set value");
@@ -224,27 +229,31 @@ class Kv {
 
   async enqueue(
     message: unknown,
-    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    opts?: {
+      delay?: number;
+      keysIfUndelivered?: Deno.KvKey[];
+      backoffSchedule?: number[];
+    },
   ) {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
     }
+    if (opts?.backoffSchedule !== undefined) {
+      validateBackoffSchedule(opts?.backoffSchedule);
+    }
 
-    const enqueues = [
-      [
-        core.serialize(message, { forStorage: true }),
-        opts?.delay ?? 0,
-        opts?.keysIfUndelivered ?? [],
-        null,
-      ],
-    ];
-
-    const versionstamp = await core.opAsync(
-      "op_kv_atomic_write",
+    const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       [],
       [],
-      enqueues,
+      [
+        [
+          core.serialize(message, { forStorage: true }),
+          opts?.delay ?? 0,
+          opts?.keysIfUndelivered ?? [],
+          opts?.backoffSchedule ?? null,
+        ],
+      ],
     );
     if (versionstamp === null) throw new TypeError("Failed to enqueue value");
     return { ok: true, versionstamp };
@@ -253,21 +262,18 @@ class Kv {
   async listenQueue(
     handler: (message: unknown) => Promise<void> | void,
   ): Promise<void> {
+    if (this.#isClosed) {
+      throw new Error("already closed");
+    }
     const finishMessageOps = new Map<number, Promise<void>>();
-    while (!this.#closed) {
+    while (true) {
       // Wait for the next message.
-      let next: { 0: Uint8Array; 1: number };
-      try {
-        next = await core.opAsync(
-          "op_kv_dequeue_next_message",
-          this.#rid,
-        );
-      } catch (error) {
-        if (this.#closed) {
-          break;
-        } else {
-          throw error;
-        }
+      const next: { 0: Uint8Array; 1: number } = await core.opAsync(
+        "op_kv_dequeue_next_message",
+        this.#rid,
+      );
+      if (next === null) {
+        break;
       }
 
       // Deserialize the payload.
@@ -286,20 +292,16 @@ class Kv {
         } catch (error) {
           console.error("Exception in queue handler", error);
         } finally {
-          if (this.#closed) {
-            core.close(handleId);
-          } else {
-            const promise: Promise<void> = core.opAsync(
-              "op_kv_finish_dequeued_message",
-              handleId,
-              success,
-            );
-            finishMessageOps.set(handleId, promise);
-            try {
-              await promise;
-            } finally {
-              finishMessageOps.delete(handleId);
-            }
+          const promise: Promise<void> = core.opAsync(
+            "op_kv_finish_dequeued_message",
+            handleId,
+            success,
+          );
+          finishMessageOps.set(handleId, promise);
+          try {
+            await promise;
+          } finally {
+            finishMessageOps.delete(handleId);
           }
         }
       })();
@@ -311,9 +313,78 @@ class Kv {
     finishMessageOps.clear();
   }
 
+  watch(keys: Deno.KvKey[], options = {}) {
+    const raw = options.raw ?? false;
+    const rid = ops.op_kv_watch(this.#rid, keys);
+    const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = Array.from(
+      { length: keys.length },
+      () => undefined,
+    );
+    return new ReadableStream({
+      async pull(controller) {
+        while (true) {
+          let updates;
+          try {
+            updates = await core.opAsync("op_kv_watch_next", rid);
+          } catch (err) {
+            core.tryClose(rid);
+            controller.error(err);
+            return;
+          }
+          if (updates === null) {
+            core.tryClose(rid);
+            controller.close();
+            return;
+          }
+          let changed = false;
+          for (let i = 0; i < keys.length; i++) {
+            if (updates[i] === "unchanged") {
+              if (lastEntries[i] === undefined) {
+                throw new Error(
+                  "watch: invalid unchanged update (internal error)",
+                );
+              }
+              continue;
+            }
+            if (
+              lastEntries[i] !== undefined &&
+              (updates[i]?.versionstamp ?? null) ===
+                lastEntries[i]?.versionstamp
+            ) {
+              continue;
+            }
+            changed = true;
+            if (updates[i] === null) {
+              lastEntries[i] = {
+                key: [...keys[i]],
+                value: null,
+                versionstamp: null,
+              };
+            } else {
+              lastEntries[i] = updates[i];
+            }
+          }
+          if (!changed && !raw) continue; // no change
+          const entries = lastEntries.map((entry) =>
+            entry.versionstamp === null ? { ...entry } : deserializeValue(entry)
+          );
+          controller.enqueue(entries);
+          return;
+        }
+      },
+      cancel() {
+        core.tryClose(rid);
+      },
+    });
+  }
+
   close() {
     core.close(this.#rid);
-    this.#closed = true;
+    this.#isClosed = true;
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 }
 
@@ -340,7 +411,7 @@ class AtomicOperation {
       const key = mutation.key;
       let type: string;
       let value: RawValue | null;
-      let expireAt: number | undefined = undefined;
+      let expireIn: number | undefined = undefined;
       switch (mutation.type) {
         case "delete":
           type = "delete";
@@ -350,7 +421,7 @@ class AtomicOperation {
           break;
         case "set":
           if (typeof mutation.expireIn === "number") {
-            expireAt = Date.now() + mutation.expireIn;
+            expireIn = mutation.expireIn;
           }
           /* falls through */
         case "sum":
@@ -365,7 +436,7 @@ class AtomicOperation {
         default:
           throw new TypeError("Invalid mutation type");
       }
-      this.#mutations.push([key, type, value, expireAt]);
+      this.#mutations.push([key, type, value, expireIn]);
     }
     return this;
   }
@@ -390,10 +461,12 @@ class AtomicOperation {
     value: unknown,
     options?: { expireIn?: number },
   ): this {
-    const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
-      : undefined;
-    this.#mutations.push([key, "set", serializeValue(value), expireAt]);
+    this.#mutations.push([
+      key,
+      "set",
+      serializeValue(value),
+      options?.expireIn,
+    ]);
     return this;
   }
 
@@ -404,23 +477,29 @@ class AtomicOperation {
 
   enqueue(
     message: unknown,
-    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    opts?: {
+      delay?: number;
+      keysIfUndelivered?: Deno.KvKey[];
+      backoffSchedule?: number[];
+    },
   ): this {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
+    }
+    if (opts?.backoffSchedule !== undefined) {
+      validateBackoffSchedule(opts?.backoffSchedule);
     }
     this.#enqueues.push([
       core.serialize(message, { forStorage: true }),
       opts?.delay ?? 0,
       opts?.keysIfUndelivered ?? [],
-      null,
+      opts?.backoffSchedule ?? null,
     ]);
     return this;
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
-    const versionstamp = await core.opAsync(
-      "op_kv_atomic_write",
+    const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       this.#checks,
       this.#mutations,
@@ -670,6 +749,32 @@ class KvListIterator extends AsyncIterator
   [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntry<unknown>> {
     return this;
   }
+}
+
+async function doAtomicWriteInPlace(
+  rid: number,
+  checks: [Deno.KvKey, string | null][],
+  mutations: [Deno.KvKey, string, RawValue | null, number | undefined][],
+  enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][],
+): Promise<string | null> {
+  for (const m of mutations) {
+    const key = m[0];
+    if (
+      key.length && m[1] === "set" &&
+      key[key.length - 1] === commitVersionstampSymbol
+    ) {
+      m[0] = key.slice(0, key.length - 1);
+      m[1] = "setSuffixVersionstampedKey";
+    }
+  }
+
+  return await core.opAsync(
+    "op_kv_atomic_write",
+    rid,
+    checks,
+    mutations,
+    enqueues,
+  );
 }
 
 export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };

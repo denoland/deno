@@ -5,12 +5,11 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
-  deferred,
   delay,
   execCode,
   execCode2,
+  tmpUnixSocketPath,
 } from "./test_util.ts";
-import { join } from "../../../test_util/std/path/mod.ts";
 
 // Since these tests may run in parallel, ensure this port is unique to this file
 const listenPort = 4503;
@@ -48,11 +47,6 @@ Deno.test(
     socket.close();
   },
 );
-
-function tmpUnixSocketPath(): string {
-  const folder = Deno.makeTempDirSync();
-  return join(folder, "socket");
-}
 
 Deno.test(
   {
@@ -800,10 +794,10 @@ Deno.test(
   async function netCloseWriteSuccess() {
     const addr = { hostname: "127.0.0.1", port: listenPort };
     const listener = Deno.listen(addr);
-    const closeDeferred = deferred();
+    const { promise: closePromise, resolve } = Promise.withResolvers<void>();
     listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
-      await closeDeferred;
+      await closePromise;
       conn.close();
     });
     const conn = await Deno.connect(addr);
@@ -820,7 +814,7 @@ Deno.test(
     await assertRejects(async () => {
       await conn.write(new Uint8Array([1, 2, 3]));
     });
-    closeDeferred.resolve();
+    resolve();
     listener.close();
     conn.close();
   },
@@ -901,7 +895,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function whatwgStreams() {
-  (async () => {
+  const server = (async () => {
     const listener = Deno.listen({ hostname: "127.0.0.1", port: listenPort });
     const conn = await listener.accept();
     await conn.readable.pipeTo(conn.writable);
@@ -920,6 +914,7 @@ Deno.test({ permissions: { net: true } }, async function whatwgStreams() {
   assert(!done);
   assertEquals(decoder.decode(value), "Hello World");
   await reader.cancel();
+  await server;
 });
 
 Deno.test(
@@ -973,7 +968,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true } },
-  async function netListenUnref() {
+  async function netListenUnref2() {
     const [statusCode, _output] = await execCode(`
       async function main() {
         const listener = Deno.listen({ port: ${listenPort} });
@@ -1246,3 +1241,34 @@ Deno.test({
   const listener = Deno.listen({ hostname: "localhost", port: "0" });
   listener.close();
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function listenerExplicitResourceManagement() {
+    let done: Promise<Deno.errors.BadResource>;
+
+    {
+      using listener = Deno.listen({ port: listenPort });
+
+      done = assertRejects(
+        () => listener.accept(),
+        Deno.errors.BadResource,
+      );
+    }
+
+    await done;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function listenerExplicitResourceManagementManualClose() {
+    using listener = Deno.listen({ port: listenPort });
+    listener.close();
+    await assertRejects( // definitely closed
+      () => listener.accept(),
+      Deno.errors.BadResource,
+    );
+    // calling [Symbol.dispose] after manual close is a no-op
+  },
+);

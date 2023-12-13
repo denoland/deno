@@ -19,14 +19,12 @@ use ctr::Ctr64BE;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use rsa::pkcs1::DecodeRsaPrivateKey;
-use rsa::PaddingScheme;
 use serde::Deserialize;
-use sha1::Digest;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
@@ -75,10 +73,11 @@ pub enum DecryptAlgorithm {
   },
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_crypto_decrypt(
-  opts: DecryptOptions,
-  data: JsBuffer,
+  #[serde] opts: DecryptOptions,
+  #[buffer] data: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
@@ -116,24 +115,24 @@ fn decrypt_rsa_oaep(
   let label = Some(String::from_utf8_lossy(&label).to_string());
 
   let padding = match hash {
-    ShaHash::Sha1 => PaddingScheme::OAEP {
-      digest: Box::new(Sha1::new()),
-      mgf_digest: Box::new(Sha1::new()),
+    ShaHash::Sha1 => rsa::Oaep {
+      digest: Box::<Sha1>::default(),
+      mgf_digest: Box::<Sha1>::default(),
       label,
     },
-    ShaHash::Sha256 => PaddingScheme::OAEP {
-      digest: Box::new(Sha256::new()),
-      mgf_digest: Box::new(Sha256::new()),
+    ShaHash::Sha256 => rsa::Oaep {
+      digest: Box::<Sha256>::default(),
+      mgf_digest: Box::<Sha256>::default(),
       label,
     },
-    ShaHash::Sha384 => PaddingScheme::OAEP {
-      digest: Box::new(Sha384::new()),
-      mgf_digest: Box::new(Sha384::new()),
+    ShaHash::Sha384 => rsa::Oaep {
+      digest: Box::<Sha384>::default(),
+      mgf_digest: Box::<Sha384>::default(),
       label,
     },
-    ShaHash::Sha512 => PaddingScheme::OAEP {
-      digest: Box::new(Sha512::new()),
-      mgf_digest: Box::new(Sha512::new()),
+    ShaHash::Sha512 => rsa::Oaep {
+      digest: Box::<Sha512>::default(),
+      mgf_digest: Box::<Sha512>::default(),
       label,
     },
   };

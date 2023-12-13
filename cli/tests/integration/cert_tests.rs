@@ -7,10 +7,9 @@ use lsp_types::Url;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
-use std::process::Command;
 use std::sync::Arc;
 use test_util as util;
-use test_util::TempDir;
+use util::testdata_path;
 use util::TestContext;
 
 itest_flaky!(cafile_url_imports {
@@ -77,7 +76,7 @@ fn cafile_env_fetch() {
   let module_url =
     Url::parse("https://localhost:5545/cert/cafile_url_imports.ts").unwrap();
   let context = TestContext::with_http_server();
-  let cafile = context.testdata_path().join("tls/RootCA.pem");
+  let cafile = testdata_path().join("tls/RootCA.pem");
 
   context
     .new_command()
@@ -93,7 +92,7 @@ fn cafile_fetch() {
   let module_url =
     Url::parse("http://localhost:4545/cert/cafile_url_imports.ts").unwrap();
   let context = TestContext::with_http_server();
-  let cafile = context.testdata_path().join("tls/RootCA.pem");
+  let cafile = testdata_path().join("tls/RootCA.pem");
   context
     .new_command()
     .args(format!("cache --quiet --cert {} {}", cafile, module_url,))
@@ -118,36 +117,36 @@ fn cafile_compile() {
 
   context
     .new_command()
-    .command_name(output_exe)
+    .name(output_exe)
     .run()
     .assert_matches_text("[WILDCARD]\nHello\n");
 }
 
 #[flaky_test::flaky_test]
 fn cafile_install_remote_module() {
-  let _g = util::http_server();
-  let temp_dir = TempDir::new();
+  let context = TestContext::with_http_server();
+  let temp_dir = context.temp_dir();
   let bin_dir = temp_dir.path().join("bin");
-  std::fs::create_dir(&bin_dir).unwrap();
-  let deno_dir = TempDir::new();
+  bin_dir.create_dir_all();
   let cafile = util::testdata_path().join("tls/RootCA.pem");
 
-  let install_output = Command::new(util::deno_exe_path())
-    .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::testdata_path())
-    .arg("install")
-    .arg("--cert")
-    .arg(cafile)
-    .arg("--root")
-    .arg(temp_dir.path())
-    .arg("-n")
-    .arg("echo_test")
-    .arg("https://localhost:5545/echo.ts")
-    .output()
-    .expect("Failed to spawn script");
-  println!("{}", std::str::from_utf8(&install_output.stdout).unwrap());
-  eprintln!("{}", std::str::from_utf8(&install_output.stderr).unwrap());
-  assert!(install_output.status.success());
+  let install_output = context
+    .new_command()
+    .args_vec([
+      "install",
+      "--cert",
+      &cafile.to_string_lossy(),
+      "--root",
+      &temp_dir.path().to_string_lossy(),
+      "-n",
+      "echo_test",
+      "https://localhost:5545/echo.ts",
+    ])
+    .split_output()
+    .run();
+  println!("{}", install_output.stdout());
+  eprintln!("{}", install_output.stderr());
+  install_output.assert_exit_code(0);
 
   let mut echo_test_path = bin_dir.join("echo_test");
   if cfg!(windows) {
@@ -155,61 +154,52 @@ fn cafile_install_remote_module() {
   }
   assert!(echo_test_path.exists());
 
-  let output = Command::new(echo_test_path)
-    .current_dir(temp_dir.path())
-    .arg("foo")
+  let output = context
+    .new_command()
+    .name(echo_test_path)
+    .args("foo")
     .env("PATH", util::target_dir())
-    .output()
-    .expect("failed to spawn script");
-  let stdout = std::str::from_utf8(&output.stdout).unwrap().trim();
-  assert!(stdout.ends_with("foo"));
+    .run();
+  output.assert_matches_text("[WILDCARD]foo");
 }
 
 #[flaky_test::flaky_test]
 fn cafile_bundle_remote_exports() {
-  let _g = util::http_server();
+  let context = TestContext::with_http_server();
 
   // First we have to generate a bundle of some remote module that has exports.
   let mod1 = "https://localhost:5545/subdir/mod1.ts";
   let cafile = util::testdata_path().join("tls/RootCA.pem");
-  let t = TempDir::new();
+  let t = context.temp_dir();
   let bundle = t.path().join("mod1.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("bundle")
-    .arg("--cert")
-    .arg(cafile)
-    .arg(mod1)
-    .arg(&bundle)
-    .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert!(status.success());
+  context
+    .new_command()
+    .args_vec([
+      "bundle",
+      "--cert",
+      &cafile.to_string_lossy(),
+      mod1,
+      &bundle.to_string_lossy(),
+    ])
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
   assert!(bundle.is_file());
 
   // Now we try to use that bundle from another module.
   let test = t.path().join("test.js");
-  std::fs::write(
-    &test,
-    "
-      import { printHello3 } from \"./mod1.bundle.js\";
-      printHello3(); ",
-  )
-  .expect("error writing file");
+  test.write(
+    "import { printHello3 } from \"./mod1.bundle.js\";
+printHello3();",
+  );
 
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--check")
-    .arg(&test)
-    .output()
-    .expect("failed to spawn script");
-  // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
-  assert_eq!(output.stderr, b"");
+  context
+    .new_command()
+    .args_vec(["run", "--quiet", "--check", &test.to_string_lossy()])
+    .run()
+    .assert_matches_text("[WILDCARD]Hello\n")
+    .assert_exit_code(0);
 }
 
 #[tokio::test]
@@ -223,7 +213,7 @@ async fn listen_tls_alpn() {
     .arg("--allow-read")
     .arg("./cert/listen_tls_alpn.ts")
     .arg("4504")
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdout = child.stdout.as_mut().unwrap();
@@ -250,13 +240,12 @@ async fn listen_tls_alpn() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
     .unwrap();
-  let mut tls_stream = TlsStream::new_client_side(tcp_stream, cfg, hostname);
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
 
-  tls_stream.handshake().await.unwrap();
+  let handshake = tls_stream.handshake().await.unwrap();
 
-  let (_, rustls_connection) = tls_stream.get_ref();
-  let alpn = rustls_connection.alpn_protocol().unwrap();
-  assert_eq!(alpn, b"foobar");
+  assert_eq!(handshake.alpn, Some(b"foobar".to_vec()));
 
   let status = child.wait().unwrap();
   assert!(status.success());
@@ -273,7 +262,7 @@ async fn listen_tls_alpn_fail() {
     .arg("--allow-read")
     .arg("./cert/listen_tls_alpn_fail.ts")
     .arg("4505")
-    .stdout(std::process::Stdio::piped())
+    .stdout_piped()
     .spawn()
     .unwrap();
   let stdout = child.stdout.as_mut().unwrap();
@@ -300,12 +289,10 @@ async fn listen_tls_alpn_fail() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await
     .unwrap();
-  let mut tls_stream = TlsStream::new_client_side(tcp_stream, cfg, hostname);
+  let mut tls_stream =
+    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
 
   tls_stream.handshake().await.unwrap_err();
-
-  let (_, rustls_connection) = tls_stream.get_ref();
-  assert!(rustls_connection.alpn_protocol().is_none());
 
   let status = child.wait().unwrap();
   assert!(status.success());

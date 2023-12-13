@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, deferred, delay } from "./test_util.ts";
+import { assertEquals, assertThrows, delay } from "./test_util.ts";
 
 Deno.test(
   { ignore: Deno.build.os !== "windows" },
@@ -110,7 +110,7 @@ Deno.test(
     permissions: { run: true },
   },
   async function signalListenerTest() {
-    const resolvable = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     let c = 0;
     const listener = () => {
       c += 1;
@@ -122,13 +122,15 @@ Deno.test(
         await delay(20);
         Deno.kill(Deno.pid, "SIGUSR1");
       }
-      await delay(20);
+      await promise;
       Deno.removeSignalListener("SIGUSR1", listener);
-      resolvable.resolve();
     });
 
-    await resolvable;
-    assertEquals(c, 3);
+    // We'll get three signals eventually
+    while (c < 3) {
+      await delay(20);
+    }
+    resolve();
   },
 );
 
@@ -138,7 +140,7 @@ Deno.test(
     permissions: { run: true },
   },
   async function multipleSignalListenerTest() {
-    const resolvable = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     let c = "";
     const listener0 = () => {
       c += "0";
@@ -154,7 +156,9 @@ Deno.test(
         await delay(20);
         Deno.kill(Deno.pid, "SIGUSR2");
       }
-      await delay(20);
+      while (c.length < 6) {
+        await delay(20);
+      }
       Deno.removeSignalListener("SIGUSR2", listener1);
       // Sends SIGUSR2 3 times.
       for (const _ of Array(3)) {
@@ -167,12 +171,16 @@ Deno.test(
         await delay(20);
         Deno.kill(Deno.pid, "SIGUSR1");
       }
-      await delay(20);
+
+      while (c.length < 9) {
+        await delay(20);
+      }
+
       Deno.removeSignalListener("SIGUSR2", listener0);
-      resolvable.resolve();
+      resolve();
     });
 
-    await resolvable;
+    await promise;
     // The first 3 events are handled by both handlers
     // The last 3 events are handled only by handler0
     assertEquals(c, "010101000");

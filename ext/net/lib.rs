@@ -12,11 +12,11 @@ use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
-use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
+
+pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
 pub trait NetPermissions {
   fn check_net<T: AsRef<str>>(
@@ -29,38 +29,13 @@ pub trait NetPermissions {
     -> Result<(), AnyError>;
 }
 
-/// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
-/// using type alias for a bool could work, but there's a high chance
-/// that there might be another type alias pointing to a bool, which
-/// would override previously used alias.
-pub struct UnstableChecker {
-  pub unstable: bool,
-}
-
-impl UnstableChecker {
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.unstable {
-      eprintln!(
-        "Unstable API '{api_name}'. The --unstable flag must be provided."
-      );
-      std::process::exit(70);
-    }
-  }
-}
 /// Helper for checking unstable features. Used for sync ops.
-pub fn check_unstable(state: &OpState, api_name: &str) {
-  state.borrow::<UnstableChecker>().check_unstable(api_name)
-}
-
-/// Helper for checking unstable features. Used for async ops.
-pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
-  let state = state.borrow();
-  state.borrow::<UnstableChecker>().check_unstable(api_name)
+fn check_unstable(state: &OpState, api_name: &str) {
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
+  state
+    .feature_checker
+    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name);
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -125,14 +100,12 @@ deno_core::extension!(deno_net,
   esm = [ "01_net.js", "02_tls.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
-    unstable: bool,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   },
   state = |state, options| {
     state.put(DefaultTlsOptions {
       root_cert_store_provider: options.root_cert_store_provider,
     });
-    state.put(UnstableChecker { unstable: options.unstable });
     state.put(UnsafelyIgnoreCertificateErrors(
       options.unsafely_ignore_certificate_errors,
     ));

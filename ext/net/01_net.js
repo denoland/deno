@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 import {
   readableStreamForRidUnrefable,
@@ -9,23 +9,23 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+
 const {
-  ArrayPrototypeFilter,
-  ArrayPrototypeForEach,
-  ArrayPrototypePush,
   Error,
   Number,
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
+  SetPrototypeForEach,
   SymbolAsyncIterator,
-  SymbolFor,
+  Symbol,
   TypeError,
   TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
-
-const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 async function write(rid, data) {
   return await core.write(rid, data);
@@ -67,7 +67,7 @@ class Conn {
   #remoteAddr = null;
   #localAddr = null;
   #unref = false;
-  #pendingReadPromiseIds = [];
+  #pendingReadPromises = new SafeSet();
 
   #readable;
   #writable;
@@ -99,19 +99,15 @@ class Conn {
       return 0;
     }
     const promise = core.read(this.rid, buffer);
-    const promiseId = promise[promiseIdSymbol];
-    if (this.#unref) core.unrefOp(promiseId);
-    ArrayPrototypePush(this.#pendingReadPromiseIds, promiseId);
+    if (this.#unref) core.unrefOpPromise(promise);
+    SetPrototypeAdd(this.#pendingReadPromises, promise);
     let nread;
     try {
       nread = await promise;
     } catch (e) {
       throw e;
     } finally {
-      this.#pendingReadPromiseIds = ArrayPrototypeFilter(
-        this.#pendingReadPromiseIds,
-        (id) => id !== promiseId,
-      );
+      SetPrototypeDelete(this.#pendingReadPromises, promise);
     }
     return nread === 0 ? null : nread;
   }
@@ -146,7 +142,11 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableRef(this.#readable);
     }
-    ArrayPrototypeForEach(this.#pendingReadPromiseIds, (id) => core.refOp(id));
+
+    SetPrototypeForEach(
+      this.#pendingReadPromises,
+      (promise) => core.refOpPromise(promise),
+    );
   }
 
   unref() {
@@ -154,10 +154,14 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableUnref(this.#readable);
     }
-    ArrayPrototypeForEach(
-      this.#pendingReadPromiseIds,
-      (id) => core.unrefOp(id),
+    SetPrototypeForEach(
+      this.#pendingReadPromises,
+      (promise) => core.unrefOpPromise(promise),
     );
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
   }
 }
 
@@ -177,7 +181,7 @@ class Listener {
   #rid = 0;
   #addr = null;
   #unref = false;
-  #promiseId = null;
+  #promise = null;
 
   constructor(rid, addr) {
     this.#rid = rid;
@@ -204,10 +208,10 @@ class Listener {
       default:
         throw new Error(`Unsupported transport: ${this.addr.transport}`);
     }
-    this.#promiseId = promise[promiseIdSymbol];
-    if (this.#unref) core.unrefOp(this.#promiseId);
+    this.#promise = promise;
+    if (this.#unref) core.unrefOpPromise(promise);
     const { 0: rid, 1: localAddr, 2: remoteAddr } = await promise;
-    this.#promiseId = null;
+    this.#promise = null;
     if (this.addr.transport == "tcp") {
       localAddr.transport = "tcp";
       remoteAddr.transport = "tcp";
@@ -248,21 +252,25 @@ class Listener {
     core.close(this.rid);
   }
 
+  [SymbolDispose]() {
+    core.tryClose(this.#rid);
+  }
+
   [SymbolAsyncIterator]() {
     return this;
   }
 
   ref() {
     this.#unref = false;
-    if (typeof this.#promiseId === "number") {
-      core.refOp(this.#promiseId);
+    if (this.#promise !== null) {
+      core.refOpPromise(this.#promise);
     }
   }
 
   unref() {
     this.#unref = true;
-    if (typeof this.#promiseId === "number") {
-      core.unrefOp(this.#promiseId);
+    if (this.#promise !== null) {
+      core.unrefOpPromise(this.#promise);
     }
   }
 }
@@ -416,6 +424,8 @@ class Datagram {
   }
 }
 
+const listenOptionApiName = Symbol("listenOptionApiName");
+
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
@@ -427,7 +437,10 @@ function listen(args) {
       return new Listener(rid, addr);
     }
     case "unix": {
-      const { 0: rid, 1: path } = ops.op_net_listen_unix(args.path);
+      const { 0: rid, 1: path } = ops.op_net_listen_unix(
+        args.path,
+        args[listenOptionApiName] ?? "Deno.listen",
+      );
       const addr = {
         transport: "unix",
         path,
@@ -505,6 +518,7 @@ export {
   Datagram,
   listen,
   Listener,
+  listenOptionApiName,
   resolveDns,
   shutdown,
   TcpConn,

@@ -6,11 +6,10 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
-  Deferred,
-  deferred,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { readAll } from "../../../test_util/std/streams/read_all.ts";
+import { writeAll } from "../../../test_util/std/streams/write_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
@@ -177,7 +176,7 @@ Deno.test(
 Deno.test(
   { permissions: { read: true, net: true } },
   async function dialAndListenTLS() {
-    const resolvable = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const hostname = "localhost";
     const port = 3500;
 
@@ -200,7 +199,7 @@ Deno.test(
         // TODO(bartlomieju): this might be a bug
         setTimeout(() => {
           conn.close();
-          resolvable.resolve();
+          resolve();
         }, 0);
       },
     );
@@ -230,13 +229,13 @@ Deno.test(
     assertEquals(decoder.decode(bodyBuf), "Hello World\n");
     conn.close();
     listener.close();
-    await resolvable;
+    await promise;
   },
 );
 Deno.test(
   { permissions: { read: false, net: true } },
   async function listenTlsWithCertAndKey() {
-    const resolvable = deferred();
+    const { promise, resolve } = Promise.withResolvers<void>();
     const hostname = "localhost";
     const port = 3500;
 
@@ -253,7 +252,7 @@ Deno.test(
         await conn.write(response);
         setTimeout(() => {
           conn.close();
-          resolvable.resolve();
+          resolve();
         }, 0);
       },
     );
@@ -283,7 +282,7 @@ Deno.test(
     assertEquals(decoder.decode(bodyBuf), "Hello World\n");
     conn.close();
     listener.close();
-    await resolvable;
+    await promise;
   },
 );
 
@@ -538,15 +537,23 @@ Deno.test(
   },
 );
 
+const largeAmount = 1 << 20 /* 1 MB */;
+
 async function sendAlotReceiveNothing(conn: Deno.Conn) {
   // Start receive op.
   const readBuf = new Uint8Array(1024);
   const readPromise = conn.read(readBuf);
 
+  const timeout = setTimeout(() => {
+    throw new Error("Failed to send buffer in a reasonable amount of time");
+  }, 10_000);
+
   // Send 1 MB of data.
-  const writeBuf = new Uint8Array(1 << 20 /* 1 MB */);
+  const writeBuf = new Uint8Array(largeAmount);
   writeBuf.fill(42);
-  await conn.write(writeBuf);
+  await writeAll(conn, writeBuf);
+
+  clearTimeout(timeout);
 
   // Send EOF.
   await conn.closeWrite();
@@ -564,14 +571,29 @@ async function sendAlotReceiveNothing(conn: Deno.Conn) {
 async function receiveAlotSendNothing(conn: Deno.Conn) {
   const readBuf = new Uint8Array(1024);
   let n: number | null;
+  let nread = 0;
+
+  const timeout = setTimeout(() => {
+    throw new Error(
+      `Failed to read buffer in a reasonable amount of time (got ${nread}/${largeAmount})`,
+    );
+  }, 10_000);
 
   // Receive 1 MB of data.
-  for (let nread = 0; nread < 1 << 20 /* 1 MB */; nread += n!) {
-    n = await conn.read(readBuf);
-    assertStrictEquals(typeof n, "number");
-    assert(n! > 0);
-    assertStrictEquals(readBuf[0], 42);
+  try {
+    for (; nread < largeAmount; nread += n!) {
+      n = await conn.read(readBuf);
+      assertStrictEquals(typeof n, "number");
+      assert(n! > 0);
+      assertStrictEquals(readBuf[0], 42);
+    }
+  } catch (e) {
+    throw new Error(
+      `Got an error (${e.message}) after reading ${nread}/${largeAmount} bytes`,
+      { cause: e },
+    );
   }
+  clearTimeout(timeout);
 
   // Close the connection, without sending anything at all.
   conn.close();
@@ -623,7 +645,7 @@ async function sendReceiveEmptyBuf(conn: Deno.Conn) {
 
   await assertRejects(async () => {
     await conn.write(byteBuf);
-  }, Deno.errors.BrokenPipe);
+  }, Deno.errors.NotConnected);
 
   n = await conn.write(emptyBuf);
   assertStrictEquals(n, 0);
@@ -746,20 +768,20 @@ async function tlsWithTcpFailureTestImpl(
       tcpConn2: tcpClientConn,
     };
 
-  const tcpForwardingInterruptPromise1 = deferred<void>();
+  const tcpForwardingInterruptDeferred1 = Promise.withResolvers<void>();
   const tcpForwardingPromise1 = forwardBytes(
     tcpConn2,
     tcpConn1,
     cipherByteCount,
-    tcpForwardingInterruptPromise1,
+    tcpForwardingInterruptDeferred1,
   );
 
-  const tcpForwardingInterruptPromise2 = deferred<void>();
+  const tcpForwardingInterruptDeferred2 = Promise.withResolvers<void>();
   const tcpForwardingPromise2 = forwardBytes(
     tcpConn1,
     tcpConn2,
     Infinity,
-    tcpForwardingInterruptPromise2,
+    tcpForwardingInterruptDeferred2,
   );
 
   switch (phase) {
@@ -812,7 +834,7 @@ async function tlsWithTcpFailureTestImpl(
       }
       await tlsTrafficPromise1;
 
-      tcpForwardingInterruptPromise2.resolve();
+      tcpForwardingInterruptDeferred2.resolve();
       await tcpForwardingPromise2;
       await tcpConn2.closeWrite();
       await tlsTrafficPromise2;
@@ -828,8 +850,8 @@ async function tlsWithTcpFailureTestImpl(
         receiveBytes(tlsConn2, 0x99, 99999),
       ]);
 
-      tcpForwardingInterruptPromise1.resolve();
-      await tcpForwardingPromise1;
+      tcpForwardingInterruptDeferred1.resolve();
+      await tcpForwardingInterruptDeferred1.promise;
 
       switch (failureMode) {
         case "corruption":
@@ -838,16 +860,15 @@ async function tlsWithTcpFailureTestImpl(
             () => receiveEof(tlsConn1),
             Deno.errors.InvalidData,
           );
-          tcpForwardingInterruptPromise2.resolve();
+          tcpForwardingInterruptDeferred2.resolve();
           break;
         case "shutdown":
-          // Receiving a TCP FIN packet without receiving a TLS CloseNotify
-          // alert is not the expected mode of operation, but it is not a
-          // problem either, so it should be treated as if the TLS session was
-          // gracefully closed.
           await Promise.all([
             tcpConn1.closeWrite(),
-            await receiveEof(tlsConn1),
+            await assertRejects(
+              () => receiveEof(tlsConn1),
+              Deno.errors.UnexpectedEof,
+            ),
             await tlsConn1.closeWrite(),
             await receiveEof(tlsConn2),
           ]);
@@ -911,12 +932,15 @@ async function tlsWithTcpFailureTestImpl(
     source: Deno.Conn,
     sink: Deno.Conn,
     count: number,
-    interruptPromise: Deferred<void>,
+    interruptPromise: ReturnType<typeof Promise.withResolvers<void>>,
   ) {
     let buf = new Uint8Array(1 << 12 /* 4 kB */);
     while (count > 0) {
       buf = buf.subarray(0, Math.min(buf.length, count));
-      const nread = await Promise.race([source.read(buf), interruptPromise]);
+      const nread = await Promise.race([
+        source.read(buf),
+        interruptPromise.promise,
+      ]);
       if (nread == null) break; // Either EOF or interrupted.
       const nwritten = await sink.write(buf.subarray(0, nread));
       assertStrictEquals(nread, nwritten);
@@ -1036,8 +1060,8 @@ function createHttpsListener(port: number): Deno.Listener {
       );
 
       // Send response.
-      await conn.write(resHead);
-      await conn.write(resBody);
+      await writeAll(conn, resHead);
+      await writeAll(conn, resBody);
 
       // Close TCP connection.
       conn.close();
@@ -1046,12 +1070,14 @@ function createHttpsListener(port: number): Deno.Listener {
 }
 
 async function curl(url: string): Promise<string> {
-  const { success, code, stdout } = await new Deno.Command("curl", {
+  const { success, code, stdout, stderr } = await new Deno.Command("curl", {
     args: ["--insecure", url],
   }).output();
 
   if (!success) {
-    throw new Error(`curl ${url} failed: ${code}`);
+    throw new Error(
+      `curl ${url} failed: ${code}:\n${new TextDecoder().decode(stderr)}`,
+    );
   }
   return new TextDecoder().decode(stdout);
 }
@@ -1276,8 +1302,7 @@ Deno.test(
     // Begin sending a 10mb blob over the TLS connection.
     const whole = new Uint8Array(10 << 20); // 10mb.
     whole.fill(42);
-    const sendPromise = conn1.write(whole);
-
+    const sendPromise = writeAll(conn1, whole);
     // Set up the other end to receive half of the large blob.
     const half = new Uint8Array(whole.byteLength / 2);
     const receivePromise = readFull(conn2, half);
@@ -1294,7 +1319,7 @@ Deno.test(
 
     // Receive second half of large blob. Wait for the send promise and check it.
     assertEquals(await readFull(conn2, half), half.length);
-    assertEquals(await sendPromise, whole.length);
+    await sendPromise;
 
     await conn1.handshake();
     await conn2.handshake();
@@ -1352,7 +1377,7 @@ Deno.test(
       await assertRejects(
         () => conn.handshake(),
         Deno.errors.InvalidData,
-        "UnknownIssuer",
+        "invalid peer certificate: UnknownIssuer",
       );
       conn.close();
     }
@@ -1381,7 +1406,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function listenTlsWithReuseAddr() {
-    const resolvable1 = deferred();
+    const deferred1 = Promise.withResolvers<void>();
     const hostname = "localhost";
     const port = 3500;
 
@@ -1389,25 +1414,25 @@ Deno.test(
 
     listener1.accept().then((conn) => {
       conn.close();
-      resolvable1.resolve();
+      deferred1.resolve();
     });
 
     const conn1 = await Deno.connectTls({ hostname, port, caCerts });
     conn1.close();
-    await resolvable1;
+    await deferred1.promise;
     listener1.close();
 
-    const resolvable2 = deferred();
+    const deferred2 = Promise.withResolvers<void>();
     const listener2 = Deno.listenTls({ hostname, port, cert, key });
 
     listener2.accept().then((conn) => {
       conn.close();
-      resolvable2.resolve();
+      deferred2.resolve();
     });
 
     const conn2 = await Deno.connectTls({ hostname, port, caCerts });
     conn2.close();
-    await resolvable2;
+    await deferred2.promise;
     listener2.close();
   },
 );

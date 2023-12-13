@@ -38,6 +38,7 @@ exports["int"] = "int";
 exports["interface"] = "interface";
 exports["let"] = "let";
 exports["long"] = "long";
+exports["mod"] = "mod";
 exports["native"] = "native";
 exports["new"] = "new";
 exports["null"] = "null";

@@ -1,14 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file camelcase
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
   StringPrototypeSplit,
   StringPrototypeTrim,
   Symbol,
+  SymbolFor,
   TypeError,
 } = primordials;
 import {
@@ -59,6 +58,10 @@ class CacheStorage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await op_cache_storage_delete(cacheName);
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 
@@ -276,10 +279,14 @@ class Cache {
 
     return responses;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  }
 }
 
-webidl.configurePrototype(CacheStorage);
-webidl.configurePrototype(Cache);
+webidl.configureInterface(CacheStorage);
+webidl.configureInterface(Cache);
 const CacheStoragePrototype = CacheStorage.prototype;
 const CachePrototype = Cache.prototype;
 

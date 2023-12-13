@@ -9,10 +9,10 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
@@ -23,6 +23,7 @@ const {
   // SharedArrayBufferPrototype
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
+  SymbolFor,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -190,9 +191,24 @@ class TextDecoder {
       }
     }
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextDecoderPrototype, this),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(TextDecoder);
+webidl.configureInterface(TextDecoder);
 const TextDecoderPrototype = TextDecoder.prototype;
 
 class TextEncoder {
@@ -247,11 +263,22 @@ class TextEncoder {
       written: encodeIntoBuf[1],
     };
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(TextEncoderPrototype, this),
+        keys: ["encoding"],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
 const encodeIntoBuf = new Uint32Array(2);
 
-webidl.configurePrototype(TextEncoder);
+webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;
 
 class TextDecoderStream {
@@ -301,6 +328,14 @@ class TextDecoderStream {
           return PromiseReject(err);
         }
       },
+      cancel: (_reason) => {
+        try {
+          const _ = this.#decoder.decode();
+          return PromiseResolve();
+        } catch (err) {
+          return PromiseReject(err);
+        }
+      },
     });
     this[webidl.brand] = webidl.brand;
   }
@@ -334,9 +369,29 @@ class TextDecoderStream {
     webidl.assertBranded(this, TextDecoderStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextDecoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "fatal",
+          "ignoreBOM",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(TextDecoderStream);
+webidl.configureInterface(TextDecoderStream);
 const TextDecoderStreamPrototype = TextDecoderStream.prototype;
 
 class TextEncoderStream {
@@ -407,9 +462,27 @@ class TextEncoderStream {
     webidl.assertBranded(this, TextEncoderStreamPrototype);
     return this.#transform.writable;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TextEncoderStreamPrototype,
+          this,
+        ),
+        keys: [
+          "encoding",
+          "readable",
+          "writable",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(TextEncoderStream);
+webidl.configureInterface(TextEncoderStream);
 const TextEncoderStreamPrototype = TextEncoderStream.prototype;
 
 webidl.converters.TextDecoderOptions = webidl.createDictionaryConverter(

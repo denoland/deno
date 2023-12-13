@@ -6,10 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
+import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -32,6 +30,7 @@ const {
   StringPrototypeSubstring,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
+  Symbol,
   TypeError,
 } = primordials;
 import { URLPrototype } from "ext:deno_url/00_url.js";
@@ -457,6 +456,12 @@ function pathFromURL(pathOrUrl) {
 // NOTE(bartlomieju): this is exposed on `internals` so we can test
 // it in unit tests
 internals.pathFromURL = pathFromURL;
+
+// deno-lint-ignore prefer-primordials
+export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolAsyncDispose = Symbol.asyncDispose ??
+  Symbol("Symbol.asyncDispose");
 
 export {
   ASCII_ALPHA,

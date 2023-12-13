@@ -432,9 +432,14 @@ pub fn enumerator<'s>(
   };
   let inner = v8::Local::new(scope, inner);
 
-  let Some(array) =
-    inner.get_property_names(scope, GetPropertyNamesArgs::default())
-  else {
+  let Some(array) = inner.get_property_names(
+    scope,
+    GetPropertyNamesArgs {
+      mode: v8::KeyCollectionMode::OwnOnly,
+      property_filter: v8::PropertyFilter::ALL_PROPERTIES,
+      ..Default::default()
+    },
+  ) else {
     return;
   };
 

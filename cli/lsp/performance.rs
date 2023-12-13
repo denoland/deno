@@ -51,7 +51,12 @@ pub struct PerformanceMeasure {
 
 impl fmt::Display for PerformanceMeasure {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{} ({}ms)", self.name, self.duration.as_millis())
+    write!(
+      f,
+      "{} ({}ms)",
+      self.name,
+      self.duration.as_micros() as f64 / 1000.0
+    )
   }
 }
 
@@ -74,6 +79,8 @@ impl From<PerformanceMark> for PerformanceMeasure {
 #[derive(Debug)]
 pub struct Performance {
   counts: Mutex<HashMap<String, u32>>,
+  measurements_by_type:
+    Mutex<HashMap<String, (/* count */ u32, /* duration */ f64)>>,
   max_size: usize,
   measures: Mutex<VecDeque<PerformanceMeasure>>,
 }
@@ -82,6 +89,7 @@ impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
+      measurements_by_type: Default::default(),
       max_size: 3_000,
       measures: Default::default(),
     }
@@ -132,10 +140,33 @@ impl Performance {
       .collect()
   }
 
-  /// Marks the start of a measurement which returns a performance mark
-  /// structure, which is then passed to `.measure()` to finalize the duration
-  /// and add it to the internal buffer.
-  pub fn mark<S: AsRef<str>, V: Serialize>(
+  pub fn measurements_by_type(&self) -> Vec<(String, u32, f64)> {
+    let measurements_by_type = self.measurements_by_type.lock();
+    measurements_by_type
+      .iter()
+      .map(|(name, (count, duration))| (name.to_string(), *count, *duration))
+      .collect::<Vec<_>>()
+  }
+
+  pub fn averages_as_f64(&self) -> Vec<(String, u32, f64)> {
+    let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
+    for measure in self.measures.lock().iter() {
+      averages
+        .entry(measure.name.clone())
+        .or_default()
+        .push(measure.duration);
+    }
+    averages
+      .into_iter()
+      .map(|(k, d)| {
+        let count = d.len() as u32;
+        let a = d.into_iter().sum::<Duration>() / count;
+        (k, count, a.as_micros() as f64 / 1000.0)
+      })
+      .collect()
+  }
+
+  fn mark_inner<S: AsRef<str>, V: Serialize>(
     &self,
     name: S,
     maybe_args: Option<V>,
@@ -144,6 +175,13 @@ impl Performance {
     let mut counts = self.counts.lock();
     let count = counts.entry(name.to_string()).or_insert(0);
     *count += 1;
+    {
+      let mut measurements_by_type = self.measurements_by_type.lock();
+      let measurement = measurements_by_type
+        .entry(name.to_string())
+        .or_insert((0, 0.0));
+      measurement.0 += 1;
+    }
     let msg = if let Some(args) = maybe_args {
       json!({
         "type": "mark",
@@ -165,6 +203,24 @@ impl Performance {
     }
   }
 
+  /// Marks the start of a measurement which returns a performance mark
+  /// structure, which is then passed to `.measure()` to finalize the duration
+  /// and add it to the internal buffer.
+  pub fn mark<S: AsRef<str>>(&self, name: S) -> PerformanceMark {
+    self.mark_inner(name, None::<()>)
+  }
+
+  /// Marks the start of a measurement which returns a performance mark
+  /// structure, which is then passed to `.measure()` to finalize the duration
+  /// and add it to the internal buffer.
+  pub fn mark_with_args<S: AsRef<str>, V: Serialize>(
+    &self,
+    name: S,
+    args: V,
+  ) -> PerformanceMark {
+    self.mark_inner(name, Some(args))
+  }
+
   /// A function which accepts a previously created performance mark which will
   /// be used to finalize the duration of the span being measured, and add the
   /// measurement to the internal buffer.
@@ -176,10 +232,17 @@ impl Performance {
         "type": "measure",
         "name": measure.name,
         "count": measure.count,
-        "duration": measure.duration.as_millis() as u32,
+        "duration": measure.duration.as_micros() as f64 / 1000.0,
       })
     );
     let duration = measure.duration;
+    {
+      let mut measurements_by_type = self.measurements_by_type.lock();
+      let measurement = measurements_by_type
+        .entry(measure.name.to_string())
+        .or_insert((0, 0.0));
+      measurement.1 += duration.as_micros() as f64 / 1000.0;
+    }
     let mut measures = self.measures.lock();
     measures.push_front(measure);
     while measures.len() > self.max_size {
@@ -201,9 +264,9 @@ mod tests {
   #[test]
   fn test_average() {
     let performance = Performance::default();
-    let mark1 = performance.mark("a", None::<()>);
-    let mark2 = performance.mark("a", None::<()>);
-    let mark3 = performance.mark("b", None::<()>);
+    let mark1 = performance.mark("a");
+    let mark2 = performance.mark("a");
+    let mark3 = performance.mark("b");
     performance.measure(mark2);
     performance.measure(mark1);
     performance.measure(mark3);
@@ -217,8 +280,8 @@ mod tests {
   #[test]
   fn test_averages() {
     let performance = Performance::default();
-    let mark1 = performance.mark("a", None::<()>);
-    let mark2 = performance.mark("a", None::<()>);
+    let mark1 = performance.mark("a");
+    let mark2 = performance.mark("a");
     performance.measure(mark2);
     performance.measure(mark1);
     let averages = performance.averages();

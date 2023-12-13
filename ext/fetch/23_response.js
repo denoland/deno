@@ -10,7 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
@@ -30,7 +30,6 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -60,6 +59,7 @@ const _response = Symbol("response");
 const _headers = Symbol("headers");
 const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
+const _brand = webidl.brand;
 
 /**
  * @typedef InnerResponse
@@ -305,6 +305,11 @@ class Response {
    * @param {ResponseInit} init
    */
   constructor(body = null, init = undefined) {
+    if (body === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Response'";
     body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
@@ -320,7 +325,7 @@ class Response {
       bodyWithType = extractBody(body);
     }
     initializeAResponse(this, init, bodyWithType);
-    this[webidl.brand] = webidl.brand;
+    this[_brand] = _brand;
   }
 
   /**
@@ -402,25 +407,28 @@ class Response {
     return second;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
-      keys: [
-        "body",
-        "bodyUsed",
-        "headers",
-        "ok",
-        "redirected",
-        "status",
-        "statusText",
-        "url",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
+        keys: [
+          "body",
+          "bodyUsed",
+          "headers",
+          "ok",
+          "redirected",
+          "status",
+          "statusText",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(Response);
+webidl.configureInterface(Response);
 ObjectDefineProperties(Response, {
   json: { enumerable: true },
   redirect: { enumerable: true },
@@ -489,7 +497,7 @@ function toInnerResponse(response) {
  * @returns {Response}
  */
 function fromInnerResponse(inner, guard) {
-  const response = webidl.createBranded(Response);
+  const response = new Response(_brand);
   response[_response] = inner;
   response[_headers] = headersFromHeaderList(inner.headerList, guard);
   return response;

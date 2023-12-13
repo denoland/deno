@@ -11,6 +11,9 @@ pub struct AsyncWork {
   pub complete: napi_async_complete_callback,
 }
 
+unsafe impl Send for AsyncWork {}
+unsafe impl Sync for AsyncWork {}
+
 #[napi_sym::napi_sym]
 fn napi_create_async_work(
   _env: *mut Env,
@@ -61,12 +64,22 @@ fn napi_queue_async_work(
     return napi_invalid_arg;
   };
 
-  let fut = Box::new(move || {
-    (work.execute)(env_ptr as napi_env, work.data);
-    // Note: Must be called from the loop thread.
-    (work.complete)(env_ptr as napi_env, napi_ok, work.data);
-  });
-  env.add_async_work(fut);
+  #[repr(transparent)]
+  struct SendPtr<T>(*const T);
+  unsafe impl<T> Send for SendPtr<T> {}
+  unsafe impl<T> Sync for SendPtr<T> {}
+  let send_env = SendPtr(env_ptr);
+
+  #[inline(always)]
+  fn do_work(ptr: SendPtr<Env>, work: &AsyncWork) {
+    // SAFETY: This is a valid async work queue call and it runs on the event loop thread
+    unsafe {
+      (work.execute)(ptr.0 as napi_env, work.data);
+      (work.complete)(ptr.0 as napi_env, napi_ok, work.data);
+    }
+  }
+
+  env.add_async_work(move || do_work(send_env, work));
 
   napi_ok
 }

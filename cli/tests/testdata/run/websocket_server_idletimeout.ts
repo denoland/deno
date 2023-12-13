@@ -1,8 +1,7 @@
-import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../../test_util/std/async/deferred.ts";
+import { assertEquals } from "../../../../test_util/std/assert/mod.ts";
 
-const errorDeferred = deferred();
-const closeDeferred = deferred();
+const errorDeferred = Promise.withResolvers<void>();
+const closeDeferred = Promise.withResolvers<void>();
 
 const listener = Deno.listen({ port: 4509 });
 console.log("READY");
@@ -21,6 +20,6 @@ socket.onclose = (e) => {
 };
 await respondWith(response);
 
-await errorDeferred;
-await closeDeferred;
+await errorDeferred.promise;
+await closeDeferred.promise;
 listener.close();

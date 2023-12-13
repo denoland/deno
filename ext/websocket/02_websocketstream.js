@@ -1,11 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import { add, remove } from "ext:deno_web/03_abort_signal.js";
@@ -14,7 +14,6 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -83,7 +82,7 @@ const CLOSE_RESPONSE_TIMEOUT = 5000;
 
 const _rid = Symbol("[[rid]]");
 const _url = Symbol("[[url]]");
-const _connection = Symbol("[[connection]]");
+const _opened = Symbol("[[opened]]");
 const _closed = Symbol("[[closed]]");
 const _earlyClose = Symbol("[[earlyClose]]");
 const _closeSent = Symbol("[[closeSent]]");
@@ -156,7 +155,7 @@ class WebSocketStream {
     if (options.signal?.aborted) {
       core.close(cancelRid);
       const err = options.signal.reason;
-      this[_connection].reject(err);
+      this[_opened].reject(err);
       this[_closed].reject(err);
     } else {
       const abort = () => {
@@ -193,7 +192,7 @@ class WebSocketStream {
                       "Closed while connecting",
                       "NetworkError",
                     );
-                    this[_connection].reject(err);
+                    this[_opened].reject(err);
                     this[_closed].reject(err);
                   },
                 );
@@ -203,7 +202,7 @@ class WebSocketStream {
                   "Closed while connecting",
                   "NetworkError",
                 );
-                this[_connection].reject(err);
+                this[_opened].reject(err);
                 this[_closed].reject(err);
               },
             );
@@ -335,7 +334,7 @@ class WebSocketStream {
               },
             });
 
-            this[_connection].resolve({
+            this[_opened].resolve({
               readable,
               writable,
               extensions: create.extensions ?? "",
@@ -350,17 +349,17 @@ class WebSocketStream {
           } else {
             core.tryClose(cancelRid);
           }
-          this[_connection].reject(err);
+          this[_opened].reject(err);
           this[_closed].reject(err);
         },
       );
     }
   }
 
-  [_connection] = new Deferred();
-  get connection() {
+  [_opened] = new Deferred();
+  get opened() {
     webidl.assertBranded(this, WebSocketStreamPrototype);
-    return this[_connection].promise;
+    return this[_opened].promise;
   }
 
   [_earlyClose] = false;
@@ -406,7 +405,7 @@ class WebSocketStream {
       code = 1000;
     }
 
-    if (this[_connection].state === "pending") {
+    if (this[_opened].state === "pending") {
       this[_earlyClose] = true;
     } else if (this[_closed].state === "pending") {
       PromisePrototypeThen(
@@ -424,12 +423,19 @@ class WebSocketStream {
     }
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        url: this.url,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketStreamPrototype, this),
+        keys: [
+          "closed",
+          "opened",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

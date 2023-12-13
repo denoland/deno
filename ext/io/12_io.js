@@ -4,9 +4,8 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
 import {
   readableStreamForRid,
   writableStreamForRid,
@@ -241,7 +240,7 @@ class Stdin {
   }
 
   close() {
-    core.close(this.rid);
+    core.tryClose(this.rid);
   }
 
   get readable() {

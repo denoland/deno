@@ -167,7 +167,7 @@ export function readSync(
   if (typeof offsetOrOpt === "number") {
     offset = offsetOrOpt;
     validateInteger(offset, "offset", 0);
-  } else {
+  } else if (offsetOrOpt !== undefined) {
     const opt = offsetOrOpt as readSyncOptions;
     offset = opt.offset ?? 0;
     length = opt.length ?? buffer.byteLength;

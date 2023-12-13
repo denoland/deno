@@ -87,7 +87,7 @@ impl TestServer {
           match update_rx.recv().await {
             None => break,
             Some(snapshot) => {
-              let mark = performance.mark("testing_update", None::<()>);
+              let mark = performance.mark("lsp.testing_update");
               let mut tests = tests.lock();
               // we create a list of test modules we currently are tracking
               // eliminating any we go over when iterating over the document
@@ -98,6 +98,9 @@ impl TestServer {
                 .documents(DocumentsFilter::AllDiagnosable)
               {
                 let specifier = document.specifier();
+                if !snapshot.config.specifier_enabled_for_test(specifier) {
+                  continue;
+                }
                 keys.remove(specifier);
                 let script_version = document.script_version();
                 let valid = if let Some(test) = tests.get(specifier) {

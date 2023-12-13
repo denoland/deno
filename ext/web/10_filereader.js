@@ -10,10 +10,10 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { forgivingBase64Encode } from "ext:deno_web/00_infra.js";
 import { EventTarget, ProgressEvent } from "ext:deno_web/02_event.js";
 import { decode, TextDecoder } from "ext:deno_web/08_text_encoding.js";
@@ -26,10 +26,12 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
   queueMicrotask,
   SafeArrayIterator,
   SafeMap,
   Symbol,
+  SymbolFor,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -430,9 +432,24 @@ class FileReader extends EventTarget {
   set onabort(value) {
     this.#setEventHandlerFor("abort", value);
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(FileReaderPrototype, this),
+        keys: [
+          "error",
+          "readyState",
+          "result",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(FileReader);
+webidl.configureInterface(FileReader);
 const FileReaderPrototype = FileReader.prototype;
 
 ObjectDefineProperty(FileReader, "EMPTY", {

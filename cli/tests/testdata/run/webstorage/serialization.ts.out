@@ -1,3 +1,2 @@
-[WILDCARD]
 Storage {[WILDCARD]
-Storage { length: 1, hello: "deno" }
+Storage { hello: "deno", length: 1 }

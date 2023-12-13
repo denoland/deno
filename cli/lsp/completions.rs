@@ -2,6 +2,7 @@
 
 use super::client::Client;
 use super::config::ConfigSnapshot;
+use super::config::WorkspaceSettings;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::lsp_custom;
@@ -10,7 +11,7 @@ use super::npm::NpmSearchApi;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
 
@@ -51,12 +52,12 @@ pub struct CompletionItemData {
 /// a notification to the client.
 async fn check_auto_config_registry(
   url_str: &str,
-  config: &ConfigSnapshot,
+  workspace_settings: &WorkspaceSettings,
   client: &Client,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if config.settings.workspace.suggest.imports.auto_discover {
+  if workspace_settings.suggest.imports.auto_discover {
     if let Ok(specifier) = resolve_url(url_str) {
       let scheme = specifier.scheme();
       let path = &specifier[Position::BeforePath..];
@@ -66,11 +67,14 @@ async fn check_auto_config_registry(
       {
         // check to see if this origin is already explicitly set
         let in_config =
-          config.settings.workspace.suggest.imports.hosts.iter().any(
-            |(h, _)| {
+          workspace_settings
+            .suggest
+            .imports
+            .hosts
+            .iter()
+            .any(|(h, _)| {
               resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
-            },
-          );
+            });
         // if it isn't in the configuration, we will check to see if it supports
         // suggestions and send a notification to the client.
         if !in_config {
@@ -167,13 +171,21 @@ pub async fn get_import_completions(
       items: get_local_completions(specifier, &text, &range)?,
     }))
   } else if text.starts_with("npm:") {
+    let items =
+      get_npm_completions(specifier, &text, &range, npm_search_api).await?;
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: false,
-      items: get_npm_completions(&text, &range, npm_search_api).await?,
+      is_incomplete: !items.is_empty(),
+      items,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
-    check_auto_config_registry(&text, config, client, module_registries).await;
+    check_auto_config_registry(
+      &text,
+      config.workspace_settings_for_specifier(specifier),
+      client,
+      module_registries,
+    )
+    .await;
     let offset = if position.character > range.start.character {
       (position.character - range.start.character) as usize
     } else {
@@ -386,7 +398,7 @@ fn get_local_completions(
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
           let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
-          if &entry_specifier == base {
+          if entry_specifier == *base {
             return None;
           }
           let full_text = relative_specifier(base, &entry_specifier)?;
@@ -419,7 +431,7 @@ fn get_local_completions(
               ..Default::default()
             }),
             Ok(file_type) if file_type.is_file() => {
-              if is_supported_ext(&de.path()) {
+              if is_importable_ext(&de.path()) {
                 Some(lsp::CompletionItem {
                   label,
                   kind: Some(lsp::CompletionItemKind::FILE),
@@ -464,6 +476,7 @@ fn get_relative_specifiers(
 
 /// Get completions for `npm:` specifiers.
 async fn get_npm_completions(
+  referrer: &ModuleSpecifier,
   specifier: &str,
   range: &lsp::Range,
   npm_search_api: &impl NpmSearchApi,
@@ -513,7 +526,7 @@ async fn get_npm_completions(
         let command = Some(lsp::Command {
           title: "".to_string(),
           command: "deno.cache".to_string(),
-          arguments: Some(vec![json!([&specifier])]),
+          arguments: Some(vec![json!([&specifier]), json!(referrer)]),
         });
         let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
           range: *range,
@@ -546,7 +559,7 @@ async fn get_npm_completions(
       let command = Some(lsp::Command {
         title: "".to_string(),
         command: "deno.cache".to_string(),
-        arguments: Some(vec![json!([&specifier])]),
+        arguments: Some(vec![json!([&specifier]), json!(referrer)]),
       });
       let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range: *range,
@@ -741,6 +754,8 @@ mod tests {
     std::fs::write(file_e, b"").expect("could not create");
     let file_f = dir_a.join("f.mjs");
     std::fs::write(file_f, b"").expect("could not create");
+    let file_g = dir_a.join("g.json");
+    std::fs::write(file_g, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(
@@ -759,13 +774,12 @@ mod tests {
     );
     assert!(actual.is_some());
     let actual = actual.unwrap();
-    assert_eq!(actual.len(), 2);
+    assert_eq!(actual.len(), 3);
     for item in actual {
       match item.text_edit {
         Some(lsp::CompletionTextEdit::Edit(text_edit)) => {
-          assert!(
-            text_edit.new_text == "./f.mjs" || text_edit.new_text == "./b"
-          );
+          assert!(["./b", "./f.mjs", "./g.json"]
+            .contains(&text_edit.new_text.as_str()));
         }
         _ => unreachable!(),
       }
@@ -854,9 +868,11 @@ mod tests {
         character: 32,
       },
     };
-    let actual = get_npm_completions("npm:puppe", &range, &npm_search_api)
-      .await
-      .unwrap();
+    let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
+    let actual =
+      get_npm_completions(&referrer, "npm:puppe", &range, &npm_search_api)
+        .await
+        .unwrap();
     assert_eq!(
       actual,
       vec![
@@ -872,7 +888,7 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer"])])
+            arguments: Some(vec![json!(["npm:puppeteer"]), json!(&referrer)])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -891,7 +907,10 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer-core"])])
+            arguments: Some(vec![
+              json!(["npm:puppeteer-core"]),
+              json!(&referrer)
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -910,9 +929,10 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!([
-              "npm:puppeteer-extra-plugin-stealth"
-            ])])
+            arguments: Some(vec![
+              json!(["npm:puppeteer-extra-plugin-stealth"]),
+              json!(&referrer)
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -931,7 +951,10 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer-extra-plugin"])])
+            arguments: Some(vec![
+              json!(["npm:puppeteer-extra-plugin"]),
+              json!(&referrer)
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -967,9 +990,11 @@ mod tests {
         character: 37,
       },
     };
-    let actual = get_npm_completions("npm:puppeteer@", &range, &npm_search_api)
-      .await
-      .unwrap();
+    let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
+    let actual =
+      get_npm_completions(&referrer, "npm:puppeteer@", &range, &npm_search_api)
+        .await
+        .unwrap();
     assert_eq!(
       actual,
       vec![
@@ -985,7 +1010,10 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer@21.0.2"])])
+            arguments: Some(vec![
+              json!(["npm:puppeteer@21.0.2"]),
+              json!(&referrer)
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -1004,7 +1032,10 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer@21.0.1"])])
+            arguments: Some(vec![
+              json!(["npm:puppeteer@21.0.1"]),
+              json!(&referrer)
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -1023,7 +1054,10 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer@21.0.0"])])
+            arguments: Some(vec![
+              json!(["npm:puppeteer@21.0.0"]),
+              json!(&referrer)
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
@@ -1042,7 +1076,10 @@ mod tests {
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
-            arguments: Some(vec![json!(["npm:puppeteer@20.9.0"])])
+            arguments: Some(vec![
+              json!(["npm:puppeteer@20.9.0"]),
+              json!(&referrer)
+            ])
           }),
           commit_characters: Some(
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()

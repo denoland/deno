@@ -3,18 +3,20 @@ import { assertEquals } from "./test_util.ts";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
-let isCI: boolean;
-try {
-  isCI = Deno.env.get("CI") !== undefined;
-} catch {
-  isCI = true;
-}
+// TODO(igorzi): https://github.com/denoland/deno/issues/21437
+// let isCI: boolean;
+// try {
+//   isCI = Deno.env.get("CI") !== undefined;
+// } catch {
+//   isCI = true;
+// }
 
 function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
-  Deno.test({
+  // TODO(igorzi): https://github.com/denoland/deno/issues/21437
+  Deno.test.ignore({
     name,
     // https://github.com/denoland/deno/issues/18363
-    ignore: Deno.build.os === "darwin" && isCI,
+    // ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
       const db: Deno.Kv = await Deno.openKv(
         ":memory:",
@@ -41,8 +43,9 @@ queueTest("queue with undelivered", async (db) => {
   try {
     await db.enqueue("test", {
       keysIfUndelivered: [["queue_failed", "a"], ["queue_failed", "b"]],
+      backoffSchedule: [10, 20],
     });
-    await sleep(100000);
+    await sleep(3000);
     const undelivered = await collect(db.list({ prefix: ["queue_failed"] }));
     assertEquals(undelivered.length, 2);
     assertEquals(undelivered[0].key, ["queue_failed", "a"]);

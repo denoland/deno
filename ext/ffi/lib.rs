@@ -1,15 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::futures::channel::mpsc;
 use deno_core::OpState;
 
-use std::cell::RefCell;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
 use std::path::Path;
-use std::rc::Rc;
 
 mod call;
 mod callback;
@@ -45,33 +42,18 @@ const _: () = {
 pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
 pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
 
-pub struct Unstable(pub bool);
+pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 
 fn check_unstable(state: &OpState, api_name: &str) {
-  let unstable = state.borrow::<Unstable>();
-
-  if !unstable.0 {
-    eprintln!(
-      "Unstable API '{api_name}'. The --unstable flag must be provided."
-    );
-    std::process::exit(70);
-  }
-}
-
-pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
-  let state = state.borrow();
-  check_unstable(&state, api_name)
+  // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
+  // once we phase out `check_or_exit_with_legacy_fallback`
+  state
+    .feature_checker
+    .check_or_exit_with_legacy_fallback(UNSTABLE_FEATURE_NAME, api_name)
 }
 
 pub trait FfiPermissions {
   fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
-}
-
-pub(crate) type PendingFfiAsyncWork = Box<dyn FnOnce()>;
-
-pub(crate) struct FfiState {
-  pub(crate) async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
-  pub(crate) async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
 }
 
 deno_core::extension!(deno_ffi,
@@ -86,6 +68,7 @@ deno_core::extension!(deno_ffi,
     op_ffi_ptr_create<P>,
     op_ffi_ptr_equals<P>,
     op_ffi_ptr_of<P>,
+    op_ffi_ptr_of_exact<P>,
     op_ffi_ptr_offset<P>,
     op_ffi_ptr_value<P>,
     op_ffi_get_buf<P>,
@@ -108,42 +91,4 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
   ],
   esm = [ "00_ffi.js" ],
-  options = {
-    unstable: bool,
-  },
-  state = |state, options| {
-    // Stolen from deno_webgpu, is there a better option?
-    state.put(Unstable(options.unstable));
-  },
-  event_loop_middleware = event_loop_middleware,
 );
-
-fn event_loop_middleware(
-  op_state_rc: Rc<RefCell<OpState>>,
-  _cx: &mut std::task::Context,
-) -> bool {
-  // FFI callbacks coming in from other threads will call in and get queued.
-  let mut maybe_scheduling = false;
-
-  let mut op_state = op_state_rc.borrow_mut();
-  if let Some(ffi_state) = op_state.try_borrow_mut::<FfiState>() {
-    // TODO(mmastrac): This should be a SmallVec to avoid allocations in most cases
-    let mut work_items = Vec::with_capacity(1);
-
-    while let Ok(Some(async_work_fut)) =
-      ffi_state.async_work_receiver.try_next()
-    {
-      // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
-      work_items.push(async_work_fut);
-      maybe_scheduling = true;
-    }
-
-    // Drop the op_state and ffi_state borrows
-    drop(op_state);
-    for async_work_fut in work_items.into_iter() {
-      async_work_fut();
-    }
-  }
-
-  maybe_scheduling
-}
