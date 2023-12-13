@@ -178,13 +178,6 @@ impl BenchReporter for ConsoleReporter {
       }
 
       Some(group) => {
-        if self.group.is_none()
-          && self.has_ungrouped
-          && self.group_measurements.is_empty()
-        {
-          println!();
-        }
-
         if self.group.is_none() || group != self.group.as_ref().unwrap() {
           self.report_group_summary();
         }
@@ -192,7 +185,7 @@ impl BenchReporter for ConsoleReporter {
         if (self.group.is_none() && self.has_ungrouped)
           || (self.group.is_some() && self.group_measurements.is_empty())
         {
-          println!();
+          println!("group {}", colors::green(group));
         }
 
         self.group = Some(group.clone());
@@ -212,7 +205,6 @@ impl BenchReporter for ConsoleReporter {
     }
 
     let options = self.options.as_ref().unwrap();
-
     match result {
       BenchResult::Ok(stats) => {
         let mut desc = desc.clone();
@@ -296,6 +288,7 @@ impl BenchReporter for ConsoleReporter {
         )
       );
     }
+    println!();
 
     self.baseline = false;
     self.group_measurements.clear();
