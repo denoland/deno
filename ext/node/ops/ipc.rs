@@ -346,7 +346,6 @@ mod unix {
     use deno_core::serde_json;
     use deno_core::serde_json::json;
     use deno_core::RcRef;
-    use std::os::unix::io::AsRawFd;
     use std::rc::Rc;
 
     #[tokio::test]
