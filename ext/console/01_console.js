@@ -135,6 +135,7 @@ const {
   WeakMapPrototypeHas,
   WeakSetPrototypeHas,
 } = primordials;
+const ops = core.ops;
 
 // supposed to be in node/internal_binding/util.ts
 export function previewEntries(iter, isKeyValue) {
@@ -284,19 +285,15 @@ function isObjectLike(value) {
   return value !== null && typeof value === "object";
 }
 
-export function isAnyArrayBuffer(value) {
-  return isArrayBuffer(value) || isSharedArrayBuffer(value);
+function isAnyArrayBuffer(value) {
+  return ops.op_is_any_arraybuffer(value);
 }
 
-export function isArgumentsObject(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === undefined &&
-    ObjectPrototypeToString(value) === "[object Arguments]"
-  );
+function isArgumentsObject(value) {
+  return ops.op_is_arguments_object(value);
 }
 
-export function isArrayBuffer(value) {
+function isArrayBuffer(value) {
   try {
     ArrayBufferPrototypeGetByteLength(value);
     return true;
@@ -305,21 +302,11 @@ export function isArrayBuffer(value) {
   }
 }
 
-export function isAsyncFunction(value) {
-  return (
-    typeof value === "function" &&
-    (value[SymbolToStringTag] === "AsyncFunction")
-  );
+function isAsyncFunction(value) {
+  return ops.op_is_async_function(value);
 }
 
-export function isAsyncGeneratorFunction(value) {
-  return (
-    typeof value === "function" &&
-    (value[SymbolToStringTag] === "AsyncGeneratorFunction")
-  );
-}
-
-export function isBooleanObject(value) {
+function isBooleanObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -332,7 +319,7 @@ export function isBooleanObject(value) {
   }
 }
 
-export function isBoxedPrimitive(
+function isBoxedPrimitive(
   value,
 ) {
   return (
@@ -344,27 +331,22 @@ export function isBoxedPrimitive(
   );
 }
 
-export function isDataView(value) {
+function isDataView(value) {
   return (
     ArrayBufferIsView(value) &&
     TypedArrayPrototypeGetSymbolToStringTag(value) === undefined
   );
 }
 
-export function isTypedArray(value) {
+function isTypedArray(value) {
   return TypedArrayPrototypeGetSymbolToStringTag(value) !== undefined;
 }
 
-export function isGeneratorFunction(
-  value,
-) {
-  return (
-    typeof value === "function" &&
-    value[SymbolToStringTag] === "GeneratorFunction"
-  );
+function isGeneratorFunction(value) {
+  return ops.op_is_generator_function(value);
 }
 
-export function isMap(value) {
+function isMap(value) {
   try {
     MapPrototypeGetSize(value);
     return true;
@@ -373,25 +355,15 @@ export function isMap(value) {
   }
 }
 
-export function isMapIterator(
-  value,
-) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Map Iterator"
-  );
+function isMapIterator(value) {
+  return ops.op_is_map_iterator(value);
 }
 
-export function isModuleNamespaceObject(
-  value,
-) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Module"
-  );
+function isModuleNamespaceObject(value) {
+  return ops.op_is_module_namespace_object(value);
 }
 
-export function isNativeError(value) {
+function isNativeError(value) {
   return (
     isObjectLike(value) &&
     value[SymbolToStringTag] === undefined &&
@@ -399,7 +371,7 @@ export function isNativeError(value) {
   );
 }
 
-export function isNumberObject(value) {
+function isNumberObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -412,7 +384,7 @@ export function isNumberObject(value) {
   }
 }
 
-export function isBigIntObject(value) {
+function isBigIntObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -425,21 +397,15 @@ export function isBigIntObject(value) {
   }
 }
 
-export function isPromise(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Promise"
-  );
-}
-export function isRegExp(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === undefined &&
-    ObjectPrototypeToString(value) === "[object RegExp]"
-  );
+function isPromise(value) {
+  return ops.op_is_promise(value);
 }
 
-export function isSet(value) {
+function isRegExp(value) {
+  return ops.op_is_reg_exp(value);
+}
+
+function isSet(value) {
   try {
     SetPrototypeGetSize(value);
     return true;
@@ -448,27 +414,11 @@ export function isSet(value) {
   }
 }
 
-export function isSetIterator(
-  value,
-) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Set Iterator"
-  );
+function isSetIterator(value) {
+  return ops.op_is_set_iterator(value);
 }
 
-export function isSharedArrayBuffer(
-  value,
-) {
-  try {
-    getSharedArrayBufferByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function isStringObject(value) {
+function isStringObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -481,7 +431,7 @@ export function isStringObject(value) {
   }
 }
 
-export function isSymbolObject(value) {
+function isSymbolObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -494,7 +444,7 @@ export function isSymbolObject(value) {
   }
 }
 
-export function isWeakMap(
+function isWeakMap(
   value,
 ) {
   try {
@@ -505,7 +455,7 @@ export function isWeakMap(
   }
 }
 
-export function isWeakSet(
+function isWeakSet(
   value,
 ) {
   try {
@@ -793,9 +743,6 @@ function getFunctionBase(value, constructor, tag) {
   if (isAsyncFunction(value)) {
     type = `Async${type}`;
   }
-  if (isAsyncGeneratorFunction(value)) {
-    type = `AsyncGenerator${type}`;
-  }
   let base = `[${type}`;
   if (constructor === null) {
     base += " (null prototype)";
@@ -866,7 +813,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         const prefix = (constructor !== "Array" || tag !== "")
           ? getPrefix(constructor, tag, "Array", `(${value.length})`)
           : "";
-        keys = core.ops.op_get_non_index_property_names(value, filter);
+        keys = ops.op_get_non_index_property_names(value, filter);
         braces = [`${prefix}[`, "]"];
         if (
           value.length === 0 && keys.length === 0 && protoProps === undefined

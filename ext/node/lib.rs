@@ -150,11 +150,6 @@ fn op_node_build_os() -> String {
 }
 
 #[op2(fast)]
-fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
-  value.is_array_buffer() || value.is_shared_array_buffer()
-}
-
-#[op2(fast)]
 fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
   let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
     return false;
@@ -285,7 +280,6 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
     op_node_build_os,
-    op_is_any_arraybuffer,
     op_node_is_promise_rejected,
     op_npm_process_state,
     ops::require::op_require_init_paths,
