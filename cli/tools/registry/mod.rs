@@ -295,20 +295,21 @@ fn print_diagnostics(diagnostics: Vec<String>) {
 async fn perform_publish(
   http_client: &Arc<HttpClient>,
   mut publish_order_graph: PublishOrderGraph,
-  mut prepared_modules_by_name: HashMap<String, PreparedPublishPackage>,
+  mut prepared_package_by_name: HashMap<String, PreparedPublishPackage>,
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_url = deno_registry_api_url().to_string();
 
-  let diagnostics = prepared_modules_by_name
-    .values()
+  let packages = prepared_package_by_name.values().collect::<Vec<_>>();
+  let diagnostics = packages
+    .iter()
     .flat_map(|p| p.diagnostics.clone())
     .collect::<Vec<_>>();
   print_diagnostics(diagnostics);
 
-  let permissions = prepared_modules_by_name
-    .values()
+  let permissions = packages
+    .iter()
     .map(|package| Permission::VersionPublish {
       scope: &package.scope,
       package: &package.package,
@@ -341,11 +342,10 @@ async fn perform_publish(
         "Visit {} to authorize publishing of",
         colors::cyan(format!("{}?code={}", auth.verification_url, auth.code))
       );
-      if prepared_modules_by_name.len() > 1 {
-        println!(" {} packages", prepared_modules_by_name.len());
+      if packages.len() > 1 {
+        println!(" {} packages", packages.len());
       } else {
-        let pkg = prepared_modules_by_name.values().next().unwrap();
-        println!(" @{}/{}", pkg.scope, pkg.package);
+        println!(" @{}/{}", packages[0].scope, packages[0].package);
       }
 
       // ASCII code for the bell character.
@@ -376,7 +376,7 @@ async fn perform_publish(
               colors::cyan(res.user.name)
             );
             let authorization: Rc<str> = format!("Bearer {}", res.token).into();
-            for pkg in prepared_modules_by_name.values() {
+            for pkg in &packages {
               authorizations.insert(
                 (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
                 authorization.clone(),
@@ -396,7 +396,7 @@ async fn perform_publish(
     }
     AuthMethod::Token(token) => {
       let authorization: Rc<str> = format!("Bearer {}", token).into();
-      for pkg in prepared_modules_by_name.values() {
+      for pkg in &packages {
         authorizations.insert(
           (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
           authorization.clone(),
@@ -404,8 +404,7 @@ async fn perform_publish(
       }
     }
     AuthMethod::Oidc(oidc_config) => {
-      let packages = prepared_modules_by_name.values().collect::<Vec<_>>();
-      let mut aligned_package_batches = packages.chunks(16);
+      let mut chunked_packages = packages.chunks(16);
       for permissions in permissions.chunks(16) {
         let audience = json!({ "permissions": permissions }).to_string();
         let url = format!(
@@ -443,7 +442,7 @@ async fn perform_publish(
           })?;
 
         let authorization: Rc<str> = format!("githuboidc {}", value).into();
-        for pkg in aligned_package_batches.next().unwrap() {
+        for pkg in chunked_packages.next().unwrap() {
           authorizations.insert(
             (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
             authorization.clone(),
@@ -453,18 +452,18 @@ async fn perform_publish(
     }
   };
 
-  assert_eq!(prepared_modules_by_name.len(), authorizations.len());
+  assert_eq!(prepared_package_by_name.len(), authorizations.len());
   let mut futures: JoinSet<Result<String, AnyError>> = JoinSet::default();
   loop {
     let next_batch = publish_order_graph.next();
     if futures.is_empty() && next_batch.is_empty() {
-      // errors for a cyclic dependency
+      // ensure no circular dependency
       publish_order_graph.ensure_no_pending()?;
       break;
     }
 
     for package_name in next_batch {
-      let package = prepared_modules_by_name.remove(&package_name).unwrap();
+      let package = prepared_package_by_name.remove(&package_name).unwrap();
       let authorization = authorizations
         .remove(&(
           package.scope.clone(),
