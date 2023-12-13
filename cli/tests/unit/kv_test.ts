@@ -2241,4 +2241,10 @@ dbTest("set with key versionstamp suffix", async (db) => {
   assertEquals(result3[1].key[1], setRes2.versionstamp);
   assertEquals(result3[1].value, "c");
   assertEquals(result3[1].versionstamp, setRes2.versionstamp);
+
+  await assertRejects(
+    async () => await db.set(["a", db.commitVersionstamp(), "a"], "x"),
+    TypeError,
+    "expected string, number, bigint, ArrayBufferView, boolean",
+  );
 });
