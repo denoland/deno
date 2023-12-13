@@ -682,6 +682,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
+name = "cooked-waker"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "147be55d677052dabc6b22252d5dd0fd4c29c8c27aa4f2fbef0f94aa003b406f"
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1128,12 +1134,13 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.237.0"
+version = "0.238.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2ea708c221abdb5734e3c4b72075379c3046eb0ac54afa0ecb5e58509cce72c"
+checksum = "0ded8b759e4435aa0929913909dd6c482ed6042dae19c53260e1caf9d55b37a9"
 dependencies = [
  "anyhow",
  "bytes",
+ "cooked-waker",
  "deno_ops",
  "deno_unsync 0.3.0",
  "futures",
@@ -1559,9 +1566,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.113.0"
+version = "0.114.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5b9c0f6360795fb625774a8b5955c87c470c43159670cf5d2052df5ce9d84bc"
+checksum = "168a929496191fdd8e91f898c8454429df4d5489597777d89f47897f6a37da6b"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5084,9 +5091,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.146.0"
+version = "0.147.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78309bd1ec4d14d165f271e203bdc45ad5bf45525da57bb70901f57942f6c0f7"
+checksum = "2af950d83e1c70b762d48fa7a869d6db9a4f191548dfd666fa4e62f2229e1dce"
 dependencies = [
  "bytes",
  "derive_more",
