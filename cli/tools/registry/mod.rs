@@ -3,13 +3,14 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::io::IsTerminal;
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_config::ConfigFile;
-use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -18,13 +19,11 @@ use deno_core::serde_json::json;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
-use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
 use import_map::ImportMap;
 use lsp_types::Url;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::Digest;
 
@@ -35,21 +34,14 @@ use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::util::import_map::ImportMapUnfurler;
 
-use self::publish_order::PublishOrderGraph;
-
+mod api;
+mod auth;
 mod publish_order;
 mod tar;
 
-enum AuthMethod {
-  Interactive,
-  Token(String),
-  Oidc(OidcConfig),
-}
-
-struct OidcConfig {
-  url: String,
-  token: String,
-}
+use auth::get_auth_method;
+use auth::AuthMethod;
+use publish_order::PublishOrderGraph;
 
 struct PreparedPublishPackage {
   scope: String,
@@ -58,21 +50,6 @@ struct PreparedPublishPackage {
   tarball_hash: String,
   tarball: Bytes,
   diagnostics: Vec<String>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PublishingTaskError {
-  pub code: String,
-  pub message: String,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PublishingTask {
-  pub id: String,
-  pub status: String,
-  pub error: Option<PublishingTaskError>,
 }
 
 static SUGGESTED_ENTRYPOINTS: [&str; 4] =
@@ -161,96 +138,6 @@ pub enum Permission<'s> {
   },
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateAuthorizationResponse {
-  verification_url: String,
-  code: String,
-  exchange_token: String,
-  poll_interval: u64,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ExchangeAuthorizationResponse {
-  token: String,
-  user: User,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct User {
-  name: String,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ApiError {
-  pub code: String,
-  pub message: String,
-  #[serde(skip)]
-  pub x_deno_ray: Option<String>,
-}
-
-impl std::fmt::Display for ApiError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{} ({})", self.message, self.code)?;
-    if let Some(x_deno_ray) = &self.x_deno_ray {
-      write!(f, "[x-deno-ray: {}]", x_deno_ray)?;
-    }
-    Ok(())
-  }
-}
-
-impl std::fmt::Debug for ApiError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    std::fmt::Display::fmt(self, f)
-  }
-}
-
-impl std::error::Error for ApiError {}
-
-async fn parse_response<T: DeserializeOwned>(
-  response: reqwest::Response,
-) -> Result<T, ApiError> {
-  let status = response.status();
-  let x_deno_ray = response
-    .headers()
-    .get("x-deno-ray")
-    .and_then(|value| value.to_str().ok())
-    .map(|s| s.to_string());
-  let text = response.text().await.unwrap();
-
-  if !status.is_success() {
-    match serde_json::from_str::<ApiError>(&text) {
-      Ok(mut err) => {
-        err.x_deno_ray = x_deno_ray;
-        return Err(err);
-      }
-      Err(_) => {
-        let err = ApiError {
-          code: "unknown".to_string(),
-          message: format!("{}: {}", status, text),
-          x_deno_ray,
-        };
-        return Err(err);
-      }
-    }
-  }
-
-  serde_json::from_str(&text).map_err(|err| ApiError {
-    code: "unknown".to_string(),
-    message: format!("Failed to parse response: {}, response: '{}'", err, text),
-    x_deno_ray,
-  })
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OidcTokenResponse {
-  value: String,
-}
-
 /// Prints diagnostics like so:
 /// ```
 ///
@@ -334,9 +221,10 @@ async fn perform_publish(
         .send()
         .await
         .context("Failed to create interactive authorization")?;
-      let auth = parse_response::<CreateAuthorizationResponse>(response)
-        .await
-        .context("Failed to create interactive authorization")?;
+      let auth =
+        api::parse_response::<api::CreateAuthorizationResponse>(response)
+          .await
+          .context("Failed to create interactive authorization")?;
 
       print!(
         "Visit {} to authorize publishing of",
@@ -366,7 +254,8 @@ async fn perform_publish(
           .await
           .context("Failed to exchange authorization")?;
         let res =
-          parse_response::<ExchangeAuthorizationResponse>(response).await;
+          api::parse_response::<api::ExchangeAuthorizationResponse>(response)
+            .await;
         match res {
           Ok(res) => {
             println!(
@@ -433,7 +322,7 @@ async fn perform_publish(
             text
           );
         }
-        let OidcTokenResponse { value } = serde_json::from_str(&text)
+        let api::OidcTokenResponse { value } = serde_json::from_str(&text)
           .with_context(|| {
             format!(
               "Failed to parse OIDC token: '{}' (status {})",
@@ -590,39 +479,13 @@ async fn publish_package(
   Ok(())
 }
 
-fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
-  if std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true" {
-    let url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL");
-    let token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
-    match (url, token) {
-      (Ok(url), Ok(token)) => Some(Ok((url, token))),
-      (Err(_), Err(_)) => Some(Err(anyhow::anyhow!(
-        "No means to authenticate. Pass a token to `--token`, or enable tokenless publishing from GitHub Actions using OIDC. Learn more at https://deno.co/ghoidc"
-      ))),
-      _ => None,
-    }
-  } else {
-    None
-  }
-}
-
 pub async fn publish(
   flags: Flags,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags).await?;
 
-  let auth_method = match publish_flags.token {
-    Some(token) => AuthMethod::Token(token),
-    None => match get_gh_oidc_env_vars() {
-      Some(Ok((url, token))) => AuthMethod::Oidc(OidcConfig { url, token }),
-      Some(Err(err)) => return Err(err),
-      None if std::io::stdin().is_terminal() => AuthMethod::Interactive,
-      None => {
-        bail!("No means to authenticate. Pass a token to `--token`.")
-      }
-    },
-  };
+  let auth_method = get_auth_method(publish_flags.token)?;
 
   let import_map = cli_factory
     .maybe_import_map()
