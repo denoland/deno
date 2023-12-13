@@ -23,6 +23,7 @@ pub async fn analyze_workspace_publish_order(
       roots.iter().flat_map(|r| r.exports.clone()).collect(),
     )
     .await?;
+  graph.valid()?;
 
   let packages = build_pkg_deps(graph, roots);
   let publish_batches = batch_packages_by_publish_order(&packages)?;
@@ -30,6 +31,7 @@ pub async fn analyze_workspace_publish_order(
   Ok(publish_batches)
 }
 
+#[derive(Debug)]
 struct MemberRoots {
   name: String,
   dir_url: ModuleSpecifier,
@@ -53,7 +55,7 @@ fn get_workspace_roots(
       .into_map();
     let mut member_root = MemberRoots {
       name: member.package_name.clone(),
-      dir_url: member.config_file.specifier.join("../").unwrap().clone(),
+      dir_url: member.config_file.specifier.join("./").unwrap().clone(),
       exports: Vec::with_capacity(exports_config.len()),
     };
     for (_, value) in exports_config {
@@ -102,6 +104,7 @@ fn build_pkg_deps(
       }
 
       for specifier in dep_specifiers {
+        let specifier = graph.resolve(specifier);
         if specifier.scheme() != "file" {
           continue;
         }
