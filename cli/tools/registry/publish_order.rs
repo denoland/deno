@@ -12,10 +12,87 @@ use deno_core::error::AnyError;
 
 use crate::graph_util::ModuleGraphBuilder;
 
-pub async fn analyze_workspace_publish_order(
+pub struct PublishOrderGraph {
+  packages: HashMap<String, HashSet<String>>,
+  in_degree: HashMap<String, usize>,
+  reverse_map: HashMap<String, Vec<String>>,
+}
+
+impl PublishOrderGraph {
+  pub fn new_single(package_name: String) -> Self {
+    Self {
+      packages: HashMap::from([(package_name.clone(), HashSet::new())]),
+      in_degree: HashMap::from([(package_name.clone(), 0)]),
+      reverse_map: HashMap::from([(package_name, Vec::new())]),
+    }
+  }
+
+  pub fn next(&mut self) -> Vec<String> {
+    let items = self
+      .in_degree
+      .iter()
+      .filter_map(|(name, &degree)| if degree == 0 { Some(name) } else { None })
+      .cloned()
+      .collect::<Vec<_>>();
+    for item in &items {
+      self.in_degree.remove(item);
+    }
+    items
+  }
+
+  pub fn finish_package(&mut self, name: &str) {
+    if let Some(package_names) = self.reverse_map.remove(name) {
+      for name in package_names {
+        *self.in_degree.get_mut(&name).unwrap() -= 1;
+      }
+    }
+  }
+
+  /// There could be pending packages if there's a circular dependency.
+  pub fn ensure_no_pending(&self) -> Result<(), AnyError> {
+    // this is inefficient, but that's ok because it's simple and will
+    // only ever happen when there's an error
+    fn identify_cycle<'a>(
+      current_name: &'a String,
+      mut visited: HashSet<&'a String>,
+      packages: &HashMap<String, HashSet<String>>,
+    ) -> Option<Vec<String>> {
+      if visited.insert(current_name) {
+        let deps = packages.get(current_name).unwrap();
+        for dep in deps {
+          if let Some(mut cycle) =
+            identify_cycle(dep, visited.clone(), packages)
+          {
+            cycle.push(current_name.to_string());
+            return Some(cycle);
+          }
+        }
+        None
+      } else {
+        Some(vec![current_name.to_string()])
+      }
+    }
+
+    if self.in_degree.is_empty() {
+      Ok(())
+    } else {
+      let mut pkg_names = self.in_degree.keys().collect::<Vec<_>>();
+      pkg_names.sort(); // determinism
+      let mut cycle =
+        identify_cycle(pkg_names[0], HashSet::new(), &self.packages).unwrap();
+      cycle.reverse();
+      bail!(
+        "Circular package dependency detected: {}",
+        cycle.join(" -> ")
+      );
+    }
+  }
+}
+
+pub async fn build_publish_graph(
   workspace_config: &WorkspaceConfig,
   module_graph_builder: &ModuleGraphBuilder,
-) -> Result<Vec<Vec<String>>, AnyError> {
+) -> Result<PublishOrderGraph, AnyError> {
   let roots = get_workspace_roots(workspace_config)?;
   let graph = module_graph_builder
     .create_graph(
@@ -26,9 +103,7 @@ pub async fn analyze_workspace_publish_order(
   graph.valid()?;
 
   let packages = build_pkg_deps(graph, roots);
-  let publish_batches = batch_packages_by_publish_order(&packages)?;
-
-  Ok(publish_batches)
+  Ok(build_graph(packages))
 }
 
 #[derive(Debug)]
@@ -127,87 +202,28 @@ fn build_pkg_deps(
   members
 }
 
-fn batch_packages_by_publish_order(
-  packages: &HashMap<String, HashSet<String>>,
-) -> Result<Vec<Vec<String>>, AnyError> {
-  // this is inefficient, but that's ok because it's simple and will
-  // only ever happen when there's an error
-  fn identify_cycle<'a>(
-    current_name: &'a String,
-    mut visited: HashSet<&'a String>,
-    packages: &HashMap<String, HashSet<String>>,
-  ) -> Option<Vec<String>> {
-    if visited.insert(current_name) {
-      let deps = packages.get(current_name).unwrap();
-      for dep in deps {
-        if let Some(mut cycle) = identify_cycle(dep, visited.clone(), packages)
-        {
-          cycle.push(current_name.to_string());
-          return Some(cycle);
-        }
-      }
-      None
-    } else {
-      Some(vec![current_name.to_string()])
-    }
-  }
-
+fn build_graph(
+  packages: HashMap<String, HashSet<String>>,
+) -> PublishOrderGraph {
   let mut in_degree = HashMap::new();
-  let mut reverse_map: HashMap<&String, Vec<&String>> = HashMap::new();
+  let mut reverse_map: HashMap<String, Vec<String>> = HashMap::new();
 
   // build the graph, in-degree map, and set of all nodes
-  for (pkg_name, deps) in packages {
-    in_degree.insert(pkg_name, deps.len());
+  for (pkg_name, deps) in &packages {
+    in_degree.insert(pkg_name.clone(), deps.len());
     for dep in deps {
-      reverse_map.entry(dep).or_default().push(pkg_name);
+      reverse_map
+        .entry(dep.clone())
+        .or_default()
+        .push(pkg_name.clone());
     }
   }
 
-  // queue for nodes with no incoming edges
-  let mut next = Vec::new();
-  for (node, &degree) in &in_degree {
-    if degree == 0 {
-      next.push(*node);
-    }
+  PublishOrderGraph {
+    packages: packages.clone(),
+    in_degree,
+    reverse_map,
   }
-
-  // perform the topological sort
-  let mut sorted = Vec::new();
-  while !next.is_empty() {
-    let mut current = next.drain(..).cloned().collect::<Vec<_>>();
-    current.sort(); // determinism
-    for package_name in &current {
-      if let Some(deps) = reverse_map.get(package_name) {
-        for dep in deps {
-          let degree = in_degree.entry(dep).or_default();
-          *degree -= 1;
-          if *degree == 0 {
-            next.push(dep);
-          }
-        }
-      }
-    }
-    sorted.push(current);
-  }
-
-  // Check if all nodes were visited and identify cycles
-  if sorted.iter().map(|s| s.len()).sum::<usize>() != packages.len() {
-    let sorted_names = sorted.iter().flatten().collect::<HashSet<_>>();
-    let mut pkg_names = packages
-      .keys()
-      .filter(|name| !sorted_names.contains(name))
-      .collect::<Vec<_>>();
-    pkg_names.sort(); // determinism
-    let mut cycle =
-      identify_cycle(pkg_names[0], HashSet::new(), packages).unwrap();
-    cycle.reverse();
-    bail!(
-      "Circular package dependency detected: {}",
-      cycle.join(" -> ")
-    );
-  }
-
-  Ok(sorted)
 }
 
 #[cfg(test)]
@@ -215,38 +231,50 @@ mod test {
   use super::*;
 
   #[test]
-  fn test_batch_no_deps() {
-    let result = batch_packages_by_publish_order(&HashMap::from([
+  fn test_graph_no_deps() {
+    let mut graph = build_graph(HashMap::from([
       ("a".to_string(), HashSet::new()),
       ("b".to_string(), HashSet::new()),
       ("c".to_string(), HashSet::new()),
     ]));
+    let mut next = graph.next();
+    next.sort();
     assert_eq!(
-      result.unwrap(),
-      vec![vec!["a".to_string(), "b".to_string(), "c".to_string()]],
+      next,
+      vec!["a".to_string(), "b".to_string(), "c".to_string()],
     );
+    graph.finish_package("a");
+    assert!(graph.next().is_empty());
+    graph.finish_package("b");
+    assert!(graph.next().is_empty());
+    graph.finish_package("c");
+    assert!(graph.next().is_empty());
+    graph.ensure_no_pending().unwrap();
   }
 
   #[test]
-  fn test_batch_single_dep() {
-    let result = batch_packages_by_publish_order(&HashMap::from([
+  fn test_graph_single_dep() {
+    let mut graph = build_graph(HashMap::from([
       ("a".to_string(), HashSet::from(["b".to_string()])),
       ("b".to_string(), HashSet::from(["c".to_string()])),
       ("c".to_string(), HashSet::new()),
     ]));
-    assert_eq!(
-      result.unwrap(),
-      vec![
-        vec!["c".to_string()],
-        vec!["b".to_string()],
-        vec!["a".to_string()]
-      ],
-    );
+    let next = graph.next();
+    assert_eq!(next, vec!["c".to_string()]);
+    graph.finish_package("c");
+    let next = graph.next();
+    assert_eq!(next, vec!["b".to_string()]);
+    graph.finish_package("b");
+    let next = graph.next();
+    assert_eq!(next, vec!["a".to_string()]);
+    graph.finish_package("a");
+    assert!(graph.next().is_empty());
+    graph.ensure_no_pending().unwrap();
   }
 
   #[test]
-  fn test_batch_multiple_dep() {
-    let result = batch_packages_by_publish_order(&HashMap::from([
+  fn test_graph_multiple_dep() {
+    let mut graph = build_graph(HashMap::from([
       (
         "a".to_string(),
         HashSet::from(["b".to_string(), "c".to_string()]),
@@ -257,26 +285,42 @@ mod test {
       ("e".to_string(), HashSet::from(["f".to_string()])),
       ("f".to_string(), HashSet::new()),
     ]));
+    let mut next = graph.next();
+    next.sort();
     assert_eq!(
-      result.unwrap(),
-      vec![
-        vec!["c".to_string(), "d".to_string(), "f".to_string()],
-        vec!["b".to_string(), "e".to_string()],
-        vec!["a".to_string()]
-      ],
+      next,
+      vec!["c".to_string(), "d".to_string(), "f".to_string()]
     );
+    graph.finish_package("f");
+    let next = graph.next();
+    assert_eq!(next, vec!["e".to_string()]);
+    graph.finish_package("e");
+    assert!(graph.next().is_empty());
+    graph.finish_package("d");
+    assert!(graph.next().is_empty());
+    graph.finish_package("c");
+    let next = graph.next();
+    assert_eq!(next, vec!["b".to_string()]);
+    graph.finish_package("b");
+    let next = graph.next();
+    assert_eq!(next, vec!["a".to_string()]);
+    graph.finish_package("a");
+    assert!(graph.next().is_empty());
+    graph.ensure_no_pending().unwrap();
   }
 
   #[test]
-  fn test_batch_circular_dep() {
-    let result = batch_packages_by_publish_order(&HashMap::from([
+  fn test_graph_circular_dep() {
+    let mut graph = build_graph(HashMap::from([
       ("a".to_string(), HashSet::from(["b".to_string()])),
       ("b".to_string(), HashSet::from(["c".to_string()])),
       ("c".to_string(), HashSet::from(["a".to_string()])),
     ]));
+    let next = graph.next();
+    assert!(next.is_empty());
     assert_eq!(
-      result.unwrap_err().to_string(),
-      "Circular dependency detected: a -> b -> c -> a"
+      graph.ensure_no_pending().unwrap_err().to_string(),
+      "Circular package dependency detected: a -> b -> c -> a"
     );
   }
 }

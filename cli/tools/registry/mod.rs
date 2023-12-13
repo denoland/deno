@@ -15,6 +15,8 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::unsync::JoinHandle;
+use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
@@ -32,6 +34,8 @@ use crate::args::PublishFlags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::util::import_map::ImportMapUnfurler;
+
+use self::publish_order::PublishOrderGraph;
 
 mod publish_order;
 mod tar;
@@ -290,22 +294,21 @@ fn print_diagnostics(diagnostics: Vec<String>) {
 
 async fn perform_publish(
   http_client: &Arc<HttpClient>,
-  package_batches: Vec<Vec<PreparedPublishPackage>>,
+  mut publish_order_graph: PublishOrderGraph,
+  mut prepared_modules_by_name: HashMap<String, PreparedPublishPackage>,
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_url = deno_registry_api_url().to_string();
 
-  let diagnostics = package_batches
-    .iter()
-    .flatten()
+  let diagnostics = prepared_modules_by_name
+    .values()
     .flat_map(|p| p.diagnostics.clone())
     .collect::<Vec<_>>();
   print_diagnostics(diagnostics);
 
-  let permissions = package_batches
-    .iter()
-    .flatten()
+  let permissions = prepared_modules_by_name
+    .values()
     .map(|package| Permission::VersionPublish {
       scope: &package.scope,
       package: &package.package,
@@ -313,7 +316,6 @@ async fn perform_publish(
       tarball_hash: &package.tarball_hash,
     })
     .collect::<Vec<_>>();
-  let packages_len = package_batches.iter().map(|b| b.len()).sum::<usize>();
 
   let mut authorizations = HashMap::new();
 
@@ -339,13 +341,11 @@ async fn perform_publish(
         "Visit {} to authorize publishing of",
         colors::cyan(format!("{}?code={}", auth.verification_url, auth.code))
       );
-      if packages_len > 1 {
-        println!(" {} packages", packages_len);
+      if prepared_modules_by_name.len() > 1 {
+        println!(" {} packages", prepared_modules_by_name.len());
       } else {
-        println!(
-          " @{}/{}",
-          package_batches[0][0].scope, package_batches[0][0].package
-        );
+        let pkg = prepared_modules_by_name.values().next().unwrap();
+        println!(" @{}/{}", pkg.scope, pkg.package);
       }
 
       // ASCII code for the bell character.
@@ -376,7 +376,7 @@ async fn perform_publish(
               colors::cyan(res.user.name)
             );
             let authorization: Rc<str> = format!("Bearer {}", res.token).into();
-            for pkg in package_batches.iter().flatten() {
+            for pkg in prepared_modules_by_name.values() {
               authorizations.insert(
                 (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
                 authorization.clone(),
@@ -396,7 +396,7 @@ async fn perform_publish(
     }
     AuthMethod::Token(token) => {
       let authorization: Rc<str> = format!("Bearer {}", token).into();
-      for pkg in package_batches.iter().flatten() {
+      for pkg in prepared_modules_by_name.values() {
         authorizations.insert(
           (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
           authorization.clone(),
@@ -404,7 +404,7 @@ async fn perform_publish(
       }
     }
     AuthMethod::Oidc(oidc_config) => {
-      let packages = package_batches.iter().flatten().collect::<Vec<_>>();
+      let packages = prepared_modules_by_name.values().collect::<Vec<_>>();
       let mut aligned_package_batches = packages.chunks(16);
       for permissions in permissions.chunks(16) {
         let audience = json!({ "permissions": permissions }).to_string();
@@ -453,35 +453,40 @@ async fn perform_publish(
     }
   };
 
-  assert_eq!(packages_len, authorizations.len());
-  for batch in package_batches {
-    let futures = batch
-      .into_iter()
-      .map(|package| {
-        let authorization = authorizations
-          .remove(&(
-            package.scope.clone(),
-            package.package.clone(),
-            package.version.clone(),
-          ))
-          .unwrap();
-        let registry_url = registry_url.clone();
-        let http_client = http_client.clone();
-        deno_core::unsync::spawn(async move {
-          let package_name = format!(
-            "@{}/{}@{}",
-            package.scope, package.package, package.version
-          );
-          publish_package(&http_client, package, &registry_url, &authorization)
-            .await
-            .with_context(|| format!("Failed to publish {}", package_name))
-        })
-      })
-      .collect::<Vec<_>>();
-    let results = deno_core::futures::future::join_all(futures).await;
-    for result in results {
-      result??;
+  assert_eq!(prepared_modules_by_name.len(), authorizations.len());
+  let mut futures: JoinSet<Result<String, AnyError>> = JoinSet::default();
+  loop {
+    let next_batch = publish_order_graph.next();
+    if futures.is_empty() && next_batch.is_empty() {
+      // errors for a cyclic dependency
+      publish_order_graph.ensure_no_pending()?;
+      break;
     }
+
+    for package_name in next_batch {
+      let package = prepared_modules_by_name.remove(&package_name).unwrap();
+      let authorization = authorizations
+        .remove(&(
+          package.scope.clone(),
+          package.package.clone(),
+          package.version.clone(),
+        ))
+        .unwrap();
+      let registry_url = registry_url.clone();
+      let http_client = http_client.clone();
+      futures.spawn(async move {
+        let package_name =
+          format!("@{}/{}@{}", package.scope, package.package, package.version);
+        publish_package(&http_client, package, &registry_url, &authorization)
+          .await
+          .with_context(|| format!("Failed to publish {}", package_name))?;
+        Ok(package_name)
+      });
+    }
+
+    let result = futures.join_next().await.unwrap();
+    let package_name = result??;
+    publish_order_graph.finish_package(&package_name);
   }
 
   Ok(())
@@ -641,56 +646,62 @@ pub async fn publish(
     )
   })?;
 
-  let mut package_batches =
-    Vec::with_capacity(std::cmp::max(1, deno_json.json.workspaces.len()));
-
   let workspace_config = deno_json.to_workspace_config()?;
-  match workspace_config {
+
+  let (publish_order_graph, prepared_package_by_name) = match workspace_config {
     Some(workspace_config) => {
       println!("Publishing a workspace...");
-      let batched_packages = publish_order::analyze_workspace_publish_order(
+      let mut prepared_package_by_name =
+        HashMap::with_capacity(workspace_config.members.len());
+      let publish_order_graph = publish_order::build_publish_graph(
         &workspace_config,
         cli_factory.module_graph_builder().await?.as_ref(),
       )
       .await?;
 
-      let members_by_name = workspace_config
+      let results = workspace_config
         .members
         .iter()
-        .map(|m| (&m.package_name, m))
-        .collect::<HashMap<_, _>>();
-      for batch in batched_packages {
-        let results = batch
-          .iter()
-          .map(|name| {
-            let member = (*members_by_name.get(name).unwrap()).clone();
-            let import_map = import_map.clone();
-            deno_core::unsync::spawn(async move {
-              prepare_publish(&member.config_file, import_map)
-                .await
-                .with_context(|| {
-                  format!("Failed preparing '{}'.", member.member_name)
-                })
-            })
+        .cloned()
+        .map(|member| {
+          let import_map = import_map.clone();
+          deno_core::unsync::spawn(async move {
+            let package = prepare_publish(&member.config_file, import_map)
+              .await
+              .with_context(|| {
+                format!("Failed preparing '{}'.", member.package_name)
+              })?;
+            Ok((member.package_name, package))
           })
-          .collect::<Vec<_>>();
-        let results = deno_core::futures::future::join_all(results).await;
-        let mut batch = Vec::with_capacity(results.len());
-        for result in results {
-          batch.push(result??);
-        }
-        package_batches.push(batch);
+        })
+        .collect::<Vec<JoinHandle<Result<(String, PreparedPublishPackage), AnyError>>>>();
+      let results = deno_core::futures::future::join_all(results).await;
+      for result in results {
+        let (package_name, package) = result??;
+        prepared_package_by_name.insert(package_name, package);
       }
+      (publish_order_graph, prepared_package_by_name)
     }
     None => {
-      package_batches
-        .push(vec![prepare_publish(&deno_json, import_map).await?]);
+      let mut prepared_package_by_name = HashMap::with_capacity(1);
+      let package = prepare_publish(&deno_json, import_map).await?;
+      let package_name = package.package.clone();
+      let publish_order_graph =
+        PublishOrderGraph::new_single(package_name.clone());
+      prepared_package_by_name.insert(package_name, package);
+      (publish_order_graph, prepared_package_by_name)
     }
-  }
+  };
 
-  if package_batches.is_empty() {
+  if prepared_package_by_name.is_empty() {
     bail!("No packages to publish");
   }
 
-  perform_publish(cli_factory.http_client(), package_batches, auth_method).await
+  perform_publish(
+    cli_factory.http_client(),
+    publish_order_graph,
+    prepared_package_by_name,
+    auth_method,
+  )
+  .await
 }
