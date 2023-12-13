@@ -91,7 +91,7 @@ Deno.test(
   { sanitizeResources: false },
   function () {
     const handle = createDeflate({
-      // @ts-expect-error
+      // @ts-expect-error: passing non-int flush value
       flush: "",
     });
 
