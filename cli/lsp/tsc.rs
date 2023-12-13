@@ -248,6 +248,21 @@ impl TsServer {
     }
   }
 
+  pub async fn did_change_scripts(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifiers: Vec<ModuleSpecifier>,
+  ) {
+    let req = TscRequest {
+      method: "$didChangeScripts",
+      args: json!([specifiers
+        .into_iter()
+        .map(|s| self.specifier_map.denormalize(&s))
+        .collect::<Vec<String>>(),]),
+    };
+    self.request::<bool>(snapshot, req).await.ok();
+  }
+
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -4978,6 +4993,9 @@ mod tests {
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
+    ts_server
+      .did_change_scripts(snapshot.clone(), vec![specifier_dep.clone()])
+      .await;
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())

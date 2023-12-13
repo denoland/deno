@@ -1340,6 +1340,10 @@ impl Inner {
         if document.is_diagnosable() {
           self.refresh_npm_specifiers().await;
           self
+            .ts_server
+            .did_change_scripts(self.snapshot(), vec![specifier.clone()])
+            .await;
+          self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
           self.send_diagnostics_update();
@@ -1382,9 +1386,15 @@ impl Inner {
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if self.is_diagnosable(&specifier) {
+      // Closing a module can represent a change in content. For example, if it
+      // was closed while unsaved.
       self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
+      self
+        .ts_server
+        .did_change_scripts(self.snapshot(), vec![specifier.clone()])
+        .await;
       self.diagnostics_server.invalidate(&specifiers);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -3296,8 +3306,14 @@ impl tower_lsp::LanguageServer for LanguageServer {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     let document = inner.did_open(&specifier, params).await;
     if document.is_diagnosable() {
+      // Opening a module can represent a change in content. For example, if it
+      // was deleted since it was last open.
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);
+      inner
+        .ts_server
+        .did_change_scripts(inner.snapshot(), vec![specifier.clone()])
+        .await;
       inner.diagnostics_server.invalidate(&specifiers);
       inner.send_diagnostics_update();
       inner.send_testing_update();

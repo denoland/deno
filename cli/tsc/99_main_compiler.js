@@ -978,8 +978,6 @@ delete Object.prototype.__proto__;
 
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
-    // evict all memoized source file versions
-    scriptVersionCache.clear();
     switch (method) {
       case "$restart": {
         serverRestart();
@@ -1034,6 +1032,13 @@ delete Object.prototype.__proto__;
           return respond(id, {});
         }
       }
+      case "$didChangeScripts": {
+        const specifiers = args[0];
+        for (const specifier of specifiers) {
+          scriptVersionCache.delete(specifier);
+        }
+        return respond(id, true);
+      }
       default:
         if (typeof languageService[method] === "function") {
           // The `getCompletionEntryDetails()` method returns null if the
@@ -1065,6 +1070,7 @@ delete Object.prototype.__proto__;
   function serverRestart() {
     languageService = ts.createLanguageService(host, documentRegistry);
     isNodeSourceFileCache.clear();
+    scriptVersionCache.clear();
     debug("serverRestart()");
   }
 
