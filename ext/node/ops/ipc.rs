@@ -106,6 +106,7 @@ mod unix {
       })
     }
 
+    #[cfg(test)]
     fn from_unix_stream(stream: UnixStream) -> Self {
       let (read_half, write_half) = stream.into_split();
       Self {
