@@ -1021,6 +1021,15 @@ Deno.test(function consoleTestStringifyIterableWhenGrouped() {
   );
 });
 
+Deno.test(function consoleTestIteratorValueAreNotConsumed() {
+  const setIterator = new Set([1, 2, 3]).values();
+  assertEquals(
+    stringify(setIterator),
+    "[Set Iterator] { 1, 2, 3 }",
+  );
+  assertEquals([...setIterator], [1, 2, 3]);
+});
+
 Deno.test(async function consoleTestStringifyPromises() {
   const pendingPromise = new Promise((_res, _rej) => {});
   assertEquals(stringify(pendingPromise), "Promise { <pending> }");

@@ -10,7 +10,6 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFill,
-  ArrayPrototypeConcat,
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeForEach,
@@ -136,22 +135,6 @@ const {
   WeakSetPrototypeHas,
 } = primordials;
 const ops = core.ops;
-
-// supposed to be in node/internal_binding/util.ts
-export function previewEntries(iter, isKeyValue) {
-  if (isKeyValue) {
-    // deno-lint-ignore prefer-primordials
-    const arr = [...iter];
-    if (ArrayIsArray(arr[0]) && arr[0].length === 2) {
-      // deno-lint-ignore prefer-primordials
-      return [ArrayPrototypeConcat([], ...arr), true];
-    }
-    return [arr, false];
-  } else {
-    // deno-lint-ignore prefer-primordials
-    return [...iter];
-  }
-}
 
 let noColor = () => false;
 
@@ -1455,7 +1438,7 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
-  const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
+  const { 0: entries, 1: isKeyValue } = ops.op_preview_entries(value, true);
   if (isKeyValue) {
     // Mark entry iterators as such.
     braces[0] = StringPrototypeReplace(
@@ -1664,12 +1647,12 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
-  const entries = previewEntries(value);
+  const entries = ops.op_preview_entries(value, false);
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
-  const entries = previewEntries(value);
+  const entries = ops.op_preview_entries(value, false);
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
