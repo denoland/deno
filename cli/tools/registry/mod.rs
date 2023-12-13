@@ -486,6 +486,7 @@ async fn publish_package(
     package.package,
     package.version
   );
+  // TODO(bartlomieju): return something more useful here
   println!(
     "{}@{}/{}/{}_meta.json",
     registry_url, package.scope, package.package, package.version
