@@ -323,9 +323,14 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     8,
   ),
   (
+    deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
+    "Enable unstable `WebGPU` API",
+    9,
+  ),
+  (
     deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
     "Enable unstable Web Worker APIs",
-    9,
+    10,
   ),
 ];
 

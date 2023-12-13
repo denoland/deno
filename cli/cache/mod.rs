@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::deno_registry_url;
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchOptions;
@@ -17,7 +18,6 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -165,27 +165,9 @@ impl FetchCacher {
   }
 }
 
-pub(crate) static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
-  let env_var_name = "DENO_REGISTRY_URL";
-  if let Ok(registry_url) = std::env::var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
-      }
-    }
-  }
-
-  deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
-});
-
 impl Loader for FetchCacher {
   fn registry_url(&self) -> &Url {
-    &DENO_REGISTRY_URL
+    deno_registry_url()
   }
 
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {

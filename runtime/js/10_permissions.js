@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
@@ -289,7 +289,5 @@ function serializePermissions(permissions) {
   }
   return permissions;
 }
-
-internals.serializePermissions = serializePermissions;
 
 export { Permissions, permissions, PermissionStatus, serializePermissions };

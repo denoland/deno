@@ -43,6 +43,20 @@ function validateQueueDelay(delay: number) {
   }
 }
 
+const maxQueueBackoffIntervals = 5;
+const maxQueueBackoffInterval = 60 * 60 * 1000;
+
+function validateBackoffSchedule(backoffSchedule: number[]) {
+  if (backoffSchedule.length > maxQueueBackoffIntervals) {
+    throw new TypeError("invalid backoffSchedule");
+  }
+  for (const interval of backoffSchedule) {
+    if (interval < 0 || interval > maxQueueBackoffInterval || isNaN(interval)) {
+      throw new TypeError("invalid backoffSchedule");
+    }
+  }
+}
+
 interface RawKvEntry {
   key: Deno.KvKey;
   value: RawValue;
@@ -224,10 +238,17 @@ class Kv {
 
   async enqueue(
     message: unknown,
-    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    opts?: {
+      delay?: number;
+      keysIfUndelivered?: Deno.KvKey[];
+      backoffSchedule?: number[];
+    },
   ) {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
+    }
+    if (opts?.backoffSchedule !== undefined) {
+      validateBackoffSchedule(opts?.backoffSchedule);
     }
 
     const enqueues = [
@@ -235,7 +256,7 @@ class Kv {
         core.serialize(message, { forStorage: true }),
         opts?.delay ?? 0,
         opts?.keysIfUndelivered ?? [],
-        null,
+        opts?.backoffSchedule ?? null,
       ],
     ];
 
@@ -468,16 +489,23 @@ class AtomicOperation {
 
   enqueue(
     message: unknown,
-    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    opts?: {
+      delay?: number;
+      keysIfUndelivered?: Deno.KvKey[];
+      backoffSchedule?: number[];
+    },
   ): this {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
+    }
+    if (opts?.backoffSchedule !== undefined) {
+      validateBackoffSchedule(opts?.backoffSchedule);
     }
     this.#enqueues.push([
       core.serialize(message, { forStorage: true }),
       opts?.delay ?? 0,
       opts?.keysIfUndelivered ?? [],
-      null,
+      opts?.backoffSchedule ?? null,
     ]);
     return this;
   }

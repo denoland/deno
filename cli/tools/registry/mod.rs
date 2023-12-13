@@ -27,6 +27,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::Digest;
 
+use crate::args::deno_registry_api_url;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
@@ -52,6 +53,7 @@ struct PreparedPublishPackage {
   version: String,
   tarball_hash: String,
   tarball: Bytes,
+  diagnostics: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -68,6 +70,9 @@ pub struct PublishingTask {
   pub status: String,
   pub error: Option<PublishingTaskError>,
 }
+
+static SUGGESTED_ENTRYPOINTS: [&str; 4] =
+  ["mod.ts", "mod.js", "index.ts", "index.js"];
 
 async fn prepare_publish(
   initial_cwd: &Path,
@@ -90,6 +95,34 @@ async fn prepare_publish(
   let Some(name) = deno_json.json.name.clone() else {
     bail!("{} is missing 'name' field", deno_json_path.display());
   };
+  if deno_json.json.exports.is_none() {
+    let mut suggested_entrypoint = None;
+
+    for entrypoint in SUGGESTED_ENTRYPOINTS {
+      if directory_path.join(entrypoint).exists() {
+        suggested_entrypoint = Some(entrypoint);
+        break;
+      }
+    }
+
+    let exports_content = format!(
+      r#"{{
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
+      name,
+      version,
+      suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
+    );
+
+    bail!(
+      "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+      name,
+      deno_json_path.display(),
+      exports_content
+    );
+  }
   let Some(name) = name.strip_prefix('@') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
@@ -99,8 +132,9 @@ async fn prepare_publish(
 
   let unfurler = ImportMapUnfurler::new(import_map);
 
-  let tarball = tar::create_gzipped_tarball(directory_path, unfurler)
-    .context("Failed to create a tarball")?;
+  let (tarball, diagnostics) =
+    tar::create_gzipped_tarball(directory_path, unfurler)
+      .context("Failed to create a tarball")?;
 
   let tarball_hash_bytes: Vec<u8> =
     sha2::Sha256::digest(&tarball).iter().cloned().collect();
@@ -115,6 +149,7 @@ async fn prepare_publish(
     version: version.to_string(),
     tarball_hash,
     tarball,
+    diagnostics,
   })
 }
 
@@ -220,13 +255,60 @@ struct OidcTokenResponse {
   value: String,
 }
 
+/// Prints diagnostics like so:
+/// ```
+///
+/// Warning
+/// ├╌ Dynamic import was not analyzable...
+/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
+/// |
+/// ├╌ Dynamic import was not analyzable...
+/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
+/// |
+/// ├╌ Dynamic import was not analyzable...
+/// └╌╌ at file:///dev/foo/bar/foo.ts:4:5
+///
+/// ```
+fn print_diagnostics(diagnostics: Vec<String>) {
+  if !diagnostics.is_empty() {
+    let len = diagnostics.len();
+    log::warn!("");
+    log::warn!("{}", crate::colors::yellow("Warning"));
+    for (i, diagnostic) in diagnostics.iter().enumerate() {
+      let last_diagnostic = i == len - 1;
+      let lines = diagnostic.split('\n').collect::<Vec<_>>();
+      let lines_len = lines.len();
+      if i != 0 {
+        log::warn!("|");
+      }
+      for (j, line) in lines.iter().enumerate() {
+        let last_line = j == lines_len - 1;
+        if j == 0 {
+          log::warn!("├╌ {}", line);
+        } else if last_line && last_diagnostic {
+          log::warn!("└╌╌ {}", line);
+        } else {
+          log::warn!("├╌╌ {}", line);
+        }
+      }
+    }
+    log::warn!("");
+  }
+}
+
 async fn perform_publish(
   http_client: &Arc<HttpClient>,
   packages: Vec<PreparedPublishPackage>,
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  let registry_url = crate::cache::DENO_REGISTRY_URL.to_string();
+  let registry_url = deno_registry_api_url().to_string();
+
+  let diagnostics = packages
+    .iter()
+    .flat_map(|p| p.diagnostics.clone())
+    .collect::<Vec<_>>();
+  print_diagnostics(diagnostics);
 
   let permissions = packages
     .iter()
@@ -266,6 +348,8 @@ async fn perform_publish(
         println!(" @{}/{}", packages[0].scope, packages[0].package);
       }
 
+      // ASCII code for the bell character.
+      print!("\x07");
       println!("{}", colors::gray("Waiting..."));
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);

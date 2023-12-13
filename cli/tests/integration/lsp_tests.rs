@@ -8117,57 +8117,6 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
 }
 
 #[test]
-fn lsp_npm_missing_type_imports_diagnostics() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": r#"
-        import colorName, { type RGB } from 'npm:color-name';
-        const color: RGB = colorName.black;
-        console.log(color);
-      "#,
-    },
-  }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
-  let diagnostics = client.read_diagnostics();
-  assert_eq!(
-    json!(
-      diagnostics.messages_with_file_and_source("file:///a/file.ts", "deno-ts")
-    ),
-    json!({
-      "uri": "file:///a/file.ts",
-      "diagnostics": [
-        {
-          "range": {
-            "start": { "line": 1, "character": 33 },
-            "end": { "line": 1, "character": 36 },
-          },
-          "severity": 1,
-          "code": 2305,
-          "source": "deno-ts",
-          "message": "Module '\"npm:color-name\"' has no exported member 'RGB'.",
-        },
-      ],
-      "version": 1,
-    })
-  );
-}
-
-#[test]
 fn lsp_jupyter_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8318,7 +8267,10 @@ fn lsp_performance() {
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
       "tsc.host.getQuickInfoAtPosition",
+      "tsc.op.op_is_node_file",
       "tsc.op.op_load",
+      "tsc.op.op_script_names",
+      "tsc.op.op_script_version",
       "tsc.request.$configure",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
@@ -10622,7 +10574,7 @@ fn lsp_sloppy_imports_warn() {
           ),
           "data": {
             "specifier": temp_dir.join("a").uri_file(),
-            "redirect": temp_dir.join("a.ts").uri_file()
+            "redirect": temp_dir.join("a.ts").uri_file(),
           },
         }],
         "only": ["quickfix"]
@@ -10713,10 +10665,84 @@ fn sloppy_imports_not_enabled() {
           "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
           temp_dir.join("a").uri_file(),
         ),
+        data: Some(json!({
+          "specifier": temp_dir.join("a").uri_file(),
+          "to": temp_dir.join("a.ts").uri_file(),
+          "message": "Add a '.ts' extension.",
+        })),
         ..Default::default()
       }],
       version: Some(1),
     }
+  );
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.join("file.ts").uri_file()
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 24 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 19 },
+            "end": { "line": 0, "character": 24 }
+          },
+          "severity": 3,
+          "code": "no-local",
+          "source": "deno",
+          "message": format!(
+            "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+            temp_dir.join("a").uri_file(),
+          ),
+          "data": {
+            "specifier": temp_dir.join("a").uri_file(),
+            "to": temp_dir.join("a.ts").uri_file(),
+            "message": "Add a '.ts' extension.",
+          },
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add a '.ts' extension.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 3,
+        "code": "no-local",
+        "source": "deno",
+        "message": format!(
+          "Unable to load a local module: {}\nMaybe add a '.ts' extension.",
+          temp_dir.join("a").uri_file(),
+        ),
+        "data": {
+          "specifier": temp_dir.join("a").uri_file(),
+          "to": temp_dir.join("a.ts").uri_file(),
+          "message": "Add a '.ts' extension.",
+        },
+      }],
+      "edit": {
+        "changes": {
+          temp_dir.join("file.ts").uri_file(): [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 }
+            },
+            "newText": "\"./a.ts\""
+          }]
+        }
+      }
+    }])
   );
   client.shutdown();
 }
