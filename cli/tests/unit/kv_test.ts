@@ -1600,6 +1600,24 @@ queueTest("queue retries", async (db) => {
   assertEquals(4, count);
 });
 
+queueTest("queue retries with backoffSchedule", async (db) => {
+  let count = 0;
+  const listener = db.listenQueue((_msg) => {
+    count += 1;
+    throw new TypeError("dequeue error");
+  });
+  try {
+    await db.enqueue("test", { backoffSchedule: [1] });
+    await sleep(2000);
+  } finally {
+    db.close();
+    await listener;
+  }
+
+  // There should have been 1 attempt + 1 retry
+  assertEquals(2, count);
+});
+
 queueTest("multiple listenQueues", async (db) => {
   const numListens = 10;
   let count = 0;
@@ -1874,6 +1892,23 @@ Deno.test({
     db.close();
     await listener;
   },
+});
+
+dbTest("invalid backoffSchedule", async (db) => {
+  await assertRejects(
+    async () => {
+      await db.enqueue("foo", { backoffSchedule: [1, 1, 1, 1, 1, 1] });
+    },
+    TypeError,
+    "invalid backoffSchedule",
+  );
+  await assertRejects(
+    async () => {
+      await db.enqueue("foo", { backoffSchedule: [3600001] });
+    },
+    TypeError,
+    "invalid backoffSchedule",
+  );
 });
 
 dbTest("atomic operation is exposed", (db) => {
