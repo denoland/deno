@@ -10,6 +10,7 @@ deno_core::extension!(
     op_is_arguments_object,
     op_is_async_function,
     op_is_generator_function,
+    op_is_generator_object,
     op_is_map_iterator,
     op_is_module_namespace_object,
     op_is_promise,
