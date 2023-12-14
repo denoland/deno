@@ -510,7 +510,7 @@ mod windows {
     Err(deno_core::error::not_supported())
   }
 
-  #[op2]
+  #[op2(fast)]
   pub fn op_node_child_ipc_pipe() -> Result<(), AnyError> {
     Err(deno_core::error::not_supported())
   }
