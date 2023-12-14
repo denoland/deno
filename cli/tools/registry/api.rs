@@ -134,7 +134,7 @@ pub async fn get_package(
   scope: &str,
   package: &str,
 ) -> Result<reqwest::Response, AnyError> {
-  let package_url = get_package_api_url(registry_api_url, &scope, &package);
+  let package_url = get_package_api_url(registry_api_url, scope, package);
   let response = client.get(&package_url).send().await?;
   Ok(response)
 }

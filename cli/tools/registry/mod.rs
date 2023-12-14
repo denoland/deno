@@ -350,13 +350,13 @@ async fn check_if_scope_and_package_exist(
   let mut needs_scope = false;
   let mut needs_package = false;
 
-  let response = api::get_scope(client, &registry_api_url, scope).await?;
+  let response = api::get_scope(client, registry_api_url, scope).await?;
   if response.status() == 404 {
     needs_scope = true;
   }
 
   let response =
-    api::get_package(client, &registry_api_url, scope, package).await?;
+    api::get_package(client, registry_api_url, scope, package).await?;
   if response.status() == 404 {
     needs_package = true;
   }
