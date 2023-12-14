@@ -4,6 +4,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const ops = core.ops;
+
 // Mock trace for now
 const trace = () => {};
 import {
