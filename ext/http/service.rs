@@ -7,12 +7,12 @@ use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use http::request::Parts;
-use http::HeaderMap;
+use http1::request::Parts;
 use hyper1::body::Body;
 use hyper1::body::Frame;
 use hyper1::body::Incoming;
 use hyper1::body::SizeHint;
+use hyper1::header::HeaderMap;
 use hyper1::upgrade::OnUpgrade;
 
 use scopeguard::guard;
@@ -209,9 +209,9 @@ pub(crate) async fn handle_request(
 struct HttpRecordInner {
   server_state: SignallingRc<HttpServerState>,
   request_info: HttpConnectionProperties,
-  request_parts: http::request::Parts,
+  request_parts: http1::request::Parts,
   request_body: Option<RequestBodyState>,
-  response_parts: Option<http::response::Parts>,
+  response_parts: Option<http1::response::Parts>,
   response_ready: bool,
   response_waker: Option<Waker>,
   response_body: ResponseBytesInner,
@@ -244,7 +244,7 @@ impl HttpRecord {
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
     let request_body = Some(request_body.into());
-    let (mut response_parts, _) = http::Response::new(()).into_parts();
+    let (mut response_parts, _) = http1::Response::new(()).into_parts();
     let record =
       if let Some((record, headers)) = server_state.borrow_mut().pool.pop() {
         response_parts.headers = headers;
@@ -425,7 +425,7 @@ impl HttpRecord {
   }
 
   /// Get a mutable reference to the response status and headers.
-  pub fn response_parts(&self) -> RefMut<'_, http::response::Parts> {
+  pub fn response_parts(&self) -> RefMut<'_, http1::response::Parts> {
     RefMut::map(self.self_mut(), |inner| {
       inner.response_parts.as_mut().unwrap()
     })
@@ -446,7 +446,7 @@ impl HttpRecord {
   fn into_response(self: Rc<Self>) -> Response {
     let parts = self.self_mut().response_parts.take().unwrap();
     let body = HttpRecordResponse(ManuallyDrop::new(self));
-    http::Response::from_parts(parts, body)
+    Response::from_parts(parts, body)
   }
 
   /// Get a reference to the connection properties.
@@ -602,7 +602,7 @@ mod tests {
 
   /// Execute client request on service and concurrently map the response.
   async fn serve_request<B, S, T, F>(
-    req: http::Request<B>,
+    req: http1::Request<B>,
     service: S,
     map_response: impl FnOnce(hyper1::Response<Incoming>) -> F,
   ) -> hyper1::Result<T>

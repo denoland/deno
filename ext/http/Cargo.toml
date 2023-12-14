@@ -33,9 +33,10 @@ deno_websocket.workspace = true
 flate2.workspace = true
 fly-accept-encoding = "0.2.0"
 http.workspace = true
+http1 = { package = "http", version = "=1.0.0" }
 httparse.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-hyper1 = { package = "hyper", features = ["full"], version = "=1.0.0-rc.4" }
+hyper1 = { package = "hyper", features = ["full"], version = "=1.0.1" }
 memmem.workspace = true
 mime = "0.3.16"
 once_cell.workspace = true
@@ -52,5 +53,5 @@ tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
 bencher.workspace = true
-http-body-util = "=0.1.0-rc.3"
+http-body-util = "0.1"
 rand.workspace = true
