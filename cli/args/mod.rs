@@ -939,6 +939,17 @@ impl CliOptions {
     .map(Some)
   }
 
+  pub fn node_ipc_fd(&self) -> Option<i32> {
+    let maybe_node_channel_fd = std::env::var("DENO_CHANNEL_FD").ok();
+    if let Some(node_channel_fd) = maybe_node_channel_fd {
+      // Remove so that child processes don't inherit this environment variable.
+      std::env::remove_var("DENO_CHANNEL_FD");
+      node_channel_fd.parse::<i32>().ok()
+    } else {
+      None
+    }
+  }
+
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
     match &self.flags.subcommand {
       DenoSubcommand::Bundle(bundle_flags) => {

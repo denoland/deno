@@ -538,7 +538,7 @@ async fn perform_publish(
       package.version
     );
     println!(
-      "{}/@{}/{}/{}_meta.json",
+      "{}@{}/{}/{}_meta.json",
       registry_url, package.scope, package.package, package.version
     );
   }
