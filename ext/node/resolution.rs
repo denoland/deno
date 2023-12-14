@@ -17,6 +17,9 @@ use deno_fs::FileSystemRc;
 use deno_media_type::MediaType;
 
 use crate::errors;
+use crate::is_builtin_node_module;
+use crate::path::to_file_specifier;
+use crate::polyfill::get_module_name_from_builtin_node_module_specifier;
 use crate::AllowAllNodePermissions;
 use crate::NodePermissions;
 use crate::NpmResolverRc;
@@ -164,16 +167,13 @@ impl NodeResolver {
         return Ok(Some(NodeResolution::Esm(url)));
       }
 
-      let protocol = url.scheme();
-
-      if protocol == "node" {
-        let split_specifier = url.as_str().split(':');
-        let specifier = split_specifier.skip(1).collect::<String>();
-
-        if crate::is_builtin_node_module(&specifier) {
-          return Ok(Some(NodeResolution::BuiltIn(specifier)));
-        }
+      if let Some(module_name) =
+        get_module_name_from_builtin_node_module_specifier(&url)
+      {
+        return Ok(Some(NodeResolution::BuiltIn(module_name.to_string())));
       }
+
+      let protocol = url.scheme();
 
       if protocol != "file" && protocol != "data" {
         return Err(errors::err_unsupported_esm_url_scheme(&url));
@@ -203,12 +203,10 @@ impl NodeResolver {
         let path = url.to_file_path().unwrap();
         // todo(16370): the module kind is not correct here. I think we need
         // typescript to tell us if the referrer is esm or cjs
-        let path =
-          match self.path_to_declaration_path(path, NodeModuleKind::Esm) {
-            Some(path) => path,
-            None => return Ok(None),
-          };
-        ModuleSpecifier::from_file_path(path).unwrap()
+        match self.path_to_declaration_path(path, NodeModuleKind::Esm) {
+          Some(path) => to_file_specifier(&path),
+          None => return Ok(None),
+        }
       }
     };
 
@@ -235,38 +233,31 @@ impl NodeResolver {
         // should use the value provided by typescript instead
         let declaration_path =
           self.path_to_declaration_path(file_path, NodeModuleKind::Esm);
-        declaration_path.map(|declaration_path| {
-          ModuleSpecifier::from_file_path(declaration_path).unwrap()
-        })
+        declaration_path
+          .map(|declaration_path| to_file_specifier(&declaration_path))
       } else {
         Some(resolved_specifier)
       }
     } else if specifier.starts_with('#') {
-      Some(
-        self
-          .package_imports_resolve(
-            specifier,
-            referrer,
-            NodeModuleKind::Esm,
-            conditions,
-            mode,
-            permissions,
-          )
-          .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
-      )
+      Some(self.package_imports_resolve(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        mode,
+        permissions,
+      )?)
     } else if let Ok(resolved) = Url::parse(specifier) {
       Some(resolved)
     } else {
-      self
-        .package_resolve(
-          specifier,
-          referrer,
-          NodeModuleKind::Esm,
-          conditions,
-          mode,
-          permissions,
-        )?
-        .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
+      self.package_resolve(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        mode,
+        permissions,
+      )?
     };
     Ok(match url {
       Some(url) => Some(self.finalize_resolution(url, referrer)?),
@@ -287,6 +278,10 @@ impl NodeResolver {
         "must not include encoded \"/\" or \"\\\\\" characters",
         Some(to_file_path_string(base)),
       ));
+    }
+
+    if resolved.scheme() == "node" {
+      return Ok(resolved);
     }
 
     let path = to_file_path(&resolved);
@@ -340,7 +335,7 @@ impl NodeResolver {
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
-    let maybe_resolved_path = self
+    let maybe_resolved_url = self
       .resolve_package_subpath(
         &package_json,
         &package_subpath,
@@ -357,21 +352,25 @@ impl NodeResolver {
           package_json.path.display()
         )
       })?;
-    let resolved_path = match maybe_resolved_path {
+    let resolved_url = match maybe_resolved_url {
       Some(resolved_path) => resolved_path,
       None => return Ok(None),
     };
-    let resolved_path = match mode {
-      NodeResolutionMode::Execution => resolved_path,
+    let resolved_url = match mode {
+      NodeResolutionMode::Execution => resolved_url,
       NodeResolutionMode::Types => {
-        match self.path_to_declaration_path(resolved_path, node_module_kind) {
-          Some(path) => path,
-          None => return Ok(None),
+        if resolved_url.scheme() == "file" {
+          let path = resolved_url.to_file_path().unwrap();
+          match self.path_to_declaration_path(path, node_module_kind) {
+            Some(path) => to_file_specifier(&path),
+            None => return Ok(None),
+          }
+        } else {
+          resolved_url
         }
       }
     };
-    let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
-    let resolve_response = self.url_to_node_resolution(url)?;
+    let resolve_response = self.url_to_node_resolution(resolved_url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(Some(resolve_response))
@@ -408,8 +407,7 @@ impl NodeResolver {
     let package_json = self
       .load_package_json(&AllowAllNodePermissions, package_json_path.clone())?;
     let bin_entry = resolve_bin_entry_value(&package_json, sub_path)?;
-    let url =
-      ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
+    let url = to_file_specifier(&package_folder.join(bin_entry));
 
     let resolve_response = self.url_to_node_resolution(url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -531,7 +529,7 @@ impl NodeResolver {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if name == "#" || name.starts_with("#/") || name.ends_with('/') {
       let reason = "is not a valid internal imports specifier name";
       return Err(errors::err_invalid_module_specifier(
@@ -549,9 +547,10 @@ impl NodeResolver {
         package_json_path = Some(package_config.path.clone());
         if let Some(imports) = &package_config.imports {
           if imports.contains_key(name) && !name.contains('*') {
+            let target = imports.get(name).unwrap();
             let maybe_resolved = self.resolve_package_target(
               package_json_path.as_ref().unwrap(),
-              imports.get(name).unwrap().to_owned(),
+              target,
               "",
               name,
               referrer,
@@ -591,7 +590,7 @@ impl NodeResolver {
             }
 
             if !best_match.is_empty() {
-              let target = imports.get(best_match).unwrap().to_owned();
+              let target = imports.get(best_match).unwrap();
               let maybe_resolved = self.resolve_package_target(
                 package_json_path.as_ref().unwrap(),
                 target,
@@ -624,7 +623,7 @@ impl NodeResolver {
   #[allow(clippy::too_many_arguments)]
   fn resolve_package_target_string(
     &self,
-    target: String,
+    target: &str,
     subpath: &str,
     match_: &str,
     package_json_path: &Path,
@@ -635,7 +634,7 @@ impl NodeResolver {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if !subpath.is_empty() && !pattern && !target.ends_with('/') {
       return Err(throw_invalid_package_target(
         match_,
@@ -650,29 +649,51 @@ impl NodeResolver {
     let pattern_re = lazy_regex::regex!(r"\*");
     if !target.starts_with("./") {
       if internal && !target.starts_with("../") && !target.starts_with('/') {
-        let is_url = Url::parse(&target).is_ok();
-        if !is_url {
-          let export_target = if pattern {
-            pattern_re
-              .replace(&target, |_caps: &regex::Captures| subpath)
-              .to_string()
-          } else {
-            format!("{target}{subpath}")
-          };
-          let package_json_url =
-            ModuleSpecifier::from_file_path(package_json_path).unwrap();
-          return match self.package_resolve(
-            &export_target,
-            &package_json_url,
-            referrer_kind,
-            conditions,
-            mode,
-            permissions,
-          ) {
-            Ok(Some(path)) => Ok(path),
-            Ok(None) => Err(generic_error("not found")),
-            Err(err) => Err(err),
-          };
+        let target_url = Url::parse(target);
+        match target_url {
+          Ok(url) => {
+            if get_module_name_from_builtin_node_module_specifier(&url)
+              .is_some()
+            {
+              return Ok(url);
+            }
+          }
+          Err(_) => {
+            let export_target = if pattern {
+              pattern_re
+                .replace(target, |_caps: &regex::Captures| subpath)
+                .to_string()
+            } else {
+              format!("{target}{subpath}")
+            };
+            let package_json_url = to_file_specifier(package_json_path);
+            let result = match self.package_resolve(
+              &export_target,
+              &package_json_url,
+              referrer_kind,
+              conditions,
+              mode,
+              permissions,
+            ) {
+              Ok(Some(url)) => Ok(url),
+              Ok(None) => Err(generic_error("not found")),
+              Err(err) => Err(err),
+            };
+
+            return match result {
+              Ok(url) => Ok(url),
+              Err(err) => {
+                if is_builtin_node_module(target) {
+                  Ok(
+                    ModuleSpecifier::parse(&format!("node:{}", target))
+                      .unwrap(),
+                  )
+                } else {
+                  Err(err)
+                }
+              }
+            };
+          }
         }
       }
       return Err(throw_invalid_package_target(
@@ -693,7 +714,7 @@ impl NodeResolver {
       ));
     }
     let package_path = package_json_path.parent().unwrap();
-    let resolved_path = package_path.join(&target).clean();
+    let resolved_path = package_path.join(target).clean();
     if !resolved_path.starts_with(package_path) {
       return Err(throw_invalid_package_target(
         match_,
@@ -704,7 +725,7 @@ impl NodeResolver {
       ));
     }
     if subpath.is_empty() {
-      return Ok(resolved_path);
+      return Ok(to_file_specifier(&resolved_path));
     }
     if invalid_segment_re.is_match(subpath) {
       let request = if pattern {
@@ -723,16 +744,16 @@ impl NodeResolver {
       let resolved_path_str = resolved_path.to_string_lossy();
       let replaced = pattern_re
         .replace(&resolved_path_str, |_caps: &regex::Captures| subpath);
-      return Ok(PathBuf::from(replaced.to_string()));
+      return Ok(to_file_specifier(&PathBuf::from(replaced.to_string())));
     }
-    Ok(resolved_path.join(subpath).clean())
+    Ok(to_file_specifier(&resolved_path.join(subpath).clean()))
   }
 
   #[allow(clippy::too_many_arguments)]
   fn resolve_package_target(
     &self,
     package_json_path: &Path,
-    target: Value,
+    target: &Value,
     subpath: &str,
     package_subpath: &str,
     referrer: &ModuleSpecifier,
@@ -742,11 +763,11 @@ impl NodeResolver {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     if let Some(target) = target.as_str() {
       return self
         .resolve_package_target_string(
-          target.to_string(),
+          target,
           subpath,
           package_subpath,
           package_json_path,
@@ -758,11 +779,14 @@ impl NodeResolver {
           mode,
           permissions,
         )
-        .map(|path| {
-          if mode.is_types() {
-            self.path_to_declaration_path(path, referrer_kind)
+        .map(|url| {
+          if mode.is_types() && url.scheme() == "file" {
+            let path = url.to_file_path().unwrap();
+            self
+              .path_to_declaration_path(path, referrer_kind)
+              .map(|path| to_file_specifier(&path))
           } else {
-            Some(path)
+            Some(url)
           }
         });
     } else if let Some(target_arr) = target.as_array() {
@@ -774,7 +798,7 @@ impl NodeResolver {
       for target_item in target_arr {
         let resolved_result = self.resolve_package_target(
           package_json_path,
-          target_item.to_owned(),
+          target_item,
           subpath,
           package_subpath,
           referrer,
@@ -819,7 +843,7 @@ impl NodeResolver {
           || conditions.contains(&key.as_str())
           || mode.is_types() && key.as_str() == "types"
         {
-          let condition_target = target_obj.get(key).unwrap().to_owned();
+          let condition_target = target_obj.get(key).unwrap();
 
           let resolved = self.resolve_package_target(
             package_json_path,
@@ -848,7 +872,7 @@ impl NodeResolver {
 
     Err(throw_invalid_package_target(
       package_subpath,
-      target.to_string(),
+      &target.to_string(),
       package_json_path,
       internal,
       referrer,
@@ -866,12 +890,12 @@ impl NodeResolver {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if package_exports.contains_key(package_subpath)
       && package_subpath.find('*').is_none()
       && !package_subpath.ends_with('/')
     {
-      let target = package_exports.get(package_subpath).unwrap().to_owned();
+      let target = package_exports.get(package_subpath).unwrap();
       let resolved = self.resolve_package_target(
         package_json_path,
         target,
@@ -885,15 +909,15 @@ impl NodeResolver {
         mode,
         permissions,
       )?;
-      if resolved.is_none() {
-        return Err(throw_exports_not_found(
+      return match resolved {
+        Some(resolved) => Ok(resolved),
+        None => Err(throw_exports_not_found(
           package_subpath,
           package_json_path,
           referrer,
           mode,
-        ));
-      }
-      return Ok(resolved.unwrap());
+        )),
+      };
     }
 
     let mut best_match = "";
@@ -931,7 +955,7 @@ impl NodeResolver {
     }
 
     if !best_match.is_empty() {
-      let target = package_exports.get(best_match).unwrap().to_owned();
+      let target = package_exports.get(best_match).unwrap();
       let maybe_resolved = self.resolve_package_target(
         package_json_path,
         target,
@@ -973,7 +997,7 @@ impl NodeResolver {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
@@ -1044,7 +1068,7 @@ impl NodeResolver {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     if let Some(exports) = &package_json.exports {
       let result = self.package_exports_resolve(
         &package_json.path,
@@ -1063,7 +1087,7 @@ impl NodeResolver {
             if let Ok(Some(path)) =
               self.legacy_main_resolve(package_json, referrer_kind, mode)
             {
-              return Ok(Some(path));
+              return Ok(Some(to_file_specifier(&path)));
             } else {
               return Ok(None);
             }
@@ -1073,16 +1097,18 @@ impl NodeResolver {
       }
     }
     if package_subpath == "." {
-      return self.legacy_main_resolve(package_json, referrer_kind, mode);
+      return self
+        .legacy_main_resolve(package_json, referrer_kind, mode)
+        .map(|maybe_resolved| maybe_resolved.map(|p| to_file_specifier(&p)));
     }
 
     let file_path = package_json.path.parent().unwrap().join(package_subpath);
     if mode.is_types() {
       let maybe_declaration_path =
         self.path_to_declaration_path(file_path, referrer_kind);
-      Ok(maybe_declaration_path)
+      Ok(maybe_declaration_path.map(|p| to_file_specifier(&p)))
     } else {
-      Ok(Some(file_path))
+      Ok(Some(to_file_specifier(&file_path)))
     }
   }
 
@@ -1416,7 +1442,7 @@ fn throw_import_not_defined(
 
 fn throw_invalid_package_target(
   subpath: &str,
-  target: String,
+  target: &str,
   package_json_path: &Path,
   internal: bool,
   referrer: &ModuleSpecifier,
