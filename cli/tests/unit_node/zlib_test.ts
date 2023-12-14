@@ -81,3 +81,18 @@ Deno.test(
     await promise;
   },
 );
+
+Deno.test(
+  "zlib flush i32",
+  // FIXME: Handle is not closed properly
+  { sanitizeResources: false },
+  function () {
+    const handle = createDeflate({
+      // @ts-expect-error: passing non-int flush value
+      flush: "",
+    });
+
+    handle.end();
+    handle.destroy();
+  },
+);

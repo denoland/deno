@@ -107,6 +107,13 @@ mod startup_snapshot {
     fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
+    fn check_read_with_api_name(
+      &self,
+      _: &Path,
+      _: std::option::Option<&str>,
+    ) -> Result<(), deno_core::anyhow::Error> {
+      unreachable!("snapshotting!")
+    }
     fn check_sys(
       &self,
       _kind: &str,

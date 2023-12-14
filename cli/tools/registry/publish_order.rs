@@ -28,16 +28,27 @@ impl PublishOrderGraph {
   }
 
   pub fn next(&mut self) -> Vec<String> {
-    let items = self
+    let mut package_names_with_depth = self
       .in_degree
       .iter()
       .filter_map(|(name, &degree)| if degree == 0 { Some(name) } else { None })
-      .cloned()
+      .map(|item| (item.clone(), self.compute_depth(item, HashSet::new())))
       .collect::<Vec<_>>();
-    for item in &items {
-      self.in_degree.remove(item);
+
+    // sort by depth to in order to prioritize those packages
+    package_names_with_depth.sort_by(|a, b| match b.1.cmp(&a.1) {
+      std::cmp::Ordering::Equal => a.0.cmp(&b.0),
+      other => other,
+    });
+
+    let sorted_package_names = package_names_with_depth
+      .into_iter()
+      .map(|(name, _)| name)
+      .collect::<Vec<_>>();
+    for name in &sorted_package_names {
+      self.in_degree.remove(name);
     }
-    items
+    sorted_package_names
   }
 
   pub fn finish_package(&mut self, name: &str) {
@@ -87,6 +98,28 @@ impl PublishOrderGraph {
       );
     }
   }
+
+  fn compute_depth(
+    &self,
+    package_name: &String,
+    mut visited: HashSet<String>,
+  ) -> usize {
+    if visited.contains(package_name) {
+      return 0; // cycle
+    }
+
+    visited.insert(package_name.clone());
+
+    let Some(parents) = self.reverse_map.get(package_name) else {
+      return 0;
+    };
+    let max_depth = parents
+      .iter()
+      .map(|child| self.compute_depth(child, visited.clone()))
+      .max()
+      .unwrap_or(0);
+    1 + max_depth
+  }
 }
 
 pub async fn build_publish_graph(
@@ -117,6 +150,7 @@ fn get_workspace_roots(
   config: &WorkspaceConfig,
 ) -> Result<Vec<MemberRoots>, AnyError> {
   let mut members = Vec::with_capacity(config.members.len());
+  let mut seen_names = HashSet::with_capacity(config.members.len());
   for member in &config.members {
     let exports_config = member
       .config_file
@@ -128,6 +162,13 @@ fn get_workspace_roots(
         )
       })?
       .into_map();
+    if !seen_names.insert(&member.package_name) {
+      bail!(
+        "Cannot have two workspace packages with the same name ('{}' at {})",
+        member.package_name,
+        member.path.display(),
+      );
+    }
     let mut member_root = MemberRoots {
       name: member.package_name.clone(),
       dir_url: member.config_file.specifier.join("./").unwrap().clone(),
@@ -237,10 +278,8 @@ mod test {
       ("b".to_string(), HashSet::new()),
       ("c".to_string(), HashSet::new()),
     ]));
-    let mut next = graph.next();
-    next.sort();
     assert_eq!(
-      next,
+      graph.next(),
       vec!["a".to_string(), "b".to_string(), "c".to_string()],
     );
     graph.finish_package("a");
@@ -259,14 +298,11 @@ mod test {
       ("b".to_string(), HashSet::from(["c".to_string()])),
       ("c".to_string(), HashSet::new()),
     ]));
-    let next = graph.next();
-    assert_eq!(next, vec!["c".to_string()]);
+    assert_eq!(graph.next(), vec!["c".to_string()]);
     graph.finish_package("c");
-    let next = graph.next();
-    assert_eq!(next, vec!["b".to_string()]);
+    assert_eq!(graph.next(), vec!["b".to_string()]);
     graph.finish_package("b");
-    let next = graph.next();
-    assert_eq!(next, vec!["a".to_string()]);
+    assert_eq!(graph.next(), vec!["a".to_string()]);
     graph.finish_package("a");
     assert!(graph.next().is_empty());
     graph.ensure_no_pending().unwrap();
@@ -285,25 +321,20 @@ mod test {
       ("e".to_string(), HashSet::from(["f".to_string()])),
       ("f".to_string(), HashSet::new()),
     ]));
-    let mut next = graph.next();
-    next.sort();
     assert_eq!(
-      next,
-      vec!["c".to_string(), "d".to_string(), "f".to_string()]
+      graph.next(),
+      vec!["c".to_string(), "f".to_string(), "d".to_string()]
     );
     graph.finish_package("f");
-    let next = graph.next();
-    assert_eq!(next, vec!["e".to_string()]);
+    assert_eq!(graph.next(), vec!["e".to_string()]);
     graph.finish_package("e");
     assert!(graph.next().is_empty());
     graph.finish_package("d");
     assert!(graph.next().is_empty());
     graph.finish_package("c");
-    let next = graph.next();
-    assert_eq!(next, vec!["b".to_string()]);
+    assert_eq!(graph.next(), vec!["b".to_string()]);
     graph.finish_package("b");
-    let next = graph.next();
-    assert_eq!(next, vec!["a".to_string()]);
+    assert_eq!(graph.next(), vec!["a".to_string()]);
     graph.finish_package("a");
     assert!(graph.next().is_empty());
     graph.ensure_no_pending().unwrap();
@@ -316,8 +347,7 @@ mod test {
       ("b".to_string(), HashSet::from(["c".to_string()])),
       ("c".to_string(), HashSet::from(["a".to_string()])),
     ]));
-    let next = graph.next();
-    assert!(next.is_empty());
+    assert!(graph.next().is_empty());
     assert_eq!(
       graph.ensure_no_pending().unwrap_err().to_string(),
       "Circular package dependency detected: a -> b -> c -> a"
