@@ -395,10 +395,13 @@ async fn ensure_scopes_and_packages_exist(
       }
     }
 
-    bail!(
-      "Following package don't exist, follow the links and create them:\n{}",
-      missing_packages_lines.join("\n")
-    );
+    if !missing_packages_lines.is_empty() {
+      bail!(
+        "Following packages don't exist, follow the links and create them:\n{}",
+        missing_packages_lines.join("\n")
+      );
+    }
+    return Ok(());
   }
 
   for package in packages {

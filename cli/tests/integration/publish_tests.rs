@@ -9,6 +9,10 @@ pub fn env_vars_for_registry() -> Vec<(String, String)> {
       TEST_REGISTRY_URL.to_string(),
     ),
     (
+      "DENO_REGISTRY_MANAGE_URL".to_string(),
+      TEST_REGISTRY_URL.to_string(),
+    ),
+    (
       "DENO_REGISTRY_API_URL".to_string(),
       TEST_REGISTRY_URL.to_string(),
     ),
