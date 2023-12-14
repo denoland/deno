@@ -422,14 +422,6 @@ class Datagram {
       }
     }
   }
-
-  ref() {
-
-  }
-
-  unref() {
-
-  }
 }
 
 const listenOptionApiName = Symbol("listenOptionApiName");
