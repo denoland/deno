@@ -82,6 +82,9 @@ export class UDP extends HandleWrap {
   #recvBufferSize = UDP_DGRAM_MAXSIZE;
   #sendBufferSize = UDP_DGRAM_MAXSIZE;
 
+  #recvPromise = null
+  #unrefed = false
+
   onmessage!: (
     nread: number,
     handle: UDP,
@@ -273,7 +276,8 @@ export class UDP extends HandleWrap {
   }
 
   override ref() {
-    this.#listener?.ref();
+    if (this.#recvPromise) core.refOpPromise(this.#recvPromise);
+    this.#unrefed = false;
   }
 
   send(
@@ -315,7 +319,8 @@ export class UDP extends HandleWrap {
   }
 
   override unref() {
-    this.#listener?.unref();
+    if (this.#recvPromise) core.refOpPromise(this.#recvPromise);
+    this.#unrefed = true;
   }
 
   #doBind(ip: string, port: number, _flags: number, family: number): number {
@@ -444,7 +449,10 @@ export class UDP extends HandleWrap {
     let nread: number | null;
 
     try {
-      [buf, remoteAddr] = (await this.#listener!.receive(p)) as [
+      this.#recvPromise = this.#listener!.receive(p);
+      if (this.#unrefed) core.unrefOpPromise(this.#recvPromise);
+
+      [buf, remoteAddr] = (await this.#recvPromise) as [
         Uint8Array,
         Deno.NetAddr,
       ];
