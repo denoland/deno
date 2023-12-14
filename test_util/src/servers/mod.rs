@@ -89,13 +89,17 @@ pub async fn run_all_servers() {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
   }
 
-  let redirect_server_fut = wrap_redirect_server();
-  let double_redirects_server_fut = wrap_double_redirect_server();
-  let inf_redirects_server_fut = wrap_inf_redirect_server();
-  let another_redirect_server_fut = wrap_another_redirect_server();
-  let auth_redirect_server_fut = wrap_auth_redirect_server();
-  let basic_auth_redirect_server_fut = wrap_basic_auth_redirect_server();
-  let abs_redirect_server_fut = wrap_abs_redirect_server();
+  let redirect_server_fut = wrap_redirect_server(REDIRECT_PORT);
+  let double_redirects_server_fut =
+    wrap_double_redirect_server(DOUBLE_REDIRECTS_PORT);
+  let inf_redirects_server_fut = wrap_inf_redirect_server(INF_REDIRECTS_PORT);
+  let another_redirect_server_fut =
+    wrap_another_redirect_server(ANOTHER_REDIRECT_PORT);
+  let auth_redirect_server_fut = wrap_auth_redirect_server(AUTH_REDIRECT_PORT);
+  let basic_auth_redirect_server_fut =
+    wrap_basic_auth_redirect_server(BASIC_AUTH_REDIRECT_PORT);
+  let abs_redirect_server_fut =
+    wrap_abs_redirect_server(REDIRECT_ABSOLUTE_PORT);
 
   let ws_server_fut = ws::run_ws_server(WS_PORT);
   let ws_ping_server_fut = ws::run_ws_ping_server(WS_PING_PORT);
@@ -103,16 +107,18 @@ pub async fn run_all_servers() {
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
 
-  let tls_server_fut = run_tls_server();
-  let tls_client_auth_server_fut = run_tls_client_auth_server();
-  let client_auth_server_https_fut = wrap_client_auth_https_server();
-  let main_server_fut = wrap_main_server();
-  let main_server_ipv6_fut = wrap_main_ipv6_server();
-  let main_server_https_fut = wrap_main_https_server();
-  let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
-  let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
-  let h1_only_server_fut = wrap_http_h1_only_server();
-  let h2_only_server_fut = wrap_http_h2_only_server();
+  let tls_server_fut = run_tls_server(TLS_PORT);
+  let tls_client_auth_server_fut =
+    run_tls_client_auth_server(TLS_CLIENT_AUTH_PORT);
+  let client_auth_server_https_fut =
+    wrap_client_auth_https_server(HTTPS_CLIENT_AUTH_PORT);
+  let main_server_fut = wrap_main_server(PORT);
+  let main_server_ipv6_fut = wrap_main_ipv6_server(PORT);
+  let main_server_https_fut = wrap_main_https_server(HTTPS_PORT);
+  let h1_only_server_tls_fut = wrap_https_h1_only_tls_server(H1_ONLY_TLS_PORT);
+  let h2_only_server_tls_fut = wrap_https_h2_only_tls_server(H2_ONLY_TLS_PORT);
+  let h1_only_server_fut = wrap_http_h1_only_server(H1_ONLY_PORT);
+  let h2_only_server_fut = wrap_http_h2_only_server(H2_ONLY_PORT);
   let h2_grpc_server_fut = grpc::h2_grpc_server(H2_GRPC_PORT, H2S_GRPC_PORT);
 
   let registry_server_fut = registry::registry_server(REGISTRY_SERVER_PORT);
@@ -292,13 +298,9 @@ async fn get_tcp_listener_stream(
 ///   curl --key cli/tests/testdata/tls/localhost.key \
 ///        --cert cli/tests/testsdata/tls/localhost.crt \
 ///        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
-async fn run_tls_client_auth_server() {
-  let mut tls = get_tls_listener_stream(
-    "tls client auth",
-    TLS_CLIENT_AUTH_PORT,
-    Default::default(),
-  )
-  .await;
+async fn run_tls_client_auth_server(port: u16) {
+  let mut tls =
+    get_tls_listener_stream("tls client auth", port, Default::default()).await;
   while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
       let Ok(handshake) = tls_stream.handshake().await else {
@@ -319,9 +321,8 @@ async fn run_tls_client_auth_server() {
 /// This server responds with 'PASS' if client authentication was successful. Try it by running
 /// test_server and
 ///   curl --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4553/
-async fn run_tls_server() {
-  let mut tls =
-    get_tls_listener_stream("tls", TLS_PORT, Default::default()).await;
+async fn run_tls_server(port: u16) {
+  let mut tls = get_tls_listener_stream("tls", port, Default::default()).await;
   while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
       tls_stream.write_all(b"PASS").await.unwrap();
@@ -1152,22 +1153,21 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
-async fn wrap_redirect_server() {
+async fn wrap_redirect_server(port: u16) {
   let redirect_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(redirect)) });
-  let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
+  let redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
   if let Err(e) = redirect_server.await {
     eprintln!("Redirect error: {e:?}");
   }
 }
 
-async fn wrap_double_redirect_server() {
+async fn wrap_double_redirect_server(port: u16) {
   let double_redirects_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(double_redirects))
   });
-  let double_redirects_addr =
-    SocketAddr::from(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
+  let double_redirects_addr = SocketAddr::from(([127, 0, 0, 1], port));
   let double_redirects_server =
     Server::bind(&double_redirects_addr).serve(double_redirects_svc);
   if let Err(e) = double_redirects_server.await {
@@ -1175,12 +1175,11 @@ async fn wrap_double_redirect_server() {
   }
 }
 
-async fn wrap_inf_redirect_server() {
+async fn wrap_inf_redirect_server(port: u16) {
   let inf_redirects_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(inf_redirects))
   });
-  let inf_redirects_addr =
-    SocketAddr::from(([127, 0, 0, 1], INF_REDIRECTS_PORT));
+  let inf_redirects_addr = SocketAddr::from(([127, 0, 0, 1], port));
   let inf_redirects_server =
     Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
   if let Err(e) = inf_redirects_server.await {
@@ -1188,12 +1187,11 @@ async fn wrap_inf_redirect_server() {
   }
 }
 
-async fn wrap_another_redirect_server() {
+async fn wrap_another_redirect_server(port: u16) {
   let another_redirect_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(another_redirect))
   });
-  let another_redirect_addr =
-    SocketAddr::from(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
+  let another_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   let another_redirect_server =
     Server::bind(&another_redirect_addr).serve(another_redirect_svc);
   if let Err(e) = another_redirect_server.await {
@@ -1201,12 +1199,11 @@ async fn wrap_another_redirect_server() {
   }
 }
 
-async fn wrap_auth_redirect_server() {
+async fn wrap_auth_redirect_server(port: u16) {
   let auth_redirect_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(auth_redirect))
   });
-  let auth_redirect_addr =
-    SocketAddr::from(([127, 0, 0, 1], AUTH_REDIRECT_PORT));
+  let auth_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   let auth_redirect_server =
     Server::bind(&auth_redirect_addr).serve(auth_redirect_svc);
   if let Err(e) = auth_redirect_server.await {
@@ -1214,12 +1211,11 @@ async fn wrap_auth_redirect_server() {
   }
 }
 
-async fn wrap_basic_auth_redirect_server() {
+async fn wrap_basic_auth_redirect_server(port: u16) {
   let basic_auth_redirect_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(basic_auth_redirect))
   });
-  let basic_auth_redirect_addr =
-    SocketAddr::from(([127, 0, 0, 1], BASIC_AUTH_REDIRECT_PORT));
+  let basic_auth_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   let basic_auth_redirect_server =
     Server::bind(&basic_auth_redirect_addr).serve(basic_auth_redirect_svc);
   if let Err(e) = basic_auth_redirect_server.await {
@@ -1227,12 +1223,11 @@ async fn wrap_basic_auth_redirect_server() {
   }
 }
 
-async fn wrap_abs_redirect_server() {
+async fn wrap_abs_redirect_server(port: u16) {
   let abs_redirect_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(absolute_redirect))
   });
-  let abs_redirect_addr =
-    SocketAddr::from(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
+  let abs_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   let abs_redirect_server =
     Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
   if let Err(e) = abs_redirect_server.await {
@@ -1240,16 +1235,16 @@ async fn wrap_abs_redirect_server() {
   }
 }
 
-async fn wrap_main_server() {
-  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+async fn wrap_main_server(port: u16) {
+  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
   wrap_main_server_for_addr(&main_server_addr).await
 }
 
 // necessary because on Windows the npm binary will resolve localhost to ::1
-async fn wrap_main_ipv6_server() {
+async fn wrap_main_ipv6_server(port: u16) {
   let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
   let main_server_addr =
-    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, PORT, 0, 0));
+    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, port, 0, 0));
   wrap_main_server_for_addr(&main_server_addr).await
 }
 
@@ -1262,9 +1257,8 @@ async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
   }
 }
 
-async fn wrap_main_https_server() {
-  let tls =
-    get_tls_listener_stream("https", HTTPS_PORT, Default::default()).await;
+async fn wrap_main_https_server(port: u16) {
+  let tls = get_tls_listener_stream("https", port, Default::default()).await;
   let main_server_https_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
   let main_server_https = Server::builder(HyperAcceptor {
@@ -1274,10 +1268,10 @@ async fn wrap_main_https_server() {
   let _ = main_server_https.await;
 }
 
-async fn wrap_https_h1_only_tls_server() {
+async fn wrap_https_h1_only_tls_server(port: u16) {
   let tls = get_tls_listener_stream(
     "https (h1 only)",
-    H1_ONLY_TLS_PORT,
+    port,
     SupportedHttpVersions::Http1Only,
   )
   .await;
@@ -1293,10 +1287,10 @@ async fn wrap_https_h1_only_tls_server() {
   let _ = main_server_https.await;
 }
 
-async fn wrap_https_h2_only_tls_server() {
+async fn wrap_https_h2_only_tls_server(port: u16) {
   let tls = get_tls_listener_stream(
     "https (h2 only)",
-    H2_ONLY_TLS_PORT,
+    port,
     SupportedHttpVersions::Http2Only,
   )
   .await;
@@ -1312,8 +1306,8 @@ async fn wrap_https_h2_only_tls_server() {
   let _ = main_server_https.await;
 }
 
-async fn wrap_http_h1_only_server() {
-  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+async fn wrap_http_h1_only_server(port: u16) {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
 
   let main_server_http_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
@@ -1323,8 +1317,8 @@ async fn wrap_http_h1_only_server() {
   let _ = main_server_http.await;
 }
 
-async fn wrap_http_h2_only_server() {
-  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+async fn wrap_http_h2_only_server(port: u16) {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
 
   let main_server_http_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
@@ -1334,13 +1328,10 @@ async fn wrap_http_h2_only_server() {
   let _ = main_server_http.await;
 }
 
-async fn wrap_client_auth_https_server() {
-  let mut tls = get_tls_listener_stream(
-    "https_client_auth",
-    HTTPS_CLIENT_AUTH_PORT,
-    Default::default(),
-  )
-  .await;
+async fn wrap_client_auth_https_server(port: u16) {
+  let mut tls =
+    get_tls_listener_stream("https_client_auth", port, Default::default())
+      .await;
 
   let tls = async_stream::stream! {
     while let Some(Ok(mut tls)) = tls.next().await {
