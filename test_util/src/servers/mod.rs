@@ -1,10 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
-use anyhow::anyhow;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use bytes::Bytes;
 use denokv_proto::datapath::AtomicWrite;
 use denokv_proto::datapath::AtomicWriteOutput;
 use denokv_proto::datapath::AtomicWriteStatus;
@@ -12,36 +10,19 @@ use denokv_proto::datapath::ReadRangeOutput;
 use denokv_proto::datapath::SnapshotRead;
 use denokv_proto::datapath::SnapshotReadOutput;
 use denokv_proto::datapath::SnapshotReadStatus;
-use fastwebsockets::FragmentCollector;
-use fastwebsockets::Frame;
-use fastwebsockets::OpCode;
-use fastwebsockets::Role;
-use fastwebsockets::WebSocket;
-use futures::future::join3;
-use futures::future::poll_fn;
-use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
-use h2::server::Handshake;
-use h2::server::SendResponse;
-use h2::Reason;
-use h2::RecvStream;
 use hyper::header::HeaderValue;
-use hyper::http;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
-use hyper::upgrade::Upgraded;
 use hyper::Body;
-use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
 use pretty_assertions::assert_eq;
 use prost::Message;
-use rustls_tokio_stream::TlsStream;
-use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -55,10 +36,12 @@ use std::result::Result;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::task::LocalSet;
+
+mod grpc;
+mod registry;
+mod ws;
 
 use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
@@ -114,11 +97,11 @@ pub async fn run_all_servers() {
   let basic_auth_redirect_server_fut = wrap_basic_auth_redirect_server();
   let abs_redirect_server_fut = wrap_abs_redirect_server();
 
-  let ws_server_fut = run_ws_server(WS_PORT);
-  let ws_ping_server_fut = run_ws_ping_server(WS_PING_PORT);
-  let wss_server_fut = run_wss_server(WSS_PORT);
-  let ws_close_server_fut = run_ws_close_server(WS_CLOSE_PORT);
-  let wss2_server_fut = run_wss2_server(WSS2_PORT);
+  let ws_server_fut = ws::run_ws_server(WS_PORT);
+  let ws_ping_server_fut = ws::run_ws_ping_server(WS_PING_PORT);
+  let wss_server_fut = ws::run_wss_server(WSS_PORT);
+  let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
+  let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server();
   let tls_client_auth_server_fut = run_tls_client_auth_server();
@@ -130,9 +113,9 @@ pub async fn run_all_servers() {
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
   let h1_only_server_fut = wrap_http_h1_only_server();
   let h2_only_server_fut = wrap_http_h2_only_server();
-  let h2_grpc_server_fut = h2_grpc_server();
+  let h2_grpc_server_fut = grpc::h2_grpc_server(H2_GRPC_PORT, H2S_GRPC_PORT);
 
-  let registry_server_fut = registry_server();
+  let registry_server_fut = registry::registry_server(REGISTRY_SERVER_PORT);
 
   let server_fut = async {
     futures::join!(
@@ -266,241 +249,6 @@ async fn basic_auth_redirect(
   let mut resp = Response::new(Body::empty());
   *resp.status_mut() = StatusCode::NOT_FOUND;
   Ok(resp)
-}
-
-async fn echo_websocket_handler(
-  ws: fastwebsockets::WebSocket<Upgraded>,
-) -> Result<(), anyhow::Error> {
-  let mut ws = fastwebsockets::FragmentCollector::new(ws);
-
-  loop {
-    let frame = ws.read_frame().await.unwrap();
-    match frame.opcode {
-      fastwebsockets::OpCode::Close => break,
-      fastwebsockets::OpCode::Text | fastwebsockets::OpCode::Binary => {
-        ws.write_frame(frame).await.unwrap();
-      }
-      _ => {}
-    }
-  }
-
-  Ok(())
-}
-
-type WsHandler =
-  fn(
-    fastwebsockets::WebSocket<Upgraded>,
-  ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send>>;
-
-fn spawn_ws_server<S>(stream: S, handler: WsHandler)
-where
-  S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
-{
-  let srv_fn = service_fn(move |mut req: Request<Body>| async move {
-    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
-      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
-
-    tokio::spawn(async move {
-      let ws = upgrade_fut
-        .await
-        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
-        .unwrap();
-
-      if let Err(e) = handler(ws).await {
-        eprintln!("Error in websocket connection: {}", e);
-      }
-    });
-
-    Ok::<_, anyhow::Error>(response)
-  });
-
-  tokio::spawn(async move {
-    let conn_fut = hyper::server::conn::Http::new()
-      .serve_connection(stream, srv_fn)
-      .with_upgrades();
-
-    if let Err(e) = conn_fut.await {
-      eprintln!("websocket server error: {e:?}");
-    }
-  });
-}
-
-async fn run_ws_server(port: u16) {
-  let mut tcp = get_tcp_listener_stream("ws", port).await;
-  while let Some(Ok(stream)) = tcp.next().await {
-    spawn_ws_server(stream, |ws| Box::pin(echo_websocket_handler(ws)));
-  }
-}
-
-async fn ping_websocket_handler(
-  ws: fastwebsockets::WebSocket<Upgraded>,
-) -> Result<(), anyhow::Error> {
-  let mut ws = fastwebsockets::FragmentCollector::new(ws);
-
-  for i in 0..9 {
-    ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![].into()))
-      .await
-      .unwrap();
-
-    let frame = ws.read_frame().await.unwrap();
-    assert_eq!(frame.opcode, OpCode::Pong);
-    assert!(frame.payload.is_empty());
-
-    ws.write_frame(Frame::text(
-      format!("hello {}", i).as_bytes().to_vec().into(),
-    ))
-    .await
-    .unwrap();
-
-    let frame = ws.read_frame().await.unwrap();
-    assert_eq!(frame.opcode, OpCode::Text);
-    assert_eq!(frame.payload, format!("hello {}", i).as_bytes());
-  }
-
-  ws.write_frame(fastwebsockets::Frame::close(1000, b""))
-    .await
-    .unwrap();
-
-  Ok(())
-}
-
-async fn run_ws_ping_server(port: u16) {
-  let mut tcp = get_tcp_listener_stream("ws (ping)", port).await;
-  while let Some(Ok(stream)) = tcp.next().await {
-    spawn_ws_server(stream, |ws| Box::pin(ping_websocket_handler(ws)));
-  }
-}
-
-async fn close_websocket_handler(
-  ws: fastwebsockets::WebSocket<Upgraded>,
-) -> Result<(), anyhow::Error> {
-  let mut ws = fastwebsockets::FragmentCollector::new(ws);
-
-  ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
-    .await
-    .unwrap();
-
-  Ok(())
-}
-
-async fn run_ws_close_server(port: u16) {
-  let mut tcp = get_tcp_listener_stream("ws (close)", port).await;
-  while let Some(Ok(stream)) = tcp.next().await {
-    spawn_ws_server(stream, |ws| Box::pin(close_websocket_handler(ws)));
-  }
-}
-
-async fn handle_wss_stream(
-  recv: Request<RecvStream>,
-  mut send: SendResponse<Bytes>,
-) -> Result<(), h2::Error> {
-  if recv.method() != Method::CONNECT {
-    eprintln!("wss2: refusing non-CONNECT stream");
-    send.send_reset(Reason::REFUSED_STREAM);
-    return Ok(());
-  }
-  let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
-    eprintln!("wss2: refusing no-:protocol stream");
-    send.send_reset(Reason::REFUSED_STREAM);
-    return Ok(());
-  };
-  if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
-    eprintln!("wss2: refusing non-websocket stream");
-    send.send_reset(Reason::REFUSED_STREAM);
-    return Ok(());
-  }
-  let mut body = recv.into_body();
-  let mut response = Response::new(());
-  *response.status_mut() = StatusCode::OK;
-  let mut resp = send.send_response(response, false)?;
-  // Use a duplex stream to talk to fastwebsockets because it's just faster to implement
-  let (a, b) = tokio::io::duplex(65536);
-  let f1 = tokio::spawn(tokio::task::unconstrained(async move {
-    let ws = WebSocket::after_handshake(a, Role::Server);
-    let mut ws = FragmentCollector::new(ws);
-    loop {
-      let frame = ws.read_frame().await.unwrap();
-      if frame.opcode == OpCode::Close {
-        break;
-      }
-      ws.write_frame(frame).await.unwrap();
-    }
-  }));
-  let (mut br, mut bw) = tokio::io::split(b);
-  let f2 = tokio::spawn(tokio::task::unconstrained(async move {
-    loop {
-      let Some(Ok(data)) = poll_fn(|cx| body.poll_data(cx)).await else {
-        return;
-      };
-      body.flow_control().release_capacity(data.len()).unwrap();
-      let Ok(_) = bw.write_all(&data).await else {
-        break;
-      };
-    }
-  }));
-  let f3 = tokio::spawn(tokio::task::unconstrained(async move {
-    loop {
-      let mut buf = [0; 65536];
-      let n = br.read(&mut buf).await.unwrap();
-      if n == 0 {
-        break;
-      }
-      resp.reserve_capacity(n);
-      poll_fn(|cx| resp.poll_capacity(cx)).await;
-      resp
-        .send_data(Bytes::copy_from_slice(&buf[0..n]), false)
-        .unwrap();
-    }
-    resp.send_data(Bytes::new(), true).unwrap();
-  }));
-  _ = join3(f1, f2, f3).await;
-  Ok(())
-}
-
-async fn run_wss2_server(port: u16) {
-  let mut tls = get_tls_listener_stream(
-    "wss2 (tls)",
-    port,
-    SupportedHttpVersions::Http2Only,
-  )
-  .await;
-  while let Some(Ok(tls)) = tls.next().await {
-    tokio::spawn(async move {
-      let mut h2 = h2::server::Builder::new();
-      h2.enable_connect_protocol();
-      // Using Bytes is pretty alloc-heavy but this is a test server
-      let server: Handshake<_, Bytes> = h2.handshake(tls);
-      let mut server = match server.await {
-        Ok(server) => server,
-        Err(e) => {
-          println!("Failed to handshake h2: {e:?}");
-          return;
-        }
-      };
-      loop {
-        let Some(conn) = server.accept().await else {
-          break;
-        };
-        let (recv, send) = match conn {
-          Ok(conn) => conn,
-          Err(e) => {
-            println!("Failed to accept a connection: {e:?}");
-            break;
-          }
-        };
-        tokio::spawn(handle_wss_stream(recv, send));
-      }
-    });
-  }
-}
-
-async fn run_wss_server(port: u16) {
-  let mut tls = get_tls_listener_stream("wss", port, Default::default()).await;
-  while let Some(Ok(tls_stream)) = tls.next().await {
-    tokio::spawn(async move {
-      spawn_ws_server(tls_stream, |ws| Box::pin(echo_websocket_handler(ws)));
-    });
-  }
 }
 
 /// Returns a [`Stream`] of [`TcpStream`]s accepted from the given port.
@@ -1586,96 +1334,6 @@ async fn wrap_http_h2_only_server() {
   let _ = main_server_http.await;
 }
 
-async fn h2_grpc_server() {
-  let mut tcp = get_tcp_listener_stream("grpc", H2_GRPC_PORT).await;
-  let mut tls = get_tls_listener_stream(
-    "grpc (tls)",
-    H2S_GRPC_PORT,
-    SupportedHttpVersions::Http2Only,
-  )
-  .await;
-
-  async fn serve(socket: TcpStream) -> Result<(), anyhow::Error> {
-    let mut connection = h2::server::handshake(socket).await?;
-
-    while let Some(result) = connection.accept().await {
-      let (request, respond) = result?;
-      tokio::spawn(async move {
-        let _ = handle_request(request, respond).await;
-      });
-    }
-
-    Ok(())
-  }
-
-  async fn serve_tls(socket: TlsStream) -> Result<(), anyhow::Error> {
-    let mut connection = h2::server::handshake(socket).await?;
-
-    while let Some(result) = connection.accept().await {
-      let (request, respond) = result?;
-      tokio::spawn(async move {
-        let _ = handle_request(request, respond).await;
-      });
-    }
-
-    Ok(())
-  }
-
-  async fn handle_request(
-    mut request: http::Request<h2::RecvStream>,
-    mut respond: h2::server::SendResponse<bytes::Bytes>,
-  ) -> Result<(), anyhow::Error> {
-    let body = request.body_mut();
-    while let Some(data) = body.data().await {
-      let data = data?;
-      let _ = body.flow_control().release_capacity(data.len());
-    }
-
-    let maybe_recv_trailers = body.trailers().await?;
-
-    let response = http::Response::new(());
-    let mut send = respond.send_response(response, false)?;
-    send.send_data(bytes::Bytes::from_static(b"hello "), false)?;
-    send.send_data(bytes::Bytes::from_static(b"world\n"), false)?;
-    let mut trailers = http::HeaderMap::new();
-    trailers.insert(
-      http::HeaderName::from_static("abc"),
-      HeaderValue::from_static("def"),
-    );
-    trailers.insert(
-      http::HeaderName::from_static("opr"),
-      HeaderValue::from_static("stv"),
-    );
-    if let Some(recv_trailers) = maybe_recv_trailers {
-      for (key, value) in recv_trailers {
-        trailers.insert(key.unwrap(), value);
-      }
-    }
-    send.send_trailers(trailers)?;
-
-    Ok(())
-  }
-
-  let local_set = LocalSet::new();
-  local_set.spawn_local(async move {
-    while let Some(Ok(tcp)) = tcp.next().await {
-      tokio::spawn(async move {
-        let _ = serve(tcp).await;
-      });
-    }
-  });
-
-  local_set.spawn_local(async move {
-    while let Some(Ok(tls)) = tls.next().await {
-      tokio::spawn(async move {
-        let _ = serve_tls(tls).await;
-      });
-    }
-  });
-
-  local_set.await;
-}
-
 async fn wrap_client_auth_https_server() {
   let mut tls = get_tls_listener_stream(
     "https_client_auth",
@@ -1797,47 +1455,4 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   }
 
   response
-}
-
-async fn registry_server_handler(
-  req: Request<Body>,
-) -> Result<Response<Body>, hyper::http::Error> {
-  let path = req.uri().path();
-
-  if path.starts_with("/scopes/") {
-    let body = serde_json::to_string_pretty(&json!({
-      "id": "sdfwqer-sffg-qwerasdf",
-      "status": "success",
-      "error": null
-    }))
-    .unwrap();
-    let res = Response::new(Body::from(body));
-    return Ok(res);
-  } else if path.starts_with("/publish_status/") {
-    let body = serde_json::to_string_pretty(&json!({
-      "id": "sdfwqer-qwer-qwerasdf",
-      "status": "success",
-      "error": null
-    }))
-    .unwrap();
-    let res = Response::new(Body::from(body));
-    return Ok(res);
-  }
-
-  Response::builder()
-    .status(StatusCode::NOT_FOUND)
-    .body(Body::empty())
-}
-
-async fn registry_server() {
-  let registry_server_addr =
-    SocketAddr::from(([127, 0, 0, 1], REGISTRY_SERVER_PORT));
-  let registry_server_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(registry_server_handler))
-  });
-  let registry_server =
-    Server::bind(&registry_server_addr).serve(registry_server_svc);
-  if let Err(e) = registry_server.await {
-    eprintln!("Registry server error: {:?}", e);
-  }
 }
