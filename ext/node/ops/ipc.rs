@@ -6,6 +6,8 @@ pub use unix::*;
 #[cfg(windows)]
 pub use windows::*;
 
+pub struct ChildPipeFd(pub i32);
+
 #[cfg(unix)]
 mod unix {
   use std::cell::RefCell;
@@ -44,6 +46,22 @@ mod unix {
     #[smi] fd: i32,
   ) -> Result<ResourceId, AnyError> {
     Ok(state.resource_table.add(IpcJsonStreamResource::new(fd)?))
+  }
+
+  // Open IPC pipe from bootstrap options.
+  #[op2]
+  #[smi]
+  pub fn op_node_child_ipc_pipe(
+    state: &mut OpState,
+  ) -> Result<Option<ResourceId>, AnyError> {
+    let fd = match state.try_borrow_mut::<crate::ChildPipeFd>() {
+      Some(child_pipe_fd) => child_pipe_fd.0,
+      None => return Ok(None),
+    };
+
+    Ok(Some(
+      state.resource_table.add(IpcJsonStreamResource::new(fd)?),
+    ))
   }
 
   #[op2(async)]
@@ -489,6 +507,11 @@ mod windows {
 
   #[op2(fast)]
   pub fn op_node_ipc_pipe() -> Result<(), AnyError> {
+    Err(deno_core::error::not_supported())
+  }
+
+  #[op2]
+  pub fn op_node_child_ipc_pipe() -> Result<(), AnyError> {
     Err(deno_core::error::not_supported())
   }
 
