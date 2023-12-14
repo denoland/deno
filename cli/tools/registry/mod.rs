@@ -338,35 +338,6 @@ async fn get_auth_headers(
   Ok(authorizations)
 }
 
-async fn get_scope(
-  client: &reqwest::Client,
-  registry_api_url: &str,
-  scope: &str,
-) -> Result<reqwest::Response, AnyError> {
-  let scope_url = format!("{}scope/{}", registry_api_url, scope);
-  let response = client.get(&scope_url).send().await?;
-  Ok(response)
-}
-
-fn get_package_api_url(
-  registry_api_url: &str,
-  scope: &str,
-  package: &str,
-) -> String {
-  format!("{}scope/{}packages/{}", registry_api_url, scope, package)
-}
-
-async fn get_package(
-  client: &reqwest::Client,
-  registry_api_url: &str,
-  scope: &str,
-  package: &str,
-) -> Result<reqwest::Response, AnyError> {
-  let package_url = get_package_api_url(registry_api_url, &scope, &package);
-  let response = client.get(&package_url).send().await?;
-  Ok(response)
-}
-
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
 async fn check_if_scope_and_package_exist(
@@ -379,12 +350,13 @@ async fn check_if_scope_and_package_exist(
   let mut needs_scope = false;
   let mut needs_package = false;
 
-  let response = get_scope(client, &registry_api_url, scope).await?;
+  let response = api::get_scope(client, &registry_api_url, scope).await?;
   if response.status() == 404 {
     needs_scope = true;
   }
 
-  let response = get_package(client, &registry_api_url, scope, package).await?;
+  let response =
+    api::get_package(client, &registry_api_url, scope, package).await?;
   if response.status() == 404 {
     needs_package = true;
   }
@@ -450,8 +422,11 @@ async fn ensure_scopes_and_packages_exist(
     );
     println!("{}", colors::gray("Waiting..."));
 
-    let package_api_url =
-      get_package_api_url(&registry_api_url, &package.scope, &package.package);
+    let package_api_url = api::get_package_api_url(
+      &registry_api_url,
+      &package.scope,
+      &package.package,
+    );
 
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
