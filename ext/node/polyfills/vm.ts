@@ -75,7 +75,7 @@ export function runInThisContext(
 }
 
 export function isContext(_maybeContext: any) {
-  // Currently we do not expose contexts so this is always false.
+  // TODO(@littledivy): Currently we do not expose contexts so this is always false.
   return false;
 }
 
