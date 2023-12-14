@@ -424,7 +424,6 @@ async fn ensure_scopes_and_packages_exist(
       &package.scope,
       &package.package,
       colors::cyan_with_underline(create_package_url)
-      colors::cyan_with_underline(create_package_url)
     );
     println!("{}", colors::gray("Waiting..."));
 
