@@ -42,7 +42,7 @@ function prompt(message = "Prompt", defaultValue = "") {
   }
 
   return ops.op_read_line_prompt(
-    `${message} `,
+    `${yellow(bold(`${message}`))} `,
     `${defaultValue}`,
   );
 }
