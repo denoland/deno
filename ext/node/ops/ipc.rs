@@ -511,8 +511,9 @@ mod windows {
   }
 
   #[op2(fast)]
-  pub fn op_node_child_ipc_pipe() -> Result<(), AnyError> {
-    Err(deno_core::error::not_supported())
+  #[smi]
+  pub fn op_node_child_ipc_pipe() -> Result<i32, AnyError> {
+    Ok(-1)
   }
 
   #[op2(async)]
