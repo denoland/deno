@@ -27,7 +27,7 @@ use serde::Serialize;
 use sha2::Digest;
 
 use crate::args::deno_registry_api_url;
-use crate::args::deno_registry_url;
+use crate::args::deno_registry_manage_url;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
@@ -475,6 +475,7 @@ async fn perform_publish(
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = deno_registry_api_url().to_string();
+  let registry_manage_url = deno_registry_manage_url().to_string();
 
   let packages = prepared_package_by_name
     .values()
@@ -486,14 +487,6 @@ async fn perform_publish(
     .collect::<Vec<_>>();
   print_diagnostics(diagnostics);
 
-  // TODO(bartlomieju): factor out
-  let registry_manage_url = {
-    deno_registry_url();
-    let mut url = deno_registry_url().clone();
-    let host = url.host_str().unwrap();
-    url.set_host(Some(&format!("manage.{}", host))).unwrap();
-    url.to_string()
-  };
   ensure_scopes_and_packages_exist(
     client,
     registry_api_url.clone(),

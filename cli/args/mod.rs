@@ -130,6 +130,17 @@ pub fn deno_registry_url() -> &'static Url {
   &DENO_REGISTRY_URL
 }
 
+pub fn deno_registry_manage_url() -> &'static Url {
+  static DENO_REGISTRY_MANAGE_URL: Lazy<Url> = Lazy::new(|| {
+    let mut url = deno_registry_url().clone();
+    let host = url.host_str().unwrap();
+    url.set_host(Some(&format!("manage.{}", host))).unwrap();
+    url
+  });
+
+  &DENO_REGISTRY_MANAGE_URL
+}
+
 pub fn deno_registry_api_url() -> &'static Url {
   static DENO_REGISTRY_API_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "DENO_REGISTRY_API_URL";
