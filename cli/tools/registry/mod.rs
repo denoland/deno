@@ -420,7 +420,10 @@ async fn ensure_scopes_and_packages_exist(
 
     ring_bell();
     println!(
-      "Visit {} and follow the step to create a package",
+      "'@{}/{}' doesn't exist yet. Visit {} to create the package",
+      &package.scope,
+      &package.package,
+      colors::cyan_with_underline(create_package_url)
       colors::cyan_with_underline(create_package_url)
     );
     println!("{}", colors::gray("Waiting..."));
