@@ -273,9 +273,7 @@ export class UDP extends HandleWrap {
   }
 
   override ref() {
-    if (this.#listener) {
-      this.#listener!.ref();
-    }
+    this.#listener?.ref();
   }
 
   send(
@@ -317,9 +315,7 @@ export class UDP extends HandleWrap {
   }
 
   override unref() {
-    if (this.#listener) {
-      this.#listener!.unref();
-    }
+    this.#listener?.unref();
   }
 
   #doBind(ip: string, port: number, _flags: number, family: number): number {
