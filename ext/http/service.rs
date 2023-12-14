@@ -590,7 +590,6 @@ impl Drop for HttpRecordResponse {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::hyper_util_tokioio::TokioIo;
   use crate::response_body::Compression;
   use crate::response_body::ResponseBytesInner;
   use bytes::Buf;
@@ -598,6 +597,7 @@ mod tests {
   use hyper1::body::Body;
   use hyper1::service::service_fn;
   use hyper1::service::HttpService;
+  use hyper_util::rt::TokioIo;
   use std::error::Error as StdError;
 
   /// Execute client request on service and concurrently map the response.

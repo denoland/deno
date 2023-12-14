@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
-use crate::hyper_util_tokioio::TokioIo;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::HttpConnectionProperties;
@@ -60,6 +59,7 @@ use hyper1::server::conn::http2;
 use hyper1::service::service_fn;
 use hyper1::service::HttpService;
 use hyper1::StatusCode;
+use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::borrow::Cow;
