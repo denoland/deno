@@ -30,6 +30,7 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
+import { setPipeFdCallback } from "ext:deno_node/internal/child_process.ts";
 
 function opKill(pid, signo, apiName) {
   ops.op_kill(pid, signo, apiName);
@@ -200,16 +201,16 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
+const _pipeFd = Symbol("[[pipeFd]]");
+
+setPipeFdCallback((process) => process[_pipeFd]);
+
 class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
 
-  #pipeFd;
-  // internal, used by ext/node
-  get _pipeFd() {
-    return this.#pipeFd;
-  }
+  [_pipeFd];
 
   #pid;
   get pid() {
@@ -255,7 +256,7 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
-    this.#pipeFd = pipeFd;
+    this[_pipeFd] = pipeFd;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);

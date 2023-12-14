@@ -47,6 +47,13 @@ import process from "node:process";
 const core = globalThis.__bootstrap.core;
 const ops = core.ops;
 
+let getPipeFd = () => {
+  throw new Error("pipe fd callback not set");
+};
+export function setPipeFdCallback(callback) {
+  getPipeFd = callback;
+}
+
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
   transformer: (value: T) => O,
@@ -256,8 +263,9 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      if (typeof this.#process._pipeFd == "number") {
-        setupChannel(this, this.#process._pipeFd);
+      const pipeFd = getPipeFd(this.#process);
+      if (typeof pipeFd == "number") {
+        setupChannel(this, pipeFd);
       }
 
       (async () => {
@@ -1155,5 +1163,6 @@ export default {
   normalizeSpawnArguments,
   stdioStringToArray,
   spawnSync,
+  setPipeFdCallback,
   setupChannel,
 };
