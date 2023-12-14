@@ -3,8 +3,6 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -561,10 +559,9 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     match tokio::time::timeout(
       duration,
-      self.js_runtime.run_event_loop2(PollEventLoopOptions {
-        wait_for_inspector: false,
-        pump_v8_message_loop: true,
-      }),
+      self
+        .js_runtime
+        .run_event_loop(PollEventLoopOptions::default()),
     )
     .await
     {
@@ -613,27 +610,13 @@ impl MainWorker {
     self.js_runtime.inspector().borrow().create_local_session()
   }
 
-  pub fn poll_event_loop(
-    &mut self,
-    cx: &mut Context,
-    wait_for_inspector: bool,
-  ) -> Poll<Result<(), AnyError>> {
-    self.js_runtime.poll_event_loop2(
-      cx,
-      deno_core::PollEventLoopOptions {
-        wait_for_inspector,
-        ..Default::default()
-      },
-    )
-  }
-
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
     self
       .js_runtime
-      .run_event_loop2(deno_core::PollEventLoopOptions {
+      .run_event_loop(deno_core::PollEventLoopOptions {
         wait_for_inspector,
         ..Default::default()
       })

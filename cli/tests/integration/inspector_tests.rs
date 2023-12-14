@@ -869,7 +869,11 @@ async fn inspector_break_on_first_line_in_test() {
     .await;
 
   assert_starts_with!(&tester.stdout_line(), "running 1 test from");
-  assert!(&tester.stdout_line().contains("basic test ... ok"));
+  let line = tester.stdout_line();
+  assert!(
+    &line.contains("basic test ... ok"),
+    "Missing content: {line}"
+  );
 
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();

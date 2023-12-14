@@ -1488,7 +1488,13 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export type KvKeyPart = Uint8Array | string | number | bigint | boolean;
+  export type KvKeyPart =
+    | Uint8Array
+    | string
+    | number
+    | bigint
+    | boolean
+    | symbol;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -2098,6 +2104,14 @@ declare namespace Deno {
      * operations immediately.
      */
     close(): void;
+
+    /**
+     * Get a symbol that represents the versionstamp of the current atomic
+     * operation. This symbol can be used as the last part of a key in
+     * `.set()`, both directly on the `Kv` object and on an `AtomicOperation`
+     * object created from this `Kv` instance.
+     */
+    commitVersionstamp(): symbol;
 
     [Symbol.dispose](): void;
   }

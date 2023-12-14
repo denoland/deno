@@ -691,7 +691,7 @@ impl WebWorker {
         maybe_result
       }
 
-      event_loop_result = self.js_runtime.run_event_loop(false) => {
+      event_loop_result = self.js_runtime.run_event_loop(PollEventLoopOptions::default()) => {
         event_loop_result?;
         receiver.await
       }
@@ -706,10 +706,7 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
-    let poll_options = PollEventLoopOptions {
-      wait_for_inspector: false,
-      ..Default::default()
-    };
+    let poll_options = PollEventLoopOptions::default();
 
     tokio::select! {
       biased;
@@ -741,7 +738,7 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
-    match self.js_runtime.poll_event_loop2(cx, poll_options) {
+    match self.js_runtime.poll_event_loop(cx, poll_options) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {
