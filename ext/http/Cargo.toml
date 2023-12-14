@@ -31,12 +31,12 @@ deno_core.workspace = true
 deno_net.workspace = true
 deno_websocket.workspace = true
 flate2.workspace = true
-fly-accept-encoding = "0.2.0"
 http.workspace = true
 http1 = { package = "http", version = "=1.0.0" }
 httparse.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 hyper1 = { package = "hyper", features = ["full"], version = "=1.0.1" }
+itertools = "0.10"
 memmem.workspace = true
 mime = "0.3.16"
 once_cell.workspace = true
