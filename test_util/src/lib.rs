@@ -201,29 +201,6 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-/// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs
-struct HyperAcceptor<'a> {
-  acceptor: Pin<
-    Box<dyn Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + 'a>,
-  >,
-}
-
-impl hyper::server::accept::Accept for HyperAcceptor<'_> {
-  type Conn = rustls_tokio_stream::TlsStream;
-  type Error = io::Error;
-
-  fn poll_accept(
-    mut self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
-    Pin::new(&mut self.acceptor).poll_next(cx)
-  }
-}
-
-#[allow(clippy::non_send_fields_in_send_ty)]
-// SAFETY: unsafe trait must have unsafe implementation
-unsafe impl std::marker::Send for HyperAcceptor<'_> {}
-
 #[derive(Default)]
 struct HttpServerCount {
   count: usize,
