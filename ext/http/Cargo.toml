@@ -32,7 +32,7 @@ deno_net.workspace = true
 deno_websocket.workspace = true
 flate2.workspace = true
 http.workspace = true
-http1 = { package = "http", version = "=1.0.0" }
+http_1 = { package = "http", version = "=1.0.0" }
 httparse.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 hyper1 = { package = "hyper", features = ["full"], version = "=1.0.1" }

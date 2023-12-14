@@ -221,10 +221,11 @@ impl HttpConnResource {
       let request = request_rx.await.ok()?;
 
       let accept_encoding = {
-        let encodings = fly_accept_encoding::encodings_iter(request.headers())
-          .filter(|r| {
-            matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
-          });
+        let encodings =
+          fly_accept_encoding::encodings_iter_http_02(request.headers())
+            .filter(|r| {
+              matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
+            });
 
         fly_accept_encoding::preferred(encodings)
           .ok()
