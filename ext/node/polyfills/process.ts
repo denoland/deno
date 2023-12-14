@@ -68,7 +68,6 @@ import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
 const notImplementedEvents = [
-  "disconnect",
   "multipleResolves",
   "rejectionHandled",
   "worker",
