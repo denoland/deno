@@ -38,6 +38,8 @@ pub fn init(maybe_level: Option<log::Level>) {
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", log::LevelFilter::Off)
+  .filter_module("swc_ecma_codegen", log::LevelFilter::Off)
+  .filter_module("tracing", log::LevelFilter::Off)
   // wgpu crates (gfx_backend), have a lot of useless INFO and WARN logs
   .filter_module("wgpu", log::LevelFilter::Error)
   .filter_module("gfx", log::LevelFilter::Error)
