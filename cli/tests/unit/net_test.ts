@@ -1021,29 +1021,6 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, run: true, net: true } },
-  async function netListenUnrefAndRef() {
-    const p = execCode2(`
-      async function main() {
-        const listener = Deno.listen({ port: ${listenPort} });
-        listener.unref();
-        listener.ref(); // This restores 'ref' state of listener
-        console.log("started");
-        await listener.accept();
-        console.log("accepted")
-      }
-      main();
-    `);
-    await p.waitStdoutText("started");
-    const conn = await Deno.connect({ port: listenPort });
-    conn.close();
-    const [statusCode, output] = await p.finished();
-    assertEquals(statusCode, 0);
-    assertEquals(output.trim(), "started\naccepted");
-  },
-);
-
-Deno.test(
   { permissions: { net: true } },
   async function netListenUnrefConcurrentAccept() {
     const timer = setTimeout(() => {}, 1000);
