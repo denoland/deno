@@ -139,7 +139,7 @@ twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
-zeromq = { version = "=0.3.4", default-features = false, features = ["ipc-transport", "tcp-transport", "tokio-runtime"] }
+zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
@@ -149,6 +149,12 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
+
+# On *nix systems we allow ipc transport
+[target.'cfg(unix)'.dependencies.zeromq]
+version = "=0.3.4"
+default-features = false
+features = ["ipc-transport", "tcp-transport", "tokio-runtime"]
 
 [dev-dependencies]
 deno_bench_util.workspace = true
