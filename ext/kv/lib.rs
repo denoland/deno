@@ -518,16 +518,29 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, AnyError> {
   })
 }
 
-type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
+type V8KvMutation = (
+  KvKey,
+  String,
+  Option<FromV8Value>,
+  Option<u64>,
+  Option<JsBuffer>,
+  Option<JsBuffer>,
+  bool,
+);
 
 fn mutation_from_v8(
-  (value, current_timstamp): (V8KvMutation, DateTime<Utc>),
+  (value, current_timestamp): (V8KvMutation, DateTime<Utc>),
 ) -> Result<Mutation, AnyError> {
   let key = encode_v8_key(value.0)?;
   let kind = match (value.1.as_str(), value.2) {
     ("set", Some(value)) => MutationKind::Set(value.try_into()?),
     ("delete", None) => MutationKind::Delete,
-    ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
+    ("sum", Some(x)) => MutationKind::Sum {
+      value: x.try_into()?,
+      min_v8: value.4.as_ref().map(|x| x.to_vec()).unwrap_or_default(),
+      max_v8: value.5.as_ref().map(|x| x.to_vec()).unwrap_or_default(),
+      clamp: value.6,
+    },
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
     ("setSuffixVersionstampedKey", Some(value)) => {
@@ -545,7 +558,7 @@ fn mutation_from_v8(
     kind,
     expire_at: value
       .3
-      .map(|expire_in| current_timstamp + Duration::from_millis(expire_in)),
+      .map(|expire_in| current_timestamp + Duration::from_millis(expire_in)),
   })
 }
 

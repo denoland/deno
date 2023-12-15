@@ -126,7 +126,7 @@ class Kv {
   async getMany(
     keys: Deno.KvKey[],
     opts?: { consistency?: Deno.KvConsistencyLevel },
-  ): Promise<Deno.KvEntry<unknown>[]> {
+  ): Promise<Deno.KvEntryMaybe<unknown>[]> {
     const ranges: RawKvEntry[][] = await core.opAsync(
       "op_kv_snapshot_read",
       this.#rid,
@@ -156,7 +156,15 @@ class Kv {
     const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       [],
-      [[key, "set", serializeValue(value), options?.expireIn]],
+      [[
+        key,
+        "set",
+        serializeValue(value),
+        options?.expireIn,
+        null,
+        null,
+        false,
+      ]],
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
@@ -167,7 +175,7 @@ class Kv {
     const result = await doAtomicWriteInPlace(
       this.#rid,
       [],
-      [[key, "delete", null, undefined]],
+      [[key, "delete", null, undefined, null, null, false]],
       [],
     );
     if (!result) throw new TypeError("Failed to set value");
@@ -392,7 +400,15 @@ class AtomicOperation {
   #rid: number;
 
   #checks: [Deno.KvKey, string | null][] = [];
-  #mutations: [Deno.KvKey, string, RawValue | null, number | undefined][] = [];
+  #mutations: [
+    Deno.KvKey,
+    string,
+    RawValue | null,
+    number | undefined,
+    Uint8Array | null,
+    Uint8Array | null,
+    boolean,
+  ][] = [];
   #enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][] = [];
 
   constructor(rid: number) {
@@ -412,12 +428,32 @@ class AtomicOperation {
       let type: string;
       let value: RawValue | null;
       let expireIn: number | undefined = undefined;
+
+      let minV8: Uint8Array | null = null;
+      let maxV8: Uint8Array | null = null;
+      let clamp = false;
+
+      if (
+        mutation.type === "sum" &&
+        (typeof mutation.value === "number" ||
+          typeof mutation.value === "bigint")
+      ) {
+        minV8 = mutation.min !== undefined
+          ? core.serialize(mutation.min, { forStorage: true })
+          : null;
+        maxV8 = mutation.max !== undefined
+          ? core.serialize(mutation.max, { forStorage: true })
+          : null;
+        clamp = !!mutation.clamp;
+      }
+
       switch (mutation.type) {
         case "delete":
           type = "delete";
           if (mutation.value) {
             throw new TypeError("invalid mutation 'delete' with value");
           }
+          value = null;
           break;
         case "set":
           if (typeof mutation.expireIn === "number") {
@@ -436,23 +472,50 @@ class AtomicOperation {
         default:
           throw new TypeError("Invalid mutation type");
       }
-      this.#mutations.push([key, type, value, expireIn]);
+      this.#mutations.push([key, type, value, expireIn, minV8, maxV8, clamp]);
     }
     return this;
   }
 
-  sum(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push([key, "sum", serializeValue(new KvU64(n)), undefined]);
+  sum<T extends bigint | number>(key: Deno.KvKey, n: T, options: {
+    min?: T;
+    max?: T;
+    clamp?: boolean;
+  } = {}): this {
+    this.mutate({
+      key,
+      type: "sum",
+      value: n,
+      min: options.min,
+      max: options.max,
+      clamp: options.clamp,
+    } as Deno.KvMutation);
     return this;
   }
 
   min(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push([key, "min", serializeValue(new KvU64(n)), undefined]);
+    this.#mutations.push([
+      key,
+      "min",
+      serializeValue(new KvU64(n)),
+      undefined,
+      null,
+      null,
+      false,
+    ]);
     return this;
   }
 
   max(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push([key, "max", serializeValue(new KvU64(n)), undefined]);
+    this.#mutations.push([
+      key,
+      "max",
+      serializeValue(new KvU64(n)),
+      undefined,
+      null,
+      null,
+      false,
+    ]);
     return this;
   }
 
@@ -466,12 +529,15 @@ class AtomicOperation {
       "set",
       serializeValue(value),
       options?.expireIn,
+      null,
+      null,
+      false,
     ]);
     return this;
   }
 
   delete(key: Deno.KvKey): this {
-    this.#mutations.push([key, "delete", null, undefined]);
+    this.#mutations.push([key, "delete", null, undefined, null, null, false]);
     return this;
   }
 
@@ -754,7 +820,15 @@ class KvListIterator extends AsyncIterator
 async function doAtomicWriteInPlace(
   rid: number,
   checks: [Deno.KvKey, string | null][],
-  mutations: [Deno.KvKey, string, RawValue | null, number | undefined][],
+  mutations: [
+    Deno.KvKey,
+    string,
+    RawValue | null,
+    number | undefined,
+    Uint8Array | null,
+    Uint8Array | null,
+    boolean,
+  ][],
   enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][],
 ): Promise<string | null> {
   for (const m of mutations) {

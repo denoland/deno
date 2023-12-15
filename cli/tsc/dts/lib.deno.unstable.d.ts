@@ -1563,6 +1563,20 @@ declare namespace Deno {
       | { type: "set"; value: unknown; expireIn?: number }
       | { type: "delete" }
       | { type: "sum"; value: KvU64 }
+      | {
+        type: "sum";
+        value: bigint;
+        min?: bigint;
+        max?: bigint;
+        clamp?: boolean;
+      }
+      | {
+        type: "sum";
+        value: number;
+        min?: number;
+        max?: number;
+        clamp?: boolean;
+      }
       | { type: "max"; value: KvU64 }
       | { type: "min"; value: KvU64 }
     );
@@ -1756,7 +1770,7 @@ declare namespace Deno {
      * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
      * `[0, 2^64-1]`.
      */
-    sum(key: KvKey, n: bigint): this;
+    sum(key: KvKey, n: bigint | number): this;
     /**
      * Shortcut for creating a `min` mutation. This method wraps `n` in a
      * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
