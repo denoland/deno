@@ -1619,14 +1619,7 @@ const PromiseState = {
 
 function formatPromise(ctx, value, recurseTimes) {
   let output;
-  let opResult;
-  // This op will fail for non-promises, but we get here for some promise-likes.
-  try {
-    opResult = core.getPromiseDetails(value);
-  } catch {
-    return [ctx.stylize("<unknown>", "special")];
-  }
-  const { 0: state, 1: result } = opResult;
+  const { 0: state, 1: result } = core.getPromiseDetails(value);
   if (state === PromiseState.Pending) {
     output = [ctx.stylize("<pending>", "special")];
   } else {
