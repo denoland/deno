@@ -1,4 +1,5 @@
-import {assertEquals, execCode2} from "../unit/test_util";
+import { assertEquals } from "../../../test_util/std/assert/mod.ts";
+import { execCode } from "../unit/test_util.ts";
 
 const listenPort = 4503;
 const listenPort2 = 4504;
@@ -6,7 +7,7 @@ const listenPort2 = 4504;
 Deno.test(
   { permissions: { read: true, run: true, net: true } },
   async function dgramUdpListenUnrefAndRef() {
-    const p = execCode2(`
+    const p = execCode(`
       import * as dgram from "node:dgram";
       async function main() {
         const udpSocket = dgram.createSocket('udp4');
@@ -21,8 +22,8 @@ Deno.test(
       main();
     `);
     await p.waitStdoutText("started");
-    const conn = await Deno.connect({ port: listenPort });
-    conn.send("Deno!");
+    const conn = await Deno.listenDatagram({ port: listenPort2, transport: 'udp' });
+    conn.send(new Uint8Array(), {transport: "udp", port: listenPort, hostname: "127.0.0.1"});
     conn.close();
     const [statusCode, output] = await p.finished();
     assertEquals(statusCode, 0);
@@ -33,7 +34,7 @@ Deno.test(
 Deno.test(
   { permissions: { read: true, run: true, net: true } },
   async function dgramUdpListenUnref() {
-    const p = execCode2(`
+    const p = execCode(`
       import * as dgram from "node:dgram";
       async function main() {
         const udpSocket = dgram.createSocket('udp4');
@@ -47,8 +48,8 @@ Deno.test(
       main();
     `);
     await p.waitStdoutText("started");
-    const conn = await Deno.connect({ port: listenPort });
-    conn.send("Deno!");
+    const conn = await Deno.listenDatagram({ port: listenPort2, transport: 'udp' });
+    conn.send(new Uint8Array(), {transport: "udp", port: listenPort, hostname: "127.0.0.1"});
     conn.close();
     const [statusCode, output] = await p.finished();
     assertEquals(statusCode, 0);
