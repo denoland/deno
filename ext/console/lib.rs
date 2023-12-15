@@ -13,6 +13,7 @@ deno_core::extension!(
     op_is_generator_object,
     op_is_map_iterator,
     op_is_module_namespace_object,
+    op_is_native_error,
     op_is_promise,
     op_is_reg_exp,
     op_is_set_iterator,
@@ -58,6 +59,11 @@ pub fn op_is_map_iterator(value: &v8::Value) -> bool {
 #[op2(fast)]
 pub fn op_is_module_namespace_object(value: &v8::Value) -> bool {
   value.is_module_namespace_object()
+}
+
+#[op2(fast)]
+pub fn op_is_native_error(value: &v8::Value) -> bool {
+  value.is_native_error()
 }
 
 #[op2(fast)]

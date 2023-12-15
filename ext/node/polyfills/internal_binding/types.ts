@@ -27,9 +27,6 @@
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
 
-// https://tc39.es/ecma262/#sec-object.prototype.tostring
-const _toString = Object.prototype.toString;
-
 // https://tc39.es/ecma262/#sec-bigint.prototype.valueof
 const _bigIntValueOf = BigInt.prototype.valueOf;
 
@@ -187,11 +184,7 @@ export function isModuleNamespaceObject(
 }
 
 export function isNativeError(value: unknown): value is Error {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === undefined &&
-    _toString.call(value) === "[object Error]"
-  );
+  return ops.op_is_native_error(value);
 }
 
 // deno-lint-ignore ban-types

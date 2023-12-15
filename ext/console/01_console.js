@@ -74,7 +74,6 @@ const {
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectPrototypePropertyIsEnumerable,
-  ObjectPrototypeToString,
   ObjectSetPrototypeOf,
   ObjectValues,
   Proxy,
@@ -347,11 +346,7 @@ function isModuleNamespaceObject(value) {
 }
 
 function isNativeError(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === undefined &&
-    ObjectPrototypeToString(value) === "[object Error]"
-  );
+  return ops.op_is_native_error(value);
 }
 
 function isNumberObject(value) {
