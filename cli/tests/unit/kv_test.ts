@@ -2261,6 +2261,22 @@ dbTest("generic atomic sum (number)", async (db) => {
     TypeError,
     "Cannot sum Number with BigInt",
   );
+
+  await assertRejects(
+    async () => await db.atomic().sum(["t"], 3, { max: 5 }).commit(),
+    TypeError,
+    "The result of a Sum operation would exceed its range limit",
+  );
+  await db.atomic().sum(["t"], 3, { max: 5, clamp: true }).commit();
+  assertEquals((await db.get(["t"])).value, 5);
+
+  await assertRejects(
+    async () => await db.atomic().sum(["t"], -2, { min: 4 }).commit(),
+    TypeError,
+    "The result of a Sum operation would exceed its range limit",
+  );
+  await db.atomic().sum(["t"], -2, { min: 4, clamp: true }).commit();
+  assertEquals((await db.get(["t"])).value, 4);
 });
 
 dbTest("generic atomic sum (bigint)", async (db) => {
@@ -2275,4 +2291,20 @@ dbTest("generic atomic sum (bigint)", async (db) => {
     TypeError,
     "Cannot sum BigInt with Number",
   );
+
+  await assertRejects(
+    async () => await db.atomic().sum(["t"], 3n, { max: 5n }).commit(),
+    TypeError,
+    "The result of a Sum operation would exceed its range limit",
+  );
+  await db.atomic().sum(["t"], 3n, { max: 5n, clamp: true }).commit();
+  assertEquals((await db.get(["t"])).value, 5n);
+
+  await assertRejects(
+    async () => await db.atomic().sum(["t"], -2n, { min: 4n }).commit(),
+    TypeError,
+    "The result of a Sum operation would exceed its range limit",
+  );
+  await db.atomic().sum(["t"], -2n, { min: 4n, clamp: true }).commit();
+  assertEquals((await db.get(["t"])).value, 4n);
 });

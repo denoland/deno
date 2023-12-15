@@ -1770,7 +1770,16 @@ declare namespace Deno {
      * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
      * `[0, 2^64-1]`.
      */
-    sum(key: KvKey, n: bigint | number): this;
+    sum(key: Deno.KvKey, n: bigint, options?: {
+      min?: bigint;
+      max?: bigint;
+      clamp?: boolean;
+    }): this;
+    sum(key: Deno.KvKey, n: number, options?: {
+      min?: number;
+      max?: number;
+      clamp?: boolean;
+    }): this;
     /**
      * Shortcut for creating a `min` mutation. This method wraps `n` in a
      * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
