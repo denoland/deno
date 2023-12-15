@@ -2,7 +2,6 @@
 
 // Alias for the future `!` type.
 use core::convert::Infallible as Never;
-use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -34,6 +33,7 @@ use std::process;
 use std::rc::Rc;
 use std::thread;
 use tokio::net::TcpListener;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 /// Websocket server that is used to proxy connections from
@@ -41,7 +41,7 @@ use uuid::Uuid;
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
-  shutdown_server_tx: Option<oneshot::Sender<()>>,
+  shutdown_server_tx: Option<broadcast::Sender<()>>,
   thread_handle: Option<thread::JoinHandle<()>>,
 }
 
@@ -50,7 +50,7 @@ impl InspectorServer {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
-    let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
+    let (shutdown_server_tx, shutdown_server_rx) = broadcast::channel(1);
 
     let thread_handle = thread::spawn(move || {
       let rt = crate::tokio_util::create_basic_runtime();
@@ -155,7 +155,7 @@ fn handle_ws_request(
   let mut req = http_1::Request::from_parts(parts, body);
 
   let (resp, fut) = match fastwebsockets_06::upgrade::upgrade(&mut req) {
-    Ok((resp, fut)) => (
+    Ok((_resp, fut)) => (
       http_1::Response::builder()
         .body(Box::new(http_body_util::Full::new(Bytes::new())))
         .unwrap(),
@@ -231,7 +231,7 @@ fn handle_json_version_request(
 async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
-  shutdown_server_rx: oneshot::Receiver<()>,
+  shutdown_server_rx: broadcast::Receiver<()>,
   name: &str,
 ) {
   let inspector_map_ =
@@ -278,10 +278,7 @@ async fn server(
     }
   };
 
-  let shutdown_rx = pin!(shutdown_server_rx);
-
   let mut server_handler = pin!(deno_core::unsync::spawn(async move {
-    let shutdown_rx = &mut shutdown_rx;
     loop {
       let stream = match listener.accept().await {
         Ok((s, _)) => s,
@@ -294,6 +291,7 @@ async fn server(
 
       let inspector_map = Rc::clone(&inspector_map_);
       let json_version_response = json_version_response.clone();
+      let mut shutdown_server_rx = shutdown_server_rx.resubscribe();
 
       let service = hyper1::service::service_fn(
         move |req: http_1::Request<hyper1::body::Incoming>| {
@@ -336,6 +334,7 @@ async fn server(
         let server = hyper1::server::conn::http1::Builder::new();
 
         let mut conn = pin!(server.serve_connection(io, service));
+        let mut shutdown_rx = pin!(shutdown_server_rx.recv());
 
         tokio::select! {
           result = conn.as_mut() => {
