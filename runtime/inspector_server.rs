@@ -277,7 +277,11 @@ async fn server(
       return;
     }
   };
+
+  let shutdown_rx = pin!(shutdown_server_rx);
+
   let mut server_handler = pin!(deno_core::unsync::spawn(async move {
+    let shutdown_rx = &mut shutdown_rx;
     loop {
       let stream = match listener.accept().await {
         Ok((s, _)) => s,
@@ -329,11 +333,19 @@ async fn server(
       );
 
       deno_core::unsync::spawn(async move {
-        let server =
-          hyper_util::server::conn::auto::Builder::new(LocalExecutor);
+        let server = hyper1::server::conn::http1::Builder::new();
 
-        if let Err(err) = server.serve_connection(io, service).await {
-          println!("Failed to serve connection: {:?}", err);
+        let mut conn = pin!(server.serve_connection(io, service));
+
+        tokio::select! {
+          result = conn.as_mut() => {
+            if let Err(err) = result {
+              println!("Failed to serve connection: {:?}", err);
+            }
+          },
+          _ = &mut shutdown_rx => {
+            conn.as_mut().graceful_shutdown();
+          }
         }
       });
     }
