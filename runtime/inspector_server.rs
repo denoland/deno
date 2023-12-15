@@ -7,7 +7,6 @@ use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future;
-use deno_core::futures::future::Future;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
@@ -104,20 +103,6 @@ impl Drop for InspectorServer {
   }
 }
 
-// Needed so hyper can use non Send futures
-#[derive(Clone)]
-struct LocalExecutor;
-
-impl<Fut> hyper1::rt::Executor<Fut> for LocalExecutor
-where
-  Fut: Future + 'static,
-  Fut::Output: 'static,
-{
-  fn execute(&self, fut: Fut) {
-    deno_core::unsync::spawn(fut);
-  }
-}
-
 fn handle_ws_request(
   req: http_1::Request<hyper1::body::Incoming>,
   inspector_map_rc: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
@@ -155,12 +140,14 @@ fn handle_ws_request(
   let mut req = http_1::Request::from_parts(parts, body);
 
   let (resp, fut) = match fastwebsockets_06::upgrade::upgrade(&mut req) {
-    Ok((_resp, fut)) => (
-      http_1::Response::builder()
-        .body(Box::new(http_body_util::Full::new(Bytes::new())))
-        .unwrap(),
-      fut,
-    ),
+    Ok((resp, fut)) => {
+      let (parts, _body) = resp.into_parts();
+      let resp = http_1::Response::from_parts(
+        parts,
+        Box::new(http_body_util::Full::new(Bytes::new())),
+      );
+      (resp, fut)
+    }
     _ => {
       return http_1::Response::builder()
         .status(http_1::StatusCode::BAD_REQUEST)
@@ -173,11 +160,15 @@ fn handle_ws_request(
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
   spawn(async move {
-    let websocket = if let Ok(w) = fut.await {
-      w
-    } else {
-      eprintln!("Inspector server failed to upgrade to WS connection");
-      return;
+    let websocket = match fut.await {
+      Ok(w) => w,
+      Err(err) => {
+        eprintln!(
+          "Inspector server failed to upgrade to WS connection: {:?}",
+          err
+        );
+        return;
+      }
     };
 
     // The 'outbound' channel carries messages sent to the websocket.
@@ -273,18 +264,30 @@ async fn server(
   let listener = match TcpListener::bind(&host).await {
     Ok(l) => l,
     Err(err) => {
-      println!("Failed to bind inspector server listener: {:?}", err);
+      eprintln!("Cannot start inspector server: {:?}", err);
       return;
     }
   };
 
   let mut server_handler = pin!(deno_core::unsync::spawn(async move {
     loop {
-      let stream = match listener.accept().await {
-        Ok((s, _)) => s,
-        Err(err) => {
-          println!("Failed to accept inspector connection: {:?}", err);
-          continue;
+      let mut rx = shutdown_server_rx.resubscribe();
+      let mut shutdown_rx = pin!(rx.recv());
+      let mut accept = pin!(listener.accept());
+
+      let stream = tokio::select! {
+        accept_result = &mut accept => {
+          match accept_result {
+            Ok((s, _)) => s,
+            Err(err) => {
+              eprintln!("Failed to accept inspector connection: {:?}", err);
+              continue;
+            }
+          }
+        },
+
+        _ = &mut shutdown_rx => {
+          break;
         }
       };
       let io = TokioIo::new(stream);
@@ -339,11 +342,13 @@ async fn server(
         tokio::select! {
           result = conn.as_mut() => {
             if let Err(err) = result {
-              println!("Failed to serve connection: {:?}", err);
+              eprintln!("Failed to serve connection: {:?}", err);
             }
+            return;
           },
           _ = &mut shutdown_rx => {
             conn.as_mut().graceful_shutdown();
+            let _ = conn.await;
           }
         }
       });
