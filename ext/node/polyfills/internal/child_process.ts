@@ -1069,9 +1069,7 @@ function toDenoArgs(args: string[]): string[] {
   return denoArgs;
 }
 
-export function setupChannel(target, channel) {
-  const ipc = ops.op_node_ipc_pipe(channel);
-
+export function setupChannel(target, ipc) {
   async function readLoop() {
     try {
       while (true) {
