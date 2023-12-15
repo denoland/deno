@@ -45,14 +45,8 @@ import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 
 const core = globalThis.__bootstrap.core;
+const internals = globalThis.__bootstrap.internals;
 const ops = core.ops;
-
-let getPipeFd = () => {
-  throw new Error("pipe fd callback not set");
-};
-export function setPipeFdCallback(callback) {
-  getPipeFd = callback;
-}
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -263,7 +257,7 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      const pipeFd = getPipeFd(this.#process);
+      const pipeFd = internals.getPipeFd(this.#process);
       if (typeof pipeFd == "number") {
         setupChannel(this, pipeFd);
       }
@@ -1163,6 +1157,5 @@ export default {
   normalizeSpawnArguments,
   stdioStringToArray,
   spawnSync,
-  setPipeFdCallback,
   setupChannel,
 };

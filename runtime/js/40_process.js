@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 const {
   ArrayPrototypeMap,
@@ -30,7 +30,6 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-import { setPipeFdCallback } from "ext:deno_node/internal/child_process.ts";
 
 function opKill(pid, signo, apiName) {
   ops.op_kill(pid, signo, apiName);
@@ -203,7 +202,7 @@ function collectOutput(readableStream) {
 
 const _pipeFd = Symbol("[[pipeFd]]");
 
-setPipeFdCallback((process) => process[_pipeFd]);
+internals.getPipeFd = (process) => process[_pipeFd];
 
 class ChildProcess {
   #rid;
