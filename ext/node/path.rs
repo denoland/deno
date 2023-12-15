@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Component;
+use std::path::Path;
 use std::path::PathBuf;
+
+use deno_core::ModuleSpecifier;
 
 /// Extension to path_clean::PathClean
 pub trait PathClean<T> {
@@ -36,5 +39,12 @@ impl PathClean<PathBuf> for PathBuf {
     } else {
       path
     }
+  }
+}
+
+pub(crate) fn to_file_specifier(path: &Path) -> ModuleSpecifier {
+  match ModuleSpecifier::from_file_path(path) {
+    Ok(url) => url,
+    Err(_) => panic!("Invalid path: {}", path.display()),
   }
 }

@@ -200,7 +200,6 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(state, &api_name);
   let permissions = state.borrow_mut::<NP>();
   let api_call_expr = format!("{}()", api_name);
   permissions.check_read(address_path, &api_call_expr)?;
