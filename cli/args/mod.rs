@@ -124,7 +124,7 @@ pub fn deno_registry_url() -> &'static Url {
       }
     }
 
-    deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+    Url::parse("https://jsr.io/").unwrap()
   });
 
   &DENO_REGISTRY_URL
