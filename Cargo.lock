@@ -1336,12 +1336,12 @@ dependencies = [
  "deno_net",
  "deno_websocket",
  "flate2",
- "fly-accept-encoding",
  "http",
  "http-body-util",
  "httparse",
  "hyper 0.14.27",
  "hyper 1.0.0-rc.4",
+ "itertools",
  "memmem",
  "mime",
  "once_cell",
@@ -2423,17 +2423,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "fly-accept-encoding"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3afa7516fdcfd8e5e93a938f8fec857785ced190a1f62d842d1fe1ffbe22ba8"
-dependencies = [
- "http",
- "itertools",
- "thiserror",
 ]
 
 [[package]]
