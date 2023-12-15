@@ -958,7 +958,7 @@ dependencies = [
  "env_logger",
  "eszip",
  "fancy-regex",
- "fastwebsockets",
+ "fastwebsockets 0.5.0",
  "flaky_test",
  "flate2",
  "fs3",
@@ -1611,13 +1611,18 @@ dependencies = [
  "deno_webstorage",
  "dlopen2",
  "encoding_rs",
- "fastwebsockets",
+ "fastwebsockets 0.5.0",
+ "fastwebsockets 0.6.0",
  "filetime",
  "flate2",
  "fs3",
  "fwdansi",
  "http 0.2.11",
+ "http 1.0.0",
+ "http-body-util",
  "hyper 0.14.27",
+ "hyper 1.0.1",
+ "hyper-util",
  "libc",
  "log",
  "netif",
@@ -1763,7 +1768,7 @@ dependencies = [
  "deno_core",
  "deno_net",
  "deno_tls",
- "fastwebsockets",
+ "fastwebsockets 0.5.0",
  "h2 0.3.22",
  "http 0.2.11",
  "hyper 0.14.27",
@@ -2342,6 +2347,25 @@ checksum = "17c35f166afb94b7f8e9449d0ad866daca111ba4053f3b1960bb480ca4382c63"
 dependencies = [
  "base64 0.21.5",
  "hyper 0.14.27",
+ "pin-project",
+ "rand",
+ "sha1",
+ "simdutf8",
+ "thiserror",
+ "tokio",
+ "utf-8",
+]
+
+[[package]]
+name = "fastwebsockets"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63dd7b57f9b33b1741fa631c9522eb35d43e96dcca4a6a91d5e4ca7c93acdc1"
+dependencies = [
+ "base64 0.21.5",
+ "http-body-util",
+ "hyper 1.0.1",
+ "hyper-util",
  "pin-project",
  "rand",
  "sha1",
@@ -5958,7 +5982,7 @@ dependencies = [
  "bytes",
  "console_static_text",
  "denokv_proto",
- "fastwebsockets",
+ "fastwebsockets 0.5.0",
  "flate2",
  "futures",
  "glob",
