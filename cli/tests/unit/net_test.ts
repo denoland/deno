@@ -1007,7 +1007,11 @@ Deno.test(
       hostname: "0.0.0.0",
     });
     const sent = new Uint8Array([1, 2, 3]);
-    await bob.send(sent, { port: listenPort, hostname: "127.0.0.1", transport: "udp" });
+    await bob.send(sent, {
+      port: listenPort,
+      hostname: "127.0.0.1",
+      transport: "udp",
+    });
     bob.close();
 
     const [statusCode, output] = await p.finished();

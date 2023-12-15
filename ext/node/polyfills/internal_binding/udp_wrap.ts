@@ -82,8 +82,8 @@ export class UDP extends HandleWrap {
   #recvBufferSize = UDP_DGRAM_MAXSIZE;
   #sendBufferSize = UDP_DGRAM_MAXSIZE;
 
-  #recvPromise = null
-  #unrefed = false
+  #recvPromise = null;
+  #unrefed = false;
 
   onmessage!: (
     nread: number,
