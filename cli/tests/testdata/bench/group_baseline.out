@@ -17,3 +17,4 @@ summary
   parse url 2x
    [WILDCARD]x slower than noop3
    [WILDCARD]x faster than parse url 200x
+

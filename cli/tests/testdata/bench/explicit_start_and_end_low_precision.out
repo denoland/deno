@@ -7,3 +7,4 @@ benchmark                    time (avg)        iter/s             (min … max) 
 noop with start and end  [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 Warning: start() and end() calls in "noop with start and end" are ignored because it averages less
 than 10µs per iteration. Remove them for better results.
+
