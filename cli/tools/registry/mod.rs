@@ -27,7 +27,7 @@ use serde::Serialize;
 use sha2::Digest;
 
 use crate::args::deno_registry_api_url;
-use crate::args::deno_registry_manage_url;
+use crate::args::deno_registry_url;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
@@ -455,7 +455,7 @@ async fn perform_publish(
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
   let registry_api_url = deno_registry_api_url().to_string();
-  let registry_manage_url = deno_registry_manage_url().to_string();
+  let registry_url = deno_registry_url().to_string();
 
   let packages = prepared_package_by_name
     .values()
@@ -470,7 +470,7 @@ async fn perform_publish(
   ensure_scopes_and_packages_exist(
     client,
     registry_api_url.clone(),
-    registry_manage_url,
+    registry_url.clone(),
     packages.clone(),
   )
   .await?;
@@ -494,6 +494,7 @@ async fn perform_publish(
         ))
         .unwrap();
       let registry_api_url = registry_api_url.clone();
+      let registry_url = registry_url.clone();
       let http_client = http_client.clone();
       futures.spawn(async move {
         let display_name =
@@ -502,6 +503,7 @@ async fn perform_publish(
           &http_client,
           package,
           &registry_api_url,
+          &registry_url,
           &authorization,
         )
         .await
@@ -526,6 +528,7 @@ async fn perform_publish(
 async fn publish_package(
   http_client: &HttpClient,
   package: Rc<PreparedPublishPackage>,
+  registry_api_url: &str,
   registry_url: &str,
   authorization: &str,
 ) -> Result<(), AnyError> {
@@ -540,7 +543,7 @@ async fn publish_package(
 
   let url = format!(
     "{}scopes/{}/packages/{}/versions/{}",
-    registry_url, package.scope, package.package, package.version
+    registry_api_url, package.scope, package.package, package.version
   );
 
   let response = client
@@ -578,7 +581,7 @@ async fn publish_package(
   while task.status != "success" && task.status != "failure" {
     tokio::time::sleep(interval).await;
     let resp = client
-      .get(format!("{}publish_status/{}", registry_url, task.id))
+      .get(format!("{}publish_status/{}", registry_api_url, task.id))
       .send()
       .await
       .with_context(|| {
@@ -615,10 +618,12 @@ async fn publish_package(
     package.package,
     package.version
   );
-  // TODO(bartlomieju): return something more useful here
   println!(
-    "{}@{}/{}/{}_meta.json",
-    registry_url, package.scope, package.package, package.version
+    "{}",
+    colors::gray(format!(
+      "Visit {}@{}/{}@{} for details",
+      registry_url, package.scope, package.package, package.version
+    ))
   );
   Ok(())
 }

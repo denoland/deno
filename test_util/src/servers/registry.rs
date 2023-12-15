@@ -29,11 +29,11 @@ async fn registry_server_handler(
   let path = req.uri().path();
 
   // TODO(bartlomieju): add a proper router here
-  if path.starts_with("/scope/") {
+  if path.starts_with("/api/scope/") {
     let body = serde_json::to_string_pretty(&json!({})).unwrap();
     let res = Response::new(Body::from(body));
     return Ok(res);
-  } else if path.starts_with("/scopes/") {
+  } else if path.starts_with("/api/scopes/") {
     let body = serde_json::to_string_pretty(&json!({
       "id": "sdfwqer-sffg-qwerasdf",
       "status": "success",
@@ -42,7 +42,7 @@ async fn registry_server_handler(
     .unwrap();
     let res = Response::new(Body::from(body));
     return Ok(res);
-  } else if path.starts_with("/publish_status/") {
+  } else if path.starts_with("/api/publish_status/") {
     let body = serde_json::to_string_pretty(&json!({
       "id": "sdfwqer-qwer-qwerasdf",
       "status": "success",
