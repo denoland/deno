@@ -1,58 +1,47 @@
 import { assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { execCode } from "../unit/test_util.ts";
+import { createSocket } from "node:dgram";
 
 const listenPort = 4503;
 const listenPort2 = 4504;
 
-Deno.test(
+Deno.test("[node/dgram] udp ref and unref",
   { permissions: { read: true, run: true, net: true } },
-  async function dgramUdpListenUnrefAndRef() {
-    const p = execCode(`
-      import * as dgram from "node:dgram";
-      async function main() {
-        const udpSocket = dgram.createSocket('udp4');
-        udpSocket.bind(${listenPort});
-        listener.unref();
-        listener.ref(); // This restores 'ref' state of listener
-        console.log("started");
-        udpSocket.on('message', (buffer, rinfo) => {
-          console.log("accepted");
-        }
-      }
-      main();
-    `);
-    await p.waitStdoutText("started");
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<Uint8Array>();
+
+    const udpSocket = createSocket('udp4');
+    udpSocket.bind(listenPort);
+
+    udpSocket.unref();
+    udpSocket.ref();
+
+    udpSocket.on('message', (buffer, rinfo) => {
+      resolve(Uint8Array.from(buffer));
+    });
+
     const conn = await Deno.listenDatagram({ port: listenPort2, transport: 'udp' });
-    conn.send(new Uint8Array(), {transport: "udp", port: listenPort, hostname: "127.0.0.1"});
-    conn.close();
-    const [statusCode, output] = await p.finished();
-    assertEquals(statusCode, 0);
-    assertEquals(output.trim(), "started\naccepted");
-  },
+    await conn.send(new Uint8Array([0, 1, 2, 3]), {transport: "udp", port: listenPort, hostname: "127.0.0.1"});
+
+    const data = await promise;
+    assertEquals(data, new Uint8Array([0, 1, 2, 3]));
+  }
 );
 
-Deno.test(
+Deno.test("[node/dgram] udp unref",
   { permissions: { read: true, run: true, net: true } },
-  async function dgramUdpListenUnref() {
-    const p = execCode(`
-      import * as dgram from "node:dgram";
-      async function main() {
-        const udpSocket = dgram.createSocket('udp4');
-        udpSocket.bind(${listenPort});
-        listener.unref();
-        udpSocket.on('message', (buffer, rinfo) => {
-          console.log("accepted");
-        }
-        console.log("started");
-      }
-      main();
+  async () => {
+    const [statusCode, _output] = await execCode(`
+      import { createSocket } from "node:dgram";
+      const udpSocket = createSocket('udp4');
+      udpSocket.bind(${listenPort2});
+
+      // This should let the program to exit without waiting for the
+      // udp socket to close.
+      udpSocket.unref();
+
+      udpSocket.on('message', (buffer, rinfo) => {
+      });
     `);
-    await p.waitStdoutText("started");
-    const conn = await Deno.listenDatagram({ port: listenPort2, transport: 'udp' });
-    conn.send(new Uint8Array(), {transport: "udp", port: listenPort, hostname: "127.0.0.1"});
-    conn.close();
-    const [statusCode, output] = await p.finished();
     assertEquals(statusCode, 0);
-    assertEquals(output.trim(), "started");
-  },
-);
+});
