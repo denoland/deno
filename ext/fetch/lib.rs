@@ -854,12 +854,16 @@ where
         .clone(),
       client_cert_chain_and_key,
       pool_max_idle_per_host: args.pool_max_idle_per_host,
-      pool_idle_timeout: args.pool_idle_timeout.and_then(|timeout| match timeout {
-        serde_json::Value::Bool(true) => None,
-        serde_json::Value::Bool(false) => Some(None),
-        serde_json::Value::Number(specify) => Some(Some(specify.as_u64().unwrap_or_default())),
-        _ => Some(None),
-    }),
+      pool_idle_timeout: args.pool_idle_timeout.and_then(
+        |timeout| match timeout {
+          serde_json::Value::Bool(true) => None,
+          serde_json::Value::Bool(false) => Some(None),
+          serde_json::Value::Number(specify) => {
+            Some(Some(specify.as_u64().unwrap_or_default()))
+          }
+          _ => Some(None),
+        },
+      ),
       http1: args.http1,
       http2: args.http2,
     },
