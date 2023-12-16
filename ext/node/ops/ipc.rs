@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-pub use unix::*;
+pub use impl_::*;
 
 pub struct ChildPipeFd(pub i64);
 
-mod unix {
+mod impl_ {
   use std::cell::RefCell;
   use std::future::Future;
   use std::io;
