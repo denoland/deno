@@ -347,6 +347,7 @@ fn create_command(
   }
 
   #[cfg(windows)]
+  // Safety: We setup a windows named pipe and pass one end to the child process.
   unsafe {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::Foundation::DuplicateHandle;
@@ -413,7 +414,7 @@ fn create_command(
         path.as_ptr(),
         GENERIC_READ | GENERIC_WRITE,
         0,
-        &mut s,
+        &s,
         OPEN_EXISTING,
         FILE_FLAG_OVERLAPPED,
         0,
