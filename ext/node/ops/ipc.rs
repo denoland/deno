@@ -425,7 +425,7 @@ mod impl_ {
       use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 
       let name =
-        format!(r"\\.\pipe\tokio-named-pipe-{}", rand::random::<u32>());
+        format!(r"\\.\pipe\deno-named-pipe-test-{}", rand::random::<u32>());
 
       let server = ServerOptions::new().create(name.clone()).unwrap();
       let client = ClientOptions::new().open(name).unwrap();
