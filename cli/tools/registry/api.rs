@@ -125,7 +125,7 @@ pub fn get_package_api_url(
   scope: &str,
   package: &str,
 ) -> String {
-  format!("{}scope/{}packages/{}", registry_api_url, scope, package)
+  format!("{}scope/{}/packages/{}", registry_api_url, scope, package)
 }
 
 pub async fn get_package(
