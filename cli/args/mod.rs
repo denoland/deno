@@ -1245,7 +1245,9 @@ impl CliOptions {
     self.flags.enable_op_summary_metrics
       || matches!(
         self.flags.subcommand,
-        DenoSubcommand::Test(_) | DenoSubcommand::Repl(_)
+        DenoSubcommand::Test(_)
+          | DenoSubcommand::Repl(_)
+          | DenoSubcommand::Jupyter(_)
       )
   }
 
