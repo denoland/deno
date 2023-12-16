@@ -348,25 +348,19 @@ fn create_command(
 
   #[cfg(windows)]
   unsafe {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
     use windows_sys::Win32::Foundation::{
-      ERROR_ACCESS_DENIED, GENERIC_READ, GENERIC_WRITE, HANDLE,
-      INVALID_HANDLE_VALUE,
+      CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS,
+      ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE,
     };
     use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
-    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED;
-    use windows_sys::Win32::Storage::FileSystem::WRITE_DAC;
     use windows_sys::Win32::Storage::FileSystem::{
-      CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_FIRST_PIPE_INSTANCE,
+      CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED,
       OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
     };
-    use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
     use windows_sys::Win32::System::Pipes::{
-      CreateNamedPipeW, PeekNamedPipe, PIPE_READMODE_BYTE,
-      PIPE_READMODE_MESSAGE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
-      PIPE_TYPE_MESSAGE, PIPE_UNLIMITED_INSTANCES,
+      ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
     };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
     use std::io;
     use std::os::windows::ffi::OsStrExt;
@@ -431,10 +425,6 @@ fn create_command(
           return Err(err.into());
         }
       }
-
-      use windows_sys::Win32::Foundation::DuplicateHandle;
-      use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
-      use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
       // Duplicating the handle to allow the child process to use it.
       if DuplicateHandle(

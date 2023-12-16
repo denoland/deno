@@ -127,7 +127,6 @@ mod unix {
     ),
     io::Error,
   > {
-    use std::os::windows::io::FromRawHandle;
     // We cannot use `get_osfhandle` because Deno statically links to msvcrt. It is not guaranteed that the
     // fd handle map will be the same.
     let pipe = unsafe { NamedPipeClient::from_raw_handle(handle as _)? };
@@ -146,8 +145,19 @@ mod unix {
 
     #[cfg(unix)]
     #[cfg(test)]
-    fn from_unix_stream(stream: UnixStream) -> Self {
+    fn from_stream(stream: UnixStream) -> Self {
       let (read_half, write_half) = stream.into_split();
+      Self {
+        read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
+        write_half: AsyncRefCell::new(write_half),
+        cancel: Default::default(),
+      }
+    }
+
+    #[cfg(windows)]
+    #[cfg(test)]
+    fn from_stream(pipe: NamedPipeClient) -> Self {
+      let (read_half, write_half) = tokio::io::split(pipe);
       Self {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
@@ -398,6 +408,34 @@ mod unix {
     use deno_core::RcRef;
     use std::rc::Rc;
 
+    #[cfg(unix)]
+    pub async fn pair() -> (Rc<IpcJsonStreamResource>, tokio::net::UnixStream) {
+      let (a, b) = tokio::net::UnixStream::pair().unwrap();
+
+      /* Similar to how ops would use the resource */
+      let a = Rc::new(IpcJsonStreamResource::from_stream(a));
+      (a, b)
+    }
+
+    #[cfg(windows)]
+    pub async fn pair() -> (
+      Rc<IpcJsonStreamResource>,
+      tokio::net::windows::named_pipe::NamedPipeServer,
+    ) {
+      use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
+
+      let name =
+        format!(r"\\.\pipe\tokio-named-pipe-{}", rand::random::<u32>());
+
+      let server = ServerOptions::new().create(name.clone()).unwrap();
+      let client = ClientOptions::new().open(name).unwrap();
+
+      server.connect().await.unwrap();
+      /* Similar to how ops would use the resource */
+      let client = Rc::new(IpcJsonStreamResource::from_stream(client));
+      (client, server)
+    }
+
     #[tokio::test]
     async fn bench_ipc() -> Result<(), Box<dyn std::error::Error>> {
       // A simple round trip benchmark for quick dev feedback.
@@ -407,7 +445,7 @@ mod unix {
         return Ok(());
       }
 
-      let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+      let (ipc, mut fd2) = pair().await;
       let child = tokio::spawn(async move {
         use tokio::io::AsyncWriteExt;
 
@@ -420,8 +458,6 @@ mod unix {
         }
         Ok::<_, std::io::Error>(())
       });
-
-      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
 
       let start = std::time::Instant::now();
       let mut bytes = 0;
@@ -448,20 +484,19 @@ mod unix {
 
     #[tokio::test]
     async fn unix_ipc_json() -> Result<(), Box<dyn std::error::Error>> {
-      let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+      let (ipc, mut fd2) = pair().await;
       let child = tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
         use tokio::io::AsyncWriteExt;
 
-        let mut buf = [0u8; 1024];
-        let n = fd2.read(&mut buf).await?;
-        assert_eq!(&buf[..n], b"\"hello\"\n");
+        const EXPECTED: &[u8] = b"\"hello\"\n";
+        let mut buf = [0u8; EXPECTED.len()];
+        let n = fd2.read_exact(&mut buf).await?;
+        assert_eq!(&buf[..n], EXPECTED);
         fd2.write_all(b"\"world\"\n").await?;
+
         Ok::<_, std::io::Error>(())
       });
-
-      /* Similar to how ops would use the resource */
-      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
 
       ipc.clone().write_msg(json!("hello")).await?;
 
@@ -476,19 +511,19 @@ mod unix {
 
     #[tokio::test]
     async fn unix_ipc_json_multi() -> Result<(), Box<dyn std::error::Error>> {
-      let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+      let (ipc, mut fd2) = pair().await;
       let child = tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
         use tokio::io::AsyncWriteExt;
 
-        let mut buf = [0u8; 1024];
-        let n = fd2.read(&mut buf).await?;
-        assert_eq!(&buf[..n], b"\"hello\"\n\"world\"\n");
+        const EXPECTED: &[u8] = b"\"hello\"\n\"world\"\n";
+        let mut buf = [0u8; EXPECTED.len()];
+        let n = fd2.read_exact(&mut buf).await?;
+        assert_eq!(&buf[..n], EXPECTED);
         fd2.write_all(b"\"foo\"\n\"bar\"\n").await?;
         Ok::<_, std::io::Error>(())
       });
 
-      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
       ipc.clone().write_msg(json!("hello")).await?;
       ipc.clone().write_msg(json!("world")).await?;
 
@@ -503,13 +538,12 @@ mod unix {
 
     #[tokio::test]
     async fn unix_ipc_json_invalid() -> Result<(), Box<dyn std::error::Error>> {
-      let (fd1, mut fd2) = tokio::net::UnixStream::pair()?;
+      let (ipc, mut fd2) = pair().await;
       let child = tokio::spawn(async move {
         tokio::io::AsyncWriteExt::write_all(&mut fd2, b"\n\n").await?;
         Ok::<_, std::io::Error>(())
       });
 
-      let ipc = Rc::new(IpcJsonStreamResource::from_unix_stream(fd1));
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
       let _err = ipc.read_msg().await.unwrap_err();
 

@@ -74,4 +74,7 @@ url.workspace = true
 winapi.workspace = true
 x25519-dalek = "2.0.0"
 x509-parser = "0.15.0"
+
+[target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
+winapi = { workspace = true, features = ["consoleapi"] }
