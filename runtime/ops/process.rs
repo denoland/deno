@@ -405,7 +405,7 @@ fn create_command(
       }
 
       /* Create child pipe handle. */
-      let mut s = SECURITY_ATTRIBUTES {
+      let s = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: ptr::null_mut(),
         bInheritHandle: 1,
