@@ -2939,15 +2939,20 @@ function parseCss(cssString) {
   return css;
 }
 
-function colorEquals(color1, color2) {
-  return color1?.[0] == color2?.[0] && color1?.[1] == color2?.[1] &&
-    color1?.[2] == color2?.[2];
+// The same color can be represented in multiple formats. This function
+// returns `false` in that case.
+function colorsObviouslyEqual(color1, color2) {
+  if (ArrayIsArray(color1) && ArrayIsArray(color2)) {
+    return color1[0] === color2[0] && color1[1] === color2[1] &&
+      color1[2] === color2[2];
+  }
+  return color1 === color2;
 }
 
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
-  if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
+  if (!colorsObviouslyEqual(css.backgroundColor, prevCss.backgroundColor)) {
     if (css.backgroundColor == null) {
       ansi += "\x1b[49m";
     } else if (css.backgroundColor == "black") {
@@ -2981,7 +2986,7 @@ function cssToAnsi(css, prevCss = null) {
       }
     }
   }
-  if (!colorEquals(css.color, prevCss.color)) {
+  if (!colorsObviouslyEqual(css.color, prevCss.color)) {
     if (css.color == null) {
       ansi += "\x1b[39m";
     } else if (css.color == "black") {
@@ -3029,7 +3034,9 @@ function cssToAnsi(css, prevCss = null) {
       ansi += "\x1b[23m";
     }
   }
-  if (!colorEquals(css.textDecorationColor, prevCss.textDecorationColor)) {
+  if (
+    !colorsObviouslyEqual(css.textDecorationColor, prevCss.textDecorationColor)
+  ) {
     if (css.textDecorationColor != null) {
       const { 0: r, 1: g, 2: b } = css.textDecorationColor;
       ansi += `\x1b[58;2;${r};${g};${b}m`;
