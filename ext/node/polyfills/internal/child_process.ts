@@ -45,7 +45,6 @@ import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 
 const core = globalThis.__bootstrap.core;
-const ops = core.ops;
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,

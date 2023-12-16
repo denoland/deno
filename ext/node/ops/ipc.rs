@@ -127,7 +127,7 @@ mod impl_ {
     ),
     io::Error,
   > {
-    // We cannot use `get_osfhandle` because Deno statically links to msvcrt. It is not guaranteed that the
+    // Safety: We cannot use `get_osfhandle` because Deno statically links to msvcrt. It is not guaranteed that the
     // fd handle map will be the same.
     let pipe = unsafe { NamedPipeClient::from_raw_handle(handle as _)? };
     Ok(tokio::io::split(pipe))
