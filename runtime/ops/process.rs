@@ -406,6 +406,8 @@ fn create_command(
           if err.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
             continue;
           }
+
+          return Err(err.into());
         }
 
         break (path, hd1);
