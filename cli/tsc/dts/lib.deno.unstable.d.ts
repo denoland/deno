@@ -1008,9 +1008,6 @@ declare namespace Deno {
      * with errors. */
     close(): void;
 
-    ref(): void;
-    unref(): void;
-
     /** Return the address of the instance. */
     readonly addr: Addr;
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
