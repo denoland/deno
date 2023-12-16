@@ -352,6 +352,7 @@ fn create_command(
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::Foundation::DuplicateHandle;
     use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+    use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
     use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
     use windows_sys::Win32::Foundation::GENERIC_READ;
     use windows_sys::Win32::Foundation::GENERIC_WRITE;
@@ -378,31 +379,37 @@ fn create_command(
         return Ok((command, None));
       }
 
-      let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
-      let mut path = Path::new(&name)
-        .as_os_str()
-        .encode_wide()
-        .collect::<Vec<_>>();
-      path.push(0);
+      let (path, hd1) = loop {
+        let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
+        let mut path = Path::new(&name)
+          .as_os_str()
+          .encode_wide()
+          .collect::<Vec<_>>();
+        path.push(0);
 
-      // TODO(@littledivy): Handle pipe name collisions
+        let hd1 = CreateNamedPipeW(
+          path.as_ptr(),
+          PIPE_ACCESS_DUPLEX
+            | FILE_FLAG_FIRST_PIPE_INSTANCE
+            | FILE_FLAG_OVERLAPPED,
+          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+          1,
+          65536,
+          65536,
+          0,
+          std::ptr::null_mut(),
+        );
 
-      let hd1 = CreateNamedPipeW(
-        path.as_ptr(),
-        PIPE_ACCESS_DUPLEX
-          | FILE_FLAG_FIRST_PIPE_INSTANCE
-          | FILE_FLAG_OVERLAPPED,
-        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-        1,
-        65536,
-        65536,
-        0,
-        std::ptr::null_mut(),
-      );
+        if hd1 == INVALID_HANDLE_VALUE {
+          let err = io::Error::last_os_error();
+          /* If the pipe name is already in use, try again. */
+          if err.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
+            continue;
+          }
+        }
 
-      if hd1 == INVALID_HANDLE_VALUE {
-        return Err(std::io::Error::last_os_error().into());
-      }
+        break (path, hd1);
+      };
 
       /* Create child pipe handle. */
       let s = SECURITY_ATTRIBUTES {
