@@ -422,7 +422,8 @@ mod impl_ {
       Rc<IpcJsonStreamResource>,
       tokio::net::windows::named_pipe::NamedPipeServer,
     ) {
-      use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
+      use tokio::net::windows::named_pipe::ClientOptions;
+      use tokio::net::windows::named_pipe::ServerOptions;
 
       let name =
         format!(r"\\.\pipe\tokio-named-pipe-{}", rand::random::<u32>());
