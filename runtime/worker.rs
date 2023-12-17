@@ -487,7 +487,16 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
-    self.js_runtime.op_state().borrow_mut().put(options.clone());
+    // Setup bootstrap options for ops.
+    {
+      let op_state = self.js_runtime.op_state();
+      let mut state = op_state.borrow_mut();
+      state.put(options.clone());
+      if let Some(node_ipc_fd) = options.node_ipc_fd {
+        state.put(deno_node::ChildPipeFd(node_ipc_fd));
+      }
+    }
+
     let scope = &mut self.js_runtime.handle_scope();
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();

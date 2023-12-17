@@ -124,7 +124,7 @@ pub fn deno_registry_url() -> &'static Url {
       }
     }
 
-    deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+    Url::parse("https://jsr.io/").unwrap()
   });
 
   &DENO_REGISTRY_URL
@@ -1245,7 +1245,9 @@ impl CliOptions {
     self.flags.enable_op_summary_metrics
       || matches!(
         self.flags.subcommand,
-        DenoSubcommand::Test(_) | DenoSubcommand::Repl(_)
+        DenoSubcommand::Test(_)
+          | DenoSubcommand::Repl(_)
+          | DenoSubcommand::Jupyter(_)
       )
   }
 
