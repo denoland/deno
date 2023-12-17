@@ -995,7 +995,6 @@ Deno.test(
         listener.ref(); // This restores 'ref' state of listener
         console.log("started");
         await listener.accept();
-        console.log("accepted");
       }
       main();
     `);
