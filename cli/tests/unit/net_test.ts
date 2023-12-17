@@ -425,11 +425,11 @@ Deno.test(
 
     for (const size of sizes) {
       const tosend = new Uint8Array(size);
-      let byteLength = 0
+      let byteLength = 0;
       try {
         byteLength = await alice.send(tosend, bob.addr);
       } catch (err) {
-        // Note: we have to do the test this way as different OS's have 
+        // Note: we have to do the test this way as different OS's have
         // different UDP size limits enabled, so we will just ensure if
         // an error is thrown it is the one we are expecting.
         assert(err.message.match(rx));
