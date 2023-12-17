@@ -336,7 +336,8 @@ async fn server(
       deno_core::unsync::spawn(async move {
         let server = hyper1::server::conn::http1::Builder::new();
 
-        let mut conn = pin!(server.serve_connection(io, service));
+        let mut conn =
+          pin!(server.serve_connection(io, service).with_upgrades());
         let mut shutdown_rx = pin!(shutdown_server_rx.recv());
 
         tokio::select! {
