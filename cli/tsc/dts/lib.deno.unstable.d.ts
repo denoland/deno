@@ -1007,7 +1007,6 @@ declare namespace Deno {
     /** Close closes the socket. Any pending message promises will be rejected
      * with errors. */
     close(): void;
-
     /** Return the address of the instance. */
     readonly addr: Addr;
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
