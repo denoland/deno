@@ -995,10 +995,13 @@ Deno.test(
         listener.ref(); // This restores 'ref' state of listener
         console.log("started");
         await listener.accept();
+        console.log("accepted")
       }
       main();
     `);
     await p.waitStdoutText("started");
+    const conn = await Deno.connect({ port: listenPort });
+    conn.close();
     const [statusCode, output] = await p.finished();
     assertEquals(statusCode, 0);
     assertEquals(output.trim(), "started\naccepted");
