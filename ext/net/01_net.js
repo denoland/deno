@@ -11,6 +11,8 @@ import {
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
+const UDP_DGRAM_MAXSIZE = 65507;
+
 const {
   Error,
   Number,
@@ -279,7 +281,7 @@ class Datagram {
   #rid = 0;
   #addr = null;
 
-  constructor(rid, addr, bufSize = 1024) {
+  constructor(rid, addr, bufSize = UDP_DGRAM_MAXSIZE) {
     this.#rid = rid;
     this.#addr = addr;
     this.bufSize = bufSize;
@@ -385,6 +387,11 @@ class Datagram {
   async send(p, opts) {
     switch (this.addr.transport) {
       case "udp":
+        if (p.length > UDP_DGRAM_MAXSIZE) {
+          throw new Error(
+            `Message is larger than Max UDP Message Size: ${p.length} / ${UDP_DGRAM_MAXSIZE}`,
+          );
+        }
         return await core.opAsync(
           "op_net_send_udp",
           this.rid,
