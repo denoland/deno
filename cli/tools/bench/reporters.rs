@@ -185,7 +185,7 @@ impl BenchReporter for ConsoleReporter {
         if (self.group.is_none() && self.has_ungrouped)
           || (self.group.is_some() && self.group_measurements.is_empty())
         {
-          println!("group {}", colors::gray(group));
+          println!("{} {}", colors::gray("group"), colors::green(group));
         }
 
         self.group = Some(group.clone());

@@ -395,7 +395,7 @@ pub mod reporter {
     } else {
       s.push_str(&format!(
         "{}\n  {}",
-        colors::bold("summary"),
+        colors::gray("summary"),
         colors::cyan_bold(&baseline.name)
       ));
 
