@@ -427,6 +427,7 @@ async fn ensure_scopes_and_packages_exist(
     );
     println!("{}", colors::gray("Waiting..."));
 
+    eprintln!("get url");
     let package_api_url = api::get_package_api_url(
       &registry_api_url,
       &package.scope,
@@ -434,8 +435,10 @@ async fn ensure_scopes_and_packages_exist(
     );
 
     loop {
+      eprintln!("loop");
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
       let response = client.get(&package_api_url).send().await?;
+      eprintln!("loop response {:#?}", response);
       if response.status() == 200 {
         let name = format!("@{}/{}", package.scope, package.package);
         println!("Package {} created", colors::green(name));
@@ -467,13 +470,15 @@ async fn perform_publish(
     .collect::<Vec<_>>();
   print_diagnostics(diagnostics);
 
-  ensure_scopes_and_packages_exist(
+  let r = ensure_scopes_and_packages_exist(
     client,
     registry_api_url.clone(),
     registry_url.clone(),
     packages.clone(),
   )
-  .await?;
+  .await;
+  eprintln!("r {:#?}", r);
+  r?;
 
   let mut authorizations =
     get_auth_headers(client, registry_api_url.clone(), packages, auth_method)

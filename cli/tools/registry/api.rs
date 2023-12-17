@@ -115,7 +115,7 @@ pub async fn get_scope(
   registry_api_url: &str,
   scope: &str,
 ) -> Result<reqwest::Response, AnyError> {
-  let scope_url = format!("{}scope/{}", registry_api_url, scope);
+  let scope_url = format!("{}scopes/{}", registry_api_url, scope);
   let response = client.get(&scope_url).send().await?;
   Ok(response)
 }
@@ -125,7 +125,7 @@ pub fn get_package_api_url(
   scope: &str,
   package: &str,
 ) -> String {
-  format!("{}scope/{}/packages/{}", registry_api_url, scope, package)
+  format!("{}scopes/{}/packages/{}", registry_api_url, scope, package)
 }
 
 pub async fn get_package(
