@@ -402,8 +402,8 @@ Deno.test(
       assertEquals(alice.addr.port, listenPort);
       assertEquals(alice.addr.hostname, "127.0.0.1");
     } catch (err) {
-      alice.close()
-      throw(err)
+      alice.close();
+      throw err;
     }
 
     const bob = Deno.listenDatagram({
@@ -416,8 +416,8 @@ Deno.test(
       assertEquals(bob.addr.port, listenPort2);
       assertEquals(bob.addr.hostname, "127.0.0.1");
     } catch (err) {
-      bob.close()
-      throw(err)
+      bob.close();
+      throw err;
     }
 
     const sizes = [0, 1, 2, 256, 1024, 4096, 16384, 65506, 65507, 65508, 65536];
@@ -429,7 +429,10 @@ Deno.test(
           const byteLength = await alice.send(tosend, bob.addr);
           assertEquals(byteLength, size); // we should not be here
         } catch (err) {
-          assertEquals(err.message, `Message is larger than Max UDP Message Size: ${size} / 65507`)
+          assertEquals(
+            err.message,
+            `Message is larger than Max UDP Message Size: ${size} / 65507`,
+          );
         }
       } else {
         const byteLength = await alice.send(tosend, bob.addr);
