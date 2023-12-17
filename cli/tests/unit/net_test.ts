@@ -421,27 +421,27 @@ Deno.test(
     }
 
     const sizes = [0, 1, 2, 256, 1024, 4096, 16384, 65506, 65507, 65508, 65536];
+    const rx = /Message too long \(os error \d\d\)/;
 
     for (const size of sizes) {
       const tosend = new Uint8Array(size);
-      if (size > 65507) {
-        try {
-          const byteLength = await alice.send(tosend, bob.addr);
-          assertEquals(byteLength, size); // we should not be here
-        } catch (err) {
-          assertEquals(
-            err.message,
-            `Message is larger than Max UDP Message Size: ${size} / 65507`,
-          );
-        }
-      } else {
-        const byteLength = await alice.send(tosend, bob.addr);
-        assertEquals(byteLength, size);
-        const [recvd, remote] = await bob.receive();
-        assert(remote.transport === "udp");
-        assertEquals(remote.port, listenPort);
-        assertEquals(recvd.length, size);
+      let byteLength = 0
+      try {
+        byteLength = await alice.send(tosend, bob.addr);
+      } catch (err) {
+        // Note: we have to do the test this way as different OS's have 
+        // different UDP size limits enabled, so we will just ensure if
+        // an error is thrown it is the one we are expecting.
+        assert(err.message.match(rx));
+        alice.close();
+        bob.close();
+        return;
       }
+      assertEquals(byteLength, size);
+      const [recvd, remote] = await bob.receive();
+      assert(remote.transport === "udp");
+      assertEquals(remote.port, listenPort);
+      assertEquals(recvd.length, size);
     }
 
     alice.close();

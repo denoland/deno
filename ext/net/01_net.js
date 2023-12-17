@@ -387,11 +387,6 @@ class Datagram {
   async send(p, opts) {
     switch (this.addr.transport) {
       case "udp":
-        if (p.length > UDP_DGRAM_MAXSIZE) {
-          throw new Error(
-            `Message is larger than Max UDP Message Size: ${p.length} / ${UDP_DGRAM_MAXSIZE}`,
-          );
-        }
         return await core.opAsync(
           "op_net_send_udp",
           this.rid,
