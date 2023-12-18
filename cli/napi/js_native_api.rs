@@ -1361,7 +1361,7 @@ fn napi_close_escapable_handle_scope(
 #[napi_sym::napi_sym]
 fn napi_close_handle_scope(
   env: *mut Env,
-  scope: napi_handle_scope,
+  _scope: napi_handle_scope,
 ) -> napi_status {
   let env = &mut *env;
   if env.open_handle_scopes == 0 {
