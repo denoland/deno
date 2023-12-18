@@ -7915,10 +7915,9 @@ mod tests {
             include: vec![PathBuf::from("foo.json")],
             ignore: vec![],
           },
-          output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          r#type: CoverageType::Summary
+          ..CoverageFlags::default()
         }),
         ..Flags::default()
       }
@@ -7963,6 +7962,8 @@ mod tests {
             include: vec![PathBuf::from("coverage")],
             ignore: vec![],
           },
+          include: vec![r"^file:".to_string()],
+          exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           ..CoverageFlags::default()
         }),
         ..Flags::default()
