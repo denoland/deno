@@ -86,7 +86,8 @@ pub struct CompletionsFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum CoverageType {
-  #[default] Summary,
+  #[default]
+  Summary,
   Detailed,
   Lcov,
   Html,
@@ -7953,10 +7954,7 @@ mod tests {
 
   #[test]
   fn coverage_with_default_files() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "coverage",
-    ]);
+    let r = flags_from_vec(svec!["deno", "coverage",]);
     assert_eq!(
       r.unwrap(),
       Flags {
