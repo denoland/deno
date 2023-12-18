@@ -1367,7 +1367,7 @@ fn napi_close_handle_scope(
   if env.open_handle_scopes == 0 {
     return napi_handle_scope_mismatch;
   }
-  let _scope = &mut *(scope as *mut v8::HandleScope);
+  // let _scope = &mut *(scope as *mut v8::HandleScope);
   env.open_handle_scopes -= 1;
   napi_ok
 }
