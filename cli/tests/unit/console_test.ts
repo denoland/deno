@@ -1030,6 +1030,17 @@ Deno.test(function consoleTestIteratorValueAreNotConsumed() {
   assertEquals([...setIterator], [1, 2, 3]);
 });
 
+Deno.test(function consoleTestWeakSetAndWeakMapWithShowHidden() {
+  assertEquals(
+    stripColor(Deno.inspect(new WeakSet([{}]), { showHidden: true })),
+    "WeakSet { {} }",
+  );
+  assertEquals(
+    stripColor(Deno.inspect(new WeakMap([[{}, "foo"]]), { showHidden: true })),
+    'WeakMap { {} => "foo" }',
+  );
+});
+
 Deno.test(async function consoleTestStringifyPromises() {
   const pendingPromise = new Promise((_res, _rej) => {});
   assertEquals(stringify(pendingPromise), "Promise { <pending> }");
