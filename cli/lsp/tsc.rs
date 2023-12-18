@@ -3136,6 +3136,23 @@ impl CompletionEntryDetails {
     } else {
       None
     };
+    let mut text_edit = original_item.text_edit.clone();
+    if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      if let Some(text_edit) = &mut text_edit {
+        match text_edit {
+          lsp::CompletionTextEdit::Edit(text_edit) => {
+            text_edit.new_text = text_edit
+              .new_text
+              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+          }
+          lsp::CompletionTextEdit::InsertAndReplace(insert_replace_edit) => {
+            insert_replace_edit.new_text = insert_replace_edit
+              .new_text
+              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+          }
+        }
+      }
+    }
     let (command, additional_text_edits) = parse_code_actions(
       self.code_actions.as_ref(),
       data,
@@ -3160,6 +3177,7 @@ impl CompletionEntryDetails {
       detail,
       documentation,
       command,
+      text_edit,
       additional_text_edits,
       insert_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
@@ -3901,11 +3919,7 @@ fn op_load<'s>(
   let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
     if specifier.as_str() == "internal:///missing_dependency.d.ts" {
-      Some(LoadResponse {
-        data: Arc::from("declare const __: any;\nexport = __;\n"),
-        script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
-        version: Some("1".to_string()),
-      })
+      None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
       asset_or_document.map(|doc| LoadResponse {

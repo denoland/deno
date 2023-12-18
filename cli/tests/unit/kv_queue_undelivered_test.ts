@@ -43,8 +43,9 @@ queueTest("queue with undelivered", async (db) => {
   try {
     await db.enqueue("test", {
       keysIfUndelivered: [["queue_failed", "a"], ["queue_failed", "b"]],
+      backoffSchedule: [10, 20],
     });
-    await sleep(100000);
+    await sleep(3000);
     const undelivered = await collect(db.list({ prefix: ["queue_failed"] }));
     assertEquals(undelivered.length, 2);
     assertEquals(undelivered[0].key, ["queue_failed", "a"]);

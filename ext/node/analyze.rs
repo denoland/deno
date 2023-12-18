@@ -11,6 +11,7 @@ use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
+use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
@@ -106,7 +107,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       handled_reexports.insert(reexport.to_string());
 
       // First, resolve the reexport specifier
-      let resolved_reexport = self.resolve(
+      let reexport_specifier = self.resolve(
         &reexport,
         &referrer,
         // FIXME(bartlomieju): check if these conditions are okay, probably
@@ -117,8 +118,6 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       )?;
 
       // Second, resolve its exports and re-exports
-      let reexport_specifier =
-        ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
       let analysis = self
         .cjs_code_analyzer
         .analyze_cjs(&reexport_specifier, None)
@@ -177,7 +176,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     conditions: &[&str],
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if specifier.starts_with('/') {
       todo!();
     }
@@ -186,7 +185,8 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
-          .file_extension_probe(parent.join(specifier), &referrer_path);
+          .file_extension_probe(parent.join(specifier), &referrer_path)
+          .map(|p| to_file_specifier(&p));
       } else {
         todo!();
       }
@@ -238,17 +238,19 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
           )?;
           if package_json.exists {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-              return Ok(d.join(main).clean());
+              return Ok(to_file_specifier(&d.join(main).clean()));
             }
           }
 
-          return Ok(d.join("index.js").clean());
+          return Ok(to_file_specifier(&d.join("index.js").clean()));
         }
-        return self.file_extension_probe(d, &referrer_path);
+        return self
+          .file_extension_probe(d, &referrer_path)
+          .map(|p| to_file_specifier(&p));
       } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-        return Ok(module_dir.join(main).clean());
+        return Ok(to_file_specifier(&module_dir.join(main).clean()));
       } else {
-        return Ok(module_dir.join("index.js").clean());
+        return Ok(to_file_specifier(&module_dir.join("index.js").clean()));
       }
     }
 
@@ -264,7 +266,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         parent.join("node_modules").join(specifier)
       };
       if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
-        return Ok(path);
+        return Ok(to_file_specifier(&path));
       }
       last = parent;
     }

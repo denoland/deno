@@ -1600,6 +1600,24 @@ queueTest("queue retries", async (db) => {
   assertEquals(4, count);
 });
 
+queueTest("queue retries with backoffSchedule", async (db) => {
+  let count = 0;
+  const listener = db.listenQueue((_msg) => {
+    count += 1;
+    throw new TypeError("dequeue error");
+  });
+  try {
+    await db.enqueue("test", { backoffSchedule: [1] });
+    await sleep(2000);
+  } finally {
+    db.close();
+    await listener;
+  }
+
+  // There should have been 1 attempt + 1 retry
+  assertEquals(2, count);
+});
+
 queueTest("multiple listenQueues", async (db) => {
   const numListens = 10;
   let count = 0;
@@ -1874,6 +1892,23 @@ Deno.test({
     db.close();
     await listener;
   },
+});
+
+dbTest("invalid backoffSchedule", async (db) => {
+  await assertRejects(
+    async () => {
+      await db.enqueue("foo", { backoffSchedule: [1, 1, 1, 1, 1, 1] });
+    },
+    TypeError,
+    "invalid backoffSchedule",
+  );
+  await assertRejects(
+    async () => {
+      await db.enqueue("foo", { backoffSchedule: [3600001] });
+    },
+    TypeError,
+    "invalid backoffSchedule",
+  );
 });
 
 dbTest("atomic operation is exposed", (db) => {
@@ -2180,4 +2215,36 @@ dbTest("key watch", async (db) => {
 
   await work;
   await reader.cancel();
+});
+
+dbTest("set with key versionstamp suffix", async (db) => {
+  const result1 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result1, []);
+
+  const setRes1 = await db.set(["a", db.commitVersionstamp()], "b");
+  assert(setRes1.ok);
+  assert(setRes1.versionstamp > ZERO_VERSIONSTAMP);
+
+  const result2 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result2.length, 1);
+  assertEquals(result2[0].key[1], setRes1.versionstamp);
+  assertEquals(result2[0].value, "b");
+  assertEquals(result2[0].versionstamp, setRes1.versionstamp);
+
+  const setRes2 = await db.atomic().set(["a", db.commitVersionstamp()], "c")
+    .commit();
+  assert(setRes2.ok);
+  assert(setRes2.versionstamp > setRes1.versionstamp);
+
+  const result3 = await Array.fromAsync(db.list({ prefix: ["a"] }));
+  assertEquals(result3.length, 2);
+  assertEquals(result3[1].key[1], setRes2.versionstamp);
+  assertEquals(result3[1].value, "c");
+  assertEquals(result3[1].versionstamp, setRes2.versionstamp);
+
+  await assertRejects(
+    async () => await db.set(["a", db.commitVersionstamp(), "a"], "x"),
+    TypeError,
+    "expected string, number, bigint, ArrayBufferView, boolean",
+  );
 });

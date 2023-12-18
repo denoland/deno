@@ -528,7 +528,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
-      return ops.op_load(specifier).data;
+      return ops.op_load(specifier)?.data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it

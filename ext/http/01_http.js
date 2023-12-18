@@ -3,7 +3,6 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 const { op_http_write } = Deno.core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
@@ -29,6 +28,7 @@ import {
   _role,
   _server,
   _serverHandleIdleTimeout,
+  createWebSocketBranded,
   SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
@@ -472,7 +472,7 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  const socket = webidl.createBranded(WebSocket);
+  const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;

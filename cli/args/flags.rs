@@ -84,15 +84,16 @@ pub struct CompletionsFlags {
   pub buf: Box<[u8]>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum CoverageType {
+  #[default]
   Summary,
-  Pretty,
+  Detailed,
   Lcov,
   Html,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<PathBuf>,
@@ -1415,17 +1416,16 @@ Generate html reports from lcov:
             .action(ArgAction::SetTrue),
         )
         .arg(
-          Arg::new("pretty")
-            .long("pretty")
-            .help("Output coverage report in pretty format in the terminal.")
+          Arg::new("detailed")
+            .long("detailed")
+            .help("Output coverage report in detailed format in the terminal.")
             .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("files")
-            .num_args(1..)
+            .num_args(0..)
             .value_parser(value_parser!(PathBuf))
             .action(ArgAction::Append)
-            .required(true)
             .value_hint(ValueHint::AnyPath),
         )
     })
@@ -3307,9 +3307,10 @@ fn completions_parse(
 }
 
 fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let default_files = vec![PathBuf::from("coverage")];
   let files = match matches.remove_many::<PathBuf>("files") {
     Some(f) => f.collect(),
-    None => vec![],
+    None => default_files,
   };
   let ignore = match matches.remove_many::<PathBuf>("ignore") {
     Some(f) => f.collect(),
@@ -3327,8 +3328,8 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     CoverageType::Lcov
   } else if matches.get_flag("html") {
     CoverageType::Html
-  } else if matches.get_flag("pretty") {
-    CoverageType::Pretty
+  } else if matches.get_flag("detailed") {
+    CoverageType::Detailed
   } else {
     CoverageType::Summary
   };
@@ -7914,10 +7915,9 @@ mod tests {
             include: vec![PathBuf::from("foo.json")],
             ignore: vec![],
           },
-          output: None,
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
-          r#type: CoverageType::Summary
+          ..CoverageFlags::default()
         }),
         ..Flags::default()
       }
@@ -7950,6 +7950,27 @@ mod tests {
       }
     );
   }
+
+  #[test]
+  fn coverage_with_default_files() {
+    let r = flags_from_vec(svec!["deno", "coverage",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Coverage(CoverageFlags {
+          files: FileFlags {
+            include: vec![PathBuf::from("coverage")],
+            ignore: vec![],
+          },
+          include: vec![r"^file:".to_string()],
+          exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
+          ..CoverageFlags::default()
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
   #[test]
   fn location_with_bad_scheme() {
     #[rustfmt::skip]
