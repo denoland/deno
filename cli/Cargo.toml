@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.38.5"
+version = "1.39.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -60,9 +60,9 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_cache_dir = "=0.6.1"
 deno_config = "=0.6.5"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.74.0", features = ["html"] }
+deno_doc = { version = "=0.75.1", features = ["html"] }
 deno_emit = "=0.32.0"
-deno_graph = "=0.62.0"
+deno_graph = "=0.62.2"
 deno_lint = { version = "=0.52.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "0.15.3"
@@ -121,7 +121,7 @@ quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
-rustyline = { version = "=13.0.0", default-features = false, features = ["custom-bindings", "with-file-history"] }
+rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true

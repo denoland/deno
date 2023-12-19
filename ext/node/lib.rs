@@ -30,6 +30,8 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use ops::ipc::ChildPipeFd;
+pub use ops::v8::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
@@ -243,6 +245,7 @@ deno_core::extension!(deno_node,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_vm_run_in_new_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
@@ -310,6 +313,10 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::crypto::op_node_create_private_key,
+    ops::ipc::op_node_ipc_pipe,
+    ops::ipc::op_node_child_ipc_pipe,
+    ops::ipc::op_node_ipc_write,
+    ops::ipc::op_node_ipc_read,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [

@@ -3,11 +3,13 @@
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::ReplFlags;
+use crate::cdp;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
+use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -69,14 +71,11 @@ async fn read_line_and_poll(
       }
       message = notifications.next() => {
         if let Some(message) = message {
-          let method = message.get("method").unwrap().as_str().unwrap();
-          if method == "Runtime.exceptionThrown" {
-            let params = message.get("params").unwrap().as_object().unwrap();
-            let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
-            let text = exception_details.get("text").unwrap().as_str().unwrap();
-            let exception = exception_details.get("exception").unwrap().as_object().unwrap();
-            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
-            println!("{text} {description}");
+          let notification: cdp::Notification = serde_json::from_value(message).unwrap();
+          if notification.method == "Runtime.exceptionThrown" {
+            let exception_thrown: cdp::ExceptionThrown = serde_json::from_value(notification.params).unwrap();
+            let (message, description) = exception_thrown.exception_details.get_message_and_description();
+            println!("{} {}", message, description);
           }
         }
       }

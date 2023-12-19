@@ -141,6 +141,8 @@ pub struct SpawnArgs {
   uid: Option<u32>,
   #[cfg(windows)]
   windows_raw_arguments: bool,
+  #[cfg(unix)]
+  ipc: Option<i32>,
 
   #[serde(flatten)]
   stdio: ChildStdio,
@@ -205,11 +207,18 @@ pub struct SpawnOutput {
   stderr: Option<ToJsBuffer>,
 }
 
+type CreateCommand = (
+  std::process::Command,
+  // TODO(@littledivy): Ideally this would return Option<ResourceId> but we are dealing with file descriptors
+  // all the way until setupChannel which makes it easier to share code between parent and child fork.
+  Option<i32>,
+);
+
 fn create_command(
   state: &mut OpState,
   args: SpawnArgs,
   api_name: &str,
-) -> Result<std::process::Command, AnyError> {
+) -> Result<CreateCommand, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_run(&args.cmd, api_name)?;
@@ -245,15 +254,6 @@ fn create_command(
   if let Some(uid) = args.uid {
     command.uid(uid);
   }
-  #[cfg(unix)]
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    command.pre_exec(|| {
-      libc::setgroups(0, std::ptr::null());
-      Ok(())
-    });
-  }
 
   command.stdin(args.stdio.stdin.as_stdio());
   command.stdout(match args.stdio.stdout {
@@ -265,7 +265,91 @@ fn create_command(
     value => value.as_stdio(),
   });
 
-  Ok(command)
+  #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    if let Some(ipc) = args.ipc {
+      if ipc < 0 {
+        return Ok((command, None));
+      }
+      // SockFlag is broken on macOS
+      // https://github.com/nix-rust/nix/issues/861
+      let mut fds = [-1, -1];
+      #[cfg(not(target_os = "macos"))]
+      let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
+
+      #[cfg(target_os = "macos")]
+      let flags = 0;
+
+      let ret = libc::socketpair(
+        libc::AF_UNIX,
+        libc::SOCK_STREAM | flags,
+        0,
+        fds.as_mut_ptr(),
+      );
+      if ret != 0 {
+        return Err(std::io::Error::last_os_error().into());
+      }
+
+      if cfg!(target_os = "macos") {
+        let fcntl =
+          |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
+            let flags = libc::fcntl(fd, libc::F_GETFL, 0);
+
+            if flags == -1 {
+              return Err(fail(fds));
+            }
+            let ret = libc::fcntl(fd, libc::F_SETFL, flags | flag);
+            if ret == -1 {
+              return Err(fail(fds));
+            }
+            Ok(())
+          };
+
+        fn fail(fds: [i32; 2]) -> std::io::Error {
+          unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+          }
+          std::io::Error::last_os_error()
+        }
+
+        // SOCK_NONBLOCK is not supported on macOS.
+        (fcntl)(fds[0], libc::O_NONBLOCK)?;
+        (fcntl)(fds[1], libc::O_NONBLOCK)?;
+
+        // SOCK_CLOEXEC is not supported on macOS.
+        (fcntl)(fds[0], libc::FD_CLOEXEC)?;
+        (fcntl)(fds[1], libc::FD_CLOEXEC)?;
+      }
+
+      let fd1 = fds[0];
+      let fd2 = fds[1];
+
+      command.pre_exec(move || {
+        if ipc >= 0 {
+          let _fd = libc::dup2(fd2, ipc);
+          libc::close(fd2);
+        }
+        libc::setgroups(0, std::ptr::null());
+        Ok(())
+      });
+
+      /* One end returned to parent process (this) */
+      let pipe_fd = Some(fd1);
+
+      /* The other end passed to child process via DENO_CHANNEL_FD */
+      command.env("DENO_CHANNEL_FD", format!("{}", ipc));
+
+      return Ok((command, pipe_fd));
+    }
+
+    Ok((command, None))
+  }
+
+  #[cfg(not(unix))]
+  return Ok((command, None));
 }
 
 #[derive(Serialize)]
@@ -276,11 +360,13 @@ struct Child {
   stdin_rid: Option<ResourceId>,
   stdout_rid: Option<ResourceId>,
   stderr_rid: Option<ResourceId>,
+  pipe_fd: Option<i32>,
 }
 
 fn spawn_child(
   state: &mut OpState,
   command: std::process::Command,
+  pipe_fd: Option<i32>,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(command);
   // TODO(@crowlkats): allow detaching processes.
@@ -362,6 +448,7 @@ fn spawn_child(
     stdin_rid,
     stdout_rid,
     stderr_rid,
+    pipe_fd,
   })
 }
 
@@ -372,8 +459,8 @@ fn op_spawn_child(
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
 ) -> Result<Child, AnyError> {
-  let command = create_command(state, args, &api_name)?;
-  spawn_child(state, command)
+  let (command, pipe_fd) = create_command(state, args, &api_name)?;
+  spawn_child(state, command, pipe_fd)
 }
 
 #[op2(async)]
@@ -402,7 +489,8 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
+  let (mut command, _) =
+    create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
     format!(
       "Failed to spawn '{}'",

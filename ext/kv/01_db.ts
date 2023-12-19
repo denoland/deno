@@ -43,6 +43,20 @@ function validateQueueDelay(delay: number) {
   }
 }
 
+const maxQueueBackoffIntervals = 5;
+const maxQueueBackoffInterval = 60 * 60 * 1000;
+
+function validateBackoffSchedule(backoffSchedule: number[]) {
+  if (backoffSchedule.length > maxQueueBackoffIntervals) {
+    throw new TypeError("invalid backoffSchedule");
+  }
+  for (const interval of backoffSchedule) {
+    if (interval < 0 || interval > maxQueueBackoffInterval || isNaN(interval)) {
+      throw new TypeError("invalid backoffSchedule");
+    }
+  }
+}
+
 interface RawKvEntry {
   key: Deno.KvKey;
   value: RawValue;
@@ -61,6 +75,7 @@ type RawValue = {
 };
 
 const kvSymbol = Symbol("KvRid");
+const commitVersionstampSymbol = Symbol("KvCommitVersionstamp");
 
 class Kv {
   #rid: number;
@@ -78,6 +93,10 @@ class Kv {
 
   atomic() {
     return new AtomicOperation(this.#rid);
+  }
+
+  commitVersionstamp(): symbol {
+    return commitVersionstampSymbol;
   }
 
   async get(key: Deno.KvKey, opts?: { consistency?: Deno.KvConsistencyLevel }) {
@@ -134,18 +153,10 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }) {
-    value = serializeValue(value);
-
-    const checks: Deno.AtomicCheck[] = [];
-    const mutations = [
-      [key, "set", value, options?.expireIn],
-    ];
-
-    const versionstamp = await core.opAsync(
-      "op_kv_atomic_write",
+    const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
-      checks,
-      mutations,
+      [],
+      [[key, "set", serializeValue(value), options?.expireIn]],
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
@@ -153,16 +164,10 @@ class Kv {
   }
 
   async delete(key: Deno.KvKey) {
-    const checks: Deno.AtomicCheck[] = [];
-    const mutations = [
-      [key, "delete", null, undefined],
-    ];
-
-    const result = await core.opAsync(
-      "op_kv_atomic_write",
+    const result = await doAtomicWriteInPlace(
       this.#rid,
-      checks,
-      mutations,
+      [],
+      [[key, "delete", null, undefined]],
       [],
     );
     if (!result) throw new TypeError("Failed to set value");
@@ -224,27 +229,31 @@ class Kv {
 
   async enqueue(
     message: unknown,
-    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    opts?: {
+      delay?: number;
+      keysIfUndelivered?: Deno.KvKey[];
+      backoffSchedule?: number[];
+    },
   ) {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
     }
+    if (opts?.backoffSchedule !== undefined) {
+      validateBackoffSchedule(opts?.backoffSchedule);
+    }
 
-    const enqueues = [
-      [
-        core.serialize(message, { forStorage: true }),
-        opts?.delay ?? 0,
-        opts?.keysIfUndelivered ?? [],
-        null,
-      ],
-    ];
-
-    const versionstamp = await core.opAsync(
-      "op_kv_atomic_write",
+    const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       [],
       [],
-      enqueues,
+      [
+        [
+          core.serialize(message, { forStorage: true }),
+          opts?.delay ?? 0,
+          opts?.keysIfUndelivered ?? [],
+          opts?.backoffSchedule ?? null,
+        ],
+      ],
     );
     if (versionstamp === null) throw new TypeError("Failed to enqueue value");
     return { ok: true, versionstamp };
@@ -468,23 +477,29 @@ class AtomicOperation {
 
   enqueue(
     message: unknown,
-    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    opts?: {
+      delay?: number;
+      keysIfUndelivered?: Deno.KvKey[];
+      backoffSchedule?: number[];
+    },
   ): this {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
+    }
+    if (opts?.backoffSchedule !== undefined) {
+      validateBackoffSchedule(opts?.backoffSchedule);
     }
     this.#enqueues.push([
       core.serialize(message, { forStorage: true }),
       opts?.delay ?? 0,
       opts?.keysIfUndelivered ?? [],
-      null,
+      opts?.backoffSchedule ?? null,
     ]);
     return this;
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
-    const versionstamp = await core.opAsync(
-      "op_kv_atomic_write",
+    const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       this.#checks,
       this.#mutations,
@@ -734,6 +749,32 @@ class KvListIterator extends AsyncIterator
   [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntry<unknown>> {
     return this;
   }
+}
+
+async function doAtomicWriteInPlace(
+  rid: number,
+  checks: [Deno.KvKey, string | null][],
+  mutations: [Deno.KvKey, string, RawValue | null, number | undefined][],
+  enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][],
+): Promise<string | null> {
+  for (const m of mutations) {
+    const key = m[0];
+    if (
+      key.length && m[1] === "set" &&
+      key[key.length - 1] === commitVersionstampSymbol
+    ) {
+      m[0] = key.slice(0, key.length - 1);
+      m[1] = "setSuffixVersionstampedKey";
+    }
+  }
+
+  return await core.opAsync(
+    "op_kv_atomic_write",
+    rid,
+    checks,
+    mutations,
+    enqueues,
+  );
 }
 
 export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };

@@ -41,7 +41,6 @@ use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use fly_accept_encoding::Encoding;
 use hyper::body::Bytes;
 use hyper::body::HttpBody;
 use hyper::body::SizeHint;
@@ -79,6 +78,7 @@ use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
 
 pub mod compressible;
+mod fly_accept_encoding;
 mod http_next;
 mod hyper_util_tokioio;
 mod network_buffered_stream;
@@ -89,6 +89,7 @@ mod response_body;
 mod service;
 mod websocket_upgrade;
 
+use fly_accept_encoding::Encoding;
 pub use request_properties::DefaultHttpPropertyExtractor;
 pub use request_properties::HttpConnectionProperties;
 pub use request_properties::HttpListenProperties;
