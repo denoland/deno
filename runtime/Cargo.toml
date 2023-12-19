@@ -122,6 +122,7 @@ which = "4.2.5"
 fwdansi.workspace = true
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
 ntapi = "0.4.0"
+windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

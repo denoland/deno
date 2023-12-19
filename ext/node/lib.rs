@@ -31,6 +31,7 @@ mod polyfill;
 mod resolution;
 
 pub use ops::ipc::ChildPipeFd;
+pub use ops::ipc::IpcJsonStreamResource;
 pub use ops::v8::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -307,7 +308,6 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::crypto::op_node_create_private_key,
-    ops::ipc::op_node_ipc_pipe,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,

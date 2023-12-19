@@ -1543,6 +1543,7 @@ dependencies = [
  "typenum",
  "url",
  "winapi",
+ "windows-sys 0.48.0",
  "x25519-dalek",
  "x509-parser",
 ]
@@ -1635,6 +1636,7 @@ dependencies = [
  "uuid",
  "which",
  "winapi",
+ "windows-sys 0.48.0",
  "winres",
 ]
 
