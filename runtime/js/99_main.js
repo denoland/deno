@@ -440,7 +440,6 @@ function bootstrapMainRuntime(runtimeOptions) {
     3: inspectFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
-    7: nodeIpcFd,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -546,7 +545,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
   if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName, nodeIpcFd);
+    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
   }
 }
 

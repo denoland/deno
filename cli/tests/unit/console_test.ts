@@ -269,6 +269,14 @@ Deno.test(function consoleTestStringifyCircular() {
   );
   assertEquals(stringify(new Set([1, 2, 3])), "Set(3) { 1, 2, 3 }");
   assertEquals(
+    stringify(new Set([1, 2, 3]).values()),
+    "[Set Iterator] { 1, 2, 3 }",
+  );
+  assertEquals(
+    stringify(new Set([1, 2, 3]).entries()),
+    "[Set Entries] { [ 1, 1 ], [ 2, 2 ], [ 3, 3 ] }",
+  );
+  assertEquals(
     stringify(
       new Map([
         [1, "one"],
@@ -276,6 +284,14 @@ Deno.test(function consoleTestStringifyCircular() {
       ]),
     ),
     `Map(2) { 1 => "one", 2 => "two" }`,
+  );
+  assertEquals(
+    stringify(new Map([[1, "one"], [2, "two"]]).values()),
+    `[Map Iterator] { "one", "two" }`,
+  );
+  assertEquals(
+    stringify(new Map([[1, "one"], [2, "two"]]).entries()),
+    `[Map Entries] { [ 1, "one" ], [ 2, "two" ] }`,
   );
   assertEquals(stringify(new WeakSet()), "WeakSet { <items unknown> }");
   assertEquals(stringify(new WeakMap()), "WeakMap { <items unknown> }");
@@ -378,13 +394,16 @@ Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
   assertEquals(stringify(f), "[Function (null prototype): f]");
   const af = async function af() {};
   Reflect.setPrototypeOf(af, null);
-  assertEquals(stringify(af), "[Function (null prototype): af]");
+  assertEquals(stringify(af), "[AsyncFunction (null prototype): af]");
   const gf = function* gf() {};
   Reflect.setPrototypeOf(gf, null);
-  assertEquals(stringify(gf), "[Function (null prototype): gf]");
+  assertEquals(stringify(gf), "[GeneratorFunction (null prototype): gf]");
   const agf = async function* agf() {};
   Reflect.setPrototypeOf(agf, null);
-  assertEquals(stringify(agf), "[Function (null prototype): agf]");
+  assertEquals(
+    stringify(agf),
+    "[AsyncGeneratorFunction (null prototype): agf]",
+  );
 });
 
 Deno.test(function consoleTestStringifyFunctionWithProperties() {
@@ -999,6 +1018,26 @@ Deno.test(function consoleTestStringifyIterableWhenGrouped() {
   2,   2.1,   2.11,
   2,   2.1
 ]`,
+  );
+});
+
+Deno.test(function consoleTestIteratorValueAreNotConsumed() {
+  const setIterator = new Set([1, 2, 3]).values();
+  assertEquals(
+    stringify(setIterator),
+    "[Set Iterator] { 1, 2, 3 }",
+  );
+  assertEquals([...setIterator], [1, 2, 3]);
+});
+
+Deno.test(function consoleTestWeakSetAndWeakMapWithShowHidden() {
+  assertEquals(
+    stripColor(Deno.inspect(new WeakSet([{}]), { showHidden: true })),
+    "WeakSet { {} }",
+  );
+  assertEquals(
+    stripColor(Deno.inspect(new WeakMap([[{}, "foo"]]), { showHidden: true })),
+    'WeakMap { {} => "foo" }',
   );
 });
 
@@ -2279,7 +2318,7 @@ Deno.test(function inspectWithPrototypePollution() {
 Deno.test(function inspectPromiseLike() {
   assertEquals(
     Deno.inspect(Object.create(Promise.prototype)),
-    "Promise { <unknown> }",
+    "Promise {}",
   );
 });
 

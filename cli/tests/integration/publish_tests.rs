@@ -3,16 +3,10 @@
 static TEST_REGISTRY_URL: &str = "http://127.0.0.1:4250";
 
 pub fn env_vars_for_registry() -> Vec<(String, String)> {
-  vec![
-    (
-      "DENO_REGISTRY_URL".to_string(),
-      TEST_REGISTRY_URL.to_string(),
-    ),
-    (
-      "DENO_REGISTRY_API_URL".to_string(),
-      TEST_REGISTRY_URL.to_string(),
-    ),
-  ]
+  vec![(
+    "DENO_REGISTRY_URL".to_string(),
+    TEST_REGISTRY_URL.to_string(),
+  )]
 }
 
 itest!(no_token {

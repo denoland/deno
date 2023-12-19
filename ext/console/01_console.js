@@ -10,7 +10,6 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFill,
-  ArrayPrototypeConcat,
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeForEach,
@@ -75,7 +74,6 @@ const {
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectPrototypePropertyIsEnumerable,
-  ObjectPrototypeToString,
   ObjectSetPrototypeOf,
   ObjectValues,
   Proxy,
@@ -135,22 +133,7 @@ const {
   WeakMapPrototypeHas,
   WeakSetPrototypeHas,
 } = primordials;
-
-// supposed to be in node/internal_binding/util.ts
-export function previewEntries(iter, isKeyValue) {
-  if (isKeyValue) {
-    // deno-lint-ignore prefer-primordials
-    const arr = [...iter];
-    if (ArrayIsArray(arr[0]) && arr[0].length === 2) {
-      // deno-lint-ignore prefer-primordials
-      return [ArrayPrototypeConcat([], ...arr), true];
-    }
-    return [arr, false];
-  } else {
-    // deno-lint-ignore prefer-primordials
-    return [...iter];
-  }
-}
+const ops = core.ops;
 
 let noColor = () => false;
 
@@ -284,19 +267,15 @@ function isObjectLike(value) {
   return value !== null && typeof value === "object";
 }
 
-export function isAnyArrayBuffer(value) {
-  return isArrayBuffer(value) || isSharedArrayBuffer(value);
+function isAnyArrayBuffer(value) {
+  return ops.op_is_any_arraybuffer(value);
 }
 
-export function isArgumentsObject(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === undefined &&
-    ObjectPrototypeToString(value) === "[object Arguments]"
-  );
+function isArgumentsObject(value) {
+  return ops.op_is_arguments_object(value);
 }
 
-export function isArrayBuffer(value) {
+function isArrayBuffer(value) {
   try {
     ArrayBufferPrototypeGetByteLength(value);
     return true;
@@ -305,21 +284,11 @@ export function isArrayBuffer(value) {
   }
 }
 
-export function isAsyncFunction(value) {
-  return (
-    typeof value === "function" &&
-    (value[SymbolToStringTag] === "AsyncFunction")
-  );
+function isAsyncFunction(value) {
+  return ops.op_is_async_function(value);
 }
 
-export function isAsyncGeneratorFunction(value) {
-  return (
-    typeof value === "function" &&
-    (value[SymbolToStringTag] === "AsyncGeneratorFunction")
-  );
-}
-
-export function isBooleanObject(value) {
+function isBooleanObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -332,7 +301,7 @@ export function isBooleanObject(value) {
   }
 }
 
-export function isBoxedPrimitive(
+function isBoxedPrimitive(
   value,
 ) {
   return (
@@ -344,27 +313,22 @@ export function isBoxedPrimitive(
   );
 }
 
-export function isDataView(value) {
+function isDataView(value) {
   return (
     ArrayBufferIsView(value) &&
     TypedArrayPrototypeGetSymbolToStringTag(value) === undefined
   );
 }
 
-export function isTypedArray(value) {
+function isTypedArray(value) {
   return TypedArrayPrototypeGetSymbolToStringTag(value) !== undefined;
 }
 
-export function isGeneratorFunction(
-  value,
-) {
-  return (
-    typeof value === "function" &&
-    value[SymbolToStringTag] === "GeneratorFunction"
-  );
+function isGeneratorFunction(value) {
+  return ops.op_is_generator_function(value);
 }
 
-export function isMap(value) {
+function isMap(value) {
   try {
     MapPrototypeGetSize(value);
     return true;
@@ -373,33 +337,19 @@ export function isMap(value) {
   }
 }
 
-export function isMapIterator(
-  value,
-) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Map Iterator"
-  );
+function isMapIterator(value) {
+  return ops.op_is_map_iterator(value);
 }
 
-export function isModuleNamespaceObject(
-  value,
-) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Module"
-  );
+function isModuleNamespaceObject(value) {
+  return ops.op_is_module_namespace_object(value);
 }
 
-export function isNativeError(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === undefined &&
-    ObjectPrototypeToString(value) === "[object Error]"
-  );
+function isNativeError(value) {
+  return ops.op_is_native_error(value);
 }
 
-export function isNumberObject(value) {
+function isNumberObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -412,7 +362,7 @@ export function isNumberObject(value) {
   }
 }
 
-export function isBigIntObject(value) {
+function isBigIntObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -425,21 +375,15 @@ export function isBigIntObject(value) {
   }
 }
 
-export function isPromise(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Promise"
-  );
-}
-export function isRegExp(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === undefined &&
-    ObjectPrototypeToString(value) === "[object RegExp]"
-  );
+function isPromise(value) {
+  return ops.op_is_promise(value);
 }
 
-export function isSet(value) {
+function isRegExp(value) {
+  return ops.op_is_reg_exp(value);
+}
+
+function isSet(value) {
   try {
     SetPrototypeGetSize(value);
     return true;
@@ -448,27 +392,11 @@ export function isSet(value) {
   }
 }
 
-export function isSetIterator(
-  value,
-) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Set Iterator"
-  );
+function isSetIterator(value) {
+  return ops.op_is_set_iterator(value);
 }
 
-export function isSharedArrayBuffer(
-  value,
-) {
-  try {
-    getSharedArrayBufferByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function isStringObject(value) {
+function isStringObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -481,7 +409,7 @@ export function isStringObject(value) {
   }
 }
 
-export function isSymbolObject(value) {
+function isSymbolObject(value) {
   if (!isObjectLike(value)) {
     return false;
   }
@@ -494,7 +422,7 @@ export function isSymbolObject(value) {
   }
 }
 
-export function isWeakMap(
+function isWeakMap(
   value,
 ) {
   try {
@@ -505,7 +433,7 @@ export function isWeakMap(
   }
 }
 
-export function isWeakSet(
+function isWeakSet(
   value,
 ) {
   try {
@@ -793,9 +721,6 @@ function getFunctionBase(value, constructor, tag) {
   if (isAsyncFunction(value)) {
     type = `Async${type}`;
   }
-  if (isAsyncGeneratorFunction(value)) {
-    type = `AsyncGenerator${type}`;
-  }
   let base = `[${type}`;
   if (constructor === null) {
     base += " (null prototype)";
@@ -866,7 +791,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         const prefix = (constructor !== "Array" || tag !== "")
           ? getPrefix(constructor, tag, "Array", `(${value.length})`)
           : "";
-        keys = core.ops.op_get_non_index_property_names(value, filter);
+        keys = ops.op_get_non_index_property_names(value, filter);
         braces = [`${prefix}[`, "]"];
         if (
           value.length === 0 && keys.length === 0 && protoProps === undefined
@@ -1465,7 +1390,7 @@ function formatTypedArray(
 ) {
   const maxLength = MathMin(MathMax(0, ctx.maxArrayLength), length);
   const remaining = value.length - maxLength;
-  const output = new Array(maxLength);
+  const output = [];
   const elementFormatter = value.length > 0 && typeof value[0] === "number"
     ? formatNumber
     : formatBigInt;
@@ -1508,7 +1433,7 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
-  const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
+  const { 0: entries, 1: isKeyValue } = ops.op_preview_entries(value, true);
   if (isKeyValue) {
     // Mark entry iterators as such.
     braces[0] = StringPrototypeReplace(
@@ -1625,7 +1550,7 @@ function inspectError(value, ctx) {
 
 const hexSliceLookupTable = function () {
   const alphabet = "0123456789abcdef";
-  const table = new Array(256);
+  const table = [];
   for (let i = 0; i < 16; ++i) {
     const i16 = i * 16;
     for (let j = 0; j < 16; ++j) {
@@ -1689,14 +1614,7 @@ const PromiseState = {
 
 function formatPromise(ctx, value, recurseTimes) {
   let output;
-  let opResult;
-  // This op will fail for non-promises, but we get here for some promise-likes.
-  try {
-    opResult = core.getPromiseDetails(value);
-  } catch {
-    return [ctx.stylize("<unknown>", "special")];
-  }
-  const { 0: state, 1: result } = opResult;
+  const { 0: state, 1: result } = core.getPromiseDetails(value);
   if (state === PromiseState.Pending) {
     output = [ctx.stylize("<pending>", "special")];
   } else {
@@ -1717,12 +1635,12 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
-  const entries = previewEntries(value);
+  const entries = ops.op_preview_entries(value, false);
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
-  const entries = previewEntries(value);
+  const entries = ops.op_preview_entries(value, false);
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
@@ -1843,7 +1761,7 @@ function formatNamespaceObject(
   value,
   recurseTimes,
 ) {
-  const output = new Array(keys.length);
+  const output = [];
   for (let i = 0; i < keys.length; i++) {
     try {
       output[i] = formatProperty(
@@ -2062,7 +1980,7 @@ function groupArrayElements(ctx, output, value) {
     outputLength--;
   }
   const separatorSpace = 2; // Add 1 for the space and 1 for the separator.
-  const dataLen = new Array(outputLength);
+  const dataLen = [];
   // Calculate the total length of all output entries and the individual max
   // entries length of all output entries. We have to remove colors first,
   // otherwise the length would not be calculated properly.
@@ -2176,7 +2094,7 @@ function formatMapIterInner(
   const len = entries.length / 2;
   const remaining = len - maxArrayLength;
   const maxLength = MathMin(maxArrayLength, len);
-  const output = new Array(maxLength);
+  const output = [];
   let i = 0;
   ctx.indentationLvl += 2;
   if (state === kWeak) {
@@ -2227,7 +2145,7 @@ function formatSetIterInner(
 ) {
   const maxArrayLength = MathMax(ctx.maxArrayLength, 0);
   const maxLength = MathMin(maxArrayLength, entries.length);
-  const output = new Array(maxLength);
+  const output = [];
   ctx.indentationLvl += 2;
   for (let i = 0; i < maxLength; i++) {
     output[i] = formatValue(ctx, entries[i], recurseTimes);
