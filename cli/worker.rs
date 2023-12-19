@@ -124,7 +124,7 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
-  node_ipc: Option<i32>,
+  node_ipc: Option<i64>,
 }
 
 impl SharedWorkerState {
@@ -404,7 +404,7 @@ impl CliMainWorkerFactory {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
-    node_ipc: Option<i32>,
+    node_ipc: Option<i64>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {

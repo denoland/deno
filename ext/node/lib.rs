@@ -31,6 +31,7 @@ mod polyfill;
 mod resolution;
 
 pub use ops::ipc::ChildPipeFd;
+pub use ops::ipc::IpcJsonStreamResource;
 pub use ops::v8::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -148,11 +149,6 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 #[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
-}
-
-#[op2(fast)]
-fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
-  value.is_array_buffer() || value.is_shared_array_buffer()
 }
 
 #[op2(fast)]
@@ -286,7 +282,6 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
     op_node_build_os,
-    op_is_any_arraybuffer,
     op_node_is_promise_rejected,
     op_npm_process_state,
     ops::require::op_require_init_paths,
@@ -313,7 +308,6 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::crypto::op_node_create_private_key,
-    ops::ipc::op_node_ipc_pipe,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,

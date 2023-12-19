@@ -109,15 +109,11 @@ export function isFunction(value: unknown): boolean {
   return typeof value === "function";
 }
 
-/** @deprecated Use util.types.RegExp() instead. */
-export function isRegExp(value: unknown): boolean {
-  return types.isRegExp(value);
-}
+/** @deprecated Use util.types.isRegExp() instead. */
+export const isRegExp = types.isRegExp;
 
 /** @deprecated Use util.types.isDate() instead. */
-export function isDate(value: unknown): boolean {
-  return types.isDate(value);
-}
+export const isDate = types.isDate;
 
 /** @deprecated - use `value === null || (typeof value !== "object" && typeof value !== "function")` instead. */
 export function isPrimitive(value: unknown): boolean {
