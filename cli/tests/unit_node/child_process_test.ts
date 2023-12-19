@@ -749,7 +749,7 @@ Deno.test(async function forkIpcKillDoesNotHang() {
     cwd: testdataDir,
     stdio: ["inherit", "inherit", "inherit", "ipc"],
   });
-  cp.on("disconnect", () => p.resolve());
+  cp.on("close", () => p.resolve());
   cp.kill();
 
   await p.promise;
