@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { execCode } from "../unit/test_util.ts";
 import { createSocket } from "node:dgram";
