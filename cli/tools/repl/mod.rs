@@ -72,7 +72,6 @@ async fn read_line_and_poll(
       message = notifications.next() => {
         if let Some(message) = message {
           let notification: cdp::Notification = serde_json::from_value(message).unwrap();
-          eprintln!("notification {:#?}", notification);
           if notification.method == "Runtime.exceptionThrown" {
             let exception_thrown: cdp::ExceptionThrown = serde_json::from_value(notification.params).unwrap();
             let (message, description) = exception_thrown.exception_details.get_message_and_description();
