@@ -66,6 +66,7 @@ use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
 use std::sync::Arc;
@@ -234,8 +235,15 @@ impl TsServer {
   }
 
   pub fn start(&self, inspector_server_addr: Option<String>) {
-    let maybe_inspector_server = inspector_server_addr.map(|addr| {
-      Arc::new(InspectorServer::new(addr.parse().unwrap(), "deno-lsp-tsc"))
+    let maybe_inspector_server = inspector_server_addr.and_then(|addr| {
+      let addr: SocketAddr = match addr.parse() {
+        Ok(addr) => addr,
+        Err(err) => {
+          lsp_warn!("Invalid inspector server address \"{}\": {}", &addr, err);
+          return None;
+        }
+      };
+      Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
     });
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
@@ -4086,7 +4094,7 @@ fn run_tsc_thread(
 
         _ = tsc_runtime.run_event_loop(PollEventLoopOptions {
           wait_for_inspector: start_tsc_inspector,
-          pump_v8_message_loop: start_tsc_inspector,
+          pump_v8_message_loop: false,
         }), if !event_loop_finished => {
           event_loop_finished = true;
         }
