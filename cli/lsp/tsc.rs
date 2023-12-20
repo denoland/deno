@@ -212,22 +212,13 @@ fn normalize_diagnostic(
   Ok(())
 }
 
+#[derive(Debug)]
 pub struct TsServer {
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
-}
-
-impl std::fmt::Debug for TsServer {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("TsServer")
-      .field("performance", &self.performance)
-      .field("sender", &self.sender)
-      .field("specifier_map", &self.specifier_map)
-      .finish()
-  }
 }
 
 impl TsServer {
