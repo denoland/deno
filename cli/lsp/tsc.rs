@@ -213,13 +213,26 @@ fn normalize_diagnostic(
   Ok(())
 }
 
-#[derive(Debug)]
 pub struct TsServer {
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
+  inspector_server: Mutex<Option<Arc<InspectorServer>>>,
+}
+
+impl std::fmt::Debug for TsServer {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("TsServer")
+      .field("performance", &self.performance)
+      .field("cache", &self.cache)
+      .field("sender", &self.sender)
+      .field("receiver", &self.receiver)
+      .field("specifier_map", &self.specifier_map)
+      .field("inspector_server", &self.inspector_server.lock().is_some())
+      .finish()
+  }
 }
 
 impl TsServer {
@@ -231,6 +244,7 @@ impl TsServer {
       sender: tx,
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
+      inspector_server: Mutex::new(None),
     }
   }
 
@@ -245,6 +259,7 @@ impl TsServer {
       };
       Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
     });
+    *self.inspector_server.lock() = maybe_inspector_server.clone();
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
     let receiver = self.receiver.lock().take().unwrap();
@@ -4094,7 +4109,7 @@ fn run_tsc_thread(
 
         _ = tsc_runtime.run_event_loop(PollEventLoopOptions {
           wait_for_inspector: start_tsc_inspector,
-          pump_v8_message_loop: false,
+          pump_v8_message_loop: start_tsc_inspector,
         }), if !event_loop_finished => {
           event_loop_finished = true;
         }
