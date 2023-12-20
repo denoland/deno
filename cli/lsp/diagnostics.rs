@@ -1638,7 +1638,8 @@ let c: number = "a";
     let snapshot = Arc::new(snapshot);
     let cache =
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
-    let ts_server = TsServer::new(Default::default(), cache, false);
+    let ts_server = TsServer::new(Default::default(), cache);
+    ts_server.start(None);
 
     // test enabled
     {

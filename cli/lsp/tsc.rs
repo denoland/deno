@@ -4595,7 +4595,8 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv));
     let snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let performance = Arc::new(Performance::default());
-    let ts_server = TsServer::new(performance, cache.clone(), false);
+    let ts_server = TsServer::new(performance, cache.clone());
+    ts_server.start(None);
     let ts_config = TsConfig::new(config);
     assert!(ts_server
       .configure(snapshot.clone(), ts_config,)
