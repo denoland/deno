@@ -228,16 +228,9 @@ pub struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(
-    client: Client,
-    token: CancellationToken,
-    start_tsc_inspector: bool,
-  ) -> Self {
+  pub fn new(client: Client, token: CancellationToken) -> Self {
     Self(
-      Arc::new(tokio::sync::RwLock::new(Inner::new(
-        client,
-        start_tsc_inspector,
-      ))),
+      Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
       token,
     )
   }
@@ -462,7 +455,7 @@ impl LanguageServer {
 }
 
 impl Inner {
-  fn new(client: Client, start_tsc_inspector: bool) -> Self {
+  fn new(client: Client) -> Self {
     let dir = DenoDir::new(None).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
@@ -480,11 +473,8 @@ impl Inner {
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
-    let ts_server = Arc::new(TsServer::new(
-      performance.clone(),
-      deps_http_cache.clone(),
-      start_tsc_inspector,
-    ));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
     let diagnostics_state = Arc::new(DiagnosticsState::default());
     let diagnostics_server = DiagnosticsServer::new(
@@ -1235,6 +1225,10 @@ impl Inner {
       }
       self.config.update_capabilities(&params.capabilities);
     }
+
+    self
+      .ts_server
+      .start(self.config.internal_inspect().to_address());
 
     self.update_debug_flag();
     // Check to see if we need to change the cache path

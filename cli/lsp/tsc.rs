@@ -52,6 +52,7 @@ use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -211,12 +212,12 @@ fn normalize_diagnostic(
   Ok(())
 }
 
-#[derive(Clone)]
 pub struct TsServer {
   performance: Arc<Performance>,
+  cache: Arc<dyn HttpCache>,
   sender: mpsc::UnboundedSender<Request>,
+  receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
-  maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -225,51 +226,41 @@ impl std::fmt::Debug for TsServer {
       .field("performance", &self.performance)
       .field("sender", &self.sender)
       .field("specifier_map", &self.specifier_map)
-      .field("inspector_server", &self.maybe_inspector_server.is_some())
       .finish()
   }
 }
 
 impl TsServer {
-  pub fn new(
-    performance: Arc<Performance>,
-    cache: Arc<dyn HttpCache>,
-    start_tsc_inspector: bool,
-  ) -> Self {
-    let specifier_map = Arc::new(TscSpecifierMap::new());
-    let specifier_map_ = specifier_map.clone();
+  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
-    let perf = performance.clone();
-
-    let maybe_inspector_server = if start_tsc_inspector {
-      let addr = "127.0.0.1:10101";
-      Some(Arc::new(InspectorServer::new(
-        addr.parse().unwrap(),
-        "deno-lsp-tsc",
-      )))
-    } else {
-      None
-    };
-
-    let maybe_inspector_server_ = maybe_inspector_server.clone();
-    // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
-    // on the `TsServer` struct.
-    let _join_handle = thread::spawn(move || {
-      run_tsc_thread(
-        request_rx,
-        perf,
-        cache,
-        specifier_map_,
-        maybe_inspector_server_,
-      )
-    });
-
     Self {
       performance,
+      cache,
       sender: tx,
-      specifier_map,
-      maybe_inspector_server,
+      receiver: Mutex::new(Some(request_rx)),
+      specifier_map: Arc::new(TscSpecifierMap::new()),
     }
+  }
+
+  pub fn start(&self, inspector_server_addr: Option<String>) {
+    let maybe_inspector_server = inspector_server_addr.map(|addr| {
+      Arc::new(InspectorServer::new(addr.parse().unwrap(), "deno-lsp-tsc"))
+    });
+    // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
+    // on the `TsServer` struct.
+    let receiver = self.receiver.lock().take().unwrap();
+    let performance = self.performance.clone();
+    let cache = self.cache.clone();
+    let specifier_map = self.specifier_map.clone();
+    let _join_handle = thread::spawn(move || {
+      run_tsc_thread(
+        receiver,
+        performance.clone(),
+        cache.clone(),
+        specifier_map.clone(),
+        maybe_inspector_server,
+      )
+    });
   }
 
   pub async fn get_diagnostics(
@@ -4059,6 +4050,7 @@ fn run_tsc_thread(
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 ) {
+  let start_tsc_inspector = maybe_inspector_server.is_some();
   // Create and setup a JsRuntime based on a snapshot. It is expected that the
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
@@ -4101,7 +4093,10 @@ fn run_tsc_thread(
           }
         },
 
-        _ = tsc_runtime.run_event_loop(true), if !event_loop_finished => {
+        _ = tsc_runtime.run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: start_tsc_inspector,
+          pump_v8_message_loop: start_tsc_inspector,
+        }), if !event_loop_finished => {
           event_loop_finished = true;
         }
       }
