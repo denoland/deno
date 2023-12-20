@@ -306,6 +306,9 @@ const setFips = fipsForced ? setFipsForced : setFipsCrypto;
 const sign = signOneShot;
 const verify = verifyOneShot;
 
+/* Deprecated in Node.js, alias of randomBytes */
+const pseudoRandomBytes = randomBytes;
+
 export default {
   Certificate,
   checkPrime,
@@ -353,6 +356,7 @@ export default {
   publicDecrypt,
   publicEncrypt,
   randomBytes,
+  pseudoRandomBytes,
   randomFill,
   randomFillSync,
   randomInt,
@@ -485,6 +489,8 @@ export {
   pbkdf2Sync,
   privateDecrypt,
   privateEncrypt,
+  /* Deprecated in Node.js, alias of randomBytes */
+  pseudoRandomBytes,
   publicDecrypt,
   publicEncrypt,
   randomBytes,
