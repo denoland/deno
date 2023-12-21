@@ -164,6 +164,7 @@ impl ModuleLoadPreparer {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
+          workspace_low_res: false,
           workspace_members,
         },
       )

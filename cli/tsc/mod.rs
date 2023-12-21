@@ -28,6 +28,7 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::GraphKind;
+use deno_graph::LowResTypeModuleSlot;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
@@ -487,11 +488,7 @@ fn op_load(
       match module {
         Module::Esm(module) => {
           media_type = module.media_type;
-          let source = module
-            .low_res
-            .as_ref()
-            .map(|l| &*l.source)
-            .unwrap_or(&*module.source);
+          let source = module.low_res_module().unwrap_or(&*module.source);
           eprintln!("SOURCE: {}", source);
           Some(Cow::Borrowed(source))
         }

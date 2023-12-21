@@ -305,6 +305,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
+          workspace_low_res: false,
           workspace_members,
         },
       )
@@ -356,6 +357,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
+          workspace_low_res: false,
           workspace_members,
         },
       )
