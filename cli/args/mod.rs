@@ -104,6 +104,42 @@ pub fn npm_registry_default_url() -> &'static Url {
   &NPM_REGISTRY_DEFAULT_URL
 }
 
+pub fn deno_registry_url() -> &'static Url {
+  static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
+    let env_var_name = "DENO_REGISTRY_URL";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return url;
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
+      }
+    }
+
+    Url::parse("https://jsr.io/").unwrap()
+  });
+
+  &DENO_REGISTRY_URL
+}
+
+pub fn deno_registry_api_url() -> &'static Url {
+  static DENO_REGISTRY_API_URL: Lazy<Url> = Lazy::new(|| {
+    let mut deno_registry_api_url = deno_registry_url().clone();
+    deno_registry_api_url.set_path("api/");
+    deno_registry_api_url
+  });
+
+  &DENO_REGISTRY_API_URL
+}
+
 pub fn ts_config_to_emit_options(
   config: deno_config::TsConfig,
 ) -> deno_ast::EmitOptions {
@@ -881,6 +917,17 @@ impl CliOptions {
     .map(Some)
   }
 
+  pub fn node_ipc_fd(&self) -> Option<i64> {
+    let maybe_node_channel_fd = std::env::var("DENO_CHANNEL_FD").ok();
+    if let Some(node_channel_fd) = maybe_node_channel_fd {
+      // Remove so that child processes don't inherit this environment variable.
+      std::env::remove_var("DENO_CHANNEL_FD");
+      node_channel_fd.parse::<i64>().ok()
+    } else {
+      None
+    }
+  }
+
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
     match &self.flags.subcommand {
       DenoSubcommand::Bundle(bundle_flags) => {
@@ -1198,7 +1245,9 @@ impl CliOptions {
     self.flags.enable_op_summary_metrics
       || matches!(
         self.flags.subcommand,
-        DenoSubcommand::Test(_) | DenoSubcommand::Repl(_)
+        DenoSubcommand::Test(_)
+          | DenoSubcommand::Repl(_)
+          | DenoSubcommand::Jupyter(_)
       )
   }
 
@@ -1854,5 +1903,13 @@ mod test {
         temp_dir_path.join("nested/foo/bazz.ts"),
       ]
     )
+  }
+
+  #[test]
+  fn deno_registry_urls() {
+    let reg_url = deno_registry_url();
+    assert!(reg_url.as_str().ends_with('/'));
+    let reg_api_url = deno_registry_api_url();
+    assert!(reg_api_url.as_str().ends_with('/'));
   }
 }

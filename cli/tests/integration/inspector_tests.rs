@@ -869,7 +869,11 @@ async fn inspector_break_on_first_line_in_test() {
     .await;
 
   assert_starts_with!(&tester.stdout_line(), "running 1 test from");
-  assert!(&tester.stdout_line().contains("basic test ... ok"));
+  let line = tester.stdout_line();
+  assert!(
+    &line.contains("basic test ... ok"),
+    "Missing content: {line}"
+  );
 
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();
@@ -1362,12 +1366,11 @@ async fn inspector_error_with_npm_import() {
     .send(json!({"id":4,"method":"Debugger.resume"}))
     .await;
   tester
-    .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
+    .assert_received_messages(
+      &[r#"{"id":4,"result":{}}"#],
+      &[r#"{"method":"Runtime.exceptionThrown","#],
+    )
     .await;
-
-  // TODO(bartlomieju): this is a partial fix, we should assert that
-  // "Runtime.exceptionThrown" notification was sent, but a bindings for this
-  // notification is not yet there
   assert_eq!(&tester.stderr_line(), "Debugger session started.");
   assert_eq!(&tester.stderr_line(), "error: Uncaught Error: boom!");
 

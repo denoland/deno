@@ -75,7 +75,8 @@ export function runInThisContext(
 }
 
 export function isContext(_maybeContext: any) {
-  notImplemented("isContext");
+  // TODO(@littledivy): Currently we do not expose contexts so this is always false.
+  return false;
 }
 
 export function compileFunction(_code: string, _params: any, _options: any) {

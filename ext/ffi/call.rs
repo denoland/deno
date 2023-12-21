@@ -368,7 +368,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2]
+#[op2(reentrant)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,

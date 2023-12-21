@@ -202,14 +202,11 @@ impl ReplSession {
 
     worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         session
           .post_message::<()>("Runtime.enable", None)
           .boxed_local(),
-        PollEventLoopOptions {
-          wait_for_inspector: false,
-          ..Default::default()
-        },
+        PollEventLoopOptions::default(),
       )
       .await?;
 
@@ -298,14 +295,14 @@ impl ReplSession {
     self
       .worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         self.session.post_message(method, params).boxed_local(),
         PollEventLoopOptions {
-          wait_for_inspector: false,
           // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
           // message loop here, so that GC won't run. Otherwise, the resulting
           // object might be GC'ed before we have a chance to inspect it.
           pump_v8_message_loop: false,
+          ..Default::default()
         },
       )
       .await

@@ -237,3 +237,44 @@ fn event_loop_integration() {
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
+
+#[test]
+fn ffi_callback_errors_test() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/ffi_callback_errors.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+
+  let expected = "\
+    CallCase: SyncSelf\n\
+    Throwing errors from an UnsafeCallback called from a synchronous UnsafeFnPointer works. Terribly excellent.\n\
+    CallCase: SyncFfi\n\
+    0\n\
+    Throwing errors from an UnsafeCallback called from a synchronous FFI symbol works. Terribly excellent.\n\
+    CallCase: AsyncSelf\n\
+    CallCase: AsyncSyncFfi\n\
+    0\n\
+    Calling\n\
+    CallCase: AsyncFfi\n";
+  assert_eq!(stdout, expected);
+  assert_eq!(
+    stderr,
+    "Illegal unhandled exception in nonblocking callback.\n".repeat(3)
+  );
+}

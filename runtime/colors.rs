@@ -108,6 +108,13 @@ pub fn cyan<S: AsRef<str>>(s: S) -> impl fmt::Display {
   style_spec.set_fg(Some(Cyan));
   style(s, style_spec)
 }
+
+pub fn cyan_with_underline<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Cyan)).set_underline(true);
+  style(s, style_spec)
+}
+
 pub fn cyan_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Cyan)).set_bold(true);

@@ -31,6 +31,7 @@ use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::PollEventLoopOptions;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
@@ -254,7 +255,11 @@ async fn bench_specifier_inner(
   }))?;
   for (desc, function) in benchmarks {
     sender.send(BenchEvent::Wait(desc.id))?;
-    let result = worker.js_runtime.call_and_await(&function).await?;
+    let call = worker.js_runtime.call(&function);
+    let result = worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await?;
     let scope = &mut worker.js_runtime.handle_scope();
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<BenchResult>(scope, result)?;

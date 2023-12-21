@@ -54,7 +54,7 @@ pub fn err_module_not_found(path: &str, base: &str, typ: &str) -> AnyError {
 pub fn err_invalid_package_target(
   pkg_path: &str,
   key: &str,
-  target: String,
+  target: &str,
   is_import: bool,
   maybe_referrer: Option<String>,
 ) -> AnyError {
