@@ -4093,7 +4093,7 @@ fn run_tsc_thread(
       loop {
         if has_inspector_server {
           tsc_runtime_.lock().await.run_event_loop(PollEventLoopOptions {
-            wait_for_inspector: true,
+            wait_for_inspector: false,
             pump_v8_message_loop: true,
           }).await.ok();
         }
@@ -4106,7 +4106,7 @@ fn run_tsc_thread(
         biased;
         (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
           if let Some((req, state_snapshot, tx, token)) = maybe_request {
-            let value = request(&mut *tsc_runtime, state_snapshot, req, token.clone());
+            let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
             request_signal_tx.send(()).unwrap();
             let was_sent = tx.send(value).is_ok();
             // Don't print the send error if the token is cancelled, it's expected
