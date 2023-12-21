@@ -19,6 +19,7 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
+use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -276,13 +277,6 @@ impl ModuleGraphBuilder {
     options: CreateGraphOptions<'_>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_workspace_config = self.options.maybe_workspace_config();
-    let workspace_members = if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)?
-    } else {
-      vec![]
-    };
-
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -307,7 +301,7 @@ impl ModuleGraphBuilder {
           reporter: maybe_file_watcher_reporter,
           // todo(THIS PR): make this conditional
           workspace_low_res: true,
-          workspace_members,
+          workspace_members: self.get_deno_graph_workspace_members()?,
         },
       )
       .await?;
@@ -328,11 +322,6 @@ impl ModuleGraphBuilder {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_workspace_config = self.options.maybe_workspace_config();
-    let workspace_members = if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)?
-    } else {
-      vec![]
-    };
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -359,7 +348,7 @@ impl ModuleGraphBuilder {
           module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
           workspace_low_res: false,
-          workspace_members,
+          workspace_members: self.get_deno_graph_workspace_members()?,
         },
       )
       .await?;
@@ -390,6 +379,30 @@ impl ModuleGraphBuilder {
     }
 
     Ok(graph)
+  }
+
+  fn get_deno_graph_workspace_members(
+    &self,
+  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)
+    } else {
+      Ok(
+        self
+          .options
+          .maybe_config_file()
+          .as_ref()
+          .and_then(|c| match config_to_workspace_member(&c) {
+            Ok(m) => Some(vec![m]),
+            Err(e) => {
+              log::debug!("Deno config was not a package: {:#}", e);
+              None
+            }
+          })
+          .unwrap_or_default(),
+      )
+    }
   }
 
   pub async fn build_graph_with_npm_resolution<'a>(
@@ -774,36 +787,34 @@ pub fn workspace_config_to_workspace_members(
     .members
     .iter()
     .map(|member| {
-      workspace_member_config_try_into_workspace_member(member).with_context(
-        || {
-          format!(
-            "Failed to resolve configuration for '{}' workspace member at '{}'",
-            member.member_name,
-            member.config_file.specifier.as_str()
-          )
-        },
-      )
+      config_to_workspace_member(&member.config_file).with_context(|| {
+        format!(
+          "Failed to resolve configuration for '{}' workspace member at '{}'",
+          member.member_name,
+          member.config_file.specifier.as_str()
+        )
+      })
     })
     .collect()
 }
 
-fn workspace_member_config_try_into_workspace_member(
-  config: &deno_config::WorkspaceMemberConfig,
+fn config_to_workspace_member(
+  config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
   let nv = deno_semver::package::PackageNv {
-    name: config.package_name.clone(),
-    version: deno_semver::Version::parse_standard(&config.package_version)?,
+    name: match &config.json.name {
+      Some(name) => name.clone(),
+      None => bail!("Missing 'name' field in config file."),
+    },
+    version: match &config.json.version {
+      Some(name) => deno_semver::Version::parse_standard(name)?,
+      None => bail!("Missing 'version' field in config file."),
+    },
   };
   Ok(deno_graph::WorkspaceMember {
-    base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
+    base: config.specifier.clone(),
     nv,
-    exports: config
-      .config_file
-      .to_exports_config()?
-      .into_map()
-      // todo(dsherret): deno_graph should use an IndexMap
-      .into_iter()
-      .collect(),
+    exports: config.to_exports_config()?.into_map(),
   })
 }
 
