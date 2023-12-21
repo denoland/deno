@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use deno_ast::ModuleSpecifier;
 use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -31,11 +32,16 @@ use crate::args::deno_registry_url;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
+use crate::graph_util::ModuleGraphBuilder;
 use crate::http_util::HttpClient;
+use crate::tools::registry::graph::get_workspace_member_roots;
+use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
+use crate::tools::registry::graph::surface_low_res_type_graph_errors;
 use crate::util::import_map::ImportMapUnfurler;
 
 mod api;
 mod auth;
+mod graph;
 mod publish_order;
 mod tar;
 
@@ -113,6 +119,8 @@ async fn prepare_publish(
       .context("Failed to create a tarball")
   })
   .await??;
+
+  log::debug!("Tarball size ({}): {}", name, tarball.len());
 
   let tarball_hash_bytes: Vec<u8> =
     sha2::Sha256::digest(&tarball).iter().cloned().collect();
@@ -640,8 +648,12 @@ async fn prepare_packages_for_publishing(
   AnyError,
 > {
   let maybe_workspace_config = deno_json.to_workspace_config()?;
+  let module_graph_builder = cli_factory.module_graph_builder().await?.as_ref();
 
   let Some(workspace_config) = maybe_workspace_config else {
+    let roots = resolve_config_file_roots_from_exports(&deno_json)?;
+    build_and_check_graph_for_publish(module_graph_builder, roots).await?;
+    panic!("TEMP STOP - SUCCESS");
     let mut prepared_package_by_name = HashMap::with_capacity(1);
     let package = prepare_publish(&deno_json, import_map).await?;
     let package_name = package.package.clone();
@@ -652,13 +664,23 @@ async fn prepare_packages_for_publishing(
   };
 
   println!("Publishing a workspace...");
-  let mut prepared_package_by_name =
-    HashMap::with_capacity(workspace_config.members.len());
-  let publish_order_graph = publish_order::build_publish_graph(
-    &workspace_config,
-    cli_factory.module_graph_builder().await?.as_ref(),
+  // create the module graph
+  let roots = get_workspace_member_roots(&workspace_config)?;
+  let graph = build_and_check_graph_for_publish(
+    module_graph_builder,
+    roots
+      .iter()
+      .flat_map(|r| r.exports.iter())
+      .cloned()
+      .collect(),
   )
   .await?;
+  panic!("TEMP STOP - SUCCESS");
+
+  let mut prepared_package_by_name =
+    HashMap::with_capacity(workspace_config.members.len());
+  let publish_order_graph =
+    publish_order::build_publish_order_graph(&graph, &roots)?;
 
   let results =
     workspace_config
@@ -685,6 +707,18 @@ async fn prepare_packages_for_publishing(
     prepared_package_by_name.insert(package_name, package);
   }
   Ok((publish_order_graph, prepared_package_by_name))
+}
+
+async fn build_and_check_graph_for_publish(
+  module_graph_builder: &ModuleGraphBuilder,
+  roots: Vec<ModuleSpecifier>,
+) -> Result<deno_graph::ModuleGraph, deno_core::anyhow::Error> {
+  let graph = module_graph_builder
+    .create_graph(deno_graph::GraphKind::All, roots)
+    .await?;
+  graph.valid()?;
+  surface_low_res_type_graph_errors(&graph)?;
+  Ok(graph)
 }
 
 pub async fn publish(

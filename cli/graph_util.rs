@@ -305,7 +305,8 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
           reporter: maybe_file_watcher_reporter,
-          workspace_low_res: false,
+          // todo(THIS PR): make this conditional
+          workspace_low_res: true,
           workspace_members,
         },
       )
