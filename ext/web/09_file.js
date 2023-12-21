@@ -16,10 +16,9 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { ReadableStream } from "ext:deno_web/06_streams.js";
 import { URL } from "ext:deno_url/00_url.js";
 const {
-  ArrayBufferPrototype,
-  ArrayBufferPrototypeSlice,
-  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeSlice,
   ArrayPrototypePush,
   AsyncGeneratorPrototypeNext,
   DataViewPrototypeGetBuffer,
@@ -31,24 +30,35 @@ const {
   MathMin,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
   SafeFinalizationRegistry,
   SafeRegExp,
   StringPrototypeCharAt,
-  StringPrototypeToLowerCase,
   StringPrototypeSlice,
+  StringPrototypeToLowerCase,
   Symbol,
   SymbolFor,
-  TypedArrayPrototypeSet,
+  TypeError,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetSymbolToStringTag,
-  TypeError,
+  TypedArrayPrototypeSet,
   Uint8Array,
 } = primordials;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+
+function isArrayBuffer(value) {
+  try {
+    ArrayBufferPrototypeGetByteLength(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isAnyArrayBuffer(value) {
+  return ops.op_is_any_arraybuffer(value);
+}
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -126,7 +136,7 @@ function processBlobParts(parts, endings) {
   let size = 0;
   for (let i = 0; i < parts.length; ++i) {
     const element = parts[i];
-    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, element)) {
+    if (isArrayBuffer(element)) {
       const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
       size += ArrayBufferPrototypeGetByteLength(element);
@@ -443,11 +453,7 @@ webidl.converters["BlobPart"] = (V, prefix, context, opts) => {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
       return webidl.converters["Blob"](V, prefix, context, opts);
     }
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {

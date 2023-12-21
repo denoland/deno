@@ -45,7 +45,6 @@ const {
   SymbolIterator,
   TypeError,
   Uint32Array,
-  Uint32ArrayPrototype,
   Uint8Array,
 } = primordials;
 
@@ -3776,10 +3775,8 @@ class GPURenderPassEncoder {
       selfContext: "this",
     });
     if (
-      !(ObjectPrototypeIsPrototypeOf(
-        Uint32ArrayPrototype,
-        dynamicOffsetsData,
-      ))
+      TypedArrayPrototypeGetSymbolToStringTag(dynamicOffsetsData) !==
+        "Uint32Array"
     ) {
       dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
       dynamicOffsetsDataStart = 0;
@@ -4335,10 +4332,8 @@ class GPUComputePassEncoder {
       selfContext: "this",
     });
     if (
-      !(ObjectPrototypeIsPrototypeOf(
-        Uint32ArrayPrototype,
-        dynamicOffsetsData,
-      ))
+      TypedArrayPrototypeGetSymbolToStringTag(dynamicOffsetsData) !==
+        "Uint32Array"
     ) {
       dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
       dynamicOffsetsDataStart = 0;
@@ -4553,10 +4548,8 @@ class GPURenderBundleEncoder {
       selfContext: "this",
     });
     if (
-      !(ObjectPrototypeIsPrototypeOf(
-        Uint32ArrayPrototype,
-        dynamicOffsetsData,
-      ))
+      TypedArrayPrototypeGetSymbolToStringTag(dynamicOffsetsData) !==
+        "Uint32Array"
     ) {
       dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
       dynamicOffsetsDataStart = 0;

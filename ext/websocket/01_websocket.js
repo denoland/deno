@@ -21,30 +21,29 @@ import {
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 const {
-  ArrayBufferPrototype,
   ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
   PromisePrototypeThen,
   RegExpPrototypeExec,
   SafeSet,
   SetPrototypeGetSize,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
   String,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
   Symbol,
-  SymbolIterator,
-  PromisePrototypeCatch,
   SymbolFor,
+  SymbolIterator,
   TypedArrayPrototypeGetByteLength,
+  Uint8Array,
 } = primordials;
-const { op_ws_check_permission_and_cancel_handle } = core.ops;
+const ops = core.ops;
 const {
   op_ws_create,
   op_ws_close,
@@ -58,6 +57,19 @@ const {
   op_ws_send_ping,
   op_ws_get_buffered_amount,
 } = core.ensureFastOps();
+
+function isArrayBuffer(value) {
+  try {
+    ArrayBufferPrototypeGetByteLength(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isAnyArrayBuffer(value) {
+  return ops.op_is_any_arraybuffer(value);
+}
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
@@ -80,11 +92,7 @@ webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
     return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
@@ -170,7 +178,7 @@ class WebSocket extends EventTarget {
     this[_url] = wsURL.href;
     this[_role] = CLIENT;
 
-    op_ws_check_permission_and_cancel_handle(
+    ops.op_ws_check_permission_and_cancel_handle(
       "WebSocket.abort()",
       this[_url],
       false,
@@ -329,8 +337,7 @@ class WebSocket extends EventTarget {
 
     if (ArrayBufferIsView(data)) {
       op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      // deno-lint-ignore prefer-primordials
+    } else if (isArrayBuffer(data)) {
       op_ws_send_binary(this[_rid], new Uint8Array(data));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(

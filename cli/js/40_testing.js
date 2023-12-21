@@ -16,14 +16,12 @@ const {
   ArrayPrototypeShift,
   DateNow,
   Error,
-  FunctionPrototype,
   Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
   Set,
@@ -1294,7 +1292,7 @@ function createTestContext(desc) {
 
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
-        if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, maybeFn))) {
+        if (typeof maybeFn !== "function") {
           throw new TypeError("Expected function for second argument.");
         }
         stepDesc = {

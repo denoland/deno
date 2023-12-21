@@ -13,7 +13,6 @@ import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayPrototypeEvery,
@@ -48,6 +47,15 @@ const {
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
+
+function isArrayBuffer(value) {
+  try {
+    ArrayBufferPrototypeGetByteLength(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // P-521 is not yet supported.
 const supportedNamedCurves = ["P-256", "P-384"];
@@ -935,19 +943,13 @@ class SubtleCrypto {
 
     // 2.
     if (format !== "jwk") {
-      if (
-        ArrayBufferIsView(keyData) ||
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
-      ) {
+      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         keyData = copyBuffer(keyData);
       } else {
         throw new TypeError("keyData is a JsonWebKey");
       }
     } else {
-      if (
-        ArrayBufferIsView(keyData) ||
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
-      ) {
+      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         throw new TypeError("keyData is not a JsonWebKey");
       }
     }
@@ -4771,10 +4773,7 @@ webidl.converters["BufferSource or JsonWebKey"] = (
   opts,
 ) => {
   // Union for (BufferSource or JsonWebKey)
-  if (
-    ArrayBufferIsView(V) ||
-    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V)
-  ) {
+  if (ArrayBufferIsView(V) || isArrayBuffer(V)) {
     return webidl.converters.BufferSource(V, prefix, context, opts);
   }
   return webidl.converters.JsonWebKey(V, prefix, context, opts);

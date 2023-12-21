@@ -8,9 +8,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
   ArrayBufferIsView,
   ArrayPrototypeForEach,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayIteratorPrototype,
@@ -67,7 +67,7 @@ const {
   SetPrototypeDelete,
   SetPrototypeAdd,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeToWellFormed,
@@ -462,12 +462,35 @@ function isDataView(V) {
 }
 
 function isNonSharedArrayBuffer(V) {
-  return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
+  try {
+    ArrayBufferPrototypeGetByteLength(V);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
+let _getSharedArrayBufferByteLength;
+
+function getSharedArrayBufferByteLength(value) {
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
+    // deno-lint-ignore prefer-primordials
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  ).get;
+
+  return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
 }
 
 function isSharedArrayBuffer(V) {
-  // deno-lint-ignore prefer-primordials
-  return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
+  try {
+    getSharedArrayBufferByteLength(V);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 converters.ArrayBuffer = (

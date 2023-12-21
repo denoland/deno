@@ -30,7 +30,7 @@ const {
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetByteLength,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 const {
   op_ws_send_text_async,
@@ -214,7 +214,8 @@ class WebSocketStream {
                 if (typeof chunk === "string") {
                   await op_ws_send_text_async(this[_rid], chunk);
                 } else if (
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+                  TypedArrayPrototypeGetSymbolToStringTag(chunk) ===
+                    "Uint8Array"
                 ) {
                   await op_ws_send_binary_async(this[_rid], chunk);
                 } else {

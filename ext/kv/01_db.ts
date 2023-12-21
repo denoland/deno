@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// @ts-ignore internal api
+import { core, primordials } from "ext:core/mod.js";
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+import { ReadableStream } from "ext:deno_web/06_streams.js";
+const ops = core.ops;
 const {
   AsyncGeneratorPrototype,
   BigIntPrototypeToString,
@@ -10,13 +13,9 @@ const {
   StringPrototypeReplace,
   SymbolFor,
   SymbolToStringTag,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Error,
-} = globalThis.__bootstrap.primordials;
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
-import { ReadableStream } from "ext:deno_web/06_streams.js";
-const core = Deno.core;
-const ops = core.ops;
+} = primordials;
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
@@ -581,7 +580,7 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
 }
 
 function serializeValue(value: unknown): RawValue {
-  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+  if (TypedArrayPrototypeGetSymbolToStringTag(value) === "Uint8Array") {
     return {
       kind: "bytes",
       value,

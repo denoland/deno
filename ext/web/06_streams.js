@@ -7,6 +7,7 @@
 /// <reference lib="esnext" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
+const ops = core.ops;
 const {
   op_arraybuffer_was_detached,
   op_transfer_arraybuffer,
@@ -31,7 +32,6 @@ import {
 const {
   ArrayBuffer,
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayPrototypeMap,
@@ -46,6 +46,7 @@ const {
   DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
+  FunctionPrototypeCall,
   Int16Array,
   Int32Array,
   Int8Array,
@@ -54,6 +55,7 @@ const {
   NumberIsNaN,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -93,6 +95,42 @@ const {
 } = primordials;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
+
+// https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
+let _getSharedArrayBufferByteLength;
+
+function getSharedArrayBufferByteLength(value) {
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
+    // deno-lint-ignore prefer-primordials
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  ).get;
+
+  return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
+}
+
+function isArrayBuffer(value) {
+  try {
+    ArrayBufferPrototypeGetByteLength(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSharedArrayBuffer(value) {
+  try {
+    getSharedArrayBufferByteLength(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isAnyArrayBuffer(value) {
+  return ops.op_is_any_arraybuffer(value);
+}
 
 /** @template T */
 class Deferred {
@@ -267,8 +305,7 @@ class Queue {
  * @returns {boolean}
  */
 function isDetachedBuffer(O) {
-  // deno-lint-ignore prefer-primordials
-  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+  if (isSharedArrayBuffer(O)) {
     return false;
   }
   return ArrayBufferPrototypeGetByteLength(O) === 0 &&
@@ -281,11 +318,7 @@ function isDetachedBuffer(O) {
  */
 function canTransferArrayBuffer(O) {
   assert(typeof O === "object");
-  assert(
-    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, O) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O),
-  );
+  assert(isAnyArrayBuffer(O));
   if (isDetachedBuffer(O)) {
     return false;
   }
@@ -306,8 +339,7 @@ function transferArrayBuffer(O) {
  * @returns {number}
  */
 function getArrayBufferByteLength(O) {
-  // deno-lint-ignore prefer-primordials
-  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+  if (isSharedArrayBuffer(O)) {
     // TODO(petamoriken): use primordials
     // deno-lint-ignore prefer-primordials
     return O.byteLength;
@@ -1456,7 +1488,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
 ) {
   let cloneResult;
   try {
-    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
+    if (isArrayBuffer(buffer)) {
       cloneResult = ArrayBufferPrototypeSlice(
         buffer,
         byteOffset,

@@ -19,7 +19,6 @@ import {
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -30,6 +29,15 @@ const {
   SymbolIterator,
   TypeError,
 } = primordials;
+
+function isArrayBuffer(value) {
+  try {
+    ArrayBufferPrototypeGetByteLength(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -279,7 +287,7 @@ function serializeJsMessageData(data, transferables) {
     const hostObjects = [];
     for (let i = 0, j = 0; i < transferables.length; i++) {
       const t = transferables[i];
-      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, t)) {
+      if (isArrayBuffer(t)) {
         if (
           ArrayBufferPrototypeGetByteLength(t) === 0 &&
           ops.op_arraybuffer_was_detached(t)
@@ -326,9 +334,7 @@ function serializeJsMessageData(data, transferables) {
         kind: "messagePort",
         data: id,
       });
-    } else if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, transferable)
-    ) {
+    } else if (isArrayBuffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
         kind: "arrayBuffer",
         data: transferredArrayBuffers[arrayBufferI],

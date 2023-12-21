@@ -4,7 +4,6 @@ import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 const {
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
@@ -33,6 +32,15 @@ const {
   SafeWeakMap,
 } = primordials;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
+
+function isArrayBuffer(value) {
+  try {
+    ArrayBufferPrototypeGetByteLength(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * @param {BufferSource} source
@@ -225,7 +233,7 @@ class UnsafePointer {
       } else {
         pointer = ops.op_ffi_ptr_of(value);
       }
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
+    } else if (isArrayBuffer(value)) {
       if (value.length === 0) {
         pointer = ops.op_ffi_ptr_of_exact(new Uint8Array(value));
       } else {
