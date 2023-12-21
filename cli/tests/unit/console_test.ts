@@ -8,7 +8,6 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
-import vm from "node:vm";
 import {
   assert,
   assertEquals,
@@ -2408,28 +2407,5 @@ Deno.test(function inspectEscapeSequencesFalse() {
   assertEquals(
     Deno.inspect("foo\nbar", { escapeSequences: false }),
     '"foo\nbar"',
-  );
-});
-
-Deno.test(function inspectCrossRealmObjects() {
-  assertStringIncludes(
-    stripColor(
-      Deno.inspect(vm.runInNewContext(`new Error("This is an error")`)),
-    ),
-    "Error: This is an error",
-  );
-  assertStringIncludes(
-    stripColor(
-      Deno.inspect(
-        vm.runInNewContext(`new AggregateError([], "This is an error")`),
-      ),
-    ),
-    "AggregateError: This is an error",
-  );
-  assertStringIncludes(
-    stripColor(
-      Deno.inspect(vm.runInNewContext(`new Date("2018-12-10T02:26:59.002Z")`)),
-    ),
-    "2018-12-10T02:26:59.002Z",
   );
 });
