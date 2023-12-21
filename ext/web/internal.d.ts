@@ -47,7 +47,7 @@ declare module "ext:deno_web/00_infra.js" {
 }
 
 declare module "ext:deno_web/01_dom_exception.js" {
-  export = DOMException;
+  const DOMException: DOMException;
 }
 
 declare module "ext:deno_web/01_mimesniff.js" {

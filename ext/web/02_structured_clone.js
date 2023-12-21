@@ -7,7 +7,7 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBuffer,
   ArrayBufferPrototypeGetByteLength,

@@ -17,7 +17,7 @@ import {
   setEventTargetData,
   setIsTrusted,
 } from "ext:deno_web/02_event.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,

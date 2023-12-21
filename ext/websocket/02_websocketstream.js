@@ -7,7 +7,7 @@ const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { add, remove } from "ext:deno_web/03_abort_signal.js";
 import {
   fillHeaders,
