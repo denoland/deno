@@ -296,6 +296,10 @@ export class ChildProcess extends EventEmitter {
         throw err;
       }
     }
+
+    /* Cancel any pending IPC I/O */
+    this.disconnect?.();
+
     this.killed = true;
     this.signalCode = denoSignal;
     return this.killed;
