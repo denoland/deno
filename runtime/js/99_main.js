@@ -11,6 +11,7 @@ const {
   ArrayPrototypeMap,
   DateNow,
   Error,
+  ErrorPrototype,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   ObjectAssign,
@@ -233,7 +234,10 @@ const opPpid = memoizeLazy(() => ops.op_ppid());
 setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
 
 function formatException(error) {
-  if (ops.op_is_native_error(error)) {
+  if (
+    ops.op_is_native_error(error) ||
+    ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)
+  ) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
