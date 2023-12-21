@@ -124,7 +124,7 @@ pub fn deno_registry_url() -> &'static Url {
       }
     }
 
-    deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+    Url::parse("https://jsr.io/").unwrap()
   });
 
   &DENO_REGISTRY_URL
@@ -917,12 +917,12 @@ impl CliOptions {
     .map(Some)
   }
 
-  pub fn node_ipc_fd(&self) -> Option<i32> {
+  pub fn node_ipc_fd(&self) -> Option<i64> {
     let maybe_node_channel_fd = std::env::var("DENO_CHANNEL_FD").ok();
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
       std::env::remove_var("DENO_CHANNEL_FD");
-      node_channel_fd.parse::<i32>().ok()
+      node_channel_fd.parse::<i64>().ok()
     } else {
       None
     }
@@ -1245,7 +1245,9 @@ impl CliOptions {
     self.flags.enable_op_summary_metrics
       || matches!(
         self.flags.subcommand,
-        DenoSubcommand::Test(_) | DenoSubcommand::Repl(_)
+        DenoSubcommand::Test(_)
+          | DenoSubcommand::Repl(_)
+          | DenoSubcommand::Jupyter(_)
       )
   }
 
