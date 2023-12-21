@@ -488,7 +488,10 @@ fn op_load(
       match module {
         Module::Esm(module) => {
           media_type = module.media_type;
-          let source = module.low_res_module().unwrap_or(&*module.source);
+          let source = module
+            .low_res_module()
+            .map(|m| &*m.source)
+            .unwrap_or(&*module.source);
           eprintln!("SOURCE: {}", source);
           Some(Cow::Borrowed(source))
         }
