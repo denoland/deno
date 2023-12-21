@@ -69,6 +69,7 @@ use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 use text_size::TextRange;
@@ -4064,7 +4065,7 @@ fn run_tsc_thread(
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 ) {
-  let start_tsc_inspector = maybe_inspector_server.is_some();
+  let has_inspector_server = maybe_inspector_server.is_some();
   // Create and setup a JsRuntime based on a snapshot. It is expected that the
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
@@ -4085,34 +4086,39 @@ fn run_tsc_thread(
 
   let tsc_future = async {
     start_tsc(&mut tsc_runtime, false).unwrap();
-
-    let mut event_loop_finished = false;
-
+    let (request_signal_tx, mut request_signal_rx) = mpsc::unbounded_channel::<()>();
+    let tsc_runtime = Rc::new(tokio::sync::Mutex::new(tsc_runtime));
+    let tsc_runtime_ = tsc_runtime.clone();
+    let event_loop_fut = async {
+      loop {
+        if has_inspector_server {
+          tsc_runtime_.lock().await.run_event_loop(PollEventLoopOptions {
+            wait_for_inspector: true,
+            pump_v8_message_loop: true,
+          }).await.ok();
+        }
+        request_signal_rx.recv_many(&mut vec![], 1000).await;
+      }
+    };
+    tokio::pin!(event_loop_fut);
     loop {
       tokio::select! {
         biased;
-
-        maybe_request = request_rx.recv() => {
+        (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
           if let Some((req, state_snapshot, tx, token)) = maybe_request {
-            let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
+            let value = request(&mut *tsc_runtime, state_snapshot, req, token.clone());
+            request_signal_tx.send(()).unwrap();
             let was_sent = tx.send(value).is_ok();
             // Don't print the send error if the token is cancelled, it's expected
             // to fail in that case and this commonly occurs.
             if !was_sent && !token.is_cancelled() {
               lsp_warn!("Unable to send result to client.");
             }
-            event_loop_finished = false;
           } else {
             break;
           }
         },
-
-        _ = tsc_runtime.run_event_loop(PollEventLoopOptions {
-          wait_for_inspector: start_tsc_inspector,
-          pump_v8_message_loop: start_tsc_inspector,
-        }), if !event_loop_finished => {
-          event_loop_finished = true;
-        }
+        _ = &mut event_loop_fut => {}
       }
     }
   }
