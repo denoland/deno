@@ -630,3 +630,9 @@ File         | Branch % | Line % |
 ",
   );
 }
+
+itest!(no_files_found {
+  args: "coverage doesnt_exist.js",
+  exit_code: 1,
+  output: "coverage/doesnt_exist.out",
+});

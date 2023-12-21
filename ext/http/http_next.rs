@@ -44,7 +44,6 @@ use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
-use fly_accept_encoding::Encoding;
 use http::header::ACCEPT_ENCODING;
 use http::header::CACHE_CONTROL;
 use http::header::CONTENT_ENCODING;
@@ -71,6 +70,9 @@ use std::io;
 use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
+
+use super::fly_accept_encoding;
+use fly_accept_encoding::Encoding;
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;

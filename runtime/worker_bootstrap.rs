@@ -59,6 +59,7 @@ pub struct BootstrapOptions {
   pub inspect: bool,
   pub has_node_modules_dir: bool,
   pub maybe_binary_npm_command_name: Option<String>,
+  pub node_ipc_fd: Option<i64>,
 }
 
 impl Default for BootstrapOptions {
@@ -86,6 +87,7 @@ impl Default for BootstrapOptions {
       args: Default::default(),
       has_node_modules_dir: Default::default(),
       maybe_binary_npm_command_name: None,
+      node_ipc_fd: None,
     }
   }
 }

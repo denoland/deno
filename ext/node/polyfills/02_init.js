@@ -7,10 +7,6 @@ const requireImpl = internals.requireImpl;
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 import "node:module";
 
-globalThis.nodeBootstrap = function (usesLocalNodeModulesDir, argv0) {
-  initialize(usesLocalNodeModulesDir, argv0);
-};
-
 let initialized = false;
 
 function initialize(
@@ -41,6 +37,7 @@ function initialize(
   // but it's the only way to get `args` and `version` and this point.
   internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
   internals.__initWorkerThreads();
+  internals.__setupChildProcessIpcChannel();
   // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
   delete internals.requireImpl;
 }
@@ -51,6 +48,8 @@ function loadCjsModule(moduleName, isMain, inspectBrk) {
   }
   requireImpl.Module._load(moduleName, null, { main: isMain });
 }
+
+globalThis.nodeBootstrap = initialize;
 
 internals.node = {
   initialize,

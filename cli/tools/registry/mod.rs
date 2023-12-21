@@ -1,21 +1,21 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::io::IsTerminal;
-use std::path::Path;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_config::ConfigFile;
-use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::unsync::JoinHandle;
+use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
@@ -23,27 +23,29 @@ use http::header::CONTENT_ENCODING;
 use hyper::body::Bytes;
 use import_map::ImportMap;
 use lsp_types::Url;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::Digest;
 
+use crate::args::deno_registry_api_url;
+use crate::args::deno_registry_url;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::util::import_map::ImportMapUnfurler;
 
+mod api;
+mod auth;
+mod publish_order;
 mod tar;
 
-enum AuthMethod {
-  Interactive,
-  Token(String),
-  Oidc(OidcConfig),
-}
+use auth::get_auth_method;
+use auth::AuthMethod;
+use publish_order::PublishOrderGraph;
 
-struct OidcConfig {
-  url: String,
-  token: String,
+fn ring_bell() {
+  // ASCII code for the bell character.
+  print!("\x07");
 }
 
 struct PreparedPublishPackage {
@@ -52,44 +54,52 @@ struct PreparedPublishPackage {
   version: String,
   tarball_hash: String,
   tarball: Bytes,
+  diagnostics: Vec<String>,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PublishingTaskError {
-  pub code: String,
-  pub message: String,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PublishingTask {
-  pub id: String,
-  pub status: String,
-  pub error: Option<PublishingTaskError>,
-}
+static SUGGESTED_ENTRYPOINTS: [&str; 4] =
+  ["mod.ts", "mod.js", "index.ts", "index.js"];
 
 async fn prepare_publish(
-  initial_cwd: &Path,
-  directory: PathBuf,
-  import_map: &ImportMap,
-) -> Result<PreparedPublishPackage, AnyError> {
-  let directory_path = initial_cwd.join(directory);
-  // TODO: doesn't handle jsonc
-  let deno_json_path = directory_path.join("deno.json");
-  let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
-    format!(
-      "Failed to read deno configuration file at {}",
-      deno_json_path.display()
-    )
-  })?;
-
+  deno_json: &ConfigFile,
+  import_map: Arc<ImportMap>,
+) -> Result<Rc<PreparedPublishPackage>, AnyError> {
+  let config_path = deno_json.specifier.to_file_path().unwrap();
+  let dir_path = config_path.parent().unwrap().to_path_buf();
   let Some(version) = deno_json.json.version.clone() else {
-    bail!("{} is missing 'version' field", deno_json_path.display());
+    bail!("{} is missing 'version' field", deno_json.specifier);
   };
   let Some(name) = deno_json.json.name.clone() else {
-    bail!("{} is missing 'name' field", deno_json_path.display());
+    bail!("{} is missing 'name' field", deno_json.specifier);
   };
+  if deno_json.json.exports.is_none() {
+    let mut suggested_entrypoint = None;
+
+    for entrypoint in SUGGESTED_ENTRYPOINTS {
+      if dir_path.join(entrypoint).exists() {
+        suggested_entrypoint = Some(entrypoint);
+        break;
+      }
+    }
+
+    let exports_content = format!(
+      r#"{{
+  "name": "{}",
+  "version": "{}",
+  "exports": "{}"
+}}"#,
+      name,
+      version,
+      suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
+    );
+
+    bail!(
+      "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
+      name,
+      deno_json.specifier,
+      exports_content
+    );
+  }
   let Some(name) = name.strip_prefix('@') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
@@ -97,10 +107,12 @@ async fn prepare_publish(
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
 
-  let unfurler = ImportMapUnfurler::new(import_map);
-
-  let tarball = tar::create_gzipped_tarball(directory_path, unfurler)
-    .context("Failed to create a tarball")?;
+  let (tarball, diagnostics) = deno_core::unsync::spawn_blocking(move || {
+    let unfurler = ImportMapUnfurler::new(&import_map);
+    tar::create_gzipped_tarball(&dir_path, unfurler)
+      .context("Failed to create a tarball")
+  })
+  .await??;
 
   let tarball_hash_bytes: Vec<u8> =
     sha2::Sha256::digest(&tarball).iter().cloned().collect();
@@ -109,13 +121,14 @@ async fn prepare_publish(
     write!(&mut tarball_hash, "{:02x}", byte).unwrap();
   }
 
-  Ok(PreparedPublishPackage {
+  Ok(Rc::new(PreparedPublishPackage {
     scope: scope.to_string(),
     package: package_name.to_string(),
     version: version.to_string(),
     tarball_hash,
     tarball,
-  })
+    diagnostics,
+  }))
 }
 
 #[derive(Serialize)]
@@ -130,108 +143,53 @@ pub enum Permission<'s> {
   },
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateAuthorizationResponse {
-  verification_url: String,
-  code: String,
-  exchange_token: String,
-  poll_interval: u64,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ExchangeAuthorizationResponse {
-  token: String,
-  user: User,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct User {
-  name: String,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ApiError {
-  pub code: String,
-  pub message: String,
-  #[serde(flatten)]
-  pub data: serde_json::Value,
-  #[serde(skip)]
-  pub x_deno_ray: Option<String>,
-}
-
-impl std::fmt::Display for ApiError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{} ({})", self.message, self.code)?;
-    if let Some(x_deno_ray) = &self.x_deno_ray {
-      write!(f, "[x-deno-ray: {}]", x_deno_ray)?;
-    }
-    Ok(())
-  }
-}
-
-impl std::fmt::Debug for ApiError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    std::fmt::Display::fmt(self, f)
-  }
-}
-
-impl std::error::Error for ApiError {}
-
-async fn parse_response<T: DeserializeOwned>(
-  response: reqwest::Response,
-) -> Result<T, ApiError> {
-  let status = response.status();
-  let x_deno_ray = response
-    .headers()
-    .get("x-deno-ray")
-    .and_then(|value| value.to_str().ok())
-    .map(|s| s.to_string());
-  let text = response.text().await.unwrap();
-
-  if !status.is_success() {
-    match serde_json::from_str::<ApiError>(&text) {
-      Ok(mut err) => {
-        err.x_deno_ray = x_deno_ray;
-        return Err(err);
+/// Prints diagnostics like so:
+/// ```
+///
+/// Warning
+/// ├╌ Dynamic import was not analyzable...
+/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
+/// |
+/// ├╌ Dynamic import was not analyzable...
+/// ├╌╌ at file:///dev/foo/bar/foo.ts:4:5
+/// |
+/// ├╌ Dynamic import was not analyzable...
+/// └╌╌ at file:///dev/foo/bar/foo.ts:4:5
+///
+/// ```
+fn print_diagnostics(diagnostics: Vec<String>) {
+  if !diagnostics.is_empty() {
+    let len = diagnostics.len();
+    log::warn!("");
+    log::warn!("{}", crate::colors::yellow("Warning"));
+    for (i, diagnostic) in diagnostics.iter().enumerate() {
+      let last_diagnostic = i == len - 1;
+      let lines = diagnostic.split('\n').collect::<Vec<_>>();
+      let lines_len = lines.len();
+      if i != 0 {
+        log::warn!("|");
       }
-      Err(_) => {
-        let err = ApiError {
-          code: "unknown".to_string(),
-          message: format!("{}: {}", status, text),
-          x_deno_ray,
-          data: serde_json::json!({}),
-        };
-        return Err(err);
+      for (j, line) in lines.iter().enumerate() {
+        let last_line = j == lines_len - 1;
+        if j == 0 {
+          log::warn!("├╌ {}", line);
+        } else if last_line && last_diagnostic {
+          log::warn!("└╌╌ {}", line);
+        } else {
+          log::warn!("├╌╌ {}", line);
+        }
       }
     }
+    log::warn!("");
   }
-
-  serde_json::from_str(&text).map_err(|err| ApiError {
-    code: "unknown".to_string(),
-    message: format!("Failed to parse response: {}, response: '{}'", err, text),
-    x_deno_ray,
-    data: serde_json::json!({}),
-  })
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OidcTokenResponse {
-  value: String,
-}
-
-async fn perform_publish(
-  http_client: &Arc<HttpClient>,
-  packages: Vec<PreparedPublishPackage>,
+async fn get_auth_headers(
+  client: &reqwest::Client,
+  registry_url: String,
+  packages: Vec<Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
-) -> Result<(), AnyError> {
-  let client = http_client.client()?;
-  let registry_url = crate::cache::DENO_REGISTRY_URL.to_string();
-
+) -> Result<HashMap<(String, String, String), Rc<str>>, AnyError> {
   let permissions = packages
     .iter()
     .map(|package| Permission::VersionPublish {
@@ -242,7 +200,9 @@ async fn perform_publish(
     })
     .collect::<Vec<_>>();
 
-  let authorizations = match auth_method {
+  let mut authorizations = HashMap::with_capacity(packages.len());
+
+  match auth_method {
     AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
@@ -256,9 +216,10 @@ async fn perform_publish(
         .send()
         .await
         .context("Failed to create interactive authorization")?;
-      let auth = parse_response::<CreateAuthorizationResponse>(response)
-        .await
-        .context("Failed to create interactive authorization")?;
+      let auth =
+        api::parse_response::<api::CreateAuthorizationResponse>(response)
+          .await
+          .context("Failed to create interactive authorization")?;
 
       print!(
         "Visit {} to authorize publishing of",
@@ -270,6 +231,7 @@ async fn perform_publish(
         println!(" @{}/{}", packages[0].scope, packages[0].package);
       }
 
+      ring_bell();
       println!("{}", colors::gray("Waiting..."));
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
@@ -286,7 +248,8 @@ async fn perform_publish(
           .await
           .context("Failed to exchange authorization")?;
         let res =
-          parse_response::<ExchangeAuthorizationResponse>(response).await;
+          api::parse_response::<api::ExchangeAuthorizationResponse>(response)
+            .await;
         match res {
           Ok(res) => {
             println!(
@@ -296,11 +259,13 @@ async fn perform_publish(
               colors::cyan(res.user.name)
             );
             let authorization: Rc<str> = format!("Bearer {}", res.token).into();
-            let mut authorizations = Vec::new();
-            for _ in &packages {
-              authorizations.push(authorization.clone());
+            for pkg in &packages {
+              authorizations.insert(
+                (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
+                authorization.clone(),
+              );
             }
-            break authorizations;
+            break;
           }
           Err(err) => {
             if err.code == "authorizationPending" {
@@ -314,14 +279,15 @@ async fn perform_publish(
     }
     AuthMethod::Token(token) => {
       let authorization: Rc<str> = format!("Bearer {}", token).into();
-      let mut authorizations = Vec::new();
-      for _ in &packages {
-        authorizations.push(authorization.clone());
+      for pkg in &packages {
+        authorizations.insert(
+          (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
+          authorization.clone(),
+        );
       }
-      authorizations
     }
     AuthMethod::Oidc(oidc_config) => {
-      let mut authorizations = Vec::new();
+      let mut chunked_packages = packages.chunks(16);
       for permissions in permissions.chunks(16) {
         let audience = json!({ "permissions": permissions }).to_string();
         let url = format!(
@@ -350,7 +316,7 @@ async fn perform_publish(
             text
           );
         }
-        let OidcTokenResponse { value } = serde_json::from_str(&text)
+        let api::OidcTokenResponse { value } = serde_json::from_str(&text)
           .with_context(|| {
             format!(
               "Failed to parse OIDC token: '{}' (status {})",
@@ -359,141 +325,380 @@ async fn perform_publish(
           })?;
 
         let authorization: Rc<str> = format!("githuboidc {}", value).into();
-        for _ in permissions {
-          authorizations.push(authorization.clone());
+        for pkg in chunked_packages.next().unwrap() {
+          authorizations.insert(
+            (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
+            authorization.clone(),
+          );
         }
       }
-      authorizations
     }
   };
 
-  assert_eq!(packages.len(), authorizations.len());
-  for (package, authorization) in
-    packages.into_iter().zip(authorizations.into_iter())
-  {
-    println!(
-      "{} @{}/{}@{} ...",
-      colors::intense_blue("Publishing"),
-      package.scope,
-      package.package,
-      package.version
-    );
+  Ok(authorizations)
+}
 
-    let url = format!(
-      "{}scopes/{}/packages/{}/versions/{}",
-      registry_url, package.scope, package.package, package.version
-    );
+/// Check if both `scope` and `package` already exist, if not return
+/// a URL to the management panel to create them.
+async fn check_if_scope_and_package_exist(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  registry_manage_url: &str,
+  scope: &str,
+  package: &str,
+) -> Result<Option<String>, AnyError> {
+  let mut needs_scope = false;
+  let mut needs_package = false;
 
-    let response = client
-      .post(url)
-      .header(AUTHORIZATION, &*authorization)
-      .header(CONTENT_ENCODING, "gzip")
-      .body(package.tarball)
-      .send()
+  let response = api::get_scope(client, registry_api_url, scope).await?;
+  if response.status() == 404 {
+    needs_scope = true;
+  }
+
+  let response =
+    api::get_package(client, registry_api_url, scope, package).await?;
+  if response.status() == 404 {
+    needs_package = true;
+  }
+
+  if needs_scope || needs_package {
+    let create_url = format!(
+      "{}new?scope={}&package={}&from=cli",
+      registry_manage_url, scope, package
+    );
+    return Ok(Some(create_url));
+  }
+
+  Ok(None)
+}
+
+async fn ensure_scopes_and_packages_exist(
+  client: &reqwest::Client,
+  registry_api_url: String,
+  registry_manage_url: String,
+  packages: Vec<Rc<PreparedPublishPackage>>,
+) -> Result<(), AnyError> {
+  if !std::io::stdin().is_terminal() {
+    let mut missing_packages_lines = vec![];
+    for package in packages {
+      let maybe_create_package_url = check_if_scope_and_package_exist(
+        client,
+        &registry_api_url,
+        &registry_manage_url,
+        &package.scope,
+        &package.package,
+      )
       .await?;
 
-    let res = parse_response::<PublishingTask>(response).await;
-    let mut task = match res {
-      Ok(task) => task,
-      Err(mut err) if err.code == "duplicateVersionPublish" => {
-        let task = serde_json::from_value::<PublishingTask>(
-          err.data.get_mut("task").unwrap().take(),
-        )
-        .unwrap();
-        if task.status == "success" {
-          println!(
-            "{} @{}/{}@{}",
-            colors::green("Skipping, already published"),
-            package.scope,
-            package.package,
-            package.version
-          );
-          continue;
-        }
-        println!(
-          "{} @{}/{}@{}",
-          colors::yellow("Already uploaded, waiting for publishing"),
-          package.scope,
-          package.package,
-          package.version
-        );
-        task
+      if let Some(create_package_url) = maybe_create_package_url {
+        missing_packages_lines.push(format!(" - {}", create_package_url));
       }
-      Err(err) => {
-        return Err(err).with_context(|| {
-          format!(
-            "Failed to publish @{}/{} at {}",
-            package.scope, package.package, package.version
-          )
-        })
-      }
-    };
-
-    let interval = std::time::Duration::from_secs(2);
-    while task.status != "success" && task.status != "failure" {
-      tokio::time::sleep(interval).await;
-      let resp = client
-        .get(format!("{}publish_status/{}", registry_url, task.id))
-        .send()
-        .await
-        .with_context(|| {
-          format!(
-            "Failed to get publishing status for @{}/{} at {}",
-            package.scope, package.package, package.version
-          )
-        })?;
-      task =
-        parse_response::<PublishingTask>(resp)
-          .await
-          .with_context(|| {
-            format!(
-              "Failed to get publishing status for @{}/{} at {}",
-              package.scope, package.package, package.version
-            )
-          })?;
     }
 
-    if let Some(error) = task.error {
+    if !missing_packages_lines.is_empty() {
       bail!(
-        "{} @{}/{} at {}: {}",
-        colors::red("Failed to publish"),
-        package.scope,
-        package.package,
-        package.version,
-        error.message
+        "Following packages don't exist, follow the links and create them:\n{}",
+        missing_packages_lines.join("\n")
       );
     }
+    return Ok(());
+  }
 
+  for package in packages {
+    let maybe_create_package_url = check_if_scope_and_package_exist(
+      client,
+      &registry_api_url,
+      &registry_manage_url,
+      &package.scope,
+      &package.package,
+    )
+    .await?;
+
+    let Some(create_package_url) = maybe_create_package_url else {
+      continue;
+    };
+
+    ring_bell();
     println!(
-      "{} @{}/{}@{}",
-      colors::green("Successfully published"),
-      package.scope,
-      package.package,
-      package.version
+      "'@{}/{}' doesn't exist yet. Visit {} to create the package",
+      &package.scope,
+      &package.package,
+      colors::cyan_with_underline(create_package_url)
     );
-    println!(
-      "{}/@{}/{}/{}_meta.json",
-      registry_url, package.scope, package.package, package.version
+    println!("{}", colors::gray("Waiting..."));
+
+    let package_api_url = api::get_package_api_url(
+      &registry_api_url,
+      &package.scope,
+      &package.package,
     );
+
+    loop {
+      tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+      let response = client.get(&package_api_url).send().await?;
+      if response.status() == 200 {
+        let name = format!("@{}/{}", package.scope, package.package);
+        println!("Package {} created", colors::green(name));
+        break;
+      }
+    }
   }
 
   Ok(())
 }
 
-fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
-  if std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true" {
-    let url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL");
-    let token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
-    match (url, token) {
-      (Ok(url), Ok(token)) => Some(Ok((url, token))),
-      (Err(_), Err(_)) => Some(Err(anyhow::anyhow!(
-        "No means to authenticate. Pass a token to `--token`, or enable tokenless publishing from GitHub Actions using OIDC. Learn more at https://deno.co/ghoidc"
-      ))),
-      _ => None,
+async fn perform_publish(
+  http_client: &Arc<HttpClient>,
+  mut publish_order_graph: PublishOrderGraph,
+  mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
+  auth_method: AuthMethod,
+) -> Result<(), AnyError> {
+  let client = http_client.client()?;
+  let registry_api_url = deno_registry_api_url().to_string();
+  let registry_url = deno_registry_url().to_string();
+
+  let packages = prepared_package_by_name
+    .values()
+    .cloned()
+    .collect::<Vec<_>>();
+  let diagnostics = packages
+    .iter()
+    .flat_map(|p| p.diagnostics.clone())
+    .collect::<Vec<_>>();
+  print_diagnostics(diagnostics);
+
+  ensure_scopes_and_packages_exist(
+    client,
+    registry_api_url.clone(),
+    registry_url.clone(),
+    packages.clone(),
+  )
+  .await?;
+
+  let mut authorizations =
+    get_auth_headers(client, registry_api_url.clone(), packages, auth_method)
+      .await?;
+
+  assert_eq!(prepared_package_by_name.len(), authorizations.len());
+  let mut futures: JoinSet<Result<String, AnyError>> = JoinSet::default();
+  loop {
+    let next_batch = publish_order_graph.next();
+
+    for package_name in next_batch {
+      let package = prepared_package_by_name.remove(&package_name).unwrap();
+      let authorization = authorizations
+        .remove(&(
+          package.scope.clone(),
+          package.package.clone(),
+          package.version.clone(),
+        ))
+        .unwrap();
+      let registry_api_url = registry_api_url.clone();
+      let registry_url = registry_url.clone();
+      let http_client = http_client.clone();
+      futures.spawn(async move {
+        let display_name =
+          format!("@{}/{}@{}", package.scope, package.package, package.version);
+        publish_package(
+          &http_client,
+          package,
+          &registry_api_url,
+          &registry_url,
+          &authorization,
+        )
+        .await
+        .with_context(|| format!("Failed to publish {}", display_name))?;
+        Ok(package_name)
+      });
     }
-  } else {
-    None
+
+    let Some(result) = futures.join_next().await else {
+      // done, ensure no circular dependency
+      publish_order_graph.ensure_no_pending()?;
+      break;
+    };
+
+    let package_name = result??;
+    publish_order_graph.finish_package(&package_name);
   }
+
+  Ok(())
+}
+
+async fn publish_package(
+  http_client: &HttpClient,
+  package: Rc<PreparedPublishPackage>,
+  registry_api_url: &str,
+  registry_url: &str,
+  authorization: &str,
+) -> Result<(), AnyError> {
+  let client = http_client.client()?;
+  println!(
+    "{} @{}/{}@{} ...",
+    colors::intense_blue("Publishing"),
+    package.scope,
+    package.package,
+    package.version
+  );
+
+  let url = format!(
+    "{}scopes/{}/packages/{}/versions/{}",
+    registry_api_url, package.scope, package.package, package.version
+  );
+
+  let response = client
+    .post(url)
+    .header(AUTHORIZATION, authorization)
+    .header(CONTENT_ENCODING, "gzip")
+    .body(package.tarball.clone())
+    .send()
+    .await?;
+
+  let res = api::parse_response::<api::PublishingTask>(response).await;
+  let mut task = match res {
+    Ok(task) => task,
+    Err(mut err) if err.code == "duplicateVersionPublish" => {
+      let task = serde_json::from_value::<api::PublishingTask>(
+        err.data.get_mut("task").unwrap().take(),
+      )
+      .unwrap();
+      if task.status == "success" {
+        println!(
+          "{} @{}/{}@{}",
+          colors::green("Skipping, already published"),
+          package.scope,
+          package.package,
+          package.version
+        );
+        return Ok(());
+      }
+      println!(
+        "{} @{}/{}@{}",
+        colors::yellow("Already uploaded, waiting for publishing"),
+        package.scope,
+        package.package,
+        package.version
+      );
+      task
+    }
+    Err(err) => {
+      return Err(err).with_context(|| {
+        format!(
+          "Failed to publish @{}/{} at {}",
+          package.scope, package.package, package.version
+        )
+      })
+    }
+  };
+
+  let interval = std::time::Duration::from_secs(2);
+  while task.status != "success" && task.status != "failure" {
+    tokio::time::sleep(interval).await;
+    let resp = client
+      .get(format!("{}publish_status/{}", registry_api_url, task.id))
+      .send()
+      .await
+      .with_context(|| {
+        format!(
+          "Failed to get publishing status for @{}/{} at {}",
+          package.scope, package.package, package.version
+        )
+      })?;
+    task = api::parse_response::<api::PublishingTask>(resp)
+      .await
+      .with_context(|| {
+        format!(
+          "Failed to get publishing status for @{}/{} at {}",
+          package.scope, package.package, package.version
+        )
+      })?;
+  }
+
+  if let Some(error) = task.error {
+    bail!(
+      "{} @{}/{} at {}: {}",
+      colors::red("Failed to publish"),
+      package.scope,
+      package.package,
+      package.version,
+      error.message
+    );
+  }
+
+  println!(
+    "{} @{}/{}@{}",
+    colors::green("Successfully published"),
+    package.scope,
+    package.package,
+    package.version
+  );
+  println!(
+    "{}",
+    colors::gray(format!(
+      "Visit {}@{}/{}@{} for details",
+      registry_url, package.scope, package.package, package.version
+    ))
+  );
+  Ok(())
+}
+
+async fn prepare_packages_for_publishing(
+  cli_factory: &CliFactory,
+  deno_json: ConfigFile,
+  import_map: Arc<ImportMap>,
+) -> Result<
+  (
+    PublishOrderGraph,
+    HashMap<String, Rc<PreparedPublishPackage>>,
+  ),
+  AnyError,
+> {
+  let maybe_workspace_config = deno_json.to_workspace_config()?;
+
+  let Some(workspace_config) = maybe_workspace_config else {
+    let mut prepared_package_by_name = HashMap::with_capacity(1);
+    let package = prepare_publish(&deno_json, import_map).await?;
+    let package_name = package.package.clone();
+    let publish_order_graph =
+      PublishOrderGraph::new_single(package_name.clone());
+    prepared_package_by_name.insert(package_name, package);
+    return Ok((publish_order_graph, prepared_package_by_name));
+  };
+
+  println!("Publishing a workspace...");
+  let mut prepared_package_by_name =
+    HashMap::with_capacity(workspace_config.members.len());
+  let publish_order_graph = publish_order::build_publish_graph(
+    &workspace_config,
+    cli_factory.module_graph_builder().await?.as_ref(),
+  )
+  .await?;
+
+  let results =
+    workspace_config
+      .members
+      .iter()
+      .cloned()
+      .map(|member| {
+        let import_map = import_map.clone();
+        deno_core::unsync::spawn(async move {
+          let package = prepare_publish(&member.config_file, import_map)
+            .await
+            .with_context(|| {
+              format!("Failed preparing '{}'.", member.package_name)
+            })?;
+          Ok((member.package_name, package))
+        })
+      })
+      .collect::<Vec<
+        JoinHandle<Result<(String, Rc<PreparedPublishPackage>), AnyError>>,
+      >>();
+  let results = deno_core::futures::future::join_all(results).await;
+  for result in results {
+    let (package_name, package) = result??;
+    prepared_package_by_name.insert(package_name, package);
+  }
+  Ok((publish_order_graph, prepared_package_by_name))
 }
 
 pub async fn publish(
@@ -502,17 +707,7 @@ pub async fn publish(
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags).await?;
 
-  let auth_method = match publish_flags.token {
-    Some(token) => AuthMethod::Token(token),
-    None => match get_gh_oidc_env_vars() {
-      Some(Ok((url, token))) => AuthMethod::Oidc(OidcConfig { url, token }),
-      Some(Err(err)) => return Err(err),
-      None if std::io::stdin().is_terminal() => AuthMethod::Interactive,
-      None => {
-        bail!("No means to authenticate. Pass a token to `--token`.")
-      }
-    },
-  };
+  let auth_method = get_auth_method(publish_flags.token)?;
 
   let import_map = cli_factory
     .maybe_import_map()
@@ -535,25 +730,19 @@ pub async fn publish(
     )
   })?;
 
-  let mut packages =
-    Vec::with_capacity(std::cmp::max(1, deno_json.json.workspaces.len()));
+  let (publish_order_graph, prepared_package_by_name) =
+    prepare_packages_for_publishing(&cli_factory, deno_json, import_map)
+      .await?;
 
-  let members = &deno_json.json.workspaces;
-  if members.is_empty() {
-    packages
-      .push(prepare_publish(&initial_cwd, directory_path, &import_map).await?);
-  } else {
-    println!("Publishing a workspace...");
-    for member in members {
-      let member_dir = directory_path.join(member);
-      packages
-        .push(prepare_publish(&initial_cwd, member_dir, &import_map).await?);
-    }
-  }
-
-  if packages.is_empty() {
+  if prepared_package_by_name.is_empty() {
     bail!("No packages to publish");
   }
 
-  perform_publish(cli_factory.http_client(), packages, auth_method).await
+  perform_publish(
+    cli_factory.http_client(),
+    publish_order_graph,
+    prepared_package_by_name,
+    auth_method,
+  )
+  .await
 }

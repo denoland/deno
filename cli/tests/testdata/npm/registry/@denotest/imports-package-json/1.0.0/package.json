@@ -11,6 +11,11 @@
     "./sub-path-import-not-defined": "./sub_path/import_not_defined.js"
   },
   "imports": {
-    "#hi": "./hi.js"
+    "#hi": "./hi.js",
+    "#fs": "fs",
+    "#path": "node:path",
+    "#fs2": {
+      "node": "fs"
+    }
   }
 }
