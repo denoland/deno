@@ -31,6 +31,14 @@ import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
+const {
+  op_node_dh_generate_async,
+  op_node_dh_generate_group_async,
+  op_node_dsa_generate_async,
+  op_node_ec_generate_async,
+  op_node_generate_rsa_async,
+  op_node_generate_secret_async,
+} = core.ensureFastOps();
 
 function validateGenerateKey(
   type: "hmac" | "aes",
@@ -81,7 +89,7 @@ export function generateKey(
   validateFunction(callback, "callback");
   const { length } = options;
 
-  core.opAsync("op_node_generate_secret_async", Math.floor(length / 8)).then(
+  op_node_generate_secret_async(Math.floor(length / 8)).then(
     (key) => {
       callback(null, new SecretKeyObject(setOwnedKey(key)));
     },
@@ -799,8 +807,7 @@ function createJob(mode, type, options) {
             publicExponent,
           );
         } else {
-          return core.opAsync(
-            "op_node_generate_rsa_async",
+          return op_node_generate_rsa_async(
             modulusLength,
             publicExponent,
           );
@@ -855,8 +862,7 @@ function createJob(mode, type, options) {
           publicExponent,
         );
       } else {
-        return core.opAsync(
-          "op_node_generate_rsa_async",
+        return op_node_generate_rsa_async(
           modulusLength,
           publicExponent,
         );
@@ -877,8 +883,7 @@ function createJob(mode, type, options) {
       if (mode === kSync) {
         return ops.op_node_dsa_generate(modulusLength, divisorLength);
       }
-      return core.opAsync(
-        "op_node_dsa_generate_async",
+      return op_node_dsa_generate_async(
         modulusLength,
         divisorLength,
       );
@@ -900,7 +905,7 @@ function createJob(mode, type, options) {
       if (mode === kSync) {
         return ops.op_node_ec_generate(namedCurve);
       } else {
-        return core.opAsync("op_node_ec_generate_async", namedCurve);
+        return op_node_ec_generate_async(namedCurve);
       }
     }
     case "ed25519": {
@@ -939,7 +944,7 @@ function createJob(mode, type, options) {
         if (mode === kSync) {
           return ops.op_node_dh_generate_group(group);
         } else {
-          return core.opAsync("op_node_dh_generate_group_async", group);
+          return op_node_dh_generate_group_async(group);
         }
       }
 
@@ -966,8 +971,7 @@ function createJob(mode, type, options) {
       if (mode === kSync) {
         return ops.op_node_dh_generate(prime, primeLength ?? 0, g);
       } else {
-        return core.opAsync(
-          "op_node_dh_generate_async",
+        return op_node_dh_generate_async(
           prime,
           primeLength ?? 0,
           g,

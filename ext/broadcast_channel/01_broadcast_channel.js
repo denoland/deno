@@ -14,6 +14,10 @@ import {
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
+  op_broadcast_recv,
+  op_broadcast_send,
+} = core.ensureFastOps();
+const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSplice,
@@ -32,7 +36,7 @@ let rid = null;
 
 async function recv() {
   while (channels.length > 0) {
-    const message = await core.opAsync("op_broadcast_recv", rid);
+    const message = await op_broadcast_recv(rid);
 
     if (message === null) {
       break;
@@ -126,7 +130,7 @@ class BroadcastChannel extends EventTarget {
     // Send to listeners in other VMs.
     defer(() => {
       if (!this[_closed]) {
-        core.opAsync("op_broadcast_send", rid, this[_name], data);
+        op_broadcast_send(rid, this[_name], data);
       }
     });
   }
