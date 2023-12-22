@@ -29,11 +29,13 @@ use sha2::Digest;
 
 use crate::args::deno_registry_api_url;
 use crate::args::deno_registry_url;
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::http_util::HttpClient;
+use crate::tools::check::CheckOptions;
 use crate::tools::registry::graph::get_workspace_member_roots;
 use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
 use crate::tools::registry::graph::surface_low_res_type_graph_errors;
@@ -48,6 +50,8 @@ mod tar;
 use auth::get_auth_method;
 use auth::AuthMethod;
 use publish_order::PublishOrderGraph;
+
+use super::check::TypeChecker;
 
 fn ring_bell() {
   // ASCII code for the bell character.
@@ -649,10 +653,18 @@ async fn prepare_packages_for_publishing(
 > {
   let maybe_workspace_config = deno_json.to_workspace_config()?;
   let module_graph_builder = cli_factory.module_graph_builder().await?.as_ref();
+  let type_checker = cli_factory.type_checker().await?;
+  let cli_options = cli_factory.cli_options();
 
   let Some(workspace_config) = maybe_workspace_config else {
     let roots = resolve_config_file_roots_from_exports(&deno_json)?;
-    build_and_check_graph_for_publish(module_graph_builder, roots).await?;
+    build_and_check_graph_for_publish(
+      module_graph_builder,
+      type_checker,
+      cli_options,
+      roots,
+    )
+    .await?;
     panic!("TEMP STOP - SUCCESS");
     let mut prepared_package_by_name = HashMap::with_capacity(1);
     let package = prepare_publish(&deno_json, import_map).await?;
@@ -668,6 +680,8 @@ async fn prepare_packages_for_publishing(
   let roots = get_workspace_member_roots(&workspace_config)?;
   let graph = build_and_check_graph_for_publish(
     module_graph_builder,
+    type_checker,
+    cli_options,
     roots
       .iter()
       .flat_map(|r| r.exports.iter())
@@ -711,13 +725,29 @@ async fn prepare_packages_for_publishing(
 
 async fn build_and_check_graph_for_publish(
   module_graph_builder: &ModuleGraphBuilder,
+  type_checker: &TypeChecker,
+  cli_options: &CliOptions,
   roots: Vec<ModuleSpecifier>,
-) -> Result<deno_graph::ModuleGraph, deno_core::anyhow::Error> {
-  let graph = module_graph_builder
-    .create_graph(deno_graph::GraphKind::All, roots)
-    .await?;
+) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
+  let graph = Arc::new(
+    module_graph_builder
+      .create_graph(deno_graph::GraphKind::All, roots)
+      .await?,
+  );
   graph.valid()?;
+  log::info!("Checking low res type graph for errors...");
   surface_low_res_type_graph_errors(&graph)?;
+  log::info!("Ensuring low res type checks...");
+  type_checker
+    .check(
+      graph.clone(),
+      CheckOptions {
+        lib: cli_options.ts_type_lib_window(),
+        log_ignored_options: false,
+        reload: cli_options.reload_flag(),
+      },
+    )
+    .await?;
   Ok(graph)
 }
 
