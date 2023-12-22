@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use base64::Engine;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -28,8 +29,13 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fmt::Write as _;
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
@@ -177,6 +183,12 @@ pub struct StateSnapshot {
   pub npm: Option<StateNpmSnapshot>,
 }
 
+type OutsideLockTaskFn = Box<
+  dyn (FnOnce(LanguageServer) -> Pin<Box<dyn Future<Output = ()>>>)
+    + Send
+    + Sync,
+>;
+
 #[derive(Debug)]
 pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
@@ -217,6 +229,9 @@ pub struct Inner {
   maybe_testing_server: Option<testing::TestServer>,
   /// Services used for dealing with npm related functionality.
   npm: LspNpmServices,
+  /// This is moved out to its own task after initializing.
+  outside_lock_task_rx: Option<UnboundedReceiver<OutsideLockTaskFn>>,
+  outside_lock_task_tx: UnboundedSender<OutsideLockTaskFn>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -484,6 +499,7 @@ impl Inner {
       diagnostics_state.clone(),
     );
     let assets = Assets::new(ts_server.clone());
+    let (outside_lock_task_tx, outside_lock_task_rx) = unbounded_channel();
 
     Self {
       assets,
@@ -510,6 +526,8 @@ impl Inner {
         node_resolver: None,
         resolver: None,
       },
+      outside_lock_task_rx: Some(outside_lock_task_rx),
+      outside_lock_task_tx,
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -1023,6 +1041,44 @@ impl Inner {
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
       self.recreate_http_client_and_dependents().await?;
+      if let Some(config_file) = self.config.maybe_config_file() {
+        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
+          if let Some(compiler_options_obj) = compiler_options.as_object() {
+            if let Some(jsx_import_source) =
+              compiler_options_obj.get("jsxImportSource")
+            {
+              if let Some(jsx_import_source) = jsx_import_source.as_str() {
+                let cache_params = lsp_custom::CacheParams {
+                  referrer: TextDocumentIdentifier {
+                    uri: config_file.specifier.clone(),
+                  },
+                  uris: vec![TextDocumentIdentifier {
+                    uri: Url::parse(&format!(
+                      "data:application/typescript;base64,{}",
+                      base64::engine::general_purpose::STANDARD.encode(
+                        format!("import '{jsx_import_source}/jsx-runtime';")
+                      )
+                    ))
+                    .unwrap(),
+                  }],
+                };
+                self
+                  .outside_lock_task_tx
+                  .send(Box::new(|ls: LanguageServer| {
+                    Box::pin(async move {
+                      if let Err(err) =
+                        ls.cache_request(Some(json!(cache_params))).await
+                      {
+                        lsp_warn!("{}", err);
+                      }
+                    })
+                  }))
+                  .unwrap();
+              }
+            }
+          }
+        }
+      }
     }
 
     Ok(())
@@ -3245,7 +3301,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     self.refresh_configuration().await;
 
-    {
+    let mut outside_lock_task_rx = {
       let mut ls = self.0.write().await;
       init_log_file(ls.config.log_file());
       if let Err(err) = ls.update_tsconfig().await {
@@ -3254,9 +3310,15 @@ impl tower_lsp::LanguageServer for LanguageServer {
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
-    }
+      ls.outside_lock_task_rx.take().unwrap()
+    };
 
-    lsp_log!("Server ready.");
+    let ls = self.clone();
+    spawn(async move {
+      while let Some(task_fn) = outside_lock_task_rx.recv().await {
+        task_fn(ls.clone()).await;
+      }
+    });
 
     if upgrade_check_enabled() {
       // spawn to avoid lsp send/sync requirement, but also just
@@ -3279,6 +3341,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
         }
       });
     }
+
+    lsp_log!("Server ready.");
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -3591,10 +3655,6 @@ impl Inner {
     let referrer = self
       .url_map
       .normalize_url(&params.referrer.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&referrer) {
-      return Ok(None);
-    }
-
     let mark = self.performance.mark_with_args("lsp.cache", &params);
     let roots = if !params.uris.is_empty() {
       params
