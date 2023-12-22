@@ -492,7 +492,8 @@ fn op_load(
             .low_res_module()
             .map(|m| &*m.source)
             .unwrap_or(&*module.source);
-          eprintln!("SOURCE: {}", source);
+          eprintln!("SPECIFIER: {}", module.specifier);
+          eprintln!("HAS LOW RES: {}", module.low_res_module().is_some());
           Some(Cow::Borrowed(source))
         }
         Module::Json(module) => {
@@ -593,7 +594,7 @@ fn op_resolve(
     let resolved_dep = graph
       .get(&referrer)
       .and_then(|m| m.esm())
-      .and_then(|m| m.dependencies.get(&specifier))
+      .and_then(|m| m.dependencies_prefer_low_res().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
     let maybe_result = match resolved_dep {

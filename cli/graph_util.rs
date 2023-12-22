@@ -812,7 +812,7 @@ fn config_to_workspace_member(
     },
   };
   Ok(deno_graph::WorkspaceMember {
-    base: config.specifier.clone(),
+    base: config.specifier.join("./").unwrap(),
     nv,
     exports: config.to_exports_config()?.into_map(),
   })
