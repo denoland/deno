@@ -345,7 +345,6 @@ async fn server(
             if let Err(err) = result {
               eprintln!("Failed to serve connection: {:?}", err);
             }
-            return;
           },
           _ = &mut shutdown_rx => {
             conn.as_mut().graceful_shutdown();
