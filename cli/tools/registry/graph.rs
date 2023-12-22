@@ -63,6 +63,7 @@ pub fn surface_low_res_type_graph_errors(
   graph: &ModuleGraph,
 ) -> Result<(), AnyError> {
   let mut diagnostic_count = 0;
+  let mut seen_diagnostics = HashSet::new();
   for module in graph.modules() {
     if module.specifier().scheme() != "file" {
       continue;
@@ -71,8 +72,14 @@ pub fn surface_low_res_type_graph_errors(
       continue;
     };
     if let Some(diagnostic) = module.low_res_diagnostic() {
-      log::error!("{}", diagnostic.message_with_range());
-      diagnostic_count += diagnostic.count();
+      for diagnostic in diagnostic.flatten_multiple() {
+        let message = diagnostic.message_with_range();
+        if !seen_diagnostics.insert(message.clone()) {
+          continue;
+        }
+        log::error!("{}", message);
+        diagnostic_count += 1;
+      }
     }
   }
   if diagnostic_count > 0 {
