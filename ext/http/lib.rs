@@ -52,7 +52,7 @@ use hyper::Body;
 use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
-use hyper_util_tokioio::TokioIo;
+use hyper_util::rt::TokioIo;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -80,7 +80,6 @@ use crate::reader_stream::ShutdownHandle;
 pub mod compressible;
 mod fly_accept_encoding;
 mod http_next;
-mod hyper_util_tokioio;
 mod network_buffered_stream;
 mod reader_stream;
 mod request_body;
@@ -221,10 +220,11 @@ impl HttpConnResource {
       let request = request_rx.await.ok()?;
 
       let accept_encoding = {
-        let encodings = fly_accept_encoding::encodings_iter(request.headers())
-          .filter(|r| {
-            matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
-          });
+        let encodings =
+          fly_accept_encoding::encodings_iter_http_02(request.headers())
+            .filter(|r| {
+              matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
+            });
 
         fly_accept_encoding::preferred(encodings)
           .ok()
