@@ -198,7 +198,7 @@ Deno.test(function objectGroupBy() {
 
 Deno.test(function objectGroupByEmpty() {
   const empty: string[] = [];
-  const result = Object.groupBy(empty, () => 'abc');
+  const result = Object.groupBy(empty, () => "abc");
   assertEquals(result.abc, undefined);
 });
 
