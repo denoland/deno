@@ -154,7 +154,25 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   };
 
   if let Some(html_options) = doc_flags.html {
-    generate_docs_directory(&doc_nodes_by_url, html_options)
+    let deno_ns = if doc_flags.source_files != DocSourceFileFlag::Builtin {
+      let deno_ns = generate_doc_nodes_for_builtin_types(
+        doc_flags.clone(),
+        cli_options,
+        capturing_parser,
+        &analyzer,
+      )
+      .await?;
+      let (_, deno_ns) = deno_ns.first().unwrap();
+
+      let deno_ns_symbols =
+        deno_doc::html::compute_namespaced_symbols(deno_ns, &[]);
+
+      Some(deno_ns_symbols)
+    } else {
+      None
+    };
+
+    generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
       .boxed_local()
       .await
   } else {
@@ -181,6 +199,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 async fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: DocHtmlFlag,
+  deno_ns: Option<std::collections::HashSet<Vec<String>>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
@@ -188,9 +207,22 @@ async fn generate_docs_directory(
   let options = deno_doc::html::GenerateOptions {
     package_name: Some(html_options.name),
     main_entrypoint: None,
-    global_symbols: Default::default(),
-    global_symbol_href_resolver: Rc::new(|_, _| String::new()),
+    global_symbols: deno_ns
+      .into_iter()
+      .map(|symbol| (symbol, "deno".to_string()))
+      .collect(),
+    global_symbol_href_resolver: Rc::new(|symbol, _context| {
+      format!(
+        "https://deno.land/api@{}?s={}",
+        env!("CARGO_PKG_VERSION"),
+        symbol.join(".")
+      )
+    }),
+    import_href_resolver: Rc::new(|_symbol, _src| None),
+    usage_resolver: Rc::new(|_specifier, file| file.to_string()),
     url_resolver: Rc::new(deno_doc::html::default_url_resolver),
+    rewrite_map: None,
+    hide_module_doc_title: false,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
