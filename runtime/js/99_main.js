@@ -5,7 +5,6 @@ delete Intl.v8BreakIterator;
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-const { op_worker_recv_message } = core.ensureFastOps();
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -142,6 +141,8 @@ let isClosing = false;
 let globalDispatchEvent;
 
 async function pollForMessages() {
+  const { op_worker_recv_message } = core.ensureFastOps();
+
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
       globalThis.dispatchEvent,
