@@ -32,9 +32,11 @@ deno_net.workspace = true
 deno_websocket.workspace = true
 flate2.workspace = true
 http.workspace = true
+http_1 = { package = "http", version = "=1.0.0" }
 httparse.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-hyper1 = { package = "hyper", features = ["full"], version = "=1.0.0-rc.4" }
+hyper-util = { version = "=0.1.2", features = ["tokio"] }
+hyper1 = { package = "hyper", features = ["full"], version = "=1.1.0" }
 itertools = "0.10"
 memmem.workspace = true
 mime = "0.3.16"
@@ -52,5 +54,5 @@ tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
 bencher.workspace = true
-http-body-util = "=0.1.0-rc.3"
+http-body-util = "0.1"
 rand.workspace = true
