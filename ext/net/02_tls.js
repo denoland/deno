@@ -7,6 +7,7 @@ const { Number, TypeError } = primordials;
 const {
   op_tls_handshake,
   op_tls_start,
+  op_net_accept_tls,
 } = core.ensureFastOps();
 
 function opStartTls(args) {

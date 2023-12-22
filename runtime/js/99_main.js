@@ -5,6 +5,7 @@ delete Intl.v8BreakIterator;
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
+const { op_worker_recv_message } = core.ensureFastOps();
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -148,7 +149,7 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await core.opAsync("op_worker_recv_message");
+    const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];

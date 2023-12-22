@@ -22,6 +22,10 @@ const {
   op_net_send_unixpacket,
   op_net_set_multi_loopback_udp,
   op_net_set_multi_ttl_udp,
+  op_net_join_multi_v4_udp,
+  op_net_join_multi_v6_udp,
+  op_net_leave_multi_v4_udp,
+  op_net_leave_multi_v6_udp,
 } = core.ensureFastOps();
 
 const {
@@ -307,8 +311,7 @@ class Datagram {
   }
 
   async joinMulticastV4(addr, multiInterface) {
-    await core.opAsync(
-      "op_net_join_multi_v4_udp",
+    await op_net_join_multi_v4_udp(
       this.rid,
       addr,
       multiInterface,
@@ -316,8 +319,7 @@ class Datagram {
 
     return {
       leave: () =>
-        core.opAsync(
-          "op_net_leave_multi_v4_udp",
+        op_net_leave_multi_v4_udp(
           this.rid,
           addr,
           multiInterface,
@@ -337,8 +339,7 @@ class Datagram {
   }
 
   async joinMulticastV6(addr, multiInterface) {
-    await core.opAsync(
-      "op_net_join_multi_v6_udp",
+    await op_net_join_multi_v6_udp(
       this.rid,
       addr,
       multiInterface,
@@ -346,8 +347,7 @@ class Datagram {
 
     return {
       leave: () =>
-        core.opAsync(
-          "op_net_leave_multi_v6_udp",
+        op_net_leave_multi_v6_udp(
           this.rid,
           addr,
           multiInterface,
