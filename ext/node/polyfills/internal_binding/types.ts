@@ -27,9 +27,6 @@
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
 
-// https://tc39.es/ecma262/#sec-object.prototype.tostring
-const _toString = Object.prototype.toString;
-
 // https://tc39.es/ecma262/#sec-bigint.prototype.valueof
 const _bigIntValueOf = BigInt.prototype.valueOf;
 
@@ -94,11 +91,7 @@ export function isAnyArrayBuffer(
 }
 
 export function isArgumentsObject(value: unknown): value is IArguments {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === undefined &&
-    _toString.call(value) === "[object Arguments]"
-  );
+  return ops.op_is_arguments_object(value);
 }
 
 export function isArrayBuffer(value: unknown): value is ArrayBuffer {
@@ -113,11 +106,7 @@ export function isArrayBuffer(value: unknown): value is ArrayBuffer {
 export function isAsyncFunction(
   value: unknown,
 ): value is (...args: unknown[]) => Promise<unknown> {
-  return (
-    typeof value === "function" &&
-    // @ts-ignore: function is a kind of object
-    value[Symbol.toStringTag] === "AsyncFunction"
-  );
+  return ops.op_is_async_function(value);
 }
 
 // deno-lint-ignore ban-types
@@ -166,18 +155,11 @@ export function isDate(value: unknown): value is Date {
 export function isGeneratorFunction(
   value: unknown,
 ): value is GeneratorFunction {
-  return (
-    typeof value === "function" &&
-    // @ts-ignore: function is a kind of object
-    value[Symbol.toStringTag] === "GeneratorFunction"
-  );
+  return ops.op_is_generator_function(value);
 }
 
 export function isGeneratorObject(value: unknown): value is Generator {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Generator"
-  );
+  return ops.op_is_generator_object(value);
 }
 
 export function isMap(value: unknown): value is Map<unknown, unknown> {
@@ -192,27 +174,17 @@ export function isMap(value: unknown): value is Map<unknown, unknown> {
 export function isMapIterator(
   value: unknown,
 ): value is IterableIterator<[unknown, unknown]> {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Map Iterator"
-  );
+  return ops.op_is_map_iterator(value);
 }
 
 export function isModuleNamespaceObject(
   value: unknown,
 ): value is Record<string | number | symbol, unknown> {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Module"
-  );
+  return ops.op_is_module_namespace_object(value);
 }
 
 export function isNativeError(value: unknown): value is Error {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === undefined &&
-    _toString.call(value) === "[object Error]"
-  );
+  return ops.op_is_native_error(value);
 }
 
 // deno-lint-ignore ban-types
@@ -243,10 +215,7 @@ export function isBigIntObject(value: unknown): value is bigint {
 }
 
 export function isPromise(value: unknown): value is Promise<unknown> {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Promise"
-  );
+  return ops.op_is_promise(value);
 }
 
 export function isProxy(
@@ -256,11 +225,7 @@ export function isProxy(
 }
 
 export function isRegExp(value: unknown): value is RegExp {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === undefined &&
-    _toString.call(value) === "[object RegExp]"
-  );
+  return ops.op_is_reg_exp(value);
 }
 
 export function isSet(value: unknown): value is Set<unknown> {
@@ -275,10 +240,7 @@ export function isSet(value: unknown): value is Set<unknown> {
 export function isSetIterator(
   value: unknown,
 ): value is IterableIterator<unknown> {
-  return (
-    isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Set Iterator"
-  );
+  return ops.op_is_set_iterator(value);
 }
 
 export function isSharedArrayBuffer(

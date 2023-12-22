@@ -453,8 +453,10 @@ pub async fn cover_files(
 
   // Use the first include path as the default output path.
   let coverage_root = coverage_flags.files.include[0].clone();
-
   let script_coverages = collect_coverages(coverage_flags.files)?;
+  if script_coverages.is_empty() {
+    return Err(generic_error("No coverage files found"));
+  }
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,

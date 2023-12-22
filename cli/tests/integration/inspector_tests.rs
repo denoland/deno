@@ -1366,12 +1366,11 @@ async fn inspector_error_with_npm_import() {
     .send(json!({"id":4,"method":"Debugger.resume"}))
     .await;
   tester
-    .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
+    .assert_received_messages(
+      &[r#"{"id":4,"result":{}}"#],
+      &[r#"{"method":"Runtime.exceptionThrown","#],
+    )
     .await;
-
-  // TODO(bartlomieju): this is a partial fix, we should assert that
-  // "Runtime.exceptionThrown" notification was sent, but a bindings for this
-  // notification is not yet there
   assert_eq!(&tester.stderr_line(), "Debugger session started.");
   assert_eq!(&tester.stderr_line(), "error: Uncaught Error: boom!");
 

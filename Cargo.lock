@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.39.0"
+version = "1.39.1"
 dependencies = [
  "async-trait",
  "base32",
@@ -1060,7 +1060,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.122.0"
+version = "0.123.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.122.0"
+version = "0.123.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1080,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.60.0"
+version = "0.61.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1127,7 +1127,7 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.128.0"
+version = "0.129.0"
 dependencies = [
  "deno_core",
 ]
@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cron"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.142.0"
+version = "0.143.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1247,7 +1247,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.152.0"
+version = "0.153.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -1264,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.115.0"
+version = "0.116.0"
 dependencies = [
  "deno_core",
  "dlopen2",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1323,7 +1323,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.125.0"
+version = "0.126.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1341,7 +1341,7 @@ dependencies = [
  "http-body-util",
  "httparse",
  "hyper 0.14.27",
- "hyper 1.0.1",
+ "hyper 1.1.0",
  "hyper-util",
  "itertools",
  "memmem",
@@ -1362,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1375,7 +1375,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1447,7 +1447,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "deno_core",
  "libloading 0.7.4",
@@ -1468,7 +1468,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.120.0"
+version = "0.121.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1485,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.65.0"
+version = "0.66.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -1545,6 +1545,7 @@ dependencies = [
  "typenum",
  "url",
  "winapi",
+ "windows-sys 0.48.0",
  "x25519-dalek",
  "x509-parser",
 ]
@@ -1583,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "console_static_text",
  "deno_ast",
@@ -1621,7 +1622,7 @@ dependencies = [
  "http 1.0.0",
  "http-body-util",
  "hyper 0.14.27",
- "hyper 1.0.1",
+ "hyper 1.1.0",
  "hyper-util",
  "libc",
  "log",
@@ -1642,6 +1643,7 @@ dependencies = [
  "uuid",
  "which",
  "winapi",
+ "windows-sys 0.48.0",
  "winres",
 ]
 
@@ -1676,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.115.0"
+version = "0.116.0"
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -1708,7 +1710,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.128.0"
+version = "0.129.0"
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -1720,7 +1722,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.159.0"
+version = "0.160.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1741,7 +1743,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.95.0"
+version = "0.96.0"
 dependencies = [
  "deno_core",
  "raw-window-handle",
@@ -1754,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.128.0"
+version = "0.129.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1762,7 +1764,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.133.0"
+version = "0.134.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -1780,7 +1782,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.123.0"
+version = "0.124.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2364,7 +2366,7 @@ checksum = "f63dd7b57f9b33b1741fa631c9522eb35d43e96dcca4a6a91d5e4ca7c93acdc1"
 dependencies = [
  "base64 0.21.5",
  "http-body-util",
- "hyper 1.0.1",
+ "hyper 1.1.0",
  "hyper-util",
  "pin-project",
  "rand",
@@ -3051,9 +3053,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.0.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "403f9214f3e703236b221f1a9cd88ec8b4adfa5296de01ab96216361f4692f56"
+checksum = "fb5aa53871fc917b1a9ed87b683a5d86db645e23acb32c2e0785a353e522fb75"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -3085,21 +3087,19 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ca339002caeb0d159cc6e023dff48e199f081e42fa039895c7c6f38b37f2e9d"
+checksum = "bdea9aac0dbe5a9240d68cfd9501e2db94222c6dc06843e06640b9e07f0fdc67"
 dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
  "http 1.0.0",
  "http-body 1.0.0",
- "hyper 1.0.1",
+ "hyper 1.1.0",
  "pin-project-lite",
  "socket2 0.5.5",
  "tokio",
- "tower",
- "tower-service",
  "tracing",
 ]
 
@@ -3757,7 +3757,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6213,10 +6213,8 @@ dependencies = [
  "futures-util",
  "pin-project",
  "pin-project-lite",
- "tokio",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -6271,7 +6269,6 @@ version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
- "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",

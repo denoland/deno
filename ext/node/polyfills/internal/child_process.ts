@@ -45,7 +45,6 @@ import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 
 const core = globalThis.__bootstrap.core;
-const ops = core.ops;
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -297,6 +296,10 @@ export class ChildProcess extends EventEmitter {
         throw err;
       }
     }
+
+    /* Cancel any pending IPC I/O */
+    this.disconnect?.();
+
     this.killed = true;
     this.signalCode = denoSignal;
     return this.killed;
@@ -1069,9 +1072,7 @@ function toDenoArgs(args: string[]): string[] {
   return denoArgs;
 }
 
-export function setupChannel(target, channel) {
-  const ipc = ops.op_node_ipc_pipe(channel);
-
+export function setupChannel(target, ipc) {
   async function readLoop() {
     try {
       while (true) {
