@@ -665,7 +665,7 @@ async fn prepare_packages_for_publishing(
       roots,
     )
     .await?;
-    panic!("TEMP STOP - SUCCESS");
+    //panic!("TEMP STOP - SUCCESS");
     let mut prepared_package_by_name = HashMap::with_capacity(1);
     let package = prepare_publish(&deno_json, import_map).await?;
     let package_name = package.package.clone();

@@ -492,8 +492,9 @@ fn op_load(
             .low_res_module()
             .map(|m| &*m.source)
             .unwrap_or(&*module.source);
-          eprintln!("SPECIFIER: {}", module.specifier);
-          eprintln!("HAS LOW RES: {}", module.low_res_module().is_some());
+          // eprintln!("### {} ###", module.specifier);
+          // eprintln!("{}", source);
+          // eprintln!("HAS LOW RES: {}", module.low_res_module().is_some());
           Some(Cow::Borrowed(source))
         }
         Module::Json(module) => {
