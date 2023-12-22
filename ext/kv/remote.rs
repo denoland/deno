@@ -137,7 +137,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
         pool_max_idle_per_host: None,
         pool_idle_timeout: None,
-        http1: true,
+        http1: false,
         http2: true,
       },
     )?;
