@@ -30,15 +30,6 @@ const {
   TypeError,
 } = primordials;
 
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 class MessageChannel {
   /** @type {MessagePort} */
   #port1;
@@ -287,7 +278,7 @@ function serializeJsMessageData(data, transferables) {
     const hostObjects = [];
     for (let i = 0, j = 0; i < transferables.length; i++) {
       const t = transferables[i];
-      if (isArrayBuffer(t)) {
+      if (ops.op_is_array_buffer(t)) {
         if (
           ArrayBufferPrototypeGetByteLength(t) === 0 &&
           ops.op_arraybuffer_was_detached(t)
@@ -334,7 +325,7 @@ function serializeJsMessageData(data, transferables) {
         kind: "messagePort",
         data: id,
       });
-    } else if (isArrayBuffer(transferable)) {
+    } else if (ops.op_is_array_buffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
         kind: "arrayBuffer",
         data: transferredArrayBuffers[arrayBufferI],

@@ -18,8 +18,6 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
-  FunctionPrototypeCall,
-  ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
@@ -36,29 +34,6 @@ const {
   Uint32Array,
   Uint8Array,
 } = primordials;
-
-// https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
-let _getSharedArrayBufferByteLength;
-
-function getSharedArrayBufferByteLength(value) {
-  // TODO(kt3k): add SharedArrayBuffer to primordials
-  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
-    // deno-lint-ignore prefer-primordials
-    SharedArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
-  return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
-}
-
-function isSharedArrayBuffer(value) {
-  try {
-    getSharedArrayBufferByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 class TextDecoder {
   /** @type {string} */
@@ -150,7 +125,7 @@ class TextDecoder {
 
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
-      if (isSharedArrayBuffer(buffer)) {
+      if (ops.op_is_shared_array_buffer(buffer)) {
         // We clone the data into a non-shared ArrayBuffer so we can pass it
         // to Rust.
         // `input` is now a Uint8Array, and calling the TypedArray constructor

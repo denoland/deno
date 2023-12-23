@@ -33,15 +33,6 @@ const {
 } = primordials;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * @param {BufferSource} source
  * @returns {number}
@@ -233,7 +224,7 @@ class UnsafePointer {
       } else {
         pointer = ops.op_ffi_ptr_of(value);
       }
-    } else if (isArrayBuffer(value)) {
+    } else if (ops.op_is_array_buffer(value)) {
       if (value.length === 0) {
         pointer = ops.op_ffi_ptr_of_exact(new Uint8Array(value));
       } else {

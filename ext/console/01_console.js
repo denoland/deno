@@ -126,8 +126,6 @@ const {
   TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
-  WeakMapPrototypeHas,
-  WeakSetPrototypeHas,
 } = primordials;
 const ops = core.ops;
 
@@ -259,56 +257,6 @@ function getSharedArrayBufferByteLength(value) {
   return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
 }
 
-function isObjectLike(value) {
-  return value !== null && typeof value === "object";
-}
-
-function isAnyArrayBuffer(value) {
-  return ops.op_is_any_arraybuffer(value);
-}
-
-function isArgumentsObject(value) {
-  return ops.op_is_arguments_object(value);
-}
-
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isAsyncFunction(value) {
-  return ops.op_is_async_function(value);
-}
-
-function isBooleanObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    BooleanPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isBoxedPrimitive(
-  value,
-) {
-  return (
-    isBooleanObject(value) ||
-    isStringObject(value) ||
-    isNumberObject(value) ||
-    isSymbolObject(value) ||
-    isBigIntObject(value)
-  );
-}
-
 function isDataView(value) {
   return (
     ArrayBufferIsView(value) &&
@@ -320,140 +268,15 @@ function isTypedArray(value) {
   return TypedArrayPrototypeGetSymbolToStringTag(value) !== undefined;
 }
 
-function isGeneratorFunction(value) {
-  return ops.op_is_generator_function(value);
-}
-
-function isMap(value) {
-  try {
-    MapPrototypeGetSize(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isMapIterator(value) {
-  return ops.op_is_map_iterator(value);
-}
-
-function isModuleNamespaceObject(value) {
-  return ops.op_is_module_namespace_object(value);
-}
-
-function isNativeError(value) {
-  return ops.op_is_native_error(value);
-}
-
 // The name property is used to allow cross realms to make a determination
 // This is the same as WHATWG's structuredClone algorithm
 // https://github.com/whatwg/html/pull/5150
 function isAggregateError(value) {
   return (
-    isNativeError(value) &&
+    ops.op_is_native_error(value) &&
     value.name === "AggregateError" &&
     ArrayIsArray(value.errors)
   );
-}
-
-function isNumberObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    NumberPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isBigIntObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    BigIntPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isDate(value) {
-  try {
-    DatePrototypeGetTime(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isPromise(value) {
-  return ops.op_is_promise(value);
-}
-
-function isRegExp(value) {
-  return ops.op_is_reg_exp(value);
-}
-
-function isSet(value) {
-  try {
-    SetPrototypeGetSize(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isSetIterator(value) {
-  return ops.op_is_set_iterator(value);
-}
-
-function isStringObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    StringPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isSymbolObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    SymbolPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isWeakMap(value) {
-  try {
-    WeakMapPrototypeHas(value, null);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isWeakSet(value) {
-  try {
-    WeakSetPrototypeHas(value, null);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 const kObjectType = 0;
@@ -727,10 +550,10 @@ function getFunctionBase(value, constructor, tag) {
     }
   }
   let type = "Function";
-  if (isGeneratorFunction(value)) {
+  if (ops.op_is_generator_function(value)) {
     type = `Generator${type}`;
   }
-  if (isAsyncFunction(value)) {
+  if (ops.op_is_async_function(value)) {
     type = `Async${type}`;
   }
   let base = `[${type}`;
@@ -813,7 +636,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         extrasType = kArrayExtrasType;
         formatter = formatArray;
       } else if (
-        isSet(value) || (proxyDetails !== null && isSet(proxyDetails[0]))
+        ops.op_is_set(value) ||
+        (proxyDetails !== null && ops.op_is_set(proxyDetails[0]))
       ) {
         const set = proxyDetails?.[0] ?? value;
         const size = SetPrototypeGetSize(set);
@@ -827,7 +651,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
         braces = [`${prefix}{`, "}"];
       } else if (
-        isMap(value) || (proxyDetails !== null && isMap(proxyDetails[0]))
+        ops.op_is_map(value) ||
+        (proxyDetails !== null && ops.op_is_map(proxyDetails[0]))
       ) {
         const map = proxyDetails?.[0] ?? value;
         const size = MapPrototypeGetSize(map);
@@ -864,12 +689,12 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         // bound function is required to reconstruct missing information.
         formatter = FunctionPrototypeBind(formatTypedArray, null, bound, size);
         extrasType = kArrayExtrasType;
-      } else if (isMapIterator(value)) {
+      } else if (ops.op_is_map_iterator(value)) {
         keys = getKeys(value, ctx.showHidden);
         braces = getIteratorBraces("Map", tag);
         // Add braces to the formatter parameters.
         formatter = FunctionPrototypeBind(formatIterator, null, braces);
-      } else if (isSetIterator(value)) {
+      } else if (ops.op_is_set_iterator(value)) {
         keys = getKeys(value, ctx.showHidden);
         braces = getIteratorBraces("Set", tag);
         // Add braces to the formatter parameters.
@@ -882,7 +707,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
       keys = getKeys(value, ctx.showHidden);
       braces = ["{", "}"];
       if (constructor === "Object") {
-        if (isArgumentsObject(value)) {
+        if (ops.op_is_arguments_object(value)) {
           braces[0] = "[Arguments] {";
         } else if (tag !== "") {
           braces[0] = `${getPrefix(constructor, tag, "Object")}{`;
@@ -896,7 +721,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return ctx.stylize(base, "special");
         }
       } else if (
-        isRegExp(value) || (proxyDetails !== null && isRegExp(proxyDetails[0]))
+        ops.op_is_reg_exp(value) ||
+        (proxyDetails !== null && ops.op_is_reg_exp(proxyDetails[0]))
       ) {
         const regExp = proxyDetails?.[0] ?? value;
         // Make RegExps say that they are RegExps
@@ -914,7 +740,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return ctx.stylize(base, "regexp");
         }
       } else if (
-        isDate(value) || (proxyDetails !== null && isDate(proxyDetails[0]))
+        ops.op_is_date(value) ||
+        (proxyDetails !== null && ops.op_is_date(proxyDetails[0]))
       ) {
         const date = proxyDetails?.[0] ?? value;
         if (NumberIsNaN(DatePrototypeGetTime(date))) {
@@ -926,20 +753,20 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           }
         }
       } else if (
-        isNativeError(value) ||
+        ops.op_is_native_error(value) ||
         ObjectPrototypeIsPrototypeOf(ErrorPrototype, value) ||
-        (proxyDetails !== null && isNativeError(proxyDetails[0]))
+        (proxyDetails !== null && ops.op_is_native_error(proxyDetails[0]))
       ) {
         const error = proxyDetails?.[0] ?? value;
         base = inspectError(error, ctx);
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
-      } else if (isAnyArrayBuffer(value)) {
+      } else if (ops.op_is_any_array_buffer(value)) {
         // Fast path for ArrayBuffer and SharedArrayBuffer.
         // Can't do the same for DataView because it has a non-primitive
         // .buffer property that we need to recurse for.
-        const arrayType = isArrayBuffer(value)
+        const arrayType = ops.op_is_array_buffer(value)
           ? "ArrayBuffer"
           : "SharedArrayBuffer";
 
@@ -958,20 +785,20 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         braces[0] = `${getPrefix(constructor, tag, "DataView")}{`;
         // .buffer goes last, it's not a primitive like the others.
         ArrayPrototypeUnshift(keys, "byteLength", "byteOffset", "buffer");
-      } else if (isPromise(value)) {
+      } else if (ops.op_is_promise(value)) {
         braces[0] = `${getPrefix(constructor, tag, "Promise")}{`;
         formatter = formatPromise;
-      } else if (isWeakSet(value)) {
+      } else if (ops.op_is_weak_set(value)) {
         braces[0] = `${getPrefix(constructor, tag, "WeakSet")}{`;
         formatter = ctx.showHidden ? formatWeakSet : formatWeakCollection;
-      } else if (isWeakMap(value)) {
+      } else if (ops.op_is_weak_map(value)) {
         braces[0] = `${getPrefix(constructor, tag, "WeakMap")}{`;
         formatter = ctx.showHidden ? formatWeakMap : formatWeakCollection;
-      } else if (isModuleNamespaceObject(value)) {
+      } else if (ops.op_is_module_namespace_object(value)) {
         braces[0] = `${getPrefix(constructor, tag, "Module")}{`;
         // Special handle keys for namespace objects.
         formatter = FunctionPrototypeBind(formatNamespaceObject, null, keys);
-      } else if (isBoxedPrimitive(value)) {
+      } else if (ops.op_is_boxed_primitive(value)) {
         base = getBoxedBase(value, ctx, keys, constructor, tag);
         if (keys.length === 0 && protoProps === undefined) {
           return base;
@@ -1349,8 +1176,8 @@ function getKeys(value, showHidden) {
       keys = ObjectKeys(value);
     } catch (err) {
       assert(
-        isNativeError(err) && err.name === "ReferenceError" &&
-          isModuleNamespaceObject(value),
+        ops.op_is_native_error(err) && err.name === "ReferenceError" &&
+          ops.op_is_module_namespace_object(value),
       );
       keys = ObjectGetOwnPropertyNames(value);
     }
@@ -1884,20 +1711,20 @@ function getBoxedBase(
   tag,
 ) {
   let type, primitive;
-  if (isNumberObject(value)) {
+  if (ops.op_is_number_object(value)) {
     type = "Number";
     primitive = NumberPrototypeValueOf(value);
-  } else if (isStringObject(value)) {
+  } else if (ops.op_is_string_object(value)) {
     type = "String";
     primitive = StringPrototypeValueOf(value);
     // For boxed Strings, we have to remove the 0-n indexed entries,
     // since they just noisy up the output and are redundant
     // Make boxed primitive Strings look like such
     ArrayPrototypeSplice(keys, 0, value.length);
-  } else if (isBooleanObject(value)) {
+  } else if (ops.op_is_boolean_object(value)) {
     type = "Boolean";
     primitive = BooleanPrototypeValueOf(value);
-  } else if (isBigIntObject(value)) {
+  } else if (ops.op_is_big_int_object(value)) {
     type = "BigInt";
     primitive = BigIntPrototypeValueOf(value);
   } else {
@@ -3310,8 +3137,8 @@ class Console {
     const toTable = (header, body) => this.log(cliTable(header, body));
 
     let resultData;
-    const isSetObject = isSet(data);
-    const isMapObject = isMap(data);
+    const isSetObject = ops.op_is_set(data);
+    const isMapObject = ops.op_is_map(data);
     const valuesKey = "Values";
     const indexKey = isSetObject || isMapObject ? "(iter idx)" : "(idx)";
 

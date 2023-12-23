@@ -8,6 +8,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const ops = core.ops;
 const {
   ArrayBuffer,
   ArrayBufferPrototypeGetByteLength,
@@ -38,15 +39,6 @@ const {
   Float64Array,
 } = primordials;
 
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const objectCloneMemo = new SafeWeakMap();
 
 function cloneArrayBuffer(
@@ -69,7 +61,7 @@ function cloneArrayBuffer(
 function structuredClone(value) {
   // Performance optimization for buffers, otherwise
   // `serialize/deserialize` will allocate new buffer.
-  if (isArrayBuffer(value)) {
+  if (ops.op_is_array_buffer(value)) {
     const cloned = cloneArrayBuffer(
       value,
       0,

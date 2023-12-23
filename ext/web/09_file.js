@@ -47,19 +47,6 @@ const {
 } = primordials;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isAnyArrayBuffer(value) {
-  return ops.op_is_any_arraybuffer(value);
-}
-
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
 const isWindows = false;
@@ -136,7 +123,7 @@ function processBlobParts(parts, endings) {
   let size = 0;
   for (let i = 0; i < parts.length; ++i) {
     const element = parts[i];
-    if (isArrayBuffer(element)) {
+    if (ops.op_is_array_buffer(element)) {
       const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
       size += ArrayBufferPrototypeGetByteLength(element);
@@ -453,7 +440,7 @@ webidl.converters["BlobPart"] = (V, prefix, context, opts) => {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
       return webidl.converters["Blob"](V, prefix, context, opts);
     }
-    if (isAnyArrayBuffer(V)) {
+    if (ops.op_is_any_array_buffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {

@@ -22,7 +22,6 @@ import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 const {
   ArrayBufferIsView,
-  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
@@ -58,19 +57,6 @@ const {
   op_ws_get_buffered_amount,
 } = core.ensureFastOps();
 
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isAnyArrayBuffer(value) {
-  return ops.op_is_any_arraybuffer(value);
-}
-
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
   prefix,
@@ -92,7 +78,7 @@ webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
     return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (isAnyArrayBuffer(V)) {
+    if (ops.op_is_any_array_buffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
@@ -337,7 +323,7 @@ class WebSocket extends EventTarget {
 
     if (ArrayBufferIsView(data)) {
       op_ws_send_binary(this[_rid], data);
-    } else if (isArrayBuffer(data)) {
+    } else if (ops.op_is_array_buffer(data)) {
       op_ws_send_binary(this[_rid], new Uint8Array(data));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(

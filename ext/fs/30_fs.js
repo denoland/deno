@@ -34,15 +34,6 @@ import {
 } from "ext:deno_web/06_streams.js";
 import { pathFromURL, SymbolDispose } from "ext:deno_web/00_infra.js";
 
-function isDate(value) {
-  try {
-    DatePrototypeGetTime(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function chmodSync(path, mode) {
   ops.op_fs_chmod_sync(pathFromURL(path), mode);
 }
@@ -407,7 +398,7 @@ async function link(oldpath, newpath) {
 }
 
 function toUnixTimeFromEpoch(value) {
-  if (isDate(value)) {
+  if (ops.op_is_date(value)) {
     const time = DatePrototypeGetTime(value);
     const seconds = MathTrunc(time / 1e3);
     const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;

@@ -7,10 +7,10 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
+const ops = core.ops;
 const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
-  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayIteratorPrototype,
@@ -461,46 +461,14 @@ function isDataView(V) {
     TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
 }
 
-function isNonSharedArrayBuffer(V) {
-  try {
-    ArrayBufferPrototypeGetByteLength(V);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
-let _getSharedArrayBufferByteLength;
-
-function getSharedArrayBufferByteLength(value) {
-  // TODO(kt3k): add SharedArrayBuffer to primordials
-  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
-    // deno-lint-ignore prefer-primordials
-    SharedArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
-  return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
-}
-
-function isSharedArrayBuffer(V) {
-  try {
-    getSharedArrayBufferByteLength(V);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
   opts = {},
 ) => {
-  if (!isNonSharedArrayBuffer(V)) {
-    if (opts.allowShared && !isSharedArrayBuffer(V)) {
+  if (!ops.op_is_array_buffer(V)) {
+    if (opts.allowShared && !ops.op_is_shared_array_buffer(V)) {
       throw makeException(
         TypeError,
         "is not an ArrayBuffer or SharedArrayBuffer",
@@ -534,7 +502,10 @@ converters.DataView = (
     );
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
+  if (
+    !opts.allowShared &&
+    ops.op_is_shared_array_buffer(DataViewPrototypeGetBuffer(V))
+  ) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
@@ -579,7 +550,7 @@ ArrayPrototypeForEach(
       }
       if (
         !opts.allowShared &&
-        isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(V))
+        ops.op_is_shared_array_buffer(TypedArrayPrototypeGetBuffer(V))
       ) {
         throw makeException(
           TypeError,
@@ -616,7 +587,7 @@ converters.ArrayBufferView = (
   } else {
     buffer = DataViewPrototypeGetBuffer(V);
   }
-  if (!opts.allowShared && isSharedArrayBuffer(buffer)) {
+  if (!opts.allowShared && ops.op_is_shared_array_buffer(buffer)) {
     throw makeException(
       TypeError,
       "is a view on a SharedArrayBuffer, which is not allowed",
@@ -641,7 +612,7 @@ converters.BufferSource = (
     } else {
       buffer = DataViewPrototypeGetBuffer(V);
     }
-    if (!opts.allowShared && isSharedArrayBuffer(buffer)) {
+    if (!opts.allowShared && ops.op_is_shared_array_buffer(buffer)) {
       throw makeException(
         TypeError,
         "is a view on a SharedArrayBuffer, which is not allowed",
@@ -653,7 +624,7 @@ converters.BufferSource = (
     return V;
   }
 
-  if (!opts.allowShared && !isNonSharedArrayBuffer(V)) {
+  if (!opts.allowShared && !ops.op_is_array_buffer(V)) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
@@ -663,8 +634,8 @@ converters.BufferSource = (
   }
   if (
     opts.allowShared &&
-    !isSharedArrayBuffer(V) &&
-    !isNonSharedArrayBuffer(V)
+    !ops.op_is_shared_array_buffer(V) &&
+    !ops.op_is_array_buffer(V)
   ) {
     throw makeException(
       TypeError,

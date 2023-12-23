@@ -38,7 +38,6 @@ import {
 } from "ext:deno_web/06_streams.js";
 const ops = core.ops;
 const {
-  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
   ArrayPrototypeMap,
   DataViewPrototypeGetBuffer,
@@ -55,19 +54,6 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
-
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isAnyArrayBuffer(value) {
-  return ops.op_is_any_arraybuffer(value);
-}
 
 /**
  * @param {Uint8Array | string} chunk
@@ -424,7 +410,7 @@ function extractBody(object) {
       );
     }
     source = TypedArrayPrototypeSlice(object);
-  } else if (isArrayBuffer(object)) {
+  } else if (ops.op_is_array_buffer(object)) {
     source = TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
@@ -473,7 +459,7 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     return webidl.converters["URLSearchParams"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (isAnyArrayBuffer(V)) {
+    if (ops.op_is_any_array_buffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
