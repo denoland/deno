@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// @ts-ignore internal api
-const core = Deno.core;
+import { core } from "ext:core/mod.js";
 const {
   op_cron_next,
 } = core.ensureFastOps();
