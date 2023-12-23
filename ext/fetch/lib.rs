@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use bytes::Bytes;
 use deno_core::anyhow::Error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -233,7 +234,7 @@ unsafe impl Send for ResourceToBodyAdapter {}
 unsafe impl Sync for ResourceToBodyAdapter {}
 
 impl Stream for ResourceToBodyAdapter {
-  type Item = Result<BufView, Error>;
+  type Item = Result<Bytes, Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -250,9 +251,9 @@ impl Stream for ResourceToBodyAdapter {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(_) => {
             this.1 = Some(this.0.clone().read(64 * 1024));
-            Poll::Ready(Some(res))
+            Poll::Ready(Some(res.map(|b| b.to_vec().into())))
           }
-          _ => Poll::Ready(Some(res)),
+          _ => Poll::Ready(Some(res.map(|b| b.to_vec().into()))),
         },
       }
     } else {
