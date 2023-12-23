@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.39.1 / 2023.12.21
+
+- fix(bench): added group banner to bench output. (#21551)
+- fix(console): inspect for `{Set,Map}Iterator` and `Weak{Set,Map}` (#21554)
+- fix(coverage): add default coverage include dir (#21625)
+- fix(coverage): error if no files found (#21615)
+- fix(devcontainer): moved settings to customizations/vscode (#21512)
+- fix(ext/napi): don't close handle scopes in NAPI as the pointers are invalid
+  (#21629)
+- fix(jupyter): Deno.test() panic (#21606)
+- fix(lsp): apply specifier rewrite to CompletionItem::text_edit (#21564)
+- fix(net): remove unstable check for unix socket listen (#21592)
+- fix(node): add crypto.pseudoRandomBytes (#21649)
+- fix(node): child_process IPC on Windows (#21597)
+- fix(node): child_process kill cancel pending IPC reads (#21647)
+- fix(node): return false from vm.isContext (#21568)
+- fix(node): support resolving a package.json import to a builtin node module
+  (#21576)
+- fix(repl): remove stray debug log (#21635)
+- fix: prompts when publishing (#21596)
+- fix: urls for publishing (#21613)
+
 ### 1.39.0 / 2023.12.13
 
 - Reland "fix(ext/console): fix inspecting iterators error. (#20720)" (#21370)

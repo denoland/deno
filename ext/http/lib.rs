@@ -52,7 +52,7 @@ use hyper::Body;
 use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
-use hyper_util_tokioio::TokioIo;
+use hyper_util::rt::TokioIo;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -80,7 +80,6 @@ use crate::reader_stream::ShutdownHandle;
 pub mod compressible;
 mod fly_accept_encoding;
 mod http_next;
-mod hyper_util_tokioio;
 mod network_buffered_stream;
 mod reader_stream;
 mod request_body;
@@ -221,10 +220,11 @@ impl HttpConnResource {
       let request = request_rx.await.ok()?;
 
       let accept_encoding = {
-        let encodings = fly_accept_encoding::encodings_iter(request.headers())
-          .filter(|r| {
-            matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
-          });
+        let encodings =
+          fly_accept_encoding::encodings_iter_http_02(request.headers())
+            .filter(|r| {
+              matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
+            });
 
         fly_accept_encoding::preferred(encodings)
           .ok()
@@ -739,7 +739,7 @@ fn http_response(
     Some(data) => {
       // If a buffer was passed, but isn't compressible, we use it to
       // construct a response body.
-      Ok((HttpResponseWriter::Closed, Bytes::from(data).into()))
+      Ok((HttpResponseWriter::Closed, data.to_vec().into()))
     }
     None if compressing => {
       // Create a one way pipe that implements tokio's async io traits. To do
@@ -881,7 +881,7 @@ async fn op_http_write_resource(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        let bytes = Bytes::from(view);
+        let bytes = view.to_vec().into();
         if let Err(err) = body.sender().send_data(bytes).await {
           assert!(err.is_closed());
           // Pull up the failure associated with the transport connection instead.
@@ -930,7 +930,7 @@ async fn op_http_write(
       }
     }
     HttpResponseWriter::BodyUncompressed(body) => {
-      let bytes = Bytes::from(buf);
+      let bytes = Bytes::from(buf.to_vec());
       match body.sender().send_data(bytes).await {
         Ok(_) => Ok(()),
         Err(err) => {

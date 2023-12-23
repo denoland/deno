@@ -1226,6 +1226,10 @@ impl Inner {
       self.config.update_capabilities(&params.capabilities);
     }
 
+    self
+      .ts_server
+      .start(self.config.internal_inspect().to_address());
+
     self.update_debug_flag();
     // Check to see if we need to change the cache path
     if let Err(err) = self.update_cache().await {
