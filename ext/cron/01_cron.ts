@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_cron_next,
 } = core.ensureFastOps();
@@ -139,5 +139,9 @@ function cron(
     }
   })();
 }
+
+// For testing
+internals.formatToCronSchedule = formatToCronSchedule;
+internals.parseScheduleToString = parseScheduleToString;
 
 export { cron };
