@@ -4,10 +4,7 @@ use deno_core::v8;
 
 deno_core::extension!(
   deno_webidl,
-  ops = [
-    op_is_array_buffer,
-    op_is_shared_array_buffer,
-  ],
+  ops = [op_is_array_buffer, op_is_shared_array_buffer,],
   esm = ["00_webidl.js"],
 );
 
