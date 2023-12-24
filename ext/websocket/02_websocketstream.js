@@ -3,7 +3,6 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
@@ -32,16 +31,17 @@ const {
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
-const {
-  op_ws_send_text_async,
-  op_ws_send_binary_async,
-  op_ws_next_event,
+import {
+  op_ws_check_permission_and_cancel_handle,
+  op_ws_close,
+  op_ws_create,
   op_ws_get_buffer,
   op_ws_get_buffer_as_string,
   op_ws_get_error,
-  op_ws_create,
-  op_ws_close,
-} = core.ensureFastOps();
+  op_ws_next_event,
+  op_ws_send_binary_async,
+  op_ws_send_text_async,
+} from "ext:deno_websocket/00_ops.js";
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",
@@ -146,7 +146,7 @@ class WebSocketStream {
       fillHeaders(headers, options.headers);
     }
 
-    const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+    const cancelRid = op_ws_check_permission_and_cancel_handle(
       "WebSocketStream.abort()",
       this[_url],
       true,
