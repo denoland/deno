@@ -386,9 +386,17 @@ function unrefTimer(id) {
   core.unrefOpPromise(timerInfo.promise);
 }
 
+// Defer to avoid starving the event loop. Not using queueMicrotask()
+// for that reason: it lets promises make forward progress but can
+// still starve other parts of the event loop.
+function defer(go) {
+  PromisePrototypeThen(op_void_async_deferred(), () => go());
+}
+
 export {
   clearInterval,
   clearTimeout,
+  defer,
   handleTimerMacrotask,
   opNow,
   refTimer,
