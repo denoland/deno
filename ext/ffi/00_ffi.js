@@ -35,9 +35,11 @@ const {
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 const {
   op_ffi_call_nonblocking,
-  op_ffi_call_ptr_nonblocking,
   op_ffi_unsafe_callback_ref,
 } = core.ensureFastOps();
+const {
+  op_ffi_call_ptr_nonblocking,
+} = core.ensureFastOps(true);
 
 /**
  * @param {BufferSource} source
