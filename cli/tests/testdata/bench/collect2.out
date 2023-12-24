@@ -10,3 +10,4 @@ benchmark      time (avg)        iter/s             (min … max)       p75     
 [WILDCARD]/bench/collect/include/bench.ts
 benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
 --------------------------------------------------------------- -----------------------------
+

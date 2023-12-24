@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::io::IsTerminal;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -26,6 +27,7 @@ use serde::Serialize;
 use sha2::Digest;
 
 use crate::args::deno_registry_api_url;
+use crate::args::deno_registry_url;
 use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
@@ -40,6 +42,11 @@ mod tar;
 use auth::get_auth_method;
 use auth::AuthMethod;
 use publish_order::PublishOrderGraph;
+
+fn ring_bell() {
+  // ASCII code for the bell character.
+  print!("\x07");
+}
 
 struct PreparedPublishPackage {
   scope: String,
@@ -224,8 +231,7 @@ async fn get_auth_headers(
         println!(" @{}/{}", packages[0].scope, packages[0].package);
       }
 
-      // ASCII code for the bell character.
-      print!("\x07");
+      ring_bell();
       println!("{}", colors::gray("Waiting..."));
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
@@ -332,6 +338,115 @@ async fn get_auth_headers(
   Ok(authorizations)
 }
 
+/// Check if both `scope` and `package` already exist, if not return
+/// a URL to the management panel to create them.
+async fn check_if_scope_and_package_exist(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  registry_manage_url: &str,
+  scope: &str,
+  package: &str,
+) -> Result<Option<String>, AnyError> {
+  let mut needs_scope = false;
+  let mut needs_package = false;
+
+  let response = api::get_scope(client, registry_api_url, scope).await?;
+  if response.status() == 404 {
+    needs_scope = true;
+  }
+
+  let response =
+    api::get_package(client, registry_api_url, scope, package).await?;
+  if response.status() == 404 {
+    needs_package = true;
+  }
+
+  if needs_scope || needs_package {
+    let create_url = format!(
+      "{}new?scope={}&package={}&from=cli",
+      registry_manage_url, scope, package
+    );
+    return Ok(Some(create_url));
+  }
+
+  Ok(None)
+}
+
+async fn ensure_scopes_and_packages_exist(
+  client: &reqwest::Client,
+  registry_api_url: String,
+  registry_manage_url: String,
+  packages: Vec<Rc<PreparedPublishPackage>>,
+) -> Result<(), AnyError> {
+  if !std::io::stdin().is_terminal() {
+    let mut missing_packages_lines = vec![];
+    for package in packages {
+      let maybe_create_package_url = check_if_scope_and_package_exist(
+        client,
+        &registry_api_url,
+        &registry_manage_url,
+        &package.scope,
+        &package.package,
+      )
+      .await?;
+
+      if let Some(create_package_url) = maybe_create_package_url {
+        missing_packages_lines.push(format!(" - {}", create_package_url));
+      }
+    }
+
+    if !missing_packages_lines.is_empty() {
+      bail!(
+        "Following packages don't exist, follow the links and create them:\n{}",
+        missing_packages_lines.join("\n")
+      );
+    }
+    return Ok(());
+  }
+
+  for package in packages {
+    let maybe_create_package_url = check_if_scope_and_package_exist(
+      client,
+      &registry_api_url,
+      &registry_manage_url,
+      &package.scope,
+      &package.package,
+    )
+    .await?;
+
+    let Some(create_package_url) = maybe_create_package_url else {
+      continue;
+    };
+
+    ring_bell();
+    println!(
+      "'@{}/{}' doesn't exist yet. Visit {} to create the package",
+      &package.scope,
+      &package.package,
+      colors::cyan_with_underline(create_package_url)
+    );
+    println!("{}", colors::gray("Waiting..."));
+
+    let package_api_url = api::get_package_api_url(
+      &registry_api_url,
+      &package.scope,
+      &package.package,
+    );
+
+    loop {
+      tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+      let response = client.get(&package_api_url).send().await?;
+      if response.status() == 200 {
+        let name = format!("@{}/{}", package.scope, package.package);
+        println!("Package {} created", colors::green(name));
+        break;
+      }
+    }
+  }
+
+  Ok(())
+}
+
 async fn perform_publish(
   http_client: &Arc<HttpClient>,
   mut publish_order_graph: PublishOrderGraph,
@@ -339,7 +454,8 @@ async fn perform_publish(
   auth_method: AuthMethod,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  let registry_url = deno_registry_api_url().to_string();
+  let registry_api_url = deno_registry_api_url().to_string();
+  let registry_url = deno_registry_url().to_string();
 
   let packages = prepared_package_by_name
     .values()
@@ -351,8 +467,16 @@ async fn perform_publish(
     .collect::<Vec<_>>();
   print_diagnostics(diagnostics);
 
+  ensure_scopes_and_packages_exist(
+    client,
+    registry_api_url.clone(),
+    registry_url.clone(),
+    packages.clone(),
+  )
+  .await?;
+
   let mut authorizations =
-    get_auth_headers(client, registry_url.clone(), packages, auth_method)
+    get_auth_headers(client, registry_api_url.clone(), packages, auth_method)
       .await?;
 
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
@@ -369,14 +493,21 @@ async fn perform_publish(
           package.version.clone(),
         ))
         .unwrap();
+      let registry_api_url = registry_api_url.clone();
       let registry_url = registry_url.clone();
       let http_client = http_client.clone();
       futures.spawn(async move {
         let display_name =
           format!("@{}/{}@{}", package.scope, package.package, package.version);
-        publish_package(&http_client, package, &registry_url, &authorization)
-          .await
-          .with_context(|| format!("Failed to publish {}", display_name))?;
+        publish_package(
+          &http_client,
+          package,
+          &registry_api_url,
+          &registry_url,
+          &authorization,
+        )
+        .await
+        .with_context(|| format!("Failed to publish {}", display_name))?;
         Ok(package_name)
       });
     }
@@ -397,6 +528,7 @@ async fn perform_publish(
 async fn publish_package(
   http_client: &HttpClient,
   package: Rc<PreparedPublishPackage>,
+  registry_api_url: &str,
   registry_url: &str,
   authorization: &str,
 ) -> Result<(), AnyError> {
@@ -411,7 +543,7 @@ async fn publish_package(
 
   let url = format!(
     "{}scopes/{}/packages/{}/versions/{}",
-    registry_url, package.scope, package.package, package.version
+    registry_api_url, package.scope, package.package, package.version
   );
 
   let response = client
@@ -449,7 +581,7 @@ async fn publish_package(
   while task.status != "success" && task.status != "failure" {
     tokio::time::sleep(interval).await;
     let resp = client
-      .get(format!("{}publish_status/{}", registry_url, task.id))
+      .get(format!("{}publish_status/{}", registry_api_url, task.id))
       .send()
       .await
       .with_context(|| {
@@ -486,10 +618,12 @@ async fn publish_package(
     package.package,
     package.version
   );
-  // TODO(bartlomieju): return something more useful here
   println!(
-    "{}@{}/{}/{}_meta.json",
-    registry_url, package.scope, package.package, package.version
+    "{}",
+    colors::gray(format!(
+      "Visit {}@{}/{}@{} for details",
+      registry_url, package.scope, package.package, package.version
+    ))
   );
   Ok(())
 }

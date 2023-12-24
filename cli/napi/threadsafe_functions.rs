@@ -9,6 +9,12 @@ use std::ptr::NonNull;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
+#[repr(transparent)]
+pub struct SendPtr<T>(pub *const T);
+
+unsafe impl<T> Send for SendPtr<T> {}
+unsafe impl<T> Sync for SendPtr<T> {}
+
 static TS_FN_ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 pub struct TsFn {
@@ -86,11 +92,6 @@ impl TsFn {
   pub fn call(&self, data: *mut c_void, is_blocking: bool) {
     let js_func = self.maybe_func.clone();
 
-    #[repr(transparent)]
-    struct SendPtr<T>(*const T);
-    unsafe impl<T> Send for SendPtr<T> {}
-    unsafe impl<T> Sync for SendPtr<T> {}
-
     let env = SendPtr(self.env);
     let context = SendPtr(self.context);
     let data = SendPtr(data);
@@ -146,7 +147,8 @@ impl TsFn {
           context: SendPtr<c_void>,
           data: SendPtr<c_void>,
         ) {
-          // SAFETY: We're calling the provided callback with valid args
+          // SAFETY: env is valid for the duration of the callback.
+          //         data lifetime is users responsibility.
           unsafe {
             call_js_cb(
               env.0 as _,

@@ -59,7 +59,7 @@ pub struct BootstrapOptions {
   pub inspect: bool,
   pub has_node_modules_dir: bool,
   pub maybe_binary_npm_command_name: Option<String>,
-  pub node_ipc_fd: Option<i32>,
+  pub node_ipc_fd: Option<i64>,
 }
 
 impl Default for BootstrapOptions {
@@ -117,8 +117,6 @@ struct BootstrapV8<'a>(
   bool,
   // maybe_binary_npm_command_name
   Option<&'a str>,
-  // node_ipc_fd
-  i32,
 );
 
 impl BootstrapOptions {
@@ -138,7 +136,6 @@ impl BootstrapOptions {
       self.enable_testing_features,
       self.has_node_modules_dir,
       self.maybe_binary_npm_command_name.as_deref(),
-      self.node_ipc_fd.unwrap_or(-1),
     );
 
     bootstrap.serialize(ser).unwrap()

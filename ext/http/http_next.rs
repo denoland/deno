@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
-use crate::hyper_util_tokioio::TokioIo;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::HttpConnectionProperties;
@@ -44,15 +43,14 @@ use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
-use fly_accept_encoding::Encoding;
-use http::header::ACCEPT_ENCODING;
-use http::header::CACHE_CONTROL;
-use http::header::CONTENT_ENCODING;
-use http::header::CONTENT_LENGTH;
-use http::header::CONTENT_RANGE;
-use http::header::CONTENT_TYPE;
-use http::HeaderMap;
 use hyper1::body::Incoming;
+use hyper1::header::HeaderMap;
+use hyper1::header::ACCEPT_ENCODING;
+use hyper1::header::CACHE_CONTROL;
+use hyper1::header::CONTENT_ENCODING;
+use hyper1::header::CONTENT_LENGTH;
+use hyper1::header::CONTENT_RANGE;
+use hyper1::header::CONTENT_TYPE;
 use hyper1::header::COOKIE;
 use hyper1::http::HeaderName;
 use hyper1::http::HeaderValue;
@@ -61,6 +59,7 @@ use hyper1::server::conn::http2;
 use hyper1::service::service_fn;
 use hyper1::service::HttpService;
 use hyper1::StatusCode;
+use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -71,6 +70,9 @@ use std::io;
 use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
+
+use super::fly_accept_encoding;
+use fly_accept_encoding::Encoding;
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -565,15 +567,16 @@ fn is_request_compressible(
   }
 
   // Fall back to the expensive parser
-  let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
-    matches!(
-      r,
-      Ok((
-        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-        _
-      ))
-    )
-  });
+  let accepted =
+    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
+      matches!(
+        r,
+        Ok((
+          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+          _
+        ))
+      )
+    });
   match fly_accept_encoding::preferred(accepted) {
     Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
     Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
@@ -632,7 +635,7 @@ fn modify_compressibility_from_response(
 /// If the user provided a ETag header for uncompressed data, we need to ensure it is a
 /// weak Etag header ("W/").
 fn weaken_etag(hmap: &mut HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
+  if let Some(etag) = hmap.get_mut(hyper1::header::ETAG) {
     if !etag.as_bytes().starts_with(b"W/") {
       let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
       v.extend(b"W/");
@@ -647,7 +650,7 @@ fn weaken_etag(hmap: &mut HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
+  if let Some(v) = hmap.get_mut(hyper1::header::VARY) {
     if let Ok(s) = v.to_str() {
       if !s.to_lowercase().contains("accept-encoding") {
         *v = format!("Accept-Encoding, {s}").try_into().unwrap()
@@ -656,7 +659,7 @@ fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
     }
   }
   hmap.insert(
-    hyper::header::VARY,
+    hyper1::header::VARY,
     HeaderValue::from_static("Accept-Encoding"),
   );
 }

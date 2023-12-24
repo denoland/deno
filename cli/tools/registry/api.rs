@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
 use serde::de::DeserializeOwned;
@@ -107,4 +108,33 @@ pub async fn parse_response<T: DeserializeOwned>(
     message: format!("Failed to parse response: {}, response: '{}'", err, text),
     x_deno_ray,
   })
+}
+
+pub async fn get_scope(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  scope: &str,
+) -> Result<reqwest::Response, AnyError> {
+  let scope_url = format!("{}scopes/{}", registry_api_url, scope);
+  let response = client.get(&scope_url).send().await?;
+  Ok(response)
+}
+
+pub fn get_package_api_url(
+  registry_api_url: &str,
+  scope: &str,
+  package: &str,
+) -> String {
+  format!("{}scopes/{}/packages/{}", registry_api_url, scope, package)
+}
+
+pub async fn get_package(
+  client: &reqwest::Client,
+  registry_api_url: &str,
+  scope: &str,
+  package: &str,
+) -> Result<reqwest::Response, AnyError> {
+  let package_url = get_package_api_url(registry_api_url, scope, package);
+  let response = client.get(&package_url).send().await?;
+  Ok(response)
 }

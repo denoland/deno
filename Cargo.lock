@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.39.0"
+version = "1.39.1"
 dependencies = [
  "async-trait",
  "base32",
@@ -958,7 +958,7 @@ dependencies = [
  "env_logger",
  "eszip",
  "fancy-regex",
- "fastwebsockets",
+ "fastwebsockets 0.5.0",
  "flaky_test",
  "flate2",
  "fs3",
@@ -966,7 +966,7 @@ dependencies = [
  "glibc_version",
  "glob",
  "hex",
- "http",
+ "http 0.2.11",
  "hyper 0.14.27",
  "import_map",
  "indexmap 2.1.0",
@@ -1060,7 +1060,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.122.0"
+version = "0.123.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.122.0"
+version = "0.123.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1080,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.60.0"
+version = "0.61.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1127,7 +1127,7 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.128.0"
+version = "0.129.0"
 dependencies = [
  "deno_core",
 ]
@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cron"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.142.0"
+version = "0.143.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1247,14 +1247,14 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.152.0"
+version = "0.153.0"
 dependencies = [
  "bytes",
  "data-url",
  "deno_core",
  "deno_tls",
  "dyn-clone",
- "http",
+ "http 0.2.11",
  "pin-project",
  "reqwest",
  "serde",
@@ -1264,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.115.0"
+version = "0.116.0"
 dependencies = [
  "deno_core",
  "dlopen2",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1323,7 +1323,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.125.0"
+version = "0.126.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1336,12 +1336,14 @@ dependencies = [
  "deno_net",
  "deno_websocket",
  "flate2",
- "fly-accept-encoding",
- "http",
+ "http 0.2.11",
+ "http 1.0.0",
  "http-body-util",
  "httparse",
  "hyper 0.14.27",
- "hyper 1.0.0-rc.4",
+ "hyper 1.1.0",
+ "hyper-util",
+ "itertools",
  "memmem",
  "mime",
  "once_cell",
@@ -1360,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1373,7 +1375,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1445,7 +1447,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "deno_core",
  "libloading 0.7.4",
@@ -1466,7 +1468,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.120.0"
+version = "0.121.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1483,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.65.0"
+version = "0.66.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -1503,10 +1505,10 @@ dependencies = [
  "ecb",
  "elliptic-curve",
  "errno 0.2.8",
- "h2",
+ "h2 0.3.22",
  "hex",
  "hkdf",
- "http",
+ "http 0.2.11",
  "idna 0.3.0",
  "indexmap 2.1.0",
  "k256",
@@ -1543,6 +1545,7 @@ dependencies = [
  "typenum",
  "url",
  "winapi",
+ "windows-sys 0.48.0",
  "x25519-dalek",
  "x509-parser",
 ]
@@ -1581,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "console_static_text",
  "deno_ast",
@@ -1609,13 +1612,18 @@ dependencies = [
  "deno_webstorage",
  "dlopen2",
  "encoding_rs",
- "fastwebsockets",
+ "fastwebsockets 0.5.0",
+ "fastwebsockets 0.6.0",
  "filetime",
  "flate2",
  "fs3",
  "fwdansi",
- "http",
+ "http 0.2.11",
+ "http 1.0.0",
+ "http-body-util",
  "hyper 0.14.27",
+ "hyper 1.1.0",
+ "hyper-util",
  "libc",
  "log",
  "netif",
@@ -1635,6 +1643,7 @@ dependencies = [
  "uuid",
  "which",
  "winapi",
+ "windows-sys 0.48.0",
  "winres",
 ]
 
@@ -1669,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.115.0"
+version = "0.116.0"
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -1701,7 +1710,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.128.0"
+version = "0.129.0"
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -1713,7 +1722,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.159.0"
+version = "0.160.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1734,7 +1743,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.95.0"
+version = "0.96.0"
 dependencies = [
  "deno_core",
  "raw-window-handle",
@@ -1747,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.128.0"
+version = "0.129.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1755,15 +1764,15 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.133.0"
+version = "0.134.0"
 dependencies = [
  "bytes",
  "deno_core",
  "deno_net",
  "deno_tls",
- "fastwebsockets",
- "h2",
- "http",
+ "fastwebsockets 0.5.0",
+ "h2 0.3.22",
+ "http 0.2.11",
  "hyper 0.14.27",
  "once_cell",
  "rustls-tokio-stream",
@@ -1773,7 +1782,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.123.0"
+version = "0.124.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2350,6 +2359,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastwebsockets"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63dd7b57f9b33b1741fa631c9522eb35d43e96dcca4a6a91d5e4ca7c93acdc1"
+dependencies = [
+ "base64 0.21.5",
+ "http-body-util",
+ "hyper 1.1.0",
+ "hyper-util",
+ "pin-project",
+ "rand",
+ "sha1",
+ "simdutf8",
+ "thiserror",
+ "tokio",
+ "utf-8",
+]
+
+[[package]]
 name = "fd-lock"
 version = "4.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2423,17 +2451,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "fly-accept-encoding"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3afa7516fdcfd8e5e93a938f8fec857785ced190a1f62d842d1fe1ffbe22ba8"
-dependencies = [
- "http",
- "itertools",
- "thiserror",
 ]
 
 [[package]]
@@ -2781,7 +2798,26 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "futures-util",
- "http",
+ "http 0.2.11",
+ "indexmap 2.1.0",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "h2"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1d308f63daf4181410c242d34c11f928dcb3aa105852019e043c9d1f4e4368a"
+dependencies = [
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "futures-util",
+ "http 1.0.0",
  "indexmap 2.1.0",
  "slab",
  "tokio",
@@ -2929,36 +2965,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "http"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b32afd38673a8016f7c9ae69e5af41a58f81b1d31689040f2f1959594ce194ea"
+dependencies = [
+ "bytes",
+ "fnv",
+ "itoa",
+]
+
+[[package]]
 name = "http-body"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5f38f16d184e36f2408a55281cd658ecbd3ca05cce6d6510a176eca393e26d1"
 dependencies = [
  "bytes",
- "http",
+ "http 0.2.11",
  "pin-project-lite",
 ]
 
 [[package]]
 name = "http-body"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "951dfc2e32ac02d67c90c0d65bd27009a635dc9b381a2cc7d284ab01e3a0150d"
+checksum = "1cac85db508abc24a2e48553ba12a996e87244a0395ce011e62b37158745d643"
 dependencies = [
  "bytes",
- "http",
+ "http 1.0.0",
 ]
 
 [[package]]
 name = "http-body-util"
-version = "0.1.0-rc.3"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08ef12f041acdd397010e5fb6433270c147d3b8b2d0a840cd7fff8e531dca5c8"
+checksum = "41cb79eb393015dadd30fc252023adb0b2400a0caee0fa2a077e6e21a551e840"
 dependencies = [
  "bytes",
  "futures-util",
- "http",
- "http-body 1.0.0-rc.2",
+ "http 1.0.0",
+ "http-body 1.0.0",
  "pin-project-lite",
 ]
 
@@ -2990,8 +3037,8 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2",
- "http",
+ "h2 0.3.22",
+ "http 0.2.11",
  "http-body 0.4.5",
  "httparse",
  "httpdate",
@@ -3006,22 +3053,21 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.0.0-rc.4"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d280a71f348bcc670fc55b02b63c53a04ac0bf2daff2980795aeaf53edae10e6"
+checksum = "fb5aa53871fc917b1a9ed87b683a5d86db645e23acb32c2e0785a353e522fb75"
 dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "h2",
- "http",
- "http-body 1.0.0-rc.2",
+ "h2 0.4.0",
+ "http 1.0.0",
+ "http-body 1.0.0",
  "httparse",
  "httpdate",
  "itoa",
  "pin-project-lite",
  "tokio",
- "tracing",
  "want",
 ]
 
@@ -3032,11 +3078,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec3efd23720e2049821a693cbc7e65ea87c72f1c58ff2f9522ff332b1491e590"
 dependencies = [
  "futures-util",
- "http",
+ "http 0.2.11",
  "hyper 0.14.27",
  "rustls",
  "tokio",
  "tokio-rustls",
+]
+
+[[package]]
+name = "hyper-util"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdea9aac0dbe5a9240d68cfd9501e2db94222c6dc06843e06640b9e07f0fdc67"
+dependencies = [
+ "bytes",
+ "futures-channel",
+ "futures-util",
+ "http 1.0.0",
+ "http-body 1.0.0",
+ "hyper 1.1.0",
+ "pin-project-lite",
+ "socket2 0.5.5",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3693,7 +3757,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4609,8 +4673,8 @@ dependencies = [
  "encoding_rs",
  "futures-core",
  "futures-util",
- "h2",
- "http",
+ "h2 0.3.22",
+ "http 0.2.11",
  "http-body 0.4.5",
  "hyper 0.14.27",
  "hyper-rustls",
@@ -5918,11 +5982,11 @@ dependencies = [
  "bytes",
  "console_static_text",
  "denokv_proto",
- "fastwebsockets",
+ "fastwebsockets 0.5.0",
  "flate2",
  "futures",
  "glob",
- "h2",
+ "h2 0.3.22",
  "hyper 0.14.27",
  "hyper 1.0.0-rc.4",
  "lazy-regex",
@@ -7062,18 +7126,18 @@ checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
 
 [[package]]
 name = "zerocopy"
-version = "0.7.29"
+version = "0.7.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d075cf85bbb114e933343e087b92f2146bac0d55b534cbb8188becf0039948e"
+checksum = "1c4061bedbb353041c12f413700357bec76df2c7e2ca8e4df8bac24c6bf68e3d"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.7.29"
+version = "0.7.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86cd5ca076997b97ef09d3ad65efe811fa68c9e874cb636ccb211223a813b0c2"
+checksum = "b3c129550b3e6de3fd0ba67ba5c81818f9805e58b8d7fee80a3a59d2c9fc601a"
 dependencies = [
  "proc-macro2",
  "quote",
