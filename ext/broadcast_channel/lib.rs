@@ -104,7 +104,7 @@ where
 }
 
 deno_core::extension!(deno_broadcast_channel,
-  deps = [ deno_webidl, deno_web, deno_timers ],
+  deps = [ deno_webidl, deno_web ],
   parameters = [BC: BroadcastChannel],
   ops = [
     op_broadcast_subscribe<BC>,
