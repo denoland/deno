@@ -35,8 +35,8 @@ http.workspace = true
 http_1 = { package = "http", version = "=1.0.0" }
 httparse.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-hyper-util = { version = "=0.1.2", features = ["tokio"] }
-hyper1 = { package = "hyper", features = ["full"], version = "=1.1.0" }
+hyper-util.workspace = true
+hyper1.workspace = true
 itertools = "0.10"
 memmem.workspace = true
 mime = "0.3.16"

@@ -25,8 +25,9 @@ flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 glob.workspace = true
 h2.workspace = true
+h2_04 = { package = "h2", version = "0.4" }
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
-hyper1 = { package = "hyper", features = ["full"], version = "=1.0.0-rc.4" }
+hyper1.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
 lsp-types.workspace = true

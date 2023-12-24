@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use futures::StreamExt;
+use h2_04 as h2;
 use hyper1::header::HeaderName;
 use hyper1::header::HeaderValue;
 use rustls_tokio_stream::TlsStream;
