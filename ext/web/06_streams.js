@@ -6900,6 +6900,7 @@ export {
   errorReadableStream,
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
+  isDetachedBuffer,
   isReadableStreamDisturbed,
   ReadableByteStreamController,
   ReadableStream,

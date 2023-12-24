@@ -17,6 +17,7 @@ import {
   setEventTargetData,
   setIsTrusted,
 } from "ext:deno_web/02_event.js";
+import { isDetachedBuffer } from "ext:deno_web/06_streams.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBufferPrototype,
@@ -284,7 +285,7 @@ function serializeJsMessageData(data, transferables) {
       if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, t)) {
         if (
           ArrayBufferPrototypeGetByteLength(t) === 0 &&
-          ops.op_arraybuffer_was_detached(t)
+          isDetachedBuffer(t)
         ) {
           throw new DOMException(
             `ArrayBuffer at index ${j} is already detached`,

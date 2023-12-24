@@ -105,8 +105,8 @@ http.workspace = true
 http-body-util = "0.1"
 http_1 = { package = "http", version = "1.0" }
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-hyper-util = { version = "0.1", features = ["server", "server-auto"] }
-hyper1 = { package = "hyper", version = "1.0.1", features = ["server"] }
+hyper-util.workspace = true
+hyper1.workspace = true
 libc.workspace = true
 log.workspace = true
 netif = "0.1.6"
