@@ -48,15 +48,6 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // P-521 is not yet supported.
 const supportedNamedCurves = ["P-256", "P-384"];
 const recognisedUsages = [
@@ -943,13 +934,13 @@ class SubtleCrypto {
 
     // 2.
     if (format !== "jwk") {
-      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
+      if (ArrayBufferIsView(keyData) || ops.op_is_array_buffer(keyData)) {
         keyData = copyBuffer(keyData);
       } else {
         throw new TypeError("keyData is a JsonWebKey");
       }
     } else {
-      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
+      if (ArrayBufferIsView(keyData) || ops.op_is_array_buffer(keyData)) {
         throw new TypeError("keyData is not a JsonWebKey");
       }
     }
@@ -4773,7 +4764,7 @@ webidl.converters["BufferSource or JsonWebKey"] = (
   opts,
 ) => {
   // Union for (BufferSource or JsonWebKey)
-  if (ArrayBufferIsView(V) || isArrayBuffer(V)) {
+  if (ArrayBufferIsView(V) || ops.op_is_array_buffer(V)) {
     return webidl.converters.BufferSource(V, prefix, context, opts);
   }
   return webidl.converters.JsonWebKey(V, prefix, context, opts);
