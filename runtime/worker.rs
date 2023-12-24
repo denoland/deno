@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
@@ -418,6 +419,15 @@ impl MainWorker {
     #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
     options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
 
+    let has_notified_of_inspector_disconnect = AtomicBool::new(false);
+    let wait_for_inspector_disconnect_callback = Box::new(move || {
+      if !has_notified_of_inspector_disconnect
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+      {
+        println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+      }
+    });
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options
@@ -434,6 +444,9 @@ impl MainWorker {
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
       op_metrics_factory_fn,
+      wait_for_inspector_disconnect_callback: Some(
+        wait_for_inspector_disconnect_callback,
+      ),
       ..Default::default()
     });
 
