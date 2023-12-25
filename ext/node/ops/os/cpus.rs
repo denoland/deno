@@ -211,9 +211,10 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
         return None;
       }
 
-      let cpu_brand = std::ffi::OsString::from_wide(&cpu_brand)
-        .into_string()
-        .unwrap();
+      let cpu_brand =
+        std::ffi::OsString::from_wide(&cpu_brand[..cpu_brand_size as usize])
+          .into_string()
+          .unwrap();
 
       cpus[i].model = cpu_brand;
       cpus[i].speed = cpu_speed as u64;
