@@ -2,10 +2,10 @@
 
 use deno_core::error::AnyError;
 
-pub use priority::*;
+pub use impl_::*;
 
 #[cfg(unix)]
-mod priority {
+mod impl_ {
   use super::*;
   use errno::errno;
   use errno::set_errno;
