@@ -117,27 +117,32 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "windows")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
-  use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
-  use windows_sys::Win32::System::WindowsProgramming::SystemProcessorPerformanceInformation;
   use windows_sys::Win32::System::WindowsProgramming::NtQuerySystemInformation;
+  use windows_sys::Win32::System::WindowsProgramming::SystemProcessorPerformanceInformation;
+  use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
 
   use std::os::windows::ffi::OsStrExt;
   use std::os::windows::ffi::OsStringExt;
 
   fn encode_wide(s: &str) -> Vec<u16> {
-    std::ffi::OsString::from(s).encode_wide().collect::<Vec<_>>()
+    std::ffi::OsString::from(s)
+      .encode_wide()
+      .chain(Some(0))
+      .collect()
   }
 
   // Safety: Assumes correct behavior of platform-specific syscalls and data structures.
   unsafe {
-    let mut system_info: winapi::um::sysinfoapi::SYSTEM_INFO = std::mem::zeroed();
+    let mut system_info: winapi::um::sysinfoapi::SYSTEM_INFO =
+      std::mem::zeroed();
     winapi::um::sysinfoapi::GetSystemInfo(&mut system_info);
 
     let cpu_count = system_info.dwNumberOfProcessors as usize;
 
     let mut cpus = vec![CpuInfo::new(); cpu_count];
-    
-    let mut sppi: Vec<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION> = vec![std::mem::zeroed(); cpu_count];
+
+    let mut sppi: Vec<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION> =
+      vec![std::mem::zeroed(); cpu_count];
 
     let sppi_size = std::mem::size_of_val(&sppi[0]) * cpu_count;
     let mut result_size = 0;
@@ -155,10 +160,12 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     assert_eq!(result_size, sppi_size as u32);
 
     for i in 0..cpu_count {
-      let key_name = format!("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\{}\\", i);
+      let key_name =
+        format!("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\{}", i);
       let key_name = encode_wide(&key_name);
 
-      let mut processor_key: windows_sys::Win32::System::Registry::HKEY = std::mem::zeroed();
+      let mut processor_key: windows_sys::Win32::System::Registry::HKEY =
+        std::mem::zeroed();
       let err = windows_sys::Win32::System::Registry::RegOpenKeyExW(
         windows_sys::Win32::System::Registry::HKEY_LOCAL_MACHINE,
         key_name.as_ptr(),
@@ -176,7 +183,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
       let err = windows_sys::Win32::System::Registry::RegQueryValueExW(
         processor_key,
-        encode_wide("MHz").as_ptr() as *mut _,
+        encode_wide("~MHz").as_ptr() as *mut _,
         std::ptr::null_mut(),
         std::ptr::null_mut(),
         &mut cpu_speed as *mut _ as *mut _,
@@ -204,17 +211,19 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
         return None;
       }
 
-      let cpu_brand = std::ffi::OsString::from_wide(&cpu_brand).into_string().unwrap();
+      let cpu_brand = std::ffi::OsString::from_wide(&cpu_brand)
+        .into_string()
+        .unwrap();
 
       cpus[i].model = cpu_brand;
       cpus[i].speed = cpu_speed as u64;
 
       cpus[i].times.user = sppi[i].UserTime as u64 / 10000;
-      cpus[i].times.sys = (sppi[i].KernelTime -
-          sppi[i].IdleTime)  as u64 / 10000;
-      cpus[i].times.idle = sppi[i].IdleTime  as u64 / 10000;
+      cpus[i].times.sys =
+        (sppi[i].KernelTime - sppi[i].IdleTime) as u64 / 10000;
+      cpus[i].times.idle = sppi[i].IdleTime as u64 / 10000;
       /* InterruptTime is Reserved1[1] */
-      cpus[i].times.irq = sppi[i].Reserved1[1]  as u64 / 10000;
+      cpus[i].times.irq = sppi[i].Reserved1[1] as u64 / 10000;
       cpus[i].times.nice = 0;
     }
     Some(cpus)
@@ -242,8 +251,6 @@ mod tests {
       assert!(cpu.times.user > 0);
       assert!(cpu.times.sys > 0);
       assert!(cpu.times.idle > 0);
-      assert!(cpu.times.irq >= 0);
-      assert!(cpu.times.nice >= 0);
     }
   }
 }
