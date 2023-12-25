@@ -15,8 +15,6 @@ use h2_04::server::Handshake;
 use h2_04::server::SendResponse;
 use h2_04::Reason;
 use h2_04::RecvStream;
-use hyper1::body::Body;
-use hyper1::service::service_fn;
 use hyper1::upgrade::Upgraded;
 use hyper1::Method;
 use hyper1::Request;
@@ -128,30 +126,35 @@ fn spawn_ws_server<S>(stream: S, handler: WsHandler)
 where
   S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-  let srv_fn = service_fn(move |mut req: Request<Body>| async move {
-    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
-      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
+  let service = hyper1::service::service_fn(
+    move |mut req: http_1::Request<hyper1::body::Incoming>| async move {
+      let (response, upgrade_fut) =
+        fastwebsockets_06::upgrade::upgrade(&mut req).map_err(|e| {
+          anyhow!("Error upgrading websocket connection: {}", e)
+        })?;
 
-    tokio::spawn(async move {
-      let ws = upgrade_fut
-        .await
-        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
-        .unwrap();
+      tokio::spawn(async move {
+        let ws = upgrade_fut
+          .await
+          .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
+          .unwrap();
 
-      if let Err(e) = handler(ws).await {
-        eprintln!("Error in websocket connection: {}", e);
-      }
-    });
+        if let Err(e) = handler(ws).await {
+          eprintln!("Error in websocket connection: {}", e);
+        }
+      });
 
-    Ok::<_, anyhow::Error>(response)
-  });
+      Ok::<_, anyhow::Error>(response)
+    },
+  );
 
+  let io = TokioIo::new(stream);
   tokio::spawn(async move {
-    let conn_fut = hyper::server::conn::Http::new()
-      .serve_connection(stream, srv_fn)
+    let conn = hyper1::server::conn::http1::Builder::new()
+      .serve_connection(io, service)
       .with_upgrades();
 
-    if let Err(e) = conn_fut.await {
+    if let Err(e) = conn.await {
       eprintln!("websocket server error: {e:?}");
     }
   });

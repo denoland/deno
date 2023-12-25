@@ -5989,6 +5989,7 @@ dependencies = [
  "glob",
  "h2 0.3.22",
  "h2 0.4.0",
+ "http 1.0.0",
  "hyper 0.14.27",
  "hyper 1.1.0",
  "hyper-util",
