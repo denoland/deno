@@ -233,7 +233,50 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "linux")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
-  None
+  let cpus = vec![CpuInfo::new(); 8192]; /* Kernel maxmimum */
+
+  let fp = std::fs::File::open("/proc/stat").ok()?;
+  let reader = std::io::BufReader::new(fp);
+
+  let mut i = 0;
+  for line in reader.lines() {
+    let line = line.ok()?;
+    if !line.starts_with("cpu") {
+      break;
+    }
+    let mut fields = line.split_whitespace();
+    fields.next()?;
+    let user = fields.next()?.parse::<u64>().ok()?;
+    let nice = fields.next()?.parse::<u64>().ok()?;
+    let sys = fields.next()?.parse::<u64>().ok()?;
+    let idle = fields.next()?.parse::<u64>().ok()?;
+    let irq = fields.next()?.parse::<u64>().ok()?;
+
+    cpus[i].times.user = user;
+    cpus[i].times.nice = nice;
+    cpus[i].times.sys = sys;
+    cpus[i].times.idle = idle;
+    cpus[i].times.irq = irq;
+
+    i += 1;
+  }
+
+  let fp = std::fs::File::open("/proc/cpuinfo").ok()?;
+  let reader = std::io::BufReader::new(fp);
+
+  let mut i = 0;
+  for line in reader.lines() {
+    let line = line.ok()?;
+    if !line.starts_with("model name") {
+      continue;
+    }
+    let mut fields = line.splitn(2, ':');
+    fields.next()?;
+    let model = fields.next()?.trim();
+
+    cpus[i].model = model.to_string();
+    i += 1;
+  } 
 }
 
 #[cfg(test)]
