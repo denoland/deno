@@ -39,7 +39,7 @@ mod impl_ {
 }
 
 #[cfg(windows)]
-mod priority {
+mod impl_ {
   use super::*;
   use deno_core::error::type_error;
   use winapi::shared::minwindef::DWORD;
