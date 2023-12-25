@@ -42,7 +42,10 @@ const {
   TypedArrayPrototypeGetByteLength,
   Uint8Array,
 } = primordials;
-const ops = core.ops;
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
 import {
   op_ws_check_permission_and_cancel_handle,
   op_ws_close,
@@ -79,7 +82,7 @@ webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
     return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (ops.op_is_any_array_buffer(V)) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
@@ -324,7 +327,7 @@ class WebSocket extends EventTarget {
 
     if (ArrayBufferIsView(data)) {
       op_ws_send_binary(this[_rid], data);
-    } else if (ops.op_is_array_buffer(data)) {
+    } else if (isArrayBuffer(data)) {
       op_ws_send_binary(this[_rid], new Uint8Array(data));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(

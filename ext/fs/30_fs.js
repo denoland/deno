@@ -25,6 +25,9 @@ const {
   SymbolIterator,
   Uint32Array,
 } = primordials;
+const {
+  isDate,
+} = core;
 import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
@@ -398,7 +401,7 @@ async function link(oldpath, newpath) {
 }
 
 function toUnixTimeFromEpoch(value) {
-  if (ops.op_is_date(value)) {
+  if (isDate(value)) {
     const time = DatePrototypeGetTime(value);
     const seconds = MathTrunc(time / 1e3);
     const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;

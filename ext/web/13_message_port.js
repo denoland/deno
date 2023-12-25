@@ -30,6 +30,9 @@ const {
   SymbolIterator,
   TypeError,
 } = primordials;
+const {
+  isArrayBuffer,
+} = core;
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -279,7 +282,7 @@ function serializeJsMessageData(data, transferables) {
     const hostObjects = [];
     for (let i = 0, j = 0; i < transferables.length; i++) {
       const t = transferables[i];
-      if (ops.op_is_array_buffer(t)) {
+      if (isArrayBuffer(t)) {
         if (
           ArrayBufferPrototypeGetByteLength(t) === 0 &&
           isDetachedBuffer(t)
@@ -326,7 +329,7 @@ function serializeJsMessageData(data, transferables) {
         kind: "messagePort",
         data: id,
       });
-    } else if (ops.op_is_array_buffer(transferable)) {
+    } else if (isArrayBuffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
         kind: "arrayBuffer",
         data: transferredArrayBuffers[arrayBufferI],

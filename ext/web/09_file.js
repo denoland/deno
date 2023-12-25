@@ -41,10 +41,15 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   Uint8Array,
 } = primordials;
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+  isDataView,
+  isTypedArray,
+} = core;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
@@ -123,34 +128,30 @@ function processBlobParts(parts, endings) {
   let size = 0;
   for (let i = 0; i < parts.length; ++i) {
     const element = parts[i];
-    if (ops.op_is_array_buffer(element)) {
+    if (isArrayBuffer(element)) {
       const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
       size += ArrayBufferPrototypeGetByteLength(element);
-    } else if (ArrayBufferIsView(element)) {
-      if (TypedArrayPrototypeGetSymbolToStringTag(element) !== undefined) {
-        // TypedArray
-        const chunk = new Uint8Array(
-          TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (element)),
-          TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (element)),
-          TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (element)),
-        );
-        size += TypedArrayPrototypeGetByteLength(
-          /** @type {Uint8Array} */ (element),
-        );
-        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
-      } else {
-        // DataView
-        const chunk = new Uint8Array(
-          DataViewPrototypeGetBuffer(/** @type {DataView} */ (element)),
-          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (element)),
-          DataViewPrototypeGetByteLength(/** @type {DataView} */ (element)),
-        );
-        size += DataViewPrototypeGetByteLength(
-          /** @type {DataView} */ (element),
-        );
-        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
-      }
+    } else if (isTypedArray(element)) {
+      const chunk = new Uint8Array(
+        TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (element)),
+        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (element)),
+        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (element)),
+      );
+      size += TypedArrayPrototypeGetByteLength(
+        /** @type {Uint8Array} */ (element),
+      );
+      ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
+    } else if (isDataView(element)) {
+      const chunk = new Uint8Array(
+        DataViewPrototypeGetBuffer(/** @type {DataView} */ (element)),
+        DataViewPrototypeGetByteOffset(/** @type {DataView} */ (element)),
+        DataViewPrototypeGetByteLength(/** @type {DataView} */ (element)),
+      );
+      size += DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (element),
+      );
+      ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, element)) {
       ArrayPrototypePush(processedParts, element);
       size += element.size;
@@ -440,7 +441,7 @@ webidl.converters["BlobPart"] = (V, prefix, context, opts) => {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
       return webidl.converters["Blob"](V, prefix, context, opts);
     }
-    if (ops.op_is_any_array_buffer(V)) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {

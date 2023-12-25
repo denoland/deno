@@ -27,6 +27,9 @@ const {
   SymbolIterator,
   TypeError,
 } = primordials;
+const {
+  isNativeError,
+} = core;
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
@@ -235,7 +238,7 @@ setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
 
 function formatException(error) {
   if (
-    ops.op_is_native_error(error) ||
+    isNativeError(error) ||
     ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)
   ) {
     return null;

@@ -14,7 +14,6 @@ import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   ArrayBuffer,
-  ArrayBufferIsView,
   ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypeMap,
@@ -47,6 +46,10 @@ const {
   Uint32Array,
   Uint8Array,
 } = primordials;
+const {
+  isDataView,
+  isTypedArray,
+} = core;
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -1686,17 +1689,14 @@ class GPUQueue {
     });
     /** @type {ArrayBufferLike} */
     let abLike = data;
-    if (ArrayBufferIsView(data)) {
-      if (TypedArrayPrototypeGetSymbolToStringTag(data) !== undefined) {
-        // TypedArray
-        abLike = TypedArrayPrototypeGetBuffer(
-          /** @type {Uint8Array} */ (data),
-        );
-      } else {
-        // DataView
-        abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
-      }
+    if (isTypedArray(data)) {
+      abLike = TypedArrayPrototypeGetBuffer(
+        /** @type {Uint8Array} */ (data),
+      );
+    } else if (isDataView(data)) {
+      abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
     }
+
     const { err } = ops.op_webgpu_write_buffer(
       device.rid,
       bufferRid,
@@ -1740,16 +1740,12 @@ class GPUQueue {
 
     /** @type {ArrayBufferLike} */
     let abLike = data;
-    if (ArrayBufferIsView(data)) {
-      if (TypedArrayPrototypeGetSymbolToStringTag(data) !== undefined) {
-        // TypedArray
-        abLike = TypedArrayPrototypeGetBuffer(
-          /** @type {Uint8Array} */ (data),
-        );
-      } else {
-        // DataView
-        abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
-      }
+    if (isTypedArray(data)) {
+      abLike = TypedArrayPrototypeGetBuffer(
+        /** @type {Uint8Array} */ (data),
+      );
+    } else if (isDataView(data)) {
+      abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
     }
 
     const { err } = ops.op_webgpu_write_texture(
