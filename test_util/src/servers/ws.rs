@@ -169,7 +169,7 @@ async fn handle_wss_stream(
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   }
-  let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
+  let Some(protocol) = recv.extensions().get::<h2_04::ext::Protocol>() else {
     eprintln!("wss2: refusing no-:protocol stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
