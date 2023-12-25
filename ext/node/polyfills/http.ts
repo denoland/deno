@@ -892,6 +892,11 @@ class ClientRequest extends OutgoingMessage {
     }
     headers.push([key, value]);
   }
+
+  // Once a socket is assigned to this request and is connected socket.setNoDelay() will be called.
+  setNoDelay() {
+    this.socket?.setNoDelay?.();
+  }
 }
 
 // isCookieField performs a case-insensitive comparison of a provided string
