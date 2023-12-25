@@ -293,9 +293,9 @@ mod tests {
     let info = cpu_info();
     assert!(info.is_some());
     let info = info.unwrap();
-    assert!(info.len() > 0);
+    assert!(!info.is_empty());
     for cpu in info {
-      assert!(cpu.model.len() > 0);
+      assert!(!cpu.model.is_empty());
       assert!(cpu.times.user > 0);
       assert!(cpu.times.sys > 0);
       assert!(cpu.times.idle > 0);
