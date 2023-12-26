@@ -4483,7 +4483,7 @@ async fn websocket_server_multi_field_connection_header() {
     .header(http_1::header::CONNECTION, "keep-alive, Upgrade")
     .header(
       "Sec-WebSocket-Key",
-      fastwebsockets::handshake::generate_key(),
+      fastwebsockets_06::handshake::generate_key(),
     )
     .header("Sec-WebSocket-Version", "13")
     .uri("ws://localhost:4319")
@@ -4538,7 +4538,7 @@ async fn websocket_server_idletimeout() {
     .header(http_1::header::CONNECTION, "keep-alive, Upgrade")
     .header(
       "Sec-WebSocket-Key",
-      fastwebsockets::handshake::generate_key(),
+      fastwebsockets_06::handshake::generate_key(),
     )
     .header("Sec-WebSocket-Version", "13")
     .uri("ws://localhost:4509")
