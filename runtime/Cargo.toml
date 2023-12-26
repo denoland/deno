@@ -93,7 +93,6 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
-fastwebsockets.workspace = true
 
 console_static_text.workspace = true
 dlopen2.workspace = true
