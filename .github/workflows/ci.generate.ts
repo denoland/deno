@@ -187,7 +187,7 @@ const installDockerColima = {
   name: "Setup docker (macos)",
   run: [
     "brew install docker",
-    "brew install --cask colima",
+    "brew install colima",
     "colima start",
   ].join("\n"),
 };
