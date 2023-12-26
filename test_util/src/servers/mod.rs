@@ -16,7 +16,9 @@ use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
 use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::BodyExt;
 use http_body_util::Empty;
+use http_body_util::Full;
 use hyper::header::HeaderValue;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
@@ -164,6 +166,15 @@ pub async fn run_all_servers() {
 
 fn empty_body() -> UnsyncBoxBody<Bytes, Infallible> {
   UnsyncBoxBody::new(Empty::new())
+}
+
+fn string_body(str_: &str) -> UnsyncBoxBody<Bytes, Infallible> {
+  UnsyncBoxBody::new(Full::new(Bytes::from(str_.to_string())))
+}
+
+fn json_body(value: serde_json::Value) -> UnsyncBoxBody<Bytes, Infallible> {
+  let str_ = value.to_string();
+  string_body(&str_)
 }
 
 /// Benchmark server that just serves "hello world" responses.
@@ -409,7 +420,9 @@ async fn main_server_hyper1(
   return match (req.method(), req.uri().path()) {
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
-      let mut response = http_1::Response::new(body);
+      let mut response = http_1::Response::new(UnsyncBoxBody::new(Full::new(
+        body.collect().await?.to_bytes(),
+      )));
 
       if let Some(status) = parts.headers.get("x-status") {
         *response.status_mut() =
@@ -420,7 +433,7 @@ async fn main_server_hyper1(
     }
     (&hyper1::Method::POST, "/echo_multipart_file") => {
       let body = req.into_body();
-      let bytes = &hyper::body::to_bytes(body).await.unwrap()[0..];
+      let bytes = &body.collect().await.unwrap().to_bytes()[0..];
       let start = b"--boundary\t \r\n\
                     Content-Disposition: form-data; name=\"field_1\"\r\n\
                     \r\n\
@@ -433,7 +446,8 @@ async fn main_server_hyper1(
       let end = b"\r\n--boundary--\r\n";
       let b = [start as &[u8], bytes, end].concat();
 
-      let mut response = http_1::Response::new(Body::from(b));
+      let mut response =
+        http_1::Response::new(UnsyncBoxBody::new(Full::new(Bytes::from(b))));
       response.headers_mut().insert(
         "content-type",
         http_1::HeaderValue::from_static(
@@ -456,7 +470,7 @@ async fn main_server_hyper1(
              console.log(\"Hi\")\
              \r\n--boundary--\r\n\
              Epilogue";
-      let mut res = http_1::Response::new(Body::from(b));
+      let mut res = http_1::Response::new(string_body(b));
       res.headers_mut().insert(
         "content-type",
         http_1::HeaderValue::from_static(
@@ -479,7 +493,7 @@ async fn main_server_hyper1(
              console.log(\"Hi\")\
              \r\n--boundary--\r\n\
              Epilogue";
-      let mut res = http_1::Response::new(Body::from(b));
+      let mut res = http_1::Response::new(string_body(b));
       res.headers_mut().insert(
         "content-type",
         http_1::HeaderValue::from_static(
@@ -489,17 +503,17 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/bad_redirect") => {
-      let mut res = http_1::Response::new(Body::empty());
+      let mut res = http_1::Response::new(empty_body());
       *res.status_mut() = http_1::StatusCode::FOUND;
       Ok(res)
     }
     (_, "/server_error") => {
-      let mut res = http_1::Response::new(Body::empty());
+      let mut res = http_1::Response::new(empty_body());
       *res.status_mut() = http_1::StatusCode::INTERNAL_SERVER_ERROR;
       Ok(res)
     }
     (_, "/x_deno_warning.js") => {
-      let mut res = http_1::Response::new(Body::empty());
+      let mut res = http_1::Response::new(empty_body());
       *res.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
       res
         .headers_mut()
@@ -512,7 +526,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/non_ascii_redirect") => {
-      let mut res = http_1::Response::new(Body::empty());
+      let mut res = http_1::Response::new(empty_body());
       *res.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
       res.headers_mut().insert(
         "location",
@@ -525,7 +539,7 @@ async fn main_server_hyper1(
       if if_none_match
         == Some(&http_1::HeaderValue::from_static("33a64df551425fcc55e"))
       {
-        let mut resp = http_1::Response::new(Body::empty());
+        let mut resp = http_1::Response::new(empty_body());
         *resp.status_mut() = http_1::StatusCode::NOT_MODIFIED;
         resp.headers_mut().insert(
           "Content-type",
@@ -538,7 +552,8 @@ async fn main_server_hyper1(
 
         Ok(resp)
       } else {
-        let mut resp = http_1::Response::new(Body::from("console.log('etag')"));
+        let mut resp =
+          http_1::Response::new(string_body("console.log('etag')"));
         resp.headers_mut().insert(
           "Content-type",
           http_1::HeaderValue::from_static("application/typescript"),
@@ -552,7 +567,7 @@ async fn main_server_hyper1(
     }
     (_, "/xTypeScriptTypes.js") => {
       let mut res =
-        http_1::Response::new(Body::from("export const foo = 'foo';"));
+        http_1::Response::new(string_body("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
         http_1::HeaderValue::from_static("application/javascript"),
@@ -565,7 +580,7 @@ async fn main_server_hyper1(
     }
     (_, "/xTypeScriptTypes.jsx") => {
       let mut res =
-        http_1::Response::new(Body::from("export const foo = 'foo';"));
+        http_1::Response::new(string_body("export const foo = 'foo';"));
       res
         .headers_mut()
         .insert("Content-type", http_1::HeaderValue::from_static("text/jsx"));
@@ -577,7 +592,7 @@ async fn main_server_hyper1(
     }
     (_, "/xTypeScriptTypes.ts") => {
       let mut res =
-        http_1::Response::new(Body::from("export const foo: string = 'foo';"));
+        http_1::Response::new(string_body("export const foo: string = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
         http_1::HeaderValue::from_static("application/typescript"),
@@ -590,7 +605,7 @@ async fn main_server_hyper1(
     }
     (_, "/xTypeScriptTypes.d.ts") => {
       let mut res =
-        http_1::Response::new(Body::from("export const foo: 'foo';"));
+        http_1::Response::new(string_body("export const foo: 'foo';"));
       res.headers_mut().insert(
         "Content-type",
         http_1::HeaderValue::from_static("application/typescript"),
@@ -599,7 +614,7 @@ async fn main_server_hyper1(
     }
     (_, "/run/type_directives_redirect.js") => {
       let mut res =
-        http_1::Response::new(Body::from("export const foo = 'foo';"));
+        http_1::Response::new(string_body("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
         http_1::HeaderValue::from_static("application/javascript"),
@@ -613,7 +628,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/run/type_headers_deno_types.foo.js") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         "export function foo(text) { console.log(text); }",
       ));
       res.headers_mut().insert(
@@ -629,7 +644,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/run/type_headers_deno_types.d.ts") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         "export function foo(text: number): void;",
       ));
       res.headers_mut().insert(
@@ -639,7 +654,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/run/type_headers_deno_types.foo.d.ts") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         "export function foo(text: string): void;",
       ));
       res.headers_mut().insert(
@@ -649,7 +664,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/subdir/xTypeScriptTypesRedirect.d.ts") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         "import './xTypeScriptTypesRedirected.d.ts';",
       ));
       res.headers_mut().insert(
@@ -660,7 +675,7 @@ async fn main_server_hyper1(
     }
     (_, "/subdir/xTypeScriptTypesRedirected.d.ts") => {
       let mut res =
-        http_1::Response::new(Body::from("export const foo: 'foo';"));
+        http_1::Response::new(string_body("export const foo: 'foo';"));
       res.headers_mut().insert(
         "Content-type",
         http_1::HeaderValue::from_static("application/typescript"),
@@ -668,7 +683,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/referenceTypes.js") => {
-      let mut res = http_1::Response::new(Body::from("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
+      let mut res = http_1::Response::new(string_body("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
       res.headers_mut().insert(
         "Content-type",
         http_1::HeaderValue::from_static("application/javascript"),
@@ -676,7 +691,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/subdir/file_with_:_in_name.ts") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         "console.log('Hello from file_with_:_in_name.ts');",
       ));
       res.headers_mut().insert(
@@ -686,7 +701,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/v1/extensionless") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         r#"export * from "/subdir/mod1.ts";"#,
       ));
       res.headers_mut().insert(
@@ -696,7 +711,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/subdir/no_js_ext@1.0.0") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         r#"import { printHello } from "./mod2.ts";
         printHello();
         "#,
@@ -721,14 +736,14 @@ async fn main_server_hyper1(
     }
     (_, "/http_version") => {
       let version = format!("{:?}", req.version());
-      Ok(http_1::Response::new(version.into()))
+      Ok(http_1::Response::new(string_body(&version)))
     }
     (_, "/content_length") => {
       let content_length = format!("{:?}", req.headers().get("content-length"));
-      Ok(http_1::Response::new(content_length.into()))
+      Ok(http_1::Response::new(string_body(&content_length)))
     }
     (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
-      let mut res = http_1::Response::new(Body::from(
+      let mut res = http_1::Response::new(string_body(
         r#"export function jsx(
           _type,
           _props,
@@ -749,8 +764,8 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/dynamic") => {
-      let mut res = http_1::Response::new(Body::from(
-        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      let mut res = http_1::Response::new(string_body(
+        &serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
       ));
       res.headers_mut().insert(
         "cache-control",
@@ -759,8 +774,8 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/dynamic_cache") => {
-      let mut res = http_1::Response::new(Body::from(
-        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      let mut res = http_1::Response::new(string_body(
+        &serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
       ));
       res.headers_mut().insert(
         "cache-control",
@@ -769,7 +784,7 @@ async fn main_server_hyper1(
       Ok(res)
     }
     (_, "/dynamic_module.ts") => {
-      let mut res = http_1::Response::new(Body::from(format!(
+      let mut res = http_1::Response::new(string_body(&format!(
         r#"export const time = {};"#,
         std::time::SystemTime::now().elapsed().unwrap().as_nanos()
       )));
@@ -781,14 +796,14 @@ async fn main_server_hyper1(
     }
     (_, "/echo_accept") => {
       let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
-      let res = http_1::Response::new(Body::from(
-        serde_json::json!({ "accept": accept }).to_string(),
+      let res = http_1::Response::new(json_body(
+        serde_json::json!({ "accept": accept }),
       ));
       Ok(res)
     }
     (_, "/search_params") => {
       let query = req.uri().query().map(|s| s.to_string());
-      let res = http_1::Response::new(Body::from(query.unwrap_or_default()));
+      let res = http_1::Response::new(string_body(&query.unwrap_or_default()));
       Ok(res)
     }
     (&hyper1::Method::POST, "/kv_remote_authorize") => {
@@ -810,21 +825,18 @@ async fn main_server_hyper1(
       Ok(
         http_1::Response::builder()
           .header("content-type", "application/json")
-          .body(Body::from(
-            serde_json::json!({
-              "version": 1,
-              "databaseId": KV_DATABASE_ID,
-              "endpoints": [
-                {
-                  "url": format!("http://localhost:{}/kv_blackhole", PORT),
-                  "consistency": "strong",
-                }
-              ],
-              "token": KV_DATABASE_TOKEN,
-              "expiresAt": "2099-01-01T00:00:00Z",
-            })
-            .to_string(),
-          ))
+          .body(json_body(serde_json::json!({
+            "version": 1,
+            "databaseId": KV_DATABASE_ID,
+            "endpoints": [
+              {
+                "url": format!("http://localhost:{}/kv_blackhole", PORT),
+                "consistency": "strong",
+              }
+            ],
+            "token": KV_DATABASE_TOKEN,
+            "expiresAt": "2099-01-01T00:00:00Z",
+          })))
           .unwrap(),
       )
     }
@@ -847,13 +859,10 @@ async fn main_server_hyper1(
       Ok(
         http_1::Response::builder()
           .header("content-type", "application/json")
-          .body(Body::from(
-            serde_json::json!({
-              "version": 1,
-              "databaseId": KV_DATABASE_ID,
-            })
-            .to_string(),
-          ))
+          .body(json_body(serde_json::json!({
+            "version": 1,
+            "databaseId": KV_DATABASE_ID,
+          })))
           .unwrap(),
       )
     }
@@ -867,7 +876,7 @@ async fn main_server_hyper1(
       {
         return Ok(
           http_1::Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
+            .status(http_1::StatusCode::UNAUTHORIZED)
             .body(empty_body())
             .unwrap(),
         );
@@ -876,21 +885,18 @@ async fn main_server_hyper1(
       Ok(
         http_1::Response::builder()
           .header("content-type", "application/json")
-          .body(Body::from(
-            serde_json::json!({
-              "version": 1000,
-              "databaseId": KV_DATABASE_ID,
-              "endpoints": [
-                {
-                  "url": format!("http://localhost:{}/kv_blackhole", PORT),
-                  "consistency": "strong",
-                }
-              ],
-              "token": KV_DATABASE_TOKEN,
-              "expiresAt": "2099-01-01T00:00:00Z",
-            })
-            .to_string(),
-          ))
+          .body(json_body(serde_json::json!({
+            "version": 1000,
+            "databaseId": KV_DATABASE_ID,
+            "endpoints": [
+              {
+                "url": format!("http://localhost:{}/kv_blackhole", PORT),
+                "consistency": "strong",
+              }
+            ],
+            "token": KV_DATABASE_TOKEN,
+            "expiresAt": "2099-01-01T00:00:00Z",
+          })))
           .unwrap(),
       )
     }
@@ -904,20 +910,23 @@ async fn main_server_hyper1(
       {
         return Ok(
           http_1::Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
+            .status(http_1::StatusCode::UNAUTHORIZED)
             .body(empty_body())
             .unwrap(),
         );
       }
 
-      let body = hyper::body::to_bytes(req.into_body())
+      let body = req
+        .into_body()
+        .collect()
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .to_bytes();
       let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..])
       else {
         return Ok(
           http_1::Response::builder()
-            .status(StatusCode::BAD_REQUEST)
+            .status(http_1::StatusCode::BAD_REQUEST)
             .body(empty_body())
             .unwrap(),
         );
@@ -925,14 +934,14 @@ async fn main_server_hyper1(
       if body.ranges.is_empty() {
         return Ok(
           http_1::Response::builder()
-            .status(StatusCode::BAD_REQUEST)
+            .status(http_1::StatusCode::BAD_REQUEST)
             .body(empty_body())
             .unwrap(),
         );
       }
       Ok(
         http_1::Response::builder()
-          .body(Body::from(
+          .body(UnsyncBoxBody::new(Full::new(Bytes::from(
             SnapshotReadOutput {
               ranges: body
                 .ranges
@@ -944,7 +953,7 @@ async fn main_server_hyper1(
               status: SnapshotReadStatus::SrSuccess.into(),
             }
             .encode_to_vec(),
-          ))
+          ))))
           .unwrap(),
       )
     }
@@ -964,9 +973,12 @@ async fn main_server_hyper1(
         );
       }
 
-      let body = hyper::body::to_bytes(req.into_body())
+      let body = req
+        .into_body()
+        .collect()
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .to_bytes();
       let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..])
       else {
         return Ok(
@@ -978,14 +990,14 @@ async fn main_server_hyper1(
       };
       Ok(
         http_1::Response::builder()
-          .body(Body::from(
+          .body(UnsyncBoxBody::new(Full::new(Bytes::from(
             AtomicWriteOutput {
               status: AtomicWriteStatus::AwSuccess.into(),
               versionstamp: vec![0u8; 10],
               failed_checks: vec![],
             }
             .encode_to_vec(),
-          ))
+          ))))
           .unwrap(),
       )
     }
@@ -994,7 +1006,7 @@ async fn main_server_hyper1(
       return Ok(
         http_1::Response::builder()
           .status(http_1::StatusCode::OK)
-          .body(Body::from("99999.99.99"))
+          .body(string_body("99999.99.99"))
           .unwrap(),
       );
     }
@@ -1003,7 +1015,7 @@ async fn main_server_hyper1(
       return Ok(
         http_1::Response::builder()
           .status(http_1::StatusCode::OK)
-          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
       );
     }
@@ -1012,7 +1024,7 @@ async fn main_server_hyper1(
         http_1::Response::builder()
           .status(http_1::StatusCode::OK)
           // use a deno version that will never happen
-          .body(Body::from("99999.99.99"))
+          .body(string_body("99999.99.99"))
           .unwrap(),
       );
     }
@@ -1020,7 +1032,7 @@ async fn main_server_hyper1(
       return Ok(
         http_1::Response::builder()
           .status(http_1::StatusCode::OK)
-          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
       );
     }
@@ -1041,13 +1053,14 @@ async fn main_server_hyper1(
       {
         // serve all requests to /npm/registry/@deno using the file system
         // at that path
-        match handle_custom_npm_registry_path(suffix) {
+        match handle_custom_npm_registry_path_hyper1(suffix) {
           Ok(Some(response)) => return Ok(response),
           Ok(None) => {} // ignore, not found
           Err(err) => {
             return http_1::Response::builder()
               .status(http_1::StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{err:#}").into());
+              .body(string_body(&format!("{err:#}")))
+              .map_err(|e| e.into());
           }
         }
       } else if req.uri().path().starts_with("/npm/registry/") {
@@ -1061,11 +1074,13 @@ async fn main_server_hyper1(
           return Ok(file_resp);
         } else if should_download_npm_packages() {
           if let Err(err) =
-            download_npm_registry_file(req.uri(), &file_path, is_tarball).await
+            download_npm_registry_file_hyper1(req.uri(), &file_path, is_tarball)
+              .await
           {
             return http_1::Response::builder()
               .status(http_1::StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{err:#}").into());
+              .body(string_body(&format!("{err:#}")))
+              .map_err(|e| e.into());
           };
 
           // serve the file
@@ -1086,7 +1101,8 @@ async fn main_server_hyper1(
         return http_1::Response::builder()
           .status(http_1::StatusCode::OK)
           .header("content-type", "application/typescript")
-          .body(empty_body());
+          .body(empty_body())
+          .map_err(|e| e.into());
       }
 
       http_1::Response::builder()
@@ -1771,6 +1787,35 @@ async fn main_server(
   };
 }
 
+fn handle_custom_npm_registry_path_hyper1(
+  path: &str,
+) -> Result<
+  Option<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>>,
+  anyhow::Error,
+> {
+  let parts = path
+    .split('/')
+    .filter(|p| !p.is_empty())
+    .collect::<Vec<_>>();
+  let cache = &CUSTOM_NPM_PACKAGE_CACHE;
+  let package_name = format!("@denotest/{}", parts[0]);
+  if parts.len() == 2 {
+    if let Some(file_bytes) =
+      cache.tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
+    {
+      let file_resp = custom_headers_hyper1("file.tgz", file_bytes);
+      return Ok(Some(file_resp));
+    }
+  } else if parts.len() == 1 {
+    if let Some(registry_file) = cache.registry_file(&package_name)? {
+      let file_resp = custom_headers_hyper1("registry.json", registry_file);
+      return Ok(Some(file_resp));
+    }
+  }
+
+  Ok(None)
+}
+
 fn handle_custom_npm_registry_path(
   path: &str,
 ) -> Result<Option<Response<Body>>, anyhow::Error> {
@@ -1801,6 +1846,47 @@ fn should_download_npm_packages() -> bool {
   // when this env var is set, it will download and save npm packages
   // to the testdata/npm/registry directory
   std::env::var("DENO_TEST_UTIL_UPDATE_NPM") == Ok("1".to_string())
+}
+
+async fn download_npm_registry_file_hyper1(
+  uri: &hyper1::Uri,
+  file_path: &PathBuf,
+  is_tarball: bool,
+) -> Result<(), anyhow::Error> {
+  let url_parts = uri
+    .path()
+    .strip_prefix("/npm/registry/")
+    .unwrap()
+    .split('/')
+    .collect::<Vec<_>>();
+  let package_name = if url_parts[0].starts_with('@') {
+    url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")
+  } else {
+    url_parts.into_iter().take(1).collect::<Vec<_>>().join("/")
+  };
+  let url = if is_tarball {
+    let file_name = file_path.file_name().unwrap().to_string_lossy();
+    format!("https://registry.npmjs.org/{package_name}/-/{file_name}")
+  } else {
+    format!("https://registry.npmjs.org/{package_name}")
+  };
+  let client = reqwest::Client::new();
+  let response = client.get(url).send().await?;
+  let bytes = response.bytes().await?;
+  let bytes = if is_tarball {
+    bytes.to_vec()
+  } else {
+    String::from_utf8(bytes.to_vec())
+      .unwrap()
+      .replace(
+        &format!("https://registry.npmjs.org/{package_name}/-/"),
+        &format!("http://localhost:4545/npm/registry/{package_name}/"),
+      )
+      .into_bytes()
+  };
+  std::fs::create_dir_all(file_path.parent().unwrap())?;
+  std::fs::write(file_path, bytes)?;
+  Ok(())
 }
 
 async fn download_npm_registry_file(
@@ -1975,12 +2061,8 @@ async fn wrap_main_ipv6_server(port: u16) {
 }
 
 async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
-  let main_server_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server = Server::bind(main_server_addr).serve(main_server_svc);
-  if let Err(e) = main_server.await {
-    eprintln!("HTTP server error: {e:?}");
-  }
+  run_hyper1_server(*main_server_addr, main_server_hyper1, "HTTP server error")
+    .await;
 }
 
 async fn wrap_main_https_server(port: u16) {
