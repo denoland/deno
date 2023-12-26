@@ -152,16 +152,16 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-flaky_test = "=0.1.0"
-once_cell.workspace = true
-os_pipe.workspace = true
-pretty_assertions.workspace = true
 fastwebsockets_06 = { package = "fastwebsockets", version = "0.6", features = ["upgrade", "unstable-split"] }
+flaky_test = "=0.1.0"
 h2_04 = { package = "h2", version = "0.4" }
 http-body-util = "0.1"
 http_1 = { package = "http", version = "1.0" }
 hyper-util.workspace = true
 hyper1.workspace = true
+once_cell.workspace = true
+os_pipe.workspace = true
+pretty_assertions.workspace = true
 test_util.workspace = true
 trust-dns-client = "=0.22.0"
 trust-dns-server = "=0.22.1"
