@@ -3882,7 +3882,7 @@ declare namespace Deno {
     /**
      * Stops watching the file system and closes the watcher resource.
      *
-     * @deprecated Will be removed in the future.
+     * @deprecated Will be removed in v2.0.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
