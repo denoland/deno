@@ -182,6 +182,7 @@ jobs:
         name: Setup docker (macos)
         run: |-
           brew install docker
+          brew install --cask colima
           colima start
       - if: '!(matrix.skip) && (matrix.job == ''bench'')'
         name: Install Node
