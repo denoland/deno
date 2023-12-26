@@ -178,6 +178,11 @@ jobs:
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
+      - if: '!(matrix.skip) && (matrix.cross)'
+        name: Setup docker (macos)
+        run: |-
+          brew install docker
+          colima start
       - if: '!(matrix.skip) && (matrix.job == ''bench'')'
         name: Install Node
         uses: actions/setup-node@v3

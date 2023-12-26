@@ -183,6 +183,13 @@ const installDenoStep = {
   uses: "denoland/setup-deno@v1",
   with: { "deno-version": "v1.x" },
 };
+const installDockerColima = {
+  name: "Setup docker (macos)",
+  run: [
+    "brew install docker",
+    "colima start",
+  ].join("\n"),
+};
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
@@ -474,6 +481,10 @@ const ci = {
         ...installPythonSteps.map((s) =>
           withCondition(s, "matrix.job != 'lint'")
         ),
+        {
+          if: "matrix.cross",
+          ...installDockerColima,
+        },
         {
           // only necessary for benchmarks
           if: "matrix.job == 'bench'",
