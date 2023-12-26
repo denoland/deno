@@ -2275,6 +2275,9 @@ declare namespace Deno {
      * file.close();
      * ```
      *
+     * @deprecated Use {@linkcode FsFile.writable} instead.
+     * {@linkcode FsFile.write} will be removed in v2.0.0.
+     *
      * @category I/O
      */
     write(p: Uint8Array): Promise<number>;
@@ -2292,6 +2295,9 @@ declare namespace Deno {
      * const bytesWritten = file.writeSync(data); // 11
      * file.close();
      * ```
+     *
+     * @deprecated Use {@linkcode FsFile.writable} instead.
+     * {@linkcode FsFile.writeSync} will be removed in v2.0.0.
      */
     writeSync(p: Uint8Array): number;
     /** Truncates (or extends) the file to reach the specified `len`. If `len`
@@ -2362,6 +2368,9 @@ declare namespace Deno {
      * const text = new TextDecoder().decode(buf);  // "hello world"
      * file.close();
      * ```
+     *
+     * @deprecated Use {@linkcode FsFile.readable} instead.
+     * {@linkcode FsFile.read} will be removed in v2.0.0.
      */
     read(p: Uint8Array): Promise<number | null>;
     /** Synchronously read from the file into an array buffer (`p`).
@@ -2383,6 +2392,9 @@ declare namespace Deno {
      * const text = new TextDecoder().decode(buf);  // "hello world"
      * file.close();
      * ```
+     *
+     * @deprecated Use {@linkcode FsFile.readable} instead.
+     * {@linkcode FsFile.readSync} will be removed in v2.0.0.
      */
     readSync(p: Uint8Array): number | null;
     /** Seek to the given `offset` under mode given by `whence`. The call
@@ -2495,6 +2507,10 @@ declare namespace Deno {
      * // do work with "file" object
      * file.close();
      * ```
+     *
+     * @deprecated Use {@linkcode FsFile.readable} and
+     * {@linkcode FsFile.writable} instead. {@linkcode FsFile.read} will be
+     * removed in v2.0.0.
      */
     close(): void;
 
