@@ -19,9 +19,15 @@ deno_core.workspace = true
 deno_net.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
+fastwebsockets_06 = { package = "fastwebsockets", version = "0.6", features = ["upgrade", "unstable-split"] }
 h2.workspace = true
+h2_04 = { package = "h2", version = "0.4" }
 http.workspace = true
+http-body-util = "0.1"
+http_1 = { package = "http", version = "1.0" }
 hyper = { workspace = true, features = ["backports"] }
+hyper-util.workspace = true
+hyper1.workspace = true
 once_cell.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
