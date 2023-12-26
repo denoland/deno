@@ -19,6 +19,7 @@ async-stream = "0.3.3"
 base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
+deno_unsync = "0.3.0"
 denokv_proto.workspace = true
 fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
@@ -26,6 +27,7 @@ futures.workspace = true
 glob.workspace = true
 h2.workspace = true
 h2_04 = { package = "h2", version = "0.4" }
+http-body-util = "0.1"
 http_1 = { package = "http", version = "1.0" }
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
 hyper-util.workspace = true
