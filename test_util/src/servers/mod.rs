@@ -3,6 +3,7 @@
 // otherwise this starts multiple servers on many ports for test endpoints.
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use bytes::Bytes;
 use denokv_proto::datapath::AtomicWrite;
 use denokv_proto::datapath::AtomicWriteOutput;
 use denokv_proto::datapath::AtomicWriteStatus;
@@ -10,9 +11,12 @@ use denokv_proto::datapath::ReadRangeOutput;
 use denokv_proto::datapath::SnapshotRead;
 use denokv_proto::datapath::SnapshotReadOutput;
 use denokv_proto::datapath::SnapshotReadStatus;
+use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
+use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::Empty;
 use hyper::header::HeaderValue;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
@@ -21,6 +25,7 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use hyper_util::rt::TokioIo;
 use pretty_assertions::assert_eq;
 use prost::Message;
 use std::collections::HashMap;
@@ -37,6 +42,7 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
 mod grpc;
@@ -160,30 +166,31 @@ pub async fn run_all_servers() {
 async fn hyper_hello(port: u16) {
   println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let hello_svc = make_service_fn(|_| async move {
-    Ok::<_, Infallible>(service_fn(move |_: Request<Body>| async move {
-      Ok::<_, Infallible>(Response::new(Body::from("Hello World!")))
-    }))
-  });
-
-  let server = Server::bind(&addr).serve(hello_svc);
-  if let Err(e) = server.await {
-    eprintln!("server error: {e}");
-  }
+  let handler = move |_: http_1::Request<hyper1::body::Incoming>| async move {
+    Ok::<_, anyhow::Error>(http_1::Response::new(UnsyncBoxBody::new(
+      http_body_util::Full::new(Bytes::from("Hello World!")),
+    )))
+  };
+  run_hyper1_server(addr, handler, "server error").await;
 }
 
-fn redirect_resp(url: String) -> Response<Body> {
-  let mut redirect_resp = Response::new(Body::empty());
-  *redirect_resp.status_mut() = StatusCode::MOVED_PERMANENTLY;
+fn redirect_resp(
+  url: String,
+) -> http_1::Response<UnsyncBoxBody<Bytes, Infallible>> {
+  let mut redirect_resp =
+    http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
+  *redirect_resp.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
   redirect_resp.headers_mut().insert(
-    hyper::header::LOCATION,
-    HeaderValue::from_str(&url[..]).unwrap(),
+    http_1::header::LOCATION,
+    http_1::HeaderValue::from_str(&url[..]).unwrap(),
   );
 
   redirect_resp
 }
 
-async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn redirect(
+  req: hyper1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}{p}");
@@ -191,7 +198,9 @@ async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   Ok(redirect_resp(url))
 }
 
-async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn double_redirects(
+  req: hyper1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{REDIRECT_PORT}{p}");
@@ -199,7 +208,9 @@ async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   Ok(redirect_resp(url))
 }
 
-async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn inf_redirects(
+  req: hyper1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
@@ -207,7 +218,9 @@ async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   Ok(redirect_resp(url))
 }
 
-async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn another_redirect(
+  req: hyper1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}/subdir{p}");
@@ -215,7 +228,9 @@ async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   Ok(redirect_resp(url))
 }
 
-async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn auth_redirect(
+  req: hyper1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   if let Some(auth) = req
     .headers()
     .get("authorization")
@@ -229,14 +244,14 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
     }
   }
 
-  let mut resp = Response::new(Body::empty());
-  *resp.status_mut() = StatusCode::NOT_FOUND;
+  let mut resp = http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
+  *resp.status_mut() = http_1::StatusCode::NOT_FOUND;
   Ok(resp)
 }
 
 async fn basic_auth_redirect(
-  req: Request<Body>,
-) -> hyper::Result<Response<Body>> {
+  req: http_1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   if let Some(auth) = req
     .headers()
     .get("authorization")
@@ -252,8 +267,8 @@ async fn basic_auth_redirect(
     }
   }
 
-  let mut resp = Response::new(Body::empty());
-  *resp.status_mut() = StatusCode::NOT_FOUND;
+  let mut resp = http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
+  *resp.status_mut() = http_1::StatusCode::NOT_FOUND;
   Ok(resp)
 }
 
@@ -331,8 +346,8 @@ async fn run_tls_server(port: u16) {
 }
 
 async fn absolute_redirect(
-  req: Request<Body>,
-) -> hyper::Result<Response<Body>> {
+  req: hyper1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let path = req.uri().path();
 
   if path == "/" {
@@ -373,13 +388,14 @@ async fn absolute_redirect(
 
   let file_path = testdata_path().join(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
-    let mut not_found_resp = Response::new(Body::empty());
-    *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
+    let mut not_found_resp =
+      http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
+    *not_found_resp.status_mut() = http_1::StatusCode::NOT_FOUND;
     return Ok(not_found_resp);
   }
 
   let file = tokio::fs::read(file_path).await.unwrap();
-  let file_resp = custom_headers(req.uri().path(), file);
+  let file_resp = custom_headers_hyper1(req.uri().path(), file);
   Ok(file_resp)
 }
 
@@ -1153,86 +1169,98 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
-async fn wrap_redirect_server(port: u16) {
-  let redirect_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(redirect)) });
-  let redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
-  if let Err(e) = redirect_server.await {
-    eprintln!("Redirect error: {e:?}");
+async fn run_hyper1_server<F, S>(
+  addr: SocketAddr,
+  service_fn_handler: F,
+  error_msg: &'static str,
+) where
+  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  S: Future<
+    Output = Result<
+      http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+      anyhow::Error,
+    >,
+  >,
+{
+  let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
+    async move {
+      let listener = TcpListener::bind(addr).await?;
+      loop {
+        let (stream, _) = listener.accept().await?;
+        let io = TokioIo::new(stream);
+        let service = hyper1::service::service_fn(service_fn_handler);
+        deno_unsync::spawn(async move {
+          if let Err(e) = hyper1::server::conn::http1::Builder::new()
+            .serve_connection(io, service)
+            .await
+          {
+            eprintln!("{}: {:?}", error_msg, e);
+          }
+        });
+      }
+    }
+    .boxed_local();
+
+  if let Err(e) = fut.await {
+    eprintln!("{}: {:?}", error_msg, e);
   }
+}
+
+async fn wrap_redirect_server(port: u16) {
+  let redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
+  run_hyper1_server(redirect_addr, redirect, "Redirect error").await;
 }
 
 async fn wrap_double_redirect_server(port: u16) {
-  let double_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(double_redirects))
-  });
   let double_redirects_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let double_redirects_server =
-    Server::bind(&double_redirects_addr).serve(double_redirects_svc);
-  if let Err(e) = double_redirects_server.await {
-    eprintln!("Double redirect error: {e:?}");
-  }
+  run_hyper1_server(
+    double_redirects_addr,
+    double_redirects,
+    "Double redirect error",
+  )
+  .await;
 }
 
 async fn wrap_inf_redirect_server(port: u16) {
-  let inf_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(inf_redirects))
-  });
   let inf_redirects_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let inf_redirects_server =
-    Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
-  if let Err(e) = inf_redirects_server.await {
-    eprintln!("Inf redirect error: {e:?}");
-  }
+  run_hyper1_server(inf_redirects_addr, inf_redirects, "Inf redirect error")
+    .await;
 }
 
 async fn wrap_another_redirect_server(port: u16) {
-  let another_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(another_redirect))
-  });
   let another_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let another_redirect_server =
-    Server::bind(&another_redirect_addr).serve(another_redirect_svc);
-  if let Err(e) = another_redirect_server.await {
-    eprintln!("Another redirect error: {e:?}");
-  }
+  run_hyper1_server(
+    another_redirect_addr,
+    another_redirect,
+    "Another redirect error",
+  )
+  .await;
 }
 
 async fn wrap_auth_redirect_server(port: u16) {
-  let auth_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(auth_redirect))
-  });
   let auth_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let auth_redirect_server =
-    Server::bind(&auth_redirect_addr).serve(auth_redirect_svc);
-  if let Err(e) = auth_redirect_server.await {
-    eprintln!("Auth redirect error: {e:?}");
-  }
+  run_hyper1_server(auth_redirect_addr, auth_redirect, "Auth redirect error")
+    .await;
 }
 
 async fn wrap_basic_auth_redirect_server(port: u16) {
-  let basic_auth_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(basic_auth_redirect))
-  });
   let basic_auth_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let basic_auth_redirect_server =
-    Server::bind(&basic_auth_redirect_addr).serve(basic_auth_redirect_svc);
-  if let Err(e) = basic_auth_redirect_server.await {
-    eprintln!("Basic auth redirect error: {e:?}");
-  }
+  run_hyper1_server(
+    basic_auth_redirect_addr,
+    basic_auth_redirect,
+    "Basic auth redirect error",
+  )
+  .await;
 }
 
 async fn wrap_abs_redirect_server(port: u16) {
-  let abs_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(absolute_redirect))
-  });
   let abs_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let abs_redirect_server =
-    Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
-  if let Err(e) = abs_redirect_server.await {
-    eprintln!("Absolute redirect error: {e:?}");
-  }
+  run_hyper1_server(
+    abs_redirect_addr,
+    absolute_redirect,
+    "Absolute redirect error",
+  )
+  .await;
 }
 
 async fn wrap_main_server(port: u16) {
@@ -1353,6 +1381,104 @@ async fn wrap_client_auth_https_server(port: u16) {
   .serve(main_server_https_svc);
 
   let _ = main_server_https.await;
+}
+
+fn custom_headers_hyper1(
+  p: &str,
+  body: Vec<u8>,
+) -> http_1::Response<UnsyncBoxBody<Bytes, Infallible>> {
+  let mut response = http_1::Response::new(UnsyncBoxBody::new(
+    http_body_util::Full::new(Bytes::from(body)),
+  ));
+
+  if p.ends_with("/run/import_compression/brotli") {
+    response
+      .headers_mut()
+      .insert("Content-Encoding", http_1::HeaderValue::from_static("br"));
+    response.headers_mut().insert(
+      "Content-Type",
+      http_1::HeaderValue::from_static("application/javascript"),
+    );
+    response
+      .headers_mut()
+      .insert("Content-Length", http_1::HeaderValue::from_static("26"));
+    return response;
+  }
+  if p.ends_with("/run/import_compression/gziped") {
+    response
+      .headers_mut()
+      .insert("Content-Encoding", http_1::HeaderValue::from_static("gzip"));
+    response.headers_mut().insert(
+      "Content-Type",
+      http_1::HeaderValue::from_static("application/javascript"),
+    );
+    response
+      .headers_mut()
+      .insert("Content-Length", http_1::HeaderValue::from_static("39"));
+    return response;
+  }
+
+  if p.contains("/encoding/") {
+    let charset = p
+      .split_terminator('/')
+      .last()
+      .unwrap()
+      .trim_end_matches(".ts");
+
+    response.headers_mut().insert(
+      "Content-Type",
+      http_1::HeaderValue::from_str(
+        &format!("application/typescript;charset={charset}")[..],
+      )
+      .unwrap(),
+    );
+    return response;
+  }
+
+  let content_type = if p.contains(".t1.") {
+    Some("text/typescript")
+  } else if p.contains(".t2.") {
+    Some("video/vnd.dlna.mpeg-tts")
+  } else if p.contains(".t3.") {
+    Some("video/mp2t")
+  } else if p.contains(".t4.") {
+    Some("application/x-typescript")
+  } else if p.contains(".j1.") {
+    Some("text/javascript")
+  } else if p.contains(".j2.") {
+    Some("application/ecmascript")
+  } else if p.contains(".j3.") {
+    Some("text/ecmascript")
+  } else if p.contains(".j4.") {
+    Some("application/x-javascript")
+  } else if p.contains("form_urlencoded") {
+    Some("application/x-www-form-urlencoded")
+  } else if p.contains("unknown_ext") || p.contains("no_ext") {
+    Some("text/typescript")
+  } else if p.contains("mismatch_ext") || p.contains("no_js_ext") {
+    Some("text/javascript")
+  } else if p.ends_with(".ts") || p.ends_with(".tsx") {
+    Some("application/typescript")
+  } else if p.ends_with(".js") || p.ends_with(".jsx") {
+    Some("application/javascript")
+  } else if p.ends_with(".json") {
+    Some("application/json")
+  } else if p.ends_with(".wasm") {
+    Some("application/wasm")
+  } else if p.ends_with(".tgz") {
+    Some("application/gzip")
+  } else {
+    None
+  };
+
+  if let Some(t) = content_type {
+    response
+      .headers_mut()
+      .insert("Content-Type", http_1::HeaderValue::from_str(t).unwrap());
+    return response;
+  }
+
+  response
 }
 
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
