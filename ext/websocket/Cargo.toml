@@ -18,7 +18,7 @@ bytes.workspace = true
 deno_core.workspace = true
 deno_net.workspace = true
 deno_tls.workspace = true
-fastwebsockets_06 = { package = "fastwebsockets", version = "0.6", features = ["upgrade", "unstable-split"] }
+fastwebsockets.workspace = true
 h2_04 = { package = "h2", version = "0.4" }
 http-body-util = "0.1"
 http_1 = { package = "http", version = "1.0" }
