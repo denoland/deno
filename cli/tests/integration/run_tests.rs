@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
@@ -4378,32 +4379,32 @@ async fn websocketstream_ping() {
   let script = util::testdata_path().join("run/websocketstream_ping_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
 
-  let srv_fn = hyper::service::service_fn(|mut req| async move {
+  let srv_fn = hyper1::service::service_fn(|mut req| async move {
     let (response, upgrade_fut) =
-      fastwebsockets::upgrade::upgrade(&mut req).unwrap();
+      fastwebsockets_06::upgrade::upgrade(&mut req).unwrap();
     tokio::spawn(async move {
       let mut ws = upgrade_fut.await.unwrap();
 
-      ws.write_frame(fastwebsockets::Frame::text(b"A"[..].into()))
+      ws.write_frame(fastwebsockets_06::Frame::text(b"A"[..].into()))
         .await
         .unwrap();
-      ws.write_frame(fastwebsockets::Frame::new(
+      ws.write_frame(fastwebsockets_06::Frame::new(
         true,
-        fastwebsockets::OpCode::Ping,
+        fastwebsockets_06::OpCode::Ping,
         None,
         vec![].into(),
       ))
       .await
       .unwrap();
-      ws.write_frame(fastwebsockets::Frame::text(b"B"[..].into()))
+      ws.write_frame(fastwebsockets_06::Frame::text(b"B"[..].into()))
         .await
         .unwrap();
       let message = ws.read_frame().await.unwrap();
-      assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
-      ws.write_frame(fastwebsockets::Frame::text(b"C"[..].into()))
+      assert_eq!(message.opcode, fastwebsockets_06::OpCode::Pong);
+      ws.write_frame(fastwebsockets_06::Frame::text(b"C"[..].into()))
         .await
         .unwrap();
-      ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
+      ws.write_frame(fastwebsockets_06::Frame::close_raw(vec![].into()))
         .await
         .unwrap();
     });
@@ -4425,8 +4426,9 @@ async fn websocketstream_ping() {
     .unwrap();
   tokio::spawn(async move {
     let (stream, _) = server.accept().await.unwrap();
-    let conn_fut = hyper::server::conn::Http::new()
-      .serve_connection(stream, srv_fn)
+    let io = hyper_util::rt::TokioIo::new(stream);
+    let conn_fut = hyper1::server::conn::http1::Builder::new()
+      .serve_connection(io, srv_fn)
       .with_upgrades();
 
     if let Err(e) = conn_fut.await {
@@ -4440,7 +4442,7 @@ async fn websocketstream_ping() {
 
 struct SpawnExecutor;
 
-impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+impl<Fut> hyper1::rt::Executor<Fut> for SpawnExecutor
 where
   Fut: std::future::Future + Send + 'static,
   Fut::Output: Send + 'static,
@@ -4476,28 +4478,28 @@ async fn websocket_server_multi_field_connection_header() {
   let stream = tokio::net::TcpStream::connect("localhost:4319")
     .await
     .unwrap();
-  let req = hyper::Request::builder()
-    .header(hyper::header::UPGRADE, "websocket")
-    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+  let req = http_1::Request::builder()
+    .header(http_1::header::UPGRADE, "websocket")
+    .header(http_1::header::CONNECTION, "keep-alive, Upgrade")
     .header(
       "Sec-WebSocket-Key",
       fastwebsockets::handshake::generate_key(),
     )
     .header("Sec-WebSocket-Version", "13")
     .uri("ws://localhost:4319")
-    .body(hyper::Body::empty())
+    .body(http_body_util::Empty::<Bytes>::new())
     .unwrap();
 
   let (mut socket, _) =
-    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+    fastwebsockets_06::handshake::client(&SpawnExecutor, req, stream)
       .await
       .unwrap();
 
   let message = socket.read_frame().await.unwrap();
-  assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
+  assert_eq!(message.opcode, fastwebsockets_06::OpCode::Close);
   assert!(message.payload.is_empty());
   socket
-    .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
+    .write_frame(fastwebsockets_06::Frame::close_raw(vec![].into()))
     .await
     .unwrap();
   assert!(child.wait().unwrap().success());
@@ -4531,20 +4533,20 @@ async fn websocket_server_idletimeout() {
   let stream = tokio::net::TcpStream::connect("localhost:4509")
     .await
     .unwrap();
-  let req = hyper::Request::builder()
-    .header(hyper::header::UPGRADE, "websocket")
-    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+  let req = http_1::Request::builder()
+    .header(http_1::header::UPGRADE, "websocket")
+    .header(http_1::header::CONNECTION, "keep-alive, Upgrade")
     .header(
       "Sec-WebSocket-Key",
       fastwebsockets::handshake::generate_key(),
     )
     .header("Sec-WebSocket-Version", "13")
     .uri("ws://localhost:4509")
-    .body(hyper::Body::empty())
+    .body(http_body_util::Empty::<Bytes>::new())
     .unwrap();
 
   let (_socket, _) =
-    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+    fastwebsockets_06::handshake::client(&SpawnExecutor, req, stream)
       .await
       .unwrap();
 
