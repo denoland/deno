@@ -2509,7 +2509,7 @@ declare namespace Deno {
      * ```
      *
      * @deprecated Use {@linkcode FsFile.readable} and
-     * {@linkcode FsFile.writable} instead. {@linkcode FsFile.read} will be
+     * {@linkcode FsFile.writable} instead. {@linkcode FsFile.close} will be
      * removed in v2.0.0.
      */
     close(): void;
