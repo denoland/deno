@@ -23,6 +23,7 @@ const Runners = (() => {
     linux: ubuntuRunner,
     macos: macosX86Runner,
     macosArm: macosArmRunner,
+    linuxArm: macosArmRunner,
     windows: windowsRunner,
     windowsXl:
       `\${{ github.repository == 'denoland/deno' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
@@ -241,13 +242,16 @@ function handleMatrixItems(items: {
   skip_pr?: string | true;
   skip?: string;
   os: string;
+  cross?: string;
   profile?: string;
   job?: string;
   use_sysroot?: boolean;
   wpt?: string;
 }[]) {
-  function getOsDisplayName(os: string) {
-    if (os.includes("ubuntu")) {
+  function getOsDisplayName({ os, cross }: { os: string; cross?: string }) {
+    if (cross && os == macosArmRunner) {
+      return "linux-aarch64";
+    } else if (os.includes("ubuntu")) {
       return "ubuntu-x86_64";
     } else if (os.includes("windows")) {
       return "windows-x86_64";
@@ -291,7 +295,7 @@ function handleMatrixItems(items: {
 
     return {
       ...item,
-      os_display_name: getOsDisplayName(item.os),
+      os_display_name: getOsDisplayName(item),
     };
   });
 }
@@ -371,6 +375,13 @@ const ci = {
             profile: "release",
             // TODO(mmastrac): We don't want to run this M1 runner on every main commit because of the expense.
             skip:
+              "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
+          }, {
+            os: Runners.linuxArm,
+            job: "test",
+            cross: true,
+            profile: "release",
+            skip_pr:
               "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           }, {
             os: Runners.windows,
@@ -540,7 +551,7 @@ const ci = {
             "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
           ].join("\n"),
           if:
-            `(matrix.os == '${macosArmRunner}' || matrix.os == '${macosX86Runner}')`,
+            `(matrix.os == '${macosArmRunner}' || matrix.os == '${macosX86Runner}') && !matrix.cross`,
         },
         {
           name: "Log versions",
@@ -645,7 +656,7 @@ const ci = {
           name: "Build release",
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "!matrix.cross && matrix.profile == 'release' && (matrix.use_sysroot ||",
             "github.repository == 'denoland/deno')",
           ].join("\n"),
           run: [
@@ -653,6 +664,24 @@ const ci = {
             "df -h",
             "cargo build --release --locked --all-targets",
             "df -h",
+          ].join("\n"),
+        },
+        {
+          name: "Build release (aarch64 linux)",
+          if: [
+            "matrix.job == 'test' &&",
+            "matrix.cross &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno'",
+          ].join("\n"),
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "docker build -t deno-build --progress=plain --file Dockerfile .",
+            "export DOCKER_ID=$(docker create deno-build)",
+            "mkdir -p target/release",
+            "docker cp $DOCKER_ID:/deno/target/release/deno ./target/release/deno",
+            "docker rm -v $DOCKER_ID",
           ].join("\n"),
         },
         {
@@ -712,6 +741,7 @@ const ci = {
           name: "Pre-release (mac aarch64)",
           if: [
             `matrix.os == '${macosArmRunner}' &&`,
+            `!matrix.cross &&`,
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno'",
@@ -807,6 +837,7 @@ const ci = {
           name: "Test release",
           if: [
             "matrix.job == 'test' && matrix.profile == 'release' &&",
+            "!matrix.cross &&",
             "(matrix.use_sysroot || (",
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
@@ -818,7 +849,7 @@ const ci = {
           // this is a minimal check to ensure that binary is not corrupted
           name: "Check deno binary",
           if:
-            "matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')",
+            "matrix.profile == 'release' && !matrix.cross && startsWith(github.ref, 'refs/tags/')",
           run: 'target/release/deno eval "console.log(1+2)" | grep 3',
           env: {
             NO_COLOR: 1,

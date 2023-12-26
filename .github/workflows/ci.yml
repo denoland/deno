@@ -69,6 +69,13 @@ jobs:
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'') }}'
             runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'')) && ''ubuntu-22.04'' || ''macos-13-xlarge'' }}'
             os_display_name: macos-aarch64
+          - os: macos-13-xlarge
+            job: test
+            cross: true
+            profile: release
+            skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'') }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && github.event_name == ''pull_request'' || github.ref == ''refs/heads/main'')) && ''ubuntu-22.04'' || ''macos-13-xlarge'' }}'
+            os_display_name: linux-aarch64
           - os: windows-2022
             job: test
             profile: debug
@@ -307,7 +314,7 @@ jobs:
         run: |-
           ./tools/install_prebuilt.js rcodesign
           echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-        if: '!(matrix.skip) && ((matrix.os == ''macos-13-xlarge'' || matrix.os == ''macos-12''))'
+        if: '!(matrix.skip) && ((matrix.os == ''macos-13-xlarge'' || matrix.os == ''macos-12'') && !matrix.cross)'
       - name: Log versions
         run: |-
           python --version
@@ -373,12 +380,25 @@ jobs:
       - name: Build release
         if: |-
           !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'release' && (matrix.use_sysroot ||
+          !matrix.cross && matrix.profile == 'release' && (matrix.use_sysroot ||
           github.repository == 'denoland/deno'))
         run: |-
           df -h
           cargo build --release --locked --all-targets
           df -h
+      - name: Build release (aarch64 linux)
+        if: |-
+          !(matrix.skip) && (matrix.job == 'test' &&
+          matrix.cross &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno')
+        run: |-
+          df -h
+          docker build -t deno-build --progress=plain --file Dockerfile .
+          export DOCKER_ID=$(docker create deno-build)
+          mkdir -p target/release
+          docker cp $DOCKER_ID:/deno/target/release/deno ./target/release/deno
+          docker rm -v $DOCKER_ID
       - name: Upload PR artifact (linux)
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -417,6 +437,7 @@ jobs:
       - name: Pre-release (mac aarch64)
         if: |-
           !(matrix.skip) && (matrix.os == 'macos-13-xlarge' &&
+          !matrix.cross &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno')
@@ -478,12 +499,13 @@ jobs:
       - name: Test release
         if: |-
           !(matrix.skip) && (matrix.job == 'test' && matrix.profile == 'release' &&
+          !matrix.cross &&
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked
       - name: Check deno binary
-        if: '!(matrix.skip) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
+        if: '!(matrix.skip) && (matrix.profile == ''release'' && !matrix.cross && startsWith(github.ref, ''refs/tags/''))'
         run: target/release/deno eval "console.log(1+2)" | grep 3
         env:
           NO_COLOR: 1
