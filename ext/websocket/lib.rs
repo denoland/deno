@@ -54,13 +54,13 @@ use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 
-use fastwebsockets_06::CloseCode;
-use fastwebsockets_06::FragmentCollectorRead;
-use fastwebsockets_06::Frame;
-use fastwebsockets_06::OpCode;
-use fastwebsockets_06::Role;
-use fastwebsockets_06::WebSocket;
-use fastwebsockets_06::WebSocketWrite;
+use fastwebsockets::CloseCode;
+use fastwebsockets::FragmentCollectorRead;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+use fastwebsockets::WebSocketWrite;
 
 mod stream;
 
@@ -175,7 +175,7 @@ async fn handshake_websocket(
     .header(CONNECTION, "Upgrade")
     .header(
       "Sec-WebSocket-Key",
-      fastwebsockets_06::handshake::generate_key(),
+      fastwebsockets::handshake::generate_key(),
     );
 
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
@@ -305,8 +305,7 @@ async fn handshake_connection<
   socket: S,
 ) -> Result<(WebSocket<WebSocketStream>, http_1::HeaderMap), AnyError> {
   let (upgraded, response) =
-    fastwebsockets_06::handshake::client(&LocalExecutor, request, socket)
-      .await?;
+    fastwebsockets::handshake::client(&LocalExecutor, request, socket).await?;
 
   let upgraded = upgraded.into_inner();
   let stream =

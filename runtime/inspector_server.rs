@@ -19,9 +19,9 @@ use deno_core::url::Url;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
-use fastwebsockets_06::Frame;
-use fastwebsockets_06::OpCode;
-use fastwebsockets_06::WebSocket;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::WebSocket;
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
 use std::cell::RefCell;
@@ -139,7 +139,7 @@ fn handle_ws_request(
   let (parts, _) = req.into_parts();
   let mut req = http_1::Request::from_parts(parts, body);
 
-  let (resp, fut) = match fastwebsockets_06::upgrade::upgrade(&mut req) {
+  let (resp, fut) = match fastwebsockets::upgrade::upgrade(&mut req) {
     Ok((resp, fut)) => {
       let (parts, _body) = resp.into_parts();
       let resp = http_1::Response::from_parts(

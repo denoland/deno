@@ -20,7 +20,7 @@ base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
 denokv_proto.workspace = true
-fastwebsockets_06 = { package = "fastwebsockets", version = "0.6", features = ["upgrade"] }
+fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 glob.workspace = true

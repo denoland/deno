@@ -96,6 +96,7 @@ data-encoding = "2.3.3"
 dlopen2 = "0.6.1"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
+fastwebsockets = { version = "0.6", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"
 flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
@@ -266,6 +267,8 @@ opt-level = 3
 [profile.bench.package.bytes]
 opt-level = 3
 [profile.bench.package.futures-util]
+opt-level = 3
+[profile.bench.package.fastwebsockets]
 opt-level = 3
 [profile.bench.package.hyper]
 opt-level = 3
