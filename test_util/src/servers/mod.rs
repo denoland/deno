@@ -162,6 +162,10 @@ pub async fn run_all_servers() {
   server_fut.await;
 }
 
+fn empty_body() -> UnsyncBoxBody<Bytes, Infallible> {
+  UnsyncBoxBody::new(Empty::new())
+}
+
 /// Benchmark server that just serves "hello world" responses.
 async fn hyper_hello(port: u16) {
   println!("hyper hello");
@@ -397,6 +401,700 @@ async fn absolute_redirect(
   let file = tokio::fs::read(file_path).await.unwrap();
   let file_resp = custom_headers_hyper1(req.uri().path(), file);
   Ok(file_resp)
+}
+
+async fn main_server_hyper1(
+  req: http_1::Request<hyper1::body::Incoming>,
+) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  return match (req.method(), req.uri().path()) {
+    (_, "/echo_server") => {
+      let (parts, body) = req.into_parts();
+      let mut response = http_1::Response::new(body);
+
+      if let Some(status) = parts.headers.get("x-status") {
+        *response.status_mut() =
+          http_1::StatusCode::from_bytes(status.as_bytes()).unwrap();
+      }
+      response.headers_mut().extend(parts.headers);
+      Ok(response)
+    }
+    (&hyper1::Method::POST, "/echo_multipart_file") => {
+      let body = req.into_body();
+      let bytes = &hyper::body::to_bytes(body).await.unwrap()[0..];
+      let start = b"--boundary\t \r\n\
+                    Content-Disposition: form-data; name=\"field_1\"\r\n\
+                    \r\n\
+                    value_1 \r\n\
+                    \r\n--boundary\r\n\
+                    Content-Disposition: form-data; name=\"file\"; \
+                    filename=\"file.bin\"\r\n\
+                    Content-Type: application/octet-stream\r\n\
+                    \r\n";
+      let end = b"\r\n--boundary--\r\n";
+      let b = [start as &[u8], bytes, end].concat();
+
+      let mut response = http_1::Response::new(Body::from(b));
+      response.headers_mut().insert(
+        "content-type",
+        http_1::HeaderValue::from_static(
+          "multipart/form-data;boundary=boundary",
+        ),
+      );
+      Ok(response)
+    }
+    (_, "/multipart_form_data.txt") => {
+      let b = "Preamble\r\n\
+             --boundary\t \r\n\
+             Content-Disposition: form-data; name=\"field_1\"\r\n\
+             \r\n\
+             value_1 \r\n\
+             \r\n--boundary\r\n\
+             Content-Disposition: form-data; name=\"field_2\";\
+             filename=\"file.js\"\r\n\
+             Content-Type: text/javascript\r\n\
+             \r\n\
+             console.log(\"Hi\")\
+             \r\n--boundary--\r\n\
+             Epilogue";
+      let mut res = http_1::Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        http_1::HeaderValue::from_static(
+          "multipart/form-data;boundary=boundary",
+        ),
+      );
+      Ok(res)
+    }
+    (_, "/multipart_form_bad_content_type") => {
+      let b = "Preamble\r\n\
+             --boundary\t \r\n\
+             Content-Disposition: form-data; name=\"field_1\"\r\n\
+             \r\n\
+             value_1 \r\n\
+             \r\n--boundary\r\n\
+             Content-Disposition: form-data; name=\"field_2\";\
+             filename=\"file.js\"\r\n\
+             Content-Type: text/javascript\r\n\
+             \r\n\
+             console.log(\"Hi\")\
+             \r\n--boundary--\r\n\
+             Epilogue";
+      let mut res = http_1::Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        http_1::HeaderValue::from_static(
+          "multipart/form-datatststs;boundary=boundary",
+        ),
+      );
+      Ok(res)
+    }
+    (_, "/bad_redirect") => {
+      let mut res = http_1::Response::new(Body::empty());
+      *res.status_mut() = http_1::StatusCode::FOUND;
+      Ok(res)
+    }
+    (_, "/server_error") => {
+      let mut res = http_1::Response::new(Body::empty());
+      *res.status_mut() = http_1::StatusCode::INTERNAL_SERVER_ERROR;
+      Ok(res)
+    }
+    (_, "/x_deno_warning.js") => {
+      let mut res = http_1::Response::new(Body::empty());
+      *res.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
+      res
+        .headers_mut()
+        .insert("X-Deno-Warning", http_1::HeaderValue::from_static("foobar"));
+      res.headers_mut().insert(
+        "location",
+        http_1::HeaderValue::from_bytes(b"/lsp/x_deno_warning_redirect.js")
+          .unwrap(),
+      );
+      Ok(res)
+    }
+    (_, "/non_ascii_redirect") => {
+      let mut res = http_1::Response::new(Body::empty());
+      *res.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
+      res.headers_mut().insert(
+        "location",
+        http_1::HeaderValue::from_bytes(b"/redirect\xae").unwrap(),
+      );
+      Ok(res)
+    }
+    (_, "/etag_script.ts") => {
+      let if_none_match = req.headers().get("if-none-match");
+      if if_none_match
+        == Some(&http_1::HeaderValue::from_static("33a64df551425fcc55e"))
+      {
+        let mut resp = http_1::Response::new(Body::empty());
+        *resp.status_mut() = http_1::StatusCode::NOT_MODIFIED;
+        resp.headers_mut().insert(
+          "Content-type",
+          http_1::HeaderValue::from_static("application/typescript"),
+        );
+        resp.headers_mut().insert(
+          "ETag",
+          http_1::HeaderValue::from_static("33a64df551425fcc55e"),
+        );
+
+        Ok(resp)
+      } else {
+        let mut resp = http_1::Response::new(Body::from("console.log('etag')"));
+        resp.headers_mut().insert(
+          "Content-type",
+          http_1::HeaderValue::from_static("application/typescript"),
+        );
+        resp.headers_mut().insert(
+          "ETag",
+          http_1::HeaderValue::from_static("33a64df551425fcc55e"),
+        );
+        Ok(resp)
+      }
+    }
+    (_, "/xTypeScriptTypes.js") => {
+      let mut res =
+        http_1::Response::new(Body::from("export const foo = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/javascript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        http_1::HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.jsx") => {
+      let mut res =
+        http_1::Response::new(Body::from("export const foo = 'foo';"));
+      res
+        .headers_mut()
+        .insert("Content-type", http_1::HeaderValue::from_static("text/jsx"));
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        http_1::HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.ts") => {
+      let mut res =
+        http_1::Response::new(Body::from("export const foo: string = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        http_1::HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.d.ts") => {
+      let mut res =
+        http_1::Response::new(Body::from("export const foo: 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/run/type_directives_redirect.js") => {
+      let mut res =
+        http_1::Response::new(Body::from("export const foo = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/javascript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        http_1::HeaderValue::from_static(
+          "http://localhost:4547/xTypeScriptTypesRedirect.d.ts",
+        ),
+      );
+      Ok(res)
+    }
+    (_, "/run/type_headers_deno_types.foo.js") => {
+      let mut res = http_1::Response::new(Body::from(
+        "export function foo(text) { console.log(text); }",
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/javascript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        http_1::HeaderValue::from_static(
+          "http://localhost:4545/run/type_headers_deno_types.d.ts",
+        ),
+      );
+      Ok(res)
+    }
+    (_, "/run/type_headers_deno_types.d.ts") => {
+      let mut res = http_1::Response::new(Body::from(
+        "export function foo(text: number): void;",
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/run/type_headers_deno_types.foo.d.ts") => {
+      let mut res = http_1::Response::new(Body::from(
+        "export function foo(text: string): void;",
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/subdir/xTypeScriptTypesRedirect.d.ts") => {
+      let mut res = http_1::Response::new(Body::from(
+        "import './xTypeScriptTypesRedirected.d.ts';",
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/subdir/xTypeScriptTypesRedirected.d.ts") => {
+      let mut res =
+        http_1::Response::new(Body::from("export const foo: 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/referenceTypes.js") => {
+      let mut res = http_1::Response::new(Body::from("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
+    (_, "/subdir/file_with_:_in_name.ts") => {
+      let mut res = http_1::Response::new(Body::from(
+        "console.log('Hello from file_with_:_in_name.ts');",
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/v1/extensionless") => {
+      let mut res = http_1::Response::new(Body::from(
+        r#"export * from "/subdir/mod1.ts";"#,
+      ));
+      res.headers_mut().insert(
+        "content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/subdir/no_js_ext@1.0.0") => {
+      let mut res = http_1::Response::new(Body::from(
+        r#"import { printHello } from "./mod2.ts";
+        printHello();
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
+    (_, "/.well-known/deno-import-intellisense.json") => {
+      let file_path =
+        testdata_path().join("lsp/registries/deno-import-intellisense.json");
+      if let Ok(body) = tokio::fs::read(file_path).await {
+        Ok(custom_headers_hyper1(
+          "/.well-known/deno-import-intellisense.json",
+          body,
+        ))
+      } else {
+        Ok(http_1::Response::new(empty_body()))
+      }
+    }
+    (_, "/http_version") => {
+      let version = format!("{:?}", req.version());
+      Ok(http_1::Response::new(version.into()))
+    }
+    (_, "/content_length") => {
+      let content_length = format!("{:?}", req.headers().get("content-length"));
+      Ok(http_1::Response::new(content_length.into()))
+    }
+    (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
+      let mut res = http_1::Response::new(Body::from(
+        r#"export function jsx(
+          _type,
+          _props,
+          _key,
+          _source,
+          _self,
+        ) {}
+        export const jsxs = jsx;
+        export const jsxDEV = jsx;
+        export const Fragment = Symbol("Fragment");
+        console.log("imported", import.meta.url);
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
+    (_, "/dynamic") => {
+      let mut res = http_1::Response::new(Body::from(
+        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      ));
+      res.headers_mut().insert(
+        "cache-control",
+        http_1::HeaderValue::from_static("no-cache"),
+      );
+      Ok(res)
+    }
+    (_, "/dynamic_cache") => {
+      let mut res = http_1::Response::new(Body::from(
+        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      ));
+      res.headers_mut().insert(
+        "cache-control",
+        http_1::HeaderValue::from_static("public, max-age=604800, immutable"),
+      );
+      Ok(res)
+    }
+    (_, "/dynamic_module.ts") => {
+      let mut res = http_1::Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        http_1::HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/echo_accept") => {
+      let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
+      let res = http_1::Response::new(Body::from(
+        serde_json::json!({ "accept": accept }).to_string(),
+      ));
+      Ok(res)
+    }
+    (_, "/search_params") => {
+      let query = req.uri().query().map(|s| s.to_string());
+      let res = http_1::Response::new(Body::from(query.unwrap_or_default()));
+      Ok(res)
+    }
+    (&hyper1::Method::POST, "/kv_remote_authorize") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          http_1::Response::builder()
+            .status(http_1::StatusCode::UNAUTHORIZED)
+            .body(empty_body())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        http_1::Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 1,
+              "databaseId": KV_DATABASE_ID,
+              "endpoints": [
+                {
+                  "url": format!("http://localhost:{}/kv_blackhole", PORT),
+                  "consistency": "strong",
+                }
+              ],
+              "token": KV_DATABASE_TOKEN,
+              "expiresAt": "2099-01-01T00:00:00Z",
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper1::Method::POST, "/kv_remote_authorize_invalid_format") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          http_1::Response::builder()
+            .status(http_1::StatusCode::UNAUTHORIZED)
+            .body(empty_body())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        http_1::Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 1,
+              "databaseId": KV_DATABASE_ID,
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper1::Method::POST, "/kv_remote_authorize_invalid_version") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          http_1::Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(empty_body())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        http_1::Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 1000,
+              "databaseId": KV_DATABASE_ID,
+              "endpoints": [
+                {
+                  "url": format!("http://localhost:{}/kv_blackhole", PORT),
+                  "consistency": "strong",
+                }
+              ],
+              "token": KV_DATABASE_TOKEN,
+              "expiresAt": "2099-01-01T00:00:00Z",
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper1::Method::POST, "/kv_blackhole/snapshot_read") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_DATABASE_TOKEN)
+      {
+        return Ok(
+          http_1::Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(empty_body())
+            .unwrap(),
+        );
+      }
+
+      let body = hyper::body::to_bytes(req.into_body())
+        .await
+        .unwrap_or_default();
+      let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..])
+      else {
+        return Ok(
+          http_1::Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(empty_body())
+            .unwrap(),
+        );
+      };
+      if body.ranges.is_empty() {
+        return Ok(
+          http_1::Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(empty_body())
+            .unwrap(),
+        );
+      }
+      Ok(
+        http_1::Response::builder()
+          .body(Body::from(
+            SnapshotReadOutput {
+              ranges: body
+                .ranges
+                .iter()
+                .map(|_| ReadRangeOutput { values: vec![] })
+                .collect(),
+              read_disabled: false,
+              read_is_strongly_consistent: true,
+              status: SnapshotReadStatus::SrSuccess.into(),
+            }
+            .encode_to_vec(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper1::Method::POST, "/kv_blackhole/atomic_write") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_DATABASE_TOKEN)
+      {
+        return Ok(
+          http_1::Response::builder()
+            .status(http_1::StatusCode::UNAUTHORIZED)
+            .body(empty_body())
+            .unwrap(),
+        );
+      }
+
+      let body = hyper::body::to_bytes(req.into_body())
+        .await
+        .unwrap_or_default();
+      let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..])
+      else {
+        return Ok(
+          http_1::Response::builder()
+            .status(http_1::StatusCode::BAD_REQUEST)
+            .body(empty_body())
+            .unwrap(),
+        );
+      };
+      Ok(
+        http_1::Response::builder()
+          .body(Body::from(
+            AtomicWriteOutput {
+              status: AtomicWriteStatus::AwSuccess.into(),
+              versionstamp: vec![0u8; 10],
+              failed_checks: vec![],
+            }
+            .encode_to_vec(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper1::Method::GET, "/upgrade/sleep/release-latest.txt") => {
+      tokio::time::sleep(Duration::from_secs(95)).await;
+      return Ok(
+        http_1::Response::builder()
+          .status(http_1::StatusCode::OK)
+          .body(Body::from("99999.99.99"))
+          .unwrap(),
+      );
+    }
+    (&hyper1::Method::GET, "/upgrade/sleep/canary-latest.txt") => {
+      tokio::time::sleep(Duration::from_secs(95)).await;
+      return Ok(
+        http_1::Response::builder()
+          .status(http_1::StatusCode::OK)
+          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .unwrap(),
+      );
+    }
+    (&hyper1::Method::GET, "/release-latest.txt") => {
+      return Ok(
+        http_1::Response::builder()
+          .status(http_1::StatusCode::OK)
+          // use a deno version that will never happen
+          .body(Body::from("99999.99.99"))
+          .unwrap(),
+      );
+    }
+    (&hyper1::Method::GET, "/canary-latest.txt") => {
+      return Ok(
+        http_1::Response::builder()
+          .status(http_1::StatusCode::OK)
+          .body(Body::from("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+          .unwrap(),
+      );
+    }
+    _ => {
+      let mut file_path = testdata_path().to_path_buf();
+      file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
+      if let Ok(file) = tokio::fs::read(&file_path).await {
+        let file_resp = custom_headers_hyper1(req.uri().path(), file);
+        return Ok(file_resp);
+      }
+
+      // serve npm registry files
+      if let Some(suffix) = req
+        .uri()
+        .path()
+        .strip_prefix("/npm/registry/@denotest/")
+        .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
+      {
+        // serve all requests to /npm/registry/@deno using the file system
+        // at that path
+        match handle_custom_npm_registry_path(suffix) {
+          Ok(Some(response)) => return Ok(response),
+          Ok(None) => {} // ignore, not found
+          Err(err) => {
+            return http_1::Response::builder()
+              .status(http_1::StatusCode::INTERNAL_SERVER_ERROR)
+              .body(format!("{err:#}").into());
+          }
+        }
+      } else if req.uri().path().starts_with("/npm/registry/") {
+        // otherwise, serve based on registry.json and tgz files
+        let is_tarball = req.uri().path().ends_with(".tgz");
+        if !is_tarball {
+          file_path.push("registry.json");
+        }
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers_hyper1(req.uri().path(), file);
+          return Ok(file_resp);
+        } else if should_download_npm_packages() {
+          if let Err(err) =
+            download_npm_registry_file(req.uri(), &file_path, is_tarball).await
+          {
+            return http_1::Response::builder()
+              .status(http_1::StatusCode::INTERNAL_SERVER_ERROR)
+              .body(format!("{err:#}").into());
+          };
+
+          // serve the file
+          if let Ok(file) = tokio::fs::read(&file_path).await {
+            let file_resp = custom_headers_hyper1(req.uri().path(), file);
+            return Ok(file_resp);
+          }
+        }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+        let file_path = std_path().join(suffix);
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers_hyper1(req.uri().path(), file);
+          return Ok(file_resp);
+        }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
+        let duration = suffix.parse::<u64>().unwrap();
+        tokio::time::sleep(Duration::from_millis(duration)).await;
+        return http_1::Response::builder()
+          .status(http_1::StatusCode::OK)
+          .header("content-type", "application/typescript")
+          .body(empty_body());
+      }
+
+      http_1::Response::builder()
+        .status(http_1::StatusCode::NOT_FOUND)
+        .body(empty_body())
+        .map_err(|e| e.into())
+    }
+  };
 }
 
 async fn main_server(
