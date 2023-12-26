@@ -186,6 +186,7 @@ const installDenoStep = {
 const installDockerColima = {
   name: "Setup docker (macos)",
   run: [
+    "brew install --HEAD qemu",
     "brew install docker",
     "brew install colima",
     "colima start",
