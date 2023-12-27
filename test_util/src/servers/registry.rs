@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::run_hyper1_server;
+use super::run_server;
 use super::ServerKind;
 use super::ServerOptions;
 use bytes::Bytes;
@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 pub async fn registry_server(port: u16) {
   let registry_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
 
-  run_hyper1_server(
+  run_server(
     ServerOptions {
       addr: registry_server_addr,
       error_msg: "Registry server error",
