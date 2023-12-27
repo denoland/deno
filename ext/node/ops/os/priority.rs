@@ -2,10 +2,10 @@
 
 use deno_core::error::AnyError;
 
-pub use priority::*;
+pub use impl_::*;
 
 #[cfg(unix)]
-mod priority {
+mod impl_ {
   use super::*;
   use errno::errno;
   use errno::set_errno;
@@ -39,7 +39,7 @@ mod priority {
 }
 
 #[cfg(windows)]
-mod priority {
+mod impl_ {
   use super::*;
   use deno_core::error::type_error;
   use winapi::shared::minwindef::DWORD;

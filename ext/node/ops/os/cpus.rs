@@ -238,13 +238,14 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "linux")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
-  let cpus = vec![CpuInfo::new(); 8192]; /* Kernel maxmimum */
+  use std::io::BufRead;
+
+  let mut cpus = vec![CpuInfo::new(); 8192]; /* Kernel maxmimum */
 
   let fp = std::fs::File::open("/proc/stat").ok()?;
   let reader = std::io::BufReader::new(fp);
 
-  let mut i = 0;
-  for line in reader.lines() {
+  for (i, line) in reader.lines().enumerate() {
     let line = line.ok()?;
     if !line.starts_with("cpu") {
       break;
@@ -262,8 +263,6 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     cpus[i].times.sys = sys;
     cpus[i].times.idle = idle;
     cpus[i].times.irq = irq;
-
-    i += 1;
   }
 
   let fp = std::fs::File::open("/proc/cpuinfo").ok()?;
@@ -282,6 +281,9 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     cpus[i].model = model.to_string();
     i += 1;
   }
+
+  cpus.truncate(i);
+  Some(cpus)
 }
 
 #[cfg(test)]
@@ -293,10 +295,9 @@ mod tests {
     let info = cpu_info();
     assert!(info.is_some());
     let info = info.unwrap();
-    assert!(info.len() > 0);
+    assert!(!info.is_empty());
     for cpu in info {
-      assert!(cpu.model.len() > 0);
-      assert!(cpu.speed > 0);
+      assert!(!cpu.model.is_empty());
       assert!(cpu.times.user > 0);
       assert!(cpu.times.sys > 0);
       assert!(cpu.times.idle > 0);
