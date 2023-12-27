@@ -15,10 +15,17 @@ use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
+use http::HeaderValue;
+use http::Method;
+use http::Request;
+use http::Response;
+use http::StatusCode;
+use http_1 as http;
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
 use http_body_util::Full;
+use hyper1 as hyper;
 use hyper_util::rt::TokioIo;
 use pretty_assertions::assert_eq;
 use prost::Message;
@@ -87,6 +94,8 @@ pub async fn run_all_servers() {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
   }
 
+  // TODO(bartlomieju): in a follow up all these `wrap_` handlers could be removed
+  // in favor of spawning a hyper server directly with a config object
   let redirect_server_fut = wrap_redirect_server(REDIRECT_PORT);
   let double_redirects_server_fut =
     wrap_double_redirect_server(DOUBLE_REDIRECTS_PORT);
@@ -171,31 +180,28 @@ fn json_body(value: serde_json::Value) -> UnsyncBoxBody<Bytes, Infallible> {
 async fn hyper_hello(port: u16) {
   println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let handler = move |_: http_1::Request<hyper1::body::Incoming>| async move {
-    Ok::<_, anyhow::Error>(http_1::Response::new(UnsyncBoxBody::new(
+  let handler = move |_: Request<hyper::body::Incoming>| async move {
+    Ok::<_, anyhow::Error>(Response::new(UnsyncBoxBody::new(
       http_body_util::Full::new(Bytes::from("Hello World!")),
     )))
   };
   run_hyper1_server(addr, handler, "server error").await;
 }
 
-fn redirect_resp(
-  url: String,
-) -> http_1::Response<UnsyncBoxBody<Bytes, Infallible>> {
-  let mut redirect_resp =
-    http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
-  *redirect_resp.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
+fn redirect_resp(url: String) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
+  let mut redirect_resp = Response::new(UnsyncBoxBody::new(Empty::new()));
+  *redirect_resp.status_mut() = StatusCode::MOVED_PERMANENTLY;
   redirect_resp.headers_mut().insert(
-    http_1::header::LOCATION,
-    http_1::HeaderValue::from_str(&url[..]).unwrap(),
+    http::header::LOCATION,
+    HeaderValue::from_str(&url[..]).unwrap(),
   );
 
   redirect_resp
 }
 
 async fn redirect(
-  req: hyper1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}{p}");
@@ -204,8 +210,8 @@ async fn redirect(
 }
 
 async fn double_redirects(
-  req: hyper1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{REDIRECT_PORT}{p}");
@@ -214,8 +220,8 @@ async fn double_redirects(
 }
 
 async fn inf_redirects(
-  req: hyper1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
@@ -224,8 +230,8 @@ async fn inf_redirects(
 }
 
 async fn another_redirect(
-  req: hyper1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}/subdir{p}");
@@ -234,8 +240,8 @@ async fn another_redirect(
 }
 
 async fn auth_redirect(
-  req: hyper1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   if let Some(auth) = req
     .headers()
     .get("authorization")
@@ -249,14 +255,14 @@ async fn auth_redirect(
     }
   }
 
-  let mut resp = http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
-  *resp.status_mut() = http_1::StatusCode::NOT_FOUND;
+  let mut resp = Response::new(UnsyncBoxBody::new(Empty::new()));
+  *resp.status_mut() = StatusCode::NOT_FOUND;
   Ok(resp)
 }
 
 async fn basic_auth_redirect(
-  req: http_1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   if let Some(auth) = req
     .headers()
     .get("authorization")
@@ -272,8 +278,8 @@ async fn basic_auth_redirect(
     }
   }
 
-  let mut resp = http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
-  *resp.status_mut() = http_1::StatusCode::NOT_FOUND;
+  let mut resp = Response::new(UnsyncBoxBody::new(Empty::new()));
+  *resp.status_mut() = StatusCode::NOT_FOUND;
   Ok(resp)
 }
 
@@ -351,8 +357,8 @@ async fn run_tls_server(port: u16) {
 }
 
 async fn absolute_redirect(
-  req: hyper1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let path = req.uri().path();
 
   if path == "/" {
@@ -393,9 +399,8 @@ async fn absolute_redirect(
 
   let file_path = testdata_path().join(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
-    let mut not_found_resp =
-      http_1::Response::new(UnsyncBoxBody::new(Empty::new()));
-    *not_found_resp.status_mut() = http_1::StatusCode::NOT_FOUND;
+    let mut not_found_resp = Response::new(UnsyncBoxBody::new(Empty::new()));
+    *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
     return Ok(not_found_resp);
   }
 
@@ -405,23 +410,23 @@ async fn absolute_redirect(
 }
 
 async fn main_server(
-  req: http_1::Request<hyper1::body::Incoming>,
-) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   return match (req.method(), req.uri().path()) {
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
-      let mut response = http_1::Response::new(UnsyncBoxBody::new(Full::new(
+      let mut response = Response::new(UnsyncBoxBody::new(Full::new(
         body.collect().await?.to_bytes(),
       )));
 
       if let Some(status) = parts.headers.get("x-status") {
         *response.status_mut() =
-          http_1::StatusCode::from_bytes(status.as_bytes()).unwrap();
+          StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
       response.headers_mut().extend(parts.headers);
       Ok(response)
     }
-    (&hyper1::Method::POST, "/echo_multipart_file") => {
+    (&Method::POST, "/echo_multipart_file") => {
       let body = req.into_body();
       let bytes = &body.collect().await.unwrap().to_bytes()[0..];
       let start = b"--boundary\t \r\n\
@@ -437,12 +442,10 @@ async fn main_server(
       let b = [start as &[u8], bytes, end].concat();
 
       let mut response =
-        http_1::Response::new(UnsyncBoxBody::new(Full::new(Bytes::from(b))));
+        Response::new(UnsyncBoxBody::new(Full::new(Bytes::from(b))));
       response.headers_mut().insert(
         "content-type",
-        http_1::HeaderValue::from_static(
-          "multipart/form-data;boundary=boundary",
-        ),
+        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
       );
       Ok(response)
     }
@@ -460,12 +463,10 @@ async fn main_server(
              console.log(\"Hi\")\
              \r\n--boundary--\r\n\
              Epilogue";
-      let mut res = http_1::Response::new(string_body(b));
+      let mut res = Response::new(string_body(b));
       res.headers_mut().insert(
         "content-type",
-        http_1::HeaderValue::from_static(
-          "multipart/form-data;boundary=boundary",
-        ),
+        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
       );
       Ok(res)
     }
@@ -483,232 +484,217 @@ async fn main_server(
              console.log(\"Hi\")\
              \r\n--boundary--\r\n\
              Epilogue";
-      let mut res = http_1::Response::new(string_body(b));
+      let mut res = Response::new(string_body(b));
       res.headers_mut().insert(
         "content-type",
-        http_1::HeaderValue::from_static(
-          "multipart/form-datatststs;boundary=boundary",
-        ),
+        HeaderValue::from_static("multipart/form-datatststs;boundary=boundary"),
       );
       Ok(res)
     }
     (_, "/bad_redirect") => {
-      let mut res = http_1::Response::new(empty_body());
-      *res.status_mut() = http_1::StatusCode::FOUND;
+      let mut res = Response::new(empty_body());
+      *res.status_mut() = StatusCode::FOUND;
       Ok(res)
     }
     (_, "/server_error") => {
-      let mut res = http_1::Response::new(empty_body());
-      *res.status_mut() = http_1::StatusCode::INTERNAL_SERVER_ERROR;
+      let mut res = Response::new(empty_body());
+      *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
       Ok(res)
     }
     (_, "/x_deno_warning.js") => {
-      let mut res = http_1::Response::new(empty_body());
-      *res.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
+      let mut res = Response::new(empty_body());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
       res
         .headers_mut()
-        .insert("X-Deno-Warning", http_1::HeaderValue::from_static("foobar"));
+        .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
       res.headers_mut().insert(
         "location",
-        http_1::HeaderValue::from_bytes(b"/lsp/x_deno_warning_redirect.js")
-          .unwrap(),
+        HeaderValue::from_bytes(b"/lsp/x_deno_warning_redirect.js").unwrap(),
       );
       Ok(res)
     }
     (_, "/non_ascii_redirect") => {
-      let mut res = http_1::Response::new(empty_body());
-      *res.status_mut() = http_1::StatusCode::MOVED_PERMANENTLY;
+      let mut res = Response::new(empty_body());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
       res.headers_mut().insert(
         "location",
-        http_1::HeaderValue::from_bytes(b"/redirect\xae").unwrap(),
+        HeaderValue::from_bytes(b"/redirect\xae").unwrap(),
       );
       Ok(res)
     }
     (_, "/etag_script.ts") => {
       let if_none_match = req.headers().get("if-none-match");
-      if if_none_match
-        == Some(&http_1::HeaderValue::from_static("33a64df551425fcc55e"))
+      if if_none_match == Some(&HeaderValue::from_static("33a64df551425fcc55e"))
       {
-        let mut resp = http_1::Response::new(empty_body());
-        *resp.status_mut() = http_1::StatusCode::NOT_MODIFIED;
+        let mut resp = Response::new(empty_body());
+        *resp.status_mut() = StatusCode::NOT_MODIFIED;
         resp.headers_mut().insert(
           "Content-type",
-          http_1::HeaderValue::from_static("application/typescript"),
+          HeaderValue::from_static("application/typescript"),
         );
-        resp.headers_mut().insert(
-          "ETag",
-          http_1::HeaderValue::from_static("33a64df551425fcc55e"),
-        );
+        resp
+          .headers_mut()
+          .insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
 
         Ok(resp)
       } else {
-        let mut resp =
-          http_1::Response::new(string_body("console.log('etag')"));
+        let mut resp = Response::new(string_body("console.log('etag')"));
         resp.headers_mut().insert(
           "Content-type",
-          http_1::HeaderValue::from_static("application/typescript"),
+          HeaderValue::from_static("application/typescript"),
         );
-        resp.headers_mut().insert(
-          "ETag",
-          http_1::HeaderValue::from_static("33a64df551425fcc55e"),
-        );
+        resp
+          .headers_mut()
+          .insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
         Ok(resp)
       }
     }
     (_, "/xTypeScriptTypes.js") => {
-      let mut res =
-        http_1::Response::new(string_body("export const foo = 'foo';"));
+      let mut res = Response::new(string_body("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/javascript"),
+        HeaderValue::from_static("application/javascript"),
       );
       res.headers_mut().insert(
         "X-TypeScript-Types",
-        http_1::HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
       );
       Ok(res)
     }
     (_, "/xTypeScriptTypes.jsx") => {
-      let mut res =
-        http_1::Response::new(string_body("export const foo = 'foo';"));
+      let mut res = Response::new(string_body("export const foo = 'foo';"));
       res
         .headers_mut()
-        .insert("Content-type", http_1::HeaderValue::from_static("text/jsx"));
+        .insert("Content-type", HeaderValue::from_static("text/jsx"));
       res.headers_mut().insert(
         "X-TypeScript-Types",
-        http_1::HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
       );
       Ok(res)
     }
     (_, "/xTypeScriptTypes.ts") => {
       let mut res =
-        http_1::Response::new(string_body("export const foo: string = 'foo';"));
+        Response::new(string_body("export const foo: string = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       res.headers_mut().insert(
         "X-TypeScript-Types",
-        http_1::HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
       );
       Ok(res)
     }
     (_, "/xTypeScriptTypes.d.ts") => {
-      let mut res =
-        http_1::Response::new(string_body("export const foo: 'foo';"));
+      let mut res = Response::new(string_body("export const foo: 'foo';"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/run/type_directives_redirect.js") => {
-      let mut res =
-        http_1::Response::new(string_body("export const foo = 'foo';"));
+      let mut res = Response::new(string_body("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/javascript"),
+        HeaderValue::from_static("application/javascript"),
       );
       res.headers_mut().insert(
         "X-TypeScript-Types",
-        http_1::HeaderValue::from_static(
+        HeaderValue::from_static(
           "http://localhost:4547/xTypeScriptTypesRedirect.d.ts",
         ),
       );
       Ok(res)
     }
     (_, "/run/type_headers_deno_types.foo.js") => {
-      let mut res = http_1::Response::new(string_body(
+      let mut res = Response::new(string_body(
         "export function foo(text) { console.log(text); }",
       ));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/javascript"),
+        HeaderValue::from_static("application/javascript"),
       );
       res.headers_mut().insert(
         "X-TypeScript-Types",
-        http_1::HeaderValue::from_static(
+        HeaderValue::from_static(
           "http://localhost:4545/run/type_headers_deno_types.d.ts",
         ),
       );
       Ok(res)
     }
     (_, "/run/type_headers_deno_types.d.ts") => {
-      let mut res = http_1::Response::new(string_body(
-        "export function foo(text: number): void;",
-      ));
+      let mut res =
+        Response::new(string_body("export function foo(text: number): void;"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/run/type_headers_deno_types.foo.d.ts") => {
-      let mut res = http_1::Response::new(string_body(
-        "export function foo(text: string): void;",
-      ));
+      let mut res =
+        Response::new(string_body("export function foo(text: string): void;"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/subdir/xTypeScriptTypesRedirect.d.ts") => {
-      let mut res = http_1::Response::new(string_body(
+      let mut res = Response::new(string_body(
         "import './xTypeScriptTypesRedirected.d.ts';",
       ));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/subdir/xTypeScriptTypesRedirected.d.ts") => {
-      let mut res =
-        http_1::Response::new(string_body("export const foo: 'foo';"));
+      let mut res = Response::new(string_body("export const foo: 'foo';"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/referenceTypes.js") => {
-      let mut res = http_1::Response::new(string_body("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
+      let mut res = Response::new(string_body("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/javascript"),
+        HeaderValue::from_static("application/javascript"),
       );
       Ok(res)
     }
     (_, "/subdir/file_with_:_in_name.ts") => {
-      let mut res = http_1::Response::new(string_body(
+      let mut res = Response::new(string_body(
         "console.log('Hello from file_with_:_in_name.ts');",
       ));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/v1/extensionless") => {
-      let mut res = http_1::Response::new(string_body(
-        r#"export * from "/subdir/mod1.ts";"#,
-      ));
+      let mut res =
+        Response::new(string_body(r#"export * from "/subdir/mod1.ts";"#));
       res.headers_mut().insert(
         "content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/subdir/no_js_ext@1.0.0") => {
-      let mut res = http_1::Response::new(string_body(
+      let mut res = Response::new(string_body(
         r#"import { printHello } from "./mod2.ts";
         printHello();
         "#,
       ));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/javascript"),
+        HeaderValue::from_static("application/javascript"),
       );
       Ok(res)
     }
@@ -721,19 +707,19 @@ async fn main_server(
           body,
         ))
       } else {
-        Ok(http_1::Response::new(empty_body()))
+        Ok(Response::new(empty_body()))
       }
     }
     (_, "/http_version") => {
       let version = format!("{:?}", req.version());
-      Ok(http_1::Response::new(string_body(&version)))
+      Ok(Response::new(string_body(&version)))
     }
     (_, "/content_length") => {
       let content_length = format!("{:?}", req.headers().get("content-length"));
-      Ok(http_1::Response::new(string_body(&content_length)))
+      Ok(Response::new(string_body(&content_length)))
     }
     (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
-      let mut res = http_1::Response::new(string_body(
+      let mut res = Response::new(string_body(
         r#"export function jsx(
           _type,
           _props,
@@ -749,54 +735,52 @@ async fn main_server(
       ));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/javascript"),
+        HeaderValue::from_static("application/javascript"),
       );
       Ok(res)
     }
     (_, "/dynamic") => {
-      let mut res = http_1::Response::new(string_body(
+      let mut res = Response::new(string_body(
         &serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
       ));
-      res.headers_mut().insert(
-        "cache-control",
-        http_1::HeaderValue::from_static("no-cache"),
-      );
+      res
+        .headers_mut()
+        .insert("cache-control", HeaderValue::from_static("no-cache"));
       Ok(res)
     }
     (_, "/dynamic_cache") => {
-      let mut res = http_1::Response::new(string_body(
+      let mut res = Response::new(string_body(
         &serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
       ));
       res.headers_mut().insert(
         "cache-control",
-        http_1::HeaderValue::from_static("public, max-age=604800, immutable"),
+        HeaderValue::from_static("public, max-age=604800, immutable"),
       );
       Ok(res)
     }
     (_, "/dynamic_module.ts") => {
-      let mut res = http_1::Response::new(string_body(&format!(
+      let mut res = Response::new(string_body(&format!(
         r#"export const time = {};"#,
         std::time::SystemTime::now().elapsed().unwrap().as_nanos()
       )));
       res.headers_mut().insert(
         "Content-type",
-        http_1::HeaderValue::from_static("application/typescript"),
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
     (_, "/echo_accept") => {
       let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
-      let res = http_1::Response::new(json_body(
-        serde_json::json!({ "accept": accept }),
-      ));
+      let res =
+        Response::new(json_body(serde_json::json!({ "accept": accept })));
       Ok(res)
     }
     (_, "/search_params") => {
       let query = req.uri().query().map(|s| s.to_string());
-      let res = http_1::Response::new(string_body(&query.unwrap_or_default()));
+      let res = Response::new(string_body(&query.unwrap_or_default()));
       Ok(res)
     }
-    (&hyper1::Method::POST, "/kv_remote_authorize") => {
+    (&Method::POST, "/kv_remote_authorize") => {
       if req
         .headers()
         .get("authorization")
@@ -805,15 +789,15 @@ async fn main_server(
         != format!("Bearer {}", KV_ACCESS_TOKEN)
       {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::UNAUTHORIZED)
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
             .body(empty_body())
             .unwrap(),
         );
       }
 
       Ok(
-        http_1::Response::builder()
+        Response::builder()
           .header("content-type", "application/json")
           .body(json_body(serde_json::json!({
             "version": 1,
@@ -830,7 +814,7 @@ async fn main_server(
           .unwrap(),
       )
     }
-    (&hyper1::Method::POST, "/kv_remote_authorize_invalid_format") => {
+    (&Method::POST, "/kv_remote_authorize_invalid_format") => {
       if req
         .headers()
         .get("authorization")
@@ -839,15 +823,15 @@ async fn main_server(
         != format!("Bearer {}", KV_ACCESS_TOKEN)
       {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::UNAUTHORIZED)
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
             .body(empty_body())
             .unwrap(),
         );
       }
 
       Ok(
-        http_1::Response::builder()
+        Response::builder()
           .header("content-type", "application/json")
           .body(json_body(serde_json::json!({
             "version": 1,
@@ -856,7 +840,7 @@ async fn main_server(
           .unwrap(),
       )
     }
-    (&hyper1::Method::POST, "/kv_remote_authorize_invalid_version") => {
+    (&Method::POST, "/kv_remote_authorize_invalid_version") => {
       if req
         .headers()
         .get("authorization")
@@ -865,15 +849,15 @@ async fn main_server(
         != format!("Bearer {}", KV_ACCESS_TOKEN)
       {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::UNAUTHORIZED)
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
             .body(empty_body())
             .unwrap(),
         );
       }
 
       Ok(
-        http_1::Response::builder()
+        Response::builder()
           .header("content-type", "application/json")
           .body(json_body(serde_json::json!({
             "version": 1000,
@@ -890,7 +874,7 @@ async fn main_server(
           .unwrap(),
       )
     }
-    (&hyper1::Method::POST, "/kv_blackhole/snapshot_read") => {
+    (&Method::POST, "/kv_blackhole/snapshot_read") => {
       if req
         .headers()
         .get("authorization")
@@ -899,8 +883,8 @@ async fn main_server(
         != format!("Bearer {}", KV_DATABASE_TOKEN)
       {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::UNAUTHORIZED)
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
             .body(empty_body())
             .unwrap(),
         );
@@ -915,22 +899,22 @@ async fn main_server(
       let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..])
       else {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::BAD_REQUEST)
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
             .body(empty_body())
             .unwrap(),
         );
       };
       if body.ranges.is_empty() {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::BAD_REQUEST)
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
             .body(empty_body())
             .unwrap(),
         );
       }
       Ok(
-        http_1::Response::builder()
+        Response::builder()
           .body(UnsyncBoxBody::new(Full::new(Bytes::from(
             SnapshotReadOutput {
               ranges: body
@@ -947,7 +931,7 @@ async fn main_server(
           .unwrap(),
       )
     }
-    (&hyper1::Method::POST, "/kv_blackhole/atomic_write") => {
+    (&Method::POST, "/kv_blackhole/atomic_write") => {
       if req
         .headers()
         .get("authorization")
@@ -956,8 +940,8 @@ async fn main_server(
         != format!("Bearer {}", KV_DATABASE_TOKEN)
       {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::UNAUTHORIZED)
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
             .body(empty_body())
             .unwrap(),
         );
@@ -972,14 +956,14 @@ async fn main_server(
       let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..])
       else {
         return Ok(
-          http_1::Response::builder()
-            .status(http_1::StatusCode::BAD_REQUEST)
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
             .body(empty_body())
             .unwrap(),
         );
       };
       Ok(
-        http_1::Response::builder()
+        Response::builder()
           .body(UnsyncBoxBody::new(Full::new(Bytes::from(
             AtomicWriteOutput {
               status: AtomicWriteStatus::AwSuccess.into(),
@@ -991,37 +975,37 @@ async fn main_server(
           .unwrap(),
       )
     }
-    (&hyper1::Method::GET, "/upgrade/sleep/release-latest.txt") => {
+    (&Method::GET, "/upgrade/sleep/release-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
       return Ok(
-        http_1::Response::builder()
-          .status(http_1::StatusCode::OK)
+        Response::builder()
+          .status(StatusCode::OK)
           .body(string_body("99999.99.99"))
           .unwrap(),
       );
     }
-    (&hyper1::Method::GET, "/upgrade/sleep/canary-latest.txt") => {
+    (&Method::GET, "/upgrade/sleep/canary-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
       return Ok(
-        http_1::Response::builder()
-          .status(http_1::StatusCode::OK)
+        Response::builder()
+          .status(StatusCode::OK)
           .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
       );
     }
-    (&hyper1::Method::GET, "/release-latest.txt") => {
+    (&Method::GET, "/release-latest.txt") => {
       return Ok(
-        http_1::Response::builder()
-          .status(http_1::StatusCode::OK)
+        Response::builder()
+          .status(StatusCode::OK)
           // use a deno version that will never happen
           .body(string_body("99999.99.99"))
           .unwrap(),
       );
     }
-    (&hyper1::Method::GET, "/canary-latest.txt") => {
+    (&Method::GET, "/canary-latest.txt") => {
       return Ok(
-        http_1::Response::builder()
-          .status(http_1::StatusCode::OK)
+        Response::builder()
+          .status(StatusCode::OK)
           .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
       );
@@ -1047,8 +1031,8 @@ async fn main_server(
           Ok(Some(response)) => return Ok(response),
           Ok(None) => {} // ignore, not found
           Err(err) => {
-            return http_1::Response::builder()
-              .status(http_1::StatusCode::INTERNAL_SERVER_ERROR)
+            return Response::builder()
+              .status(StatusCode::INTERNAL_SERVER_ERROR)
               .body(string_body(&format!("{err:#}")))
               .map_err(|e| e.into());
           }
@@ -1066,8 +1050,8 @@ async fn main_server(
           if let Err(err) =
             download_npm_registry_file(req.uri(), &file_path, is_tarball).await
           {
-            return http_1::Response::builder()
-              .status(http_1::StatusCode::INTERNAL_SERVER_ERROR)
+            return Response::builder()
+              .status(StatusCode::INTERNAL_SERVER_ERROR)
               .body(string_body(&format!("{err:#}")))
               .map_err(|e| e.into());
           };
@@ -1087,15 +1071,15 @@ async fn main_server(
       } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
         let duration = suffix.parse::<u64>().unwrap();
         tokio::time::sleep(Duration::from_millis(duration)).await;
-        return http_1::Response::builder()
-          .status(http_1::StatusCode::OK)
+        return Response::builder()
+          .status(StatusCode::OK)
           .header("content-type", "application/typescript")
           .body(empty_body())
           .map_err(|e| e.into());
       }
 
-      http_1::Response::builder()
-        .status(http_1::StatusCode::NOT_FOUND)
+      Response::builder()
+        .status(StatusCode::NOT_FOUND)
         .body(empty_body())
         .map_err(|e| e.into())
     }
@@ -1104,10 +1088,7 @@ async fn main_server(
 
 fn handle_custom_npm_registry_path(
   path: &str,
-) -> Result<
-  Option<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>>,
-  anyhow::Error,
-> {
+) -> Result<Option<Response<UnsyncBoxBody<Bytes, Infallible>>>, anyhow::Error> {
   let parts = path
     .split('/')
     .filter(|p| !p.is_empty())
@@ -1138,7 +1119,7 @@ fn should_download_npm_packages() -> bool {
 }
 
 async fn download_npm_registry_file(
-  uri: &hyper1::Uri,
+  uri: &hyper::Uri,
   file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
@@ -1181,7 +1162,7 @@ async fn download_npm_registry_file(
 #[derive(Clone)]
 struct DenoUnsyncExecutor;
 
-impl<Fut> hyper1::rt::Executor<Fut> for DenoUnsyncExecutor
+impl<Fut> hyper::rt::Executor<Fut> for DenoUnsyncExecutor
 where
   Fut: Future + 'static,
   Fut::Output: 'static,
@@ -1204,16 +1185,16 @@ async fn hyper1_serve_connection<I, F, S>(
   error_msg: &'static str,
   kind: Hyper1ServerKind,
 ) where
-  I: hyper1::rt::Read + hyper1::rt::Write + Unpin + 'static,
-  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  I: hyper::rt::Read + hyper::rt::Write + Unpin + 'static,
+  F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<
       Output = Result<
-        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        Response<UnsyncBoxBody<Bytes, Infallible>>,
         anyhow::Error,
       >,
     > + 'static,
 {
-  let service = hyper1::service::service_fn(service_fn_handler);
+  let service = hyper::service::service_fn(service_fn_handler);
   let mut builder =
     hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
 
@@ -1238,10 +1219,10 @@ async fn run_hyper1_server_inner<F, S>(
   error_msg: &'static str,
   kind: Hyper1ServerKind,
 ) where
-  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<
       Output = Result<
-        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        Response<UnsyncBoxBody<Bytes, Infallible>>,
         anyhow::Error,
       >,
     > + 'static,
@@ -1272,10 +1253,10 @@ async fn run_hyper1_server<F, S>(
   service_fn_handler: F,
   error_msg: &'static str,
 ) where
-  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<
       Output = Result<
-        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        Response<UnsyncBoxBody<Bytes, Infallible>>,
         anyhow::Error,
       >,
     > + 'static,
@@ -1297,10 +1278,10 @@ async fn run_hyper1_server_with_acceptor<'a, A, F, S>(
   kind: Hyper1ServerKind,
 ) where
   A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + ?Sized,
-  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<
       Output = Result<
-        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        Response<UnsyncBoxBody<Bytes, Infallible>>,
         anyhow::Error,
       >,
     > + 'static,
@@ -1497,35 +1478,35 @@ async fn wrap_client_auth_https_server(port: u16) {
 fn custom_headers(
   p: &str,
   body: Vec<u8>,
-) -> http_1::Response<UnsyncBoxBody<Bytes, Infallible>> {
-  let mut response = http_1::Response::new(UnsyncBoxBody::new(
+) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
+  let mut response = Response::new(UnsyncBoxBody::new(
     http_body_util::Full::new(Bytes::from(body)),
   ));
 
   if p.ends_with("/run/import_compression/brotli") {
     response
       .headers_mut()
-      .insert("Content-Encoding", http_1::HeaderValue::from_static("br"));
+      .insert("Content-Encoding", HeaderValue::from_static("br"));
     response.headers_mut().insert(
       "Content-Type",
-      http_1::HeaderValue::from_static("application/javascript"),
+      HeaderValue::from_static("application/javascript"),
     );
     response
       .headers_mut()
-      .insert("Content-Length", http_1::HeaderValue::from_static("26"));
+      .insert("Content-Length", HeaderValue::from_static("26"));
     return response;
   }
   if p.ends_with("/run/import_compression/gziped") {
     response
       .headers_mut()
-      .insert("Content-Encoding", http_1::HeaderValue::from_static("gzip"));
+      .insert("Content-Encoding", HeaderValue::from_static("gzip"));
     response.headers_mut().insert(
       "Content-Type",
-      http_1::HeaderValue::from_static("application/javascript"),
+      HeaderValue::from_static("application/javascript"),
     );
     response
       .headers_mut()
-      .insert("Content-Length", http_1::HeaderValue::from_static("39"));
+      .insert("Content-Length", HeaderValue::from_static("39"));
     return response;
   }
 
@@ -1538,7 +1519,7 @@ fn custom_headers(
 
     response.headers_mut().insert(
       "Content-Type",
-      http_1::HeaderValue::from_str(
+      HeaderValue::from_str(
         &format!("application/typescript;charset={charset}")[..],
       )
       .unwrap(),
@@ -1585,7 +1566,7 @@ fn custom_headers(
   if let Some(t) = content_type {
     response
       .headers_mut()
-      .insert("Content-Type", http_1::HeaderValue::from_str(t).unwrap());
+      .insert("Content-Type", HeaderValue::from_str(t).unwrap());
     return response;
   }
 
