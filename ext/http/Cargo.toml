@@ -34,9 +34,9 @@ flate2.workspace = true
 http.workspace = true
 http_v02.workspace = true
 httparse.workspace = true
-hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+hyper.workspace = true
 hyper-util.workspace = true
-hyper1.workspace = true
+hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 itertools = "0.10"
 memmem.workspace = true
 mime = "0.3.16"

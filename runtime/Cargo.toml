@@ -100,11 +100,11 @@ encoding_rs.workspace = true
 fastwebsockets.workspace = true
 filetime = "0.2.16"
 fs3.workspace = true
-http = "1.0"
+http.workspace = true
 http-body-util.workspace = true
-hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+hyper.workspace = true
 hyper-util.workspace = true
-hyper1.workspace = true
+hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
 netif = "0.1.6"

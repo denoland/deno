@@ -32,7 +32,7 @@ dsa = "0.6.1"
 ecb.workspace = true
 elliptic-curve.workspace = true
 errno = "0.2.8"
-h2.workspace = true
+h2 = { version = "0.3.17", features = ["unstable"] }
 hex.workspace = true
 hkdf.workspace = true
 http_v02.workspace = true

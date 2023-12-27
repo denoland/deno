@@ -4,7 +4,7 @@ use bytes::Bytes;
 use deno_net::raw::NetworkStream;
 use h2::RecvStream;
 use h2::SendStream;
-use hyper1::upgrade::Upgraded;
+use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use std::io::ErrorKind;
 use std::pin::Pin;

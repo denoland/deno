@@ -104,7 +104,7 @@ impl Drop for InspectorServer {
 }
 
 fn handle_ws_request(
-  req: http::Request<hyper1::body::Incoming>,
+  req: http::Request<hyper::body::Incoming>,
   inspector_map_rc: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
 ) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
   let (parts, body) = req.into_parts();
@@ -296,8 +296,8 @@ async fn server(
       let json_version_response = json_version_response.clone();
       let mut shutdown_server_rx = shutdown_server_rx.resubscribe();
 
-      let service = hyper1::service::service_fn(
-        move |req: http::Request<hyper1::body::Incoming>| {
+      let service = hyper::service::service_fn(
+        move |req: http::Request<hyper::body::Incoming>| {
           future::ready({
             // If the host header can make a valid URL, use it
             let host = req
@@ -334,7 +334,7 @@ async fn server(
       );
 
       deno_core::unsync::spawn(async move {
-        let server = hyper1::server::conn::http1::Builder::new();
+        let server = hyper::server::conn::http1::Builder::new();
 
         let mut conn =
           pin!(server.serve_connection(io, service).with_upgrades());
@@ -376,7 +376,7 @@ async fn server(
 /// 'futures' crate, therefore they can't participate in Tokio's cooperative
 /// task yielding.
 async fn pump_websocket_messages(
-  mut websocket: WebSocket<TokioIo<hyper1::upgrade::Upgraded>>,
+  mut websocket: WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
   inbound_tx: UnboundedSender<String>,
   mut outbound_rx: UnboundedReceiver<InspectorMsg>,
 ) {

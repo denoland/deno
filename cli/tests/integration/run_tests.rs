@@ -4379,7 +4379,7 @@ async fn websocketstream_ping() {
   let script = util::testdata_path().join("run/websocketstream_ping_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
 
-  let srv_fn = hyper1::service::service_fn(|mut req| async move {
+  let srv_fn = hyper::service::service_fn(|mut req| async move {
     let (response, upgrade_fut) =
       fastwebsockets::upgrade::upgrade(&mut req).unwrap();
     tokio::spawn(async move {
@@ -4427,7 +4427,7 @@ async fn websocketstream_ping() {
   tokio::spawn(async move {
     let (stream, _) = server.accept().await.unwrap();
     let io = hyper_util::rt::TokioIo::new(stream);
-    let conn_fut = hyper1::server::conn::http1::Builder::new()
+    let conn_fut = hyper::server::conn::http1::Builder::new()
       .serve_connection(io, srv_fn)
       .with_upgrades();
 
@@ -4442,7 +4442,7 @@ async fn websocketstream_ping() {
 
 struct SpawnExecutor;
 
-impl<Fut> hyper1::rt::Executor<Fut> for SpawnExecutor
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
 where
   Fut: std::future::Future + Send + 'static,
   Fut::Output: Send + 'static,

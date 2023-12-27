@@ -10,10 +10,10 @@ use deno_runtime::deno_fetch::reqwest;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;
-use hyper1::body::Incoming;
-use hyper1::upgrade::Upgraded;
-use hyper1::Request;
-use hyper1::Response;
+use hyper::body::Incoming;
+use hyper::upgrade::Upgraded;
+use hyper::Request;
+use hyper::Response;
 use hyper_util::rt::TokioIo;
 use std::io::BufRead;
 use std::time::Duration;
@@ -27,7 +27,7 @@ use util::TestContextBuilder;
 
 struct SpawnExecutor;
 
-impl<Fut> hyper1::rt::Executor<Fut> for SpawnExecutor
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
 where
   Fut: std::future::Future + Send + 'static,
   Fut::Output: Send + 'static,
@@ -55,8 +55,8 @@ async fn connect_to_ws(
     .method("GET")
     .uri(uri.path())
     .header("Host", host)
-    .header(hyper1::header::UPGRADE, "websocket")
-    .header(hyper1::header::CONNECTION, "Upgrade")
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(hyper::header::CONNECTION, "Upgrade")
     .header(
       "Sec-WebSocket-Key",
       fastwebsockets::handshake::generate_key(),
