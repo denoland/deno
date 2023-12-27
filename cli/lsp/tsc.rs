@@ -3937,7 +3937,6 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  eprintln!("  op_load(\"{}\")", specifier.as_str());
   let maybe_load_response =
     if specifier.as_str() == "internal:///missing_dependency.d.ts" {
       None
@@ -4007,7 +4006,6 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[op2]
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
-  eprintln!("  op_script_names()");
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
@@ -4069,7 +4067,6 @@ fn op_script_version(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_version");
   let specifier = state.specifier_map.normalize(specifier)?;
-  eprintln!("  op_script_version(\"{}\")", specifier.as_str());
   let r = state.script_version(&specifier);
   state.performance.measure(mark);
   Ok(r)
@@ -4080,7 +4077,6 @@ fn op_script_version(
 fn op_project_version(state: &mut OpState) -> String {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_project_version");
-  eprintln!("  op_project_version()");
   let r = state.project_version.load(Ordering::Relaxed).to_string();
   state.performance.measure(mark);
   r
@@ -4580,7 +4576,6 @@ fn request(
     "globalThis.serverRequest({id}, \"{}\", {});",
     request.method, &request.args
   );
-  eprintln!("request(\"{}\")", request.method);
   runtime.execute_script(located_script_name!(), request_src.into())?;
 
   let op_state = runtime.op_state();
