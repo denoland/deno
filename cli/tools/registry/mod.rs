@@ -19,8 +19,6 @@ use deno_core::unsync::JoinHandle;
 use deno_core::unsync::JoinSet;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
-use http::header::AUTHORIZATION;
-use http::header::CONTENT_ENCODING;
 use import_map::ImportMap;
 use lsp_types::Url;
 use serde::Serialize;
@@ -548,8 +546,8 @@ async fn publish_package(
 
   let response = client
     .post(url)
-    .header(AUTHORIZATION, authorization)
-    .header(CONTENT_ENCODING, "gzip")
+    .header(reqwest::header::AUTHORIZATION, authorization)
+    .header(reqwest::header::CONTENT_ENCODING, "gzip")
     .body(package.tarball.clone())
     .send()
     .await?;

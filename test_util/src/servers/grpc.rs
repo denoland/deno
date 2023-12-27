@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use futures::StreamExt;
-use h2_04 as h2;
-use hyper1::header::HeaderName;
-use hyper1::header::HeaderValue;
+use h2;
+use hyper::header::HeaderName;
+use hyper::header::HeaderValue;
 use rustls_tokio_stream::TlsStream;
 use tokio::net::TcpStream;
 use tokio::task::LocalSet;
@@ -48,7 +48,7 @@ pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
   }
 
   async fn handle_request(
-    mut request: hyper1::Request<h2::RecvStream>,
+    mut request: hyper::Request<h2::RecvStream>,
     mut respond: h2::server::SendResponse<bytes::Bytes>,
   ) -> Result<(), anyhow::Error> {
     let body = request.body_mut();
@@ -59,11 +59,11 @@ pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
 
     let maybe_recv_trailers = body.trailers().await?;
 
-    let response = hyper1::Response::new(());
+    let response = hyper::Response::new(());
     let mut send = respond.send_response(response, false)?;
     send.send_data(bytes::Bytes::from_static(b"hello "), false)?;
     send.send_data(bytes::Bytes::from_static(b"world\n"), false)?;
-    let mut trailers = hyper1::HeaderMap::new();
+    let mut trailers = hyper::HeaderMap::new();
     trailers.insert(
       HeaderName::from_static("abc"),
       HeaderValue::from_static("def"),
