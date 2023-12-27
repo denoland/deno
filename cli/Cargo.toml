@@ -151,10 +151,10 @@ nix.workspace = true
 deno_bench_util.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 flaky_test = "=0.1.0"
-http-body-util.workspace = true
 http.workspace = true
-hyper-util.workspace = true
+http-body-util.workspace = true
 hyper.workspace = true
+hyper-util.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
