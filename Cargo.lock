@@ -965,7 +965,6 @@ dependencies = [
  "fwdansi",
  "glibc_version",
  "glob",
- "h2 0.4.0",
  "hex",
  "http 0.2.11",
  "http 1.0.0",
