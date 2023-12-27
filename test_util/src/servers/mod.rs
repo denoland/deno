@@ -400,11 +400,11 @@ async fn absolute_redirect(
   }
 
   let file = tokio::fs::read(file_path).await.unwrap();
-  let file_resp = custom_headers_hyper1(req.uri().path(), file);
+  let file_resp = custom_headers(req.uri().path(), file);
   Ok(file_resp)
 }
 
-async fn main_server_hyper1(
+async fn main_server(
   req: http_1::Request<hyper1::body::Incoming>,
 ) -> Result<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   return match (req.method(), req.uri().path()) {
@@ -716,7 +716,7 @@ async fn main_server_hyper1(
       let file_path =
         testdata_path().join("lsp/registries/deno-import-intellisense.json");
       if let Ok(body) = tokio::fs::read(file_path).await {
-        Ok(custom_headers_hyper1(
+        Ok(custom_headers(
           "/.well-known/deno-import-intellisense.json",
           body,
         ))
@@ -1030,7 +1030,7 @@ async fn main_server_hyper1(
       let mut file_path = testdata_path().to_path_buf();
       file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
-        let file_resp = custom_headers_hyper1(req.uri().path(), file);
+        let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
       }
 
@@ -1043,7 +1043,7 @@ async fn main_server_hyper1(
       {
         // serve all requests to /npm/registry/@deno using the file system
         // at that path
-        match handle_custom_npm_registry_path_hyper1(suffix) {
+        match handle_custom_npm_registry_path(suffix) {
           Ok(Some(response)) => return Ok(response),
           Ok(None) => {} // ignore, not found
           Err(err) => {
@@ -1060,12 +1060,11 @@ async fn main_server_hyper1(
           file_path.push("registry.json");
         }
         if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers_hyper1(req.uri().path(), file);
+          let file_resp = custom_headers(req.uri().path(), file);
           return Ok(file_resp);
         } else if should_download_npm_packages() {
           if let Err(err) =
-            download_npm_registry_file_hyper1(req.uri(), &file_path, is_tarball)
-              .await
+            download_npm_registry_file(req.uri(), &file_path, is_tarball).await
           {
             return http_1::Response::builder()
               .status(http_1::StatusCode::INTERNAL_SERVER_ERROR)
@@ -1075,14 +1074,14 @@ async fn main_server_hyper1(
 
           // serve the file
           if let Ok(file) = tokio::fs::read(&file_path).await {
-            let file_resp = custom_headers_hyper1(req.uri().path(), file);
+            let file_resp = custom_headers(req.uri().path(), file);
             return Ok(file_resp);
           }
         }
       } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
         let file_path = std_path().join(suffix);
         if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers_hyper1(req.uri().path(), file);
+          let file_resp = custom_headers(req.uri().path(), file);
           return Ok(file_resp);
         }
       } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
@@ -1103,7 +1102,7 @@ async fn main_server_hyper1(
   };
 }
 
-fn handle_custom_npm_registry_path_hyper1(
+fn handle_custom_npm_registry_path(
   path: &str,
 ) -> Result<
   Option<http_1::Response<UnsyncBoxBody<Bytes, Infallible>>>,
@@ -1119,12 +1118,12 @@ fn handle_custom_npm_registry_path_hyper1(
     if let Some(file_bytes) =
       cache.tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
     {
-      let file_resp = custom_headers_hyper1("file.tgz", file_bytes);
+      let file_resp = custom_headers("file.tgz", file_bytes);
       return Ok(Some(file_resp));
     }
   } else if parts.len() == 1 {
     if let Some(registry_file) = cache.registry_file(&package_name)? {
-      let file_resp = custom_headers_hyper1("registry.json", registry_file);
+      let file_resp = custom_headers("registry.json", registry_file);
       return Ok(Some(file_resp));
     }
   }
@@ -1138,7 +1137,7 @@ fn should_download_npm_packages() -> bool {
   std::env::var("DENO_TEST_UTIL_UPDATE_NPM") == Ok("1".to_string())
 }
 
-async fn download_npm_registry_file_hyper1(
+async fn download_npm_registry_file(
   uri: &hyper1::Uri,
   file_path: &PathBuf,
   is_tarball: bool,
@@ -1398,8 +1397,7 @@ async fn wrap_main_ipv6_server(port: u16) {
 }
 
 async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
-  run_hyper1_server(*main_server_addr, main_server_hyper1, "HTTP server error")
-    .await;
+  run_hyper1_server(*main_server_addr, main_server, "HTTP server error").await;
 }
 
 async fn wrap_main_https_server(port: u16) {
@@ -1407,7 +1405,7 @@ async fn wrap_main_https_server(port: u16) {
   let tls_acceptor = tls.boxed_local();
   run_hyper1_server_with_acceptor(
     tls_acceptor,
-    main_server_hyper1,
+    main_server,
     "HTTPS server error",
     Hyper1ServerKind::Auto,
   )
@@ -1424,7 +1422,7 @@ async fn wrap_https_h1_only_tls_server(port: u16) {
 
   run_hyper1_server_with_acceptor(
     tls.boxed_local(),
-    main_server_hyper1,
+    main_server,
     "HTTP1 only TLS server error",
     Hyper1ServerKind::OnlyHttp1,
   )
@@ -1441,7 +1439,7 @@ async fn wrap_https_h2_only_tls_server(port: u16) {
 
   run_hyper1_server_with_acceptor(
     tls.boxed_local(),
-    main_server_hyper1,
+    main_server,
     "HTTP2 only TLS server error",
     Hyper1ServerKind::OnlyHttp2,
   )
@@ -1452,7 +1450,7 @@ async fn wrap_http_h1_only_server(port: u16) {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
   run_hyper1_server_inner(
     main_server_http_addr,
-    main_server_hyper1,
+    main_server,
     "HTTP1 only server error:",
     Hyper1ServerKind::OnlyHttp1,
   )
@@ -1463,7 +1461,7 @@ async fn wrap_http_h2_only_server(port: u16) {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
   run_hyper1_server_inner(
     main_server_http_addr,
-    main_server_hyper1,
+    main_server,
     "HTTP1 only server error:",
     Hyper1ServerKind::OnlyHttp2,
   )
@@ -1489,14 +1487,14 @@ async fn wrap_client_auth_https_server(port: u16) {
 
   run_hyper1_server_with_acceptor(
     tls.boxed_local(),
-    main_server_hyper1,
+    main_server,
     "Auth TLS server error",
     Hyper1ServerKind::Auto,
   )
   .await
 }
 
-fn custom_headers_hyper1(
+fn custom_headers(
   p: &str,
   body: Vec<u8>,
 ) -> http_1::Response<UnsyncBoxBody<Bytes, Infallible>> {
