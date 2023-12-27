@@ -141,6 +141,8 @@ let isClosing = false;
 let globalDispatchEvent;
 
 async function pollForMessages() {
+  const { op_worker_recv_message } = core.ensureFastOps();
+
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
       globalThis.dispatchEvent,
@@ -148,7 +150,7 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await core.opAsync("op_worker_recv_message");
+    const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];

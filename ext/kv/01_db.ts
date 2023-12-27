@@ -17,6 +17,14 @@ import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { ReadableStream } from "ext:deno_web/06_streams.js";
 const core = Deno.core;
 const ops = core.ops;
+const {
+  op_kv_atomic_write,
+  op_kv_database_open,
+  op_kv_dequeue_next_message,
+  op_kv_finish_dequeued_message,
+  op_kv_snapshot_read,
+  op_kv_watch_next,
+} = core.ensureFastOps();
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
@@ -25,7 +33,7 @@ const encodeCursor: (
   ops.op_kv_encode_cursor(selector, boundaryKey);
 
 async function openKv(path: string) {
-  const rid = await core.opAsync("op_kv_database_open", path);
+  const rid = await op_kv_database_open(path);
   return new Kv(rid, kvSymbol);
 }
 
@@ -100,8 +108,7 @@ class Kv {
   }
 
   async get(key: Deno.KvKey, opts?: { consistency?: Deno.KvConsistencyLevel }) {
-    const [entries]: [RawKvEntry[]] = await core.opAsync(
-      "op_kv_snapshot_read",
+    const [entries]: [RawKvEntry[]] = await op_kv_snapshot_read(
       this.#rid,
       [[
         null,
@@ -127,8 +134,7 @@ class Kv {
     keys: Deno.KvKey[],
     opts?: { consistency?: Deno.KvConsistencyLevel },
   ): Promise<Deno.KvEntry<unknown>[]> {
-    const ranges: RawKvEntry[][] = await core.opAsync(
-      "op_kv_snapshot_read",
+    const ranges: RawKvEntry[][] = await op_kv_snapshot_read(
       this.#rid,
       keys.map((key) => [
         null,
@@ -209,8 +215,7 @@ class Kv {
     consistency: Deno.KvConsistencyLevel,
   ) => Promise<Deno.KvEntry<unknown>[]> {
     return async (selector, cursor, reverse, consistency) => {
-      const [entries]: [RawKvEntry[]] = await core.opAsync(
-        "op_kv_snapshot_read",
+      const [entries]: [RawKvEntry[]] = await op_kv_snapshot_read(
         this.#rid,
         [[
           "prefix" in selector ? selector.prefix : null,
@@ -268,10 +273,10 @@ class Kv {
     const finishMessageOps = new Map<number, Promise<void>>();
     while (true) {
       // Wait for the next message.
-      const next: { 0: Uint8Array; 1: number } = await core.opAsync(
-        "op_kv_dequeue_next_message",
-        this.#rid,
-      );
+      const next: { 0: Uint8Array; 1: number } =
+        await op_kv_dequeue_next_message(
+          this.#rid,
+        );
       if (next === null) {
         break;
       }
@@ -292,8 +297,7 @@ class Kv {
         } catch (error) {
           console.error("Exception in queue handler", error);
         } finally {
-          const promise: Promise<void> = core.opAsync(
-            "op_kv_finish_dequeued_message",
+          const promise: Promise<void> = op_kv_finish_dequeued_message(
             handleId,
             success,
           );
@@ -325,7 +329,7 @@ class Kv {
         while (true) {
           let updates;
           try {
-            updates = await core.opAsync("op_kv_watch_next", rid);
+            updates = await op_kv_watch_next(rid);
           } catch (err) {
             core.tryClose(rid);
             controller.error(err);
@@ -768,8 +772,7 @@ async function doAtomicWriteInPlace(
     }
   }
 
-  return await core.opAsync(
-    "op_kv_atomic_write",
+  return await op_kv_atomic_write(
     rid,
     checks,
     mutations,
