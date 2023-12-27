@@ -19,6 +19,11 @@ const {
   op_readable_stream_resource_close,
   op_readable_stream_resource_await_close,
 } = core.ensureFastOps();
+// TODO(mmastrac): use readAll
+const {
+  op_read_all,
+} = core.ensureFastOps(true);
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "ext:deno_web/02_structured_clone.js";
 import {
@@ -1065,7 +1070,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     // fast path, read whole body in a single op call
     try {
       readableStreamDisturb(stream);
-      const promise = core.opAsync("op_read_all", resourceBacking.rid);
+      const promise = op_read_all(resourceBacking.rid);
       if (readableStreamIsUnrefable(stream)) {
         stream[promiseSymbol] = promise;
         if (stream[_isUnref]) core.unrefOpPromise(promise);
@@ -6895,6 +6900,7 @@ export {
   errorReadableStream,
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
+  isDetachedBuffer,
   isReadableStreamDisturbed,
   ReadableByteStreamController,
   ReadableStream,

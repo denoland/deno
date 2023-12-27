@@ -1,20 +1,20 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use bytes::Bytes;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
-use fastwebsockets::FragmentCollector;
-use fastwebsockets::Frame;
-use fastwebsockets::WebSocket;
-use http::header::HOST;
-use hyper::header::HeaderValue;
-use hyper::upgrade::Upgraded;
-use hyper::Body;
-use hyper::Request;
-use hyper::Response;
+use fastwebsockets_06::FragmentCollector;
+use fastwebsockets_06::Frame;
+use fastwebsockets_06::WebSocket;
+use hyper1::body::Incoming;
+use hyper1::upgrade::Upgraded;
+use hyper1::Request;
+use hyper1::Response;
+use hyper_util::rt::TokioIo;
 use std::io::BufRead;
 use std::time::Duration;
 use test_util as util;
@@ -25,9 +25,14 @@ use util::assert_starts_with;
 use util::DenoChild;
 use util::TestContextBuilder;
 
+// TODO(bartlomieju): remove `http::header` once we update to `reqwest`
+// to version that uses Hyper 1.0
+use http::header::HeaderValue;
+use http::header::HOST;
+
 struct SpawnExecutor;
 
-impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+impl<Fut> hyper1::rt::Executor<Fut> for SpawnExecutor
 where
   Fut: std::future::Future + Send + 'static,
   Fut::Output: Send + 'static,
@@ -37,7 +42,9 @@ where
   }
 }
 
-async fn connect_to_ws(uri: Url) -> (WebSocket<Upgraded>, Response<Body>) {
+async fn connect_to_ws(
+  uri: Url,
+) -> (WebSocket<TokioIo<Upgraded>>, Response<Incoming>) {
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port().unwrap_or(match uri.scheme() {
     "wss" | "https" => 443,
@@ -53,23 +60,23 @@ async fn connect_to_ws(uri: Url) -> (WebSocket<Upgraded>, Response<Body>) {
     .method("GET")
     .uri(uri.path())
     .header("Host", host)
-    .header(hyper::header::UPGRADE, "websocket")
-    .header(hyper::header::CONNECTION, "Upgrade")
+    .header(hyper1::header::UPGRADE, "websocket")
+    .header(hyper1::header::CONNECTION, "Upgrade")
     .header(
       "Sec-WebSocket-Key",
-      fastwebsockets::handshake::generate_key(),
+      fastwebsockets_06::handshake::generate_key(),
     )
     .header("Sec-WebSocket-Version", "13")
-    .body(hyper::Body::empty())
+    .body(http_body_util::Empty::<Bytes>::new())
     .unwrap();
 
-  fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+  fastwebsockets_06::handshake::client(&SpawnExecutor, req, stream)
     .await
     .unwrap()
 }
 
 struct InspectorTester {
-  socket: FragmentCollector<Upgraded>,
+  socket: FragmentCollector<TokioIo<Upgraded>>,
   notification_filter: Box<dyn FnMut(&str) -> bool + 'static>,
   child: DenoChild,
   stderr_lines: Box<dyn Iterator<Item = String>>,

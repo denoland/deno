@@ -20,12 +20,16 @@ base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
 denokv_proto.workspace = true
-fastwebsockets = { workspace = true, features = ["upgrade"] }
+fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 glob.workspace = true
 h2.workspace = true
+h2_04 = { package = "h2", version = "0.4" }
+http_1 = { package = "http", version = "1.0" }
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
+hyper-util.workspace = true
+hyper1.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
 lsp-types.workspace = true

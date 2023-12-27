@@ -12,6 +12,10 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
+const {
+  op_fetch_send,
+} = core.ensureFastOps();
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { byteLowerCase } from "ext:deno_web/00_infra.js";
 import {
@@ -62,7 +66,7 @@ const REQUEST_BODY_HEADER_NAMES = [
  * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: string? }>}
  */
 function opFetchSend(rid) {
-  return core.opAsync("op_fetch_send", rid);
+  return op_fetch_send(rid);
 }
 
 /**

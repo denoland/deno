@@ -2,9 +2,10 @@
 use bytes::Buf;
 use bytes::Bytes;
 use deno_net::raw::NetworkStream;
-use h2::RecvStream;
-use h2::SendStream;
-use hyper::upgrade::Upgraded;
+use h2_04::RecvStream;
+use h2_04::SendStream;
+use hyper1::upgrade::Upgraded;
+use hyper_util::rt::TokioIo;
 use std::io::ErrorKind;
 use std::pin::Pin;
 use std::task::ready;
@@ -15,7 +16,7 @@ use tokio::io::ReadBuf;
 
 // TODO(bartlomieju): remove this
 pub(crate) enum WsStreamKind {
-  Upgraded(Upgraded),
+  Upgraded(TokioIo<Upgraded>),
   Network(NetworkStream),
   H2(SendStream<Bytes>, RecvStream),
 }

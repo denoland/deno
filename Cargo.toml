@@ -41,7 +41,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "0.31.6", features = ["transpiling"] }
-deno_core = { version = "0.238.0" }
+deno_core = { version = "0.239.0" }
 
 deno_runtime = { version = "0.137.0", path = "./runtime" }
 napi_sym = { version = "0.59.0", path = "./cli/napi/sym" }
@@ -96,7 +96,7 @@ data-encoding = "2.3.3"
 dlopen2 = "0.6.1"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
-fastwebsockets = "=0.5.0"
+fastwebsockets = { version = "0.6", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"
 flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
@@ -106,7 +106,9 @@ hex = "0.4"
 http = "0.2.9"
 h2 = { version = "0.3.17", features = ["unstable"] }
 httparse = "1.8.0"
+hyper-util = { version = "=0.1.2", features = ["tokio", "server", "server-auto"] }
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
+hyper1 = { package = "hyper", version = "=1.1.0", features = ["full"] }
 indexmap = { version = "2", features = ["serde"] }
 libc = "0.2.126"
 libz-sys = { version = "1.1", default-features = false }
@@ -265,6 +267,8 @@ opt-level = 3
 [profile.bench.package.bytes]
 opt-level = 3
 [profile.bench.package.futures-util]
+opt-level = 3
+[profile.bench.package.fastwebsockets]
 opt-level = 3
 [profile.bench.package.hyper]
 opt-level = 3

@@ -965,9 +965,13 @@ dependencies = [
  "fwdansi",
  "glibc_version",
  "glob",
+ "h2 0.4.0",
  "hex",
  "http 0.2.11",
- "hyper 0.14.27",
+ "http 1.0.0",
+ "http-body-util",
+ "hyper 1.1.0",
+ "hyper-util",
  "import_map",
  "indexmap 2.1.0",
  "jsonc-parser",
@@ -1134,9 +1138,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.238.0"
+version = "0.239.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ded8b759e4435aa0929913909dd6c482ed6042dae19c53260e1caf9d55b37a9"
+checksum = "c7765fb48adcbe8949483afc28dc39de500a5464eb3b4b211d2920aca1af236b"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1569,9 +1573,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.114.0"
+version = "0.115.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "168a929496191fdd8e91f898c8454429df4d5489597777d89f47897f6a37da6b"
+checksum = "c81860fa6e339f5db9bfbf55503300b8b86c7bbdfde70bf9fcfa57624e1b0eef"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1618,7 +1622,11 @@ dependencies = [
  "fs3",
  "fwdansi",
  "http 0.2.11",
+ "http 1.0.0",
+ "http-body-util",
  "hyper 0.14.27",
+ "hyper 1.1.0",
+ "hyper-util",
  "libc",
  "log",
  "netif",
@@ -1766,9 +1774,11 @@ dependencies = [
  "deno_net",
  "deno_tls",
  "fastwebsockets",
- "h2 0.3.22",
- "http 0.2.11",
- "hyper 0.14.27",
+ "h2 0.4.0",
+ "http 1.0.0",
+ "http-body-util",
+ "hyper 1.1.0",
+ "hyper-util",
  "once_cell",
  "rustls-tokio-stream",
  "serde",
@@ -2338,12 +2348,14 @@ checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
 
 [[package]]
 name = "fastwebsockets"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17c35f166afb94b7f8e9449d0ad866daca111ba4053f3b1960bb480ca4382c63"
+checksum = "f63dd7b57f9b33b1741fa631c9522eb35d43e96dcca4a6a91d5e4ca7c93acdc1"
 dependencies = [
  "base64 0.21.5",
- "hyper 0.14.27",
+ "http-body-util",
+ "hyper 1.1.0",
+ "hyper-util",
  "pin-project",
  "rand",
  "sha1",
@@ -5131,9 +5143,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.147.0"
+version = "0.148.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2af950d83e1c70b762d48fa7a869d6db9a4f191548dfd666fa4e62f2229e1dce"
+checksum = "29fc23773946897ae2bc9db186b27103d35d35591bfa541d5570a30de14c72f2"
 dependencies = [
  "bytes",
  "derive_more",
@@ -5963,7 +5975,11 @@ dependencies = [
  "futures",
  "glob",
  "h2 0.3.22",
+ "h2 0.4.0",
+ "http 1.0.0",
  "hyper 0.14.27",
+ "hyper 1.1.0",
+ "hyper-util",
  "lazy-regex",
  "libc",
  "lsp-types",
