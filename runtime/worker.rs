@@ -55,10 +55,6 @@ pub fn import_meta_resolve_callback(
   specifier: String,
   referrer: String,
 ) -> Result<ModuleSpecifier, AnyError> {
-  if specifier.starts_with("npm:") {
-    return Ok(ModuleSpecifier::parse(&specifier)?);
-  }
-
   loader.resolve(
     &specifier,
     &referrer,

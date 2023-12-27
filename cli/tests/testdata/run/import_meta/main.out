@@ -9,3 +9,4 @@ Resolving null from import map https://example.com/PASS-null
 Resolving object from import map https://example.com/PASS-object
 Resolving npm:cowsay npm:cowsay
 Resolving npm:cowsay@1 npm:cowsay@1
+Resolving npm:preact from import map https://example.com/preact

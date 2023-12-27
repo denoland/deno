@@ -40,3 +40,7 @@ console.log(
   "Resolving npm:cowsay@1",
   import.meta.resolve("npm:cowsay@1"),
 );
+console.log(
+  "Resolving npm:preact from import map",
+  import.meta.resolve("npm:preact"),
+);
