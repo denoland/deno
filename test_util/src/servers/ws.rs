@@ -2,11 +2,11 @@
 
 use anyhow::anyhow;
 use bytes::Bytes;
-use fastwebsockets_06::FragmentCollector;
-use fastwebsockets_06::Frame;
-use fastwebsockets_06::OpCode;
-use fastwebsockets_06::Role;
-use fastwebsockets_06::WebSocket;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
 use futures::future::join3;
 use futures::future::poll_fn;
 use futures::Future;
@@ -99,7 +99,7 @@ pub async fn run_wss2_server(port: u16) {
 }
 
 async fn echo_websocket_handler(
-  ws: fastwebsockets_06::WebSocket<TokioIo<Upgraded>>,
+  ws: fastwebsockets::WebSocket<TokioIo<Upgraded>>,
 ) -> Result<(), anyhow::Error> {
   let mut ws = FragmentCollector::new(ws);
 
@@ -119,7 +119,7 @@ async fn echo_websocket_handler(
 
 type WsHandler =
   fn(
-    fastwebsockets_06::WebSocket<TokioIo<Upgraded>>,
+    fastwebsockets::WebSocket<TokioIo<Upgraded>>,
   ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send>>;
 
 fn spawn_ws_server<S>(stream: S, handler: WsHandler)
@@ -128,10 +128,8 @@ where
 {
   let service = hyper1::service::service_fn(
     move |mut req: http_1::Request<hyper1::body::Incoming>| async move {
-      let (response, upgrade_fut) =
-        fastwebsockets_06::upgrade::upgrade(&mut req).map_err(|e| {
-          anyhow!("Error upgrading websocket connection: {}", e)
-        })?;
+      let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
+        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
 
       tokio::spawn(async move {
         let ws = upgrade_fut
@@ -228,7 +226,7 @@ async fn handle_wss_stream(
 }
 
 async fn close_websocket_handler(
-  ws: fastwebsockets_06::WebSocket<TokioIo<Upgraded>>,
+  ws: fastwebsockets::WebSocket<TokioIo<Upgraded>>,
 ) -> Result<(), anyhow::Error> {
   let mut ws = FragmentCollector::new(ws);
 
@@ -240,7 +238,7 @@ async fn close_websocket_handler(
 }
 
 async fn ping_websocket_handler(
-  ws: fastwebsockets_06::WebSocket<TokioIo<Upgraded>>,
+  ws: fastwebsockets::WebSocket<TokioIo<Upgraded>>,
 ) -> Result<(), anyhow::Error> {
   let mut ws = FragmentCollector::new(ws);
 

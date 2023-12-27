@@ -2,7 +2,6 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-const { op_http_write } = Deno.core.ensureFastOps();
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
@@ -64,6 +63,15 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
 } = primordials;
+const {
+  op_http_accept,
+  op_http_shutdown,
+  op_http_upgrade,
+  op_http_write,
+  op_http_upgrade_websocket,
+  op_http_write_headers,
+  op_http_write_resource,
+} = core.ensureFastOps();
 
 const connErrorSymbol = Symbol("connError");
 const _deferred = Symbol("upgradeHttpDeferred");
@@ -103,7 +111,7 @@ class HttpConn {
   async nextRequest() {
     let nextRequest;
     try {
-      nextRequest = await core.opAsync("op_http_accept", this.#rid);
+      nextRequest = await op_http_accept(this.#rid);
     } catch (error) {
       this.close();
       // A connection error seen here would cause disrupted responses to throw
@@ -267,8 +275,7 @@ function createRespondWith(
         TypedArrayPrototypeGetSymbolToStringTag(respBody) === "Uint8Array"
       );
       try {
-        await core.opAsync(
-          "op_http_write_headers",
+        await op_http_write_headers(
           streamRid,
           innerResp.status ?? 200,
           innerResp.headerList,
@@ -308,8 +315,7 @@ function createRespondWith(
           }
           reader = respBody.getReader(); // Acquire JS lock.
           try {
-            await core.opAsync(
-              "op_http_write_resource",
+            await op_http_write_resource(
               streamRid,
               resourceBacking.rid,
             );
@@ -359,7 +365,7 @@ function createRespondWith(
 
         if (success) {
           try {
-            await core.opAsync("op_http_shutdown", streamRid);
+            await op_http_shutdown(streamRid);
           } catch (error) {
             await reader.cancel(error);
             throw error;
@@ -369,7 +375,7 @@ function createRespondWith(
 
       const deferred = request[_deferred];
       if (deferred) {
-        const res = await core.opAsync("op_http_upgrade", streamRid);
+        const res = await op_http_upgrade(streamRid);
         let conn;
         if (res.connType === "tcp") {
           conn = new TcpConn(res.connRid, remoteAddr, localAddr);
@@ -385,8 +391,7 @@ function createRespondWith(
       }
       const ws = resp[_ws];
       if (ws) {
-        const wsRid = await core.opAsync(
-          "op_http_upgrade_websocket",
+        const wsRid = await op_http_upgrade_websocket(
           streamRid,
         );
         ws[_rid] = wsRid;

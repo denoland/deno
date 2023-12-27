@@ -9,13 +9,16 @@ const {
   SetPrototypeDelete,
   TypeError,
 } = primordials;
+const {
+  op_signal_poll,
+} = core.ensureFastOps();
 
 function bindSignal(signo) {
   return ops.op_signal_bind(signo);
 }
 
 function pollSignal(rid) {
-  const promise = core.opAsync("op_signal_poll", rid);
+  const promise = op_signal_poll(rid);
   core.unrefOpPromise(promise);
   return promise;
 }

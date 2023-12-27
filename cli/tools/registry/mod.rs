@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use bytes::Bytes;
 use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -20,7 +21,6 @@ use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
-use hyper::body::Bytes;
 use import_map::ImportMap;
 use lsp_types::Url;
 use serde::Serialize;
