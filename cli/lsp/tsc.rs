@@ -70,6 +70,8 @@ use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use text_size::TextRange;
@@ -220,6 +222,7 @@ pub struct TsServer {
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
+  project_version: Arc<AtomicUsize>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
 }
 
@@ -231,6 +234,7 @@ impl std::fmt::Debug for TsServer {
       .field("sender", &self.sender)
       .field("receiver", &self.receiver)
       .field("specifier_map", &self.specifier_map)
+      .field("project_version", &self.project_version)
       .field("inspector_server", &self.inspector_server.lock().is_some())
       .finish()
   }
@@ -245,6 +249,7 @@ impl TsServer {
       sender: tx,
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
+      project_version: Arc::new(AtomicUsize::new(1)),
       inspector_server: Mutex::new(None),
     }
   }
@@ -267,12 +272,14 @@ impl TsServer {
     let performance = self.performance.clone();
     let cache = self.cache.clone();
     let specifier_map = self.specifier_map.clone();
+    let project_version = self.project_version.clone();
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
         performance.clone(),
         cache.clone(),
         specifier_map.clone(),
+        project_version,
         maybe_inspector_server,
       )
     });
@@ -352,6 +359,10 @@ impl TsServer {
       args: json!([tsconfig]),
     };
     self.request(snapshot, req).await
+  }
+
+  pub fn increment_project_version(&self) {
+    self.project_version.fetch_add(1, Ordering::Relaxed);
   }
 
   pub async fn get_supported_code_fixes(
@@ -3830,6 +3841,7 @@ struct State {
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
+  project_version: Arc<AtomicUsize>,
   token: CancellationToken,
 }
 
@@ -3838,6 +3850,7 @@ impl State {
     state_snapshot: Arc<StateSnapshot>,
     specifier_map: Arc<TscSpecifierMap>,
     performance: Arc<Performance>,
+    project_version: Arc<AtomicUsize>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -3845,6 +3858,7 @@ impl State {
       response: None,
       state_snapshot,
       specifier_map,
+      project_version,
       token: Default::default(),
     }
   }
@@ -3923,6 +3937,7 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
+  eprintln!("  op_load(\"{}\")", specifier.as_str());
   let maybe_load_response =
     if specifier.as_str() == "internal:///missing_dependency.d.ts" {
       None
@@ -3992,6 +4007,7 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[op2]
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
+  eprintln!("  op_script_names()");
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
@@ -4053,9 +4069,21 @@ fn op_script_version(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_version");
   let specifier = state.specifier_map.normalize(specifier)?;
+  eprintln!("  op_script_version(\"{}\")", specifier.as_str());
   let r = state.script_version(&specifier);
   state.performance.measure(mark);
   Ok(r)
+}
+
+#[op2]
+#[string]
+fn op_project_version(state: &mut OpState) -> String {
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_project_version");
+  eprintln!("  op_project_version()");
+  let r = state.project_version.load(Ordering::Relaxed).to_string();
+  state.performance.measure(mark);
+  r
 }
 
 fn run_tsc_thread(
@@ -4063,6 +4091,7 @@ fn run_tsc_thread(
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
+  project_version: Arc<AtomicUsize>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
@@ -4070,7 +4099,12 @@ fn run_tsc_thread(
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
+    extensions: vec![deno_tsc::init_ops(
+      performance,
+      cache,
+      specifier_map,
+      project_version,
+    )],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     inspector: maybe_inspector_server.is_some(),
     ..Default::default()
@@ -4137,11 +4171,13 @@ deno_core::extension!(deno_tsc,
     op_respond,
     op_script_names,
     op_script_version,
+    op_project_version,
   ],
   options = {
     performance: Arc<Performance>,
     cache: Arc<dyn HttpCache>,
     specifier_map: Arc<TscSpecifierMap>,
+    project_version: Arc<AtomicUsize>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -4155,6 +4191,7 @@ deno_core::extension!(deno_tsc,
       }),
       options.specifier_map,
       options.performance,
+      options.project_version,
     ));
   },
 );
@@ -4543,6 +4580,7 @@ fn request(
     "globalThis.serverRequest({id}, \"{}\", {});",
     request.method, &request.args
   );
+  eprintln!("request(\"{}\")", request.method);
   runtime.execute_script(located_script_name!(), request_src.into())?;
 
   let op_state = runtime.op_state();
@@ -5082,6 +5120,7 @@ mod tests {
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
+    ts_server.increment_project_version();
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())

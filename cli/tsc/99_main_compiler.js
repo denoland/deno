@@ -534,6 +534,9 @@ delete Object.prototype.__proto__;
       // createLanguageService will call this immediately and cache it
       return new CancellationToken();
     },
+    getProjectVersion() {
+      return ops.op_project_version();
+    },
     getSourceFile(
       specifier,
       languageVersion,
