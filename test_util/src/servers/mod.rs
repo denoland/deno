@@ -1995,16 +1995,30 @@ async fn hyper1_serve_connection<I, F, S>(
     > + 'static,
 {
   let service = hyper1::service::service_fn(service_fn_handler);
-  let mut builder =
-    hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
 
-  let result = match kind {
-    Hyper1ServerKind::Auto => builder.serve_connection(io, service).await,
+  let result: Result<(), anyhow::Error> = match kind {
+    Hyper1ServerKind::Auto => {
+      let builder =
+        hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
+      builder
+        .serve_connection(io, service)
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))
+    }
     Hyper1ServerKind::OnlyHttp1 => {
-      builder.http1().serve_connection(io, service).await
+      let builder = hyper1::server::conn::http1::Builder::new();
+      builder
+        .serve_connection(io, service)
+        .await
+        .map_err(|e| e.into())
     }
     Hyper1ServerKind::OnlyHttp2 => {
-      builder.http2().serve_connection(io, service).await
+      let builder =
+        hyper1::server::conn::http2::Builder::new(DenoUnsyncExecutor);
+      builder
+        .serve_connection(io, service)
+        .await
+        .map_err(|e| e.into())
     }
   };
 
