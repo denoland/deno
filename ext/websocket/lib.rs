@@ -25,14 +25,14 @@ use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
-use http_1::header::CONNECTION;
-use http_1::header::UPGRADE;
-use http_1::HeaderName;
-use http_1::HeaderValue;
-use http_1::Method;
-use http_1::Request;
-use http_1::StatusCode;
-use http_1::Uri;
+use http::header::CONNECTION;
+use http::header::UPGRADE;
+use http::HeaderName;
+use http::HeaderValue;
+use http::Method;
+use http::Request;
+use http::StatusCode;
+use http::Uri;
 use once_cell::sync::Lazy;
 use rustls_tokio_stream::rustls::RootCertStore;
 use rustls_tokio_stream::rustls::ServerName;
@@ -156,7 +156,7 @@ async fn handshake_websocket(
   uri: &Uri,
   protocols: &str,
   headers: Option<Vec<(ByteString, ByteString)>>,
-) -> Result<(WebSocket<WebSocketStream>, http_1::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let mut request = Request::builder().method(Method::GET).uri(
     uri
       .path_and_query()
@@ -219,7 +219,7 @@ async fn handshake_websocket(
 async fn handshake_http1_ws(
   request: Request<http_body_util::Empty<Bytes>>,
   addr: &String,
-) -> Result<(WebSocket<WebSocketStream>, http_1::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   handshake_connection(request, tcp_socket).await
 }
@@ -229,7 +229,7 @@ async fn handshake_http1_wss(
   request: Request<http_body_util::Empty<Bytes>>,
   domain: &str,
   addr: &str,
-) -> Result<(WebSocket<WebSocketStream>, http_1::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
   let dnsname =
@@ -255,7 +255,7 @@ async fn handshake_http2_wss(
   domain: &str,
   headers: &Option<Vec<(ByteString, ByteString)>>,
   addr: &str,
-) -> Result<(WebSocket<WebSocketStream>, http_1::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http2Only)?;
   let dnsname =
@@ -267,7 +267,7 @@ async fn handshake_http2_wss(
   if handshake.alpn.is_none() {
     bail!("Didn't receive h2 alpn, aborting connection");
   }
-  let h2 = h2_04::client::Builder::new();
+  let h2 = h2::client::Builder::new();
   let (mut send, conn) = h2.handshake::<_, Bytes>(tls_connector).await?;
   spawn(conn);
   let mut request = Request::builder();
@@ -280,13 +280,13 @@ async fn handshake_http2_wss(
   request = request.uri(uri);
   request =
     populate_common_request_headers(request, user_agent, protocols, headers)?;
-  request = request.extension(h2_04::ext::Protocol::from("websocket"));
+  request = request.extension(h2::ext::Protocol::from("websocket"));
   let (resp, send) = send.send_request(request.body(())?, false)?;
   let resp = resp.await?;
   if resp.status() != StatusCode::OK {
     bail!("Invalid status code: {}", resp.status());
   }
-  let (http_1::response::Parts { headers, .. }, recv) = resp.into_parts();
+  let (http::response::Parts { headers, .. }, recv) = resp.into_parts();
   let mut stream = WebSocket::after_handshake(
     WebSocketStream::new(stream::WsStreamKind::H2(send, recv), None),
     Role::Client,
@@ -303,7 +303,7 @@ async fn handshake_connection<
 >(
   request: Request<http_body_util::Empty<Bytes>>,
   socket: S,
-) -> Result<(WebSocket<WebSocketStream>, http_1::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let (upgraded, response) =
     fastwebsockets::handshake::client(&LocalExecutor, request, socket).await?;
 
@@ -339,11 +339,11 @@ pub fn create_ws_client_config(
 
 /// Headers common to both http/1.1 and h2 requests.
 fn populate_common_request_headers(
-  mut request: http_1::request::Builder,
+  mut request: http::request::Builder,
   user_agent: &str,
   protocols: &str,
   headers: &Option<Vec<(ByteString, ByteString)>>,
-) -> Result<http_1::request::Builder, AnyError> {
+) -> Result<http::request::Builder, AnyError> {
   request = request
     .header("User-Agent", user_agent)
     .header("Sec-WebSocket-Version", "13");
@@ -361,14 +361,14 @@ fn populate_common_request_headers(
 
       let is_disallowed_header = matches!(
         name,
-        http_1::header::HOST
-          | http_1::header::SEC_WEBSOCKET_ACCEPT
-          | http_1::header::SEC_WEBSOCKET_EXTENSIONS
-          | http_1::header::SEC_WEBSOCKET_KEY
-          | http_1::header::SEC_WEBSOCKET_PROTOCOL
-          | http_1::header::SEC_WEBSOCKET_VERSION
-          | http_1::header::UPGRADE
-          | http_1::header::CONNECTION
+        http::header::HOST
+          | http::header::SEC_WEBSOCKET_ACCEPT
+          | http::header::SEC_WEBSOCKET_EXTENSIONS
+          | http::header::SEC_WEBSOCKET_KEY
+          | http::header::SEC_WEBSOCKET_PROTOCOL
+          | http::header::SEC_WEBSOCKET_VERSION
+          | http::header::UPGRADE
+          | http::header::CONNECTION
       );
       if !is_disallowed_header {
         request = request.header(name, v);
