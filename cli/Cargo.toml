@@ -150,10 +150,10 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-fastwebsockets_06 = { package = "fastwebsockets", version = "0.6", features = ["upgrade", "unstable-split"] }
+fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 flaky_test = "=0.1.0"
 http-body-util.workspace = true
-http_1 = { package = "http", version = "1.0" }
+http = "1.0"
 hyper-util.workspace = true
 hyper1.workspace = true
 once_cell.workspace = true

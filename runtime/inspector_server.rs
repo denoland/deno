@@ -104,11 +104,11 @@ impl Drop for InspectorServer {
 }
 
 fn handle_ws_request(
-  req: http_1::Request<hyper1::body::Incoming>,
+  req: http::Request<hyper1::body::Incoming>,
   inspector_map_rc: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
-) -> http_1::Result<http_1::Response<Box<http_body_util::Full<Bytes>>>> {
+) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
   let (parts, body) = req.into_parts();
-  let req = http_1::Request::from_parts(parts, ());
+  let req = http::Request::from_parts(parts, ());
 
   let maybe_uuid = req
     .uri()
@@ -117,8 +117,8 @@ fn handle_ws_request(
     .and_then(|s| Uuid::parse_str(s).ok());
 
   if maybe_uuid.is_none() {
-    return http_1::Response::builder()
-      .status(http_1::StatusCode::BAD_REQUEST)
+    return http::Response::builder()
+      .status(http::StatusCode::BAD_REQUEST)
       .body(Box::new(Bytes::from("Malformed inspector UUID").into()));
   }
 
@@ -128,8 +128,8 @@ fn handle_ws_request(
     let maybe_inspector_info = inspector_map.get(&maybe_uuid.unwrap());
 
     if maybe_inspector_info.is_none() {
-      return http_1::Response::builder()
-        .status(http_1::StatusCode::NOT_FOUND)
+      return http::Response::builder()
+        .status(http::StatusCode::NOT_FOUND)
         .body(Box::new(Bytes::from("Invalid inspector UUID").into()));
     }
 
@@ -137,20 +137,20 @@ fn handle_ws_request(
     info.new_session_tx.clone()
   };
   let (parts, _) = req.into_parts();
-  let mut req = http_1::Request::from_parts(parts, body);
+  let mut req = http::Request::from_parts(parts, body);
 
   let (resp, fut) = match fastwebsockets::upgrade::upgrade(&mut req) {
     Ok((resp, fut)) => {
       let (parts, _body) = resp.into_parts();
-      let resp = http_1::Response::from_parts(
+      let resp = http::Response::from_parts(
         parts,
         Box::new(http_body_util::Full::new(Bytes::new())),
       );
       (resp, fut)
     }
     _ => {
-      return http_1::Response::builder()
-        .status(http_1::StatusCode::BAD_REQUEST)
+      return http::Response::builder()
+        .status(http::StatusCode::BAD_REQUEST)
         .body(Box::new(
           Bytes::from("Not a valid Websocket Request").into(),
         ));
@@ -192,7 +192,7 @@ fn handle_ws_request(
 fn handle_json_request(
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
   host: Option<String>,
-) -> http_1::Result<http_1::Response<Box<http_body_util::Full<Bytes>>>> {
+) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
   let data = inspector_map
     .borrow()
     .values()
@@ -200,22 +200,22 @@ fn handle_json_request(
     .collect::<Vec<_>>();
   let body: http_body_util::Full<Bytes> =
     Bytes::from(serde_json::to_string(&data).unwrap()).into();
-  http_1::Response::builder()
-    .status(http_1::StatusCode::OK)
-    .header(http_1::header::CONTENT_TYPE, "application/json")
+  http::Response::builder()
+    .status(http::StatusCode::OK)
+    .header(http::header::CONTENT_TYPE, "application/json")
     .body(Box::new(body))
 }
 
 fn handle_json_version_request(
   version_response: Value,
-) -> http_1::Result<http_1::Response<Box<http_body_util::Full<Bytes>>>> {
+) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
   let body = Box::new(http_body_util::Full::from(
     serde_json::to_string(&version_response).unwrap(),
   ));
 
-  http_1::Response::builder()
-    .status(http_1::StatusCode::OK)
-    .header(http_1::header::CONTENT_TYPE, "application/json")
+  http::Response::builder()
+    .status(http::StatusCode::OK)
+    .header(http::header::CONTENT_TYPE, "application/json")
     .body(body)
 }
 
@@ -297,7 +297,7 @@ async fn server(
       let mut shutdown_server_rx = shutdown_server_rx.resubscribe();
 
       let service = hyper1::service::service_fn(
-        move |req: http_1::Request<hyper1::body::Incoming>| {
+        move |req: http::Request<hyper1::body::Incoming>| {
           future::ready({
             // If the host header can make a valid URL, use it
             let host = req
@@ -311,20 +311,20 @@ async fn server(
                 _ => None,
               });
             match (req.method(), req.uri().path()) {
-              (&http_1::Method::GET, path) if path.starts_with("/ws/") => {
+              (&http::Method::GET, path) if path.starts_with("/ws/") => {
                 handle_ws_request(req, Rc::clone(&inspector_map))
               }
-              (&http_1::Method::GET, "/json/version") => {
+              (&http::Method::GET, "/json/version") => {
                 handle_json_version_request(json_version_response.clone())
               }
-              (&http_1::Method::GET, "/json") => {
+              (&http::Method::GET, "/json") => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
-              (&http_1::Method::GET, "/json/list") => {
+              (&http::Method::GET, "/json/list") => {
                 handle_json_request(Rc::clone(&inspector_map), host)
               }
-              _ => http_1::Response::builder()
-                .status(http_1::StatusCode::NOT_FOUND)
+              _ => http::Response::builder()
+                .status(http::StatusCode::NOT_FOUND)
                 .body(Box::new(http_body_util::Full::new(Bytes::from(
                   "Not Found",
                 )))),

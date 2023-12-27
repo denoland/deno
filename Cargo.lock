@@ -1620,7 +1620,6 @@ dependencies = [
  "flate2",
  "fs3",
  "fwdansi",
- "http 0.2.11",
  "http 1.0.0",
  "http-body-util",
  "hyper 0.14.27",
