@@ -14,9 +14,9 @@ use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::Resource;
 use flate2::write::GzEncoder;
-use hyper1::body::Frame;
-use hyper1::body::SizeHint;
-use hyper1::header::HeaderMap;
+use hyper::body::Frame;
+use hyper::body::SizeHint;
+use hyper::header::HeaderMap;
 use pin_project::pin_project;
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from

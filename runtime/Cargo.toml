@@ -102,10 +102,9 @@ filetime = "0.2.16"
 fs3.workspace = true
 http.workspace = true
 http-body-util.workspace = true
-http_1 = { package = "http", version = "1.0" }
-hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+hyper.workspace = true
 hyper-util.workspace = true
-hyper1.workspace = true
+hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
 netif = "0.1.6"

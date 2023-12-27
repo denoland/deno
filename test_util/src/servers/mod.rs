@@ -24,7 +24,6 @@ use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
 use http_body_util::Full;
-use hyper1 as hyper;
 use pretty_assertions::assert_eq;
 use prost::Message;
 use std::collections::HashMap;

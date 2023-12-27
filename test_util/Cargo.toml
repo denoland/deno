@@ -25,11 +25,11 @@ fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 glob.workspace = true
-h2 = "0.4"
-http = "1.0"
+h2.workspace = true
+http.workspace = true
 http-body-util.workspace = true
+hyper.workspace = true
 hyper-util.workspace = true
-hyper1.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
 lsp-types.workspace = true
