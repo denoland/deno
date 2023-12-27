@@ -14,6 +14,7 @@ pub struct CpuTimes {
 #[derive(Debug, Default, Serialize, Clone)]
 pub struct CpuInfo {
   pub model: String,
+  /* in MHz */
   pub speed: u64,
   pub times: CpuTimes,
 }
@@ -64,8 +65,12 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     );
 
     if cpu_speed == 0 {
-      // use a fixed value for frequency on arm64
-      cpu_speed = 2400000000;
+      // https://github.com/libuv/libuv/pull/3679
+      //
+      // hw.cpufrequency sysctl seems to be missing on darwin/arm64
+      // so we instead hardcode a plausible value. This value matches
+      // what the mach kernel will report when running Rosetta apps.
+      cpu_speed = 2_400_000_000;
     }
 
     let mut num_cpus: libc::natural_t = 0;
@@ -276,7 +281,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
     cpus[i].model = model.to_string();
     i += 1;
-  } 
+  }
 }
 
 #[cfg(test)]
