@@ -1953,6 +1953,19 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
+#[derive(Clone)]
+struct DenoUnsyncExecutor;
+
+impl<Fut> hyper1::rt::Executor<Fut> for DenoUnsyncExecutor
+where
+  Fut: Future + 'static,
+  Fut::Output: 'static,
+{
+  fn execute(&self, fut: Fut) {
+    deno_unsync::spawn(fut);
+  }
+}
+
 async fn run_hyper1_server<F, S>(
   addr: SocketAddr,
   service_fn_handler: F,
@@ -1960,11 +1973,11 @@ async fn run_hyper1_server<F, S>(
 ) where
   F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
   S: Future<
-    Output = Result<
-      http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
-      anyhow::Error,
-    >,
-  >,
+      Output = Result<
+        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        anyhow::Error,
+      >,
+    > + 'static,
 {
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
@@ -1974,10 +1987,10 @@ async fn run_hyper1_server<F, S>(
         let io = TokioIo::new(stream);
         let service = hyper1::service::service_fn(service_fn_handler);
         deno_unsync::spawn(async move {
-          if let Err(e) = hyper1::server::conn::http1::Builder::new()
-            .serve_connection(io, service)
-            .await
-          {
+          let builder =
+            hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
+          let conn = builder.serve_connection(io, service);
+          if let Err(e) = conn.await {
             eprintln!("{}: {:?}", error_msg, e);
           }
         });
