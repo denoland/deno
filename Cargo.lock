@@ -966,7 +966,6 @@ dependencies = [
  "glibc_version",
  "glob",
  "hex",
- "http 0.2.11",
  "http 1.0.0",
  "http-body-util",
  "hyper 1.1.0",
