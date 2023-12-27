@@ -15,12 +15,12 @@ use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
+use http;
 use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Response;
 use http::StatusCode;
-use http_1 as http;
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
@@ -185,7 +185,15 @@ async fn hyper_hello(port: u16) {
       http_body_util::Full::new(Bytes::from("Hello World!")),
     )))
   };
-  run_hyper1_server(addr, handler, "server error").await;
+  run_hyper1_server(
+    ServerOptions {
+      addr,
+      error_msg: "server error",
+      kind: ServerKind::Auto,
+    },
+    handler,
+  )
+  .await;
 }
 
 fn redirect_resp(url: String) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
@@ -1173,7 +1181,7 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Hyper1ServerKind {
+enum ServerKind {
   Auto,
   OnlyHttp1,
   OnlyHttp2,
@@ -1183,7 +1191,7 @@ async fn hyper1_serve_connection<I, F, S>(
   io: I,
   service_fn_handler: F,
   error_msg: &'static str,
-  kind: Hyper1ServerKind,
+  kind: ServerKind,
 ) where
   I: hyper::rt::Read + hyper::rt::Write + Unpin + 'static,
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
@@ -1197,7 +1205,7 @@ async fn hyper1_serve_connection<I, F, S>(
   let service = hyper1::service::service_fn(service_fn_handler);
 
   let result: Result<(), anyhow::Error> = match kind {
-    Hyper1ServerKind::Auto => {
+    ServerKind::Auto => {
       let builder =
         hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
       builder
@@ -1205,14 +1213,14 @@ async fn hyper1_serve_connection<I, F, S>(
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
     }
-    Hyper1ServerKind::OnlyHttp1 => {
+    ServerKind::OnlyHttp1 => {
       let builder = hyper1::server::conn::http1::Builder::new();
       builder
         .serve_connection(io, service)
         .await
         .map_err(|e| e.into())
     }
-    Hyper1ServerKind::OnlyHttp2 => {
+    ServerKind::OnlyHttp2 => {
       let builder =
         hyper1::server::conn::http2::Builder::new(DenoUnsyncExecutor);
       builder
@@ -1227,12 +1235,15 @@ async fn hyper1_serve_connection<I, F, S>(
   }
 }
 
-async fn run_hyper1_server_inner<F, S>(
-  addr: SocketAddr,
-  service_fn_handler: F,
+#[derive(Debug, Clone, Copy)]
+struct ServerOptions {
   error_msg: &'static str,
-  kind: Hyper1ServerKind,
-) where
+  addr: SocketAddr,
+  kind: ServerKind,
+}
+
+async fn run_hyper1_server<F, S>(options: ServerOptions, service_fn_handler: F)
+where
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<
       Output = Result<
@@ -1243,45 +1254,23 @@ async fn run_hyper1_server_inner<F, S>(
 {
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
-      let listener = TcpListener::bind(addr).await?;
+      let listener = TcpListener::bind(options.addr).await?;
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
         deno_unsync::spawn(hyper1_serve_connection(
           io,
           service_fn_handler,
-          error_msg,
-          kind,
+          options.error_msg,
+          options.kind,
         ));
       }
     }
     .boxed_local();
 
   if let Err(e) = fut.await {
-    eprintln!("{}: {:?}", error_msg, e);
+    eprintln!("{}: {:?}", options.error_msg, e);
   }
-}
-
-async fn run_hyper1_server<F, S>(
-  addr: SocketAddr,
-  service_fn_handler: F,
-  error_msg: &'static str,
-) where
-  F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
-  S: Future<
-      Output = Result<
-        Response<UnsyncBoxBody<Bytes, Infallible>>,
-        anyhow::Error,
-      >,
-    > + 'static,
-{
-  run_hyper1_server_inner(
-    addr,
-    service_fn_handler,
-    error_msg,
-    Hyper1ServerKind::Auto,
-  )
-  .await
 }
 
 // TODO(bartlomieju): dedup with `run_hyper1_server_inner`
@@ -1289,7 +1278,7 @@ async fn run_hyper1_server_with_acceptor<'a, A, F, S>(
   mut acceptor: Pin<Box<A>>,
   service_fn_handler: F,
   error_msg: &'static str,
-  kind: Hyper1ServerKind,
+  kind: ServerKind,
 ) where
   A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + ?Sized,
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
@@ -1323,47 +1312,78 @@ async fn run_hyper1_server_with_acceptor<'a, A, F, S>(
 
 async fn wrap_redirect_server(port: u16) {
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_hyper1_server(redirect_addr, redirect, "Redirect error").await;
+  run_hyper1_server(
+    ServerOptions {
+      addr: redirect_addr,
+      error_msg: "Redirect error",
+      kind: ServerKind::Auto,
+    },
+    redirect,
+  )
+  .await;
 }
 
 async fn wrap_double_redirect_server(port: u16) {
   let double_redirects_addr = SocketAddr::from(([127, 0, 0, 1], port));
   run_hyper1_server(
-    double_redirects_addr,
+    ServerOptions {
+      addr: double_redirects_addr,
+      error_msg: "Double redirect error",
+      kind: ServerKind::Auto,
+    },
     double_redirects,
-    "Double redirect error",
   )
   .await;
 }
 
 async fn wrap_inf_redirect_server(port: u16) {
   let inf_redirects_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_hyper1_server(inf_redirects_addr, inf_redirects, "Inf redirect error")
-    .await;
+  run_hyper1_server(
+    ServerOptions {
+      addr: inf_redirects_addr,
+      error_msg: "Inf redirect error",
+      kind: ServerKind::Auto,
+    },
+    inf_redirects,
+  )
+  .await;
 }
 
 async fn wrap_another_redirect_server(port: u16) {
   let another_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   run_hyper1_server(
-    another_redirect_addr,
+    ServerOptions {
+      addr: another_redirect_addr,
+      error_msg: "Another redirect error",
+      kind: ServerKind::Auto,
+    },
     another_redirect,
-    "Another redirect error",
   )
   .await;
 }
 
 async fn wrap_auth_redirect_server(port: u16) {
   let auth_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_hyper1_server(auth_redirect_addr, auth_redirect, "Auth redirect error")
-    .await;
+  run_hyper1_server(
+    ServerOptions {
+      addr: auth_redirect_addr,
+      error_msg: "Auth redirect error",
+      kind: ServerKind::Auto,
+    },
+    auth_redirect,
+  )
+  .await;
 }
 
 async fn wrap_basic_auth_redirect_server(port: u16) {
   let basic_auth_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   run_hyper1_server(
-    basic_auth_redirect_addr,
+    ServerOptions {
+      addr: basic_auth_redirect_addr,
+      error_msg: "Basic auth redirect error",
+      kind: ServerKind::Auto,
+    },
     basic_auth_redirect,
-    "Basic auth redirect error",
   )
   .await;
 }
@@ -1371,9 +1391,12 @@ async fn wrap_basic_auth_redirect_server(port: u16) {
 async fn wrap_abs_redirect_server(port: u16) {
   let abs_redirect_addr = SocketAddr::from(([127, 0, 0, 1], port));
   run_hyper1_server(
-    abs_redirect_addr,
+    ServerOptions {
+      addr: abs_redirect_addr,
+      error_msg: "Absolute redirect error",
+      kind: ServerKind::Auto,
+    },
     absolute_redirect,
-    "Absolute redirect error",
   )
   .await;
 }
@@ -1392,7 +1415,15 @@ async fn wrap_main_ipv6_server(port: u16) {
 }
 
 async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
-  run_hyper1_server(*main_server_addr, main_server, "HTTP server error").await;
+  run_hyper1_server(
+    ServerOptions {
+      addr: *main_server_addr,
+      kind: ServerKind::Auto,
+      error_msg: "HTTP server error",
+    },
+    main_server,
+  )
+  .await;
 }
 
 async fn wrap_main_https_server(port: u16) {
@@ -1402,7 +1433,7 @@ async fn wrap_main_https_server(port: u16) {
     tls_acceptor,
     main_server,
     "HTTPS server error",
-    Hyper1ServerKind::Auto,
+    ServerKind::Auto,
   )
   .await
 }
@@ -1419,7 +1450,7 @@ async fn wrap_https_h1_only_tls_server(port: u16) {
     tls.boxed_local(),
     main_server,
     "HTTP1 only TLS server error",
-    Hyper1ServerKind::OnlyHttp1,
+    ServerKind::OnlyHttp1,
   )
   .await
 }
@@ -1436,29 +1467,33 @@ async fn wrap_https_h2_only_tls_server(port: u16) {
     tls.boxed_local(),
     main_server,
     "HTTP2 only TLS server error",
-    Hyper1ServerKind::OnlyHttp2,
+    ServerKind::OnlyHttp2,
   )
   .await
 }
 
 async fn wrap_http_h1_only_server(port: u16) {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_hyper1_server_inner(
-    main_server_http_addr,
+  run_hyper1_server(
+    ServerOptions {
+      addr: main_server_http_addr,
+      error_msg: "HTTP1 only server error:",
+      kind: ServerKind::OnlyHttp1,
+    },
     main_server,
-    "HTTP1 only server error:",
-    Hyper1ServerKind::OnlyHttp1,
   )
   .await;
 }
 
 async fn wrap_http_h2_only_server(port: u16) {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_hyper1_server_inner(
-    main_server_http_addr,
+  run_hyper1_server(
+    ServerOptions {
+      addr: main_server_http_addr,
+      error_msg: "HTTP1 only server error:",
+      kind: ServerKind::OnlyHttp2,
+    },
     main_server,
-    "HTTP1 only server error:",
-    Hyper1ServerKind::OnlyHttp2,
   )
   .await;
 }
@@ -1484,7 +1519,7 @@ async fn wrap_client_auth_https_server(port: u16) {
     tls.boxed_local(),
     main_server,
     "Auth TLS server error",
-    Hyper1ServerKind::Auto,
+    ServerKind::Auto,
   )
   .await
 }
