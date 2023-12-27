@@ -133,7 +133,7 @@ pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let linter = create_linter(parsed_source.media_type(), lint_rules);
+  let linter = create_linter(lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
