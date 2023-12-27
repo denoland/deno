@@ -54,9 +54,12 @@ class NodeTestContext {
 
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    console.log("node.test prepared", prepared);
     return this.#denoContext.step({
       name: prepared.name,
-      fn: prepared.fn,
+      fn: async (_denoTestContext) => {
+        await prepared.fn(this);
+      },
       ignore: prepared.options.todo || prepared.options.skip,
     }).then(() => undefined);
   }
