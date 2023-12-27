@@ -20,8 +20,11 @@ use http_body_util::BodyExt;
 use http_body_util::Empty;
 use http_body_util::Full;
 use hyper::header::HeaderValue;
+#[allow(unused)]
 use hyper::server::Server;
+#[allow(unused)]
 use hyper::service::make_service_fn;
+#[allow(unused)]
 use hyper::service::service_fn;
 use hyper::Body;
 use hyper::Request;
@@ -1113,6 +1116,7 @@ async fn main_server_hyper1(
   };
 }
 
+#[allow(dead_code)]
 async fn main_server(
   req: Request<Body>,
 ) -> Result<Response<Body>, hyper::http::Error> {
@@ -1816,6 +1820,7 @@ fn handle_custom_npm_registry_path_hyper1(
   Ok(None)
 }
 
+#[allow(dead_code)]
 fn handle_custom_npm_registry_path(
   path: &str,
 ) -> Result<Option<Response<Body>>, anyhow::Error> {
@@ -1889,6 +1894,7 @@ async fn download_npm_registry_file_hyper1(
   Ok(())
 }
 
+#[allow(dead_code)]
 async fn download_npm_registry_file(
   uri: &hyper::Uri,
   file_path: &PathBuf,
@@ -1966,10 +1972,52 @@ where
   }
 }
 
-async fn run_hyper1_server<F, S>(
+#[derive(Debug, Clone, Copy)]
+enum Hyper1ServerKind {
+  Auto,
+  OnlyHttp1,
+  OnlyHttp2,
+}
+
+async fn hyper1_serve_connection<I, F, S>(
+  io: I,
+  service_fn_handler: F,
+  error_msg: &'static str,
+  kind: Hyper1ServerKind,
+) where
+  I: hyper1::rt::Read + hyper1::rt::Write + Unpin + 'static,
+  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  S: Future<
+      Output = Result<
+        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        anyhow::Error,
+      >,
+    > + 'static,
+{
+  let service = hyper1::service::service_fn(service_fn_handler);
+  let mut builder =
+    hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
+
+  let result = match kind {
+    Hyper1ServerKind::Auto => builder.serve_connection(io, service).await,
+    Hyper1ServerKind::OnlyHttp1 => {
+      builder.http1().serve_connection(io, service).await
+    }
+    Hyper1ServerKind::OnlyHttp2 => {
+      builder.http2().serve_connection(io, service).await
+    }
+  };
+
+  if let Err(e) = result {
+    eprintln!("{}: {:?}", error_msg, e);
+  }
+}
+
+async fn run_hyper1_server_inner<F, S>(
   addr: SocketAddr,
   service_fn_handler: F,
   error_msg: &'static str,
+  kind: Hyper1ServerKind,
 ) where
   F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
   S: Future<
@@ -1985,16 +2033,72 @@ async fn run_hyper1_server<F, S>(
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
-        let service = hyper1::service::service_fn(service_fn_handler);
-        deno_unsync::spawn(async move {
-          let builder =
-            hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
-          let conn = builder.serve_connection(io, service);
-          if let Err(e) = conn.await {
-            eprintln!("{}: {:?}", error_msg, e);
-          }
-        });
+        deno_unsync::spawn(hyper1_serve_connection(
+          io,
+          service_fn_handler,
+          error_msg,
+          kind,
+        ));
       }
+    }
+    .boxed_local();
+
+  if let Err(e) = fut.await {
+    eprintln!("{}: {:?}", error_msg, e);
+  }
+}
+
+async fn run_hyper1_server<F, S>(
+  addr: SocketAddr,
+  service_fn_handler: F,
+  error_msg: &'static str,
+) where
+  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  S: Future<
+      Output = Result<
+        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        anyhow::Error,
+      >,
+    > + 'static,
+{
+  run_hyper1_server_inner(
+    addr,
+    service_fn_handler,
+    error_msg,
+    Hyper1ServerKind::Auto,
+  )
+  .await
+}
+
+// TODO(bartlomieju): dedup with `run_hyper1_server_inner`
+async fn run_hyper1_server_with_acceptor<'a, A, F, S>(
+  mut acceptor: Pin<Box<A>>,
+  service_fn_handler: F,
+  error_msg: &'static str,
+  kind: Hyper1ServerKind,
+) where
+  A: Stream<Item = io::Result<rustls_tokio_stream::TlsStream>> + ?Sized,
+  F: Fn(http_1::Request<hyper1::body::Incoming>) -> S + Copy + 'static,
+  S: Future<
+      Output = Result<
+        http_1::Response<UnsyncBoxBody<Bytes, Infallible>>,
+        anyhow::Error,
+      >,
+    > + 'static,
+{
+  let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
+    async move {
+      while let Some(result) = acceptor.next().await {
+        let stream = result?;
+        let io = TokioIo::new(stream);
+        deno_unsync::spawn(hyper1_serve_connection(
+          io,
+          service_fn_handler,
+          error_msg,
+          kind,
+        ));
+      }
+      Ok(())
     }
     .boxed_local();
 
@@ -2080,13 +2184,14 @@ async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
 
 async fn wrap_main_https_server(port: u16) {
   let tls = get_tls_listener_stream("https", port, Default::default()).await;
-  let main_server_https_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_https = Server::builder(HyperAcceptor {
-    acceptor: tls.boxed_local(),
-  })
-  .serve(main_server_https_svc);
-  let _ = main_server_https.await;
+  let tls_acceptor = tls.boxed_local();
+  run_hyper1_server_with_acceptor(
+    tls_acceptor,
+    main_server_hyper1,
+    "HTTPS server error",
+    Hyper1ServerKind::Auto,
+  )
+  .await
 }
 
 async fn wrap_https_h1_only_tls_server(port: u16) {
@@ -2097,15 +2202,13 @@ async fn wrap_https_h1_only_tls_server(port: u16) {
   )
   .await;
 
-  let main_server_https_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_https = Server::builder(HyperAcceptor {
-    acceptor: tls.boxed_local(),
-  })
-  .http1_only(true)
-  .serve(main_server_https_svc);
-
-  let _ = main_server_https.await;
+  run_hyper1_server_with_acceptor(
+    tls.boxed_local(),
+    main_server_hyper1,
+    "HTTP1 only TLS server error",
+    Hyper1ServerKind::OnlyHttp1,
+  )
+  .await
 }
 
 async fn wrap_https_h2_only_tls_server(port: u16) {
@@ -2116,37 +2219,35 @@ async fn wrap_https_h2_only_tls_server(port: u16) {
   )
   .await;
 
-  let main_server_https_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_https = Server::builder(HyperAcceptor {
-    acceptor: tls.boxed_local(),
-  })
-  .http2_only(true)
-  .serve(main_server_https_svc);
-
-  let _ = main_server_https.await;
+  run_hyper1_server_with_acceptor(
+    tls.boxed_local(),
+    main_server_hyper1,
+    "HTTP2 only TLS server error",
+    Hyper1ServerKind::OnlyHttp2,
+  )
+  .await
 }
 
 async fn wrap_http_h1_only_server(port: u16) {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
-
-  let main_server_http_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_http = Server::bind(&main_server_http_addr)
-    .http1_only(true)
-    .serve(main_server_http_svc);
-  let _ = main_server_http.await;
+  run_hyper1_server_inner(
+    main_server_http_addr,
+    main_server_hyper1,
+    "HTTP1 only server error:",
+    Hyper1ServerKind::OnlyHttp1,
+  )
+  .await;
 }
 
 async fn wrap_http_h2_only_server(port: u16) {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], port));
-
-  let main_server_http_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_http = Server::bind(&main_server_http_addr)
-    .http2_only(true)
-    .serve(main_server_http_svc);
-  let _ = main_server_http.await;
+  run_hyper1_server_inner(
+    main_server_http_addr,
+    main_server_hyper1,
+    "HTTP1 only server error:",
+    Hyper1ServerKind::OnlyHttp2,
+  )
+  .await;
 }
 
 async fn wrap_client_auth_https_server(port: u16) {
@@ -2166,14 +2267,13 @@ async fn wrap_client_auth_https_server(port: u16) {
     }
   };
 
-  let main_server_https_svc =
-    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
-  let main_server_https = Server::builder(HyperAcceptor {
-    acceptor: tls.boxed_local(),
-  })
-  .serve(main_server_https_svc);
-
-  let _ = main_server_https.await;
+  run_hyper1_server_with_acceptor(
+    tls.boxed_local(),
+    main_server_hyper1,
+    "Auth TLS server error",
+    Hyper1ServerKind::Auto,
+  )
+  .await
 }
 
 fn custom_headers_hyper1(
@@ -2274,6 +2374,7 @@ fn custom_headers_hyper1(
   response
 }
 
+#[allow(dead_code)]
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
