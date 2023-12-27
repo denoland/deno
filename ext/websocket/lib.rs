@@ -891,7 +891,7 @@ pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
 #[derive(Clone)]
 struct LocalExecutor;
 
-impl<Fut> hyper1::rt::Executor<Fut> for LocalExecutor
+impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
 where
   Fut: Future + 'static,
   Fut::Output: 'static,

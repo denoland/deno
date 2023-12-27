@@ -43,22 +43,22 @@ use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
-use hyper1::body::Incoming;
-use hyper1::header::HeaderMap;
-use hyper1::header::ACCEPT_ENCODING;
-use hyper1::header::CACHE_CONTROL;
-use hyper1::header::CONTENT_ENCODING;
-use hyper1::header::CONTENT_LENGTH;
-use hyper1::header::CONTENT_RANGE;
-use hyper1::header::CONTENT_TYPE;
-use hyper1::header::COOKIE;
-use hyper1::http::HeaderName;
-use hyper1::http::HeaderValue;
-use hyper1::server::conn::http1;
-use hyper1::server::conn::http2;
-use hyper1::service::service_fn;
-use hyper1::service::HttpService;
-use hyper1::StatusCode;
+use hyper::body::Incoming;
+use hyper::header::HeaderMap;
+use hyper::header::ACCEPT_ENCODING;
+use hyper::header::CACHE_CONTROL;
+use hyper::header::CONTENT_ENCODING;
+use hyper::header::CONTENT_LENGTH;
+use hyper::header::CONTENT_RANGE;
+use hyper::header::CONTENT_TYPE;
+use hyper::header::COOKIE;
+use hyper::http::HeaderName;
+use hyper::http::HeaderValue;
+use hyper::server::conn::http1;
+use hyper::server::conn::http2;
+use hyper::service::service_fn;
+use hyper::service::HttpService;
+use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
@@ -77,7 +77,7 @@ use fly_accept_encoding::Encoding;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-type Request = hyper1::Request<Incoming>;
+type Request = hyper::Request<Incoming>;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   let enable = std::env::var("DENO_USE_WRITEV").ok();
@@ -635,7 +635,7 @@ fn modify_compressibility_from_response(
 /// If the user provided a ETag header for uncompressed data, we need to ensure it is a
 /// weak Etag header ("W/").
 fn weaken_etag(hmap: &mut HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper1::header::ETAG) {
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
     if !etag.as_bytes().starts_with(b"W/") {
       let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
       v.extend(b"W/");
@@ -650,7 +650,7 @@ fn weaken_etag(hmap: &mut HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper1::header::VARY) {
+  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
     if let Ok(s) = v.to_str() {
       if !s.to_lowercase().contains("accept-encoding") {
         *v = format!("Accept-Encoding, {s}").try_into().unwrap()
@@ -659,7 +659,7 @@ fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
     }
   }
   hmap.insert(
-    hyper1::header::VARY,
+    hyper::header::VARY,
     HeaderValue::from_static("Accept-Encoding"),
   );
 }
@@ -791,7 +791,7 @@ fn serve_http11_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
   let conn = http1::Builder::new()
     .keep_alive(true)
     .writev(*USE_WRITEV)
@@ -813,7 +813,7 @@ fn serve_http2_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
   let conn =
     http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
   async {

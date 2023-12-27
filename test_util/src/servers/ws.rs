@@ -15,11 +15,11 @@ use h2::server::Handshake;
 use h2::server::SendResponse;
 use h2::Reason;
 use h2::RecvStream;
-use hyper1::upgrade::Upgraded;
-use hyper1::Method;
-use hyper1::Request;
-use hyper1::Response;
-use hyper1::StatusCode;
+use hyper::upgrade::Upgraded;
+use hyper::Method;
+use hyper::Request;
+use hyper::Response;
+use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use pretty_assertions::assert_eq;
 use std::pin::Pin;
@@ -126,8 +126,8 @@ fn spawn_ws_server<S>(stream: S, handler: WsHandler)
 where
   S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-  let service = hyper1::service::service_fn(
-    move |mut req: http::Request<hyper1::body::Incoming>| async move {
+  let service = hyper::service::service_fn(
+    move |mut req: http::Request<hyper::body::Incoming>| async move {
       let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
         .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
 
@@ -148,7 +148,7 @@ where
 
   let io = TokioIo::new(stream);
   tokio::spawn(async move {
-    let conn = hyper1::server::conn::http1::Builder::new()
+    let conn = hyper::server::conn::http1::Builder::new()
       .serve_connection(io, service)
       .with_upgrades();
 

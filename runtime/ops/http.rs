@@ -18,7 +18,7 @@ use deno_http::HttpStreamResource;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStream;
 use deno_net::ops_tls::TlsStreamResource;
-use hyper::upgrade::Parts;
+use hyper_v014::upgrade::Parts;
 use serde::Serialize;
 use tokio::net::TcpStream;
 
@@ -121,7 +121,7 @@ async fn op_http_upgrade(
     }
   };
 
-  let transport = hyper::upgrade::on(request).await?;
+  let transport = hyper_v014::upgrade::on(request).await?;
   let transport = match transport.downcast::<TcpStream>() {
     Ok(Parts {
       io: tcp_stream,

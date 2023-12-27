@@ -9,7 +9,6 @@ use http;
 use http::Request;
 use http::Response;
 use http_body_util::combinators::UnsyncBoxBody;
-use hyper1 as hyper;
 use hyper_util::rt::TokioIo;
 use std::convert::Infallible;
 use std::io;
@@ -46,7 +45,7 @@ where
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper1_serve_connection(
+        deno_unsync::spawn(hyper_serve_connection(
           io,
           handler,
           options.error_msg,
@@ -76,7 +75,7 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
       while let Some(result) = acceptor.next().await {
         let stream = result?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper1_serve_connection(
+        deno_unsync::spawn(hyper_serve_connection(
           io, handler, error_msg, kind,
         ));
       }
@@ -89,7 +88,7 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
   }
 }
 
-async fn hyper1_serve_connection<I, F, S>(
+async fn hyper_serve_connection<I, F, S>(
   io: I,
   handler: F,
   error_msg: &'static str,
@@ -99,7 +98,7 @@ async fn hyper1_serve_connection<I, F, S>(
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
 {
-  let service = hyper1::service::service_fn(handler);
+  let service = hyper::service::service_fn(handler);
 
   let result: Result<(), anyhow::Error> = match kind {
     ServerKind::Auto => {
@@ -111,7 +110,7 @@ async fn hyper1_serve_connection<I, F, S>(
         .map_err(|e| anyhow::anyhow!("{}", e))
     }
     ServerKind::OnlyHttp1 => {
-      let builder = hyper1::server::conn::http1::Builder::new();
+      let builder = hyper::server::conn::http1::Builder::new();
       builder
         .serve_connection(io, service)
         .await
@@ -119,7 +118,7 @@ async fn hyper1_serve_connection<I, F, S>(
     }
     ServerKind::OnlyHttp2 => {
       let builder =
-        hyper1::server::conn::http2::Builder::new(DenoUnsyncExecutor);
+        hyper::server::conn::http2::Builder::new(DenoUnsyncExecutor);
       builder
         .serve_connection(io, service)
         .await
