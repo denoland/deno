@@ -548,7 +548,6 @@ function wrapInner(fn) {
         },
       };
     }
-    console.log("context", MapPrototypeGet(testStates, desc.id).context);
     await fn(MapPrototypeGet(testStates, desc.id).context);
     let failedSteps = 0;
     for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
@@ -1286,7 +1285,6 @@ function createTestContext(desc) {
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
      */
     async step(nameOrFnOrOptions, maybeFn) {
-      console.log("test step", nameOrFnOrOptions);
       if (MapPrototypeGet(testStates, desc.id).completed) {
         throw new Error(
           "Cannot run test step after parent scope has finished execution. " +
