@@ -24,6 +24,7 @@
 import { core } from "ext:core/mod.js";
 
 export const {
+  // isExternal,
   isAnyArrayBuffer,
   isArgumentsObject,
   isArrayBuffer,
