@@ -6,9 +6,9 @@ use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::AnyError;
 use httparse::Status;
-use hyper1::header::HeaderName;
-use hyper1::header::HeaderValue;
-use hyper1::Response;
+use hyper::header::HeaderName;
+use hyper::header::HeaderValue;
+use hyper::Response;
 use memmem::Searcher;
 use memmem::TwoWaySearcher;
 use once_cell::sync::OnceCell;
@@ -152,7 +152,7 @@ impl<T: Default> WebSocketUpgrade<T> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use hyper::Body;
+  use hyper_v014::Body;
 
   type ExpectedResponseAndHead = Option<(Response<Body>, &'static [u8])>;
 

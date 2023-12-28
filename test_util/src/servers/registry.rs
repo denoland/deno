@@ -1,14 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::run_hyper1_server;
+use super::run_server;
+use super::ServerKind;
+use super::ServerOptions;
 use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::Empty;
 use http_body_util::Full;
-use hyper1::body::Incoming;
-use hyper1::Request;
-use hyper1::Response;
-use hyper1::StatusCode;
+use hyper::body::Incoming;
+use hyper::Request;
+use hyper::Response;
+use hyper::StatusCode;
 use serde_json::json;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -16,10 +18,13 @@ use std::net::SocketAddr;
 pub async fn registry_server(port: u16) {
   let registry_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
 
-  run_hyper1_server(
-    registry_server_addr,
+  run_server(
+    ServerOptions {
+      addr: registry_server_addr,
+      error_msg: "Registry server error",
+      kind: ServerKind::Auto,
+    },
     registry_server_handler,
-    "Registry server error",
   )
   .await
 }
