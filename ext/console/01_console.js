@@ -652,7 +652,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         extrasType = kArrayExtrasType;
         formatter = formatArray;
       } else if (
-        isSet(value) ||
+        (proxyDetails === null && isSet(value)) ||
         (proxyDetails !== null && isSet(proxyDetails[0]))
       ) {
         const set = proxyDetails?.[0] ?? value;
@@ -667,7 +667,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
         braces = [`${prefix}{`, "}"];
       } else if (
-        isMap(value) ||
+        (proxyDetails === null && isMap(value)) ||
         (proxyDetails !== null && isMap(proxyDetails[0]))
       ) {
         const map = proxyDetails?.[0] ?? value;
@@ -682,7 +682,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
         braces = [`${prefix}{`, "}"];
       } else if (
-        isTypedArray(value) ||
+        (proxyDetails === null && isTypedArray(value)) ||
         (proxyDetails !== null && isTypedArray(proxyDetails[0]))
       ) {
         const typedArray = proxyDetails?.[0] ?? value;
@@ -737,7 +737,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return ctx.stylize(base, "special");
         }
       } else if (
-        isRegExp(value) ||
+        (proxyDetails === null && isRegExp(value)) ||
         (proxyDetails !== null && isRegExp(proxyDetails[0]))
       ) {
         const regExp = proxyDetails?.[0] ?? value;
@@ -756,7 +756,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return ctx.stylize(base, "regexp");
         }
       } else if (
-        isDate(value) ||
+        (proxyDetails === null && isDate(value)) ||
         (proxyDetails !== null && isDate(proxyDetails[0]))
       ) {
         const date = proxyDetails?.[0] ?? value;
@@ -769,9 +769,12 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           }
         }
       } else if (
-        isNativeError(value) ||
-        ObjectPrototypeIsPrototypeOf(ErrorPrototype, value) ||
-        (proxyDetails !== null && isNativeError(proxyDetails[0]))
+        (proxyDetails === null &&
+          (isNativeError(value) ||
+            ObjectPrototypeIsPrototypeOf(ErrorPrototype, value))) ||
+        (proxyDetails !== null &&
+          (isNativeError(proxyDetails[0]) ||
+            ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)))
       ) {
         const error = proxyDetails?.[0] ?? value;
         base = inspectError(error, ctx);
