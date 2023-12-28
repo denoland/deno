@@ -241,13 +241,11 @@ Deno.test({
     assertEquals(os.cpus().length, navigator.hardwareConcurrency);
 
     for (const cpu of os.cpus()) {
-      assertEquals(cpu.model, "");
-      assertEquals(cpu.speed, 0);
-      assertEquals(cpu.times.user, 0);
-      assertEquals(cpu.times.nice, 0);
-      assertEquals(cpu.times.sys, 0);
-      assertEquals(cpu.times.idle, 0);
-      assertEquals(cpu.times.irq, 0);
+      assert(cpu.model.length > 0);
+      assert(cpu.speed >= 0);
+      assert(cpu.times.user > 0);
+      assert(cpu.times.sys > 0);
+      assert(cpu.times.idle > 0);
     }
   },
 });
