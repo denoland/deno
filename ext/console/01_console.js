@@ -705,13 +705,21 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         // bound function is required to reconstruct missing information.
         formatter = FunctionPrototypeBind(formatTypedArray, null, bound, size);
         extrasType = kArrayExtrasType;
-      } else if (isMapIterator(value)) {
-        keys = getKeys(value, ctx.showHidden);
+      } else if (
+        (proxyDetails === null && isMapIterator(value)) ||
+        (proxyDetails !== null && isMapIterator(proxyDetails[0]))
+      ) {
+        const mapIterator = proxyDetails?.[0] ?? value;
+        keys = getKeys(mapIterator, ctx.showHidden);
         braces = getIteratorBraces("Map", tag);
         // Add braces to the formatter parameters.
         formatter = FunctionPrototypeBind(formatIterator, null, braces);
-      } else if (isSetIterator(value)) {
-        keys = getKeys(value, ctx.showHidden);
+      } else if (
+        (proxyDetails === null && isSetIterator(value)) ||
+        (proxyDetails !== null && isSetIterator(proxyDetails[0]))
+      ) {
+        const setIterator = proxyDetails?.[0] ?? value;
+        keys = getKeys(setIterator, ctx.showHidden);
         braces = getIteratorBraces("Set", tag);
         // Add braces to the formatter parameters.
         formatter = FunctionPrototypeBind(formatIterator, null, braces);
@@ -774,7 +782,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
             ObjectPrototypeIsPrototypeOf(ErrorPrototype, value))) ||
         (proxyDetails !== null &&
           (isNativeError(proxyDetails[0]) ||
-            ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)))
+            ObjectPrototypeIsPrototypeOf(ErrorPrototype, proxyDetails[0])))
       ) {
         const error = proxyDetails?.[0] ?? value;
         base = inspectError(error, ctx);
