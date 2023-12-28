@@ -584,6 +584,27 @@ Deno.test("[node/http] ClientRequest setTimeout", async () => {
   assertEquals(body, "HTTP/1.1");
 });
 
+Deno.test("[node/http] ClientRequest setNoDelay", async () => {
+  let body = "";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const timer = setTimeout(() => reject("timed out"), 50000);
+  const req = http.request("http://localhost:4545/http_version", (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.setNoDelay(true);
+  req.once("error", (e) => reject(e));
+  req.end();
+  await promise;
+  clearTimeout(timer);
+  assertEquals(body, "HTTP/1.1");
+});
+
 Deno.test("[node/http] ClientRequest PATCH", async () => {
   let body = "";
   const { promise, resolve, reject } = Promise.withResolvers<void>();

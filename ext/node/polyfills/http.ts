@@ -60,6 +60,10 @@ import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
+const {
+  op_fetch_response_upgrade,
+  op_fetch_send,
+} = core.ensureFastOps();
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -656,7 +660,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        const res = await core.opAsync("op_fetch_send", this._req.requestRid);
+        const res = await op_fetch_send(this._req.requestRid);
         try {
           cb?.();
         } catch (_) {
@@ -710,8 +714,7 @@ class ClientRequest extends OutgoingMessage {
             throw new Error("not implemented CONNECT");
           }
 
-          const upgradeRid = await core.opAsync(
-            "op_fetch_response_upgrade",
+          const upgradeRid = await op_fetch_response_upgrade(
             res.responseRid,
           );
           assert(typeof res.remoteAddrIp !== "undefined");
@@ -891,6 +894,11 @@ class ClientRequest extends OutgoingMessage {
       value = value.join("; ");
     }
     headers.push([key, value]);
+  }
+
+  // Once a socket is assigned to this request and is connected socket.setNoDelay() will be called.
+  setNoDelay() {
+    this.socket?.setNoDelay?.();
   }
 }
 

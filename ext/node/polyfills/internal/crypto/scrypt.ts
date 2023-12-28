@@ -31,6 +31,9 @@ import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
+const {
+  op_node_scrypt_async,
+} = core.ensureFastOps();
 
 type Opts = Partial<{
   N: number;
@@ -110,8 +113,7 @@ export function scrypt(
   }
 
   try {
-    core.opAsync(
-      "op_node_scrypt_async",
+    op_node_scrypt_async(
       password,
       salt,
       keylen,

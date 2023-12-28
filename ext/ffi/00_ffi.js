@@ -33,6 +33,13 @@ const {
   SafeWeakMap,
 } = primordials;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
+const {
+  op_ffi_call_nonblocking,
+  op_ffi_unsafe_callback_ref,
+} = core.ensureFastOps();
+const {
+  op_ffi_call_ptr_nonblocking,
+} = core.ensureFastOps(true);
 
 /**
  * @param {BufferSource} source
@@ -275,8 +282,7 @@ class UnsafeFnPointer {
   call(...parameters) {
     if (this.definition.nonblocking) {
       if (this.#structSize === null) {
-        return core.opAsync(
-          "op_ffi_call_ptr_nonblocking",
+        return op_ffi_call_ptr_nonblocking(
           this.pointer,
           this.definition,
           parameters,
@@ -284,8 +290,7 @@ class UnsafeFnPointer {
       } else {
         const buffer = new Uint8Array(this.#structSize);
         return PromisePrototypeThen(
-          core.opAsync(
-            "op_ffi_call_ptr_nonblocking",
+          op_ffi_call_ptr_nonblocking(
             this.pointer,
             this.definition,
             parameters,
@@ -420,8 +425,7 @@ class UnsafeCallback {
         // Re-refing
         core.refOpPromise(this.#refpromise);
       } else {
-        this.#refpromise = core.opAsync(
-          "op_ffi_unsafe_callback_ref",
+        this.#refpromise = op_ffi_unsafe_callback_ref(
           this.#rid,
         );
       }
@@ -508,8 +512,7 @@ class DynamicLibrary {
             value: (...parameters) => {
               if (isStructResult) {
                 const buffer = new Uint8Array(structSize);
-                const ret = core.opAsync(
-                  "op_ffi_call_nonblocking",
+                const ret = op_ffi_call_nonblocking(
                   this.#rid,
                   symbol,
                   parameters,
@@ -520,8 +523,7 @@ class DynamicLibrary {
                   () => buffer,
                 );
               } else {
-                return core.opAsync(
-                  "op_ffi_call_nonblocking",
+                return op_ffi_call_nonblocking(
                   this.#rid,
                   symbol,
                   parameters,
