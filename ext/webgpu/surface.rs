@@ -34,6 +34,13 @@ impl Resource for WebGpuSurface {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlphaMode {
+  Opaque,
+  Premultiplied,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceConfigureArgs {
   surface_rid: ResourceId,
@@ -43,7 +50,7 @@ pub struct SurfaceConfigureArgs {
   width: u32,
   height: u32,
   present_mode: Option<wgpu_types::PresentMode>,
-  alpha_mode: wgpu_types::CompositeAlphaMode,
+  alpha_mode: AlphaMode,
   view_formats: Vec<wgpu_types::TextureFormat>,
 }
 
@@ -69,7 +76,10 @@ pub fn op_webgpu_surface_configure(
     width: args.width,
     height: args.height,
     present_mode: args.present_mode.unwrap_or_default(),
-    alpha_mode: args.alpha_mode,
+    alpha_mode: match args.alpha_mode {
+      AlphaMode::Opaque => wgpu_types::AlphaMode::Opaque,
+      AlphaMode::Premultiplied => wgpu_types::AlphaMode::PreMultiplied,
+    },
     view_formats: args.view_formats,
   };
 
