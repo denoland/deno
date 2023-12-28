@@ -3519,38 +3519,6 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
   }
 }
 
-// A helper function that will bind our own console implementation
-// with default implementation of Console from V8. This will cause
-// console messages to be piped to inspector console.
-//
-// We are using `Deno.core.callConsole` binding to preserve proper stack
-// frames in inspector console. This has to be done because V8 considers
-// the last JS stack frame as gospel for the inspector. In our case we
-// specifically want the latest user stack frame to be the one that matters
-// though.
-//
-// Inspired by:
-// https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/lib/internal/util/inspector.js#L39-L61
-function wrapConsole(consoleFromDeno, consoleFromV8) {
-  const callConsole = core.callConsole;
-
-  const keys = ObjectKeys(consoleFromV8);
-  for (let i = 0; i < keys.length; ++i) {
-    const key = keys[i];
-    if (ObjectHasOwn(consoleFromDeno, key)) {
-      consoleFromDeno[key] = FunctionPrototypeBind(
-        callConsole,
-        consoleFromDeno,
-        consoleFromV8[key],
-        consoleFromDeno[key],
-      );
-    } else {
-      // Add additional console APIs from the inspector
-      consoleFromDeno[key] = consoleFromV8[key];
-    }
-  }
-}
-
 // Expose these fields to internalObject for tests.
 internals.Console = Console;
 internals.cssToAnsi = cssToAnsi;
@@ -3575,5 +3543,4 @@ export {
   quoteString,
   setNoColorFn,
   styles,
-  wrapConsole,
 };
