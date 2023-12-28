@@ -77,8 +77,8 @@ pub fn op_webgpu_surface_configure(
     height: args.height,
     present_mode: args.present_mode.unwrap_or_default(),
     alpha_mode: match args.alpha_mode {
-      AlphaMode::Opaque => wgpu_types::AlphaMode::Opaque,
-      AlphaMode::Premultiplied => wgpu_types::AlphaMode::PreMultiplied,
+      AlphaMode::Opaque => wgpu_types::CompositeAlphaMode::Opaque,
+      AlphaMode::Premultiplied => wgpu_types::CompositeAlphaMode::PreMultiplied,
     },
     view_formats: args.view_formats,
   };
