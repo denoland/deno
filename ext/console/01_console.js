@@ -272,7 +272,7 @@ function isAnyArrayBuffer(value) {
 }
 
 function isArgumentsObject(value) {
-  return ops.op_is_arguments_object(value);
+  return core.isArgumentsObject(value);
 }
 
 function isArrayBuffer(value) {
@@ -285,7 +285,7 @@ function isArrayBuffer(value) {
 }
 
 function isAsyncFunction(value) {
-  return ops.op_is_async_function(value);
+  return core.isAsyncFunction(value);
 }
 
 function isBooleanObject(value) {
@@ -325,7 +325,7 @@ function isTypedArray(value) {
 }
 
 function isGeneratorFunction(value) {
-  return ops.op_is_generator_function(value);
+  return core.isGeneratorFunction(value);
 }
 
 function isMap(value) {
@@ -338,15 +338,15 @@ function isMap(value) {
 }
 
 function isMapIterator(value) {
-  return ops.op_is_map_iterator(value);
+  return core.isMapIterator(value);
 }
 
 function isModuleNamespaceObject(value) {
-  return ops.op_is_module_namespace_object(value);
+  return core.isModuleNamespaceObject(value);
 }
 
 function isNativeError(value) {
-  return ops.op_is_native_error(value);
+  return core.isNativeError(value);
 }
 
 function isNumberObject(value) {
@@ -376,11 +376,11 @@ function isBigIntObject(value) {
 }
 
 function isPromise(value) {
-  return ops.op_is_promise(value);
+  return core.isPromise(value);
 }
 
 function isRegExp(value) {
-  return ops.op_is_reg_exp(value);
+  return core.isRegExp(value);
 }
 
 function isSet(value) {
@@ -393,7 +393,7 @@ function isSet(value) {
 }
 
 function isSetIterator(value) {
-  return ops.op_is_set_iterator(value);
+  return core.isSetIterator(value);
 }
 
 function isStringObject(value) {

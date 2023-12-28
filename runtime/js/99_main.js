@@ -480,7 +480,7 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   if (inspectFlag) {
     const consoleFromDeno = globalThis.console;
-    core.wrapConsole(consoleFromDeno, core.consoleFromV8);
+    core.wrapConsole(consoleFromDeno, core.v8Console);
   }
 
   event.setEventTargetData(globalThis);
@@ -599,7 +599,7 @@ function bootstrapWorkerRuntime(
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
   const consoleFromDeno = globalThis.console;
-  core.wrapConsole(consoleFromDeno, core.consoleFromV8);
+  core.wrapConsole(consoleFromDeno, core.v8Console);
 
   event.setEventTargetData(globalThis);
   event.saveGlobalThisReference(globalThis);
