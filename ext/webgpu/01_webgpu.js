@@ -5118,7 +5118,7 @@ class GPUCanvasContext {
 }
 const GPUCanvasContextPrototype = GPUCanvasContext.prototype;
 
-function createCanvasContext(options) {
+function _createCanvasContext(options) {
   const canvasContext = webidl.createBranded(GPUCanvasContext);
   canvasContext[_surfaceRid] = options.surfaceRid;
   canvasContext[_canvas] = options.canvas;
