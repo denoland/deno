@@ -196,6 +196,37 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   }
 }
 
+struct DocResolver {}
+
+impl deno_doc::html::HrefResolver for DocResolver {
+  fn resolve_global_symbol(&self, symbol: &[String], _context: &str) -> String {
+    format!(
+      "https://deno.land/api@{}?s={}",
+      env!("CARGO_PKG_VERSION"),
+      symbol.join(".")
+    )
+  }
+
+  fn resolve_import_href(&self, symbol: &[String], src: &str) -> Option<String> {
+    let mut url = ModuleSpecifier::parse(src).ok()?;
+
+    if url.domain() == Some("deno.land") {
+      url.set_query(Some(&format!("s={}", symbol.join("."))));
+      return Some(url.to_string())
+    }
+
+    None
+  }
+
+  fn resolve_usage(&self, _current_specifier: &ModuleSpecifier, current_file: &str) -> String {
+    current_file.to_string()
+  }
+
+  fn resolve_source(&self, location: &deno_doc::Location) -> String {
+    location.filename.clone()
+  }
+}
+
 async fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: DocHtmlFlag,
@@ -211,18 +242,10 @@ async fn generate_docs_directory(
       .into_iter()
       .map(|symbol| (symbol, "deno".to_string()))
       .collect(),
-    global_symbol_href_resolver: Rc::new(|symbol, _context| {
-      format!(
-        "https://deno.land/api@{}?s={}",
-        env!("CARGO_PKG_VERSION"),
-        symbol.join(".")
-      )
-    }),
-    import_href_resolver: Rc::new(|_symbol, _src| None),
-    usage_resolver: Rc::new(|_specifier, file| file.to_string()),
-    url_resolver: Rc::new(deno_doc::html::default_url_resolver),
     rewrite_map: None,
     hide_module_doc_title: false,
+    href_resolver: Rc::new(DocResolver {}),
+    sidebar_flatten_namespaces: false,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
