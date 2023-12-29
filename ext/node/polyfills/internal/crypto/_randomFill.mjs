@@ -11,6 +11,9 @@ import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
+const {
+  op_node_generate_secret_async,
+} = core.ensureFastOps();
 
 const kBufferMaxLength = 0x7fffffff;
 
@@ -52,7 +55,7 @@ export default function randomFill(
   assertOffset(offset, buf.length);
   assertSize(size, offset, buf.length);
 
-  core.opAsync("op_node_generate_secret_async", Math.floor(size))
+  op_node_generate_secret_async(Math.floor(size))
     .then(
       (randomData) => {
         const randomBuf = Buffer.from(randomData.buffer);

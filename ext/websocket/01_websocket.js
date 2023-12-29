@@ -44,20 +44,20 @@ const {
   SymbolFor,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
-const { op_ws_check_permission_and_cancel_handle } = core.ops;
-const {
-  op_ws_create,
+import {
+  op_ws_check_permission_and_cancel_handle,
   op_ws_close,
-  op_ws_send_binary,
-  op_ws_send_binary_ab,
-  op_ws_send_text,
-  op_ws_next_event,
+  op_ws_create,
   op_ws_get_buffer,
   op_ws_get_buffer_as_string,
-  op_ws_get_error,
-  op_ws_send_ping,
   op_ws_get_buffered_amount,
-} = core.ensureFastOps();
+  op_ws_get_error,
+  op_ws_next_event,
+  op_ws_send_binary,
+  op_ws_send_binary_ab,
+  op_ws_send_ping,
+  op_ws_send_text,
+} from "ext:deno_websocket/00_ops.js";
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
@@ -582,6 +582,20 @@ defineEventHandler(WebSocket.prototype, "open");
 webidl.configureInterface(WebSocket);
 const WebSocketPrototype = WebSocket.prototype;
 
+function createWebSocketBranded() {
+  const socket = webidl.createBranded(WebSocket);
+  socket[_rid] = undefined;
+  socket[_role] = undefined;
+  socket[_readyState] = CONNECTING;
+  socket[_extensions] = "";
+  socket[_protocol] = "";
+  socket[_url] = "";
+  socket[_binaryType] = "blob";
+  socket[_idleTimeoutDuration] = 0;
+  socket[_idleTimeoutTimeout] = undefined;
+  return socket;
+}
+
 export {
   _eventLoop,
   _idleTimeoutDuration,
@@ -592,6 +606,7 @@ export {
   _role,
   _server,
   _serverHandleIdleTimeout,
+  createWebSocketBranded,
   SERVER,
   WebSocket,
 };

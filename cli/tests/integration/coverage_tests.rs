@@ -115,7 +115,11 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--detailed".to_string(),
+      format!("{}/", tempdir),
+    ])
     .split_output()
     .run();
 
@@ -184,7 +188,11 @@ fn multifile_coverage() {
 
   let output = context
     .new_command()
-    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--detailed".to_string(),
+      format!("{}/", tempdir),
+    ])
     .split_output()
     .run();
 
@@ -255,6 +263,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       "--include=no_snaps_included.ts".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
@@ -303,6 +312,7 @@ fn no_tests_included(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       format!("--exclude={}", util::std_path().canonicalize()),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .split_output()
@@ -350,7 +360,11 @@ fn no_npm_cache_coverage() {
 
   let output = context
     .new_command()
-    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--detailed".to_string(),
+      format!("{}/", tempdir),
+    ])
     .split_output()
     .run();
 
@@ -397,6 +411,7 @@ fn no_transpiled_lines() {
     .args_vec(vec![
       "coverage".to_string(),
       "--include=no_transpiled_lines/index.ts".to_string(),
+      "--detailed".to_string(),
       format!("{}/", tempdir),
     ])
     .run();
@@ -553,6 +568,8 @@ fn test_html_reporter() {
   let bar_ts_html =
     fs::read_to_string(tempdir.join("html").join("bar.ts.html")).unwrap();
   assert!(bar_ts_html.contains("<h1>Coverage report for bar.ts</h1>"));
+  // Check <T> in source code is escaped to &lt;T&gt;
+  assert!(bar_ts_html.contains("&lt;T&gt;"));
 
   let baz_index_html =
     fs::read_to_string(tempdir.join("html").join("baz").join("index.html"))
@@ -573,3 +590,49 @@ fn test_html_reporter() {
       .unwrap();
   assert!(baz_quux_ts_html.contains("<h1>Coverage report for baz/quux.ts</h1>"));
 }
+
+#[test]
+fn test_summary_reporter() {
+  let context = TestContext::default();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/multisource".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
+    .run();
+
+  output.assert_exit_code(0);
+  output.assert_matches_text(
+    "----------------------------------
+File         | Branch % | Line % |
+----------------------------------
+ bar.ts      |      0.0 |   57.1 |
+ baz/quux.ts |      0.0 |   28.6 |
+ baz/qux.ts  |    100.0 |  100.0 |
+ foo.ts      |     50.0 |   76.9 |
+----------------------------------
+ All files   |     40.0 |   61.0 |
+----------------------------------
+",
+  );
+}
+
+itest!(no_files_found {
+  args: "coverage doesnt_exist.js",
+  exit_code: 1,
+  output: "coverage/doesnt_exist.out",
+});

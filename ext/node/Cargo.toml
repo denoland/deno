@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.64.0"
+version = "0.66.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -32,10 +32,10 @@ dsa = "0.6.1"
 ecb.workspace = true
 elliptic-curve.workspace = true
 errno = "0.2.8"
-h2.workspace = true
+h2 = { version = "0.3.17", features = ["unstable"] }
 hex.workspace = true
 hkdf.workspace = true
-http.workspace = true
+http_v02.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 k256 = "0.13.1"
@@ -44,6 +44,7 @@ libc.workspace = true
 libz-sys.workspace = true
 md-5 = "0.10.5"
 md4 = "0.10.2"
+nix.workspace = true
 num-bigint.workspace = true
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
@@ -54,6 +55,7 @@ p256.workspace = true
 p384.workspace = true
 path-clean = "=0.1.0"
 pbkdf2 = "0.12.1"
+pin-project-lite = "0.2.13"
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
@@ -65,9 +67,14 @@ serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true
 signature.workspace = true
+simd-json = "0.13.4"
 tokio.workspace = true
 typenum = "1.15.0"
 url.workspace = true
 winapi.workspace = true
 x25519-dalek = "2.0.0"
 x509-parser = "0.15.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+winapi = { workspace = true, features = ["consoleapi"] }

@@ -498,12 +498,9 @@ async fn test_specifier_inner(
   if let Some(coverage_collector) = coverage_collector.as_mut() {
     worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         coverage_collector.stop_collecting().boxed_local(),
-        PollEventLoopOptions {
-          wait_for_inspector: false,
-          ..Default::default()
-        },
+        PollEventLoopOptions::default(),
       )
       .await?;
   }
@@ -574,11 +571,18 @@ pub async fn run_tests_for_worker(
       // but haven't responded to settle.
       let waker = noop_waker();
       let mut cx = Context::from_waker(&waker);
-      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+      let _ = worker
+        .js_runtime
+        .poll_event_loop(&mut cx, PollEventLoopOptions::default());
     }
 
     let earlier = SystemTime::now();
-    let result = match worker.js_runtime.call_and_await(&function).await {
+    let call = worker.js_runtime.call(&function);
+    let result = match worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await
+    {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {

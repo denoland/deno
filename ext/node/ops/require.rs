@@ -431,7 +431,13 @@ where
         NodeResolutionMode::Execution,
         permissions,
       )
-      .map(|r| Some(r.to_string_lossy().to_string()))
+      .map(|r| {
+        Some(if r.scheme() == "file" {
+          r.to_file_path().unwrap().to_string_lossy().to_string()
+        } else {
+          r.to_string()
+        })
+      })
   } else {
     Ok(None)
   }
@@ -515,7 +521,13 @@ where
         NodeResolutionMode::Execution,
         permissions,
       )
-      .map(|r| Some(r.to_string_lossy().to_string()))
+      .map(|r| {
+        Some(if r.scheme() == "file" {
+          r.to_file_path().unwrap().to_string_lossy().to_string()
+        } else {
+          r.to_string()
+        })
+      })
   } else {
     Ok(None)
   }
@@ -588,7 +600,7 @@ where
         NodeResolutionMode::Execution,
         permissions,
       )
-      .map(|r| Some(Url::from_file_path(r).unwrap().to_string()))
+      .map(|r| Some(r.to_string()))
   } else {
     Ok(None)
   }

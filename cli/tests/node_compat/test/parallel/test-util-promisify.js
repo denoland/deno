@@ -81,12 +81,11 @@ const stat = promisify(fs.stat);
 //   }));
 // }
 
-// TODO(wafuwafu13): Implement "vm.runInNewContext"
-// {
-//   const fn = vm.runInNewContext('(function() {})');
-//   assert.notStrictEqual(Object.getPrototypeOf(promisify(fn)),
-//                         Function.prototype);
-// }
+{
+  const fn = vm.runInNewContext('(function() {})');
+  assert.notStrictEqual(Object.getPrototypeOf(promisify(fn)),
+                        Function.prototype);
+}
 
 {
   function fn(callback) {

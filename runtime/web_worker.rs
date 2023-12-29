@@ -5,6 +5,7 @@ use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::import_meta_resolve_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -408,6 +409,7 @@ impl WebWorker {
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -535,6 +537,9 @@ impl WebWorker {
       inspector: options.maybe_inspector_server.is_some(),
       feature_checker: Some(options.feature_checker.clone()),
       op_metrics_factory_fn,
+      import_meta_resolve_callback: Some(Box::new(
+        import_meta_resolve_callback,
+      )),
       ..Default::default()
     });
 
@@ -690,7 +695,7 @@ impl WebWorker {
         maybe_result
       }
 
-      event_loop_result = self.js_runtime.run_event_loop(false) => {
+      event_loop_result = self.js_runtime.run_event_loop(PollEventLoopOptions::default()) => {
         event_loop_result?;
         receiver.await
       }
@@ -705,10 +710,7 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
-    let poll_options = PollEventLoopOptions {
-      wait_for_inspector: false,
-      ..Default::default()
-    };
+    let poll_options = PollEventLoopOptions::default();
 
     tokio::select! {
       biased;
@@ -740,7 +742,7 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
-    match self.js_runtime.poll_event_loop2(cx, poll_options) {
+    match self.js_runtime.poll_event_loop(cx, poll_options) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {

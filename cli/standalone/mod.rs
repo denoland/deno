@@ -530,6 +530,7 @@ pub async fn run(
       unstable: metadata.unstable,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
+    None,
   );
 
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));

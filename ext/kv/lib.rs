@@ -444,16 +444,21 @@ async fn op_kv_watch_next(
   let cancel_handle = resource.cancel_handle.clone();
   let stream = RcRef::map(resource, |r| &r.stream)
     .borrow_mut()
-    .or_cancel(db_cancel_handle)
-    .or_cancel(cancel_handle)
+    .or_cancel(db_cancel_handle.clone())
+    .or_cancel(cancel_handle.clone())
     .await;
   let Ok(Ok(mut stream)) = stream else {
     return Ok(None);
   };
 
-  // doesn't need a cancel handle because the stream ends when the database
-  // connection is closed
-  let Some(res) = stream.next().await else {
+  // We hold a strong reference to `resource`, so we can't rely on the stream
+  // being dropped when the db connection is closed
+  let Ok(Ok(Some(res))) = stream
+    .next()
+    .or_cancel(db_cancel_handle)
+    .or_cancel(cancel_handle)
+    .await
+  else {
     return Ok(None);
   };
 
@@ -530,6 +535,9 @@ fn mutation_from_v8(
     ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
+    ("setSuffixVersionstampedKey", Some(value)) => {
+      MutationKind::SetSuffixVersionstampedKey(value.try_into()?)
+    }
     (op, Some(_)) => {
       return Err(type_error(format!("invalid mutation '{op}' with value")))
     }
@@ -802,6 +810,9 @@ where
 
   for enqueue in &enqueues {
     total_payload_size += check_enqueue_payload_size(&enqueue.payload)?;
+    if let Some(schedule) = enqueue.backoff_schedule.as_ref() {
+      total_payload_size += 4 * schedule.len();
+    }
   }
 
   if total_payload_size > MAX_TOTAL_MUTATION_SIZE_BYTES {

@@ -45,6 +45,9 @@ export const UNZIP = 7;
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
+const {
+  op_zlib_write_async,
+} = core.ensureFastOps();
 
 const writeResult = new Uint32Array(2);
 
@@ -117,10 +120,9 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    core.opAsync(
-      "op_zlib_write_async",
+    op_zlib_write_async(
       this.#handle,
-      flush,
+      flush ?? Z_NO_FLUSH,
       input,
       in_off,
       in_len,
