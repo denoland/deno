@@ -31,6 +31,9 @@ const {
   SymbolIterator,
   TypeError,
 } = primordials;
+const {
+  op_message_port_recv_message,
+} = core.ensureFastOps();
 
 class MessageChannel {
   /** @type {MessagePort} */
@@ -147,8 +150,7 @@ class MessagePort extends EventTarget {
         if (this[_id] === null) break;
         let data;
         try {
-          data = await core.opAsync(
-            "op_message_port_recv_message",
+          data = await op_message_port_recv_message(
             this[_id],
           );
         } catch (err) {

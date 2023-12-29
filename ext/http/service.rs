@@ -7,13 +7,13 @@ use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use http_1::request::Parts;
-use hyper1::body::Body;
-use hyper1::body::Frame;
-use hyper1::body::Incoming;
-use hyper1::body::SizeHint;
-use hyper1::header::HeaderMap;
-use hyper1::upgrade::OnUpgrade;
+use http::request::Parts;
+use hyper::body::Body;
+use hyper::body::Frame;
+use hyper::body::Incoming;
+use hyper::body::SizeHint;
+use hyper::header::HeaderMap;
+use hyper::upgrade::OnUpgrade;
 
 use scopeguard::guard;
 use scopeguard::ScopeGuard;
@@ -29,8 +29,8 @@ use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-pub type Request = hyper1::Request<Incoming>;
-pub type Response = hyper1::Response<HttpRecordResponse>;
+pub type Request = hyper::Request<Incoming>;
+pub type Response = hyper::Response<HttpRecordResponse>;
 
 #[cfg(feature = "__http_tracing")]
 pub static RECORD_COUNT: std::sync::atomic::AtomicUsize =
@@ -181,7 +181,7 @@ pub(crate) async fn handle_request(
   request_info: HttpConnectionProperties,
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
-) -> Result<Response, hyper::Error> {
+) -> Result<Response, hyper_v014::Error> {
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
   // The HttpRecord must live until JavaScript is done processing so is wrapped
@@ -209,9 +209,9 @@ pub(crate) async fn handle_request(
 struct HttpRecordInner {
   server_state: SignallingRc<HttpServerState>,
   request_info: HttpConnectionProperties,
-  request_parts: http_1::request::Parts,
+  request_parts: http::request::Parts,
   request_body: Option<RequestBodyState>,
-  response_parts: Option<http_1::response::Parts>,
+  response_parts: Option<http::response::Parts>,
   response_ready: bool,
   response_waker: Option<Waker>,
   response_body: ResponseBytesInner,
@@ -244,7 +244,7 @@ impl HttpRecord {
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
     let request_body = Some(request_body.into());
-    let (mut response_parts, _) = http_1::Response::new(()).into_parts();
+    let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record =
       if let Some((record, headers)) = server_state.borrow_mut().pool.pop() {
         response_parts.headers = headers;
@@ -425,7 +425,7 @@ impl HttpRecord {
   }
 
   /// Get a mutable reference to the response status and headers.
-  pub fn response_parts(&self) -> RefMut<'_, http_1::response::Parts> {
+  pub fn response_parts(&self) -> RefMut<'_, http::response::Parts> {
     RefMut::map(self.self_mut(), |inner| {
       inner.response_parts.as_mut().unwrap()
     })
@@ -594,18 +594,18 @@ mod tests {
   use crate::response_body::ResponseBytesInner;
   use bytes::Buf;
   use deno_net::raw::NetworkStreamType;
-  use hyper1::body::Body;
-  use hyper1::service::service_fn;
-  use hyper1::service::HttpService;
+  use hyper::body::Body;
+  use hyper::service::service_fn;
+  use hyper::service::HttpService;
   use hyper_util::rt::TokioIo;
   use std::error::Error as StdError;
 
   /// Execute client request on service and concurrently map the response.
   async fn serve_request<B, S, T, F>(
-    req: http_1::Request<B>,
+    req: http::Request<B>,
     service: S,
-    map_response: impl FnOnce(hyper1::Response<Incoming>) -> F,
-  ) -> hyper1::Result<T>
+    map_response: impl FnOnce(hyper::Response<Incoming>) -> F,
+  ) -> hyper::Result<T>
   where
     B: Body + Send + 'static, // Send bound due to DuplexStream
     B::Data: Send,
@@ -614,10 +614,10 @@ mod tests {
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     S::ResBody: 'static,
     <S::ResBody as Body>::Error: Into<Box<dyn StdError + Send + Sync>>,
-    F: std::future::Future<Output = hyper1::Result<T>>,
+    F: std::future::Future<Output = hyper::Result<T>>,
   {
-    use hyper1::client::conn::http1::handshake;
-    use hyper1::server::conn::http1::Builder;
+    use hyper::client::conn::http1::handshake;
+    use hyper::server::conn::http1::Builder;
     let (stream_client, stream_server) = tokio::io::duplex(16 * 1024);
     let conn_server =
       Builder::new().serve_connection(TokioIo::new(stream_server), service);
@@ -646,7 +646,7 @@ mod tests {
       local_port: None,
       stream_type: NetworkStreamType::Tcp,
     };
-    let svc = service_fn(move |req: hyper1::Request<Incoming>| {
+    let svc = service_fn(move |req: hyper::Request<Incoming>| {
       handle_request(
         req,
         request_info.clone(),
@@ -655,8 +655,7 @@ mod tests {
       )
     });
 
-    let client_req =
-      http_1::Request::builder().uri("/").body("".to_string())?;
+    let client_req = http::Request::builder().uri("/").body("".to_string())?;
 
     // Response produced by concurrent tasks
     tokio::try_join!(

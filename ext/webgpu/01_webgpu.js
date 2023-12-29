@@ -48,6 +48,12 @@ const {
   Uint32ArrayPrototype,
   Uint8Array,
 } = primordials;
+const {
+  op_webgpu_buffer_get_map_async,
+  op_webgpu_request_adapter,
+  op_webgpu_request_adapter_info,
+  op_webgpu_request_device,
+} = core.ensureFastOps();
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -253,8 +259,7 @@ class GPU {
       "Argument 1",
     );
 
-    const { err, ...data } = await core.opAsync(
-      "op_webgpu_request_adapter",
+    const { err, ...data } = await op_webgpu_request_adapter(
       options.powerPreference,
       options.forceFallbackAdapter,
     );
@@ -343,8 +348,7 @@ class GPUAdapter {
       }
     }
 
-    const { rid, features, limits } = await core.opAsync(
-      "op_webgpu_request_device",
+    const { rid, features, limits } = await op_webgpu_request_device(
       this[_adapter].rid,
       descriptor.label,
       requiredFeatures,
@@ -382,8 +386,7 @@ class GPUAdapter {
       architecture,
       device,
       description,
-    } = await core.opAsync(
-      "op_webgpu_request_adapter_info",
+    } = await op_webgpu_request_adapter_info(
       this[_adapter].rid,
     );
 
@@ -1949,8 +1952,7 @@ class GPUBuffer {
     this[_mapMode] = mode;
     this[_state] = "pending";
     const promise = PromisePrototypeThen(
-      core.opAsync(
-        "op_webgpu_buffer_get_map_async",
+      op_webgpu_buffer_get_map_async(
         bufferRid,
         device.rid,
         mode,

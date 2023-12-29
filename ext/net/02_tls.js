@@ -4,13 +4,19 @@ import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import { Conn, Listener } from "ext:deno_net/01_net.js";
 const { Number, TypeError } = primordials;
+const {
+  op_tls_handshake,
+  op_tls_start,
+  op_net_accept_tls,
+  op_net_connect_tls,
+} = core.ensureFastOps();
 
 function opStartTls(args) {
-  return core.opAsync("op_tls_start", args);
+  return op_tls_start(args);
 }
 
 function opTlsHandshake(rid) {
-  return core.opAsync("op_tls_handshake", rid);
+  return op_tls_handshake(rid);
 }
 
 class TlsConn extends Conn {
@@ -32,8 +38,7 @@ async function connectTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-    "op_net_connect_tls",
+  const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
     { certFile, caCerts, certChain, privateKey, alpnProtocols },
   );
@@ -44,8 +49,7 @@ async function connectTls({
 
 class TlsListener extends Listener {
   async accept() {
-    const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-      "op_net_accept_tls",
+    const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_accept_tls(
       this.rid,
     );
     localAddr.transport = "tcp";
