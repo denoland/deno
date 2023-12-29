@@ -9503,8 +9503,22 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
   // The caching is done on an asynchronous task spawned after init, so there's
   // a chance it wasn't done in time and we need to wait for another batch of
   // diagnostics.
-  if !diagnostics.all().is_empty() {
-    diagnostics = client.read_diagnostics();
+  while !diagnostics.all().is_empty() {
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    // The post-cache diagnostics update triggers inconsistently on CI for some
+    // reason. Force it with this notification.
+    diagnostics = client.did_open(json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.tsx").unwrap(),
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "
+          export function Foo() {
+            return <div></div>;
+          }
+        ",
+      },
+    }));
   }
   assert_eq!(diagnostics.all(), vec![]);
   client.shutdown();
