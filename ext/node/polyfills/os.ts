@@ -32,6 +32,8 @@ import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 
+const ops = core.ops;
+
 export const constants = os;
 
 interface CPUTimes {
@@ -129,19 +131,7 @@ export function arch(): string {
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
 
 export function cpus(): CPUCoreInfo[] {
-  return Array.from(Array(navigator.hardwareConcurrency), () => {
-    return {
-      model: "",
-      speed: 0,
-      times: {
-        user: 0,
-        nice: 0,
-        sys: 0,
-        idle: 0,
-        irq: 0,
-      },
-    };
-  });
+  return ops.op_cpus();
 }
 
 /**
