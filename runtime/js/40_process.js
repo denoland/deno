@@ -30,6 +30,10 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
+const {
+  op_run_status,
+  op_spawn_wait,
+} = core.ensureFastOps();
 
 function opKill(pid, signo, apiName) {
   ops.op_kill(pid, signo, apiName);
@@ -40,7 +44,7 @@ function kill(pid, signo = "SIGTERM") {
 }
 
 function opRunStatus(rid) {
-  return core.opAsync("op_run_status", rid);
+  return op_run_status(rid);
 }
 
 function opRun(request) {
@@ -272,7 +276,7 @@ class ChildProcess {
     const onAbort = () => this.kill("SIGTERM");
     signal?.[abortSignal.add](onAbort);
 
-    const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
+    const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
       signal?.[abortSignal.remove](onAbort);

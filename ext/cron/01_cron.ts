@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// @ts-ignore internal api
-const core = Deno.core;
+import { core, internals } from "ext:core/mod.js";
+const {
+  op_cron_next,
+} = core.ensureFastOps();
 
 export function formatToCronSchedule(
   value?: number | { exact: number | number[] } | {
@@ -122,7 +124,7 @@ function cron(
   return (async () => {
     let success = true;
     while (true) {
-      const r = await core.opAsync("op_cron_next", rid, success);
+      const r = await op_cron_next(rid, success);
       if (r === false) {
         break;
       }
@@ -137,5 +139,9 @@ function cron(
     }
   })();
 }
+
+// For testing
+internals.formatToCronSchedule = formatToCronSchedule;
+internals.parseScheduleToString = parseScheduleToString;
 
 export { cron };

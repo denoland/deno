@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
@@ -4425,8 +4426,9 @@ async fn websocketstream_ping() {
     .unwrap();
   tokio::spawn(async move {
     let (stream, _) = server.accept().await.unwrap();
-    let conn_fut = hyper::server::conn::Http::new()
-      .serve_connection(stream, srv_fn)
+    let io = hyper_util::rt::TokioIo::new(stream);
+    let conn_fut = hyper::server::conn::http1::Builder::new()
+      .serve_connection(io, srv_fn)
       .with_upgrades();
 
     if let Err(e) = conn_fut.await {
@@ -4476,8 +4478,8 @@ async fn websocket_server_multi_field_connection_header() {
   let stream = tokio::net::TcpStream::connect("localhost:4319")
     .await
     .unwrap();
-  let req = hyper::Request::builder()
-    .header(hyper::header::UPGRADE, "websocket")
+  let req = http::Request::builder()
+    .header(http::header::UPGRADE, "websocket")
     .header(http::header::CONNECTION, "keep-alive, Upgrade")
     .header(
       "Sec-WebSocket-Key",
@@ -4485,7 +4487,7 @@ async fn websocket_server_multi_field_connection_header() {
     )
     .header("Sec-WebSocket-Version", "13")
     .uri("ws://localhost:4319")
-    .body(hyper::Body::empty())
+    .body(http_body_util::Empty::<Bytes>::new())
     .unwrap();
 
   let (mut socket, _) =
@@ -4531,8 +4533,8 @@ async fn websocket_server_idletimeout() {
   let stream = tokio::net::TcpStream::connect("localhost:4509")
     .await
     .unwrap();
-  let req = hyper::Request::builder()
-    .header(hyper::header::UPGRADE, "websocket")
+  let req = http::Request::builder()
+    .header(http::header::UPGRADE, "websocket")
     .header(http::header::CONNECTION, "keep-alive, Upgrade")
     .header(
       "Sec-WebSocket-Key",
@@ -4540,7 +4542,7 @@ async fn websocket_server_idletimeout() {
     )
     .header("Sec-WebSocket-Version", "13")
     .uri("ws://localhost:4509")
-    .body(hyper::Body::empty())
+    .body(http_body_util::Empty::<Bytes>::new())
     .unwrap();
 
   let (_socket, _) =

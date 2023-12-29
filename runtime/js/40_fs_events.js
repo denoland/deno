@@ -9,6 +9,9 @@ const {
   SymbolAsyncIterator,
 } = primordials;
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
+const {
+  op_fs_events_poll,
+} = core.ensureFastOps();
 
 class FsWatcher {
   #rid = 0;
@@ -24,7 +27,7 @@ class FsWatcher {
 
   async next() {
     try {
-      const value = await core.opAsync("op_fs_events_poll", this.rid);
+      const value = await op_fs_events_poll(this.rid);
       return value ? { value, done: false } : { value: undefined, done: true };
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {

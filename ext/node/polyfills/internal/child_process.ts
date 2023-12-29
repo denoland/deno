@@ -44,8 +44,13 @@ import {
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
-
+// HEAD
 const ops = core.ops;
+const core = globalThis.__bootstrap.core;
+const {
+  op_node_ipc_read,
+  op_node_ipc_write,
+} = core.ensureFastOps();
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -298,6 +303,10 @@ export class ChildProcess extends EventEmitter {
         throw err;
       }
     }
+
+    /* Cancel any pending IPC I/O */
+    this.disconnect?.();
+
     this.killed = true;
     this.signalCode = denoSignal;
     return this.killed;
@@ -1077,7 +1086,7 @@ export function setupChannel(target, ipc) {
         if (!target.connected || target.killed) {
           return;
         }
-        const msg = await core.opAsync("op_node_ipc_read", ipc);
+        const msg = await op_node_ipc_read(ipc);
         if (msg == null) {
           // Channel closed.
           target.disconnect();
@@ -1122,7 +1131,7 @@ export function setupChannel(target, ipc) {
       notImplemented("ChildProcess.send with handle");
     }
 
-    core.opAsync("op_node_ipc_write", ipc, message)
+    op_node_ipc_write(ipc, message)
       .then(() => {
         if (callback) {
           process.nextTick(callback, null);
