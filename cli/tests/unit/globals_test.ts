@@ -196,6 +196,12 @@ Deno.test(function objectGroupBy() {
   });
 });
 
+Deno.test(function objectGroupByEmpty() {
+  const empty: string[] = [];
+  const result = Object.groupBy(empty, () => "abc");
+  assertEquals(result.abc, undefined);
+});
+
 // Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map/groupBy#examples
 Deno.test(function mapGroupBy() {
   const inventory = [
