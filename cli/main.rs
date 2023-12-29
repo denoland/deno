@@ -392,6 +392,16 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
+    // TODO(bartlomieju): remove when `--unstable` flag is removed.
+    if flags.unstable {
+      eprintln!(
+        "⚠️  {}",
+        colors::yellow(format!(
+          "The `--unstable` flag is deprecated, use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+        ))
+      );
+    }
+
     let default_v8_flags = match flags.subcommand {
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
