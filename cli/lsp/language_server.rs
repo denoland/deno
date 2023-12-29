@@ -183,11 +183,44 @@ pub struct StateSnapshot {
   pub npm: Option<StateNpmSnapshot>,
 }
 
-type OutsideLockTaskFn = Box<
+type LanguageServerTaskFn = Box<
   dyn (FnOnce(LanguageServer) -> Pin<Box<dyn Future<Output = ()>>>)
     + Send
     + Sync,
 >;
+
+#[derive(Debug)]
+struct LanguageServerTaskQueue {
+  task_tx: UnboundedSender<LanguageServerTaskFn>,
+  /// This is moved out to its own task after initializing.
+  task_rx: Option<UnboundedReceiver<LanguageServerTaskFn>>,
+}
+
+impl Default for LanguageServerTaskQueue {
+  fn default() -> Self {
+    let (task_tx, task_rx) = unbounded_channel();
+    Self {
+      task_tx,
+      task_rx: Some(task_rx),
+    }
+  }
+}
+
+impl LanguageServerTaskQueue {
+  fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
+    self.task_tx.send(task_fn).is_ok()
+  }
+
+  /// Panics if called more than once.
+  fn start(&mut self, ls: LanguageServer) {
+    let mut task_rx = self.task_rx.take().unwrap();
+    spawn(async move {
+      while let Some(task_fn) = task_rx.recv().await {
+        task_fn(ls.clone()).await;
+      }
+    });
+  }
+}
 
 #[derive(Debug)]
 pub struct Inner {
@@ -208,6 +241,7 @@ pub struct Inner {
   /// on disk or "open" within the client.
   pub documents: Documents,
   http_client: Arc<HttpClient>,
+  task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
   module_registries: ModuleRegistry,
   /// The path to the module registries cache
@@ -229,9 +263,6 @@ pub struct Inner {
   maybe_testing_server: Option<testing::TestServer>,
   /// Services used for dealing with npm related functionality.
   npm: LspNpmServices,
-  /// This is moved out to its own task after initializing.
-  outside_lock_task_rx: Option<UnboundedReceiver<OutsideLockTaskFn>>,
-  outside_lock_task_tx: UnboundedSender<OutsideLockTaskFn>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -499,7 +530,6 @@ impl Inner {
       diagnostics_state.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let (outside_lock_task_tx, outside_lock_task_rx) = unbounded_channel();
 
     Self {
       assets,
@@ -516,6 +546,7 @@ impl Inner {
       maybe_import_map_uri: None,
       maybe_package_json: None,
       fmt_options: Default::default(),
+      task_queue: Default::default(),
       lint_options: Default::default(),
       maybe_testing_server: None,
       module_registries,
@@ -526,8 +557,6 @@ impl Inner {
         node_resolver: None,
         resolver: None,
       },
-      outside_lock_task_rx: Some(outside_lock_task_rx),
-      outside_lock_task_tx,
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -1062,18 +1091,15 @@ impl Inner {
                     .unwrap(),
                   }],
                 };
-                self
-                  .outside_lock_task_tx
-                  .send(Box::new(|ls: LanguageServer| {
-                    Box::pin(async move {
-                      if let Err(err) =
-                        ls.cache_request(Some(json!(cache_params))).await
-                      {
-                        lsp_warn!("{}", err);
-                      }
-                    })
-                  }))
-                  .unwrap();
+                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+                  Box::pin(async move {
+                    if let Err(err) =
+                      ls.cache_request(Some(json!(cache_params))).await
+                    {
+                      lsp_warn!("{}", err);
+                    }
+                  })
+                }));
               }
             }
           }
@@ -3304,7 +3330,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     self.refresh_configuration().await;
 
-    let mut outside_lock_task_rx = {
+    {
       let mut ls = self.0.write().await;
       init_log_file(ls.config.log_file());
       if let Err(err) = ls.update_tsconfig().await {
@@ -3313,15 +3339,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
-      ls.outside_lock_task_rx.take().unwrap()
+      ls.task_queue.start(self.clone());
     };
-
-    let ls = self.clone();
-    spawn(async move {
-      while let Some(task_fn) = outside_lock_task_rx.recv().await {
-        task_fn(ls.clone()).await;
-      }
-    });
 
     if upgrade_check_enabled() {
       // spawn to avoid lsp send/sync requirement, but also just
