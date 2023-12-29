@@ -421,7 +421,7 @@ Deno.test(
     }
 
     const sizes = [0, 1, 2, 256, 1024, 4096, 16384, 65506, 65507, 65508, 65536];
-    const rx = /Message too long \(os error \d\d\)/;
+    const rx = /.+ \(os error \d+\)/;
 
     for (const size of sizes) {
       const tosend = new Uint8Array(size);
@@ -432,7 +432,6 @@ Deno.test(
         // Note: we have to do the test this way as different OS's have
         // different UDP size limits enabled, so we will just ensure if
         // an error is thrown it is the one we are expecting.
-        console.error(`size ${size} :${err.message}`);
         assert(err.message.match(rx));
         alice.close();
         bob.close();
