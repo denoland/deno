@@ -350,7 +350,17 @@ pub fn op_read_line_prompt(
     editor.readline_with_initial(&prompt_text, (&default_value, ""));
   match read_result {
     Ok(line) => Ok(Some(line)),
-    Err(ReadlineError::Interrupted | ReadlineError::Eof) => Ok(None),
+    Err(ReadlineError::Interrupted) => {
+      // Safety: raise SIGINT to abort the program.
+      unsafe {
+        let result = libc::raise(libc::SIGINT);
+        if result != 0 {
+          return Err(std::io::Error::last_os_error().into());
+        }
+      }
+      Ok(None)
+    }
+    Err(ReadlineError::Eof) => Ok(None),
     Err(err) => Err(err.into()),
   }
 }
