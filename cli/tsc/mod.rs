@@ -50,7 +50,6 @@ mod diagnostics;
 
 pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
-pub use self::diagnostics::DiagnosticMessageChain;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
 

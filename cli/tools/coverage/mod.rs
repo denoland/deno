@@ -364,7 +364,6 @@ fn generate_coverage_report(
       line_counts
         .into_iter()
         .enumerate()
-        .map(|(index, count)| (index, count))
         .collect::<Vec<(usize, i64)>>()
     };
 
