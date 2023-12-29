@@ -965,9 +965,7 @@ dependencies = [
  "fwdansi",
  "glibc_version",
  "glob",
- "h2 0.4.0",
  "hex",
- "http 0.2.11",
  "http 1.0.0",
  "http-body-util",
  "hyper 1.1.0",
@@ -1138,9 +1136,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.239.0"
+version = "0.240.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7765fb48adcbe8949483afc28dc39de500a5464eb3b4b211d2920aca1af236b"
+checksum = "ea9bea00d7d4c7bef64e61421f227ee3114f510f6ad9826fbc5a29463c578c75"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1573,9 +1571,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.115.0"
+version = "0.116.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c81860fa6e339f5db9bfbf55503300b8b86c7bbdfde70bf9fcfa57624e1b0eef"
+checksum = "5fd1cec75129fb26122c079a5644fa89b0c9c6a5078814c734113dac5e368120"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1621,7 +1619,6 @@ dependencies = [
  "flate2",
  "fs3",
  "fwdansi",
- "http 0.2.11",
  "http 1.0.0",
  "http-body-util",
  "hyper 0.14.27",
@@ -5143,9 +5140,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.148.0"
+version = "0.149.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29fc23773946897ae2bc9db186b27103d35d35591bfa541d5570a30de14c72f2"
+checksum = "3727a7a969fb85aa7f6a31071dcf8b574809871f8fc07ccd9abdf21152112496"
 dependencies = [
  "bytes",
  "derive_more",
@@ -5969,15 +5966,15 @@ dependencies = [
  "base64 0.21.5",
  "bytes",
  "console_static_text",
+ "deno_unsync 0.3.0",
  "denokv_proto",
  "fastwebsockets",
  "flate2",
  "futures",
  "glob",
- "h2 0.3.22",
  "h2 0.4.0",
  "http 1.0.0",
- "hyper 0.14.27",
+ "http-body-util",
  "hyper 1.1.0",
  "hyper-util",
  "lazy-regex",

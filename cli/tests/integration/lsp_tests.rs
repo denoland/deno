@@ -8269,6 +8269,7 @@ fn lsp_performance() {
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
+      "tsc.op.op_project_version",
       "tsc.op.op_script_names",
       "tsc.op.op_script_version",
       "tsc.request.$configure",

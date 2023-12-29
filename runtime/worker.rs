@@ -50,6 +50,18 @@ use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
+pub fn import_meta_resolve_callback(
+  loader: &dyn deno_core::ModuleLoader,
+  specifier: String,
+  referrer: String,
+) -> Result<ModuleSpecifier, AnyError> {
+  loader.resolve(
+    &specifier,
+    &referrer,
+    deno_core::ResolutionKind::DynamicImport,
+  )
+}
+
 #[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
 
@@ -447,6 +459,9 @@ impl MainWorker {
       wait_for_inspector_disconnect_callback: Some(
         wait_for_inspector_disconnect_callback,
       ),
+      import_meta_resolve_callback: Some(Box::new(
+        import_meta_resolve_callback,
+      )),
       ..Default::default()
     });
 

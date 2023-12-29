@@ -7,13 +7,13 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
-use fastwebsockets_06::FragmentCollector;
-use fastwebsockets_06::Frame;
-use fastwebsockets_06::WebSocket;
-use hyper1::body::Incoming;
-use hyper1::upgrade::Upgraded;
-use hyper1::Request;
-use hyper1::Response;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::WebSocket;
+use hyper::body::Incoming;
+use hyper::upgrade::Upgraded;
+use hyper::Request;
+use hyper::Response;
 use hyper_util::rt::TokioIo;
 use std::io::BufRead;
 use std::time::Duration;
@@ -25,14 +25,9 @@ use util::assert_starts_with;
 use util::DenoChild;
 use util::TestContextBuilder;
 
-// TODO(bartlomieju): remove `http::header` once we update to `reqwest`
-// to version that uses Hyper 1.0
-use http::header::HeaderValue;
-use http::header::HOST;
-
 struct SpawnExecutor;
 
-impl<Fut> hyper1::rt::Executor<Fut> for SpawnExecutor
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
 where
   Fut: std::future::Future + Send + 'static,
   Fut::Output: Send + 'static,
@@ -60,17 +55,17 @@ async fn connect_to_ws(
     .method("GET")
     .uri(uri.path())
     .header("Host", host)
-    .header(hyper1::header::UPGRADE, "websocket")
-    .header(hyper1::header::CONNECTION, "Upgrade")
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(hyper::header::CONNECTION, "Upgrade")
     .header(
       "Sec-WebSocket-Key",
-      fastwebsockets_06::handshake::generate_key(),
+      fastwebsockets::handshake::generate_key(),
     )
     .header("Sec-WebSocket-Version", "13")
     .body(http_body_util::Empty::<Bytes>::new())
     .unwrap();
 
-  fastwebsockets_06::handshake::client(&SpawnExecutor, req, stream)
+  fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
     .await
     .unwrap()
 }
@@ -730,9 +725,10 @@ async fn inspector_json() {
   ] {
     let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
     if let Some(host) = host {
-      req
-        .headers_mut()
-        .insert(HOST, HeaderValue::from_static(host));
+      req.headers_mut().insert(
+        reqwest::header::HOST,
+        reqwest::header::HeaderValue::from_static(host),
+      );
     }
     let resp = client.execute(req).await.unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
