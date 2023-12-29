@@ -1,10 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -50,6 +49,18 @@ use crate::shared::runtime;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
+
+pub fn import_meta_resolve_callback(
+  loader: &dyn deno_core::ModuleLoader,
+  specifier: String,
+  referrer: String,
+) -> Result<ModuleSpecifier, AnyError> {
+  loader.resolve(
+    &specifier,
+    &referrer,
+    deno_core::ResolutionKind::DynamicImport,
+  )
+}
 
 #[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
@@ -307,6 +318,7 @@ impl MainWorker {
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -419,6 +431,15 @@ impl MainWorker {
     #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
     options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
 
+    let has_notified_of_inspector_disconnect = AtomicBool::new(false);
+    let wait_for_inspector_disconnect_callback = Box::new(move || {
+      if !has_notified_of_inspector_disconnect
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+      {
+        println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+      }
+    });
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options
@@ -435,6 +456,12 @@ impl MainWorker {
       is_main: true,
       feature_checker: Some(options.feature_checker.clone()),
       op_metrics_factory_fn,
+      wait_for_inspector_disconnect_callback: Some(
+        wait_for_inspector_disconnect_callback,
+      ),
+      import_meta_resolve_callback: Some(Box::new(
+        import_meta_resolve_callback,
+      )),
       ..Default::default()
     });
 
@@ -488,7 +515,16 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: BootstrapOptions) {
-    self.js_runtime.op_state().borrow_mut().put(options.clone());
+    // Setup bootstrap options for ops.
+    {
+      let op_state = self.js_runtime.op_state();
+      let mut state = op_state.borrow_mut();
+      state.put(options.clone());
+      if let Some(node_ipc_fd) = options.node_ipc_fd {
+        state.put(deno_node::ChildPipeFd(node_ipc_fd));
+      }
+    }
+
     let scope = &mut self.js_runtime.handle_scope();
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
@@ -560,10 +596,9 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     match tokio::time::timeout(
       duration,
-      self.js_runtime.run_event_loop2(PollEventLoopOptions {
-        wait_for_inspector: false,
-        pump_v8_message_loop: true,
-      }),
+      self
+        .js_runtime
+        .run_event_loop(PollEventLoopOptions::default()),
     )
     .await
     {
@@ -612,27 +647,13 @@ impl MainWorker {
     self.js_runtime.inspector().borrow().create_local_session()
   }
 
-  pub fn poll_event_loop(
-    &mut self,
-    cx: &mut Context,
-    wait_for_inspector: bool,
-  ) -> Poll<Result<(), AnyError>> {
-    self.js_runtime.poll_event_loop2(
-      cx,
-      deno_core::PollEventLoopOptions {
-        wait_for_inspector,
-        ..Default::default()
-      },
-    )
-  }
-
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
     self
       .js_runtime
-      .run_event_loop2(deno_core::PollEventLoopOptions {
+      .run_event_loop(deno_core::PollEventLoopOptions {
         wait_for_inspector,
         ..Default::default()
       })

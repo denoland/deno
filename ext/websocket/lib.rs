@@ -33,7 +33,6 @@ use http::Method;
 use http::Request;
 use http::StatusCode;
 use http::Uri;
-use hyper::Body;
 use once_cell::sync::Lazy;
 use rustls_tokio_stream::rustls::RootCertStore;
 use rustls_tokio_stream::rustls::ServerName;
@@ -183,7 +182,7 @@ async fn handshake_websocket(
   request =
     populate_common_request_headers(request, &user_agent, protocols, &headers)?;
 
-  let request = request.body(Body::empty())?;
+  let request = request.body(http_body_util::Empty::new())?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,
@@ -218,7 +217,7 @@ async fn handshake_websocket(
 }
 
 async fn handshake_http1_ws(
-  request: Request<Body>,
+  request: Request<http_body_util::Empty<Bytes>>,
   addr: &String,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
@@ -227,7 +226,7 @@ async fn handshake_http1_ws(
 
 async fn handshake_http1_wss(
   state: &Rc<RefCell<OpState>>,
-  request: Request<Body>,
+  request: Request<http_body_util::Empty<Bytes>>,
   domain: &str,
   addr: &str,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
@@ -302,7 +301,7 @@ async fn handshake_http2_wss(
 async fn handshake_connection<
   S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 >(
-  request: Request<Body>,
+  request: Request<http_body_util::Empty<Bytes>>,
   socket: S,
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let (upgraded, response) =
@@ -719,9 +718,9 @@ pub async fn op_ws_close(
 pub fn op_ws_get_buffer(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> ToJsBuffer {
-  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
-  resource.buffer.take().unwrap().into()
+) -> Result<ToJsBuffer, AnyError> {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid)?;
+  Ok(resource.buffer.take().unwrap().into())
 }
 
 #[op2]
@@ -729,9 +728,9 @@ pub fn op_ws_get_buffer(
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> String {
-  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
-  resource.string.take().unwrap()
+) -> Result<String, AnyError> {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid)?;
+  Ok(resource.string.take().unwrap())
 }
 
 #[op2]
@@ -843,7 +842,7 @@ deno_core::extension!(deno_websocket,
     op_ws_send_pong,
     op_ws_get_buffered_amount,
   ],
-  esm = [ "01_websocket.js", "02_websocketstream.js" ],
+  esm = [ "00_ops.js", "01_websocket.js", "02_websocketstream.js" ],
   options = {
     user_agent: String,
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,

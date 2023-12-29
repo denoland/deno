@@ -30,6 +30,10 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
+const {
+  op_run_status,
+  op_spawn_wait,
+} = core.ensureFastOps();
 
 function opKill(pid, signo, apiName) {
   ops.op_kill(pid, signo, apiName);
@@ -40,7 +44,7 @@ function kill(pid, signo = "SIGTERM") {
 }
 
 function opRunStatus(rid) {
-  return core.opAsync("op_run_status", rid);
+  return op_run_status(rid);
 }
 
 function opRun(request) {
@@ -159,6 +163,7 @@ function spawnChildInner(opFn, command, apiName, {
   stderr = "piped",
   signal = undefined,
   windowsRawArguments = false,
+  ipc = -1,
 } = {}) {
   const child = opFn({
     cmd: pathFromURL(command),
@@ -172,6 +177,7 @@ function spawnChildInner(opFn, command, apiName, {
     stdout,
     stderr,
     windowsRawArguments,
+    ipc,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
@@ -202,6 +208,12 @@ class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
+
+  #pipeFd;
+  // internal, used by ext/node
+  get _pipeFd() {
+    return this.#pipeFd;
+  }
 
   #pid;
   get pid() {
@@ -239,6 +251,7 @@ class ChildProcess {
     stdinRid,
     stdoutRid,
     stderrRid,
+    pipeFd, // internal
   } = null) {
     if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
@@ -246,6 +259,7 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
+    this.#pipeFd = pipeFd;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
@@ -262,7 +276,7 @@ class ChildProcess {
     const onAbort = () => this.kill("SIGTERM");
     signal?.[abortSignal.add](onAbort);
 
-    const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
+    const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
       signal?.[abortSignal.remove](onAbort);

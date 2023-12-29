@@ -107,6 +107,13 @@ mod startup_snapshot {
     fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
+    fn check_read_with_api_name(
+      &self,
+      _: &Path,
+      _: std::option::Option<&str>,
+    ) -> Result<(), deno_core::anyhow::Error> {
+      unreachable!("snapshotting!")
+    }
     fn check_sys(
       &self,
       _kind: &str,
@@ -224,6 +231,7 @@ mod startup_snapshot {
         Default::default(),
         Default::default(),
       ),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(
         Default::default(),
       ),

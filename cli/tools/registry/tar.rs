@@ -1,26 +1,27 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use bytes::Bytes;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use hyper::body::Bytes;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::Path;
 use tar::Header;
 
 use crate::util::import_map::ImportMapUnfurler;
 
 pub fn create_gzipped_tarball(
-  dir: PathBuf,
+  dir: &Path,
   // TODO(bartlomieju): this is too specific, factor it out into a callback that
   // returns data
   unfurler: ImportMapUnfurler,
-) -> Result<Bytes, AnyError> {
+) -> Result<(Bytes, Vec<String>), AnyError> {
   let mut tar = TarGzArchive::new();
   let dir = dir
     .canonicalize()
     .map_err(|_| anyhow::anyhow!("Unable to canonicalize path {:?}", dir))?;
+  let mut diagnostics = vec![];
 
   for entry in walkdir::WalkDir::new(&dir).follow_links(false) {
     let entry = entry?;
@@ -37,9 +38,11 @@ pub fn create_gzipped_tarball(
       })?;
       let data = std::fs::read(entry.path())
         .with_context(|| format!("Unable to read file {:?}", entry.path()))?;
-      let content = unfurler
+      let (content, unfurl_diagnostics) = unfurler
         .unfurl(&url, data)
         .with_context(|| format!("Unable to unfurl file {:?}", entry.path()))?;
+
+      diagnostics.extend_from_slice(&unfurl_diagnostics);
       tar
         .add_file(relative_path.to_string(), &content)
         .with_context(|| {
@@ -48,12 +51,13 @@ pub fn create_gzipped_tarball(
     } else if entry.file_type().is_dir() {
       // skip
     } else {
-      log::warn!("Unsupported file type at path {:?}", entry.path());
+      diagnostics
+        .push(format!("Unsupported file type at path {:?}", entry.path()));
     }
   }
 
   let v = tar.finish().context("Unable to finish tarball")?;
-  Ok(Bytes::from(v))
+  Ok((Bytes::from(v), diagnostics))
 }
 
 struct TarGzArchive {

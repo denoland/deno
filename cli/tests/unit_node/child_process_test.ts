@@ -731,3 +731,26 @@ Deno.test(function spawnSyncExitNonZero() {
 
   assertEquals(ret.status, 22);
 });
+
+// https://github.com/denoland/deno/issues/21630
+Deno.test(async function forkIpcKillDoesNotHang() {
+  const testdataDir = path.join(
+    path.dirname(path.fromFileUrl(import.meta.url)),
+    "testdata",
+  );
+  const script = path.join(
+    testdataDir,
+    "node_modules",
+    "foo",
+    "index.js",
+  );
+  const p = Promise.withResolvers<void>();
+  const cp = CP.fork(script, [], {
+    cwd: testdataDir,
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  cp.on("close", () => p.resolve());
+  cp.kill();
+
+  await p.promise;
+});

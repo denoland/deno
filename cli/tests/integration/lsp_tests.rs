@@ -8117,57 +8117,6 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
 }
 
 #[test]
-fn lsp_npm_missing_type_imports_diagnostics() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": r#"
-        import colorName, { type RGB } from 'npm:color-name';
-        const color: RGB = colorName.black;
-        console.log(color);
-      "#,
-    },
-  }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
-  let diagnostics = client.read_diagnostics();
-  assert_eq!(
-    json!(
-      diagnostics.messages_with_file_and_source("file:///a/file.ts", "deno-ts")
-    ),
-    json!({
-      "uri": "file:///a/file.ts",
-      "diagnostics": [
-        {
-          "range": {
-            "start": { "line": 1, "character": 33 },
-            "end": { "line": 1, "character": 36 },
-          },
-          "severity": 1,
-          "code": 2305,
-          "source": "deno-ts",
-          "message": "Module '\"npm:color-name\"' has no exported member 'RGB'.",
-        },
-      ],
-      "version": 1,
-    })
-  );
-}
-
-#[test]
 fn lsp_jupyter_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8318,7 +8267,11 @@ fn lsp_performance() {
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
       "tsc.host.getQuickInfoAtPosition",
+      "tsc.op.op_is_node_file",
       "tsc.op.op_load",
+      "tsc.op.op_project_version",
+      "tsc.op.op_script_names",
+      "tsc.op.op_script_version",
       "tsc.request.$configure",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",

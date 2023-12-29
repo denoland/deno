@@ -3,6 +3,7 @@
 use deno_runtime::deno_napi::*;
 
 use crate::check_env;
+use crate::napi::threadsafe_functions::SendPtr;
 
 #[repr(C)]
 pub struct AsyncWork {
@@ -10,6 +11,9 @@ pub struct AsyncWork {
   pub execute: napi_async_execute_callback,
   pub complete: napi_async_complete_callback,
 }
+
+unsafe impl Send for AsyncWork {}
+unsafe impl Sync for AsyncWork {}
 
 #[napi_sym::napi_sym]
 fn napi_create_async_work(
@@ -61,12 +65,18 @@ fn napi_queue_async_work(
     return napi_invalid_arg;
   };
 
-  let fut = Box::new(move || {
-    (work.execute)(env_ptr as napi_env, work.data);
-    // Note: Must be called from the loop thread.
-    (work.complete)(env_ptr as napi_env, napi_ok, work.data);
-  });
-  env.add_async_work(fut);
+  let send_env = SendPtr(env_ptr);
+
+  #[inline(always)]
+  fn do_work(ptr: SendPtr<Env>, work: &AsyncWork) {
+    // SAFETY: This is a valid async work queue call and it runs on the event loop thread
+    unsafe {
+      (work.execute)(ptr.0 as napi_env, work.data);
+      (work.complete)(ptr.0 as napi_env, napi_ok, work.data);
+    }
+  }
+
+  env.add_async_work(move || do_work(send_env, work));
 
   napi_ok
 }

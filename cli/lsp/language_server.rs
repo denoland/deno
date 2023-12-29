@@ -1226,6 +1226,10 @@ impl Inner {
       self.config.update_capabilities(&params.capabilities);
     }
 
+    self
+      .ts_server
+      .start(self.config.internal_inspect().to_address());
+
     self.update_debug_flag();
     // Check to see if we need to change the cache path
     if let Err(err) = self.update_cache().await {
@@ -1342,6 +1346,7 @@ impl Inner {
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
+          self.ts_server.increment_project_version();
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1386,6 +1391,7 @@ impl Inner {
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
+      self.ts_server.increment_project_version();
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1438,6 +1444,7 @@ impl Inner {
     self.refresh_documents_config().await;
 
     self.diagnostics_server.invalidate_all();
+    self.ts_server.increment_project_version();
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -3299,6 +3306,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);
       inner.diagnostics_server.invalidate(&specifiers);
+      inner.ts_server.increment_project_version();
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }
@@ -3389,6 +3397,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
+      ls.ts_server.increment_project_version();
       ls.send_diagnostics_update();
     }
     performance.measure(mark);
@@ -3807,18 +3816,30 @@ impl Inner {
           .join("\n    - ")
       )
       .unwrap();
+
       contents
-        .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
-      let mut averages = self.performance.averages();
-      averages.sort();
-      for average in averages {
+        .push_str("\n## Performance (last 3 000 entries)\n\n|Name|Count|Duration|\n|---|---|---|\n");
+      let mut averages = self.performance.averages_as_f64();
+      averages.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, count, average_duration) in averages {
+        writeln!(contents, "|{}|{}|{}ms|", name, count, average_duration)
+          .unwrap();
+      }
+
+      contents.push_str(
+        "\n## Performance (total)\n\n|Name|Count|Duration|\n|---|---|---|\n",
+      );
+      let mut measurements_by_type = self.performance.measurements_by_type();
+      measurements_by_type.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, total_count, total_duration) in measurements_by_type {
         writeln!(
           contents,
-          "|{}|{}ms|{}|",
-          average.name, average.average_duration, average.count
+          "|{}|{}|{:.3}ms|",
+          name, total_count, total_duration
         )
         .unwrap();
       }
+
       Some(contents)
     } else {
       let asset_or_doc = self.get_maybe_asset_or_document(&specifier);

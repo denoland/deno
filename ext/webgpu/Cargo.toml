@@ -1,0 +1,49 @@
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_webgpu"
+version = "0.96.0"
+authors = ["the Deno authors"]
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/gfx-rs/wgpu"
+description = "WebGPU implementation for Deno"
+
+[lib]
+path = "lib.rs"
+
+[features]
+surface = ["wgpu-core/raw-window-handle", "dep:raw-window-handle"]
+
+# We make all dependencies conditional on not being wasm,
+# so the whole workspace can built as wasm.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+deno_core.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["full"] }
+wgpu-types = { workspace = true, features = ["trace", "replay", "serde"] }
+raw-window-handle = { workspace = true, optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.wgpu-core]
+workspace = true
+features = ["trace", "replay", "serde", "strict_asserts", "wgsl", "gles"]
+
+# We want the wgpu-core Metal backend on macOS and iOS.
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies.wgpu-core]
+workspace = true
+features = ["metal"]
+
+# We want the wgpu-core Direct3D backends on Windows.
+[target.'cfg(windows)'.dependencies.wgpu-core]
+workspace = true
+features = ["dx11", "dx12"]
+
+[target.'cfg(windows)'.dependencies.wgpu-hal]
+workspace = true
+features = ["windows_rs"]
+
+# We want the wgpu-core Vulkan backend on Unix (but not Emscripten) and Windows.
+[target.'cfg(any(windows, all(unix, not(target_os = "emscripten"))))'.dependencies.wgpu-core]
+workspace = true
+features = ["vulkan"]

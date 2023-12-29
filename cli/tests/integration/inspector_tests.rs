@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use bytes::Bytes;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -9,12 +10,11 @@ use deno_runtime::deno_fetch::reqwest;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;
-use http::header::HOST;
-use hyper::header::HeaderValue;
+use hyper::body::Incoming;
 use hyper::upgrade::Upgraded;
-use hyper::Body;
 use hyper::Request;
 use hyper::Response;
+use hyper_util::rt::TokioIo;
 use std::io::BufRead;
 use std::time::Duration;
 use test_util as util;
@@ -37,7 +37,9 @@ where
   }
 }
 
-async fn connect_to_ws(uri: Url) -> (WebSocket<Upgraded>, Response<Body>) {
+async fn connect_to_ws(
+  uri: Url,
+) -> (WebSocket<TokioIo<Upgraded>>, Response<Incoming>) {
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port().unwrap_or(match uri.scheme() {
     "wss" | "https" => 443,
@@ -60,7 +62,7 @@ async fn connect_to_ws(uri: Url) -> (WebSocket<Upgraded>, Response<Body>) {
       fastwebsockets::handshake::generate_key(),
     )
     .header("Sec-WebSocket-Version", "13")
-    .body(hyper::Body::empty())
+    .body(http_body_util::Empty::<Bytes>::new())
     .unwrap();
 
   fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
@@ -69,7 +71,7 @@ async fn connect_to_ws(uri: Url) -> (WebSocket<Upgraded>, Response<Body>) {
 }
 
 struct InspectorTester {
-  socket: FragmentCollector<Upgraded>,
+  socket: FragmentCollector<TokioIo<Upgraded>>,
   notification_filter: Box<dyn FnMut(&str) -> bool + 'static>,
   child: DenoChild,
   stderr_lines: Box<dyn Iterator<Item = String>>,
@@ -723,9 +725,10 @@ async fn inspector_json() {
   ] {
     let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
     if let Some(host) = host {
-      req
-        .headers_mut()
-        .insert(HOST, HeaderValue::from_static(host));
+      req.headers_mut().insert(
+        reqwest::header::HOST,
+        reqwest::header::HeaderValue::from_static(host),
+      );
     }
     let resp = client.execute(req).await.unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
@@ -869,7 +872,11 @@ async fn inspector_break_on_first_line_in_test() {
     .await;
 
   assert_starts_with!(&tester.stdout_line(), "running 1 test from");
-  assert!(&tester.stdout_line().contains("basic test ... ok"));
+  let line = tester.stdout_line();
+  assert!(
+    &line.contains("basic test ... ok"),
+    "Missing content: {line}"
+  );
 
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();
@@ -1362,12 +1369,11 @@ async fn inspector_error_with_npm_import() {
     .send(json!({"id":4,"method":"Debugger.resume"}))
     .await;
   tester
-    .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
+    .assert_received_messages(
+      &[r#"{"id":4,"result":{}}"#],
+      &[r#"{"method":"Runtime.exceptionThrown","#],
+    )
     .await;
-
-  // TODO(bartlomieju): this is a partial fix, we should assert that
-  // "Runtime.exceptionThrown" notification was sent, but a bindings for this
-  // notification is not yet there
   assert_eq!(&tester.stderr_line(), "Debugger session started.");
   assert_eq!(&tester.stderr_line(), "error: Uncaught Error: boom!");
 

@@ -39,7 +39,6 @@ import {
   inspectArgs,
   quoteString,
   setNoColorFn,
-  wrapConsole,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
@@ -141,6 +140,8 @@ let isClosing = false;
 let globalDispatchEvent;
 
 async function pollForMessages() {
+  const { op_worker_recv_message } = core.ensureFastOps();
+
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
       globalThis.dispatchEvent,
@@ -148,7 +149,7 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await core.opAsync("op_worker_recv_message");
+    const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -478,9 +479,8 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectSetPrototypeOf(globalThis, Window.prototype);
 
   if (inspectFlag) {
-    const consoleFromV8 = core.console;
     const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
+    core.wrapConsole(consoleFromDeno, core.v8Console);
   }
 
   event.setEventTargetData(globalThis);
@@ -572,8 +572,6 @@ function bootstrapWorkerRuntime(
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
-  const consoleFromV8 = globalThis.Deno.core.console;
-
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
@@ -601,7 +599,7 @@ function bootstrapWorkerRuntime(
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
   const consoleFromDeno = globalThis.console;
-  wrapConsole(consoleFromDeno, consoleFromV8);
+  core.wrapConsole(consoleFromDeno, core.v8Console);
 
   event.setEventTargetData(globalThis);
   event.saveGlobalThisReference(globalThis);
