@@ -91,7 +91,7 @@ export function isAnyArrayBuffer(
 }
 
 export function isArgumentsObject(value: unknown): value is IArguments {
-  return ops.op_is_arguments_object(value);
+  return core.isArgumentsObject(value);
 }
 
 export function isArrayBuffer(value: unknown): value is ArrayBuffer {
@@ -106,7 +106,7 @@ export function isArrayBuffer(value: unknown): value is ArrayBuffer {
 export function isAsyncFunction(
   value: unknown,
 ): value is (...args: unknown[]) => Promise<unknown> {
-  return ops.op_is_async_function(value);
+  return core.isAsyncFunction(value);
 }
 
 // deno-lint-ignore ban-types
@@ -155,11 +155,11 @@ export function isDate(value: unknown): value is Date {
 export function isGeneratorFunction(
   value: unknown,
 ): value is GeneratorFunction {
-  return ops.op_is_generator_function(value);
+  return core.isGeneratorFunction(value);
 }
 
 export function isGeneratorObject(value: unknown): value is Generator {
-  return ops.op_is_generator_object(value);
+  return core.isGeneratorObject(value);
 }
 
 export function isMap(value: unknown): value is Map<unknown, unknown> {
@@ -174,17 +174,17 @@ export function isMap(value: unknown): value is Map<unknown, unknown> {
 export function isMapIterator(
   value: unknown,
 ): value is IterableIterator<[unknown, unknown]> {
-  return ops.op_is_map_iterator(value);
+  return core.isMapIterator(value);
 }
 
 export function isModuleNamespaceObject(
   value: unknown,
 ): value is Record<string | number | symbol, unknown> {
-  return ops.op_is_module_namespace_object(value);
+  return core.isModuleNamespaceObject(value);
 }
 
 export function isNativeError(value: unknown): value is Error {
-  return ops.op_is_native_error(value);
+  return core.isNativeError(value);
 }
 
 // deno-lint-ignore ban-types
@@ -215,7 +215,7 @@ export function isBigIntObject(value: unknown): value is bigint {
 }
 
 export function isPromise(value: unknown): value is Promise<unknown> {
-  return ops.op_is_promise(value);
+  return core.isPromise(value);
 }
 
 export function isProxy(
@@ -225,7 +225,7 @@ export function isProxy(
 }
 
 export function isRegExp(value: unknown): value is RegExp {
-  return ops.op_is_reg_exp(value);
+  return core.isRegExp(value);
 }
 
 export function isSet(value: unknown): value is Set<unknown> {
@@ -240,7 +240,7 @@ export function isSet(value: unknown): value is Set<unknown> {
 export function isSetIterator(
   value: unknown,
 ): value is IterableIterator<unknown> {
-  return ops.op_is_set_iterator(value);
+  return core.isSetIterator(value);
 }
 
 export function isSharedArrayBuffer(

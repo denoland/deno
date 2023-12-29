@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use bytes::Bytes;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use hyper::body::Bytes;
 use std::io::Write;
 use std::path::Path;
 use tar::Header;

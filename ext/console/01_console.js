@@ -272,7 +272,7 @@ function isAnyArrayBuffer(value) {
 }
 
 function isArgumentsObject(value) {
-  return ops.op_is_arguments_object(value);
+  return core.isArgumentsObject(value);
 }
 
 function isArrayBuffer(value) {
@@ -285,7 +285,7 @@ function isArrayBuffer(value) {
 }
 
 function isAsyncFunction(value) {
-  return ops.op_is_async_function(value);
+  return core.isAsyncFunction(value);
 }
 
 function isBooleanObject(value) {
@@ -325,7 +325,7 @@ function isTypedArray(value) {
 }
 
 function isGeneratorFunction(value) {
-  return ops.op_is_generator_function(value);
+  return core.isGeneratorFunction(value);
 }
 
 function isMap(value) {
@@ -338,15 +338,15 @@ function isMap(value) {
 }
 
 function isMapIterator(value) {
-  return ops.op_is_map_iterator(value);
+  return core.isMapIterator(value);
 }
 
 function isModuleNamespaceObject(value) {
-  return ops.op_is_module_namespace_object(value);
+  return core.isModuleNamespaceObject(value);
 }
 
 function isNativeError(value) {
-  return ops.op_is_native_error(value);
+  return core.isNativeError(value);
 }
 
 function isNumberObject(value) {
@@ -376,11 +376,11 @@ function isBigIntObject(value) {
 }
 
 function isPromise(value) {
-  return ops.op_is_promise(value);
+  return core.isPromise(value);
 }
 
 function isRegExp(value) {
-  return ops.op_is_reg_exp(value);
+  return core.isRegExp(value);
 }
 
 function isSet(value) {
@@ -393,7 +393,7 @@ function isSet(value) {
 }
 
 function isSetIterator(value) {
-  return ops.op_is_set_iterator(value);
+  return core.isSetIterator(value);
 }
 
 function isStringObject(value) {
@@ -3519,38 +3519,6 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
   }
 }
 
-// A helper function that will bind our own console implementation
-// with default implementation of Console from V8. This will cause
-// console messages to be piped to inspector console.
-//
-// We are using `Deno.core.callConsole` binding to preserve proper stack
-// frames in inspector console. This has to be done because V8 considers
-// the last JS stack frame as gospel for the inspector. In our case we
-// specifically want the latest user stack frame to be the one that matters
-// though.
-//
-// Inspired by:
-// https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/lib/internal/util/inspector.js#L39-L61
-function wrapConsole(consoleFromDeno, consoleFromV8) {
-  const callConsole = core.callConsole;
-
-  const keys = ObjectKeys(consoleFromV8);
-  for (let i = 0; i < keys.length; ++i) {
-    const key = keys[i];
-    if (ObjectHasOwn(consoleFromDeno, key)) {
-      consoleFromDeno[key] = FunctionPrototypeBind(
-        callConsole,
-        consoleFromDeno,
-        consoleFromV8[key],
-        consoleFromDeno[key],
-      );
-    } else {
-      // Add additional console APIs from the inspector
-      consoleFromDeno[key] = consoleFromV8[key];
-    }
-  }
-}
-
 // Expose these fields to internalObject for tests.
 internals.Console = Console;
 internals.cssToAnsi = cssToAnsi;
@@ -3575,5 +3543,4 @@ export {
   quoteString,
   setNoColorFn,
   styles,
-  wrapConsole,
 };
