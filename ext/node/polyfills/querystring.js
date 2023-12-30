@@ -22,7 +22,7 @@ export const encode = stringify;
  * replaces encodeURIComponent()
  * @see https://www.ecma-international.org/ecma-262/5.1/#sec-15.1.3.4
  */
-function qsEscape(str: unknown): string {
+function qsEscape(str) {
   if (typeof str !== "string") {
     if (typeof str === "object") {
       str = String(str);
@@ -30,7 +30,7 @@ function qsEscape(str: unknown): string {
       str += "";
     }
   }
-  return encodeStr(str as string, noEscape, hexTable);
+  return encodeStr(str, noEscape, hexTable);
 }
 
 /**
@@ -41,29 +41,6 @@ function qsEscape(str: unknown): string {
  * @see Tested in `test-querystring-escape.js`
  */
 export const escape = qsEscape;
-
-export interface ParsedUrlQuery {
-  [key: string]: string | string[] | undefined;
-}
-
-export interface ParsedUrlQueryInput {
-  [key: string]:
-    | string
-    | number
-    | boolean
-    | ReadonlyArray<string>
-    | ReadonlyArray<number>
-    | ReadonlyArray<boolean>
-    | null
-    | undefined;
-}
-
-interface ParseOptions {
-  /** The function to use when decoding percent-encoded characters in the query string. */
-  decodeURIComponent?: (string: string) => string;
-  /** Specifies the maximum number of keys to parse. */
-  maxKeys?: number;
-}
 
 // deno-fmt-ignore
 const isHexTable = new Int8Array([
@@ -85,7 +62,7 @@ const isHexTable = new Int8Array([
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // ... 256
 ]);
 
-function charCodes(str: string): number[] {
+function charCodes(str) {
   const ret = new Array(str.length);
   for (let i = 0; i < str.length; ++i) {
     ret[i] = str.charCodeAt(i);
@@ -94,12 +71,12 @@ function charCodes(str: string): number[] {
 }
 
 function addKeyVal(
-  obj: ParsedUrlQuery,
-  key: string,
-  value: string,
-  keyEncoded: boolean,
-  valEncoded: boolean,
-  decode: (encodedURIComponent: string) => string,
+  obj,
+  key,
+  value,
+  keyEncoded,
+  valEncoded,
+  decode,
 ) {
   if (key.length > 0 && keyEncoded) {
     key = decode(key);
@@ -115,10 +92,10 @@ function addKeyVal(
     // A simple Array-specific property check is enough here to
     // distinguish from a string value and is faster and still safe
     // since we are generating all of the values being assigned.
-    if ((curValue as string[]).pop) {
-      (curValue as string[])[curValue!.length] = value;
+    if (curValue.pop) {
+      curValue[curValue.length] = value;
     } else {
-      obj[key] = [curValue as string, value];
+      obj[key] = [curValue, value];
     }
   }
 }
@@ -135,12 +112,12 @@ function addKeyVal(
  * @see Tested in test-querystring.js
  */
 export function parse(
-  str: string,
+  str,
   sep = "&",
   eq = "=",
-  { decodeURIComponent = unescape, maxKeys = 1000 }: ParseOptions = {},
-): ParsedUrlQuery {
-  const obj: ParsedUrlQuery = Object.create(null);
+  { decodeURIComponent = unescape, maxKeys = 1000 } = {},
+) {
+  const obj = Object.create(null);
 
   if (typeof str !== "string" || str.length === 0) {
     return obj;
@@ -298,11 +275,6 @@ export function parse(
   return obj;
 }
 
-interface StringifyOptions {
-  /** The function to use when converting URL-unsafe characters to percent-encoding in the query string. */
-  encodeURIComponent: (string: string) => string;
-}
-
 /**
  * These characters do not need escaping when generating query strings:
  * ! - . _ ~
@@ -323,8 +295,7 @@ const noEscape = new Int8Array([
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0,  // 112 - 127
 ]);
 
-// deno-lint-ignore no-explicit-any
-function stringifyPrimitive(v: any): string {
+function stringifyPrimitive(v) {
   if (typeof v === "string") {
     return v;
   }
@@ -341,15 +312,13 @@ function stringifyPrimitive(v: any): string {
 }
 
 function encodeStringifiedCustom(
-  // deno-lint-ignore no-explicit-any
-  v: any,
-  encode: (string: string) => string,
-): string {
+  v,
+  encode,
+) {
   return encode(stringifyPrimitive(v));
 }
 
-// deno-lint-ignore no-explicit-any
-function encodeStringified(v: any, encode: (string: string) => string): string {
+function encodeStringified(v, encode) {
   if (typeof v === "string") {
     return (v.length ? encode(v) : "");
   }
@@ -378,15 +347,14 @@ function encodeStringified(v: any, encode: (string: string) => string): string {
  * @see Tested in `test-querystring.js`
  */
 export function stringify(
-  // deno-lint-ignore no-explicit-any
-  obj: Record<string, any>,
-  sep?: string,
-  eq?: string,
-  options?: StringifyOptions,
-): string {
+  obj,
+  sep,
+  eq,
+  options,
+) {
   sep ||= "&";
   eq ||= "=";
-  const encode = options ? options.encodeURIComponent : qsEscape;
+  const encode = options ? (options.encodeURIComponent || qsEscape) : qsEscape;
   const convert = options ? encodeStringifiedCustom : encodeStringified;
 
   if (obj !== null && typeof obj === "object") {
@@ -448,7 +416,7 @@ const unhexTable = new Int8Array([
 /**
  * A safe fast alternative to decodeURIComponent
  */
-export function unescapeBuffer(s: string, decodeSpaces = false): Buffer {
+export function unescapeBuffer(s, decodeSpaces = false) {
   const out = Buffer.alloc(s.length);
   let index = 0;
   let outIndex = 0;
@@ -490,7 +458,7 @@ export function unescapeBuffer(s: string, decodeSpaces = false): Buffer {
   return hasHex ? out.slice(0, outIndex) : out;
 }
 
-function qsUnescape(s: string): string {
+function qsUnescape(s) {
   try {
     return decodeURIComponent(s);
   } catch {

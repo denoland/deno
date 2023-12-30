@@ -181,7 +181,7 @@
     "node:perf_hooks": "../ext/node/polyfills/perf_hooks.ts",
     "node:process": "../ext/node/polyfills/process.ts",
     "node:punycode": "../ext/node/polyfills/punycode.ts",
-    "node:querystring": "../ext/node/polyfills/querystring.ts",
+    "node:querystring": "../ext/node/polyfills/querystring.js",
     "node:readline": "../ext/node/polyfills/readline.ts",
     "ext:deno_node/readline/promises.ts": "../ext/node/polyfills/readline/promises.ts",
     "ext:deno_node/repl.ts": "../ext/node/polyfills/repl.ts",
