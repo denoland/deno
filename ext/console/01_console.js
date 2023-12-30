@@ -1501,10 +1501,13 @@ function inspectFrame(frame, ctx) {
     result += "async ";
   }
   if (frame.isPromiseAll) {
-    result += ctx.stylize(ctx.stylize(
-      `Promise.all (index ${frame.promiseIndex ?? 0})`,
-      "bold",
-    ), "italic");
+    result += ctx.stylize(
+      ctx.stylize(
+        `Promise.all (index ${frame.promiseIndex ?? 0})`,
+        "bold",
+      ),
+      "italic",
+    );
     return result;
   }
 
