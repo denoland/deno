@@ -98,6 +98,10 @@ export const exit = (code?: number | string) => {
   process.reallyExit(process.exitCode || 0);
 };
 
+export const abort = () => {
+  ops.op_process_abort();
+};
+
 function addReadOnlyProcessAlias(
   name: string,
   option: string,
@@ -414,6 +418,9 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = exit;
+
+  /** https://nodejs.org/api/process.html#processabort */
+  abort = abort;
 
   // Undocumented Node API that is used by `signal-exit` which in turn
   // is used by `node-tap`. It was marked for removal a couple of years
