@@ -590,7 +590,8 @@ function createWebSocketBranded() {
   socket[_extensions] = "";
   socket[_protocol] = "";
   socket[_url] = "";
-  socket[_binaryType] = "blob";
+  // https://github.com/denoland/deno/issues/15340#issuecomment-1872353134
+  socket[_binaryType] = "arraybuffer";
   socket[_idleTimeoutDuration] = 0;
   socket[_idleTimeoutTimeout] = undefined;
   return socket;
