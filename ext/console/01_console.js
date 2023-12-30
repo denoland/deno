@@ -167,6 +167,8 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
+  bold: "bold",
+  italic: "italic",
 };
 
 const defaultFG = 39;
@@ -1499,10 +1501,10 @@ function inspectFrame(frame, ctx) {
     result += "async ";
   }
   if (frame.isPromiseAll) {
-    result += ctx.stylize(
+    result += ctx.stylize(ctx.stylize(
       `Promise.all (index ${frame.promiseIndex ?? 0})`,
       "bold",
-    );
+    ), "italic");
     return result;
   }
 
@@ -1535,16 +1537,16 @@ function inspectFrame(frame, ctx) {
       }
     }
 
-    result += ctx.stylize(formattedMethod, "bold");
+    result += ctx.stylize(ctx.stylize(formattedMethod, "bold"), "italic");
   } else if (frame.isConstructor) {
     result += "new ";
     if (typeof frame.functionName === "string") {
-      result += ctx.stylize(frame.functionName, "bold");
+      result += ctx.stylize(ctx.stylize(frame.functionName, "bold"), "italic");
     } else {
       result += ctx.stylize("<anonymous>", "special");
     }
   } else if (typeof frame.functionName === "string") {
-    result += ctx.stylize(frame.functionName, "bold");
+    result += ctx.stylize(ctx.stylize(frame.functionName, "bold"), "italic");
   } else {
     result += inspectLocation(frame, ctx);
     return result;
