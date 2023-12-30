@@ -1485,9 +1485,11 @@ function inspectLocation(frame, ctx) {
   }
 
   if (typeof frame.lineNumber === "number") {
-    result += ":" + ctx.stylize(frame.lineNumber.toString(), "number");
+    result += ":" +
+      ctx.stylize(NumberPrototypeToString(frame.lineNumber), "number");
     if (typeof frame.columnNumber === "number") {
-      result += ":" + ctx.stylize(frame.columnNumber.toString(), "number");
+      result += ":" +
+        ctx.stylize(NumberPrototypeToString(frame.columnNumber), "number");
     }
   }
 
@@ -1516,7 +1518,7 @@ function inspectFrame(frame, ctx) {
     if (typeof frame.functionName === "string") {
       if (
         typeof frame.typeName === "string" &&
-        !frame.functionName.startsWith(frame.typeName)
+        !StringPrototypeStartsWith(frame.functionName, frame.typeName)
       ) {
         formattedMethod += `${frame.typeName}.`;
       }
@@ -1525,7 +1527,7 @@ function inspectFrame(frame, ctx) {
 
       if (
         typeof frame.methodName === "string" &&
-        !frame.functionName.startsWith(frame.methodName)
+        !StringPrototypeEndsWith(frame.functionName, frame.methodName)
       ) {
         formattedMethod += `[as ${frame.methodName}]`;
       }
@@ -1598,19 +1600,25 @@ function inspectError(value, ctx, depth) {
   finalMessage += destructuredError.exceptionMessage;
 
   if (destructuredError.aggregated) {
-    for (const errorElement of destructuredError.aggregated) {
-      let errorStr = inspectError(errorElement, ctx, depth + 1);
-      while (errorStr.startsWith("Uncaught ")) {
-        errorStr = errorStr.slice(9);
+    for (let i = 0; i < destructuredError.aggregated.length; i++) {
+      let errorStr = inspectError(
+        destructuredError.aggregated[i],
+        ctx,
+        depth + 1,
+      );
+      while (StringPrototypeStartsWith(errorStr, "Uncaught ")) {
+        errorStr = StringPrototypeSlice(errorStr, 9);
       }
-      finalMessage += "\n" + " ".repeat((depth + 1) * 4) + errorStr;
+      finalMessage += "\n" + StringPrototypeRepeat(" ", (depth + 1) * 4) +
+        errorStr;
     }
   }
 
   if (destructuredError.frames.length > 0) {
-    for (const frame of destructuredError.frames) {
-      finalMessage += "\n" + " ".repeat((depth + 1) * 4) + "at " +
-        inspectFrame(frame, ctx);
+    for (let i = 0; i < destructuredError.frames.length; i++) {
+      finalMessage += "\n" + StringPrototypeRepeat(" ", (depth + 1) * 4) +
+        "at " +
+        inspectFrame(destructuredError.frames[i], ctx);
     }
   } else {
     finalMessage += `[${value.stack || ErrorPrototypeToString(value)}]`;
