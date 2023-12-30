@@ -112,7 +112,6 @@ notify.workspace = true
 once_cell.workspace = true
 regex.workspace = true
 ring.workspace = true
-rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"
