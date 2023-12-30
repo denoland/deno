@@ -22,6 +22,7 @@ struct IndexedErrorReference<'a> {
 }
 
 // Keep in sync with `/core/error.js`.
+// Keep in sync with `/ext/console/01_console.js`'s `inspectLocation`.
 pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
@@ -51,6 +52,7 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   result
 }
 
+// Keep in sync with `/ext/console/01_console.js`'s `inspectFrame`.
 fn format_frame(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name

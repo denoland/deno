@@ -899,7 +899,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           }
         }
       } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
-        base = inspectError(value, ctx);
+        base = inspectError(value, ctx, 0);
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
@@ -1466,7 +1466,96 @@ function handleCircular(value, ctx) {
 const AGGREGATE_ERROR_HAS_AT_PATTERN = new SafeRegExp(/\s+at/);
 const AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN = new SafeRegExp(/^(?!\s*$)/gm);
 
-function inspectError(value, ctx) {
+// Keep in sync with `/runtime/fmt_errors.rs`'s `format_location`.
+function inspectLocation(frame, ctx) {
+  if (frame.isNative) {
+    return ctx.stylize("native", "special");
+  }
+  let result = "";
+  const filename = frame.fileName ?? "";
+  if (filename !== "") {
+    result += ctx.stylize(filename, "special");
+  } else {
+    if (frame.isEval) {
+      result += ctx.stylize(frame.evalOrigin, "special") + ", ";
+    }
+    result += ctx.stylize("<anonymous>", "special");
+  }
+
+  if (typeof frame.lineNumber === "number") {
+    result += ":" + ctx.stylize(frame.lineNumber.toString(), "number");
+    if (typeof frame.columnNumber === "number") {
+      result += ":" + ctx.stylize(frame.columnNumber.toString(), "number");
+    }
+  }
+
+  return result;
+}
+
+// Keep in sync with `/runtime/fmt_errors.rs`'s `format_frame`.
+function inspectFrame(frame, ctx) {
+  let result = "";
+  if (frame.isAsync) {
+    result += "async ";
+  }
+  if (frame.isPromiseAll) {
+    result += ctx.stylize(
+      `Promise.all (index ${frame.promiseIndex ?? 0})`,
+      "bold",
+    );
+    return result;
+  }
+
+  if (!(frame.isToplevel || frame.isConstructor)) {
+    let formattedMethod = "";
+    if (typeof frame.functionName === "string") {
+      if (
+        typeof frame.typeName === "string" &&
+        !frame.functionName.startsWith(frame.typeName)
+      ) {
+        formattedMethod += `${frame.typeName}.`;
+      }
+
+      formattedMethod += frame.functionName;
+
+      if (
+        typeof frame.methodName === "string" &&
+        !frame.functionName.startsWith(frame.methodName)
+      ) {
+        formattedMethod += `[as ${frame.methodName}]`;
+      }
+    } else {
+      if (typeof frame.typeName === "string") {
+        formattedMethod += `${frame.typeName}.`;
+      }
+      if (typeof frame.methodName === "string") {
+        formattedMethod += frame.methodName;
+      } else {
+        formattedMethod += "<anonymous>";
+      }
+    }
+
+    result += ctx.stylize(formattedMethod, "bold");
+  } else if (frame.isConstructor) {
+    result += "new ";
+    if (typeof frame.functionName === "string") {
+      result += ctx.stylize(frame.functionName, "bold");
+    } else {
+      result += ctx.stylize("<anonymous>", "special");
+    }
+  } else if (typeof frame.functionName === "string") {
+    result += ctx.stylize(frame.functionName, "bold");
+  } else {
+    result += inspectLocation(frame, ctx);
+    return result;
+  }
+
+  result += ` (${inspectLocation(frame, ctx)})`;
+
+  return result;
+}
+
+function inspectError(value, ctx, depth) {
   const causes = [value];
 
   let err = value;
@@ -1498,43 +1587,30 @@ function inspectError(value, ctx) {
 
   let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
-  if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
-    const stackLines = StringPrototypeSplit(value.stack, "\n");
-    while (true) {
-      const line = ArrayPrototypeShift(stackLines);
-      if (RegExpPrototypeTest(AGGREGATE_ERROR_HAS_AT_PATTERN, line)) {
-        ArrayPrototypeUnshift(stackLines, line);
-        break;
-      } else if (typeof line === "undefined") {
-        break;
-      }
+  const destructuredError = depth === 0
+    ? ops.op_destructure_error(value)
+    : value;
+  finalMessage += destructuredError.exceptionMessage;
 
-      finalMessage += line;
-      finalMessage += "\n";
-    }
-    const aggregateMessage = ArrayPrototypeJoin(
-      ArrayPrototypeMap(
-        value.errors,
-        (error) =>
-          StringPrototypeReplace(
-            inspectArgs([error]),
-            AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN,
-            StringPrototypeRepeat(" ", 4),
-          ),
-      ),
-      "\n",
-    );
-    finalMessage += aggregateMessage;
-    finalMessage += "\n";
-    finalMessage += ArrayPrototypeJoin(stackLines, "\n");
-  } else {
-    const stack = value.stack;
-    if (stack?.includes("\n    at")) {
-      finalMessage += stack;
-    } else {
-      finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
+  if (destructuredError.aggregated) {
+    for (const errorElement of destructuredError.aggregated) {
+      let errorStr = inspectError(errorElement, ctx, depth + 1);
+      while (errorStr.startsWith("Uncaught ")) {
+        errorStr = errorStr.slice(9);
+      }
+      finalMessage += "\n" + " ".repeat((depth + 1) * 4) + errorStr;
     }
   }
+
+  if (destructuredError.frames.length > 0) {
+    for (const frame of destructuredError.frames) {
+      finalMessage += "\n" + " ".repeat((depth + 1) * 4) + "at " +
+        inspectFrame(frame, ctx);
+    }
+  } else {
+    finalMessage += `[${value.stack || ErrorPrototypeToString(value)}]`;
+  }
+
   finalMessage += ArrayPrototypeJoin(
     ArrayPrototypeMap(
       causes,
