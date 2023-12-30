@@ -44,7 +44,7 @@ import {
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
-// HEAD
+
 const core = globalThis.__bootstrap.core;
 const {
   op_node_ipc_read,
