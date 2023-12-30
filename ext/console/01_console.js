@@ -4,7 +4,6 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
-  AggregateErrorPrototype,
   Array,
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -1464,9 +1463,6 @@ function handleCircular(value, ctx) {
   // Circular string is cyan
   return ctx.stylize(`[Circular *${index}]`, "special");
 }
-
-const AGGREGATE_ERROR_HAS_AT_PATTERN = new SafeRegExp(/\s+at/);
-const AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN = new SafeRegExp(/^(?!\s*$)/gm);
 
 // Keep in sync with `/runtime/fmt_errors.rs`'s `format_location`.
 function inspectLocation(frame, ctx) {
