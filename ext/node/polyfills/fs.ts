@@ -18,6 +18,7 @@ import {
   copyFilePromise,
   copyFileSync,
 } from "ext:deno_node/_fs/_fs_copy.ts";
+import { cpSync } from "ext:deno_node/_fs/_fs_cp.js";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
@@ -179,6 +180,7 @@ export default {
   constants,
   copyFile,
   copyFileSync,
+  cpSync,
   createReadStream,
   createWriteStream,
   Dir,
@@ -280,6 +282,7 @@ export {
   constants,
   copyFile,
   copyFileSync,
+  cpSync,
   createReadStream,
   createWriteStream,
   Dir,

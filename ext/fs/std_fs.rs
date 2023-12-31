@@ -150,6 +150,10 @@ impl FileSystem for RealFs {
     spawn_blocking(move || copy_file(&from, &to)).await?
   }
 
+  fn cp_sync(&self, fro: &Path, to: &Path) -> FsResult<()> {
+    cp(fro, to)
+  }
+
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
     stat(path).map(Into::into)
   }
@@ -465,6 +469,110 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   }
 
   fs::copy(from, to)?;
+
+  Ok(())
+}
+
+fn cp(from: &Path, to: &Path) -> FsResult<()> {
+  use std::os::unix::fs::DirBuilderExt;
+  use std::os::unix::fs::FileTypeExt;
+  use std::os::unix::fs::MetadataExt;
+  use std::os::unix::fs::PermissionsExt;
+
+  fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
+    let ty = source_meta.file_type();
+    if ty.is_dir() {
+      fs::DirBuilder::new()
+        .mode(fs::symlink_metadata(from)?.permissions().mode())
+        .create(to)?;
+
+      let mut entries: Vec<_> = fs::read_dir(from)?
+        .map(|res| res.map(|e| e.file_name()))
+        .collect::<Result<_, _>>()?;
+
+      entries.shrink_to_fit();
+      entries
+        .into_iter()
+        .map(|file_name| {
+          cp_(
+            fs::symlink_metadata(&from.join(&file_name)).unwrap(),
+            &from.join(&file_name),
+            &to.join(&file_name),
+          )
+          .map_err(|err| {
+            io::Error::new(
+              err.kind(),
+              format!(
+                "failed to copy '{}' to '{}': {:?}",
+                from.join(&file_name).display(),
+                to.join(&file_name).display(),
+                err
+              ),
+            )
+          })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+      return Ok(());
+    } else if ty.is_symlink() {
+      std::os::unix::fs::symlink(std::fs::read_link(from)?, to)?;
+
+      return Ok(());
+    } else if ty.is_socket() {
+      return Err(
+        io::Error::new(io::ErrorKind::InvalidInput, "sockets cannot be copied")
+          .into(),
+      );
+    }
+
+    copy_file(from, to)
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    // Just clonefile()
+    use libc::clonefile;
+    use libc::unlink;
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let from_str = CString::new(from.as_os_str().as_bytes()).unwrap();
+    let to_str = CString::new(to.as_os_str().as_bytes()).unwrap();
+
+    // SAFETY: `from` and `to` are valid C strings.
+    unsafe {
+      // Try unlink. If it fails, we are going to try clonefile() anyway.
+      let _ = unlink(to_str.as_ptr());
+
+      if clonefile(from_str.as_ptr(), to_str.as_ptr(), 0) == 0 {
+        return Ok(());
+      }
+    }
+  }
+
+  let source_meta = fs::symlink_metadata(from)?;
+  match (fs::metadata(to), fs::symlink_metadata(to)) {
+    (Ok(m), _) if m.is_dir() => cp_(
+      source_meta,
+      from,
+      &to.join(from.file_name().ok_or_else(|| {
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "the source path is not a valid file",
+        )
+      })?),
+    )?,
+    (_, Ok(m)) if source_meta.ino() == m.ino() => {
+      return Err(
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "the source and destination are the same file",
+        )
+        .into(),
+      )
+    }
+    _ => cp_(source_meta, from, to)?,
+  }
 
   Ok(())
 }
