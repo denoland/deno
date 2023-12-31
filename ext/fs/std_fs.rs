@@ -480,6 +480,9 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
   use std::os::unix::fs::PermissionsExt;
 
   fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
+    use rayon::prelude::IntoParallelIterator;
+    use rayon::prelude::ParallelIterator;
+
     let ty = source_meta.file_type();
     if ty.is_dir() {
       fs::DirBuilder::new()
@@ -492,7 +495,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
 
       entries.shrink_to_fit();
       entries
-        .into_iter()
+        .into_par_iter()
         .map(|file_name| {
           cp_(
             fs::symlink_metadata(&from.join(&file_name)).unwrap(),
