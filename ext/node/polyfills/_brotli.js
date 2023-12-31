@@ -126,7 +126,7 @@ export function brotliCompress(
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   op_brotli_compress_async(buf, quality, lgwin, mode)
-    .then((result) => callback(null, result))
+    .then((result) => callback(null, Buffer.from(result)))
     .catch((err) => callback(err));
 }
 
