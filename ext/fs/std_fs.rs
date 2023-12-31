@@ -583,14 +583,21 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
     #[cfg(windows)]
     {
+      use std::os::windows::fs::MetadataExt;
       // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/ns-fileapi-by_handle_file_information
       //
       // The identifier (low and high parts) and the volume serial number uniquely identify a file on a single computer.
       // To determine whether two open handles represent the same file, combine the identifier and the volume serial
       // number for each file and compare them.
-      source_meta.file_index() == dest_meta.file_index()
-        && source_meta.volume_serial_number()
-          == dest_meta.volume_serial_number()
+      // 
+      // Use this code once file_index() and volume_serial_number() is stabalized
+      // See: https://github.com/rust-lang/rust/issues/63010
+      //
+      // source_meta.file_index() == dest_meta.file_index()
+      //   && source_meta.volume_serial_number()
+      //     == dest_meta.volume_serial_number()
+      source_meta.last_write_time() == dest_meta.last_write_time()
+        && source_meta.creation_time() == dest_meta.creation_time()
     }
   }
 
