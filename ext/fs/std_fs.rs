@@ -474,10 +474,10 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
 }
 
 fn cp(from: &Path, to: &Path) -> FsResult<()> {
-  use std::os::unix::fs::DirBuilderExt;
+  #[cfg(unix)]
   use std::os::unix::fs::FileTypeExt;
+  #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
-  use std::os::unix::fs::PermissionsExt;
 
   fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
     use rayon::prelude::IntoParallelIterator;
@@ -485,9 +485,14 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
 
     let ty = source_meta.file_type();
     if ty.is_dir() {
-      fs::DirBuilder::new()
-        .mode(fs::symlink_metadata(from)?.permissions().mode())
-        .create(to)?;
+      let builder = fs::DirBuilder::new();
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(fs::symlink_metadata(from)?.permissions().mode());  
+      }
+      builder.create(to)?;
 
       let mut entries: Vec<_> = fs::read_dir(from)?
         .map(|res| res.map(|e| e.file_name()))
@@ -518,10 +523,17 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
 
       return Ok(());
     } else if ty.is_symlink() {
-      std::os::unix::fs::symlink(std::fs::read_link(from)?, to)?;
+      let from = std::fs::read_link(from)?;
+
+      #[cfg(unix)]
+      std::os::unix::fs::symlink(from, to)?;
+      #[cfg(windows)]
+      std::os::windows::fs::symlink_file(from, to)?;
 
       return Ok(());
-    } else if ty.is_socket() {
+    } 
+    #[cfg(unix)]
+    if ty.is_socket() {
       return Err(
         io::Error::new(io::ErrorKind::InvalidInput, "sockets cannot be copied")
           .into(),
@@ -565,6 +577,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         )
       })?),
     )?,
+    #[cfg(unix)]
     (_, Ok(m)) if source_meta.ino() == m.ino() => {
       return Err(
         io::Error::new(
