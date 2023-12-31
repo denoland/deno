@@ -19,6 +19,10 @@ const toU8 = (input) => {
     return enc.encode(input);
   }
 
+  if (input.buffer) {
+    return new Uint8Array(input.buffer);
+  }
+
   return input;
 };
 
