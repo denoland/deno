@@ -3,6 +3,7 @@
 import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
 import {
+  brotliCompress,
   brotliCompressSync,
   brotliDecompressSync,
   createBrotliCompress,
@@ -15,6 +16,18 @@ import { createReadStream, createWriteStream } from "node:fs";
 Deno.test("brotli compression sync", () => {
   const buf = Buffer.from("hello world");
   const compressed = brotliCompressSync(buf);
+  const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test("brotli compression async", async () => {
+  const buf = Buffer.from("hello world");
+  const compressed: Buffer = await new Promise((resolve) =>
+    brotliCompress(buf, (_, res) => {
+      return resolve(res);
+    })
+  );
+  assertEquals(compressed instanceof Buffer, true);
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
