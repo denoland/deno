@@ -35,7 +35,16 @@ pub fn op_node_cp_sync<P>(
 where
   P: NodePermissions + 'static,
 {
+  let path = Path::new(path);
+  let new_path = Path::new(new_path);
+  state
+    .borrow_mut::<P>()
+    .check_read_with_api_name(path, Some("node:fs.cpSync"))?;
+  state
+    .borrow_mut::<P>()
+    .check_write_with_api_name(new_path, Some("node:fs.cpSync"))?;
+
   let fs = state.borrow::<FileSystemRc>();
-  fs.cp_sync(Path::new(path), Path::new(new_path))?;
+  fs.cp_sync(path, new_path)?;
   Ok(())
 }

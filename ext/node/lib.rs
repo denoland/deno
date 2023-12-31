@@ -63,6 +63,11 @@ pub trait NodePermissions {
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_write_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
@@ -76,6 +81,13 @@ impl NodePermissions for AllowAllNodePermissions {
     Ok(())
   }
   fn check_read_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_write_with_api_name(
     &self,
     _path: &Path,
     _api_name: Option<&str>,
