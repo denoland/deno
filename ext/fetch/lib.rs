@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use bytes::Bytes;
 use deno_core::anyhow::Error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -43,8 +44,8 @@ use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 
 use data_url::DataUrl;
-use http::header::CONTENT_LENGTH;
-use http::Uri;
+use http_v02::header::CONTENT_LENGTH;
+use http_v02::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -233,7 +234,7 @@ unsafe impl Send for ResourceToBodyAdapter {}
 unsafe impl Sync for ResourceToBodyAdapter {}
 
 impl Stream for ResourceToBodyAdapter {
-  type Item = Result<BufView, Error>;
+  type Item = Result<Bytes, Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -250,9 +251,9 @@ impl Stream for ResourceToBodyAdapter {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(_) => {
             this.1 = Some(this.0.clone().read(64 * 1024));
-            Poll::Ready(Some(res))
+            Poll::Ready(Some(res.map(|b| b.to_vec().into())))
           }
-          _ => Poll::Ready(Some(res)),
+          _ => Poll::Ready(Some(res.map(|b| b.to_vec().into()))),
         },
       }
     } else {
@@ -415,9 +416,12 @@ where
         .decode_to_vec()
         .map_err(|e| type_error(format!("{e:?}")))?;
 
-      let response = http::Response::builder()
-        .status(http::StatusCode::OK)
-        .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
+      let response = http_v02::Response::builder()
+        .status(http_v02::StatusCode::OK)
+        .header(
+          http_v02::header::CONTENT_TYPE,
+          data_url.mime_type().to_string(),
+        )
         .body(reqwest::Body::from(body))?;
 
       let fut = async move { Ok(Ok(Response::from(response))) };

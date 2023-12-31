@@ -3,8 +3,6 @@
 // Forked from https://github.com/superfly/accept-encoding/blob/1cded757ec7ff3916e5bfe7441db76cdc48170dc/
 // Forked to support both http 0.3 and http 1.0 crates.
 
-use http::header::HeaderMap;
-use http::header::ACCEPT_ENCODING;
 use itertools::Itertools;
 
 /// A list enumerating the categories of errors in this crate.
@@ -76,13 +74,36 @@ pub fn preferred(
 }
 
 /// Parse a set of HTTP headers into an iterator containing tuples of options containing encodings and their corresponding q-values.
-pub fn encodings_iter(
-  headers: &HeaderMap,
+///
+/// Compatible with `http` crate for version 0.2.x.
+pub fn encodings_iter_http_02(
+  headers: &http_v02::HeaderMap,
 ) -> impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>> + '_ {
-  headers
-    .get_all(ACCEPT_ENCODING)
+  let iter = headers
+    .get_all(http_v02::header::ACCEPT_ENCODING)
     .iter()
-    .map(|hval| hval.to_str().map_err(|_| EncodingError::InvalidEncoding))
+    .map(|hval| hval.to_str().map_err(|_| EncodingError::InvalidEncoding));
+  encodings_iter_inner(iter)
+}
+
+/// Parse a set of HTTP headers into an iterator containing tuples of options containing encodings and their corresponding q-values.
+///
+/// Compatible with `http` crate for version 1.x.
+pub fn encodings_iter_http_1(
+  headers: &http::HeaderMap,
+) -> impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>> + '_ {
+  let iter = headers
+    .get_all(http::header::ACCEPT_ENCODING)
+    .iter()
+    .map(|hval| hval.to_str().map_err(|_| EncodingError::InvalidEncoding));
+  encodings_iter_inner(iter)
+}
+
+/// Parse a set of HTTP headers into an iterator containing tuples of options containing encodings and their corresponding q-values.
+fn encodings_iter_inner<'s>(
+  headers: impl Iterator<Item = Result<&'s str, EncodingError>> + 's,
+) -> impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>> + 's {
+  headers
     .map_ok(|s| s.split(',').map(str::trim))
     .flatten_ok()
     .filter_map_ok(|v| {
@@ -104,16 +125,18 @@ pub fn encodings_iter(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use http::HeaderValue;
+  use http_v02::header::ACCEPT_ENCODING;
+  use http_v02::HeaderMap;
+  use http_v02::HeaderValue;
 
   fn encodings(
     headers: &HeaderMap,
   ) -> Result<Vec<(Option<Encoding>, f32)>, EncodingError> {
-    encodings_iter(headers).collect()
+    encodings_iter_http_02(headers).collect()
   }
 
   fn parse(headers: &HeaderMap) -> Result<Option<Encoding>, EncodingError> {
-    preferred(encodings_iter(headers))
+    preferred(encodings_iter_http_02(headers))
   }
 
   #[test]

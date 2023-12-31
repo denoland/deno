@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.39.0"
+version = "1.39.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -60,7 +60,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_cache_dir = "=0.6.1"
 deno_config = "=0.6.5"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.75.1", features = ["html"] }
+deno_doc = { version = "=0.85.0", features = ["html"] }
 deno_emit = "=0.32.0"
 deno_graph = "=0.62.2"
 deno_lint = { version = "=0.52.2", features = ["docs"] }
@@ -95,14 +95,11 @@ dprint-plugin-typescript = "=0.88.7"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
-fastwebsockets.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
 hex.workspace = true
-http.workspace = true
-hyper.workspace = true
 import_map = { version = "=0.18.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
@@ -152,7 +149,12 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 flaky_test = "=0.1.0"
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true

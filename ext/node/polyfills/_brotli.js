@@ -7,14 +7,20 @@ import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Transform } from "node:stream";
 import { Buffer } from "node:buffer";
-
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
+const {
+  op_brotli_compress_async,
+} = core.ensureFastOps();
 
 const enc = new TextEncoder();
 const toU8 = (input) => {
   if (typeof input === "string") {
     return enc.encode(input);
+  }
+
+  if (input.buffer) {
+    return new Uint8Array(input.buffer);
   }
 
   return input;
@@ -119,8 +125,8 @@ export function brotliCompress(
   }
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
-  core.opAsync("op_brotli_compress_async", buf, quality, lgwin, mode)
-    .then((result) => callback(null, result))
+  op_brotli_compress_async(buf, quality, lgwin, mode)
+    .then((result) => callback(null, Buffer.from(result)))
     .catch((err) => callback(err));
 }
 

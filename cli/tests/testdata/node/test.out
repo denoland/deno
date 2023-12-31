@@ -1,5 +1,5 @@
 [WILDCARD]
-running 62 tests from ./node/test.js
+running 63 tests from ./node/test.js
 sync pass todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
@@ -43,6 +43,11 @@ Warning: Not implemented: test.TestContext.skip
 async skip pass ... ok [WILDCARD]
 async pass ... ok [WILDCARD]
 async throw fail ... FAILED [WILDCARD]
+nested test ...
+  nested 1 ...
+    nested 2 ... ok [WILDCARD]
+  nested 1 ... ok [WILDCARD]
+nested test ... ok [WILDCARD]
 async skip fail ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
@@ -123,12 +128,12 @@ error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
 [WILDCARD]
 
-async skip fail => ./node/test.js:57:1
+async skip fail => ./node/test.js:64:1
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
 [WILDCARD]
 
-async assertion fail => ./node/test.js:62:1
+async assertion fail => ./node/test.js:69:1
 error: AssertionError: Values are not strictly equal:
 
 
@@ -140,7 +145,7 @@ error: AssertionError: Values are not strictly equal:
 
     at [WILDCARD]
 
-reject fail => ./node/test.js:71:1
+reject fail => ./node/test.js:78:1
 error: Error: rejected from reject fail
   return Promise.reject(new Error("rejected from reject fail"));
                         ^
@@ -160,11 +165,11 @@ sync fail todo => ./node/test.js:20:1
 sync fail todo with message => ./node/test.js:25:1
 sync throw fail => ./node/test.js:42:1
 async throw fail => ./node/test.js:53:1
-async skip fail => ./node/test.js:57:1
-async assertion fail => ./node/test.js:62:1
-reject fail => ./node/test.js:71:1
+async skip fail => ./node/test.js:64:1
+async assertion fail => ./node/test.js:69:1
+reject fail => ./node/test.js:78:1
 ./node/test.js (uncaught error)
 
-FAILED | 8 passed | 51 failed | 4 ignored [WILDCARD]
+FAILED | 9 passed (2 steps) | 51 failed | 4 ignored [WILDCARD]
 
 error: Test failed
