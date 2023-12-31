@@ -502,7 +502,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         .into_par_iter()
         .map(|file_name| {
           cp_(
-            fs::symlink_metadata(&from.join(&file_name)).unwrap(),
+            fs::symlink_metadata(from.join(&file_name)).unwrap(),
             &from.join(&file_name),
             &to.join(&file_name),
           )
