@@ -178,6 +178,9 @@ impl FileSystem for DenoCompileFileSystem {
   fn cp_sync(&self, _: &Path, _: &Path) -> FsResult<()> {
     todo!()
   }
+  async fn cp_async(&self, _: PathBuf, _: PathBuf) -> FsResult<()> {
+    todo!()
+  }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
     if self.0.is_path_within(path) {

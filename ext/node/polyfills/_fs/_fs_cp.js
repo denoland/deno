@@ -14,3 +14,5 @@ export function cpSync(src, dest, options) {
 
   ops.op_node_cp_sync(srcPath, destPath);
 }
+
+export function cp(src, desc) {}

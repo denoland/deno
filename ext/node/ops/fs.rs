@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -37,6 +39,7 @@ where
 {
   let path = Path::new(path);
   let new_path = Path::new(new_path);
+
   state
     .borrow_mut::<P>()
     .check_read_with_api_name(path, Some("node:fs.cpSync"))?;
@@ -46,5 +49,32 @@ where
 
   let fs = state.borrow::<FileSystemRc>();
   fs.cp_sync(path, new_path)?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_node_cp<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  #[string] new_path: String,
+) -> Result<(), AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = PathBuf::from(path);
+  let new_path = PathBuf::from(new_path);
+
+  let fs = {
+    let mut state = state.borrow_mut();
+    state
+      .borrow_mut::<P>()
+      .check_read_with_api_name(&path, Some("node:fs.cpSync"))?;
+    state
+      .borrow_mut::<P>()
+      .check_write_with_api_name(&new_path, Some("node:fs.cpSync"))?;
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  fs.cp_async(path, new_path).await?;
   Ok(())
 }
