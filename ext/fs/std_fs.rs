@@ -589,7 +589,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
       // The identifier (low and high parts) and the volume serial number uniquely identify a file on a single computer.
       // To determine whether two open handles represent the same file, combine the identifier and the volume serial
       // number for each file and compare them.
-      // 
+      //
       // Use this code once file_index() and volume_serial_number() is stabalized
       // See: https://github.com/rust-lang/rust/issues/63010
       //
