@@ -32,7 +32,11 @@ Deno.test({
 Deno.test({
   name: "os machine (arch)",
   fn() {
-    assertEquals(os.machine(), Deno.build.arch);
+    if (Deno.build.arch == "aarch64") {
+      assertEquals(os.machine(), "arm64");
+    } else {
+      assertEquals(os.machine(), Deno.build.arch);
+    }
   },
 });
 

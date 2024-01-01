@@ -251,6 +251,10 @@ export function version(): string {
 
 /** Returns the machine type as a string */
 export function machine(): string {
+  if (Deno.build.arch == "aarch64") {
+    return "arm64";
+  }
+
   return Deno.build.arch;
 }
 
