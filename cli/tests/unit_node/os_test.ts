@@ -30,6 +30,13 @@ Deno.test({
 });
 
 Deno.test({
+  name: "os machine (arch)",
+  fn() {
+    assertEquals(os.machine(), Deno.build.arch);
+  },
+});
+
+Deno.test({
   name: "home directory is a string",
   fn() {
     assertEquals(typeof os.homedir(), "string");

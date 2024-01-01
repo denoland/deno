@@ -129,6 +129,8 @@ export function arch(): string {
 (type as any)[Symbol.toPrimitive] = (): string => type();
 // deno-lint-ignore no-explicit-any
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
+// deno-lint-ignore no-explicit-any
+(machine as any)[Symbol.toPrimitive] = (): string => machine();
 
 export function cpus(): CPUCoreInfo[] {
   return ops.op_cpus();
@@ -245,6 +247,11 @@ export function version(): string {
   // TODO(kt3k): Temporarily uses Deno.osRelease().
   // Revisit this if this implementation is insufficient for any npm module
   return Deno.osRelease();
+}
+
+/** Returns the machine type as a string */
+export function machine(): string {
+  return Deno.build.arch;
 }
 
 /** Not yet implemented */
@@ -373,6 +380,7 @@ export default {
   hostname,
   loadavg,
   networkInterfaces,
+  machine,
   platform,
   release,
   setPriority,
