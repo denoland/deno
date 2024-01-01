@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { lstat, lstatSync } from "node:fs";
 import { fail } from "../../../../test_util/std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";

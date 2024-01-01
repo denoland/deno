@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-write=. --allow-run=git
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /** This copies the test files according to the config file `cli/tests/node_compat/config.jsonc` */
 

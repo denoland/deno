@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
