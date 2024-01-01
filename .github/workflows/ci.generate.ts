@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
 // Bump this number when you want to purge the cache.
