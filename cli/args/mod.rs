@@ -17,9 +17,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
 pub use deno_config::BenchConfig;
-pub use deno_config::CompilerOptions;
 pub use deno_config::ConfigFile;
-pub use deno_config::EmitConfigOptions;
 pub use deno_config::FilesConfig;
 pub use deno_config::FmtOptionsConfig;
 pub use deno_config::JsxImportSourceConfig;
