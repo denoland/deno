@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const {

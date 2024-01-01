@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { join, ROOT_PATH } from "./util.js";
 
 const subcommand = Deno.args.includes("--check") ? "check" : "fmt";
