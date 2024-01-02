@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -590,7 +590,11 @@ function createWebSocketBranded() {
   socket[_extensions] = "";
   socket[_protocol] = "";
   socket[_url] = "";
-  socket[_binaryType] = "blob";
+  // We use ArrayBuffer for server websockets for backwards compatibility
+  // and performance reasons.
+  //
+  // https://github.com/denoland/deno/issues/15340#issuecomment-1872353134
+  socket[_binaryType] = "arraybuffer";
   socket[_idleTimeoutDuration] = 0;
   socket[_idleTimeoutTimeout] = undefined;
   return socket;

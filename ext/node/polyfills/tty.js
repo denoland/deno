@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";

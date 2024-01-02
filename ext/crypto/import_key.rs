@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use base64::Engine;
 use deno_core::error::AnyError;
@@ -563,8 +563,8 @@ fn import_key_ec_jwk(
 
       // Import using ring, to validate key
       let key_alg = match named_curve {
-        EcNamedCurve::P256 => CryptoNamedCurve::P256.try_into()?,
-        EcNamedCurve::P384 => CryptoNamedCurve::P256.try_into()?,
+        EcNamedCurve::P256 => CryptoNamedCurve::P256.into(),
+        EcNamedCurve::P384 => CryptoNamedCurve::P256.into(),
         EcNamedCurve::P521 => {
           return Err(data_error("Unsupported named curve"))
         }
@@ -667,8 +667,8 @@ fn import_key_ec(
       // 10.
       if let Some(pk_named_curve) = pk_named_curve {
         let signing_alg = match pk_named_curve {
-          EcNamedCurve::P256 => CryptoNamedCurve::P256.try_into()?,
-          EcNamedCurve::P384 => CryptoNamedCurve::P384.try_into()?,
+          EcNamedCurve::P256 => CryptoNamedCurve::P256.into(),
+          EcNamedCurve::P384 => CryptoNamedCurve::P384.into(),
           EcNamedCurve::P521 => {
             return Err(data_error("Unsupported named curve"))
           }

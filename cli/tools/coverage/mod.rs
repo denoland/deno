@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
@@ -364,7 +364,6 @@ fn generate_coverage_report(
       line_counts
         .into_iter()
         .enumerate()
-        .map(|(index, count)| (index, count))
         .collect::<Vec<(usize, i64)>>()
     };
 

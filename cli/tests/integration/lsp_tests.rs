@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::ModuleSpecifier;
 use deno_core::serde::Deserialize;
@@ -4481,7 +4481,7 @@ fn test_lsp_code_actions_ordering() {
     let action = action.as_object_mut().unwrap();
     let title = action.get("title").unwrap().as_str().unwrap().to_string();
     let diagnostics = action.get("diagnostics").unwrap().as_array().unwrap();
-    let diagnostic = diagnostics.get(0).unwrap().as_object().unwrap();
+    let diagnostic = diagnostics.first().unwrap().as_object().unwrap();
     let source = diagnostic.get("source").unwrap();
     let source = source.as_str().unwrap().to_string();
     action.clear();

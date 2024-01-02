@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod fs_fetch_handler;
 
@@ -789,13 +789,6 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum PoolIdleTimeout {
-  State(bool),
-  Specify(u64),
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateHttpClientArgs {
@@ -804,7 +797,7 @@ pub struct CreateHttpClientArgs {
   cert_chain: Option<String>,
   private_key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
-  pool_idle_timeout: Option<PoolIdleTimeout>,
+  pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -867,9 +860,12 @@ where
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
-          PoolIdleTimeout::State(true) => None,
-          PoolIdleTimeout::State(false) => Some(None),
-          PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+          serde_json::Value::Bool(true) => None,
+          serde_json::Value::Bool(false) => Some(None),
+          serde_json::Value::Number(specify) => {
+            Some(Some(specify.as_u64().unwrap_or_default()))
+          }
+          _ => Some(None),
         },
       ),
       http1: args.http1,
