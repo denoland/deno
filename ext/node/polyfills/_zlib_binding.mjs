@@ -49,6 +49,15 @@ const {
   op_zlib_write_async,
 } = core.ensureFastOps();
 
+const enc = new TextEncoder();
+const toU8 = (input) => {
+  if (typeof input === "string") {
+    return enc.encode(input);
+  }
+
+  return input;
+};
+
 const writeResult = new Uint32Array(2);
 
 class Zlib {
@@ -71,10 +80,11 @@ class Zlib {
     out_off,
     out_len,
   ) {
+    const buf = toU8(input);
     const err = ops.op_zlib_write(
       this.#handle,
       flush,
-      input,
+      buf,
       in_off,
       in_len,
       out,
@@ -120,10 +130,11 @@ class Zlib {
     out_off,
     out_len,
   ) {
+    const buf = toU8(input);
     op_zlib_write_async(
       this.#handle,
       flush ?? Z_NO_FLUSH,
-      input,
+      buf,
       in_off,
       in_len,
       out,
