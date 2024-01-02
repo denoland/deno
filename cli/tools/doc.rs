@@ -260,9 +260,6 @@ async fn generate_docs_directory(
     hide_module_doc_title: false,
     href_resolver: Rc::new(DocResolver {}),
     sidebar_flatten_namespaces: false,
-    import_href_resolver: Rc::new(|_, _| None),
-    usage_resolver: Rc::new(|_, _| String::new()),
-    hide_module_doc_title: false,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)

@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_ast::ModuleSpecifier;
 use bytes::Bytes;
+use deno_ast::ModuleSpecifier;
 use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -663,7 +663,7 @@ async fn prepare_packages_for_publishing(
       roots,
     )
     .await?;
-    //panic!("TEMP STOP - SUCCESS");
+    panic!("TEMP STOP - SUCCESS");
     let mut prepared_package_by_name = HashMap::with_capacity(1);
     let package = prepare_publish(&deno_json, import_map).await?;
     let package_name = package.package.clone();
