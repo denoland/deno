@@ -441,6 +441,7 @@ pub struct Flags {
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<bool>,
   pub vendor: Option<bool>,
+  pub enable_sourcemaps: Option<bool>,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub ext: Option<String>,

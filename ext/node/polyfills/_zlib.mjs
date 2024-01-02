@@ -155,9 +155,26 @@ export const inflateRawSync = function (buffer, opts) {
   return zlibBufferSync(new InflateRaw(opts), buffer);
 };
 
+function sanitizeInput(input) {
+  if (typeof input === "string") input = Buffer.from(input);
+
+  if (
+    !Buffer.isBuffer(input) &&
+    (input.buffer && !input.buffer.constructor === ArrayBuffer)
+  ) throw new TypeError("Not a string, buffer or dataview");
+
+  if (input.buffer) {
+    input = new Uint8Array(input.buffer);
+  }
+
+  return input;
+}
+
 function zlibBuffer(engine, buffer, callback) {
   var buffers = [];
   var nread = 0;
+
+  buffer = sanitizeInput(buffer);
 
   engine.on("error", onError);
   engine.on("end", onEnd);
@@ -197,12 +214,7 @@ function zlibBuffer(engine, buffer, callback) {
 }
 
 function zlibBufferSync(engine, buffer) {
-  if (typeof buffer === "string") buffer = Buffer.from(buffer);
-
-  if (
-    !Buffer.isBuffer(buffer) &&
-    (buffer.buffer && !buffer.buffer.constructor === ArrayBuffer)
-  ) throw new TypeError("Not a string, buffer or dataview");
+  buffer = sanitizeInput(buffer);
 
   var flushFlag = engine._finishFlushFlag;
 

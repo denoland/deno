@@ -49,14 +49,6 @@ const {
   op_zlib_write_async,
 } = core.ensureFastOps();
 
-const sanitizeInput = (input) => {
-  if (input.buffer) {
-    return new Uint8Array(input.buffer);
-  }
-
-  return input;
-};
-
 const writeResult = new Uint32Array(2);
 
 class Zlib {
@@ -79,11 +71,10 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    const buf = sanitizeInput(input);
     const err = ops.op_zlib_write(
       this.#handle,
       flush,
-      buf,
+      input,
       in_off,
       in_len,
       out,
@@ -129,11 +120,10 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    const buf = sanitizeInput(input);
     op_zlib_write_async(
       this.#handle,
       flush ?? Z_NO_FLUSH,
-      buf,
+      input,
       in_off,
       in_len,
       out,
