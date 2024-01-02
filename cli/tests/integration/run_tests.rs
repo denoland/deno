@@ -2807,155 +2807,40 @@ mod permissions {
   fn _066_prompt() {
     TestContext::default()
       .new_command()
-      .args_vec(["repl"])
+      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
       .with_pty(|mut console| {
-        // alert with no message displays default "Alert"
-        // alert displays "[Press any key to continue]"
-        // alert can be closed with Enter key
-        console.write_line_raw("alert()");
-        console.expect("Alert [Press any key to continue]");
-        console.write_raw("\r"); // Enter
-        console.expect("undefined");
-
-        // alert can be closed with Escape key
-        console.write_line_raw("alert()");
-        console.expect("Alert [Press any key to continue]");
-        console.write_raw("\x1b"); // Escape
-        console.expect("undefined");
-
-        // alert can display custom text
-        // alert can be closed with arbitrary keyboard key (x)
-        if !cfg!(windows) {
-          // it seems to work on windows, just not in the tests
-          console.write_line_raw("alert('foo')");
-          console.expect("foo [Press any key to continue]");
-          console.write_raw("x");
-          console.expect("undefined");
-        }
-
-        // confirm with no message displays default "Confirm"
-        // confirm returns true by immediately pressing Enter
-        console.write_line_raw("confirm()");
-        console.expect("Confirm [Y/n]");
-        console.write_raw("\r"); // Enter
-        console.expect("true");
-
-        // tese seem to work on windows, just not in the tests
-        if !cfg!(windows) {
-          // confirm returns false by pressing Escape
-          console.write_line_raw("confirm()");
-          console.expect("Confirm [Y/n]");
-          console.write_raw("\x1b"); // Escape
-          console.expect("false");
-
-          // confirm can display custom text
-          // confirm returns true by pressing y
-          console.write_line_raw("confirm('continue?')");
-          console.expect("continue? [Y/n]");
-          console.write_raw("y");
-          console.expect("true");
-
-          // confirm returns false by pressing n
-          console.write_line_raw("confirm('continue?')");
-          console.expect("continue? [Y/n]");
-          console.write_raw("n");
-          console.expect("false");
-
-          // confirm can display custom text
-          // confirm returns true by pressing Y
-          console.write_line_raw("confirm('continue?')");
-          console.expect("continue? [Y/n]");
-          console.write_raw("Y");
-          console.expect("true");
-
-          // confirm returns false by pressing N
-          console.write_line_raw("confirm('continue?')");
-          console.expect("continue? [Y/n]");
-          console.write_raw("N");
-          console.expect("false");
-        }
-
-        // prompt with no message displays default "Prompt"
-        // prompt returns user-inserted text
-        console.write_line_raw("prompt()");
+        console.expect("What is your name? [Jane Doe] ");
+        console.write_line_raw("John Doe");
+        console.expect("Your name is John Doe.");
+        console.expect("What is your name? [Jane Doe] ");
+        console.write_line_raw("");
+        console.expect("Your name is Jane Doe.");
         console.expect("Prompt ");
-        console.write_line_raw("abc");
-        console.expect("\"abc\"");
-
-        // prompt can display custom text
-        // prompt with no default value returns empty string when immediately pressing Enter
-        console.write_line_raw("prompt('foo')");
-        console.expect("foo ");
-        console.write_raw("\r"); // Enter
-        console.expect("\"\"");
-
-        // prompt with non-string default value converts it to string
-        console.write_line_raw("prompt('foo', 1)");
-        console.expect("foo 1");
-        console.write_raw("\r"); // Enter
-        console.expect("\"1\"");
-
-        // prompt with non-string default value that can't be converted throws an error
-        console.write_line_raw("prompt('foo', Symbol())");
-        console.expect(
-          "Uncaught TypeError: Cannot convert a Symbol value to a string",
-        );
-
-        // prompt with empty-string default value returns empty string when immediately pressing Enter
-        console.write_line_raw("prompt('foo', '')");
-        console.expect("foo ");
-        console.write_raw("\r"); // Enter
-        console.expect("\"\"");
-
-        // prompt with contentful default value returns default value when immediately pressing Enter
-        console.write_line_raw("prompt('foo', 'bar')");
-        console.expect("foo bar");
-        console.write_raw("\r"); // Enter
-        console.expect("\"bar\"");
-
-        // prompt with contentful default value allows editing of default value
-        console.write_line_raw("prompt('foo', 'bar')");
-        console.expect("foo bar");
-        console.write_raw("\x1b[D"); // Left arrow
-        console.write_raw("\x1b[D"); // Left arrow
-        console.write_raw("\x7f"); // Backspace
-        console.write_raw("c");
-        console.expect("foo car");
-        console.write_raw("\r"); // Enter
-        console.expect("\"car\"");
-
-        // prompt returns null by pressing Escape
-        console.write_line_raw("prompt()");
-        console.expect("Prompt ");
-        console.write_raw("\x1b"); // Escape
-        console.expect("null");
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-          // confirm returns false by pressing Ctrl+C
-          console.write_line_raw("confirm()");
-          console.expect("Confirm [Y/n] ");
-          console.write_raw("\x03"); // Ctrl+C
-          console.expect("false");
-
-          // confirm returns false by pressing Ctrl+D
-          console.write_line_raw("confirm()");
-          console.expect("Confirm [Y/n] ");
-          console.write_raw("\x04"); // Ctrl+D
-          console.expect("false");
-
-          // prompt returns null by pressing Ctrl+C
-          console.write_line_raw("prompt()");
-          console.expect("Prompt ");
-          console.write_raw("\x03"); // Ctrl+C
-          console.expect("null");
-
-          // prompt returns null by pressing Ctrl+D
-          console.write_line_raw("prompt()");
-          console.expect("Prompt ");
-          console.write_raw("\x04"); // Ctrl+D
-          console.expect("null");
-        }
+        console.write_line_raw("foo");
+        console.expect("Your input is foo.");
+        console.expect("Question 0 [y/N] ");
+        console.write_line_raw("Y");
+        console.expect("Your answer is true");
+        console.expect("Question 1 [y/N] ");
+        console.write_line_raw("N");
+        console.expect("Your answer is false");
+        console.expect("Question 2 [y/N] ");
+        console.write_line_raw("yes");
+        console.expect("Your answer is false");
+        console.expect("Confirm [y/N] ");
+        console.write_line("");
+        console.expect("Your answer is false");
+        console.expect("What is Windows EOL? ");
+        console.write_line("windows");
+        console.expect("Your answer is \"windows\"");
+        console.expect("Hi [Enter] ");
+        console.write_line("");
+        console.expect("Alert [Enter] ");
+        console.write_line("");
+        console.expect("The end of test");
+        console.expect("What is EOF? ");
+        console.write_line("");
+        console.expect("Your answer is null");
       });
   }
 
