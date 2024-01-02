@@ -4954,12 +4954,13 @@ dependencies = [
 
 [[package]]
 name = "rustls-tokio-stream"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "897937c68ff975d028e8cc07bc887f2d5a9ec2bc952549f40db9a91dc557974c"
+checksum = "ded7a36e8ac05b8ada77a84c5ceec95361942ee9dedb60a82f93f788a791aae8"
 dependencies = [
  "futures",
  "rustls",
+ "socket2 0.5.5",
  "tokio",
 ]
 
