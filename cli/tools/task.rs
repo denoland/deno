@@ -255,7 +255,7 @@ impl ShellCommand for NpxCommand {
     &self,
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    if let Some(first_arg) = context.args.first().cloned() {
+    if let Some(first_arg) = context.args.get(0).cloned() {
       if let Some(command) = context.state.resolve_command(&first_arg) {
         let context = ShellCommandContext {
           args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),

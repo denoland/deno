@@ -98,7 +98,7 @@ impl DenoTestCollector {
   }
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: &SourceRange) {
-    if let Some(expr) = node.args.first().map(|es| es.expr.as_ref()) {
+    if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
       match expr {
         ast::Expr::Object(obj_lit) => {
           for prop in &obj_lit.props {

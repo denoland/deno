@@ -706,7 +706,7 @@ mod deprecated {
     let env = run_args.env;
     let cwd = run_args.cwd;
 
-    let mut c = Command::new(args.first().unwrap());
+    let mut c = Command::new(args.get(0).unwrap());
     (1..args.len()).for_each(|i| {
       let arg = args.get(i).unwrap();
       c.arg(arg);
