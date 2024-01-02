@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 
 // https://github.com/nodeca/pako/blob/master/lib/zlib/constants.js
 export const Z_NO_FLUSH = 0;
