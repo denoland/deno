@@ -1,4 +1,4 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_fetch"
@@ -23,5 +23,6 @@ http_v02.workspace = true
 pin-project.workspace = true
 reqwest.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // This file was vendored from std/testing/_diff.ts
 
 import { primordials } from "ext:core/mod.js";

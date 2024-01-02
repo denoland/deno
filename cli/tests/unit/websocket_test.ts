@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows, fail } from "./test_util.ts";
 
 const servePort = 4248;
@@ -381,6 +381,7 @@ Deno.test(
           assert(typeof socket.url == "string");
           assert(socket.readyState == WebSocket.OPEN);
           assert(socket.protocol == "");
+          assert(socket.binaryType == "arraybuffer");
           socket.close();
         };
         socket.onclose = () => ac.abort();

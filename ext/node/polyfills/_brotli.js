@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -17,6 +17,10 @@ const enc = new TextEncoder();
 const toU8 = (input) => {
   if (typeof input === "string") {
     return enc.encode(input);
+  }
+
+  if (input.buffer) {
+    return new Uint8Array(input.buffer);
   }
 
   return input;
@@ -122,7 +126,7 @@ export function brotliCompress(
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   op_brotli_compress_async(buf, quality, lgwin, mode)
-    .then((result) => callback(null, result))
+    .then((result) => callback(null, Buffer.from(result)))
     .catch((err) => callback(err));
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::deno_registry_url;
 use crate::args::CacheSetting;
@@ -45,7 +45,6 @@ pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use incremental::IncrementalCache;
 pub use module_info::ModuleInfoCache;
-pub use module_info::ModuleInfoCacheModuleAnalyzer;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
 
@@ -95,7 +94,6 @@ pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<RealDenoCacheEnv>;
 pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
-pub use deno_cache_dir::CachedUrlMetadata;
 pub use deno_cache_dir::HttpCache;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides

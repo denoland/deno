@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockEncryptMut;

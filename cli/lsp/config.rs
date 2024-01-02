@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
 use crate::args::ConfigFile;
@@ -932,7 +932,7 @@ impl Config {
   }
 
   pub fn root_uri(&self) -> Option<&Url> {
-    self.workspace_folders.get(0).map(|p| &p.0)
+    self.workspace_folders.first().map(|p| &p.0)
   }
 
   pub fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
@@ -1184,7 +1184,7 @@ fn specifier_enabled(
     return true;
   };
   let (settings, mut folder_uri) = settings.get_for_specifier(specifier);
-  folder_uri = folder_uri.or_else(|| workspace_folders.get(0).map(|f| &f.0));
+  folder_uri = folder_uri.or_else(|| workspace_folders.first().map(|f| &f.0));
   let mut disable_paths = vec![];
   let mut enable_paths = None;
   if let Some(folder_uri) = folder_uri {
