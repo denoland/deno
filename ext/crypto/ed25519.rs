@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;

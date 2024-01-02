@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // vendored from std/assert/mod.ts
 
 import { primordials } from "ext:core/mod.js";

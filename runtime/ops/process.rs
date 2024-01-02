@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::check_unstable;
 use crate::permissions::PermissionsContainer;
@@ -706,7 +706,7 @@ mod deprecated {
     let env = run_args.env;
     let cwd = run_args.cwd;
 
-    let mut c = Command::new(args.get(0).unwrap());
+    let mut c = Command::new(args.first().unwrap());
     (1..args.len()).for_each(|i| {
       let arg = args.get(i).unwrap();
       c.arg(arg);

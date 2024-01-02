@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -282,6 +282,7 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
     ops::os::op_cpus<P>,
+    ops::os::op_process_abort,
     op_node_build_os,
     op_node_is_promise_rejected,
     op_npm_process_state,

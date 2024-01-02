@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import * as perfHooks from "node:perf_hooks";
 import { performance } from "node:perf_hooks";
 import {
