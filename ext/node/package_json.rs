@@ -132,12 +132,13 @@ impl PackageJson {
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
     let exports = package_json.get("exports").and_then(|exports| {
-      Some(if is_conditional_exports_main_sugar(exports) {
-        let mut map = Map::new();
-        map.insert(".".to_string(), exports.to_owned());
-        map
-      } else {
-        exports.as_object()?.to_owned()
+      Some(match is_conditional_exports_main_sugar(exports) {
+        Ok(true) => {
+          let mut map = Map::new();
+          map.insert(".".to_string(), exports.to_owned());
+          map
+        }
+        Ok(false) | Err(..) => exports.as_object()?.to_owned(),
       })
     });
 
@@ -226,31 +227,34 @@ impl PackageJson {
   }
 }
 
-fn is_conditional_exports_main_sugar(exports: &Value) -> bool {
-  if exports.is_string() || exports.is_array() {
-    return true;
+fn is_conditional_exports_main_sugar(
+  exports: &Value,
+) -> Result<bool, AnyError> {
+  if exports.is_string() {
+    return Ok(true);
   }
 
-  if exports.is_null() || !exports.is_object() {
-    return false;
-  }
+  let exports = exports.as_object().unwrap();
+  let mut has_dot = false;
 
-  let exports_obj = exports.as_object().unwrap();
-  let mut is_conditional_sugar = false;
-  let mut i = 0;
-  for key in exports_obj.keys() {
-    let cur_is_conditional_sugar = key.is_empty() || !key.starts_with('.');
-    if i == 0 {
-      is_conditional_sugar = cur_is_conditional_sugar;
-      i += 1;
-    } else if is_conditional_sugar != cur_is_conditional_sugar {
-      panic!("\"exports\" cannot contains some keys starting with \'.\' and some not.
-        The exports object must either be an object of package subpath keys
-        or an object of main entry condition name keys only.")
+  for (idx, (key, _)) in exports.iter().enumerate() {
+    // use the first item as anchor
+    if idx == 0 && key.starts_with('.') {
+      has_dot = true;
+      continue;
+    }
+
+    // if the first item is not starting with `.`,
+    // then all items should not start with `.`, vice versa
+    match (has_dot, key.starts_with('.')) {
+      (true, true) | (false, false) => continue,
+      _ => bail!("\"exports\" cannot contains some keys starting with \'.\' and some not.
+      The exports object must either be an object of package subpath keys
+      or an object of main entry condition name keys only.")
     }
   }
 
-  is_conditional_sugar
+  Ok(false)
 }
 
 #[cfg(test)]
@@ -266,5 +270,42 @@ mod test {
     .unwrap();
 
     assert!(package_json.exports.is_none());
+  }
+
+  #[test]
+  fn conditional_exports_main_sugar_should_be_true() {
+    let exports = Value::String("./main.js".to_string());
+
+    assert!(is_conditional_exports_main_sugar(&exports).unwrap());
+  }
+
+  #[test]
+  fn conditional_exports_main_sugar_should_be_false_1() {
+    let exports = serde_json::json!({
+      ".": "./main.js"
+    });
+
+    assert!(!is_conditional_exports_main_sugar(&exports).unwrap());
+  }
+
+  #[test]
+  fn conditional_exports_main_sugar_should_be_false_2() {
+    let exports = serde_json::json!({
+      ".": "./main.js",
+      "./foo": "./foo.js",
+      "./bar": "./bar.js",
+    });
+
+    assert!(!is_conditional_exports_main_sugar(&exports).unwrap());
+  }
+
+  #[test]
+  fn conditional_exports_main_sugar_error_should_err() {
+    let exports = serde_json::json!({
+      ".": "./main.js",
+      "foo": "./foo.js",
+    });
+
+    assert!(is_conditional_exports_main_sugar(&exports).is_err());
   }
 }
