@@ -944,6 +944,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           )
         )
       ) {
+        // Temporal is not available in primordials yet
+        // deno-lint-ignore prefer-primordials
         return ctx.stylize(value.toString(), "temporal");
       } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
         base = inspectError(value, ctx);
