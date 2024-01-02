@@ -167,6 +167,7 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
+  temporal: "magenta",
 };
 
 const defaultFG = 39;
@@ -898,6 +899,52 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
             return ctx.stylize(base, "date");
           }
         }
+      } else if (
+        typeof globalThis.Temporal !== "undefined" &&
+        (
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.Instant.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.ZonedDateTime.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainDate.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainTime.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainDateTime.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainYearMonth.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainMonthDay.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.Duration.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.TimeZone.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.Calendar.prototype,
+            value,
+          )
+        )
+      ) {
+        return ctx.stylize(value.toString(), "temporal");
       } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
         base = inspectError(value, ctx);
         if (keys.length === 0 && protoProps === undefined) {
