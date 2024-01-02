@@ -260,7 +260,16 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       let mut error_code = 1;
 
       if let Some(e) = error.downcast_ref::<JsError>() {
+        // eprintln!("is js error! {:?}", e);
         error_string = format_js_error(e);
+
+        if e.name == Some("ReferenceError".to_string()) {
+          if let Some(msg) = &e.message {
+            if msg.contains("module is not defined") {
+              error_string = format!("{}\n\n    {} Deno doesn't support CommonJS modules, change problematic module into an ES module.", error_string, colors::cyan("hint:"))
+            }
+          }
+        }
       } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
         error_string = e.to_string();
         error_code = 10;
