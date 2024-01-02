@@ -2248,3 +2248,23 @@ dbTest("set with key versionstamp suffix", async (db) => {
     "expected string, number, bigint, ArrayBufferView, boolean",
   );
 });
+
+Deno.test({
+  name: "watch should stop when db closed",
+  async fn() {
+    const db = await Deno.openKv(":memory:");
+
+    const watch = db.watch([["a"]]);
+    const completion = (async () => {
+      for await (const _item of watch) {
+        // pass
+      }
+    })();
+
+    setTimeout(() => {
+      db.close();
+    }, 100);
+
+    await completion;
+  },
+});

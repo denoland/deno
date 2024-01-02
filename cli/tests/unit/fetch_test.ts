@@ -1160,6 +1160,16 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true, read: true } },
+  function createHttpClientAcceptPoolIdleTimeout() {
+    const client = Deno.createHttpClient({
+      poolIdleTimeout: 1000,
+    });
+    client.close();
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchCustomClientUserAgent(): Promise<
     void

@@ -49,6 +49,9 @@ const {
   Uint8Array,
 } = primordials;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+const {
+  op_blob_read_part,
+} = core.ensureFastOps();
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -626,7 +629,7 @@ class BlobReference {
    * @returns {AsyncGenerator<Uint8Array>}
    */
   async *stream() {
-    yield core.opAsync("op_blob_read_part", this._id);
+    yield op_blob_read_part(this._id);
 
     // let position = 0;
     // const end = this.size;
@@ -634,7 +637,7 @@ class BlobReference {
     //   const size = MathMin(end - position, 65536);
     //   const chunk = this.slice(position, position + size);
     //   position += chunk.size;
-    //   yield core.opAsync("op_blob_read_part", chunk._id);
+    //   yield op_blob_read_part( chunk._id);
     // }
   }
 }

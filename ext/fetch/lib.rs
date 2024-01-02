@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use bytes::Bytes;
 use deno_core::anyhow::Error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -43,8 +44,8 @@ use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 
 use data_url::DataUrl;
-use http::header::CONTENT_LENGTH;
-use http::Uri;
+use http_v02::header::CONTENT_LENGTH;
+use http_v02::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -233,7 +234,7 @@ unsafe impl Send for ResourceToBodyAdapter {}
 unsafe impl Sync for ResourceToBodyAdapter {}
 
 impl Stream for ResourceToBodyAdapter {
-  type Item = Result<BufView, Error>;
+  type Item = Result<Bytes, Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -250,9 +251,9 @@ impl Stream for ResourceToBodyAdapter {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(_) => {
             this.1 = Some(this.0.clone().read(64 * 1024));
-            Poll::Ready(Some(res))
+            Poll::Ready(Some(res.map(|b| b.to_vec().into())))
           }
-          _ => Poll::Ready(Some(res)),
+          _ => Poll::Ready(Some(res.map(|b| b.to_vec().into()))),
         },
       }
     } else {
@@ -415,9 +416,12 @@ where
         .decode_to_vec()
         .map_err(|e| type_error(format!("{e:?}")))?;
 
-      let response = http::Response::builder()
-        .status(http::StatusCode::OK)
-        .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
+      let response = http_v02::Response::builder()
+        .status(http_v02::StatusCode::OK)
+        .header(
+          http_v02::header::CONTENT_TYPE,
+          data_url.mime_type().to_string(),
+        )
         .body(reqwest::Body::from(body))?;
 
       let fut = async move { Ok(Ok(Response::from(response))) };
@@ -785,13 +789,6 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum PoolIdleTimeout {
-  State(bool),
-  Specify(u64),
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateHttpClientArgs {
@@ -800,7 +797,7 @@ pub struct CreateHttpClientArgs {
   cert_chain: Option<String>,
   private_key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
-  pool_idle_timeout: Option<PoolIdleTimeout>,
+  pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -863,9 +860,12 @@ where
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
-          PoolIdleTimeout::State(true) => None,
-          PoolIdleTimeout::State(false) => Some(None),
-          PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+          serde_json::Value::Bool(true) => None,
+          serde_json::Value::Bool(false) => Some(None),
+          serde_json::Value::Number(specify) => {
+            Some(Some(specify.as_u64().unwrap_or_default()))
+          }
+          _ => Some(None),
         },
       ),
       http1: args.http1,
