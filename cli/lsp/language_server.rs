@@ -29,9 +29,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fmt::Write as _;
-use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -183,12 +181,11 @@ pub struct StateSnapshot {
   pub npm: Option<StateNpmSnapshot>,
 }
 
-type LanguageServerTaskFn = Box<
-  dyn (FnOnce(LanguageServer) -> Pin<Box<dyn Future<Output = ()>>>)
-    + Send
-    + Sync,
->;
+type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
 
+/// Used to queue tasks from inside of the language server lock that must be
+/// commenced from outside of it. For example, queue a request to cache a module
+/// after having loaded a config file which references it.
 #[derive(Debug)]
 struct LanguageServerTaskQueue {
   task_tx: UnboundedSender<LanguageServerTaskFn>,
@@ -216,7 +213,7 @@ impl LanguageServerTaskQueue {
     let mut task_rx = self.task_rx.take().unwrap();
     spawn(async move {
       while let Some(task_fn) = task_rx.recv().await {
-        task_fn(ls.clone()).await;
+        task_fn(ls.clone());
       }
     });
   }
@@ -1092,13 +1089,13 @@ impl Inner {
                   }],
                 };
                 self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-                  Box::pin(async move {
+                  spawn(async move {
                     if let Err(err) =
                       ls.cache_request(Some(json!(cache_params))).await
                     {
                       lsp_warn!("{}", err);
                     }
-                  })
+                  });
                 }));
               }
             }
