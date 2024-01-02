@@ -900,7 +900,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           }
         }
       } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
-        base = inspectError(value, ctx, 0);
+        base = inspectError(value, ctx);
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
@@ -1558,7 +1558,7 @@ function inspectFrame(frame, ctx) {
   return result;
 }
 
-function inspectError(value, ctx, depth) {
+function inspectError(value, ctx) {
   const causes = [value];
 
   let err = value;
@@ -1590,29 +1590,33 @@ function inspectError(value, ctx, depth) {
 
   let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
-  const destructuredError = depth === 0
-    ? ops.op_destructure_error(value)
-    : value;
-  finalMessage += destructuredError.exceptionMessage;
+  const destructuredError = ops.op_destructure_error(value);
+
+  let exceptionMessage = destructuredError.exceptionMessage;
+  while (StringPrototypeStartsWith(exceptionMessage, "Uncaught ")) {
+    exceptionMessage = StringPrototypeSlice(exceptionMessage, 9);
+  }
+
+  finalMessage += exceptionMessage;
 
   if (destructuredError.aggregated) {
     for (let i = 0; i < destructuredError.aggregated.length; i++) {
-      let errorStr = inspectError(
-        destructuredError.aggregated[i],
+      const errorStr = formatValue(
         ctx,
-        depth + 1,
+        value.errors[i],
+        0,
       );
-      while (StringPrototypeStartsWith(errorStr, "Uncaught ")) {
-        errorStr = StringPrototypeSlice(errorStr, 9);
+
+      const splitErrorStr = StringPrototypeSplit(errorStr, "\n");
+      for (let j = 0; j < splitErrorStr.length; j++) {
+        finalMessage += "\n" + StringPrototypeRepeat(" ", 4) + splitErrorStr[j];
       }
-      finalMessage += "\n" + StringPrototypeRepeat(" ", (depth + 1) * 4) +
-        errorStr;
     }
   }
 
   if (destructuredError.frames.length > 0) {
     for (let i = 0; i < destructuredError.frames.length; i++) {
-      finalMessage += "\n" + StringPrototypeRepeat(" ", (depth + 1) * 4) +
+      finalMessage += "\n" + StringPrototypeRepeat(" ", 4) +
         "at " +
         inspectFrame(destructuredError.frames[i], ctx);
     }
