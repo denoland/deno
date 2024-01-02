@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 
 // https://github.com/nodeca/pako/blob/master/lib/zlib/constants.js
 export const Z_NO_FLUSH = 0;
@@ -50,10 +49,9 @@ const {
   op_zlib_write_async,
 } = core.ensureFastOps();
 
-const enc = new TextEncoder();
-const toU8 = (input) => {
-  if (typeof input === "string") {
-    return enc.encode(input);
+const sanitizeInput = (input) => {
+  if (input.buffer) {
+    return new Uint8Array(input.buffer);
   }
 
   return input;
@@ -81,7 +79,7 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    const buf = toU8(input);
+    const buf = sanitizeInput(input);
     const err = ops.op_zlib_write(
       this.#handle,
       flush,
@@ -131,7 +129,7 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    const buf = toU8(input);
+    const buf = sanitizeInput(input);
     op_zlib_write_async(
       this.#handle,
       flush ?? Z_NO_FLUSH,

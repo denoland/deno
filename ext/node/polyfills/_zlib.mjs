@@ -199,7 +199,10 @@ function zlibBuffer(engine, buffer, callback) {
 function zlibBufferSync(engine, buffer) {
   if (typeof buffer === "string") buffer = Buffer.from(buffer);
 
-  if (!Buffer.isBuffer(buffer)) throw new TypeError("Not a string or buffer");
+  if (
+    !Buffer.isBuffer(buffer) &&
+    (buffer.buffer && !buffer.buffer.constructor === ArrayBuffer)
+  ) throw new TypeError("Not a string, buffer or dataview");
 
   var flushFlag = engine._finishFlushFlag;
 
