@@ -316,27 +316,27 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     7,
   ),
   (
+    "temporal",
+    "Enable unstable Temporal API",
+    // Not used in JS
+    8,
+  ),
+  (
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",
     // This number is used directly in the JS code. Search
     // for "unstableFeatures" to see where it's used.
-    8,
+    9,
   ),
   (
     deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
     "Enable unstable `WebGPU` API",
-    9,
+    10,
   ),
   (
     deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
     "Enable unstable Web Worker APIs",
-    10,
-  ),
-  (
-    "temporal",
-    "Enable unstable Temporal API",
-    // Not used in JS
-    10,
+    11,
   ),
 ];
 
