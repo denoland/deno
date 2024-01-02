@@ -381,6 +381,7 @@ Deno.test(
           assert(typeof socket.url == "string");
           assert(socket.readyState == WebSocket.OPEN);
           assert(socket.protocol == "");
+          assert(socket.binaryType == "arraybuffer");
           socket.close();
         };
         socket.onclose = () => ac.abort();
