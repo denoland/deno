@@ -1,11 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::ModuleSpecifier;
+use deno_graph::ModuleGraph;
 use deno_runtime::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use deno_core::sourcemap::SourceMap;
 use std::error::Error;
 use std::fmt;
 
@@ -101,7 +104,9 @@ impl DiagnosticMessageChain {
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
+  /// 0-indexed line number
   pub line: u64,
+  /// 0-indexed character number
   pub character: u64,
 }
 
@@ -112,6 +117,7 @@ pub struct Diagnostic {
   pub code: u64,
   pub start: Option<Position>,
   pub end: Option<Position>,
+  pub display_start: Option<Position>,
   pub message_text: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub message_chain: Option<DiagnosticMessageChain>,
@@ -145,9 +151,10 @@ impl Diagnostic {
   }
 
   fn fmt_frame(&self, f: &mut fmt::Formatter, level: usize) -> fmt::Result {
-    if let (Some(file_name), Some(start)) =
-      (self.file_name.as_ref(), self.start.as_ref())
-    {
+    if let (Some(file_name), Some(start)) = (
+      self.file_name.as_ref(),
+      self.display_start.as_ref().or(self.start.as_ref()),
+    ) {
       write!(
         f,
         "\n{:indent$}    at {}:{}:{}",
@@ -272,6 +279,37 @@ impl Diagnostics {
 
   pub fn is_empty(&self) -> bool {
     self.0.is_empty()
+  }
+
+  pub fn apply_fast_check_source_maps(&mut self, graph: &ModuleGraph) {
+    for d in &mut self.0 {
+      if let Some(specifier) = d
+        .file_name
+        .as_ref()
+        .and_then(|n| ModuleSpecifier::parse(n).ok())
+      {
+        if let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) {
+          if let Some(fast_check_module) =
+            module.esm().and_then(|m| m.fast_check_module())
+          {
+            if let Ok(source_map) =
+              SourceMap::from_slice(&fast_check_module.source_map)
+            {
+              if let Some(start) = d.start.as_mut() {
+                let maybe_token = source_map
+                  .lookup_token(start.line as u32, start.character as u32);
+                if let Some(token) = maybe_token {
+                  d.display_start = Some(Position {
+                    line: token.get_src_line() as u64,
+                    character: token.get_src_col() as u64,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
 

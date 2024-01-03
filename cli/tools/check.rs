@@ -154,7 +154,7 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
-    let diagnostics = if type_check_mode == TypeCheckMode::Local {
+    let mut diagnostics = if type_check_mode == TypeCheckMode::Local {
       response.diagnostics.filter(|d| {
         if let Some(file_name) = &d.file_name {
           if !file_name.starts_with("http") {
@@ -176,6 +176,8 @@ impl TypeChecker {
     } else {
       response.diagnostics
     };
+
+    diagnostics.apply_fast_check_source_maps(&graph);
 
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
       cache.set_tsbuildinfo(&graph.roots[0], &tsbuildinfo);
@@ -391,7 +393,7 @@ fn get_tsc_roots(
           let specifier = graph.resolve_dependency(
             specifier_text,
             referrer,
-            true, /* prefer types */
+            /* prefer types */ true,
           );
           if let Some(specifier) = specifier {
             if seen_roots.insert(specifier.clone()) {
