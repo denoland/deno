@@ -80,11 +80,13 @@ pub fn install() -> Result<(), AnyError> {
   let mut child = match child_result {
     Ok(child) => child,
     Err(err) if err.kind() == ErrorKind::NotFound => {
-      return Err(err)
-        .context("Failed to spawn 'jupyter' command. Is JupyterLab installed (https://jupyter.org/install) and available on the PATH?");
+      return Err(err).context(concat!(
+        "Failed to spawn 'jupyter' command. Is JupyterLab installed ",
+        "(https://jupyter.org/install) and available on the PATH?"
+      ));
     }
     Err(err) => {
-      return Err(err).context("Failed to spawn jupyter command.");
+      return Err(err).context("Failed to spawn 'jupyter' command.");
     }
   };
 
