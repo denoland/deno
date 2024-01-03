@@ -1588,7 +1588,9 @@ function inspectError(value, ctx) {
   }
   ArrayPrototypeShift(causes);
 
-  let finalMessage = MapPrototypeGet(refMap, value) ?? "";
+  let refValue = MapPrototypeGet(refMap, value) ?? "";
+
+  let finalMessage = "";
 
   const destructuredError = ops.op_destructure_error(value);
 
@@ -1596,8 +1598,6 @@ function inspectError(value, ctx) {
   while (StringPrototypeStartsWith(exceptionMessage, "Uncaught ")) {
     exceptionMessage = StringPrototypeSlice(exceptionMessage, 9);
   }
-
-  finalMessage += exceptionMessage;
 
   if (destructuredError.aggregated) {
     for (let i = 0; i < destructuredError.aggregated.length; i++) {
@@ -1614,22 +1614,25 @@ function inspectError(value, ctx) {
     }
   }
 
-  if (destructuredError.frames.length > 0) {
-    for (let i = 0; i < destructuredError.frames.length; i++) {
-      if (
-        destructuredError.frames[i].fileName ===
+  const frames = ArrayPrototypeFilter(
+    destructuredError.frames,
+    (frame) =>
+      !(frame.fileName ===
           "ext:deno_console/01_console.js" &&
-        destructuredError.frames[i].lineNumber === 1593
-      ) {
-        continue;
-      }
+        frame.lineNumber === 1595),
+  );
 
+  if (frames.length > 0) {
+    finalMessage = refValue + exceptionMessage + finalMessage;
+
+    for (let i = 0; i < frames.length; i++) {
       finalMessage += "\n" + StringPrototypeRepeat(" ", 4) +
         "at " +
-        inspectFrame(destructuredError.frames[i], ctx);
+        inspectFrame(frames[i], ctx);
     }
   } else {
-    finalMessage += `[${value.stack || ErrorPrototypeToString(value)}]`;
+    finalMessage = refValue +
+      `[${value.stack || ErrorPrototypeToString(value)}]` + finalMessage;
   }
 
   finalMessage += ArrayPrototypeJoin(
