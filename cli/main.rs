@@ -334,12 +334,15 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
   ),
 ];
 
-pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
-  // TODO(bartlomieju): change to "The `--unstable-{feature}` flag must be provided.".
-  eprintln!("Unstable API '{api_name}'. The --unstable flag must be provided.");
+pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
+  eprintln!(
+    "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
+    feature
+  );
   std::process::exit(70);
 }
 
+// TODO(bartlomieju): remove when `--unstable` flag is removed.
 pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
   eprintln!(
     "⚠️  {}",
