@@ -9469,6 +9469,7 @@ export function B() {
   client.shutdown();
 }
 
+#[ignore = "https://github.com/denoland/deno/issues/21770"]
 #[test]
 fn lsp_jsx_import_source_config_file_automatic_cache() {
   let context = TestContextBuilder::new()
