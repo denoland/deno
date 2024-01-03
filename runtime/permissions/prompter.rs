@@ -214,11 +214,6 @@ fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   }
 }
 
-#[cfg(not(unix))]
-fn get_stdin_metadata() -> std::io::Result<()> {
-  Ok(())
-}
-
 impl PermissionPrompter for TtyPrompter {
   fn prompt(
     &mut self,
@@ -238,6 +233,7 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny;
     }
 
+    #[cfg(unix)]
     let metadata_before = get_stdin_metadata().unwrap();
 
     // Lock stdio streams, so no other output is written while the prompt is
@@ -337,8 +333,6 @@ impl PermissionPrompter for TtyPrompter {
     drop(stderr_lock);
     drop(stdin_lock);
 
-    let metadata_after = get_stdin_metadata().unwrap();
-
     // Ensure that stdin has not changed from the beginning to the end of the prompt. We consider
     // it sufficient to check a subset of stat calls. We do not consider the likelihood of a stdin
     // swap attack on Windows to be high enough to add this check for that platform. These checks will
@@ -346,6 +340,8 @@ impl PermissionPrompter for TtyPrompter {
     #[cfg(unix)]
     {
       use std::os::unix::fs::MetadataExt;
+      let metadata_after = get_stdin_metadata().unwrap();
+
       assert_eq!(metadata_before.dev(), metadata_after.dev());
       assert_eq!(metadata_before.ino(), metadata_after.ino());
       assert_eq!(metadata_before.rdev(), metadata_after.rdev());
