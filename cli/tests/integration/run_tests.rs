@@ -1574,7 +1574,7 @@ itest!(unstable_enabled_js {
 });
 
 itest!(unstable_worker {
-  args: "run --reload --unstable --quiet --allow-read run/unstable_worker.ts",
+  args: "run --reload --quiet --allow-read run/unstable_worker.ts",
   output: "run/unstable_worker.ts.out",
 });
 
@@ -2073,7 +2073,7 @@ itest!(worker_drop_handle_race {
 });
 
 itest!(worker_drop_handle_race_terminate {
-  args: "run --unstable run/worker_drop_handle_race_terminate.js",
+  args: "run run/worker_drop_handle_race_terminate.js",
   output: "run/worker_drop_handle_race_terminate.js.out",
 });
 
