@@ -1,5 +1,5 @@
-import { nothing } from "./ignored/index.ts"
+import { nothing } from "./ignored/index.ts";
 
-const foo = 1
+const foo = 1;
 
-export { foo, nothing }
+export { foo, nothing };
