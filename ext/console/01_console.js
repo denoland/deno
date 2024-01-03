@@ -1630,7 +1630,7 @@ function inspectError(value, ctx) {
         "at " +
         inspectFrame(frames[i], ctx);
     }
-  } else {
+  } else if (!destructuredError.aggregated) {
     finalMessage = refValue +
       `[${value.stack || ErrorPrototypeToString(value)}]` + finalMessage;
   }
