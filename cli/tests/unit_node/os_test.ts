@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-undef
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import os from "node:os";
 import {
@@ -25,6 +25,17 @@ Deno.test({
       assertEquals(os.arch(), "arm64");
     } else {
       throw new Error("unreachable");
+    }
+  },
+});
+
+Deno.test({
+  name: "os machine (arch)",
+  fn() {
+    if (Deno.build.arch == "aarch64") {
+      assertEquals(os.machine(), "arm64");
+    } else {
+      assertEquals(os.machine(), Deno.build.arch);
     }
   },
 });

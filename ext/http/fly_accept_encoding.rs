@@ -1,5 +1,5 @@
 // Copyright 2018 Yoshua Wuyts. All rights reserved. MIT license.
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Forked from https://github.com/superfly/accept-encoding/blob/1cded757ec7ff3916e5bfe7441db76cdc48170dc/
 // Forked to support both http 0.3 and http 1.0 crates.
 

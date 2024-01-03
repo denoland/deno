@@ -1133,18 +1133,21 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.240.0"
+version = "0.242.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea9bea00d7d4c7bef64e61421f227ee3114f510f6ad9826fbc5a29463c578c75"
+checksum = "bce3947a74745927b2409b7d3533d7a9c06c7271c56a2e334cce9e431a7f6bfb"
 dependencies = [
  "anyhow",
+ "bit-set",
+ "bit-vec",
  "bytes",
  "cooked-waker",
  "deno_ops",
- "deno_unsync 0.3.0",
+ "deno_unsync 0.3.1",
  "futures",
  "libc",
  "log",
+ "memoffset 0.9.0",
  "parking_lot 0.12.1",
  "pin-project",
  "serde",
@@ -1566,9 +1569,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.116.0"
+version = "0.118.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fd1cec75129fb26122c079a5644fa89b0c9c6a5078814c734113dac5e368120"
+checksum = "a5a63b1ef458869727ad0c524fc1378a20038027fbb170a09730b5c763980f0b"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1628,7 +1631,6 @@ dependencies = [
  "once_cell",
  "regex",
  "ring",
- "rustyline",
  "serde",
  "signal-hook-registry",
  "termcolor",
@@ -1696,9 +1698,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8a8f3722afd50e566ecfc783cc8a3a046bc4dd5eb45007431dfb2776aeb8993"
+checksum = "2e902f81b6d372427a99b65372379568e6350735562f3237c3daf61086e1d6e6"
 dependencies = [
  "tokio",
 ]
@@ -3654,6 +3656,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memoffset"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a634b1c61a95585bd15607c6ab0c4e5b226e695ff2800ba0cdccddf208c406c"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "metal"
 version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3800,7 +3811,7 @@ dependencies = [
  "bitflags 1.3.2",
  "cfg-if",
  "libc",
- "memoffset",
+ "memoffset 0.7.1",
  "pin-utils",
  "static_assertions",
 ]
@@ -4947,12 +4958,13 @@ dependencies = [
 
 [[package]]
 name = "rustls-tokio-stream"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "897937c68ff975d028e8cc07bc887f2d5a9ec2bc952549f40db9a91dc557974c"
+checksum = "ded7a36e8ac05b8ada77a84c5ceec95361942ee9dedb60a82f93f788a791aae8"
 dependencies = [
  "futures",
  "rustls",
+ "socket2 0.5.5",
  "tokio",
 ]
 
@@ -4982,7 +4994,6 @@ dependencies = [
  "cfg-if",
  "clipboard-win",
  "fd-lock",
- "home",
  "libc",
  "log",
  "memchr",
@@ -5222,9 +5233,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.149.0"
+version = "0.151.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3727a7a969fb85aa7f6a31071dcf8b574809871f8fc07ccd9abdf21152112496"
+checksum = "3f491e71da04e4ae2b178ea3572d40fce81ab760253437ccd3bd4a57a19a39e8"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6061,7 +6072,7 @@ dependencies = [
  "base64 0.21.5",
  "bytes",
  "console_static_text",
- "deno_unsync 0.3.0",
+ "deno_unsync 0.3.1",
  "denokv_proto",
  "fastwebsockets",
  "flate2",

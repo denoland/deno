@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// Gets the corresponding @types package for the provided package name.
 pub fn types_package_name(package_name: &str) -> String {

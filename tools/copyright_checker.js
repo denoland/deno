@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-read=. --allow-run=git
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { getSources, ROOT_PATH } from "./util.js";
 
@@ -49,7 +49,7 @@ export async function checkCopyright() {
   const ACCEPTABLE_LINES =
     /^(\/\/ deno-lint-.*|\/\/ Copyright.*|\/\/ Ported.*|\s*|#!\/.*)\n/;
   const COPYRIGHT_LINE =
-    "Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.";
+    "Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.";
   const TOML_COPYRIGHT_LINE = "# " + COPYRIGHT_LINE;
   const C_STYLE_COPYRIGHT_LINE = "// " + COPYRIGHT_LINE;
 

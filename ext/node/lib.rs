@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -523,7 +523,7 @@ deno_core::extension!(deno_node,
     "perf_hooks.ts" with_specifier "node:perf_hooks",
     "process.ts" with_specifier "node:process",
     "punycode.ts" with_specifier "node:punycode",
-    "querystring.ts" with_specifier "node:querystring",
+    "querystring.js" with_specifier "node:querystring",
     "readline.ts" with_specifier "node:readline",
     "repl.ts" with_specifier "node:repl",
     "stream.ts" with_specifier "node:stream",
