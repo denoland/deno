@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
 use deno_ast::MediaType;
