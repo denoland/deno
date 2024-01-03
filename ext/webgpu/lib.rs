@@ -75,7 +75,6 @@ pub mod queue;
 pub mod render_pass;
 pub mod sampler;
 pub mod shader;
-#[cfg(feature = "surface")]
 pub mod surface;
 pub mod texture;
 
@@ -212,11 +211,9 @@ deno_core::extension!(
     queue::op_webgpu_write_texture,
     // shader
     shader::op_webgpu_create_shader_module,
-    #[cfg(feature = "surface")]
+    // surface
     surface::op_webgpu_surface_configure,
-    #[cfg(feature = "surface")]
     surface::op_webgpu_surface_get_current_texture,
-    #[cfg(feature = "surface")]
     surface::op_webgpu_surface_present
   ],
   esm = ["00_init.js", "02_surface.js"],
