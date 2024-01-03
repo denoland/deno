@@ -340,11 +340,12 @@ pub(crate) fn unstable_exit_cb(_feature: &str, api_name: &str) {
   std::process::exit(70);
 }
 
-pub(crate) fn unstable_warn_cb(feature: &str) {
+pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
   eprintln!(
     "⚠️  {}",
     colors::yellow(format!(
-      "The `--unstable` flag is deprecated, use `--unstable-{feature}` instead."
+      "The `{}` API was used with `--unstable` flag. `--unstable` flag is deprecated, use granular `--unstable-{}` instead. Learn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
+      api_name, feature
     ))
   );
 }
