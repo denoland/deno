@@ -212,7 +212,14 @@ deno_core::extension!(
     queue::op_webgpu_write_texture,
     // shader
     shader::op_webgpu_create_shader_module,
+    #[cfg(feature = "surface")]
+    surface::op_webgpu_surface_configure,
+    #[cfg(feature = "surface")]
+    surface::op_webgpu_surface_get_current_texture,
+    #[cfg(feature = "surface")]
+    surface::op_webgpu_surface_present
   ],
+  esm = ["00_init.js", "02_surface.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
 );
 

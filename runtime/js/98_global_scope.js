@@ -42,6 +42,12 @@ import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
 import * as prompt from "ext:runtime/41_prompt.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
+import {
+  loadWebGPU,
+  webgpu,
+  webGPUNonEnumerable,
+} from "ext:deno_webgpu/00_init.js";
+import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -189,6 +195,7 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
   GPUError: webGPUNonEnumerable(() => webgpu.GPUError),
   GPUValidationError: webGPUNonEnumerable(() => webgpu.GPUValidationError),
   GPUOutOfMemoryError: webGPUNonEnumerable(() => webgpu.GPUOutOfMemoryError),
+  GPUCanvasContext: webGPUNonEnumerable(() => webgpuSurface.GPUCanvasContext),
 };
 
 class Navigator {
@@ -228,39 +235,6 @@ function memoizeLazy(f) {
 const numCpus = memoizeLazy(() => ops.op_bootstrap_numcpus());
 const userAgent = memoizeLazy(() => ops.op_bootstrap_user_agent());
 const language = memoizeLazy(() => ops.op_bootstrap_language());
-
-let webgpu;
-
-function webGPUNonEnumerable(getter) {
-  let valueIsSet = false;
-  let value;
-
-  return {
-    get() {
-      loadWebGPU();
-
-      if (valueIsSet) {
-        return value;
-      } else {
-        return getter();
-      }
-    },
-    set(v) {
-      loadWebGPU();
-
-      valueIsSet = true;
-      value = v;
-    },
-    enumerable: false,
-    configurable: true,
-  };
-}
-
-function loadWebGPU() {
-  if (!webgpu) {
-    webgpu = ops.op_lazy_load_esm("ext:deno_webgpu/01_webgpu.js");
-  }
-}
 
 ObjectDefineProperties(Navigator.prototype, {
   gpu: {
