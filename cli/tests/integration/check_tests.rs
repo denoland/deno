@@ -133,6 +133,34 @@ itest!(check_deno_unstable_from_config {
   output_str: Some(""),
 });
 
+itest!(check_with_exclude_option_by_dir {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/ignored/index.ts",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(check_with_exclude_option_by_glob {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_glob.json check/exclude_option/ignored/index.ts",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(check_without_exclude_option {
+  args:
+    "check --quiet --config check/exclude_option/deno.json check/exclude_option/ignored/index.ts",
+  output: "check/exclude_option/exclude_option.ts.error.out",
+  exit_code: 1,
+});
+
+itest!(check_imported_files_listed_in_exclude_option {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/index.ts",
+  output: "check/exclude_option/exclude_option.ts.error.out",
+  exit_code: 1,
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();
