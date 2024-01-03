@@ -30,14 +30,14 @@ itest!(esm_module_eval {
 });
 
 itest!(esm_module_deno_test {
-  args: "test --allow-read --allow-env --unstable npm/esm/test.js",
+  args: "test --allow-read --allow-env npm/esm/test.js",
   output: "npm/esm/test.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(esm_import_cjs_default {
-  args: "run --allow-read --allow-env --unstable --quiet --check=all npm/esm_import_cjs_default/main.ts",
+  args: "run --allow-read --allow-env --quiet --check=all npm/esm_import_cjs_default/main.ts",
   output: "npm/esm_import_cjs_default/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -123,7 +123,7 @@ itest!(translate_cjs_to_esm {
 });
 
 itest!(compare_globals {
-  args: "run --allow-read --unstable --check=all npm/compare_globals/main.ts",
+  args: "run --allow-read --check=all npm/compare_globals/main.ts",
   output: "npm/compare_globals/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -160,14 +160,15 @@ itest!(child_process_fork_test {
 });
 
 itest!(cjs_module_export_assignment {
-  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment/main.ts",
+  args: "run -A --quiet --check=all npm/cjs_module_export_assignment/main.ts",
   output: "npm/cjs_module_export_assignment/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(cjs_module_export_assignment_number {
-  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
+  args:
+    "run -A --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
   output: "npm/cjs_module_export_assignment_number/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -401,7 +402,7 @@ itest!(no_types_cjs {
 });
 
 itest!(no_types_in_conditional_exports {
-  args: "run --check --unstable npm/no_types_in_conditional_exports/main.ts",
+  args: "run --check npm/no_types_in_conditional_exports/main.ts",
   output: "npm/no_types_in_conditional_exports/main.out",
   exit_code: 0,
   envs: env_vars_for_npm_tests(),

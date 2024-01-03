@@ -112,7 +112,7 @@ itest!(check_broadcast_channel_stable {
 });
 
 itest!(check_broadcast_channel_unstable {
-  args: "check --quiet --unstable check/broadcast_channel.ts",
+  args: "check --quiet --unstable-broadcast-channel check/broadcast_channel.ts",
   exit_code: 0,
 });
 

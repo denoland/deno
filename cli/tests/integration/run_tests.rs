@@ -143,9 +143,8 @@ itest!(_023_no_ext {
   output: "run/023_no_ext.out",
 });
 
-// TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --unstable --reload run/025_hrtime.ts",
+  args: "run --quiet --allow-hrtime --reload run/025_hrtime.ts",
   output: "run/025_hrtime.ts.out",
 });
 
@@ -199,14 +198,14 @@ itest!(_033_import_map_in_flag_has_precedence {
 
 itest!(_033_import_map_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
 });
 
 itest!(_033_import_map_vendor_dir_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor --unstable $TESTDATA/import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor $TESTDATA/import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
   temp_cwd: true,
@@ -250,9 +249,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_045_proxy {
-  args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
+  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
   output: "run/045_proxy_test.ts.out",
   http_server: true,
 });
@@ -1267,43 +1265,42 @@ itest!(exit_error42 {
 });
 
 itest!(set_exit_code_0 {
-  args: "run --no-check --unstable run/set_exit_code_0.ts",
+  args: "run --no-check run/set_exit_code_0.ts",
   output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(set_exit_code_1 {
-  args: "run --no-check --unstable run/set_exit_code_1.ts",
+  args: "run --no-check run/set_exit_code_1.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(set_exit_code_2 {
-  args: "run --no-check --unstable run/set_exit_code_2.ts",
+  args: "run --no-check run/set_exit_code_2.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(op_exit_op_set_exit_code_in_worker {
-  args: "run --no-check --unstable --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
+  args: "run --no-check --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
   exit_code: 21,
   output_str: Some(""),
 });
 
 itest!(deno_exit_tampering {
-  args: "run --no-check --unstable run/deno_exit_tampering.ts",
+  args: "run --no-check run/deno_exit_tampering.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(heapstats {
-  args: "run --quiet --unstable --v8-flags=--expose-gc run/heapstats.js",
+  args: "run --quiet --v8-flags=--expose-gc run/heapstats.js",
   output: "run/heapstats.js.out",
 });
 
 itest!(finalization_registry {
-  args:
-    "run --quiet --unstable --v8-flags=--expose-gc run/finalization_registry.js",
+  args: "run --quiet --v8-flags=--expose-gc run/finalization_registry.js",
   output: "run/finalization_registry.js.out",
 });
 
@@ -1559,7 +1556,7 @@ itest!(unstable_disabled {
 });
 
 itest!(unstable_enabled {
-  args: "run --quiet --reload --unstable run/unstable.ts",
+  args: "run --quiet --reload --unstable-fs run/unstable.ts",
   output: "run/unstable_enabled.out",
 });
 
@@ -1569,7 +1566,7 @@ itest!(unstable_disabled_js {
 });
 
 itest!(unstable_enabled_js {
-  args: "run --quiet --reload --unstable run/unstable.ts",
+  args: "run --quiet --reload --unstable-fs run/unstable.ts",
   output: "run/unstable_enabled_js.out",
 });
 
@@ -2886,7 +2883,7 @@ mod permissions {
 }
 
 itest!(tls_starttls {
-  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem run/tls_starttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_starttls.js",
   output: "run/tls.out",
 });
 
@@ -3451,8 +3448,7 @@ itest!(event_listener_error_immediate_exit {
 
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit_worker {
-  args:
-    "run --quiet --unstable -A run/event_listener_error_immediate_exit_worker.ts",
+  args: "run --quiet -A run/event_listener_error_immediate_exit_worker.ts",
   output: "run/event_listener_error_immediate_exit_worker.ts.out",
   exit_code: 1,
 });
@@ -3532,7 +3528,7 @@ itest!(check_js_points_to_ts {
 });
 
 itest!(no_prompt_flag {
-  args: "run --quiet --unstable --no-prompt run/no_prompt.ts",
+  args: "run --quiet --no-prompt run/no_prompt.ts",
   output_str: Some(""),
 });
 
@@ -3581,7 +3577,7 @@ itest!(queue_microtask_error_handled {
 });
 
 itest!(spawn_stdout_inherit {
-  args: "run --quiet --unstable -A run/spawn_stdout_inherit.ts",
+  args: "run --quiet -A run/spawn_stdout_inherit.ts",
   output: "run/spawn_stdout_inherit.ts.out",
 });
 
@@ -3626,17 +3622,17 @@ itest!(test_and_bench_are_noops_in_run {
 
 #[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
-  args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",
+  args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
   output_str: Some(""),
 });
 
 itest!(followup_dyn_import_resolved {
-  args: "run --unstable --allow-read run/followup_dyn_import_resolves/main.ts",
+  args: "run --allow-read run/followup_dyn_import_resolves/main.ts",
   output: "run/followup_dyn_import_resolves/main.ts.out",
 });
 
 itest!(allow_run_allowlist_resolution {
-  args: "run --quiet --unstable -A allow_run_allowlist_resolution.ts",
+  args: "run --quiet -A allow_run_allowlist_resolution.ts",
   output: "allow_run_allowlist_resolution.ts.out",
 });
 
@@ -3670,7 +3666,7 @@ itest!(nested_error {
 });
 
 itest!(node_env_var_allowlist {
-  args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
+  args: "run --no-prompt run/node_env_var_allowlist.ts",
   output: "run/node_env_var_allowlist.ts.out",
   exit_code: 1,
 });
