@@ -79,7 +79,12 @@ pub fn install() -> Result<(), AnyError> {
     .spawn();
   let mut child = match child_result {
     Ok(child) => child,
-    Err(err) if err.kind() == ErrorKind::NotFound => {
+    Err(err)
+      if matches!(
+        err.kind(),
+        ErrorKind::NotFound | ErrorKind::PermissionDenied
+      ) =>
+    {
       return Err(err).context(concat!(
         "Failed to spawn 'jupyter' command. Is JupyterLab installed ",
         "(https://jupyter.org/install) and available on the PATH?"
