@@ -28,7 +28,6 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::GraphKind;
-use deno_graph::LowResTypeModuleSlot;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
@@ -488,12 +487,12 @@ fn op_load(
         Module::Esm(module) => {
           media_type = module.media_type;
           let source = module
-            .low_res_module()
+            .fast_check_module()
             .map(|m| &*m.source)
             .unwrap_or(&*module.source);
           // eprintln!("### {} ###", module.specifier);
           // eprintln!("{}", source);
-          // eprintln!("HAS LOW RES: {}", module.low_res_module().is_some());
+          // eprintln!("HAS FAST CHECK: {}", module.fast_check_module().is_some());
           Some(Cow::Borrowed(source))
         }
         Module::Json(module) => {
@@ -594,7 +593,7 @@ fn op_resolve(
     let resolved_dep = graph
       .get(&referrer)
       .and_then(|m| m.esm())
-      .and_then(|m| m.dependencies_prefer_low_res().get(&specifier))
+      .and_then(|m| m.dependencies_prefer_fast_check().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
     let maybe_result = match resolved_dep {

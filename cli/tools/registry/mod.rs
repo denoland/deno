@@ -36,7 +36,7 @@ use crate::http_util::HttpClient;
 use crate::tools::check::CheckOptions;
 use crate::tools::registry::graph::get_workspace_member_roots;
 use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
-use crate::tools::registry::graph::surface_low_res_type_graph_errors;
+use crate::tools::registry::graph::surface_fast_check_type_graph_errors;
 use crate::util::import_map::ImportMapUnfurler;
 
 mod api;
@@ -733,9 +733,9 @@ async fn build_and_check_graph_for_publish(
       .await?,
   );
   graph.valid()?;
-  log::info!("Checking low res type graph for errors...");
-  surface_low_res_type_graph_errors(&graph)?;
-  log::info!("Ensuring low res type checks...");
+  log::info!("Checking fast check type graph for errors...");
+  surface_fast_check_type_graph_errors(&graph)?;
+  log::info!("Ensuring type checks...");
   type_checker
     .check(
       graph.clone(),

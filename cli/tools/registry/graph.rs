@@ -59,7 +59,7 @@ pub fn resolve_config_file_roots_from_exports(
   Ok(exports)
 }
 
-pub fn surface_low_res_type_graph_errors(
+pub fn surface_fast_check_type_graph_errors(
   graph: &ModuleGraph,
 ) -> Result<(), AnyError> {
   let mut diagnostic_count = 0;
@@ -71,7 +71,7 @@ pub fn surface_low_res_type_graph_errors(
     let Some(module) = module.esm() else {
       continue;
     };
-    if let Some(diagnostic) = module.low_res_diagnostic() {
+    if let Some(diagnostic) = module.fast_check_diagnostic() {
       for diagnostic in diagnostic.flatten_multiple() {
         let message = diagnostic.message_with_range();
         if !seen_diagnostics.insert(message.clone()) {

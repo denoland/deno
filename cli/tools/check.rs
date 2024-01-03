@@ -385,7 +385,7 @@ fn get_tsc_roots(
     if let Some(entry) = maybe_get_check_entry(module, check_js) {
       result.push(entry);
       if let Some(module) = module.esm() {
-        let deps = module.dependencies_prefer_low_res();
+        let deps = module.dependencies_prefer_fast_check();
         let referrer = &specifier;
         for (specifier_text, _) in deps {
           let specifier = graph.resolve_dependency(
