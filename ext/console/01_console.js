@@ -1616,6 +1616,14 @@ function inspectError(value, ctx) {
 
   if (destructuredError.frames.length > 0) {
     for (let i = 0; i < destructuredError.frames.length; i++) {
+      if (
+        destructuredError.frames[i].fileName ===
+          "ext:deno_console/01_console.js" &&
+        destructuredError.frames[i].lineNumber === 1593
+      ) {
+        continue;
+      }
+
       finalMessage += "\n" + StringPrototypeRepeat(" ", 4) +
         "at " +
         inspectFrame(destructuredError.frames[i], ctx);
