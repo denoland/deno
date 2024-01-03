@@ -38,6 +38,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::ModuleCode;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
@@ -471,7 +472,7 @@ impl CliModuleLoader {
         MediaType::Json => ModuleType::Json,
         _ => ModuleType::JavaScript,
       },
-      code,
+      ModuleSourceCode::String(code),
       specifier,
       &code_source.found_url,
     ))
