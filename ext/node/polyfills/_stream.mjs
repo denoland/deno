@@ -48,7 +48,7 @@ import {
 // generated with
 // $ esbuild --bundle --legal-comments=none --target=es2022 --tree-shaking=true --format=esm .
 // ... then making sure the file uses the existing ext:deno_node stuff instead of bundling it
-const __process$ = { nextTick };
+import __process$ from "node:process";
 import __buffer$ from "node:buffer";
 import __string_decoder$ from "node:string_decoder";
 import __events$ from "node:events";

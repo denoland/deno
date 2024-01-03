@@ -30,6 +30,17 @@ Deno.test({
 });
 
 Deno.test({
+  name: "os machine (arch)",
+  fn() {
+    if (Deno.build.arch == "aarch64") {
+      assertEquals(os.machine(), "arm64");
+    } else {
+      assertEquals(os.machine(), Deno.build.arch);
+    }
+  },
+});
+
+Deno.test({
   name: "home directory is a string",
   fn() {
     assertEquals(typeof os.homedir(), "string");
