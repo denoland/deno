@@ -1588,7 +1588,7 @@ function inspectError(value, ctx) {
   }
   ArrayPrototypeShift(causes);
 
-  let refValue = MapPrototypeGet(refMap, value) ?? "";
+  const refValue = MapPrototypeGet(refMap, value) ?? "";
 
   let finalMessage = "";
 
