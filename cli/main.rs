@@ -397,9 +397,9 @@ pub fn main() {
     if flags.unstable {
       eprintln!(
         "⚠️  {}",
-        colors::yellow(format!(
+        colors::yellow(
           "The `--unstable` flag is deprecated, use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-        ))
+        )
       );
     }
 
