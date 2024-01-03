@@ -164,7 +164,7 @@ function sanitizeInput(input) {
   ) throw new TypeError("Not a string, buffer or dataview");
 
   if (input.buffer) {
-    input = new Uint8Array(input.buffer);
+    input = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
   }
 
   return input;
