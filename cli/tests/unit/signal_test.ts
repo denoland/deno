@@ -181,7 +181,7 @@ Deno.test(
     assertEquals(c, "010101000");
 
     Deno.removeSignalListener("SIGUSR2", listener0);
-    
+
     await delay(100);
 
     // The first 3 events are handled by both handlers
