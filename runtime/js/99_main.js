@@ -54,12 +54,16 @@ import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
-  mainRuntimeGlobalProperties,
-  memoizeLazy,
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
+} from "ext:runtime/98_global_scope_shared.js";
+import {
+  mainRuntimeGlobalProperties,
+  memoizeLazy,
+} from "ext:runtime/98_global_scope_window.js";
+import {
   workerRuntimeGlobalProperties,
-} from "ext:runtime/98_global_scope.js";
+} from "ext:runtime/98_global_scope_worker.js";
 import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
 
 // deno-lint-ignore prefer-primordials
