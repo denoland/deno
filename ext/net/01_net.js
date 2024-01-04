@@ -295,6 +295,8 @@ class Listener {
 class Datagram {
   #rid = 0;
   #addr = null;
+  #unref = false;
+  #promise = null;
 
   constructor(rid, addr, bufSize = 1024) {
     this.#rid = rid;
@@ -367,10 +369,12 @@ class Datagram {
     let remoteAddr;
     switch (this.addr.transport) {
       case "udp": {
-        ({ 0: nread, 1: remoteAddr } = await op_net_recv_udp(
+        this.#promise = op_net_recv_udp(
           this.rid,
           buf,
-        ));
+        );
+        if (this.#unref) core.unrefOpPromise(this.#promise);
+        ({ 0: nread, 1: remoteAddr } = await this.#promise);
         remoteAddr.transport = "udp";
         break;
       }
@@ -411,6 +415,20 @@ class Datagram {
 
   close() {
     core.close(this.rid);
+  }
+
+  ref() {
+    this.#unref = false;
+    if (this.#promise !== null) {
+      core.refOpPromise(this.#promise);
+    }
+  }
+
+  unref() {
+    this.#unref = true;
+    if (this.#promise !== null) {
+      core.unrefOpPromise(this.#promise);
+    }
   }
 
   async *[SymbolAsyncIterator]() {

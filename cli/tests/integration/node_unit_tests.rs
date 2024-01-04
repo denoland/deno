@@ -58,6 +58,7 @@ util::unit_test_factory!(
     crypto_key_test = crypto / crypto_key_test,
     crypto_sign_test = crypto / crypto_sign_test,
     events_test,
+    dgram_test,
     fs_test,
     http_test,
     http2_test,
