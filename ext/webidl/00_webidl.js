@@ -8,7 +8,6 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -67,7 +66,7 @@ const {
   SetPrototypeDelete,
   SetPrototypeAdd,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeToWellFormed,
@@ -82,6 +81,12 @@ const {
   Uint8Array,
   Uint8ClampedArray,
 } = primordials;
+const {
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
 
 function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(
@@ -456,27 +461,13 @@ function convertCallbackFunction(V, prefix, context, _opts) {
   return V;
 }
 
-function isDataView(V) {
-  return ArrayBufferIsView(V) &&
-    TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
-}
-
-function isNonSharedArrayBuffer(V) {
-  return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
-}
-
-function isSharedArrayBuffer(V) {
-  // deno-lint-ignore prefer-primordials
-  return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
-}
-
 converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
   opts = {},
 ) => {
-  if (!isNonSharedArrayBuffer(V)) {
+  if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
       throw makeException(
         TypeError,
@@ -511,7 +502,10 @@ converters.DataView = (
     );
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
+  if (
+    !opts.allowShared &&
+    isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))
+  ) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
@@ -588,7 +582,7 @@ converters.ArrayBufferView = (
     );
   }
   let buffer;
-  if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+  if (isTypedArray(V)) {
     buffer = TypedArrayPrototypeGetBuffer(V);
   } else {
     buffer = DataViewPrototypeGetBuffer(V);
@@ -613,7 +607,7 @@ converters.BufferSource = (
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+    if (isTypedArray(V)) {
       buffer = TypedArrayPrototypeGetBuffer(V);
     } else {
       buffer = DataViewPrototypeGetBuffer(V);
@@ -630,7 +624,7 @@ converters.BufferSource = (
     return V;
   }
 
-  if (!opts.allowShared && !isNonSharedArrayBuffer(V)) {
+  if (!opts.allowShared && !isArrayBuffer(V)) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
@@ -641,7 +635,7 @@ converters.BufferSource = (
   if (
     opts.allowShared &&
     !isSharedArrayBuffer(V) &&
-    !isNonSharedArrayBuffer(V)
+    !isArrayBuffer(V)
   ) {
     throw makeException(
       TypeError,

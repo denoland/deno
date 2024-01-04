@@ -36,7 +36,7 @@ import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
