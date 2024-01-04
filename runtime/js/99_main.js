@@ -27,6 +27,9 @@ const {
   SymbolIterator,
   TypeError,
 } = primordials;
+const {
+  isNativeError,
+} = core;
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
@@ -52,7 +55,7 @@ import {
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import {
   mainRuntimeGlobalProperties,
   memoizeLazy,
@@ -235,7 +238,10 @@ const opPpid = memoizeLazy(() => ops.op_ppid());
 setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
 
 function formatException(error) {
-  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
+  if (
+    isNativeError(error) ||
+    ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)
+  ) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
