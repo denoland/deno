@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_cron"
+<<<<<<< HEAD
 version = "0.9.0"
+=======
+version = "0.10.0"
+>>>>>>> 6af25c059 (1.39.2 (#21791))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

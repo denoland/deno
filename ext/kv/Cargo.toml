@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_kv"
+<<<<<<< HEAD
 version = "0.37.0"
+=======
+version = "0.38.0"
+>>>>>>> 6af25c059 (1.39.2 (#21791))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

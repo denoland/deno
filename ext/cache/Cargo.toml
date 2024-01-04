@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_cache"
+<<<<<<< HEAD
 version = "0.61.0"
+=======
+version = "0.62.0"
+>>>>>>> 6af25c059 (1.39.2 (#21791))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

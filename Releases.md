@@ -6,6 +6,47 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+<<<<<<< HEAD
+=======
+### 1.39.2 / 2024.01.04
+
+- Revert "fix(runtime): Make native modal keyboard interaction consistent with
+  browsers" (#21739)
+- feat(lsp): allow to connect V8 inspector (#21482)
+- feat(lsp): cache jsxImportSource automatically (#21687)
+- feat(unstable): only allow http2 for kv remote backend (#21616)
+- fix(ci): copyright year for console_test.ts (#21787)
+- fix(cli): harden permission stdio check (#21778)
+- fix(cli): make signals tests more reliable (#21772)
+- fix(cli): respect `exclude` option for `deno check` command (#21779)
+- fix(ext/http): use arraybuffer binaryType for server websocket (#21741)
+- fix(ext/node): Implement `aes-192-ecb` and `aes-256-ecb` (#21710)
+- fix(ext/node): UdpSocket ref and unref (#21777)
+- fix(ext/node): add ClientRequest#setNoDelay (#21694)
+- fix(ext/node): add process.abort() (#21742)
+- fix(ext/node): implement os.machine (#21751)
+- fix(ext/node): querystring stringify without encode callback (#21740)
+- fix(ext/node): use node:process in _streams.mjs (#21755)
+- fix(http_client): Fix Deno.createHttpClient to accept poolIdleTimeout
+  parameter (#21603)
+- fix(jupyter): error message when install fails due to jupyter command not
+  being on PATH (#21767)
+- fix(lsp): support test code lens for Deno.test.{ignore,only}() (#21775)
+- fix(node): Implement os.cpus() (#21697)
+- fix(node): support nested tests in "node:test" (#21717)
+- fix(node/zlib): accept dataview and buffer in zlib bindings (#21756)
+- fix(node/zlib): cast Dataview and Buffer to uint8 (#21746)
+- fix(node/zlib): consistently return buffer (#21747)
+- fix(unstable): kv watch should stop when db is closed (#21665)
+- fix(unstable/byonm): support using an import map with byonm (#21786)
+- fix: `Object.groupBy` return type should be a partial (#21680)
+- fix: allow npm: specifiers in import.meta.resolve (#21716)
+- fix: strict type check for cross realms (#21669)
+- perf(coverage): faster source mapping (#21783)
+- perf(lsp): use LanguageServiceHost::getProjectVersion() (#21719)
+- perf: remove opAsync (#21690)
+
+>>>>>>> 6af25c059 (1.39.2 (#21791))
 ### 1.39.1 / 2023.12.21
 
 - fix(bench): added group banner to bench output. (#21551)
