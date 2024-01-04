@@ -78,6 +78,7 @@ export class UDP extends HandleWrap {
 
   #listener?: Deno.DatagramConn;
   #receiving = false;
+  #unrefed = false;
 
   #recvBufferSize = UDP_DGRAM_MAXSIZE;
   #sendBufferSize = UDP_DGRAM_MAXSIZE;
@@ -273,7 +274,8 @@ export class UDP extends HandleWrap {
   }
 
   override ref() {
-    notImplemented("udp.UDP.prototype.ref");
+    this.#listener?.ref();
+    this.#unrefed = false;
   }
 
   send(
@@ -315,7 +317,8 @@ export class UDP extends HandleWrap {
   }
 
   override unref() {
-    notImplemented("udp.UDP.prototype.unref");
+    this.#listener?.unref();
+    this.#unrefed = true;
   }
 
   #doBind(ip: string, port: number, _flags: number, family: number): number {
@@ -442,6 +445,10 @@ export class UDP extends HandleWrap {
     let buf: Uint8Array;
     let remoteAddr: Deno.NetAddr | null;
     let nread: number | null;
+
+    if (this.#unrefed) {
+      this.#listener!.unref();
+    }
 
     try {
       [buf, remoteAddr] = (await this.#listener!.receive(p)) as [
