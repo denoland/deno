@@ -428,8 +428,17 @@ impl MainWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
-    options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+    #[cfg(all(
+      feature = "include_js_files_for_snapshotting",
+      not(feature = "__runtime_js_sources")
+    ))]
+    options
+      .startup_snapshot
+      .as_ref()
+      .expect("Sources are not embedded and a user snapshot was not provided.");
+
+    #[cfg(not(feature = "dont_use_runtime_snapshot"))]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, if you want to create a runtime without a snapshot use 'dont_use_runtime_snapshot' Cargo feature.");
 
     let has_notified_of_inspector_disconnect = AtomicBool::new(false);
     let wait_for_inspector_disconnect_callback = Box::new(move || {
@@ -442,9 +451,7 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: options
-        .startup_snapshot
-        .or_else(crate::js::deno_isolate_init),
+      startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
       skip_op_registration: options.skip_op_registration,
