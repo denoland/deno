@@ -8,6 +8,7 @@ import {
 } from "../../../test_util/std/assert/mod.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 import * as util from "node:util";
+import { Buffer } from "node:buffer";
 
 Deno.test({
   name: "[util] format",
@@ -130,9 +131,11 @@ Deno.test({
   fn() {
     const java = new Error();
     const nodejs = Reflect.construct(Error, [], Object);
+    const bun = new DOMException();
     const deno = "Future";
     assert(util.isError(java));
     assert(util.isError(nodejs));
+    assert(util.isError(bun));
     assert(!util.isError(deno));
   },
 });
@@ -191,6 +194,40 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[util] isDate",
+  fn() {
+    // Test verifies the method is exposed. See _util/_util_types_test for details
+    assert(util.isDate(new Date()));
+  },
+});
+
+Deno.test({
+  name: "[util] isBuffer",
+  fn() {
+    assert(util.isBuffer(new Buffer(4)));
+    assert(!util.isBuffer(new Uint8Array(4)));
+  },
+});
+
+Deno.test({
+  name: "[util] types.isTypedArray",
+  fn() {
+    assert(util.types.isTypedArray(new Buffer(4)));
+    assert(util.types.isTypedArray(new Uint8Array(4)));
+    assert(!util.types.isTypedArray(new DataView(new ArrayBuffer(4))));
+  },
+});
+
+Deno.test({
+  name: "[util] types.isNativeError",
+  fn() {
+    assert(util.types.isNativeError(new Error()));
+    assert(util.types.isNativeError(new TypeError()));
+    assert(!util.types.isNativeError(new DOMException()));
+  },
+});
+
+Deno.test({
   name: "[util] TextDecoder",
   fn() {
     assert(util.TextDecoder === TextDecoder);
@@ -213,14 +250,6 @@ Deno.test({
   fn() {
     assertEquals(util.toUSVString("foo"), "foo");
     assertEquals(util.toUSVString("bar\ud801"), "bar\ufffd");
-  },
-});
-
-Deno.test({
-  name: "[util] isDate",
-  fn() {
-    // Test verifies the method is exposed. See _util/_util_types_test for details
-    assert(util.types.isDate(new Date()));
   },
 });
 

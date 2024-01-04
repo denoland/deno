@@ -20,10 +20,9 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayPrototypeEvery,
@@ -58,6 +57,11 @@ const {
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
+const {
+  isArrayBuffer,
+  isTypedArray,
+  isDataView,
+} = core;
 
 // P-521 is not yet supported.
 const supportedNamedCurves = ["P-256", "P-384"];
@@ -280,26 +284,22 @@ function normalizeAlgorithm(algorithm, op) {
  * @returns {Uint8Array}
  */
 function copyBuffer(input) {
-  if (ArrayBufferIsView(input)) {
-    if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
-      // TypedArray
-      return TypedArrayPrototypeSlice(
-        new Uint8Array(
-          TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
-          TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (input)),
-          TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (input)),
-        ),
-      );
-    } else {
-      // DataView
-      return TypedArrayPrototypeSlice(
-        new Uint8Array(
-          DataViewPrototypeGetBuffer(/** @type {DataView} */ (input)),
-          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
-          DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
-        ),
-      );
-    }
+  if (isTypedArray(input)) {
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
+        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (input)),
+        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (input)),
+      ),
+    );
+  } else if (isDataView(input)) {
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        DataViewPrototypeGetBuffer(/** @type {DataView} */ (input)),
+        DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+        DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+      ),
+    );
   }
   // ArrayBuffer
   return TypedArrayPrototypeSlice(
@@ -944,19 +944,13 @@ class SubtleCrypto {
 
     // 2.
     if (format !== "jwk") {
-      if (
-        ArrayBufferIsView(keyData) ||
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
-      ) {
+      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         keyData = copyBuffer(keyData);
       } else {
         throw new TypeError("keyData is a JsonWebKey");
       }
     } else {
-      if (
-        ArrayBufferIsView(keyData) ||
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
-      ) {
+      if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         throw new TypeError("keyData is not a JsonWebKey");
       }
     }
@@ -4778,10 +4772,7 @@ webidl.converters["BufferSource or JsonWebKey"] = (
   opts,
 ) => {
   // Union for (BufferSource or JsonWebKey)
-  if (
-    ArrayBufferIsView(V) ||
-    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V)
-  ) {
+  if (ArrayBufferIsView(V) || isArrayBuffer(V)) {
     return webidl.converters.BufferSource(V, prefix, context, opts);
   }
   return webidl.converters.JsonWebKey(V, prefix, context, opts);

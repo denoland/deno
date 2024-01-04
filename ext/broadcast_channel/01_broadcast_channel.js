@@ -13,7 +13,7 @@ import {
   setTarget,
 } from "ext:deno_web/02_event.js";
 import { defer } from "ext:deno_web/02_timers.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const {
   op_broadcast_recv,
   op_broadcast_send,

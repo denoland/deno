@@ -1,6 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// @ts-ignore internal api
+import { core, primordials } from "ext:core/mod.js";
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+import { ReadableStream } from "ext:deno_web/06_streams.js";
 const {
   AsyncGeneratorPrototype,
   BigIntPrototypeToString,
@@ -10,19 +12,17 @@ const {
   StringPrototypeReplace,
   SymbolFor,
   SymbolToStringTag,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Error,
-} = globalThis.__bootstrap.primordials;
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
-import { ReadableStream } from "ext:deno_web/06_streams.js";
-const core = Deno.core;
-const ops = core.ops;
+} = primordials;
 const {
   op_kv_atomic_write,
   op_kv_database_open,
   op_kv_dequeue_next_message,
+  op_kv_encode_cursor,
   op_kv_finish_dequeued_message,
   op_kv_snapshot_read,
+  op_kv_watch,
   op_kv_watch_next,
 } = core.ensureFastOps();
 
@@ -30,7 +30,7 @@ const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
   boundaryKey: Deno.KvKey,
 ) => string = (selector, boundaryKey) =>
-  ops.op_kv_encode_cursor(selector, boundaryKey);
+  op_kv_encode_cursor(selector, boundaryKey);
 
 async function openKv(path: string) {
   const rid = await op_kv_database_open(path);
@@ -319,7 +319,7 @@ class Kv {
 
   watch(keys: Deno.KvKey[], options = {}) {
     const raw = options.raw ?? false;
-    const rid = ops.op_kv_watch(this.#rid, keys);
+    const rid = op_kv_watch(this.#rid, keys);
     const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = Array.from(
       { length: keys.length },
       () => undefined,
@@ -585,7 +585,7 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
 }
 
 function serializeValue(value: unknown): RawValue {
-  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+  if (TypedArrayPrototypeGetSymbolToStringTag(value) === "Uint8Array") {
     return {
       kind: "bytes",
       value,

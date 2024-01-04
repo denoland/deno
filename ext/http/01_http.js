@@ -60,8 +60,8 @@ const {
   Symbol,
   SymbolAsyncIterator,
   TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
-  Uint8ArrayPrototype,
 } = primordials;
 const {
   op_http_accept,
@@ -272,7 +272,7 @@ function createRespondWith(
       }
       const isStreamingResponseBody = !(
         typeof respBody === "string" ||
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+        TypedArrayPrototypeGetSymbolToStringTag(respBody) === "Uint8Array"
       );
       try {
         await op_http_write_headers(
@@ -339,7 +339,9 @@ function createRespondWith(
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+            if (
+              TypedArrayPrototypeGetSymbolToStringTag(value) !== "Uint8Array"
+            ) {
               await reader.cancel(new TypeError("Value not a Uint8Array"));
               break;
             }

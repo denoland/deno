@@ -37,7 +37,6 @@ import {
   readableStreamThrowIfErrored,
 } from "ext:deno_web/06_streams.js";
 const {
-  ArrayBufferPrototype,
   ArrayBufferIsView,
   ArrayPrototypeMap,
   DataViewPrototypeGetBuffer,
@@ -46,8 +45,6 @@ const {
   JSONParse,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -56,6 +53,10 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
 
 /**
  * @param {Uint8Array | string} chunk
@@ -412,7 +413,7 @@ function extractBody(object) {
       );
     }
     source = TypedArrayPrototypeSlice(object);
-  } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
+  } else if (isArrayBuffer(object)) {
     source = TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
@@ -461,11 +462,7 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     return webidl.converters["URLSearchParams"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
