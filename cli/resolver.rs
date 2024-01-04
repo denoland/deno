@@ -256,6 +256,7 @@ impl Resolver for CliGraphResolver {
     let result = self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)
+      .map_err(|err| err.into())
       .and_then(|resolution| match resolution {
         MappedResolution::ImportMap(specifier) => Ok(specifier),
         MappedResolution::PackageJson(specifier) => {
@@ -394,7 +395,7 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    Ok(result?)
+    result
   }
 }
 
