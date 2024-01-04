@@ -2321,23 +2321,31 @@ console.log(getKind());
 fn byonm_import_map() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
-  dir.write("deno.json", r#"{
+  dir.write(
+    "deno.json",
+    r#"{
     "imports": {
       "basic": "npm:@denotest/esm-basic"
     },
     "unstable": [ "byonm" ]
-}"#);
-  dir.write("package.json", r#"{
+}"#,
+  );
+  dir.write(
+    "package.json",
+    r#"{
     "name": "my-project",
     "version": "1.0.0",
     "type": "module",
     "dependencies": {
       "@denotest/esm-basic": "^1.0"
     }
-}"#);
+}"#,
+  );
   test_context.run_npm("install");
 
-  dir.write("main.ts", r#"
+  dir.write(
+    "main.ts",
+    r#"
 // import map should resolve
 import { getValue } from "basic";
 // and resolving via node resolution
@@ -2345,16 +2353,11 @@ import { setValue } from "@denotest/esm-basic";
 
 setValue(5);
 console.log(getValue());
-"#);
-  let output = test_context
-    .new_command()
-    .args("run main.ts")
-    .run();
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("5\n");
-  let output = test_context
-    .new_command()
-    .args("check main.ts")
-    .run();
+  let output = test_context.new_command().args("check main.ts").run();
   output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
 }
 
@@ -2531,21 +2534,18 @@ console.log(add(1, 2));
   // Now a file in the main directory should just be able to
   // import it via node resolution even though a package.json
   // doesn't exist here
-  dir.write("main.ts", r#"
+  dir.write(
+    "main.ts",
+    r#"
 import { getValue, setValue } from "@denotest/esm-basic";
 
 setValue(7);
 console.log(getValue());
-"#);
-  let output = test_context
-    .new_command()
-    .args("run main.ts")
-    .run();
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("7\n");
-  let output = test_context
-    .new_command()
-    .args("check main.ts")
-    .run();
+  let output = test_context.new_command().args("check main.ts").run();
   output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
 }
 

@@ -256,20 +256,19 @@ impl Resolver for CliGraphResolver {
     let result = self
       .mapped_specifier_resolver
       .resolve(specifier, referrer)
-      .and_then(|resolution| match resolution
-    {
-      MappedResolution::ImportMap(specifier) => Ok(specifier),
-      MappedResolution::PackageJson(specifier) => {
-        // found a specifier in the package.json, so mark that
-        // we need to do an "npm install" later
-        self.found_package_json_dep_flag.raise();
-        Ok(specifier)
-      }
-      MappedResolution::None => {
-        deno_graph::resolve_import(specifier, &referrer_range.specifier)
-          .map_err(|err| err.into())
-      }
-    });
+      .and_then(|resolution| match resolution {
+        MappedResolution::ImportMap(specifier) => Ok(specifier),
+        MappedResolution::PackageJson(specifier) => {
+          // found a specifier in the package.json, so mark that
+          // we need to do an "npm install" later
+          self.found_package_json_dep_flag.raise();
+          Ok(specifier)
+        }
+        MappedResolution::None => {
+          deno_graph::resolve_import(specifier, &referrer_range.specifier)
+            .map_err(|err| err.into())
+        }
+      });
 
     // do sloppy imports resolution if enabled
     let result =
