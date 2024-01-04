@@ -2076,7 +2076,7 @@ fn binary_package_with_optional_dependencies() {
 }
 
 #[test]
-pub fn node_modules_dir_config_file() {
+fn node_modules_dir_config_file() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
   let node_modules_dir = temp_dir.path().join("node_modules");
@@ -2233,7 +2233,7 @@ itest!(require_resolve_url_paths {
 });
 
 #[test]
-pub fn byonm_cjs_esm_packages() {
+fn byonm_cjs_esm_packages() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2318,7 +2318,51 @@ console.log(getKind());
 }
 
 #[test]
-pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
+fn byonm_import_map() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic"
+    },
+    "unstable": [ "byonm" ]
+}"#,
+  );
+  dir.write(
+    "package.json",
+    r#"{
+    "name": "my-project",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0"
+    }
+}"#,
+  );
+  test_context.run_npm("install");
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { getValue } from "basic";
+// and resolving via node resolution
+import { setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("5\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+}
+
+#[test]
+fn byonm_package_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2362,7 +2406,7 @@ pub fn byonm_package_specifier_not_installed_and_invalid_subpath() {
 }
 
 #[test]
-pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
+fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
     .use_temp_cwd()
@@ -2406,7 +2450,7 @@ pub fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 }
 
 #[test]
-pub fn byonm_npm_workspaces() {
+fn byonm_npm_workspaces() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
@@ -2486,10 +2530,27 @@ console.log(add(1, 2));
     .args("check ./project-b/main.ts")
     .run();
   output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+
+  // Now a file in the main directory should just be able to
+  // import it via node resolution even though a package.json
+  // doesn't exist here
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(7);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("7\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
 }
 
 #[test]
-pub fn cjs_export_analysis_require_re_export() {
+fn cjs_export_analysis_require_re_export() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
@@ -2543,7 +2604,7 @@ pub fn cjs_export_analysis_require_re_export() {
 }
 
 #[test]
-pub fn cjs_rexport_analysis_json() {
+fn cjs_rexport_analysis_json() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
@@ -2651,7 +2712,7 @@ itest!(different_nested_dep_node_modules_dir_true {
 });
 
 #[test]
-pub fn different_nested_dep_byonm() {
+fn different_nested_dep_byonm() {
   let test_context = TestContextBuilder::for_npm()
     .use_copy_temp_dir("npm/different_nested_dep")
     .cwd("npm/different_nested_dep/")
@@ -2667,7 +2728,7 @@ pub fn different_nested_dep_byonm() {
 }
 
 #[test]
-pub fn run_cjs_in_node_modules_folder() {
+fn run_cjs_in_node_modules_folder() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
   temp_dir.write("package.json", "{}");
