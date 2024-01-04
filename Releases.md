@@ -8,7 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 1.39.2 / 2024.01.04
 
-- Revert "fix(runtime): Make native modal keyboard interaction consistent with browsers" (#21739)
+- Revert "fix(runtime): Make native modal keyboard interaction consistent with
+  browsers" (#21739)
 - feat(lsp): allow to connect V8 inspector (#21482)
 - feat(lsp): cache jsxImportSource automatically (#21687)
 - feat(unstable): only allow http2 for kv remote backend (#21616)
@@ -16,7 +17,7 @@ https://github.com/denoland/deno_install
 - fix(cli): harden permission stdio check (#21778)
 - fix(cli): make signals tests more reliable (#21772)
 - fix(cli): respect `exclude` option for `deno check` command (#21779)
-- fix(ext/http): use arraybuffer binaryType for server websocket  (#21741)
+- fix(ext/http): use arraybuffer binaryType for server websocket (#21741)
 - fix(ext/node): Implement `aes-192-ecb` and `aes-256-ecb` (#21710)
 - fix(ext/node): UdpSocket ref and unref (#21777)
 - fix(ext/node): add ClientRequest#setNoDelay (#21694)
@@ -24,8 +25,10 @@ https://github.com/denoland/deno_install
 - fix(ext/node): implement os.machine (#21751)
 - fix(ext/node): querystring stringify without encode callback (#21740)
 - fix(ext/node): use node:process in _streams.mjs (#21755)
-- fix(http_client): Fix Deno.createHttpClient to accept poolIdleTimeout parameter (#21603)
-- fix(jupyter): error message when install fails due to jupyter command not being on PATH (#21767)
+- fix(http_client): Fix Deno.createHttpClient to accept poolIdleTimeout
+  parameter (#21603)
+- fix(jupyter): error message when install fails due to jupyter command not
+  being on PATH (#21767)
 - fix(lsp): support test code lens for Deno.test.{ignore,only}() (#21775)
 - fix(node): Implement os.cpus() (#21697)
 - fix(node): support nested tests in "node:test" (#21717)
