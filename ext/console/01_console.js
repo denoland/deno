@@ -4,6 +4,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
+  AggregateErrorPrototype,
   Array,
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -1619,7 +1620,7 @@ function inspectError(value, ctx) {
     (frame) =>
       !(frame.fileName ===
           "ext:deno_console/01_console.js" &&
-        frame.lineNumber === 1595),
+        frame.lineNumber === 1596),
   );
 
   if (frames.length > 0) {
@@ -1630,9 +1631,11 @@ function inspectError(value, ctx) {
         "at " +
         inspectFrame(frames[i], ctx);
     }
-  } else if (!destructuredError.aggregated) {
+  } else if (!ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
     finalMessage = refValue +
       `[${value.stack || ErrorPrototypeToString(value)}]` + finalMessage;
+  } else {
+    finalMessage = refValue + exceptionMessage + finalMessage;
   }
 
   finalMessage += ArrayPrototypeJoin(
