@@ -253,9 +253,10 @@ impl Resolver for CliGraphResolver {
     }
 
     let referrer = &referrer_range.specifier;
-    let result = match self
+    let result = self
       .mapped_specifier_resolver
-      .resolve(specifier, referrer)?
+      .resolve(specifier, referrer)
+      .and_then(|resolution| match resolution
     {
       MappedResolution::ImportMap(specifier) => Ok(specifier),
       MappedResolution::PackageJson(specifier) => {
@@ -268,7 +269,7 @@ impl Resolver for CliGraphResolver {
         deno_graph::resolve_import(specifier, &referrer_range.specifier)
           .map_err(|err| err.into())
       }
-    };
+    });
 
     // do sloppy imports resolution if enabled
     let result =
@@ -394,7 +395,7 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    result
+    Ok(result?)
   }
 }
 
