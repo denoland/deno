@@ -8,7 +8,7 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
-use crate::args::FilesConfig;
+use crate::args::FilePatterns;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::FmtOptions;
@@ -144,12 +144,12 @@ async fn format_files(
   Ok(())
 }
 
-fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_fmt_files(files: &FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext_fmt)
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
-    .add_ignore_paths(&files.exclude)
+    .add_exclude_patterns(files.exclude.clone())
     .collect_files(files.include.as_deref())
 }
 

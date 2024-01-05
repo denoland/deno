@@ -70,6 +70,9 @@ use thiserror::Error;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::glob::expand_globs;
+use crate::util::glob::GlobPattern;
+use crate::util::glob::GlobSet;
+use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 use deno_config::FmtConfig;
@@ -217,7 +220,7 @@ impl CacheSetting {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BenchOptions {
-  pub files: FilesConfig,
+  pub files: FilePatterns,
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
@@ -245,7 +248,7 @@ impl BenchOptions {
 pub struct FmtOptions {
   pub check: bool,
   pub options: FmtOptionsConfig,
-  pub files: FilesConfig,
+  pub files: FilePatterns,
 }
 
 impl FmtOptions {
@@ -311,26 +314,9 @@ fn resolve_fmt_options(
   options
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct CheckOptions {
-  pub exclude: Vec<PathBuf>,
-}
-
-impl CheckOptions {
-  pub fn resolve(
-    maybe_files_config: Option<FilesConfig>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      exclude: expand_globs(
-        maybe_files_config.map(|c| c.exclude).unwrap_or_default(),
-      )?,
-    })
-  }
-}
-
 #[derive(Clone)]
 pub struct TestOptions {
-  pub files: FilesConfig,
+  pub files: FilePatterns,
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
@@ -382,7 +368,7 @@ pub enum LintReporterKind {
 #[derive(Clone, Debug, Default)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
-  pub files: FilesConfig,
+  pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
 }
 
@@ -1199,14 +1185,20 @@ impl CliOptions {
     LintOptions::resolve(maybe_lint_config, Some(lint_flags))
   }
 
-  pub fn resolve_check_options(&self) -> Result<CheckOptions, AnyError> {
+  pub fn resolve_config_excludes(&self) -> Result<GlobSet, AnyError> {
     let maybe_files_config = if let Some(config_file) = &self.maybe_config_file
     {
       config_file.to_files_config()?
     } else {
       None
     };
-    CheckOptions::resolve(maybe_files_config)
+    let patterns = maybe_files_config
+      .map(|c| c.exclude)
+      .unwrap_or_default()
+      .into_iter()
+      .map(|p| GlobPattern::new(&p.to_string_lossy()))
+      .collect::<Result<Vec<_>, _>>()?;
+    Ok(GlobSet::new(patterns))
   }
 
   pub fn resolve_test_options(
@@ -1649,30 +1641,63 @@ impl StorageKeyResolver {
   }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct FilePatterns {
+  pub include: Option<Vec<PathBuf>>,
+  pub exclude: GlobSet,
+}
+
+impl FilePatterns {
+  pub fn matches_specifier(&self, specifier: &Url) -> bool {
+    let file_path = match specifier_to_file_path(specifier) {
+      Ok(file_path) => file_path,
+      Err(_) => return true,
+    };
+    // Skip files which is in the exclude list.
+    if self.exclude.matches_path(&file_path) {
+      return false;
+    }
+
+    // Ignore files not in the include list if it's present.
+    if let Some(include) = &self.include {
+      return include.iter().any(|p| file_path.starts_with(p));
+    }
+
+    true
+  }
+}
+
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
   maybe_files_config: Option<FilesConfig>,
   maybe_file_flags: Option<FileFlags>,
-) -> Result<FilesConfig, AnyError> {
-  let mut result = maybe_files_config.unwrap_or_default();
+) -> Result<FilePatterns, AnyError> {
+  let mut maybe_files_config = maybe_files_config.unwrap_or_default();
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
-      result.include = Some(file_flags.include);
+      maybe_files_config.include = Some(file_flags.include);
     }
     if !file_flags.ignore.is_empty() {
-      result.exclude = file_flags.ignore;
+      maybe_files_config.exclude = file_flags.ignore;
     }
   }
-  // Now expand globs if there are any
-  result.include = match result.include {
-    Some(include) => Some(expand_globs(include)?),
-    None => None,
-  };
-  result.exclude = expand_globs(result.exclude)?;
-
-  Ok(result)
+  Ok(FilePatterns {
+    // Now expand globs if there are any
+    include: match maybe_files_config.include {
+      Some(include) => Some(expand_globs(include)?),
+      None => None,
+    },
+    // and create the exclude patterns
+    exclude: GlobSet::new(
+      maybe_files_config
+        .exclude
+        .into_iter()
+        .map(|pattern| GlobPattern::new(&pattern.to_string_lossy()))
+        .collect::<Result<Vec<_>, _>>()?,
+    ),
+  })
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1923,10 +1948,16 @@ mod test {
     );
     assert_eq!(
       resolved_files.exclude,
-      vec![
-        temp_dir_path.join("nested/fizz/bazz.ts"),
-        temp_dir_path.join("nested/foo/bazz.ts"),
-      ]
+      GlobSet::new(vec![
+        GlobPattern::new(
+          &temp_dir_path.join("nested/fizz/bazz.ts").to_string_lossy()
+        )
+        .unwrap(),
+        GlobPattern::new(
+          &temp_dir_path.join("nested/foo/bazz.ts").to_string_lossy()
+        )
+        .unwrap()
+      ])
     )
   }
 

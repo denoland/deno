@@ -29,6 +29,7 @@ pub fn glob(pattern: &str) -> Result<glob::Paths, AnyError> {
     .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct GlobPattern(glob::Pattern);
 
 impl GlobPattern {
@@ -50,11 +51,16 @@ impl GlobPattern {
   }
 }
 
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct GlobSet(Vec<GlobPattern>);
 
 impl GlobSet {
   pub fn new(matchers: Vec<GlobPattern>) -> Self {
     Self(matchers)
+  }
+
+  pub fn extend(&mut self, other_set: Self) {
+    self.0.extend(other_set.0);
   }
 
   pub fn matches_path(&self, path: &Path) -> bool {

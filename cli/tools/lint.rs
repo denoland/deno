@@ -2,7 +2,7 @@
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
-use crate::args::FilesConfig;
+use crate::args::FilePatterns;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -191,12 +191,12 @@ async fn lint_files(
   Ok(!has_error.is_raised())
 }
 
-fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_lint_files(files: &FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_script_ext)
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
-    .add_ignore_paths(&files.exclude)
+    .add_exclude_patterns(files.exclude.clone())
     .collect_files(files.include.as_deref())
 }
 

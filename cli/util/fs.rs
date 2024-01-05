@@ -21,11 +21,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use walkdir::WalkDir;
 
-use crate::args::FilesConfig;
+use crate::args::FilePatterns;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
+use super::glob::GlobSet;
 use super::path::specifier_to_file_path;
 
 /// Writes the file to the file system at a temporary path, then
@@ -246,6 +247,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
 pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
   canonicalized_ignore: Vec<PathBuf>,
+  exclude_patterns: GlobSet,
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
@@ -256,6 +258,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
   pub fn new(file_filter: TFilter) -> Self {
     Self {
       canonicalized_ignore: Default::default(),
+      exclude_patterns: Default::default(),
       file_filter,
       ignore_git_folder: false,
       ignore_node_modules: false,
@@ -268,6 +271,11 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     self
       .canonicalized_ignore
       .extend(paths.iter().filter_map(|i| canonicalize_path(i).ok()));
+    self
+  }
+
+  pub fn add_exclude_patterns(mut self, patterns: GlobSet) -> Self {
+    self.exclude_patterns.extend(patterns);
     self
   }
 
@@ -309,7 +317,9 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
           let file_type = e.file_type();
           let is_dir = file_type.is_dir();
           if let Ok(c) = canonicalize_path(e.path()) {
-            if self.canonicalized_ignore.iter().any(|i| c.starts_with(i)) {
+            if self.canonicalized_ignore.iter().any(|i| c.starts_with(i))
+              || self.exclude_patterns.matches_path(e.path())
+            {
               if is_dir {
                 iterator.skip_current_dir();
               }
@@ -349,12 +359,12 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  files: &FilesConfig,
+  files: &FilePatterns,
   predicate: impl Fn(&Path) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
   let file_collector = FileCollector::new(predicate)
-    .add_ignore_paths(&files.exclude)
+    .add_exclude_patterns(files.exclude.clone())
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder();
@@ -711,6 +721,8 @@ impl LaxSingleProcessFsFlag {
 
 #[cfg(test)]
 mod tests {
+  use crate::util::glob::GlobPattern;
+
   use super::*;
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
@@ -940,13 +952,16 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      &FilesConfig {
+      &FilePatterns {
         include: Some(vec![
           PathBuf::from("http://localhost:8080"),
           root_dir_path.to_path_buf(),
           PathBuf::from("https://localhost:8080".to_string()),
         ]),
-        exclude: vec![ignore_dir_path.to_path_buf()],
+        exclude: GlobSet::new(vec![GlobPattern::new(
+          &ignore_dir_path.to_string_lossy(),
+        )
+        .unwrap()]),
       },
       predicate,
     )
@@ -979,13 +994,13 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      &FilesConfig {
+      &FilePatterns {
         include: Some(vec![PathBuf::from(format!(
           "{}{}",
           scheme,
           root_dir_path.join("child").to_string().replace('\\', "/")
         ))]),
-        exclude: vec![],
+        exclude: Default::default(),
       },
       predicate,
     )
