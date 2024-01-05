@@ -388,13 +388,9 @@ fn get_tsc_roots(
       result.push(entry);
       if let Some(module) = module.esm() {
         let deps = module.dependencies_prefer_fast_check();
-        let referrer = &specifier;
-        for (specifier_text, _) in deps {
-          let specifier = graph.resolve_dependency(
-            specifier_text,
-            referrer,
-            /* prefer types */ true,
-          );
+        for dep in deps.values() {
+          let specifier = graph
+            .resolve_dependency_from_dep(dep, /* prefer types */ true);
           if let Some(specifier) = specifier {
             if seen_roots.insert(specifier.clone()) {
               pending.push_back(specifier);
@@ -404,14 +400,6 @@ fn get_tsc_roots(
       }
     }
   }
-
-  // result.extend(graph.modules().filter_map(|module| {
-  //   if seen_roots.contains(module.specifier()) {
-  //     None
-  //   } else {
-  //     maybe_get_check_entry(module, check_js)
-  //   }
-  // }));
 
   result
 }

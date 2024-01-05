@@ -281,6 +281,8 @@ impl Diagnostics {
     self.0.is_empty()
   }
 
+  /// Modifies all the diagnostics to have their display positions
+  /// modified to point at the original source.
   pub fn apply_fast_check_source_maps(&mut self, graph: &ModuleGraph) {
     for d in &mut self.0 {
       if let Some(specifier) = d

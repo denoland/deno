@@ -42,7 +42,7 @@ impl ParsedSourceCache {
       specifier,
       source,
       media_type,
-      // currently only used for emitting
+      // don't bother enabling because this method is currently only used for emitting
       scope_analysis: false,
     })
   }
@@ -93,6 +93,7 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCache {
     if parsed_source.has_scope_analysis() {
       Some(parsed_source.clone())
     } else {
+      // upgrade to have scope analysis
       let parsed_source = sources.remove(specifier).unwrap();
       let parsed_source = parsed_source.into_with_scope_analysis();
       sources.insert(specifier.clone(), parsed_source.clone());
