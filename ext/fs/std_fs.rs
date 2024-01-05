@@ -150,6 +150,13 @@ impl FileSystem for RealFs {
     spawn_blocking(move || copy_file(&from, &to)).await?
   }
 
+  fn cp_sync(&self, fro: &Path, to: &Path) -> FsResult<()> {
+    cp(fro, to)
+  }
+  async fn cp_async(&self, fro: PathBuf, to: PathBuf) -> FsResult<()> {
+    spawn_blocking(move || cp(&fro, &to)).await?
+  }
+
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
     stat(path).map(Into::into)
   }
@@ -465,6 +472,157 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   }
 
   fs::copy(from, to)?;
+
+  Ok(())
+}
+
+fn cp(from: &Path, to: &Path) -> FsResult<()> {
+  fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
+    use rayon::prelude::IntoParallelIterator;
+    use rayon::prelude::ParallelIterator;
+
+    let ty = source_meta.file_type();
+    if ty.is_dir() {
+      #[allow(unused_mut)]
+      let mut builder = fs::DirBuilder::new();
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::DirBuilderExt;
+        use std::os::unix::fs::PermissionsExt;
+        builder.mode(fs::symlink_metadata(from)?.permissions().mode());
+      }
+      builder.create(to)?;
+
+      let mut entries: Vec<_> = fs::read_dir(from)?
+        .map(|res| res.map(|e| e.file_name()))
+        .collect::<Result<_, _>>()?;
+
+      entries.shrink_to_fit();
+      entries
+        .into_par_iter()
+        .map(|file_name| {
+          cp_(
+            fs::symlink_metadata(from.join(&file_name)).unwrap(),
+            &from.join(&file_name),
+            &to.join(&file_name),
+          )
+          .map_err(|err| {
+            io::Error::new(
+              err.kind(),
+              format!(
+                "failed to copy '{}' to '{}': {:?}",
+                from.join(&file_name).display(),
+                to.join(&file_name).display(),
+                err
+              ),
+            )
+          })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+      return Ok(());
+    } else if ty.is_symlink() {
+      let from = std::fs::read_link(from)?;
+
+      #[cfg(unix)]
+      std::os::unix::fs::symlink(from, to)?;
+      #[cfg(windows)]
+      std::os::windows::fs::symlink_file(from, to)?;
+
+      return Ok(());
+    }
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::FileTypeExt;
+      if ty.is_socket() {
+        return Err(
+          io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "sockets cannot be copied",
+          )
+          .into(),
+        );
+      }
+    }
+    copy_file(from, to)
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    // Just clonefile()
+    use libc::clonefile;
+    use libc::unlink;
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let from_str = CString::new(from.as_os_str().as_bytes()).unwrap();
+    let to_str = CString::new(to.as_os_str().as_bytes()).unwrap();
+
+    // SAFETY: `from` and `to` are valid C strings.
+    unsafe {
+      // Try unlink. If it fails, we are going to try clonefile() anyway.
+      let _ = unlink(to_str.as_ptr());
+
+      if clonefile(from_str.as_ptr(), to_str.as_ptr(), 0) == 0 {
+        return Ok(());
+      }
+    }
+  }
+
+  let source_meta = fs::symlink_metadata(from)?;
+
+  #[inline]
+  fn is_identical(
+    source_meta: &fs::Metadata,
+    dest_meta: &fs::Metadata,
+  ) -> bool {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::MetadataExt;
+      source_meta.ino() == dest_meta.ino()
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::fs::MetadataExt;
+      // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/ns-fileapi-by_handle_file_information
+      //
+      // The identifier (low and high parts) and the volume serial number uniquely identify a file on a single computer.
+      // To determine whether two open handles represent the same file, combine the identifier and the volume serial
+      // number for each file and compare them.
+      //
+      // Use this code once file_index() and volume_serial_number() is stabalized
+      // See: https://github.com/rust-lang/rust/issues/63010
+      //
+      // source_meta.file_index() == dest_meta.file_index()
+      //   && source_meta.volume_serial_number()
+      //     == dest_meta.volume_serial_number()
+      source_meta.last_write_time() == dest_meta.last_write_time()
+        && source_meta.creation_time() == dest_meta.creation_time()
+    }
+  }
+
+  match (fs::metadata(to), fs::symlink_metadata(to)) {
+    (Ok(m), _) if m.is_dir() => cp_(
+      source_meta,
+      from,
+      &to.join(from.file_name().ok_or_else(|| {
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "the source path is not a valid file",
+        )
+      })?),
+    )?,
+    (_, Ok(m)) if is_identical(&source_meta, &m) => {
+      return Err(
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "the source and destination are the same file",
+        )
+        .into(),
+      )
+    }
+    _ => cp_(source_meta, from, to)?,
+  }
 
   Ok(())
 }
