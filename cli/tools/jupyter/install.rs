@@ -6,6 +6,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use std::env::current_exe;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
 use tempfile::TempDir;
@@ -76,18 +77,33 @@ pub fn install() -> Result<(), AnyError> {
       &temp_dir.path().to_string_lossy(),
     ])
     .spawn();
+  let mut child = match child_result {
+    Ok(child) => child,
+    Err(err)
+      if matches!(
+        err.kind(),
+        ErrorKind::NotFound | ErrorKind::PermissionDenied
+      ) =>
+    {
+      return Err(err).context(concat!(
+        "Failed to spawn 'jupyter' command. Is JupyterLab installed ",
+        "(https://jupyter.org/install) and available on the PATH?"
+      ));
+    }
+    Err(err) => {
+      return Err(err).context("Failed to spawn 'jupyter' command.");
+    }
+  };
 
-  if let Ok(mut child) = child_result {
-    let wait_result = child.wait();
-    match wait_result {
-      Ok(status) => {
-        if !status.success() {
-          bail!("Failed to install kernelspec, try again.");
-        }
+  let wait_result = child.wait();
+  match wait_result {
+    Ok(status) => {
+      if !status.success() {
+        bail!("Failed to install kernelspec, try again.");
       }
-      Err(err) => {
-        bail!("Failed to install kernelspec: {}", err);
-      }
+    }
+    Err(err) => {
+      bail!("Failed to install kernelspec: {}", err);
     }
   }
 

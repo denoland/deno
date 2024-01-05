@@ -1845,18 +1845,36 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidDateIsPassed() {
 // console.log(new Proxy(new Set(), {}))
 Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedSet() {
   mockConsole((console, out) => {
-    const proxiedSet = new Proxy(new Set(), {});
+    const proxiedSet = new Proxy(new Set([1, 2]), {});
     console.log(proxiedSet);
-    assertEquals(stripColor(out.toString()), "Set {}\n");
+    assertEquals(stripColor(out.toString()), "Set(2) { 1, 2 }\n");
   });
 });
 
 // console.log(new Proxy(new Map(), {}))
 Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
   mockConsole((console, out) => {
-    const proxiedMap = new Proxy(new Map(), {});
+    const proxiedMap = new Proxy(new Map([[1, 1], [2, 2]]), {});
     console.log(proxiedMap);
-    assertEquals(stripColor(out.toString()), "Map {}\n");
+    assertEquals(stripColor(out.toString()), "Map(2) { 1 => 1, 2 => 2 }\n");
+  });
+});
+
+// console.log(new Proxy(new Uint8Array(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedTypedArray() {
+  mockConsole((console, out) => {
+    const proxiedUint8Array = new Proxy(new Uint8Array([1, 2]), {});
+    console.log(proxiedUint8Array);
+    assertEquals(stripColor(out.toString()), "Uint8Array(2) [ 1, 2 ]\n");
+  });
+});
+
+// console.log(new Proxy(new RegExp(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedRegExp() {
+  mockConsole((console, out) => {
+    const proxiedRegExp = new Proxy(/aaaa/, {});
+    console.log(proxiedRegExp);
+    assertEquals(stripColor(out.toString()), "/aaaa/\n");
   });
 });
 
@@ -1866,6 +1884,15 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedDate() {
     const proxiedDate = new Proxy(new Date("2022-09-24T15:59:39.529Z"), {});
     console.log(proxiedDate);
     assertEquals(stripColor(out.toString()), "2022-09-24T15:59:39.529Z\n");
+  });
+});
+
+// console.log(new Proxy(new Error(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedError() {
+  mockConsole((console, out) => {
+    const proxiedError = new Proxy(new Error("message"), {});
+    console.log(proxiedError);
+    assertStringIncludes(stripColor(out.toString()), "Error: message\n");
   });
 });
 

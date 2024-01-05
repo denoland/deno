@@ -311,6 +311,23 @@ fn resolve_fmt_options(
   options
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct CheckOptions {
+  pub exclude: Vec<PathBuf>,
+}
+
+impl CheckOptions {
+  pub fn resolve(
+    maybe_files_config: Option<FilesConfig>,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      exclude: expand_globs(
+        maybe_files_config.map(|c| c.exclude).unwrap_or_default(),
+      )?,
+    })
+  }
+}
+
 #[derive(Clone)]
 pub struct TestOptions {
   pub files: FilesConfig,
@@ -1180,6 +1197,16 @@ impl CliOptions {
       None
     };
     LintOptions::resolve(maybe_lint_config, Some(lint_flags))
+  }
+
+  pub fn resolve_check_options(&self) -> Result<CheckOptions, AnyError> {
+    let maybe_files_config = if let Some(config_file) = &self.maybe_config_file
+    {
+      config_file.to_files_config()?
+    } else {
+      None
+    };
+    CheckOptions::resolve(maybe_files_config)
   }
 
   pub fn resolve_test_options(

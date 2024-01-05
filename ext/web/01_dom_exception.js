@@ -210,4 +210,4 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
 
-export default DOMException;
+export { DOMException, DOMExceptionPrototype };
