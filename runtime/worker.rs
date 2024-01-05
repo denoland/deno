@@ -308,7 +308,7 @@ impl MainWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+    // `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let mut extensions = vec![
       // Web APIs
       deno_webidl::deno_webidl::init_ops_and_esm(),
