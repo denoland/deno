@@ -4347,11 +4347,11 @@ declare namespace Intl {
     | Temporal.PlainYearMonth
     | Temporal.PlainMonthDay;
 
-  interface DateTimeFormatRangePart extends globalThis.Intl.DateTimeFormatPart {
+  interface DateTimeFormatRangePart {
     source: "shared" | "startRange" | "endRange";
   }
 
-  export interface DateTimeFormat extends globalThis.Intl.DateTimeFormat {
+  export interface DateTimeFormat {
     /**
      * Format a date into a string according to the locale and formatting
      * options of this `Intl.DateTimeFormat` object.
@@ -4399,39 +4399,10 @@ declare namespace Intl {
     ): DateTimeFormatRangePart[];
   }
 
-  export interface DateTimeFormatOptions
-    extends
-      Omit<globalThis.Intl.DateTimeFormatOptions, "timeZone" | "calendar"> {
-    calendar?: string | Temporal.CalendarProtocol;
-    timeZone?: string | Temporal.TimeZoneProtocol;
+  export interface DateTimeFormatOptions {
     // TODO: remove the props below after TS lib declarations are updated
     dayPeriod?: "narrow" | "short" | "long";
     dateStyle?: "full" | "long" | "medium" | "short";
     timeStyle?: "full" | "long" | "medium" | "short";
   }
-
-  export const DateTimeFormat: {
-    /**
-     * Creates `Intl.DateTimeFormat` objects that enable language-sensitive
-     * date and time formatting.
-     */
-    new (
-      locales?: string | string[],
-      options?: DateTimeFormatOptions,
-    ): DateTimeFormat;
-    (
-      locales?: string | string[],
-      options?: DateTimeFormatOptions,
-    ): DateTimeFormat;
-
-    /**
-     * Get an array containing those of the provided locales that are supported
-     * in date and time formatting without having to fall back to the runtime's
-     * default locale.
-     */
-    supportedLocalesOf(
-      locales: string | string[],
-      options?: DateTimeFormatOptions,
-    ): string[];
-  };
 }
