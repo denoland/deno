@@ -110,27 +110,25 @@ Deno.test(
     permissions: { run: true },
   },
   async function signalListenerTest() {
-    const { promise, resolve } = Promise.withResolvers<void>();
     let c = 0;
     const listener = () => {
       c += 1;
     };
+    // This test needs to be careful that it doesn't accidentally aggregate multiple
+    // signals into one. Sending two or more SIGxxx before the handler can be run will
+    // result in signal coalescing.
     Deno.addSignalListener("SIGUSR1", listener);
-    setTimeout(async () => {
-      // Sends SIGUSR1 3 times.
-      for (const _ of Array(3)) {
+    // Sends SIGUSR1 3 times.
+    for (let i = 1; i <= 3; i++) {
+      await delay(1);
+      Deno.kill(Deno.pid, "SIGUSR1");
+      while (c < i) {
         await delay(20);
-        Deno.kill(Deno.pid, "SIGUSR1");
       }
-      await promise;
-      Deno.removeSignalListener("SIGUSR1", listener);
-    });
-
-    // We'll get three signals eventually
-    while (c < 3) {
-      await delay(20);
     }
-    resolve();
+    Deno.removeSignalListener("SIGUSR1", listener);
+    await delay(100);
+    assertEquals(c, 3);
   },
 );
 
@@ -140,7 +138,6 @@ Deno.test(
     permissions: { run: true },
   },
   async function multipleSignalListenerTest() {
-    const { promise, resolve } = Promise.withResolvers<void>();
     let c = "";
     const listener0 = () => {
       c += "0";
@@ -148,39 +145,45 @@ Deno.test(
     const listener1 = () => {
       c += "1";
     };
+    // This test needs to be careful that it doesn't accidentally aggregate multiple
+    // signals into one. Sending two or more SIGxxx before the handler can be run will
+    // result in signal coalescing.
     Deno.addSignalListener("SIGUSR2", listener0);
     Deno.addSignalListener("SIGUSR2", listener1);
-    setTimeout(async () => {
-      // Sends SIGUSR2 3 times.
-      for (const _ of Array(3)) {
+
+    // Sends SIGUSR2 3 times.
+    for (let i = 1; i <= 3; i++) {
+      await delay(1);
+      Deno.kill(Deno.pid, "SIGUSR2");
+      while (c.length < i * 2) {
         await delay(20);
-        Deno.kill(Deno.pid, "SIGUSR2");
       }
-      while (c.length < 6) {
+    }
+
+    Deno.removeSignalListener("SIGUSR2", listener1);
+
+    // Sends SIGUSR2 3 times.
+    for (let i = 1; i <= 3; i++) {
+      await delay(1);
+      Deno.kill(Deno.pid, "SIGUSR2");
+      while (c.length < 6 + i) {
         await delay(20);
       }
-      Deno.removeSignalListener("SIGUSR2", listener1);
-      // Sends SIGUSR2 3 times.
-      for (const _ of Array(3)) {
-        await delay(20);
-        Deno.kill(Deno.pid, "SIGUSR2");
-      }
+    }
+
+    // Sends SIGUSR1 (irrelevant signal) 3 times.
+    for (const _ of Array(3)) {
       await delay(20);
-      // Sends SIGUSR1 (irrelevant signal) 3 times.
-      for (const _ of Array(3)) {
-        await delay(20);
-        Deno.kill(Deno.pid, "SIGUSR1");
-      }
+      Deno.kill(Deno.pid, "SIGUSR1");
+    }
 
-      while (c.length < 9) {
-        await delay(20);
-      }
+    // No change
+    assertEquals(c, "010101000");
 
-      Deno.removeSignalListener("SIGUSR2", listener0);
-      resolve();
-    });
+    Deno.removeSignalListener("SIGUSR2", listener0);
 
-    await promise;
+    await delay(100);
+
     // The first 3 events are handled by both handlers
     // The last 3 events are handled only by handler0
     assertEquals(c, "010101000");

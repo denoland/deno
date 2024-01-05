@@ -220,20 +220,11 @@ fn generate_coverage_report(
       continue;
     }
 
-    let dest_line_index = text_lines.line_index(
-      text_lines
-        .byte_index_from_char_index(function.ranges[0].start_char_offset),
+    let line_index = range_to_src_line_index(
+      &function.ranges[0],
+      &text_lines,
+      &maybe_source_map,
     );
-    let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-      source_map
-        .tokens()
-        .find(|token| token.get_dst_line() as usize == dest_line_index)
-        .map(|token| token.get_src_line() as usize)
-        .unwrap_or(0)
-    } else {
-      dest_line_index
-    };
-
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
       line_index,
@@ -244,18 +235,8 @@ fn generate_coverage_report(
   for (block_number, function) in script_coverage.functions.iter().enumerate() {
     let block_hits = function.ranges[0].count;
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-      let source_line_index = text_lines.line_index(
-        text_lines.byte_index_from_char_index(range.start_char_offset),
-      );
-      let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-        source_map
-          .tokens()
-          .find(|token| token.get_dst_line() as usize == source_line_index)
-          .map(|token| token.get_src_line() as usize)
-          .unwrap_or(0)
-      } else {
-        source_line_index
-      };
+      let line_index =
+        range_to_src_line_index(range, &text_lines, &maybe_source_map);
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -368,6 +349,24 @@ fn generate_coverage_report(
     };
 
   coverage_report
+}
+
+fn range_to_src_line_index(
+  range: &cdp::CoverageRange,
+  text_lines: &TextLines,
+  maybe_source_map: &Option<SourceMap>,
+) -> usize {
+  let source_lc = text_lines.line_and_column_index(
+    text_lines.byte_index_from_char_index(range.start_char_offset),
+  );
+  if let Some(source_map) = maybe_source_map.as_ref() {
+    source_map
+      .lookup_token(source_lc.line_index as u32, source_lc.column_index as u32)
+      .map(|token| token.get_src_line() as usize)
+      .unwrap_or(0)
+  } else {
+    source_lc.line_index
+  }
 }
 
 fn collect_coverages(

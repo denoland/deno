@@ -1,0 +1,4 @@
+error: Failed to spawn 'jupyter' command. Is JupyterLab installed (https://jupyter.org/install) and available on the PATH?
+
+Caused by:
+[WILDCARD]

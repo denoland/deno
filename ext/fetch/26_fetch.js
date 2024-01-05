@@ -51,7 +51,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
 const REQUEST_BODY_HEADER_NAMES = [
@@ -131,7 +131,7 @@ async function mainFetch(req, recursive, terminator) {
     const stream = req.body.streamOrStatic;
     const body = stream.body;
 
-    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
       reqBody = body;
     } else if (typeof body === "string") {
       reqBody = core.encode(body);

@@ -707,6 +707,20 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
+#[test]
+fn permission_request_long() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permission_request_long.ts"])
+    .with_pty(|mut console| {
+      console.expect(concat!(
+        "❌ Permission prompt length (100017 bytes) was larger than the configured maximum length (10240 bytes): denying request.\r\n",
+        "❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.\r\n",
+        "❌ Run again with --allow-read to bypass this check if this is really what you want to do.\r\n",
+      ));
+    });
+}
+
 itest!(deny_all_permission_args {
   args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
   output: "run/deny_all_permission_args.out",
