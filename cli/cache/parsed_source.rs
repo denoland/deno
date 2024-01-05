@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
 use deno_graph::CapturingModuleParser;
+use deno_graph::ModuleParseOptions;
 use deno_graph::ModuleParser;
 
 #[derive(Default)]
@@ -37,7 +38,13 @@ impl ParsedSourceCache {
   ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
     let parser = self.as_capturing_parser();
     // this will conditionally parse because it's using a CapturingModuleParser
-    parser.parse_module(specifier, source, media_type)
+    parser.parse_module(ModuleParseOptions {
+      specifier,
+      source,
+      media_type,
+      // currently only used for emitting
+      scope_analysis: false,
+    })
   }
 
   /// Frees the parsed source from memory.
@@ -75,5 +82,21 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCache {
     specifier: &deno_graph::ModuleSpecifier,
   ) -> Option<ParsedSource> {
     self.sources.lock().get(specifier).cloned()
+  }
+
+  fn get_scope_analysis_parsed_source(
+    &self,
+    specifier: &deno_graph::ModuleSpecifier,
+  ) -> Option<ParsedSource> {
+    let mut sources = self.sources.lock();
+    let parsed_source = sources.get(specifier)?;
+    if parsed_source.has_scope_analysis() {
+      Some(parsed_source.clone())
+    } else {
+      let parsed_source = sources.remove(specifier).unwrap();
+      let parsed_source = parsed_source.into_with_scope_analysis();
+      sources.insert(specifier.clone(), parsed_source.clone());
+      Some(parsed_source)
+    }
   }
 }

@@ -356,6 +356,7 @@ opt-level = 3
 deno_ast = { path = "../deno_ast" }
 deno_graph = { path = "../deno_graph" }
 deno_doc = { path = "../deno_doc" }
+eszip = { path = "../eszip" }
 # swc_atoms = { path = "../swc/crates/swc_atoms" }
 # swc_common = { path = "../swc/crates/swc_common" }
 # swc_config = { path = "../swc/crates/swc_config" }

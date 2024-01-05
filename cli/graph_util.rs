@@ -35,6 +35,7 @@ use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
+use deno_graph::ModuleParser;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
@@ -194,6 +195,7 @@ pub struct CreateGraphOptions<'a> {
   pub roots: Vec<ModuleSpecifier>,
   pub loader: &'a mut dyn Loader,
   pub analyzer: &'a dyn ModuleAnalyzer,
+  pub parser: &'a dyn ModuleParser,
 }
 
 pub struct ModuleGraphBuilder {
@@ -260,14 +262,15 @@ impl ModuleGraphBuilder {
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let store = self.parsed_source_cache.as_store();
-    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     self
       .create_graph_with_options(CreateGraphOptions {
         graph_kind,
         roots,
         loader,
         analyzer: &analyzer,
+        parser: &parser,
       })
       .await
   }
@@ -298,6 +301,7 @@ impl ModuleGraphBuilder {
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(options.analyzer),
+          module_parser: Some(options.parser),
           reporter: maybe_file_watcher_reporter,
           // todo(THIS PR): make this conditional
           workspace_fast_check: true,
@@ -325,8 +329,8 @@ impl ModuleGraphBuilder {
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let store = self.parsed_source_cache.as_store();
-    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     let graph_kind = self.options.type_check_mode().as_graph_kind();
     let mut graph = ModuleGraph::new(graph_kind);
     let maybe_file_watcher_reporter = self
@@ -346,6 +350,7 @@ impl ModuleGraphBuilder {
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
+          module_parser: Some(&parser),
           reporter: maybe_file_watcher_reporter,
           workspace_fast_check: false,
           workspace_members: self.get_deno_graph_workspace_members()?,

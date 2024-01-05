@@ -138,8 +138,8 @@ impl ModuleLoadPreparer {
       .as_ref()
       .map(|r| r.as_reporter());
 
-    let store = self.parsed_source_cache.as_store();
-    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
 
     log::debug!("Creating module graph.");
     let mut graph_update_permit =
@@ -163,6 +163,7 @@ impl ModuleLoadPreparer {
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
+          module_parser: Some(&parser),
           module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
           workspace_fast_check: false,

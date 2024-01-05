@@ -19,10 +19,9 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
-use deno_graph::CapturingModuleParser;
-use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
+use deno_graph::ModuleParser;
 use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -34,7 +33,7 @@ use std::sync::Arc;
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
   cli_options: &Arc<CliOptions>,
-  capturing_parser: CapturingModuleParser<'_>,
+  parser: &dyn ModuleParser,
   analyzer: &dyn ModuleAnalyzer,
 ) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
   let source_file_specifier =
@@ -64,7 +63,7 @@ async fn generate_doc_nodes_for_builtin_types(
     .await;
   let doc_parser = doc::DocParser::new(
     &graph,
-    capturing_parser,
+    parser,
     doc::DocParserOptions {
       diagnostics: false,
       private: doc_flags.private,
@@ -79,19 +78,16 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let module_info_cache = factory.module_info_cache()?;
-  let source_parser = deno_graph::DefaultModuleParser::new_for_analysis();
-  let store = DefaultParsedSourceStore::default();
-  let analyzer =
-    module_info_cache.as_module_analyzer(Some(&source_parser), &store);
-  let capturing_parser =
-    CapturingModuleParser::new(Some(&source_parser), &store);
+  let parsed_source_cache = factory.parsed_source_cache();
+  let capturing_parser = parsed_source_cache.as_capturing_parser();
+  let analyzer = module_info_cache.as_module_analyzer(&capturing_parser);
 
   let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
       generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
         cli_options,
-        capturing_parser,
+        &capturing_parser,
         &analyzer,
       )
       .await?
@@ -120,6 +116,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           roots: module_specifiers.clone(),
           loader: &mut loader,
           analyzer: &analyzer,
+          parser: &capturing_parser,
         })
         .await?;
 
@@ -129,7 +126,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       let doc_parser = doc::DocParser::new(
         &graph,
-        capturing_parser,
+        &capturing_parser,
         doc::DocParserOptions {
           private: doc_flags.private,
           diagnostics: doc_flags.lint,
@@ -158,7 +155,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let deno_ns = generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
         cli_options,
-        capturing_parser,
+        &capturing_parser,
         &analyzer,
       )
       .await?;
