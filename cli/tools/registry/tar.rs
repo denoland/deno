@@ -51,7 +51,7 @@ pub fn create_gzipped_tarball(
           format!("Unable to add file to tarball {:?}", entry.path())
         })?;
     } else if entry.file_type().is_dir() {
-      if entry.file_name() == ".git" || entry.file_name() == "node_modules" {
+      if matches!(entry.file_name(), ".git" | "node_modules") {
         iterator.skip_current_dir();
       }
     } else {
