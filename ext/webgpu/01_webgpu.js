@@ -7036,6 +7036,78 @@ webidl.converters["GPUSignedOffset32"] = (V, opts) =>
 // TYPEDEF: GPUFlagsConstant
 webidl.converters["GPUFlagsConstant"] = webidl.converters["unsigned long"];
 
+// ENUM: GPUCanvasAlphaMode
+webidl.converters["GPUCanvasAlphaMode"] = webidl.createEnumConverter(
+  "GPUCanvasAlphaMode",
+  [
+    "opaque",
+    "premultiplied",
+  ],
+);
+
+// NON-SPEC: ENUM: GPUPresentMode
+webidl.converters["GPUPresentMode"] = webidl.createEnumConverter(
+  "GPUPresentMode",
+  [
+    "autoVsync",
+    "autoNoVsync",
+    "fifo",
+    "fifoRelaxed",
+    "immediate",
+    "mailbox",
+  ],
+);
+
+// DICT: GPUCanvasConfiguration
+const dictMembersGPUCanvasConfiguration = [
+  { key: "device", converter: webidl.converters.GPUDevice, required: true },
+  {
+    key: "format",
+    converter: webidl.converters.GPUTextureFormat,
+    required: true,
+  },
+  {
+    key: "usage",
+    converter: webidl.converters["GPUTextureUsageFlags"],
+    defaultValue: GPUTextureUsage.RENDER_ATTACHMENT,
+  },
+  {
+    key: "alphaMode",
+    converter: webidl.converters["GPUCanvasAlphaMode"],
+    defaultValue: "opaque",
+  },
+
+  // Extended from spec
+  {
+    key: "presentMode",
+    converter: webidl.converters["GPUPresentMode"],
+  },
+  {
+    key: "width",
+    converter: webidl.converters["long"],
+    required: true,
+  },
+  {
+    key: "height",
+    converter: webidl.converters["long"],
+    required: true,
+  },
+  {
+    key: "viewFormats",
+    converter: webidl.createSequenceConverter(
+      webidl.converters["GPUTextureFormat"],
+    ),
+    get defaultValue() {
+      return [];
+    },
+  },
+];
+webidl.converters["GPUCanvasConfiguration"] = webidl
+  .createDictionaryConverter(
+    "GPUCanvasConfiguration",
+    dictMembersGPUCanvasConfiguration,
+  );
+
 const gpu = webidl.createBranded(GPU);
 export {
   _device,
