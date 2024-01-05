@@ -23,7 +23,9 @@ pub fn create_gzipped_tarball(
     .map_err(|_| anyhow::anyhow!("Unable to canonicalize path {:?}", dir))?;
   let mut diagnostics = vec![];
 
-  for entry in walkdir::WalkDir::new(&dir).follow_links(false) {
+  let mut iterator =
+    walkdir::WalkDir::new(&dir).follow_links(false).into_iter();
+  while let Some(entry) = iterator.next() {
     let entry = entry?;
 
     if entry.file_type().is_file() {
@@ -49,7 +51,9 @@ pub fn create_gzipped_tarball(
           format!("Unable to add file to tarball {:?}", entry.path())
         })?;
     } else if entry.file_type().is_dir() {
-      // skip
+      if entry.file_name() == ".git" || entry.file_name() == "node_modules" {
+        iterator.skip_current_dir();
+      }
     } else {
       diagnostics
         .push(format!("Unsupported file type at path {:?}", entry.path()));
