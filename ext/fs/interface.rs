@@ -131,6 +131,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     newpath: PathBuf,
   ) -> FsResult<()>;
 
+  fn cp_sync(&self, path: &Path, new_path: &Path) -> FsResult<()>;
+  async fn cp_async(&self, path: PathBuf, new_path: PathBuf) -> FsResult<()>;
+
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat>;
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat>;
 
