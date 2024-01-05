@@ -25,6 +25,7 @@ fs3.workspace = true
 libc.workspace = true
 log.workspace = true
 rand.workspace = true
+rayon = "1.8.0"
 serde.workspace = true
 tokio.workspace = true
 
