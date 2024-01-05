@@ -1948,17 +1948,20 @@ mod test {
     );
     assert_eq!(
       resolved_files.exclude,
-      GlobSet::new(vec![
-        GlobPattern::new(
-          &temp_dir_path.join("nested/fizz/bazz.ts").to_string_lossy()
-        )
-        .unwrap(),
-        GlobPattern::new(
-          &temp_dir_path.join("nested/foo/bazz.ts").to_string_lossy()
-        )
-        .unwrap()
-      ])
-    )
+      GlobSet::new(vec![GlobPattern::new(
+        &temp_dir_path.join("nested/**/*bazz.ts").to_string_lossy()
+      )
+      .unwrap()])
+    );
+    assert!(resolved_files
+      .exclude
+      .matches_path(&temp_dir_path.join("nested/fizz/bazz.ts")));
+    assert!(resolved_files
+      .exclude
+      .matches_path(&temp_dir_path.join("nested/foo/bazz.ts")));
+    assert!(!resolved_files
+      .exclude
+      .matches_path(&temp_dir_path.join("nested/foo/bazztest.ts")));
   }
 
   #[test]
