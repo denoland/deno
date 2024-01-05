@@ -109,15 +109,8 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           })
           .collect();
       let module_specifiers = module_specifiers?;
-      let mut loader = module_graph_builder.create_graph_loader();
       let graph = module_graph_builder
-        .create_graph_with_options(CreateGraphOptions {
-          graph_kind: GraphKind::TypesOnly,
-          roots: module_specifiers.clone(),
-          loader: &mut loader,
-          analyzer: &analyzer,
-          parser: &capturing_parser,
-        })
+        .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
       if let Some(lockfile) = maybe_lockfile {

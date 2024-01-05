@@ -729,7 +729,12 @@ async fn build_and_check_graph_for_publish(
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
   let graph = Arc::new(
     module_graph_builder
-      .create_graph(deno_graph::GraphKind::All, roots)
+      .create_graph_with_options(crate::graph_util::CreateGraphOptions {
+        graph_kind: deno_graph::GraphKind::All,
+        roots,
+        workspace_fast_check: true,
+        loader: None,
+      })
       .await?,
   );
   graph.valid()?;

@@ -40,7 +40,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.31.6", features = ["transpiling"] }
+deno_ast = { version = "1.0.0", features = ["transpiling"] }
 deno_core = { version = "0.242.0" }
 
 deno_runtime = { version = "0.137.0", path = "./runtime" }
@@ -353,9 +353,11 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_ast = { path = "../deno_ast" }
 deno_graph = { path = "../deno_graph" }
 deno_doc = { path = "../deno_doc" }
+deno_emit = { path = "../deno_emit/rs-lib" }
+deno_lint = { path = "../deno_lint" }
+dprint-plugin-typescript = { path = "../dprint-plugin-typescript" }
 eszip = { path = "../eszip" }
 # swc_atoms = { path = "../swc/crates/swc_atoms" }
 # swc_common = { path = "../swc/crates/swc_common" }

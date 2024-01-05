@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 
@@ -84,7 +84,7 @@ pub fn surface_fast_check_type_graph_errors(
   }
   if diagnostic_count > 0 {
     bail!(
-      "Had {} low res type checking error{}.",
+      "Had {} fast check error{}.",
       diagnostic_count,
       if diagnostic_count == 1 { "" } else { "s" }
     )

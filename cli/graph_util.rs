@@ -44,6 +44,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use import_map::ImportMapError;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -193,9 +194,9 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
-  pub loader: &'a mut dyn Loader,
-  pub analyzer: &'a dyn ModuleAnalyzer,
-  pub parser: &'a dyn ModuleParser,
+  pub workspace_fast_check: bool,
+  /// Specify `None` to use the default CLI loader.
+  pub loader: Option<&'a mut dyn Loader>,
 }
 
 pub struct ModuleGraphBuilder {
@@ -262,15 +263,12 @@ impl ModuleGraphBuilder {
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     self
       .create_graph_with_options(CreateGraphOptions {
         graph_kind,
         roots,
-        loader,
-        analyzer: &analyzer,
-        parser: &parser,
+        loader: Some(loader),
+        workspace_fast_check: false,
       })
       .await
   }
@@ -279,6 +277,22 @@ impl ModuleGraphBuilder {
     &self,
     options: CreateGraphOptions<'_>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    enum MutLoaderRef<'a> {
+      Borrowed(&'a mut dyn Loader),
+      Owned(cache::FetchCacher),
+    }
+
+    impl<'a> MutLoaderRef<'a> {
+      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
+        match self {
+          Self::Borrowed(loader) => *loader,
+          Self::Owned(loader) => loader,
+        }
+      }
+    }
+
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     let maybe_imports = self.options.to_maybe_imports()?;
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
@@ -287,24 +301,27 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
+    let mut loader = match options.loader {
+      Some(loader) => MutLoaderRef::Borrowed(loader),
+      None => MutLoaderRef::Owned(self.create_graph_loader()),
+    };
 
     let mut graph = ModuleGraph::new(options.graph_kind);
     self
       .build_graph_with_npm_resolution(
         &mut graph,
         options.roots,
-        options.loader,
+        loader.as_mut_loader(),
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(options.analyzer),
-          module_parser: Some(options.parser),
+          module_analyzer: Some(&analyzer),
+          module_parser: Some(&parser),
           reporter: maybe_file_watcher_reporter,
-          // todo(THIS PR): make this conditional
-          workspace_fast_check: true,
+          workspace_fast_check: options.workspace_fast_check,
           workspace_members: self.get_deno_graph_workspace_members()?,
         },
       )
@@ -325,7 +342,6 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_workspace_config = self.options.maybe_workspace_config();
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
