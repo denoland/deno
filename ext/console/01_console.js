@@ -4,9 +4,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
-  AggregateErrorPrototype,
   Array,
-  ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFill,
@@ -29,18 +27,16 @@ const {
   Boolean,
   BooleanPrototypeValueOf,
   DateNow,
-  DatePrototype,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
   Error,
-  ErrorCaptureStackTrace,
   ErrorPrototype,
+  ErrorCaptureStackTrace,
   ErrorPrototypeToString,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
   NumberIsNaN,
-  MapPrototype,
   MapPrototypeDelete,
   MapPrototypeEntries,
   MapPrototypeForEach,
@@ -93,7 +89,6 @@ const {
   SafeSet,
   SafeSetIterator,
   SafeStringIterator,
-  SetPrototype,
   SetPrototypeAdd,
   SetPrototypeHas,
   SetPrototypeGetSize,
@@ -128,12 +123,38 @@ const {
   SymbolToStringTag,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetLength,
-  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
-  WeakMapPrototypeHas,
-  WeakSetPrototypeHas,
 } = primordials;
-const ops = core.ops;
+const {
+  isAnyArrayBuffer,
+  isArgumentsObject,
+  isArrayBuffer,
+  isAsyncFunction,
+  isBigIntObject,
+  isBooleanObject,
+  isBoxedPrimitive,
+  isDataView,
+  isDate,
+  isGeneratorFunction,
+  isMap,
+  isMapIterator,
+  isModuleNamespaceObject,
+  isNativeError,
+  isNumberObject,
+  isPromise,
+  isRegExp,
+  isSet,
+  isSetIterator,
+  isStringObject,
+  isTypedArray,
+  isWeakSet,
+  isWeakMap,
+} = core;
+const {
+  op_get_non_index_property_names,
+  op_get_constructor_name,
+  op_preview_entries,
+} = core.ensureFastOps(true);
 
 let noColor = () => false;
 
@@ -263,185 +284,15 @@ function getSharedArrayBufferByteLength(value) {
   return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
 }
 
-function isObjectLike(value) {
-  return value !== null && typeof value === "object";
-}
-
-function isAnyArrayBuffer(value) {
-  return ops.op_is_any_arraybuffer(value);
-}
-
-function isArgumentsObject(value) {
-  return core.isArgumentsObject(value);
-}
-
-function isArrayBuffer(value) {
-  try {
-    ArrayBufferPrototypeGetByteLength(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isAsyncFunction(value) {
-  return core.isAsyncFunction(value);
-}
-
-function isBooleanObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    BooleanPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isBoxedPrimitive(
-  value,
-) {
+// The name property is used to allow cross realms to make a determination
+// This is the same as WHATWG's structuredClone algorithm
+// https://github.com/whatwg/html/pull/5150
+function isAggregateError(value) {
   return (
-    isBooleanObject(value) ||
-    isStringObject(value) ||
-    isNumberObject(value) ||
-    isSymbolObject(value) ||
-    isBigIntObject(value)
+    isNativeError(value) &&
+    value.name === "AggregateError" &&
+    ArrayIsArray(value.errors)
   );
-}
-
-function isDataView(value) {
-  return (
-    ArrayBufferIsView(value) &&
-    TypedArrayPrototypeGetSymbolToStringTag(value) === undefined
-  );
-}
-
-function isTypedArray(value) {
-  return TypedArrayPrototypeGetSymbolToStringTag(value) !== undefined;
-}
-
-function isGeneratorFunction(value) {
-  return core.isGeneratorFunction(value);
-}
-
-function isMap(value) {
-  try {
-    MapPrototypeGetSize(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isMapIterator(value) {
-  return core.isMapIterator(value);
-}
-
-function isModuleNamespaceObject(value) {
-  return core.isModuleNamespaceObject(value);
-}
-
-function isNativeError(value) {
-  return core.isNativeError(value);
-}
-
-function isNumberObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    NumberPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isBigIntObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    BigIntPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isPromise(value) {
-  return core.isPromise(value);
-}
-
-function isRegExp(value) {
-  return core.isRegExp(value);
-}
-
-function isSet(value) {
-  try {
-    SetPrototypeGetSize(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isSetIterator(value) {
-  return core.isSetIterator(value);
-}
-
-function isStringObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    StringPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isSymbolObject(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  try {
-    SymbolPrototypeValueOf(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isWeakMap(
-  value,
-) {
-  try {
-    WeakMapPrototypeHas(value, null);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isWeakSet(
-  value,
-) {
-  try {
-    WeakSetPrototypeHas(value, null);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 const kObjectType = 0;
@@ -778,7 +629,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let extrasType = kObjectType;
 
-  if (proxyDetails != null && ctx.showProxy) {
+  if (proxyDetails !== null && ctx.showProxy) {
     return `Proxy ` + formatValue(ctx, proxyDetails, recurseTimes);
   } else {
     // Iterators and the rest are split to reduce checks.
@@ -791,7 +642,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         const prefix = (constructor !== "Array" || tag !== "")
           ? getPrefix(constructor, tag, "Array", `(${value.length})`)
           : "";
-        keys = ops.op_get_non_index_property_names(value, filter);
+        keys = op_get_non_index_property_names(value, filter);
         braces = [`${prefix}[`, "]"];
         if (
           value.length === 0 && keys.length === 0 && protoProps === undefined
@@ -800,31 +651,43 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
         extrasType = kArrayExtrasType;
         formatter = formatArray;
-      } else if (isSet(value)) {
-        const size = SetPrototypeGetSize(value);
+      } else if (
+        (proxyDetails === null && isSet(value)) ||
+        (proxyDetails !== null && isSet(proxyDetails[0]))
+      ) {
+        const set = proxyDetails?.[0] ?? value;
+        const size = SetPrototypeGetSize(set);
         const prefix = getPrefix(constructor, tag, "Set", `(${size})`);
-        keys = getKeys(value, ctx.showHidden);
+        keys = getKeys(set, ctx.showHidden);
         formatter = constructor !== null
-          ? FunctionPrototypeBind(formatSet, null, value)
-          : FunctionPrototypeBind(formatSet, null, SetPrototypeValues(value));
+          ? FunctionPrototypeBind(formatSet, null, set)
+          : FunctionPrototypeBind(formatSet, null, SetPrototypeValues(set));
         if (size === 0 && keys.length === 0 && protoProps === undefined) {
           return `${prefix}{}`;
         }
         braces = [`${prefix}{`, "}"];
-      } else if (isMap(value)) {
-        const size = MapPrototypeGetSize(value);
+      } else if (
+        (proxyDetails === null && isMap(value)) ||
+        (proxyDetails !== null && isMap(proxyDetails[0]))
+      ) {
+        const map = proxyDetails?.[0] ?? value;
+        const size = MapPrototypeGetSize(map);
         const prefix = getPrefix(constructor, tag, "Map", `(${size})`);
-        keys = getKeys(value, ctx.showHidden);
+        keys = getKeys(map, ctx.showHidden);
         formatter = constructor !== null
-          ? FunctionPrototypeBind(formatMap, null, value)
-          : FunctionPrototypeBind(formatMap, null, MapPrototypeEntries(value));
+          ? FunctionPrototypeBind(formatMap, null, map)
+          : FunctionPrototypeBind(formatMap, null, MapPrototypeEntries(map));
         if (size === 0 && keys.length === 0 && protoProps === undefined) {
           return `${prefix}{}`;
         }
         braces = [`${prefix}{`, "}"];
-      } else if (isTypedArray(value)) {
-        keys = core.ops.op_get_non_index_property_names(value, filter);
-        const bound = value;
+      } else if (
+        (proxyDetails === null && isTypedArray(value)) ||
+        (proxyDetails !== null && isTypedArray(proxyDetails[0]))
+      ) {
+        const typedArray = proxyDetails?.[0] ?? value;
+        keys = op_get_non_index_property_names(typedArray, filter);
+        const bound = typedArray;
         const fallback = "";
         if (constructor === null) {
           // TODO(wafuwafu13): Implement
@@ -832,23 +695,31 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           // // Reconstruct the array information.
           // bound = new primordials[fallback](value);
         }
-        const size = TypedArrayPrototypeGetLength(value);
+        const size = TypedArrayPrototypeGetLength(typedArray);
         const prefix = getPrefix(constructor, tag, fallback, `(${size})`);
         braces = [`${prefix}[`, "]"];
-        if (value.length === 0 && keys.length === 0 && !ctx.showHidden) {
+        if (typedArray.length === 0 && keys.length === 0 && !ctx.showHidden) {
           return `${braces[0]}]`;
         }
         // Special handle the value. The original value is required below. The
         // bound function is required to reconstruct missing information.
         formatter = FunctionPrototypeBind(formatTypedArray, null, bound, size);
         extrasType = kArrayExtrasType;
-      } else if (isMapIterator(value)) {
-        keys = getKeys(value, ctx.showHidden);
+      } else if (
+        (proxyDetails === null && isMapIterator(value)) ||
+        (proxyDetails !== null && isMapIterator(proxyDetails[0]))
+      ) {
+        const mapIterator = proxyDetails?.[0] ?? value;
+        keys = getKeys(mapIterator, ctx.showHidden);
         braces = getIteratorBraces("Map", tag);
         // Add braces to the formatter parameters.
         formatter = FunctionPrototypeBind(formatIterator, null, braces);
-      } else if (isSetIterator(value)) {
-        keys = getKeys(value, ctx.showHidden);
+      } else if (
+        (proxyDetails === null && isSetIterator(value)) ||
+        (proxyDetails !== null && isSetIterator(proxyDetails[0]))
+      ) {
+        const setIterator = proxyDetails?.[0] ?? value;
+        keys = getKeys(setIterator, ctx.showHidden);
         braces = getIteratorBraces("Set", tag);
         // Add braces to the formatter parameters.
         formatter = FunctionPrototypeBind(formatIterator, null, braces);
@@ -873,10 +744,14 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         if (keys.length === 0 && protoProps === undefined) {
           return ctx.stylize(base, "special");
         }
-      } else if (isRegExp(value)) {
+      } else if (
+        (proxyDetails === null && isRegExp(value)) ||
+        (proxyDetails !== null && isRegExp(proxyDetails[0]))
+      ) {
+        const regExp = proxyDetails?.[0] ?? value;
         // Make RegExps say that they are RegExps
         base = RegExpPrototypeToString(
-          constructor !== null ? value : new SafeRegExp(value),
+          constructor !== null ? regExp : new SafeRegExp(regExp),
         );
         const prefix = getPrefix(constructor, tag, "RegExp");
         if (prefix !== "RegExp ") {
@@ -888,8 +763,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         ) {
           return ctx.stylize(base, "regexp");
         }
-      } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-        const date = proxyDetails ? proxyDetails[0] : value;
+      } else if (
+        (proxyDetails === null && isDate(value)) ||
+        (proxyDetails !== null && isDate(proxyDetails[0]))
+      ) {
+        const date = proxyDetails?.[0] ?? value;
         if (NumberIsNaN(DatePrototypeGetTime(date))) {
           return ctx.stylize("Invalid Date", "date");
         } else {
@@ -898,8 +776,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
             return ctx.stylize(base, "date");
           }
         }
-      } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
-        base = inspectError(value, ctx);
+      } else if (
+        (proxyDetails === null &&
+          (isNativeError(value) ||
+            ObjectPrototypeIsPrototypeOf(ErrorPrototype, value))) ||
+        (proxyDetails !== null &&
+          (isNativeError(proxyDetails[0]) ||
+            ObjectPrototypeIsPrototypeOf(ErrorPrototype, proxyDetails[0])))
+      ) {
+        const error = proxyDetails?.[0] ?? value;
+        base = inspectError(error, ctx);
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
@@ -1180,7 +1066,7 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
     return null;
   }
 
-  const res = core.ops.op_get_constructor_name(tmp);
+  const res = op_get_constructor_name(tmp);
 
   if (recurseTimes > ctx.depth && ctx.depth !== null) {
     return `${res} <Complex prototype>`;
@@ -1290,7 +1176,7 @@ function formatArray(ctx, value, recurseTimes) {
 function getCtxStyle(value, constructor, tag) {
   let fallback = "";
   if (constructor === null) {
-    fallback = core.ops.op_get_constructor_name(value);
+    fallback = op_get_constructor_name(value);
     if (fallback === tag) {
       fallback = "Object";
     }
@@ -1433,7 +1319,7 @@ function getIteratorBraces(type, tag) {
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
-  const { 0: entries, 1: isKeyValue } = ops.op_preview_entries(value, true);
+  const { 0: entries, 1: isKeyValue } = op_preview_entries(value, true);
   if (isKeyValue) {
     // Mark entry iterators as such.
     braces[0] = StringPrototypeReplace(
@@ -1498,7 +1384,7 @@ function inspectError(value, ctx) {
 
   let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
-  if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
+  if (isAggregateError(value)) {
     const stackLines = StringPrototypeSplit(value.stack, "\n");
     while (true) {
       const line = ArrayPrototypeShift(stackLines);
@@ -1635,12 +1521,12 @@ function formatWeakCollection(ctx) {
 }
 
 function formatWeakSet(ctx, value, recurseTimes) {
-  const entries = ops.op_preview_entries(value, false);
+  const entries = op_preview_entries(value, false);
   return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
 function formatWeakMap(ctx, value, recurseTimes) {
-  const entries = ops.op_preview_entries(value, false);
+  const entries = op_preview_entries(value, false);
   return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
 }
 
@@ -3278,14 +3164,14 @@ class Console {
     const toTable = (header, body) => this.log(cliTable(header, body));
 
     let resultData;
-    const isSet = ObjectPrototypeIsPrototypeOf(SetPrototype, data);
-    const isMap = ObjectPrototypeIsPrototypeOf(MapPrototype, data);
+    const isSetObject = isSet(data);
+    const isMapObject = isMap(data);
     const valuesKey = "Values";
-    const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
+    const indexKey = isSetObject || isMapObject ? "(iter idx)" : "(idx)";
 
-    if (isSet) {
+    if (isSetObject) {
       resultData = [...new SafeSetIterator(data)];
-    } else if (isMap) {
+    } else if (isMapObject) {
       let idx = 0;
       resultData = {};
 
@@ -3342,7 +3228,7 @@ class Console {
     const headerProps = properties ||
       [
         ...new SafeArrayIterator(headerKeys),
-        !isMap && hasPrimitives && valuesKey,
+        !isMapObject && hasPrimitives && valuesKey,
       ];
     const header = ArrayPrototypeFilter([
       indexKey,
