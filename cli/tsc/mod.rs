@@ -78,7 +78,7 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
-pub fn get_types_declaration_file_text(unstable: bool) -> String {
+pub fn get_types_declaration_file_text() -> String {
   let mut assets = get_asset_texts_from_new_runtime()
     .unwrap()
     .into_iter()
