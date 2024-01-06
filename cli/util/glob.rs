@@ -73,7 +73,9 @@ impl FilePatterns {
             PathOrPattern::Path(exclude_path) => {
               // For explicitly specified files, ignore when the exclude path starts
               // with it. Regardless, include excludes that are on a sub path of the dir.
-              if is_file && base_path.starts_with(exclude_path) || exclude_path.starts_with(&base_path) {
+              if is_file && base_path.starts_with(exclude_path)
+                || exclude_path.starts_with(&base_path)
+              {
                 Some(exclude.clone())
               } else {
                 None

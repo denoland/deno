@@ -301,7 +301,14 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
         let c = e.path().to_path_buf();
-        if file_patterns.exclude.matches_path(&c) || !is_dir && !file_patterns.include.as_ref().map(|i| i.matches_path(&c)).unwrap_or(true) {
+        if file_patterns.exclude.matches_path(&c)
+          || !is_dir
+            && !file_patterns
+              .include
+              .as_ref()
+              .map(|i| i.matches_path(&c))
+              .unwrap_or(true)
+        {
           if is_dir {
             iterator.skip_current_dir();
           }
