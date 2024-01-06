@@ -25,6 +25,7 @@ import * as tty from "ext:runtime/40_tty.js";
 import * as httpRuntime from "ext:runtime/40_http.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
+import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 
 const denoNs = {
   metrics: core.metrics,
@@ -217,7 +218,10 @@ denoNsUnstableById[unstableIds.net] = {
 
 // denoNsUnstableById[unstableIds.unsafeProto] = {}
 
-// denoNsUnstableById[unstableIds.webgpu] = {}
+denoNsUnstableById[unstableIds.webgpu] = {
+  createWindowSurface: webgpuSurface.createWindowSurface,
+  presentGPUCanvasContext: webgpuSurface.presentGPUCanvasContext,
+}
 
 // denoNsUnstableById[unstableIds.workerOptions] = {}
 

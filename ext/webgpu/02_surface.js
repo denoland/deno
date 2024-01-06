@@ -157,8 +157,15 @@ function createCanvasContext(options) {
   return canvasContext;
 }
 
+// External webgpu surfaces
+
 function presentGPUCanvasContext(ctx) {
   ctx[_present]();
 }
 
-export { createCanvasContext, GPUCanvasContext, presentGPUCanvasContext };
+function createWindowSurface(system, p1, p2) {
+  const surfaceRid = ops.op_webgpu_create_surface(system, p1, p2);
+  return createCanvasContext({ surfaceRid });
+}
+
+export { createCanvasContext, GPUCanvasContext, createWindowSurface, presentGPUCanvasContext };
