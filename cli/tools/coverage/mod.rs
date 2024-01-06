@@ -10,7 +10,6 @@ use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
 use crate::util::glob::FilePatterns;
-use crate::util::glob::FilePatternsInclude;
 use crate::util::glob::PathOrPatternSet;
 use crate::util::text_encoding::source_map_from_code;
 
@@ -379,11 +378,14 @@ fn collect_coverages(
   let files = files.with_absolute_paths(initial_cwd);
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
   let file_patterns = FilePatterns {
-    include: if !files.include.is_empty() {
-      FilePatternsInclude::from_absolute_paths(files.include)?
-    } else {
-      FilePatternsInclude::Directory(initial_cwd.to_path_buf())
-    },
+    include: Some({
+      let files = if files.include.is_empty() {
+        vec![initial_cwd.to_path_buf()]
+      } else {
+        files.include
+      };
+      PathOrPatternSet::from_absolute_paths(files)?
+    }),
     exclude: PathOrPatternSet::from_absolute_paths(files.ignore)
       .context("Invalid ignore pattern.")?,
   };

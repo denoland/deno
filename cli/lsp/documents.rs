@@ -25,7 +25,6 @@ use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::glob;
 use crate::util::glob::FilePatterns;
-use crate::util::glob::FilePatternsInclude;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 
@@ -1912,9 +1911,7 @@ impl PreloadDocumentFinder {
     };
 
     let file_patterns = FilePatterns {
-      include: FilePatternsInclude::Limited(paths_into_globs_and_paths(
-        options.enabled_paths,
-      )),
+      include: Some(paths_into_globs_and_paths(options.enabled_paths)),
       exclude: paths_into_globs_and_paths(options.disabled_paths),
     };
     let file_patterns_by_base = file_patterns.split_by_base();

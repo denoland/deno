@@ -70,9 +70,7 @@ use thiserror::Error;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::glob::FilePatterns;
-use crate::util::glob::FilePatternsInclude;
 use crate::util::glob::PathOrPatternSet;
-use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 use deno_config::FmtConfig;
@@ -1672,11 +1670,12 @@ fn resolve_files(
     }
   }
   Ok(FilePatterns {
-    include: match maybe_files_config.include {
-      Some(include) => FilePatternsInclude::Limited(
-        PathOrPatternSet::from_absolute_paths(include)?,
-      ),
-      None => FilePatternsInclude::Directory(initial_cwd.to_path_buf()),
+    include: {
+      let files = match maybe_files_config.include {
+        Some(include) => include,
+        None => vec![initial_cwd.to_path_buf()],
+      };
+      Some(PathOrPatternSet::from_absolute_paths(files)?)
     },
     exclude: PathOrPatternSet::from_absolute_paths(maybe_files_config.exclude)
       .context("Invalid exclude.")?,

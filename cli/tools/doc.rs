@@ -14,7 +14,7 @@ use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use crate::util::glob::FilePatterns;
-use crate::util::glob::FilePatternsInclude;
+use crate::util::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -103,7 +103,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
-          include: FilePatternsInclude::from_absolute_paths(
+          include: Some(PathOrPatternSet::from_absolute_paths(
             source_files
               .iter()
               .map(|p| {
@@ -118,7 +118,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
                 }
               })
               .collect(),
-          )?,
+          )?),
           exclude: Default::default(),
         },
         |_| true,

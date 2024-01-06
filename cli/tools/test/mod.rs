@@ -17,7 +17,6 @@ use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::glob::FilePatterns;
-use crate::util::glob::FilePatternsInclude;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
@@ -1267,7 +1266,7 @@ pub async fn run_tests_with_watch(
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let FilePatternsInclude::Limited(set) = &test_options.files.include {
+        if let Some(set) = &test_options.files.include {
           let watch_paths = set.base_paths();
           if !watch_paths.is_empty() {
             let _ = watcher_communicator.watch_paths(watch_paths);

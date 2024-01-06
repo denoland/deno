@@ -15,7 +15,6 @@ use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
-use crate::util::glob::FilePatternsInclude;
 use crate::util::path::is_script_ext;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
@@ -481,8 +480,7 @@ pub async fn run_benchmarks_with_watch(
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let FilePatternsInclude::Limited(set) = &bench_options.files.include
-        {
+        if let Some(set) = &bench_options.files.include {
           let watch_paths = set.base_paths();
           if !watch_paths.is_empty() {
             let _ = watcher_communicator.watch_paths(watch_paths);

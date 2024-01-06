@@ -27,7 +27,6 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::glob::FilePatterns;
-use super::glob::FilePatternsInclude;
 use super::glob::PathOrPattern;
 use super::glob::PathOrPatternSet;
 use super::path::specifier_to_file_path;
@@ -302,9 +301,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
         let c = e.path().to_path_buf();
-        if file_patterns.exclude.matches_path(&c)
-          || !is_dir && !file_patterns.include.matches_path(&c)
-        {
+        if file_patterns.matches_path(&c) {
           if is_dir {
             iterator.skip_current_dir();
           }
@@ -346,7 +343,7 @@ pub fn collect_specifiers(
   let mut prepared = vec![];
 
   // break out the remote specifiers
-  if let FilePatternsInclude::Limited(include_mut) = &mut files.include {
+  if let Some(include_mut) = &mut files.include {
     let includes = std::mem::take(include_mut);
     let path_or_patterns = includes.into_path_or_patterns();
     let mut result = Vec::with_capacity(path_or_patterns.len());
@@ -818,7 +815,12 @@ mod tests {
     create_files(&ignore_dir_path, &ignore_dir_files);
 
     let file_patterns = FilePatterns {
-      include: FilePatternsInclude::Directory(root_dir_path.to_path_buf()),
+      include: Some(
+        PathOrPatternSet::from_absolute_paths(
+          vec![root_dir_path.to_path_buf()],
+        )
+        .unwrap(),
+      ),
       exclude: PathOrPatternSet::from_absolute_paths(vec![
         ignore_dir_path.to_path_buf()
       ])
@@ -881,11 +883,13 @@ mod tests {
 
     // test opting out of ignoring by specifying the dir
     let file_patterns = FilePatterns {
-      include: FilePatternsInclude::from_absolute_paths(vec![
-        root_dir_path.to_path_buf(),
-        root_dir_path.to_path_buf().join("child/node_modules/"),
-      ])
-      .unwrap(),
+      include: Some(
+        PathOrPatternSet::from_absolute_paths(vec![
+          root_dir_path.to_path_buf(),
+          root_dir_path.to_path_buf().join("child/node_modules/"),
+        ])
+        .unwrap(),
+      ),
       exclude: PathOrPatternSet::from_absolute_paths(vec![
         ignore_dir_path.to_path_buf()
       ])
@@ -958,12 +962,14 @@ mod tests {
 
     let result = collect_specifiers(
       FilePatterns {
-        include: FilePatternsInclude::from_absolute_paths(vec![
-          PathBuf::from("http://localhost:8080"),
-          root_dir_path.to_path_buf(),
-          PathBuf::from("https://localhost:8080".to_string()),
-        ])
-        .unwrap(),
+        include: Some(
+          PathOrPatternSet::from_absolute_paths(vec![
+            PathBuf::from("http://localhost:8080"),
+            root_dir_path.to_path_buf(),
+            PathBuf::from("https://localhost:8080".to_string()),
+          ])
+          .unwrap(),
+        ),
         exclude: PathOrPatternSet::from_absolute_paths(vec![
           ignore_dir_path.to_path_buf()
         ])
@@ -1003,14 +1009,14 @@ mod tests {
     };
     let result = collect_specifiers(
       FilePatterns {
-        include: FilePatternsInclude::from_absolute_paths(vec![PathBuf::from(
-          format!(
+        include: Some(
+          PathOrPatternSet::from_absolute_paths(vec![PathBuf::from(format!(
             "{}{}",
             scheme,
             root_dir_path.join("child").to_string().replace('\\', "/")
-          ),
-        )])
-        .unwrap(),
+          ))])
+          .unwrap(),
+        ),
         exclude: Default::default(),
       },
       predicate,
