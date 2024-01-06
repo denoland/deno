@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core } from "ext:core/mod.js";
-const ops = core.ops;
 
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
