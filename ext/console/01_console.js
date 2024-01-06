@@ -778,7 +778,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           }
         }
       } else if (
-        proxyDetail === null &&
+        proxyDetails === null &&
         typeof globalThis.Temporal !== "undefined" &&
         (
           ObjectPrototypeIsPrototypeOf(
