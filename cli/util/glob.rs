@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct PathOrPatternSet(Vec<PathOrPattern>);
@@ -58,7 +59,7 @@ impl PathOrPattern {
     GlobPattern::new_if_pattern(&path.to_string_lossy()).map(|maybe_pattern| {
       maybe_pattern
         .map(PathOrPattern::Pattern)
-        .unwrap_or_else(|| PathOrPattern::Path(path))
+        .unwrap_or_else(|| PathOrPattern::Path(normalize_path(path)))
     })
   }
 

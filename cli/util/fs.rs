@@ -397,13 +397,20 @@ pub fn collect_specifiers(
             let url = ModuleSpecifier::parse(&path_str)?;
             prepared.push(url);
           } else if lowercase_path.starts_with("file://") {
-            // add it back as a file path
-            let p =
-              specifier_to_file_path(&ModuleSpecifier::parse(&path_str)?)?;
-            result.push(PathOrPattern::Path(p));
+            let url = ModuleSpecifier::parse(&path_str)?;
+            let p = specifier_to_file_path(&url)?;
+            if p.is_dir() {
+              result.push(PathOrPattern::Path(p));
+            } else {
+              prepared.push(url)
+            }
           } else {
-            // not a url, so add it back
-            result.push(PathOrPattern::Path(path));
+            if path.is_dir() {
+              result.push(PathOrPattern::Path(path));
+            } else if !files.exclude.matches_path(&path) {
+              let url = ModuleSpecifier::from_file_path(path).unwrap();
+              prepared.push(url);
+            }
           }
         }
         PathOrPattern::Pattern(pattern) => {
