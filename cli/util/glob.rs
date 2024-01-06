@@ -6,6 +6,144 @@ use std::path::PathBuf;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
+use deno_core::url::Url;
+
+use super::path::specifier_to_file_path;
+
+// todo: remove this for this pr... it can just be Option<PathOrPatternSet>
+#[deprecated]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub enum FilePatternsInclude {
+  #[default]
+  All,
+  Directory(PathBuf),
+  Limited(PathOrPatternSet),
+}
+
+impl FilePatternsInclude {
+  pub fn from_absolute_paths(paths: Vec<PathBuf>) -> Result<Self, AnyError> {
+    Ok(FilePatternsInclude::Limited(
+      PathOrPatternSet::from_absolute_paths(paths)?,
+    ))
+  }
+
+  pub fn matches_path(&self, path: &Path) -> bool {
+    match self {
+      FilePatternsInclude::All => true,
+      FilePatternsInclude::Directory(dir) => path.starts_with(dir),
+      FilePatternsInclude::Limited(patterns) => patterns.matches_path(&path),
+    }
+  }
+}
+
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub struct FilePatterns {
+  pub include: FilePatternsInclude,
+  pub exclude: PathOrPatternSet,
+}
+
+impl FilePatterns {
+  pub fn matches_specifier(&self, specifier: &Url) -> bool {
+    let path = match specifier_to_file_path(specifier) {
+      Ok(path) => path,
+      Err(_) => return true,
+    };
+    self.matches_path(&path)
+  }
+
+  pub fn matches_path(&self, path: &Path) -> bool {
+    // Skip files which is in the exclude list.
+    if self.exclude.matches_path(path) {
+      return false;
+    }
+
+    // Ignore files not in the include list if it's present.
+    self.include.matches_path(path)
+  }
+
+  /// Creates a collection of `FilePatterns` by base where the containing patterns
+  /// are only the ones applicable to the base.
+  ///
+  /// The order these are returned in is the order that the directory traversal
+  /// should occur in.
+  pub fn split_by_base(self) -> Vec<(PathBuf, Self)> {
+    match self.include {
+      // should never happen because this is just the LSP default
+      FilePatternsInclude::All => unreachable!(),
+      FilePatternsInclude::Directory(dir) => vec![(
+        dir.clone(),
+        Self {
+          include: FilePatternsInclude::Directory(dir),
+          exclude: self.exclude,
+        },
+      )],
+      FilePatternsInclude::Limited(set) => {
+        let include_by_base_path = set
+          .0
+          .into_iter()
+          .map(|s| (s.base_path(), s))
+          .collect::<Vec<_>>();
+        let exclude_by_base_path = self
+          .exclude
+          .0
+          .into_iter()
+          .map(|s| (s.base_path(), s))
+          .collect::<Vec<_>>();
+
+        // todo(dsherret): This could be further optimized by not including
+        // patterns that will only ever match another base.
+        let mut result = Vec::with_capacity(include_by_base_path.len());
+        for (base_path, include) in include_by_base_path {
+          let applicable_excludes = exclude_by_base_path
+            .iter()
+            .filter_map(|(exclude_base_path, exclude)| {
+              // only include paths that are sub paths or any globs that's a sub path or parent path
+              match exclude {
+                PathOrPattern::Path(exclude_path) => {
+                  if exclude_path.starts_with(&base_path) {
+                    Some(exclude.clone())
+                  } else {
+                    None
+                  }
+                }
+                PathOrPattern::Pattern(_) => {
+                  if exclude_base_path.starts_with(&base_path)
+                    || base_path.starts_with(exclude_base_path)
+                  {
+                    Some(exclude.clone())
+                  } else {
+                    None
+                  }
+                }
+              }
+            })
+            .collect::<Vec<_>>();
+          result.push((
+            base_path,
+            Self {
+              include: FilePatternsInclude::Limited(PathOrPatternSet::new(
+                vec![include],
+              )),
+              exclude: PathOrPatternSet::new(applicable_excludes),
+            },
+          ));
+        }
+
+        // Sort by the longest base path first. This ensures that we visit opted into
+        // nested directories first before visiting the parent directory. The directory
+        // traverser will handle not going into directories it's already been in.
+        result.sort_by(|a, b| {
+          b.0
+            .to_string_lossy()
+            .len()
+            .cmp(&a.0.to_string_lossy().len())
+        });
+
+        result
+      }
+    }
+  }
+}
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct PathOrPatternSet(Vec<PathOrPattern>);
@@ -76,6 +214,13 @@ impl PathOrPattern {
     match self {
       PathOrPattern::Path(p) => path.starts_with(p),
       PathOrPattern::Pattern(p) => p.matches_path(path),
+    }
+  }
+
+  pub fn base_path(&self) -> PathBuf {
+    match self {
+      PathOrPattern::Path(p) => p.clone(),
+      PathOrPattern::Pattern(p) => p.base_path(),
     }
   }
 }

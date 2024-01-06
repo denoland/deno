@@ -2,7 +2,6 @@
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
-use crate::args::FilePatterns;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -13,6 +12,7 @@ use crate::factory::CliFactory;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::FileCollector;
+use crate::util::glob::FilePatterns;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 use deno_ast::MediaType;

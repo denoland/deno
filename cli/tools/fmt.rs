@@ -8,7 +8,6 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
-use crate::args::FilePatterns;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::FmtOptions;
@@ -19,6 +18,7 @@ use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::FileCollector;
+use crate::util::glob::FilePatterns;
 use crate::util::path::get_extension;
 use crate::util::text_encoding;
 use deno_ast::ParsedSource;

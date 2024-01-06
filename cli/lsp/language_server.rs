@@ -1046,7 +1046,7 @@ impl Inner {
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
     if let Some(config_file) = self.get_config_file()? {
-      // this doesn't need to be an actual directory because the arguments are never resolved
+      // this doesn't need to be an actual directory because flags is specified as `None`
       let dummy_args_cwd = PathBuf::from("/");
       let lint_options = config_file
         .to_lint_config()

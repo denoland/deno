@@ -22,12 +22,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use walkdir::WalkDir;
 
-use crate::args::FilePatterns;
-use crate::args::FilePatternsInclude;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
+use super::glob::FilePatterns;
+use super::glob::FilePatternsInclude;
 use super::glob::PathOrPattern;
 use super::glob::PathOrPatternSet;
 use super::path::specifier_to_file_path;
@@ -249,8 +249,6 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
 pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
-  exclude_patterns: PathOrPatternSet,
-  include_patterns: Option<PathOrPatternSet>,
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
@@ -260,26 +258,11 @@ pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
 impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
   pub fn new(file_filter: TFilter) -> Self {
     Self {
-      include_patterns: None,
-      exclude_patterns: Default::default(),
       file_filter,
       ignore_git_folder: false,
       ignore_node_modules: false,
       ignore_vendor_folder: false,
     }
-  }
-
-  pub fn set_include_patterns(
-    mut self,
-    patterns: Option<PathOrPatternSet>,
-  ) -> Self {
-    self.include_patterns = patterns;
-    self
-  }
-
-  pub fn set_exclude_patterns(mut self, patterns: PathOrPatternSet) -> Self {
-    self.exclude_patterns = patterns;
-    self
   }
 
   pub fn ignore_node_modules(mut self) -> Self {
@@ -298,29 +281,14 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
   }
 
   pub fn collect_file_patterns(
-    self,
-    file_patterns: FilePatterns,
-  ) -> Result<Vec<PathBuf>, AnyError> {
-    let (base_paths, includes) = match file_patterns.include {
-      FilePatternsInclude::Directory(dir) => (vec![dir], None),
-      FilePatternsInclude::Limited(set) => (set.base_paths(), Some(set)),
-      // should never happen because this is just the LSP default
-      FilePatternsInclude::All => unreachable!(),
-    };
-    self
-      .set_include_patterns(includes)
-      .set_exclude_patterns(file_patterns.exclude)
-      .collect_files(&base_paths)
-  }
-
-  pub fn collect_files(
     &self,
-    base_paths: &[PathBuf],
+    file_patterns: FilePatterns,
   ) -> Result<Vec<PathBuf>, AnyError> {
     let mut target_files = Vec::new();
     let mut visited_paths = HashSet::new();
-    for file in base_paths {
-      let file = normalize_path(file);
+    let file_patterns_by_base = file_patterns.split_by_base();
+    for (path, file_patterns) in file_patterns_by_base {
+      let file = normalize_path(path);
       // use an iterator in order to minimize the number of file system operations
       let mut iterator = WalkDir::new(&file)
         .follow_links(false) // the default, but be explicit
@@ -334,13 +302,8 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
         let c = e.path().to_path_buf();
-        if self.exclude_patterns.matches_path(&c)
-          || !is_dir
-            && self
-              .include_patterns
-              .as_ref()
-              .map(|p| !p.matches_path(&c))
-              .unwrap_or(false)
+        if file_patterns.exclude.matches_path(&c)
+          || !is_dir && !file_patterns.include.matches_path(&c)
         {
           if is_dir {
             iterator.skip_current_dir();
@@ -854,6 +817,13 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
+    let file_patterns = FilePatterns {
+      include: FilePatternsInclude::Directory(root_dir_path.to_path_buf()),
+      exclude: PathOrPatternSet::from_absolute_paths(vec![
+        ignore_dir_path.to_path_buf()
+      ])
+      .unwrap(),
+    };
     let file_collector = FileCollector::new(|path| {
       // exclude dotfiles
       path
@@ -861,16 +831,10 @@ mod tests {
         .and_then(|f| f.to_str())
         .map(|f| !f.starts_with('.'))
         .unwrap_or(false)
-    })
-    .set_exclude_patterns(
-      PathOrPatternSet::from_absolute_paths(
-        vec![ignore_dir_path.to_path_buf()],
-      )
-      .unwrap(),
-    );
+    });
 
     let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
+      .collect_file_patterns(file_patterns.clone())
       .unwrap();
     let expected = [
       "README.md",
@@ -897,7 +861,7 @@ mod tests {
       .ignore_node_modules()
       .ignore_vendor_folder();
     let result = file_collector
-      .collect_files(&[root_dir_path.to_path_buf()])
+      .collect_file_patterns(file_patterns.clone())
       .unwrap();
     let expected = [
       "README.md",
@@ -916,12 +880,18 @@ mod tests {
     assert_eq!(file_names, expected);
 
     // test opting out of ignoring by specifying the dir
-    let result = file_collector
-      .collect_files(&[
+    let file_patterns = FilePatterns {
+      include: FilePatternsInclude::from_absolute_paths(vec![
         root_dir_path.to_path_buf(),
         root_dir_path.to_path_buf().join("child/node_modules/"),
       ])
-      .unwrap();
+      .unwrap(),
+      exclude: PathOrPatternSet::from_absolute_paths(vec![
+        ignore_dir_path.to_path_buf()
+      ])
+      .unwrap(),
+    };
+    let result = file_collector.collect_file_patterns(file_patterns).unwrap();
     let expected = [
       "README.md",
       "a.ts",

@@ -9,6 +9,8 @@ use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::FilePatternsInclude;
 use crate::util::glob::PathOrPatternSet;
 use crate::util::text_encoding::source_map_from_code;
 
@@ -376,11 +378,14 @@ fn collect_coverages(
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
   let files = files.with_absolute_paths(initial_cwd);
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
-  let (base_paths, include) = if !files.include.is_empty() {
-    let set = PathOrPatternSet::from_absolute_paths(files.include)?;
-    (set.base_paths(), Some(set))
-  } else {
-    (vec![initial_cwd.to_path_buf()], None)
+  let file_patterns = FilePatterns {
+    include: if !files.include.is_empty() {
+      FilePatternsInclude::from_absolute_paths(files.include)?
+    } else {
+      FilePatternsInclude::Directory(initial_cwd.to_path_buf())
+    },
+    exclude: PathOrPatternSet::from_absolute_paths(files.ignore)
+      .context("Invalid ignore pattern.")?,
   };
   let file_paths = FileCollector::new(|file_path| {
     file_path
@@ -391,12 +396,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .ignore_vendor_folder()
-  .set_exclude_patterns(
-    PathOrPatternSet::from_absolute_paths(files.ignore)
-      .context("Invalid ignore pattern.")?,
-  )
-  .set_include_patterns(include)
-  .collect_files(&base_paths)?;
+  .collect_file_patterns(file_patterns)?;
 
   for file_path in file_paths {
     let new_coverage = fs::read_to_string(file_path.as_path())

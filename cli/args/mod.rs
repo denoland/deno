@@ -69,6 +69,8 @@ use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::FilePatternsInclude;
 use crate::util::glob::PathOrPatternSet;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
@@ -1647,57 +1649,6 @@ impl StorageKeyResolver {
       maybe_value.clone()
     } else {
       Some(main_module.to_string())
-    }
-  }
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub enum FilePatternsInclude {
-  #[default]
-  All,
-  Directory(PathBuf),
-  Limited(PathOrPatternSet),
-}
-
-impl FilePatternsInclude {
-  pub fn from_absolute_paths(paths: Vec<PathBuf>) -> Result<Self, AnyError> {
-    Ok(FilePatternsInclude::Limited(
-      PathOrPatternSet::from_absolute_paths(paths)?,
-    ))
-  }
-
-  pub fn is_limited(&self) -> bool {
-    match self {
-      Self::All | Self::Directory(_) => false,
-      Self::Limited(_) => true,
-    }
-  }
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct FilePatterns {
-  pub include: FilePatternsInclude,
-  pub exclude: PathOrPatternSet,
-}
-
-impl FilePatterns {
-  pub fn matches_specifier(&self, specifier: &Url) -> bool {
-    let file_path = match specifier_to_file_path(specifier) {
-      Ok(file_path) => file_path,
-      Err(_) => return true,
-    };
-    // Skip files which is in the exclude list.
-    if self.exclude.matches_path(&file_path) {
-      return false;
-    }
-
-    // Ignore files not in the include list if it's present.
-    match &self.include {
-      FilePatternsInclude::All => true,
-      FilePatternsInclude::Directory(dir) => file_path.starts_with(dir),
-      FilePatternsInclude::Limited(patterns) => {
-        patterns.matches_path(&file_path)
-      }
     }
   }
 }
