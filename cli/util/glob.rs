@@ -106,12 +106,7 @@ impl FilePatterns {
     // Sort by the longest base path first. This ensures that we visit opted into
     // nested directories first before visiting the parent directory. The directory
     // traverser will handle not going into directories it's already been in.
-    result.sort_by(|a, b| {
-      b.0
-        .to_string_lossy()
-        .len()
-        .cmp(&a.0.to_string_lossy().len())
-    });
+    result.sort_by(|a, b| b.0.as_os_str().len().cmp(&a.0.as_os_str().len()));
 
     result
   }
