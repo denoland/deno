@@ -69,9 +69,8 @@ use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::glob::expand_globs;
-use crate::util::glob::GlobPattern;
 use crate::util::glob::GlobSet;
+use crate::util::glob::PathOrPatternSet;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
 
@@ -230,12 +229,14 @@ impl BenchOptions {
   pub fn resolve(
     maybe_bench_config: Option<BenchConfig>,
     maybe_bench_flags: Option<BenchFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let bench_flags = maybe_bench_flags.unwrap_or_default();
     Ok(Self {
       files: resolve_files(
         maybe_bench_config.map(|c| c.files),
         Some(bench_flags.files),
+        initial_cwd,
       )?,
       filter: bench_flags.filter,
       json: bench_flags.json,
@@ -255,6 +256,7 @@ impl FmtOptions {
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
     maybe_fmt_flags: Option<FmtFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let (maybe_config_options, maybe_config_files) =
       maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
@@ -268,6 +270,7 @@ impl FmtOptions {
       files: resolve_files(
         maybe_config_files,
         maybe_fmt_flags.map(|f| f.files),
+        initial_cwd,
       )?,
     })
   }
@@ -333,6 +336,7 @@ impl TestOptions {
   pub fn resolve(
     maybe_test_config: Option<TestConfig>,
     maybe_test_flags: Option<TestFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let test_flags = maybe_test_flags.unwrap_or_default();
 
@@ -340,6 +344,7 @@ impl TestOptions {
       files: resolve_files(
         maybe_test_config.map(|c| c.files),
         Some(test_flags.files),
+        initial_cwd,
       )?,
       allow_none: test_flags.allow_none,
       concurrent_jobs: test_flags
@@ -376,6 +381,7 @@ impl LintOptions {
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
     maybe_lint_flags: Option<LintFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
@@ -423,7 +429,11 @@ impl LintOptions {
       maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
-      files: resolve_files(maybe_config_files, Some(maybe_file_flags))?,
+      files: resolve_files(
+        maybe_config_files,
+        Some(maybe_file_flags),
+        initial_cwd,
+      )?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,
         maybe_rules_tags,
@@ -1170,7 +1180,7 @@ impl CliOptions {
     } else {
       None
     };
-    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags))
+    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags), &self.initial_cwd)
   }
 
   pub fn resolve_lint_options(
@@ -1182,7 +1192,7 @@ impl CliOptions {
     } else {
       None
     };
-    LintOptions::resolve(maybe_lint_config, Some(lint_flags))
+    LintOptions::resolve(maybe_lint_config, Some(lint_flags), &self.initial_cwd)
   }
 
   pub fn resolve_config_excludes(&self) -> Result<GlobSet, AnyError> {
@@ -1192,13 +1202,10 @@ impl CliOptions {
     } else {
       None
     };
-    let patterns = maybe_files_config
-      .map(|c| c.exclude)
-      .unwrap_or_default()
-      .into_iter()
-      .map(|p| GlobPattern::new(&p.to_string_lossy()))
-      .collect::<Result<Vec<_>, _>>()?;
-    Ok(GlobSet::new(patterns))
+    GlobSet::from_absolute_paths(
+      maybe_files_config.map(|c| c.exclude).unwrap_or_default(),
+    )
+    .context("Invalid config file exclude pattern.")
   }
 
   pub fn resolve_test_options(
@@ -1210,7 +1217,7 @@ impl CliOptions {
     } else {
       None
     };
-    TestOptions::resolve(maybe_test_config, Some(test_flags))
+    TestOptions::resolve(maybe_test_config, Some(test_flags), &self.initial_cwd)
   }
 
   pub fn resolve_bench_options(
@@ -1223,7 +1230,11 @@ impl CliOptions {
     } else {
       None
     };
-    BenchOptions::resolve(maybe_bench_config, Some(bench_flags))
+    BenchOptions::resolve(
+      maybe_bench_config,
+      Some(bench_flags),
+      &self.initial_cwd,
+    )
   }
 
   /// Vector of user script CLI arguments.
@@ -1641,9 +1652,36 @@ impl StorageKeyResolver {
   }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FilePatternsInclude {
+  Directory(PathBuf),
+  Limited(PathOrPatternSet),
+}
+
+impl Default for FilePatternsInclude {
+  fn default() -> Self {
+    Self::Limited(Default::default())
+  }
+}
+
+impl FilePatternsInclude {
+  pub fn from_absolute_paths(paths: Vec<PathBuf>) -> Result<Self, AnyError> {
+    Ok(FilePatternsInclude::Limited(
+      PathOrPatternSet::from_absolute_paths(paths)?,
+    ))
+  }
+
+  pub fn is_limited(&self) -> bool {
+    match self {
+      Self::Directory(_) => false,
+      Self::Limited(_) => true,
+    }
+  }
+}
+
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct FilePatterns {
-  pub include: Option<Vec<PathBuf>>,
+  pub include: FilePatternsInclude,
   pub exclude: GlobSet,
 }
 
@@ -1659,11 +1697,12 @@ impl FilePatterns {
     }
 
     // Ignore files not in the include list if it's present.
-    if let Some(include) = &self.include {
-      return include.iter().any(|p| file_path.starts_with(p));
+    match &self.include {
+      FilePatternsInclude::Directory(dir) => file_path.starts_with(dir),
+      FilePatternsInclude::Limited(patterns) => {
+        patterns.matches_path(&file_path)
+      }
     }
-
-    true
   }
 }
 
@@ -1673,30 +1712,36 @@ impl FilePatterns {
 fn resolve_files(
   maybe_files_config: Option<FilesConfig>,
   maybe_file_flags: Option<FileFlags>,
+  initial_cwd: &Path,
 ) -> Result<FilePatterns, AnyError> {
   let mut maybe_files_config = maybe_files_config.unwrap_or_default();
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
-      maybe_files_config.include = Some(file_flags.include);
+      maybe_files_config.include = Some(
+        file_flags
+          .include
+          .into_iter()
+          .map(|p| initial_cwd.join(p))
+          .collect(),
+      );
     }
     if !file_flags.ignore.is_empty() {
-      maybe_files_config.exclude = file_flags.ignore;
+      maybe_files_config.exclude = file_flags
+        .ignore
+        .into_iter()
+        .map(|p| initial_cwd.join(p))
+        .collect();
     }
   }
   Ok(FilePatterns {
-    // Now expand globs if there are any
     include: match maybe_files_config.include {
-      Some(include) => Some(expand_globs(include)?),
-      None => None,
+      Some(include) => FilePatternsInclude::Limited(
+        PathOrPatternSet::from_absolute_paths(include)?,
+      ),
+      None => FilePatternsInclude::Directory(initial_cwd.to_path_buf()),
     },
-    // and create the exclude patterns
-    exclude: GlobSet::new(
-      maybe_files_config
-        .exclude
-        .into_iter()
-        .map(|pattern| GlobPattern::new(&pattern.to_string_lossy()))
-        .collect::<Result<Vec<_>, _>>()?,
-    ),
+    exclude: GlobSet::from_absolute_paths(maybe_files_config.exclude)
+      .context("Invalid exclude.")?,
   })
 }
 
@@ -1719,6 +1764,8 @@ pub fn npm_pkg_req_ref_to_binary_command(
 
 #[cfg(test)]
 mod test {
+  use crate::util::fs::FileCollector;
+
   use super::*;
   use pretty_assertions::assert_eq;
 
@@ -1912,6 +1959,7 @@ mod test {
         exclude: vec![],
       }),
       None,
+      temp_dir_path,
     )
     .unwrap_err();
     assert!(error.to_string().starts_with("Failed to expand glob"));
@@ -1927,12 +1975,20 @@ mod test {
         exclude: vec![temp_dir_path.join("nested/**/*bazz.ts")],
       }),
       None,
+      &temp_dir_path,
     )
     .unwrap();
 
+    let files = FileCollector::new(|_| true)
+      .ignore_git_folder()
+      .ignore_node_modules()
+      .ignore_vendor_folder()
+      .collect_file_patterns(resolved_files)
+      .unwrap();
+
     assert_eq!(
-      resolved_files.include,
-      Some(vec![
+      files,
+      vec![
         temp_dir_path.join("data/test1.js"),
         temp_dir_path.join("data/test1.ts"),
         temp_dir_path.join("nested/foo/bar.ts"),
@@ -1944,24 +2000,8 @@ mod test {
         temp_dir_path.join("nested/fizz/fizz.ts"),
         temp_dir_path.join("nested/fizz/foo.ts"),
         temp_dir_path.join("pages/[id].ts"),
-      ])
+      ]
     );
-    assert_eq!(
-      resolved_files.exclude,
-      GlobSet::new(vec![GlobPattern::new(
-        &temp_dir_path.join("nested/**/*bazz.ts").to_string_lossy()
-      )
-      .unwrap()])
-    );
-    assert!(resolved_files
-      .exclude
-      .matches_path(&temp_dir_path.join("nested/fizz/bazz.ts")));
-    assert!(resolved_files
-      .exclude
-      .matches_path(&temp_dir_path.join("nested/foo/bazz.ts")));
-    assert!(!resolved_files
-      .exclude
-      .matches_path(&temp_dir_path.join("nested/foo/bazztest.ts")));
   }
 
   #[test]

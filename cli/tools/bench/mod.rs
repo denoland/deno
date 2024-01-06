@@ -16,6 +16,7 @@ use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
+use crate::util::path::specifier_to_file_path;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
@@ -420,7 +421,7 @@ pub async fn run_benchmarks(
     Permissions::from_options(&cli_options.permissions_options())?;
 
   let specifiers =
-    collect_specifiers(&bench_options.files, is_supported_bench_path)?;
+    collect_specifiers(bench_options.files, is_supported_bench_path)?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -480,16 +481,26 @@ pub async fn run_benchmarks_with_watch(
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(include) = &bench_options.files.include {
-          let _ = watcher_communicator.watch_paths(include.clone());
-        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let module_graph_builder = factory.module_graph_builder().await?;
         let module_load_preparer = factory.module_load_preparer().await?;
 
-        let bench_modules =
-          collect_specifiers(&bench_options.files, is_supported_bench_path)?;
+        let should_watch_collected = bench_options.files.include.is_limited();
+        let bench_modules = collect_specifiers(
+          bench_options.files.clone(),
+          is_supported_bench_path,
+        )?;
+
+        if should_watch_collected {
+          let watch_paths = bench_modules
+            .iter()
+            .filter_map(|s| specifier_to_file_path(s).ok())
+            .collect::<Vec<_>>();
+          if !watch_paths.is_empty() {
+            let _ = watcher_communicator.watch_paths(watch_paths);
+          }
+        }
 
         // Various bench files should not share the same permissions in terms of
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
@@ -531,8 +542,10 @@ pub async fn run_benchmarks_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
+        // todo(THIS PR): why are we collecting specifiers twice in a row?
+        // Seems like a perf bug.
         let specifiers =
-          collect_specifiers(&bench_options.files, is_supported_bench_path)?
+          collect_specifiers(bench_options.files, is_supported_bench_path)?
             .into_iter()
             .filter(|specifier| bench_modules_to_reload.contains(specifier))
             .collect::<Vec<ModuleSpecifier>>();

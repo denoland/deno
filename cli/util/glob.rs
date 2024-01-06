@@ -6,27 +6,68 @@ use std::path::PathBuf;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
-pub fn expand_globs(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>, AnyError> {
-  let mut new_paths = vec![];
-  for path in paths {
-    let path_str = path.to_string_lossy();
-    if is_glob_pattern(&path_str) {
-      let globbed_paths = glob(&path_str)?;
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub struct PathOrPatternSet(Vec<PathOrPattern>);
 
-      for globbed_path_result in globbed_paths {
-        new_paths.push(globbed_path_result?);
-      }
-    } else {
-      new_paths.push(path);
-    }
+impl PathOrPatternSet {
+  pub fn new(elements: Vec<PathOrPattern>) -> Self {
+    Self(elements)
   }
 
-  Ok(new_paths)
+  pub fn from_absolute_paths(path: Vec<PathBuf>) -> Result<Self, AnyError> {
+    Ok(Self(
+      path
+        .into_iter()
+        .map(PathOrPattern::new)
+        .collect::<Result<Vec<_>, _>>()?,
+    ))
+  }
+
+  pub fn into_path_or_patterns(self) -> Vec<PathOrPattern> {
+    self.0
+  }
+
+  pub fn matches_path(&self, path: &PathBuf) -> bool {
+    self.0.iter().any(|p| p.matches_path(path))
+  }
+
+  pub fn base_paths(&self) -> Vec<PathBuf> {
+    let mut result = Vec::with_capacity(self.0.len());
+    for element in &self.0 {
+      match element {
+        PathOrPattern::Path(path) => {
+          result.push(path.to_path_buf());
+        }
+        PathOrPattern::Pattern(pattern) => {
+          result.push(pattern.base_path());
+        }
+      }
+    }
+    result
+  }
 }
 
-pub fn glob(pattern: &str) -> Result<glob::Paths, AnyError> {
-  glob::glob_with(&escape_brackets(pattern), match_options())
-    .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PathOrPattern {
+  Path(PathBuf),
+  Pattern(GlobPattern),
+}
+
+impl PathOrPattern {
+  pub fn new(path: PathBuf) -> Result<Self, AnyError> {
+    GlobPattern::new_if_pattern(&path.to_string_lossy()).map(|maybe_pattern| {
+      maybe_pattern
+        .map(PathOrPattern::Pattern)
+        .unwrap_or_else(|| PathOrPattern::Path(path))
+    })
+  }
+
+  pub fn matches_path(&self, path: &Path) -> bool {
+    match self {
+      PathOrPattern::Path(p) => path.starts_with(p),
+      PathOrPattern::Pattern(p) => p.matches_path(path),
+    }
+  }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -41,13 +82,25 @@ impl GlobPattern {
   }
 
   pub fn new(pattern: &str) -> Result<Self, AnyError> {
-    let pattern = glob::Pattern::new(pattern)
-      .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))?;
+    let pattern =
+      glob::Pattern::new(&escape_brackets(pattern).replace('\\', "/"))
+        .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))?;
     Ok(Self(pattern))
   }
 
   pub fn matches_path(&self, path: &Path) -> bool {
-    self.0.matches_path(path)
+    self.0.matches_path_with(path, match_options())
+  }
+
+  pub fn base_path(&self) -> PathBuf {
+    let base_path = self
+      .0
+      .as_str()
+      .split('/')
+      .take_while(|c| !has_glob_chars(c))
+      .collect::<Vec<_>>()
+      .join(&std::path::MAIN_SEPARATOR.to_string());
+    PathBuf::from(base_path)
   }
 }
 
@@ -59,8 +112,13 @@ impl GlobSet {
     Self(matchers)
   }
 
-  pub fn extend(&mut self, other_set: Self) {
-    self.0.extend(other_set.0);
+  pub fn from_absolute_paths(paths: Vec<PathBuf>) -> Result<Self, AnyError> {
+    Ok(Self::new(
+      paths
+        .into_iter()
+        .map(|p| GlobPattern::new(&p.to_string_lossy()))
+        .collect::<Result<Vec<_>, _>>()?,
+    ))
   }
 
   pub fn matches_path(&self, path: &Path) -> bool {
@@ -74,7 +132,15 @@ impl GlobSet {
 }
 
 pub fn is_glob_pattern(path: &str) -> bool {
-  path.chars().any(|c| matches!(c, '*' | '?'))
+  !path.starts_with("http:")
+    && !path.starts_with("https:")
+    && !path.starts_with("file:")
+    && has_glob_chars(path)
+}
+
+fn has_glob_chars(pattern: &str) -> bool {
+  // we don't support [ and ]
+  pattern.chars().any(|c| matches!(c, '*' | '?'))
 }
 
 fn escape_brackets(pattern: &str) -> String {

@@ -4,6 +4,8 @@ use crate::args::CliOptions;
 use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
+use crate::args::FilePatterns;
+use crate::args::FilePatternsInclude;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
@@ -12,12 +14,11 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
-use crate::util::glob::expand_globs;
+use crate::util::fs::collect_specifiers;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultParsedSourceStore;
@@ -27,7 +28,6 @@ use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -100,19 +100,18 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
-      let expanded_globs =
-        expand_globs(source_files.iter().map(PathBuf::from).collect())?;
-      let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
-        expanded_globs
-          .iter()
-          .map(|source_file| {
-            Ok(resolve_url_or_path(
-              &source_file.to_string_lossy(),
-              cli_options.initial_cwd(),
-            )?)
-          })
-          .collect();
-      let module_specifiers = module_specifiers?;
+      let module_specifiers = collect_specifiers(
+        FilePatterns {
+          include: FilePatternsInclude::from_absolute_paths(
+            source_files
+              .iter()
+              .map(|p| cli_options.initial_cwd().join(p))
+              .collect(),
+          )?,
+          exclude: Default::default(),
+        },
+        |_| true,
+      )?;
       let mut loader = module_graph_builder.create_graph_loader();
       let graph = module_graph_builder
         .create_graph_with_options(CreateGraphOptions {

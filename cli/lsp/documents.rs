@@ -1873,27 +1873,21 @@ struct PreloadDocumentFinder {
   limit: usize,
   entry_count: usize,
   pending_entries: VecDeque<PendingEntry>,
-  disabled_globs: glob::GlobSet,
-  disabled_paths: HashSet<PathBuf>,
+  disabled_paths_and_globs: glob::PathOrPatternSet,
 }
 
 impl PreloadDocumentFinder {
   pub fn new(options: PreloadDocumentFinderOptions) -> Self {
     fn paths_into_globs_and_paths(
       input_paths: Vec<PathBuf>,
-    ) -> (glob::GlobSet, HashSet<PathBuf>) {
-      let mut globs = Vec::with_capacity(input_paths.len());
-      let mut paths = HashSet::with_capacity(input_paths.len());
+    ) -> glob::PathOrPatternSet {
+      let mut result = Vec::with_capacity(input_paths.len());
       for path in input_paths {
-        if let Ok(Some(glob)) =
-          glob::GlobPattern::new_if_pattern(&path.to_string_lossy())
-        {
-          globs.push(glob);
-        } else {
-          paths.insert(path);
+        if let Ok(path_or_pattern) = glob::PathOrPattern::new(path) {
+          result.push(path_or_pattern);
         }
       }
-      (glob::GlobSet::new(globs), paths)
+      glob::PathOrPatternSet::new(result)
     }
 
     fn is_allowed_root_dir(dir_path: &Path) -> bool {
@@ -1904,22 +1898,19 @@ impl PreloadDocumentFinder {
       true
     }
 
-    let (disabled_globs, disabled_paths) =
+    let disabled_paths_and_globs =
       paths_into_globs_and_paths(options.disabled_paths);
     let mut finder = PreloadDocumentFinder {
       limit: options.limit,
       entry_count: 0,
       pending_entries: Default::default(),
-      disabled_globs,
-      disabled_paths,
+      disabled_paths_and_globs,
     };
 
     // initialize the finder with the initial paths
     let mut dirs = Vec::with_capacity(options.enabled_paths.len());
     for path in options.enabled_paths {
-      if !finder.disabled_paths.contains(&path)
-        && !finder.disabled_globs.matches_path(&path)
-      {
+      if !finder.disabled_paths_and_globs.matches_path(&path) {
         if path.is_dir() {
           if is_allowed_root_dir(&path) {
             dirs.push(path);
@@ -2043,9 +2034,7 @@ impl Iterator for PreloadDocumentFinder {
             if let Ok(entry) = entry {
               let path = entry.path();
               if let Ok(file_type) = entry.file_type() {
-                if !self.disabled_paths.contains(&path)
-                  && !self.disabled_globs.matches_path(&path)
-                {
+                if !self.disabled_paths_and_globs.matches_path(&path) {
                   if file_type.is_dir() && is_discoverable_dir(&path) {
                     self
                       .pending_entries

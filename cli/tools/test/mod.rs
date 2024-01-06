@@ -20,6 +20,7 @@ use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
+use crate::util::path::specifier_to_file_path;
 use crate::worker::CliMainWorkerFactory;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -1094,10 +1095,12 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  files: &FilePatterns,
+  files: FilePatterns,
   include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let module_specifiers = collect_specifiers(files, is_supported_test_path)?;
+  // todo(dsherret): there's no need to collect twice
+  let module_specifiers =
+    collect_specifiers(files.clone(), is_supported_test_path)?;
 
   if *include_inline {
     return collect_specifiers(files, is_supported_test_ext).map(
@@ -1136,7 +1139,7 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   file_fetcher: &FileFetcher,
-  files: &FilePatterns,
+  files: FilePatterns,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
@@ -1174,7 +1177,7 @@ pub async fn run_tests(
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     file_fetcher,
-    &test_options.files,
+    test_options.files.clone(),
     &test_options.doc,
   )
   .await?;
@@ -1264,23 +1267,31 @@ pub async fn run_tests_with_watch(
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(include) = &test_options.files.include {
-          let _ = watcher_communicator.watch_paths(include.clone());
-        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
         let cli_options = cli_options.clone();
         let module_graph_builder = factory.module_graph_builder().await?;
         let file_fetcher = factory.file_fetcher()?;
+        let should_watch_modules = test_options.files.include.is_limited();
         let test_modules = if test_options.doc {
-          collect_specifiers(&test_options.files, is_supported_test_ext)
+          collect_specifiers(test_options.files.clone(), is_supported_test_ext)
         } else {
-          collect_specifiers(&test_options.files, is_supported_test_path)
+          collect_specifiers(test_options.files.clone(), is_supported_test_path)
         }?;
+
+        if should_watch_modules {
+          let watch_paths = test_modules
+            .iter()
+            .filter_map(|s| specifier_to_file_path(s).ok())
+            .collect::<Vec<_>>();
+          if !watch_paths.is_empty() {
+            let _ = watcher_communicator.watch_paths(watch_paths);
+          }
+        }
+
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
-
         let graph = module_graph_builder
           .create_graph(graph_kind, test_modules.clone())
           .await?;
@@ -1317,7 +1328,7 @@ pub async fn run_tests_with_watch(
         let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           file_fetcher,
-          &test_options.files,
+          test_options.files.clone(),
           &test_options.doc,
         )
         .await?

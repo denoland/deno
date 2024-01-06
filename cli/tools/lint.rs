@@ -66,14 +66,15 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
           let factory = CliFactory::from_flags(flags).await?;
           let cli_options = factory.cli_options();
           let lint_options = cli_options.resolve_lint_options(lint_flags)?;
-          let files =
-            collect_lint_files(&lint_options.files).and_then(|files| {
+          let files = collect_lint_files(lint_options.files.clone()).and_then(
+            |files| {
               if files.is_empty() {
                 Err(generic_error("No target files found."))
               } else {
                 Ok(files)
               }
-            })?;
+            },
+          )?;
           _ = watcher_communicator.watch_paths(files.clone());
 
           let lint_paths = if let Some(paths) = changed_paths {
@@ -109,13 +110,14 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       reporter_lock.lock().unwrap().close(1);
       success
     } else {
-      let target_files = collect_lint_files(files).and_then(|files| {
-        if files.is_empty() {
-          Err(generic_error("No target files found."))
-        } else {
-          Ok(files)
-        }
-      })?;
+      let target_files =
+        collect_lint_files(files.clone()).and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
       debug!("Found {} files", target_files.len());
       lint_files(factory, lint_options, target_files).await?
     };
@@ -191,13 +193,12 @@ async fn lint_files(
   Ok(!has_error.is_raised())
 }
 
-fn collect_lint_files(files: &FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_lint_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_script_ext)
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
-    .add_exclude_patterns(files.exclude.clone())
-    .collect_files(files.include.as_deref())
+    .collect_file_patterns(files)
 }
 
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {

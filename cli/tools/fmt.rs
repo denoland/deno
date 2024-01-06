@@ -72,7 +72,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
           let cli_options = factory.cli_options();
           let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
           let files =
-            collect_fmt_files(&fmt_options.files).and_then(|files| {
+            collect_fmt_files(fmt_options.files.clone()).and_then(|files| {
               if files.is_empty() {
                 Err(generic_error("No target files found."))
               } else {
@@ -108,13 +108,14 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     let factory = CliFactory::from_flags(flags).await?;
     let cli_options = factory.cli_options();
     let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-    let files = collect_fmt_files(&fmt_options.files).and_then(|files| {
-      if files.is_empty() {
-        Err(generic_error("No target files found."))
-      } else {
-        Ok(files)
-      }
-    })?;
+    let files =
+      collect_fmt_files(fmt_options.files.clone()).and_then(|files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      })?;
     format_files(factory, fmt_options, files).await?;
   }
 
@@ -144,13 +145,12 @@ async fn format_files(
   Ok(())
 }
 
-fn collect_fmt_files(files: &FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_fmt_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext_fmt)
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
-    .add_exclude_patterns(files.exclude.clone())
-    .collect_files(files.include.as_deref())
+    .collect_file_patterns(files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
