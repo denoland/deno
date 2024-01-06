@@ -63,8 +63,7 @@ const {
   isDataView,
 } = core;
 
-// P-521 is not yet supported.
-const supportedNamedCurves = ["P-256", "P-384"];
+const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
   "encrypt",
   "decrypt",
