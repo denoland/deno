@@ -26,18 +26,8 @@ impl FilePatterns {
   }
 
   pub fn matches_path(&self, path: &Path) -> bool {
-    // Skip files which is in the exclude list.
+    // Skip files in the exclude list.
     if self.exclude.matches_path(path) {
-      // Allow someone to override an exclude by providing an exact match
-      if let Some(set) = &self.include {
-        for pattern in &set.0 {
-          if let PathOrPattern::Path(p) = pattern {
-            if p == path {
-              return true;
-            }
-          }
-        }
-      }
       return false;
     }
 
@@ -75,19 +65,22 @@ impl FilePatterns {
     // patterns that will only ever match another base.
     let mut result = Vec::with_capacity(include_by_base_path.len());
     for (base_path, include) in include_by_base_path {
+      let is_file = base_path.is_file();
       let applicable_excludes = exclude_by_base_path
         .iter()
         .filter_map(|(exclude_base_path, exclude)| {
-          // only include paths that are sub paths or any globs that's a sub path or parent path
           match exclude {
             PathOrPattern::Path(exclude_path) => {
-              if exclude_path.starts_with(&base_path) {
+              // For explicitly specified files, ignore when the exclude path starts
+              // with it. Regardless, include excludes that are on a sub path of the dir.
+              if is_file && base_path.starts_with(exclude_path) || exclude_path.starts_with(&base_path) {
                 Some(exclude.clone())
               } else {
                 None
               }
             }
             PathOrPattern::Pattern(_) => {
+              // include globs that's are sub paths or a parent path
               if exclude_base_path.starts_with(&base_path)
                 || base_path.starts_with(exclude_base_path)
               {

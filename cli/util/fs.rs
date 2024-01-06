@@ -286,8 +286,8 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     let mut target_files = Vec::new();
     let mut visited_paths = HashSet::new();
     let file_patterns_by_base = file_patterns.split_by_base();
-    for (path, file_patterns) in file_patterns_by_base {
-      let file = normalize_path(path);
+    for (base, file_patterns) in file_patterns_by_base {
+      let file = normalize_path(base);
       // use an iterator in order to minimize the number of file system operations
       let mut iterator = WalkDir::new(&file)
         .follow_links(false) // the default, but be explicit
@@ -301,7 +301,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
         let c = e.path().to_path_buf();
-        if !file_patterns.matches_path(&c) {
+        if file_patterns.exclude.matches_path(&c) || !is_dir && !file_patterns.include.as_ref().map(|i| i.matches_path(&c)).unwrap_or(true) {
           if is_dir {
             iterator.skip_current_dir();
           }
