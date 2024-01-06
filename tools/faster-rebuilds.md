@@ -51,7 +51,7 @@ Comparing incremental compile times for `ext/webgpu` on Mac M1:
 
 | profile   | `cargo build` | `cargo plonk build` |
 | --------- | ------------- | ------------------- |
-| `debug`   | 1 mins 10 s   | 0.5s                |
+| `debug`   | 42 s          | 0.5s                |
 | `release` | 5 mins 12 s   | 2s                  |
 
 ## Debugging
