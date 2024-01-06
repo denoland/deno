@@ -85,7 +85,7 @@ pub fn get_types_declaration_file_text() -> String {
     .map(|a| (a.specifier, a.text))
     .collect::<HashMap<_, _>>();
 
-  let mut lib_names = vec![
+  let lib_names = vec![
     "deno.ns",
     "deno.console",
     "deno.url",
