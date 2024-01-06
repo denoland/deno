@@ -1651,16 +1651,12 @@ impl StorageKeyResolver {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub enum FilePatternsInclude {
+  #[default]
+  All,
   Directory(PathBuf),
   Limited(PathOrPatternSet),
-}
-
-impl Default for FilePatternsInclude {
-  fn default() -> Self {
-    Self::Limited(Default::default())
-  }
 }
 
 impl FilePatternsInclude {
@@ -1672,7 +1668,7 @@ impl FilePatternsInclude {
 
   pub fn is_limited(&self) -> bool {
     match self {
-      Self::Directory(_) => false,
+      Self::All | Self::Directory(_) => false,
       Self::Limited(_) => true,
     }
   }
@@ -1697,6 +1693,7 @@ impl FilePatterns {
 
     // Ignore files not in the include list if it's present.
     match &self.include {
+      FilePatternsInclude::All => true,
       FilePatternsInclude::Directory(dir) => file_path.starts_with(dir),
       FilePatternsInclude::Limited(patterns) => {
         patterns.matches_path(&file_path)
@@ -1715,21 +1712,12 @@ fn resolve_files(
 ) -> Result<FilePatterns, AnyError> {
   let mut maybe_files_config = maybe_files_config.unwrap_or_default();
   if let Some(file_flags) = maybe_file_flags {
+    let file_flags = file_flags.with_absolute_paths(initial_cwd);
     if !file_flags.include.is_empty() {
-      maybe_files_config.include = Some(
-        file_flags
-          .include
-          .into_iter()
-          .map(|p| initial_cwd.join(p))
-          .collect(),
-      );
+      maybe_files_config.include = Some(file_flags.include);
     }
     if !file_flags.ignore.is_empty() {
-      maybe_files_config.exclude = file_flags
-        .ignore
-        .into_iter()
-        .map(|p| initial_cwd.join(p))
-        .collect();
+      maybe_files_config.exclude = file_flags.ignore
     }
   }
   Ok(FilePatterns {
@@ -1978,28 +1966,31 @@ mod test {
     )
     .unwrap();
 
-    let files = FileCollector::new(|_| true)
+    let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
       .ignore_vendor_folder()
       .collect_file_patterns(resolved_files)
       .unwrap();
 
+    files.sort();
+
     assert_eq!(
       files,
       vec![
-        temp_dir_path.join("data/test1.js"),
-        temp_dir_path.join("data/test1.ts"),
-        temp_dir_path.join("nested/foo/bar.ts"),
-        temp_dir_path.join("nested/foo/bazz.ts"),
-        temp_dir_path.join("nested/foo/fizz.ts"),
-        temp_dir_path.join("nested/foo/foo.ts"),
-        temp_dir_path.join("nested/fizz/bar.ts"),
-        temp_dir_path.join("nested/fizz/bazz.ts"),
-        temp_dir_path.join("nested/fizz/fizz.ts"),
-        temp_dir_path.join("nested/fizz/foo.ts"),
-        temp_dir_path.join("pages/[id].ts"),
+        "data/test1.js",
+        "data/test1.ts",
+        "nested/fizz/bar.ts",
+        "nested/fizz/fizz.ts",
+        "nested/fizz/foo.ts",
+        "nested/foo/bar.ts",
+        "nested/foo/fizz.ts",
+        "nested/foo/foo.ts",
+        "pages/[id].ts",
       ]
+      .into_iter()
+      .map(|p| normalize_path(temp_dir_path.join(p)))
+      .collect::<Vec<_>>()
     );
   }
 

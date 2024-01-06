@@ -371,20 +371,10 @@ fn range_to_src_line_index(
 }
 
 fn collect_coverages(
-  mut files: FileFlags,
+  files: FileFlags,
   initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
-  files.include = files
-    .include
-    .into_iter()
-    .map(|p| initial_cwd.join(p))
-    .collect();
-  files.ignore = files
-    .ignore
-    .into_iter()
-    .map(|p| initial_cwd.join(p))
-    .collect();
-
+  let files = files.with_absolute_paths(initial_cwd);
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
   let (base_paths, include) = if files.include.is_empty() {
     let set = PathOrPatternSet::from_absolute_paths(files.include)?;

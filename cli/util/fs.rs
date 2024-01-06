@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
@@ -303,6 +304,8 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     let (base_paths, includes) = match file_patterns.include {
       FilePatternsInclude::Directory(dir) => (vec![dir], None),
       FilePatternsInclude::Limited(set) => (set.base_paths(), Some(set)),
+      // should never happen because this is just the LSP default
+      FilePatternsInclude::All => unreachable!(),
     };
     self
       .set_include_patterns(includes)
@@ -407,7 +410,9 @@ pub fn collect_specifiers(
           } else if path.is_dir() {
             result.push(PathOrPattern::Path(path));
           } else if !files.exclude.matches_path(&path) {
-            let url = ModuleSpecifier::from_file_path(path).unwrap();
+            let url = ModuleSpecifier::from_file_path(&path).map_err(|_| {
+              anyhow!("Failed converting path to URL: {}", path.display())
+            })?;
             prepared.push(url);
           }
         }

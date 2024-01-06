@@ -56,7 +56,16 @@ pub enum PathOrPattern {
 
 impl PathOrPattern {
   pub fn new(path: PathBuf) -> Result<Self, AnyError> {
-    GlobPattern::new_if_pattern(&path.to_string_lossy()).map(|maybe_pattern| {
+    let path_str = path.to_string_lossy();
+    // todo(dsherret): don't store URLs in PathBufs
+    if path_str.starts_with("http:")
+      || path_str.starts_with("https:")
+      || path_str.starts_with("file:")
+    {
+      return Ok(Self::Path(path));
+    }
+
+    GlobPattern::new_if_pattern(&path_str).map(|maybe_pattern| {
       maybe_pattern
         .map(PathOrPattern::Pattern)
         .unwrap_or_else(|| PathOrPattern::Path(normalize_path(path)))
