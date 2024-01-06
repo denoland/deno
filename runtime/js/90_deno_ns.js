@@ -221,7 +221,7 @@ denoNsUnstableById[unstableIds.net] = {
 denoNsUnstableById[unstableIds.webgpu] = {
   createWindowSurface: webgpuSurface.createWindowSurface,
   presentGPUCanvasContext: webgpuSurface.presentGPUCanvasContext,
-}
+};
 
 // denoNsUnstableById[unstableIds.workerOptions] = {}
 

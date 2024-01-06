@@ -164,8 +164,13 @@ function presentGPUCanvasContext(ctx) {
 }
 
 function createWindowSurface(system, p1, p2) {
-  const surfaceRid = ops.op_webgpu_create_surface(system, p1, p2);
+  const surfaceRid = ops.op_webgpu_surface_create(system, p1, p2);
   return createCanvasContext({ surfaceRid });
 }
 
-export { createCanvasContext, GPUCanvasContext, createWindowSurface, presentGPUCanvasContext };
+export {
+  createCanvasContext,
+  createWindowSurface,
+  GPUCanvasContext,
+  presentGPUCanvasContext,
+};
