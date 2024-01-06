@@ -13,6 +13,7 @@ import * as location from "ext:deno_web/12_location.js";
 import * as console from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
+import { loadWebGPU, webgpu } from "ext:deno_webgpu/00_init.js";
 
 function memoizeLazy(f) {
   let v_ = null;
