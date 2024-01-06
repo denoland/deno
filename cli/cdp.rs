@@ -526,3 +526,21 @@ pub struct ExceptionThrown {
   pub timestamp: f64,
   pub exception_details: ExceptionDetails,
 }
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-executionContextCreated>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionContextCreated {
+  pub context: ExecutionContextDescription,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExecutionContextDescription>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionContextDescription {
+  pub id: ExecutionContextId,
+  pub origin: String,
+  pub name: String,
+  pub unique_id: String,
+  pub aux_data: Value,
+}
