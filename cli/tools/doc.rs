@@ -28,6 +28,7 @@ use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -105,7 +106,17 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           include: FilePatternsInclude::from_absolute_paths(
             source_files
               .iter()
-              .map(|p| cli_options.initial_cwd().join(p))
+              .map(|p| {
+                if p.starts_with("https:")
+                  || p.starts_with("http:")
+                  || p.starts_with("file:")
+                {
+                  // todo(dsherret): don't store URLs in PathBufs
+                  PathBuf::from(p)
+                } else {
+                  cli_options.initial_cwd().join(p)
+                }
+              })
               .collect(),
           )?,
           exclude: Default::default(),

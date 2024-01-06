@@ -390,17 +390,19 @@ pub fn collect_specifiers(
     for path_or_pattern in path_or_patterns {
       match path_or_pattern {
         PathOrPattern::Path(path) => {
-          // todo(dsherret): we should improve this to not be storing URLs in a PathBuf
+          // todo(dsherret): we should improve this to not store URLs in a PathBuf
           let path_str = path.to_string_lossy();
           let lowercase_path = path_str.to_lowercase();
           if lowercase_path.starts_with("http://")
             || lowercase_path.starts_with("https://")
           {
             // take out the url
-            let url = ModuleSpecifier::parse(&path_str)?;
+            let url = ModuleSpecifier::parse(&path_str)
+              .with_context(|| format!("Invalid URL '{}'", path_str))?;
             prepared.push(url);
           } else if lowercase_path.starts_with("file://") {
-            let url = ModuleSpecifier::parse(&path_str)?;
+            let url = ModuleSpecifier::parse(&path_str)
+              .with_context(|| format!("Invalid URL '{}'", path_str))?;
             let p = specifier_to_file_path(&url)?;
             if p.is_dir() {
               result.push(PathOrPattern::Path(p));
@@ -410,9 +412,8 @@ pub fn collect_specifiers(
           } else if path.is_dir() {
             result.push(PathOrPattern::Path(path));
           } else if !files.exclude.matches_path(&path) {
-            let url = ModuleSpecifier::from_file_path(&path).map_err(|_| {
-              anyhow!("Failed converting path to URL: {}", path.display())
-            })?;
+            let url = ModuleSpecifier::from_file_path(&path)
+              .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))?;
             prepared.push(url);
           }
         }

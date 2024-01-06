@@ -376,7 +376,7 @@ fn collect_coverages(
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
   let files = files.with_absolute_paths(initial_cwd);
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
-  let (base_paths, include) = if files.include.is_empty() {
+  let (base_paths, include) = if !files.include.is_empty() {
     let set = PathOrPatternSet::from_absolute_paths(files.include)?;
     (set.base_paths(), Some(set))
   } else {
@@ -399,8 +399,10 @@ fn collect_coverages(
   .collect_files(&base_paths)?;
 
   for file_path in file_paths {
-    let json = fs::read_to_string(file_path.as_path())?;
-    let new_coverage: cdp::ScriptCoverage = serde_json::from_str(&json)?;
+    let new_coverage = fs::read_to_string(file_path.as_path())
+      .map_err(AnyError::from)
+      .and_then(|json| serde_json::from_str(&json).map_err(AnyError::from))
+      .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
     coverages.push(new_coverage);
   }
 
