@@ -32,11 +32,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
-import {
-  loadWebGPU,
-  webgpu,
-  webGPUNonEnumerable,
-} from "ext:deno_webgpu/00_init.js";
+import { webgpu, webGPUNonEnumerable } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
@@ -187,32 +183,5 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
   GPUOutOfMemoryError: webGPUNonEnumerable(() => webgpu.GPUOutOfMemoryError),
   GPUCanvasContext: webGPUNonEnumerable(() => webgpuSurface.GPUCanvasContext),
 };
-
-let webgpu;
-
-function webGPUNonEnumerable(getter) {
-  let valueIsSet = false;
-  let value;
-
-  return {
-    get() {
-      loadWebGPU();
-
-      if (valueIsSet) {
-        return value;
-      } else {
-        return getter();
-      }
-    },
-    set(v) {
-      loadWebGPU();
-
-      valueIsSet = true;
-      value = v;
-    },
-    enumerable: false,
-    configurable: true,
-  };
-}
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };
