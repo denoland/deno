@@ -121,7 +121,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           )?),
           exclude: Default::default(),
         },
-        |_| true,
+        |_, _| true,
       )?;
       let mut loader = module_graph_builder.create_graph_loader();
       let graph = module_graph_builder

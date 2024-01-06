@@ -247,14 +247,14 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
-pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
+pub struct FileCollector<TFilter: Fn(&Path, &FilePatterns) -> bool> {
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
   ignore_vendor_folder: bool,
 }
 
-impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
+impl<TFilter: Fn(&Path, &FilePatterns) -> bool> FileCollector<TFilter> {
   pub fn new(file_filter: TFilter) -> Self {
     Self {
       file_filter,
@@ -331,7 +331,9 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
           if should_ignore_dir {
             iterator.skip_current_dir();
           }
-        } else if (self.file_filter)(&c) && visited_paths.insert(c.clone()) {
+        } else if (self.file_filter)(&c, &file_patterns)
+          && visited_paths.insert(c.clone())
+        {
           target_files.push(c);
         }
       }
@@ -345,7 +347,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
   mut files: FilePatterns,
-  predicate: impl Fn(&Path) -> bool,
+  predicate: impl Fn(&Path, &FilePatterns) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
 
@@ -833,7 +835,7 @@ mod tests {
       ])
       .unwrap(),
     };
-    let file_collector = FileCollector::new(|path| {
+    let file_collector = FileCollector::new(|path, _| {
       // exclude dotfiles
       path
         .file_name()
@@ -958,7 +960,7 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let predicate = |path: &Path| {
+    let predicate = |path: &Path, _: &FilePatterns| {
       // exclude dotfiles
       path
         .file_name()

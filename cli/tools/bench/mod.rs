@@ -15,6 +15,8 @@ use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::PathOrPattern;
 use crate::util::path::is_script_ext;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
@@ -393,13 +395,33 @@ async fn bench_specifiers(
 }
 
 /// Checks if the path has a basename and extension Deno supports for benches.
-fn is_supported_bench_path(path: &Path) -> bool {
+fn is_supported_bench_path(path: &Path, patterns: &FilePatterns) -> bool {
+  if !is_script_ext(path) {
+    false
+  } else if has_supported_bench_path_name(path) {
+    true
+  } else {
+    // allow someone to explicitly specify a path
+    let matches_exact_path_or_pattern = patterns
+      .include
+      .as_ref()
+      .map(|p| {
+        p.inner().iter().any(|p| match p {
+          PathOrPattern::Path(p) => p == path,
+          PathOrPattern::Pattern(p) => p.matches_path(path),
+        })
+      })
+      .unwrap_or(false);
+    matches_exact_path_or_pattern
+  }
+}
+
+fn has_supported_bench_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    (basename.ends_with("_bench")
+    basename.ends_with("_bench")
       || basename.ends_with(".bench")
-      || basename == "bench")
-      && is_script_ext(path)
+      || basename == "bench"
   } else {
     false
   }

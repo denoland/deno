@@ -194,7 +194,7 @@ async fn lint_files(
 }
 
 fn collect_lint_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_script_ext)
+  FileCollector::new(|path, _| is_script_ext(path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()

@@ -146,7 +146,7 @@ async fn format_files(
 }
 
 fn collect_fmt_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_supported_ext_fmt)
+  FileCollector::new(|path, _| is_supported_ext_fmt(path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()

@@ -1916,7 +1916,7 @@ mod test {
     )
     .unwrap();
 
-    let mut files = FileCollector::new(|_| true)
+    let mut files = FileCollector::new(|_, _| true)
       .ignore_git_folder()
       .ignore_node_modules()
       .ignore_vendor_folder()

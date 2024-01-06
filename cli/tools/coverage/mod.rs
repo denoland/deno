@@ -389,7 +389,7 @@ fn collect_coverages(
     exclude: PathOrPatternSet::from_absolute_paths(files.ignore)
       .context("Invalid ignore pattern.")?,
   };
-  let file_paths = FileCollector::new(|file_path| {
+  let file_paths = FileCollector::new(|file_path, _| {
     file_path
       .extension()
       .map(|ext| ext == "json")

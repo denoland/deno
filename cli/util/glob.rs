@@ -134,6 +134,10 @@ impl PathOrPatternSet {
     ))
   }
 
+  pub fn inner(&self) -> &Vec<PathOrPattern> {
+    &self.0
+  }
+
   pub fn into_path_or_patterns(self) -> Vec<PathOrPattern> {
     self.0
   }
