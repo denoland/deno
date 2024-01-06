@@ -536,16 +536,13 @@ pub async fn run_benchmarks_with_watch(
 
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let changed_specifiers = changed_paths
-            .into_iter()
-            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-            .collect::<HashSet<_>>();
+          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           let mut result = Vec::new();
           for bench_module_specifier in bench_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
               &bench_module_specifier,
-              &changed_specifiers,
+              &changed_paths,
             ) {
               result.push(bench_module_specifier.clone());
             }

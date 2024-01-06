@@ -17,6 +17,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::glob::FilePatterns;
 use crate::util::path::get_extension;
@@ -85,13 +86,21 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
               // check all files on any changed (https://github.com/denoland/deno/issues/12446)
               files
                 .iter()
-                .any(|path| paths.contains(path))
+                .any(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .then_some(files)
                 .unwrap_or_else(|| [].to_vec())
             } else {
               files
                 .into_iter()
-                .filter(|path| paths.contains(path))
+                .filter(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .collect::<Vec<_>>()
             }
           } else {
