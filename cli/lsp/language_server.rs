@@ -1124,7 +1124,7 @@ impl Inner {
       "experimentalDecorators": true,
       "isolatedModules": true,
       "jsx": "react",
-      "lib": ["deno.ns", "deno.window"],
+      "lib": ["deno.ns", "deno.window", "deno.unstable"],
       "module": "esnext",
       "moduleDetection": "force",
       "noEmit": true,
@@ -1137,12 +1137,6 @@ impl Inner {
     }));
     let config = &self.config;
     let workspace_settings = config.workspace_settings();
-    if workspace_settings.unstable {
-      let unstable_libs = json!({
-        "lib": ["deno.ns", "deno.window", "deno.unstable"]
-      });
-      tsconfig.merge(&unstable_libs);
-    }
     if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
       self.client.show_message(MessageType::WARNING, err);
     }

@@ -100,11 +100,8 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.shared_globals",
     "deno.cache",
     "deno.window",
+    "deno.unstable",
   ];
-
-  if unstable {
-    lib_names.push("deno.unstable");
-  }
 
   lib_names
     .into_iter()
