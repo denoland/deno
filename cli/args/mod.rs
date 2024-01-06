@@ -69,7 +69,6 @@ use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::glob::GlobSet;
 use crate::util::glob::PathOrPatternSet;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
@@ -1195,14 +1194,14 @@ impl CliOptions {
     LintOptions::resolve(maybe_lint_config, Some(lint_flags), &self.initial_cwd)
   }
 
-  pub fn resolve_config_excludes(&self) -> Result<GlobSet, AnyError> {
+  pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
     let maybe_files_config = if let Some(config_file) = &self.maybe_config_file
     {
       config_file.to_files_config()?
     } else {
       None
     };
-    GlobSet::from_absolute_paths(
+    PathOrPatternSet::from_absolute_paths(
       maybe_files_config.map(|c| c.exclude).unwrap_or_default(),
     )
     .context("Invalid config file exclude pattern.")
@@ -1682,7 +1681,7 @@ impl FilePatternsInclude {
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct FilePatterns {
   pub include: FilePatternsInclude,
-  pub exclude: GlobSet,
+  pub exclude: PathOrPatternSet,
 }
 
 impl FilePatterns {
@@ -1740,7 +1739,7 @@ fn resolve_files(
       ),
       None => FilePatternsInclude::Directory(initial_cwd.to_path_buf()),
     },
-    exclude: GlobSet::from_absolute_paths(maybe_files_config.exclude)
+    exclude: PathOrPatternSet::from_absolute_paths(maybe_files_config.exclude)
       .context("Invalid exclude.")?,
   })
 }

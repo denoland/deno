@@ -104,33 +104,6 @@ impl GlobPattern {
   }
 }
 
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub struct GlobSet(Vec<GlobPattern>);
-
-impl GlobSet {
-  pub fn new(matchers: Vec<GlobPattern>) -> Self {
-    Self(matchers)
-  }
-
-  pub fn from_absolute_paths(paths: Vec<PathBuf>) -> Result<Self, AnyError> {
-    Ok(Self::new(
-      paths
-        .into_iter()
-        .map(|p| GlobPattern::new(&p.to_string_lossy()))
-        .collect::<Result<Vec<_>, _>>()?,
-    ))
-  }
-
-  pub fn matches_path(&self, path: &Path) -> bool {
-    for pattern in &self.0 {
-      if pattern.matches_path(path) {
-        return true;
-      }
-    }
-    false
-  }
-}
-
 pub fn is_glob_pattern(path: &str) -> bool {
   !path.starts_with("http:")
     && !path.starts_with("https:")
@@ -159,22 +132,5 @@ fn match_options() -> glob::MatchOptions {
     require_literal_separator: true,
     // true because it copies with sh does—these files are considered "hidden"
     require_literal_leading_dot: true,
-  }
-}
-
-#[cfg(test)]
-mod test {
-  use super::*;
-
-  #[test]
-  pub fn glob_set_matches_path() {
-    let glob_set = GlobSet::new(vec![
-      GlobPattern::new("foo/bar").unwrap(),
-      GlobPattern::new("foo/baz").unwrap(),
-    ]);
-
-    assert!(glob_set.matches_path(Path::new("foo/bar")));
-    assert!(glob_set.matches_path(Path::new("foo/baz")));
-    assert!(!glob_set.matches_path(Path::new("foo/qux")));
   }
 }

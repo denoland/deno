@@ -27,7 +27,6 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
-use super::glob::GlobSet;
 use super::glob::PathOrPattern;
 use super::glob::PathOrPatternSet;
 use super::path::specifier_to_file_path;
@@ -249,7 +248,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
 pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
-  exclude_patterns: GlobSet,
+  exclude_patterns: PathOrPatternSet,
   include_patterns: Option<PathOrPatternSet>,
   file_filter: TFilter,
   ignore_git_folder: bool,
@@ -277,7 +276,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     self
   }
 
-  pub fn set_exclude_patterns(mut self, patterns: GlobSet) -> Self {
+  pub fn set_exclude_patterns(mut self, patterns: PathOrPatternSet) -> Self {
     self.exclude_patterns = patterns;
     self
   }
@@ -315,16 +314,6 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     &self,
     base_paths: &[PathBuf],
   ) -> Result<Vec<PathBuf>, AnyError> {
-    eprintln!("{:?}", self.exclude_patterns);
-    eprintln!("{:?}", self.include_patterns);
-    eprintln!(
-      "BASE PATHS: {}",
-      base_paths
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect::<Vec<String>>()
-        .join(", ")
-    );
     let mut target_files = Vec::new();
     let mut visited_paths = HashSet::new();
     for file in base_paths {
@@ -342,15 +331,6 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
         let file_type = e.file_type();
         let is_dir = file_type.is_dir();
         let c = e.path().to_path_buf();
-        eprintln!("{}", self.exclude_patterns.matches_path(&c));
-        eprintln!(
-          "{}",
-          self
-            .include_patterns
-            .as_ref()
-            .map(|p| !p.matches_path(&c))
-            .unwrap_or(false)
-        );
         if self.exclude_patterns.matches_path(&c)
           || !is_dir
             && self
@@ -359,7 +339,6 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
               .map(|p| !p.matches_path(&c))
               .unwrap_or(false)
         {
-          eprintln!("SKIPPING: {}", c.display());
           if is_dir {
             iterator.skip_current_dir();
           }
@@ -763,8 +742,6 @@ impl LaxSingleProcessFsFlag {
 
 #[cfg(test)]
 mod tests {
-  use crate::util::glob::GlobPattern;
-
   use super::*;
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
@@ -875,8 +852,10 @@ mod tests {
         .unwrap_or(false)
     })
     .set_exclude_patterns(
-      GlobSet::from_absolute_paths(vec![ignore_dir_path.to_path_buf()])
-        .unwrap(),
+      PathOrPatternSet::from_absolute_paths(
+        vec![ignore_dir_path.to_path_buf()],
+      )
+      .unwrap(),
     );
 
     let result = file_collector
@@ -1004,10 +983,10 @@ mod tests {
           PathBuf::from("https://localhost:8080".to_string()),
         ])
         .unwrap(),
-        exclude: GlobSet::new(vec![GlobPattern::new(
-          &ignore_dir_path.to_string_lossy(),
-        )
-        .unwrap()]),
+        exclude: PathOrPatternSet::from_absolute_paths(vec![
+          ignore_dir_path.to_path_buf()
+        ])
+        .unwrap(),
       },
       predicate,
     )

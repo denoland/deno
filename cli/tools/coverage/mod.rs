@@ -9,7 +9,6 @@ use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
-use crate::util::glob::GlobSet;
 use crate::util::glob::PathOrPatternSet;
 use crate::util::text_encoding::source_map_from_code;
 
@@ -403,7 +402,7 @@ fn collect_coverages(
   .ignore_node_modules()
   .ignore_vendor_folder()
   .set_exclude_patterns(
-    GlobSet::from_absolute_paths(files.ignore)
+    PathOrPatternSet::from_absolute_paths(files.ignore)
       .context("Invalid ignore pattern.")?,
   )
   .set_include_patterns(include)

@@ -1098,7 +1098,7 @@ fn collect_specifiers_with_test_mode(
   files: FilePatterns,
   include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  // todo(dsherret): there's no need to collect twice
+  // todo(dsherret): there's no need to collect twice as it's slow
   let module_specifiers =
     collect_specifiers(files.clone(), is_supported_test_path)?;
 
