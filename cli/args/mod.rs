@@ -1974,7 +1974,7 @@ mod test {
         exclude: vec![temp_dir_path.join("nested/**/*bazz.ts")],
       }),
       None,
-      &temp_dir_path,
+      temp_dir_path,
     )
     .unwrap();
 

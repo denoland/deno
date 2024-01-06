@@ -404,13 +404,11 @@ pub fn collect_specifiers(
             } else {
               prepared.push(url)
             }
-          } else {
-            if path.is_dir() {
-              result.push(PathOrPattern::Path(path));
-            } else if !files.exclude.matches_path(&path) {
-              let url = ModuleSpecifier::from_file_path(path).unwrap();
-              prepared.push(url);
-            }
+          } else if path.is_dir() {
+            result.push(PathOrPattern::Path(path));
+          } else if !files.exclude.matches_path(&path) {
+            let url = ModuleSpecifier::from_file_path(path).unwrap();
+            prepared.push(url);
           }
         }
         PathOrPattern::Pattern(pattern) => {

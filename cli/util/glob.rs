@@ -28,7 +28,7 @@ impl PathOrPatternSet {
     self.0
   }
 
-  pub fn matches_path(&self, path: &PathBuf) -> bool {
+  pub fn matches_path(&self, path: &Path) -> bool {
     self.0.iter().any(|p| p.matches_path(path))
   }
 
@@ -100,7 +100,7 @@ impl GlobPattern {
       .split('/')
       .take_while(|c| !has_glob_chars(c))
       .collect::<Vec<_>>()
-      .join(&std::path::MAIN_SEPARATOR.to_string());
+      .join(std::path::MAIN_SEPARATOR_STR);
     PathBuf::from(base_path)
   }
 }
