@@ -1,7 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypeJoin,
+  NumberPrototypeToString,
+  TypeError,
+} = primordials;
+const {
+  isPromise,
+} = core;
+const {
+  op_cron_create,
   op_cron_next,
 } = core.ensureFastOps();
 
@@ -15,7 +24,7 @@ export function formatToCronSchedule(
   if (value === undefined) {
     return "*";
   } else if (typeof value === "number") {
-    return value.toString();
+    return NumberPrototypeToString(value);
   } else {
     const { exact } = value as { exact: number | number[] };
     if (exact === undefined) {
@@ -39,9 +48,9 @@ export function formatToCronSchedule(
       }
     } else {
       if (typeof exact === "number") {
-        return exact.toString();
+        return NumberPrototypeToString(exact);
       } else {
-        return exact.join(",");
+        return ArrayPrototypeJoin(exact, ",");
       }
     }
   }
@@ -104,7 +113,7 @@ function cron(
     throw new TypeError("Deno.cron requires a handler");
   }
 
-  const rid = core.ops.op_cron_create(
+  const rid = op_cron_create(
     name,
     schedule,
     options?.backoffSchedule,
@@ -130,7 +139,7 @@ function cron(
       }
       try {
         const result = handler();
-        const _res = result instanceof Promise ? (await result) : result;
+        const _res = isPromise(result) ? (await result) : result;
         success = true;
       } catch (error) {
         console.error(`Exception in cron handler ${name}`, error);
