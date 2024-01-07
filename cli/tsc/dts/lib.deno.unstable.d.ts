@@ -2045,9 +2045,8 @@ declare namespace Deno {
      * });
      * ```
      */
-    listenQueue(
-      handler: (value: unknown) => Promise<void> | void,
-    ): Promise<void>;
+    // deno-lint-ignore no-explicit-any
+    listenQueue(handler: (value: any) => Promise<void> | void): Promise<void>;
 
     /**
      * Create a new {@linkcode Deno.AtomicOperation} object which can be used to
