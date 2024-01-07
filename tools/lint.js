@@ -66,8 +66,6 @@ async function dlint() {
     return;
   }
 
-  console.log(sourceFiles);
-
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   const pending = [];
   for (const chunk of chunks) {
