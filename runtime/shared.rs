@@ -51,7 +51,10 @@ extension!(runtime,
     "90_deno_ns.js",
     "98_global_scope_shared.js",
     "98_global_scope_window.js",
-    "98_global_scope_worker.js"
+    "98_global_scope_worker.js",
+    "99_main_shared.js",
+    "99_main_window.js",
+    "99_main_worker.js",
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]
