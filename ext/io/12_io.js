@@ -13,7 +13,6 @@ import {
 const {
   Uint8Array,
   ArrayPrototypePush,
-  MathMin,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetBuffer,
