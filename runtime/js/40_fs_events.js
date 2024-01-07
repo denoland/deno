@@ -5,7 +5,6 @@ const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 const {
   ArrayIsArray,
   ObjectPrototypeIsPrototypeOf,
-  PromiseResolve,
   SymbolAsyncIterator,
 } = primordials;
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
