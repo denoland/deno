@@ -67,26 +67,8 @@ Deno.test(
     assert(events[0].paths[0].includes(testDir));
     assert(events[1].kind == "create" || events[1].kind == "modify");
     assert(events[1].paths[0].includes(testDir));
-  },
-);
 
-// TODO(kt3k): This test is for the backward compatibility of `.return` method.
-// This should be removed at 2.0
-Deno.test(
-  { permissions: { read: true, write: true } },
-  async function watchFsReturn() {
-    const testDir = await makeTempDir();
-    const iter = Deno.watchFs(testDir);
-
-    // Asynchronously loop events.
-    const eventsPromise = getTwoEvents(iter);
-
-    // Close the watcher.
-    await iter.return!();
-
-    // Expect zero events.
-    const events = await eventsPromise;
-    assertEquals(events, []);
+    iter.close();
   },
 );
 

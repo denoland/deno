@@ -220,7 +220,7 @@ Deno.test(
       cmd: [
         Deno.execPath(),
         "eval",
-        "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
+        "if (await new Response(Deno.stdin.readable).text() !== 'hello') throw new Error('Expected \\'hello\\'')",
       ],
       stdin: "piped",
     });
@@ -404,7 +404,7 @@ Deno.test(
       cmd: [
         Deno.execPath(),
         "eval",
-        "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
+        "if (await new Response(Deno.stdin.readable).text() !== 'hello') throw new Error('Expected \\'hello\\'')",
       ],
       stdin: file.rid,
     });

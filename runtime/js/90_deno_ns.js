@@ -14,7 +14,6 @@ import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
-import * as buffer from "ext:runtime/13_buffer.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import * as os from "ext:runtime/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
@@ -85,14 +84,6 @@ const denoNs = {
   env: os.env,
   exit: os.exit,
   execPath: os.execPath,
-  Buffer: buffer.Buffer,
-  readAll: buffer.readAll,
-  readAllSync: buffer.readAllSync,
-  writeAll: buffer.writeAll,
-  writeAllSync: buffer.writeAllSync,
-  copy: io.copy,
-  iter: io.iter,
-  iterSync: io.iterSync,
   SeekMode: io.SeekMode,
   read: io.read,
   readSync: io.readSync,

@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import {
   assert,
   assertEquals,
@@ -9,6 +7,10 @@ import {
   assertThrows,
 } from "./test_util.ts";
 import { copy } from "../../../test_util/std/streams/copy.ts";
+import {
+  iterateReader,
+  iterateReaderSync,
+} from "../../../test_util/std/streams/iterate_reader.ts";
 
 Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);
@@ -25,70 +27,6 @@ Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
   assertEquals(bytesWritten, fileSize);
   file.close();
 });
-
-Deno.test({ permissions: { read: true } }, async function filesIter() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = await Deno.open(filename);
-
-  let totalSize = 0;
-  for await (const buf of Deno.iter(file)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-  file.close();
-});
-
-Deno.test(
-  { permissions: { read: true } },
-  async function filesIterCustomBufSize() {
-    const filename = "cli/tests/testdata/assets/hello.txt";
-    const file = await Deno.open(filename);
-
-    let totalSize = 0;
-    let iterations = 0;
-    for await (const buf of Deno.iter(file, { bufSize: 6 })) {
-      totalSize += buf.byteLength;
-      iterations += 1;
-    }
-
-    assertEquals(totalSize, 12);
-    assertEquals(iterations, 2);
-    file.close();
-  },
-);
-
-Deno.test({ permissions: { read: true } }, function filesIterSync() {
-  const filename = "cli/tests/testdata/assets/hello.txt";
-  const file = Deno.openSync(filename);
-
-  let totalSize = 0;
-  for (const buf of Deno.iterSync(file)) {
-    totalSize += buf.byteLength;
-  }
-
-  assertEquals(totalSize, 12);
-  file.close();
-});
-
-Deno.test(
-  { permissions: { read: true } },
-  function filesIterSyncCustomBufSize() {
-    const filename = "cli/tests/testdata/assets/hello.txt";
-    const file = Deno.openSync(filename);
-
-    let totalSize = 0;
-    let iterations = 0;
-    for (const buf of Deno.iterSync(file, { bufSize: 6 })) {
-      totalSize += buf.byteLength;
-      iterations += 1;
-    }
-
-    assertEquals(totalSize, 12);
-    assertEquals(iterations, 2);
-    file.close();
-  },
-);
 
 Deno.test(async function readerIter() {
   // ref: https://github.com/denoland/deno/issues/2330
@@ -118,7 +56,7 @@ Deno.test(async function readerIter() {
   const reader = new TestReader("hello world!");
 
   let totalSize = 0;
-  for await (const buf of Deno.iter(reader)) {
+  for await (const buf of iterateReader(reader)) {
     totalSize += buf.byteLength;
   }
 
@@ -153,7 +91,7 @@ Deno.test(async function readerIterSync() {
   const reader = new TestReader("hello world!");
 
   let totalSize = 0;
-  for await (const buf of Deno.iterSync(reader)) {
+  for await (const buf of iterateReaderSync(reader)) {
     totalSize += buf.byteLength;
   }
 
