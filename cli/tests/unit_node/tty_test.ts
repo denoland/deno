@@ -3,6 +3,7 @@
 
 import { assert } from "../../../test_util/std/assert/mod.ts";
 import { isatty } from "node:tty";
+import process from "node:process";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {
   assert(Deno.isatty(Deno.stdin.rid) === isatty(Deno.stdin.rid));
@@ -28,4 +29,9 @@ Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
   assert(!isatty([] as any));
   assert(!isatty(null as any));
   assert(!isatty(undefined as any));
+});
+
+Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
+  assert(Deno.isatty(Deno.stdin.rid) === process.stdin.isTTY);
+  assert(Deno.isatty(Deno.stdout.rid) === process.stdout.isTTY);
 });
