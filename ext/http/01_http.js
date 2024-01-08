@@ -31,10 +31,7 @@ import {
   SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
-import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
-import { TlsConn } from "ext:deno_net/02_tls.js";
 import {
-  Deferred,
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
@@ -46,7 +43,6 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  Error,
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
   SafeSetIterator,
@@ -66,7 +62,6 @@ const {
 const {
   op_http_accept,
   op_http_shutdown,
-  op_http_upgrade,
   op_http_write,
   op_http_upgrade_websocket,
   op_http_write_headers,
@@ -74,7 +69,6 @@ const {
 } = core.ensureFastOps();
 
 const connErrorSymbol = Symbol("connError");
-const _deferred = Symbol("upgradeHttpDeferred");
 
 /** @type {(self: HttpConn, rid: number) => boolean} */
 let deleteManagedResource;
@@ -168,9 +162,6 @@ class HttpConn {
     const respondWith = createRespondWith(
       this,
       streamRid,
-      request,
-      this.#remoteAddr,
-      this.#localAddr,
       abortController,
     );
 
@@ -213,9 +204,6 @@ class HttpConn {
 function createRespondWith(
   httpConn,
   streamRid,
-  request,
-  remoteAddr,
-  localAddr,
   abortController,
 ) {
   return async function respondWith(resp) {
@@ -373,22 +361,6 @@ function createRespondWith(
         }
       }
 
-      const deferred = request[_deferred];
-      if (deferred) {
-        const res = await op_http_upgrade(streamRid);
-        let conn;
-        if (res.connType === "tcp") {
-          conn = new TcpConn(res.connRid, remoteAddr, localAddr);
-        } else if (res.connType === "tls") {
-          conn = new TlsConn(res.connRid, remoteAddr, localAddr);
-        } else if (res.connType === "unix") {
-          conn = new UnixConn(res.connRid, remoteAddr, localAddr);
-        } else {
-          throw new Error("unreachable");
-        }
-
-        deferred.resolve([conn, res.readBuf]);
-      }
       const ws = resp[_ws];
       if (ws) {
         const wsRid = await op_http_upgrade_websocket(
@@ -496,16 +468,6 @@ function upgradeWebSocket(request, options = {}) {
   return { response, socket };
 }
 
-function upgradeHttp(req) {
-  const inner = toInnerRequest(req);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttp", arguments);
-  }
-
-  req[_deferred] = new Deferred();
-  return req[_deferred].promise;
-}
-
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
 const tabCharCode = StringPrototypeCharCodeAt("\t", 0);
 const commaCharCode = StringPrototypeCharCodeAt(",", 0);
@@ -583,4 +545,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };
+export { _ws, HttpConn, serve, upgradeWebSocket };

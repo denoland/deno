@@ -197,7 +197,6 @@ denoNsUnstableById[unstableIds.http] = {
   createHttpClient: httpClient.createHttpClient,
   // TODO(bartlomieju): why is it needed?
   http,
-  upgradeHttp: http.upgradeHttp,
 };
 
 denoNsUnstableById[unstableIds.kv] = {
@@ -241,7 +240,6 @@ const denoNsUnstable = {
   flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
-  upgradeHttp: http.upgradeHttp,
   openKv: kv.openKv,
   AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,

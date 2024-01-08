@@ -151,12 +151,6 @@ class InnerRequest {
       throw new Deno.errors.Http("already closed");
     }
 
-    // upgradeHttp is async
-    // TODO(mmastrac)
-    if (upgradeType == "upgradeHttp") {
-      throw "upgradeHttp is unavailable in Deno.serve at this time";
-    }
-
     // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
       const external = this.#external;
