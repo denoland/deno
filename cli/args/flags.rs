@@ -34,6 +34,35 @@ pub struct FileFlags {
   pub include: Vec<PathBuf>,
 }
 
+impl FileFlags {
+  pub fn with_absolute_paths(self, base: &Path) -> Self {
+    fn to_absolute_path(path: PathBuf, base: &Path) -> PathBuf {
+      // todo(dsherret): don't store URLs in PathBufs
+      if path.starts_with("http:")
+        || path.starts_with("https:")
+        || path.starts_with("file:")
+      {
+        path
+      } else {
+        base.join(path)
+      }
+    }
+
+    Self {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| to_absolute_path(p, base))
+        .collect(),
+      ignore: self
+        .ignore
+        .into_iter()
+        .map(|p| to_absolute_path(p, base))
+        .collect(),
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
