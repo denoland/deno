@@ -96,13 +96,11 @@ async function dlintPreferPrimordials() {
   const execPath = await getPrebuilt("dlint");
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
+    "runtime/**/*.ts",
     "ext/**/*.js",
+    "ext/**/*.ts",
+    ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
-    "ext/node/polyfills/*.ts",
-    ":!:ext/node/polyfills/*.d.ts",
-    "core/*.js",
-    ":!:core/*_test.js",
-    ":!:core/examples/**",
   ]);
 
   if (!sourceFiles.length) {
