@@ -357,7 +357,6 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
-  // TODO:
   Publish(PublishFlags),
 }
 
@@ -942,8 +941,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
-      // TODO:
-      "do-not-use-publish" => publish_parse(&mut flags, &mut m),
+      "publish" => publish_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
   } else {
@@ -2372,9 +2370,9 @@ Remote modules and multiple modules may also be specified:
 }
 
 fn publish_subcommand() -> Command {
-  Command::new("do-not-use-publish")
+  Command::new("publish")
     .hide(true)
-    .about("Publish a package to the Deno registry")
+    .about("Unstable preview feature: Publish a package")
     // TODO: .long_about()
     .defer(|cmd| {
       cmd.arg(
@@ -2382,6 +2380,7 @@ fn publish_subcommand() -> Command {
           .help(
             "The directory to the package, or workspace of packages to publish",
           )
+          .default_missing_value(".")
           .value_hint(ValueHint::DirPath)
           .required(true),
       )
