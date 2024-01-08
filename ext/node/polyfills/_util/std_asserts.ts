@@ -340,7 +340,6 @@ export function assertNotStrictEquals<T>(
  * then throw. */
 export function assertMatch(
   actual: string,
-  // deno-lint-ignore prefer-primordials
   expected: RegExp,
   msg?: string,
 ) {
@@ -356,7 +355,6 @@ export function assertMatch(
  * then throw. */
 export function assertNotMatch(
   actual: string,
-  // deno-lint-ignore prefer-primordials
   expected: RegExp,
   msg?: string,
 ) {

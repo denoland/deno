@@ -6,7 +6,7 @@ import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { add, remove } from "ext:deno_web/03_abort_signal.js";
 import {
   fillHeaders,
@@ -29,7 +29,7 @@ const {
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetByteLength,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 import {
   op_ws_check_permission_and_cancel_handle,
@@ -214,7 +214,8 @@ class WebSocketStream {
                 if (typeof chunk === "string") {
                   await op_ws_send_text_async(this[_rid], chunk);
                 } else if (
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+                  TypedArrayPrototypeGetSymbolToStringTag(chunk) ===
+                    "Uint8Array"
                 ) {
                   await op_ws_send_binary_async(this[_rid], chunk);
                 } else {
