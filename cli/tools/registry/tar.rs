@@ -57,15 +57,15 @@ pub fn create_gzipped_tarball(
       let relative_path = entry
         .path()
         .strip_prefix(dir)
-        .map_err(|err| anyhow::anyhow!("Unable to strip prefix: {err}"))?;
+        .map_err(|err| anyhow::anyhow!("Unable to strip prefix: {err:#}"))?;
       let relative_path_str = relative_path.to_str().ok_or_else(|| {
         anyhow::anyhow!(
-          "Unable to convert path to string {}",
+          "Unable to convert path to string '{}'",
           relative_path.display()
         )
       })?;
       let data = std::fs::read(entry.path()).with_context(|| {
-        format!("Unable to read file {}", entry.path().display())
+        format!("Unable to read file '{}'", entry.path().display())
       })?;
       files.push(PublishableTarballFile {
         path: relative_path.to_path_buf(),
@@ -73,14 +73,14 @@ pub fn create_gzipped_tarball(
       });
       let (content, unfurl_diagnostics) =
         unfurler.unfurl(&url, data).with_context(|| {
-          format!("Unable to unfurl file {}", entry.path().display())
+          format!("Unable to unfurl file '{}'", entry.path().display())
         })?;
 
       diagnostics.extend_from_slice(&unfurl_diagnostics);
       tar
         .add_file(relative_path_str.to_string(), &content)
         .with_context(|| {
-          format!("Unable to add file to tarball {}", entry.path().display())
+          format!("Unable to add file to tarball '{}'", entry.path().display())
         })?;
     } else if entry.file_type().is_dir() {
       if entry.file_name() == ".git" || entry.file_name() == "node_modules" {
@@ -88,7 +88,7 @@ pub fn create_gzipped_tarball(
       }
     } else {
       diagnostics.push(format!(
-        "Unsupported file type at path {}",
+        "Unsupported file type at path '{}'",
         entry.path().display()
       ));
     }
