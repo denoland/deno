@@ -10,21 +10,20 @@ pub fn env_vars_for_registry() -> Vec<(String, String)> {
 }
 
 itest!(no_token {
-  args: "do-not-use-publish publish/missing_deno_json",
+  args: "publish publish/missing_deno_json",
   output: "publish/no_token.out",
   exit_code: 1,
 });
 
 itest!(missing_deno_json {
-  args:
-    "do-not-use-publish --token 'sadfasdf' $TESTDATA/publish/missing_deno_json",
+  args: "publish --token 'sadfasdf' $TESTDATA/publish/missing_deno_json",
   output: "publish/missing_deno_json.out",
   exit_code: 1,
   temp_cwd: true,
 });
 
 itest!(successful {
-  args: "do-not-use-publish --token 'sadfasdf' $TESTDATA/publish/successful",
+  args: "publish --token 'sadfasdf' $TESTDATA/publish/successful",
   output: "publish/successful.out",
   envs: env_vars_for_registry(),
   http_server: true,
