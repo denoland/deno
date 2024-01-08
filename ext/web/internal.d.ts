@@ -112,6 +112,6 @@ declare module "ext:deno_web/13_message_port.js" {
   }
 }
 
-declare module "ext:deno_web/16_image_data.js" {
+declare module "ext:deno_web/16_image.js" {
   const ImageData: typeof ImageData;
 }
