@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::CliOptions;
@@ -49,6 +47,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
+use tokio::sync::Mutex;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,
@@ -177,7 +176,7 @@ pub struct ReplSession {
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
-  pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
+  pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
   main_module: ModuleSpecifier,
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
@@ -218,18 +217,20 @@ impl ReplSession {
 
     loop {
       let notification = notification_rx.next().await.unwrap();
-      let method = notification.get("method").unwrap().as_str().unwrap();
-      let params = notification.get("params").unwrap();
-      if method == "Runtime.executionContextCreated" {
-        let context = params.get("context").unwrap();
-        assert!(context
-          .get("auxData")
-          .unwrap()
+      let notification =
+        serde_json::from_value::<cdp::Notification>(notification)?;
+      if notification.method == "Runtime.executionContextCreated" {
+        let execution_context_created = serde_json::from_value::<
+          cdp::ExecutionContextCreated,
+        >(notification.params)?;
+        assert!(execution_context_created
+          .context
+          .aux_data
           .get("isDefault")
           .unwrap()
           .as_bool()
           .unwrap());
-        context_id = context.get("id").unwrap().as_u64().unwrap();
+        context_id = execution_context_created.context.id;
         break;
       }
     }
@@ -247,7 +248,7 @@ impl ReplSession {
       context_id,
       language_server,
       referrer,
-      notifications: Rc::new(RefCell::new(notification_rx)),
+      notifications: Arc::new(Mutex::new(notification_rx)),
       test_reporter_factory: Box::new(|| {
         Box::new(PrettyTestReporter::new(false, true, false, true))
       }),

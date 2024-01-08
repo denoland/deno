@@ -79,6 +79,7 @@ export class WriteStream extends Socket {
     const { columns, rows } = Deno.consoleSize();
     this.columns = columns;
     this.rows = rows;
+    this.isTTY = true;
   }
 }
 

@@ -12,12 +12,13 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
-use crate::util::glob::expand_globs;
+use crate::util::fs::collect_specifiers;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
@@ -96,19 +97,28 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
-      let expanded_globs =
-        expand_globs(source_files.iter().map(PathBuf::from).collect())?;
-      let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
-        expanded_globs
-          .iter()
-          .map(|source_file| {
-            Ok(resolve_url_or_path(
-              &source_file.to_string_lossy(),
-              cli_options.initial_cwd(),
-            )?)
-          })
-          .collect();
-      let module_specifiers = module_specifiers?;
+      let module_specifiers = collect_specifiers(
+        FilePatterns {
+          include: Some(PathOrPatternSet::from_absolute_paths(
+            source_files
+              .iter()
+              .map(|p| {
+                if p.starts_with("https:")
+                  || p.starts_with("http:")
+                  || p.starts_with("file:")
+                {
+                  // todo(dsherret): don't store URLs in PathBufs
+                  PathBuf::from(p)
+                } else {
+                  cli_options.initial_cwd().join(p)
+                }
+              })
+              .collect(),
+          )?),
+          exclude: Default::default(),
+        },
+        |_, _| true,
+      )?;
       let graph = module_graph_builder
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;

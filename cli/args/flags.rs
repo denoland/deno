@@ -34,6 +34,35 @@ pub struct FileFlags {
   pub include: Vec<PathBuf>,
 }
 
+impl FileFlags {
+  pub fn with_absolute_paths(self, base: &Path) -> Self {
+    fn to_absolute_path(path: PathBuf, base: &Path) -> PathBuf {
+      // todo(dsherret): don't store URLs in PathBufs
+      if path.starts_with("http:")
+        || path.starts_with("https:")
+        || path.starts_with("file:")
+      {
+        path
+      } else {
+        base.join(path)
+      }
+    }
+
+    Self {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| to_absolute_path(p, base))
+        .collect(),
+      ignore: self
+        .ignore
+        .into_iter()
+        .map(|p| to_absolute_path(p, base))
+        .collect(),
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
@@ -2810,9 +2839,7 @@ fn inspect_args(app: Command) -> Command {
 
 static IMPORT_MAP_HELP: &str = concat!(
   "Load import map file from local file or remote URL.
-Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/linking_to_external_code/import_maps
+Docs: https://docs.deno.com/runtime/manual/basics/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
 );
