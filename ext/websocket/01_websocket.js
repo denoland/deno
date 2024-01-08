@@ -439,7 +439,7 @@ class WebSocket extends EventTarget {
 
           this[_serverHandleIdleTimeout]();
           // deno-lint-ignore prefer-primordials
-          const buffer = data.buffer;
+          const buffer = d.buffer;
           let data;
           if (this.binaryType === "blob") {
             data = new Blob([buffer]);
