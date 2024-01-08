@@ -1331,16 +1331,13 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let changed_specifiers = changed_paths
-            .into_iter()
-            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-            .collect::<HashSet<_>>();
           let mut result = Vec::new();
+          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
               &test_module_specifier,
-              &changed_specifiers,
+              &changed_paths,
             ) {
               result.push(test_module_specifier.clone());
             }

@@ -11,6 +11,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::glob::FilePatterns;
 use crate::util::path::is_script_ext;
@@ -81,7 +82,11 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
             // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
             files
               .iter()
-              .any(|path| paths.contains(path))
+              .any(|path| {
+                canonicalize_path(path)
+                  .map(|p| paths.contains(&p))
+                  .unwrap_or(false)
+              })
               .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
