@@ -392,7 +392,7 @@ fn add_export(
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
     // it's ok to be super strict here
-    if name.len() == 0 {
+    if name.is_empty() {
       return false;
     }
 
