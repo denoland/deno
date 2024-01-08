@@ -502,12 +502,14 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await op_ws_send_ping(this[_rid]);
+          await op_ws_send_ping(this[_rid])
+            .catch(() => {});
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
               const reason = "No response from ping frame.";
-              await op_ws_close(this[_rid], 1001, reason);
+              await op_ws_close(this[_rid], 1001, reason)
+                .catch(() => {});
               this[_readyState] = CLOSED;
 
               const errEvent = new ErrorEvent("error", {
