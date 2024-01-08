@@ -555,15 +555,29 @@ async fn publish_package(
   let res = api::parse_response::<api::PublishingTask>(response).await;
   let mut task = match res {
     Ok(task) => task,
-    Err(err) if err.code == "duplicateVersionPublish" => {
+    Err(mut err) if err.code == "duplicateVersionPublish" => {
+      let task = serde_json::from_value::<api::PublishingTask>(
+        err.data.get_mut("task").unwrap().take(),
+      )
+      .unwrap();
+      if task.status == "success" {
+        println!(
+          "{} @{}/{}@{}",
+          colors::green("Skipping, already published"),
+          package.scope,
+          package.package,
+          package.version
+        );
+        return Ok(());
+      }
       println!(
         "{} @{}/{}@{}",
-        colors::yellow("Skipping, already published"),
+        colors::yellow("Already uploaded, waiting for publishing"),
         package.scope,
         package.package,
         package.version
       );
-      return Ok(());
+      task
     }
     Err(err) => {
       return Err(err).with_context(|| {
