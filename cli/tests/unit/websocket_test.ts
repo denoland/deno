@@ -416,7 +416,7 @@ Deno.test(
         const { socket, response } = Deno.upgradeWebSocket(req, {
           idleTimeout: 2,
         });
-        socket.onerror = () => ac.abort();
+        socket.onerror = () => socket.close();
         socket.onclose = () => ac.abort();
         return response;
       },
