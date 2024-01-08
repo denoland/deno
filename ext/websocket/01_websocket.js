@@ -416,9 +416,14 @@ class WebSocket extends EventTarget {
       switch (kind) {
         case 0: {
           /* string */
+          const data = op_ws_get_buffer_as_string(rid);
+          if (data === undefined) {
+            break;
+          }
+
           this[_serverHandleIdleTimeout]();
           const event = new MessageEvent("message", {
-            data: op_ws_get_buffer_as_string(rid),
+            data,
             origin: this[_url],
           });
           setIsTrusted(event, true);
@@ -427,9 +432,14 @@ class WebSocket extends EventTarget {
         }
         case 1: {
           /* binary */
+          const d = op_ws_get_buffer(rid);
+          if (d == undefined) {
+            break;
+          }
+
           this[_serverHandleIdleTimeout]();
           // deno-lint-ignore prefer-primordials
-          const buffer = op_ws_get_buffer(rid).buffer;
+          const buffer = data.buffer;
           let data;
           if (this.binaryType === "blob") {
             data = new Blob([buffer]);
