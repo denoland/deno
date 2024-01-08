@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_node"
-version = "0.65.0"
+version = "0.67.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -32,10 +32,10 @@ dsa = "0.6.1"
 ecb.workspace = true
 elliptic-curve.workspace = true
 errno = "0.2.8"
-h2.workspace = true
+h2 = { version = "0.3.17", features = ["unstable"] }
 hex.workspace = true
 hkdf.workspace = true
-http.workspace = true
+http_v02.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 k256 = "0.13.1"

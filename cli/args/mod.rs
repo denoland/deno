@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod flags;
 mod flags_net;
@@ -17,9 +17,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
 pub use deno_config::BenchConfig;
-pub use deno_config::CompilerOptions;
 pub use deno_config::ConfigFile;
-pub use deno_config::EmitConfigOptions;
 pub use deno_config::FilesConfig;
 pub use deno_config::FmtOptionsConfig;
 pub use deno_config::JsxImportSourceConfig;
@@ -311,6 +309,23 @@ fn resolve_fmt_options(
   }
 
   options
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CheckOptions {
+  pub exclude: Vec<PathBuf>,
+}
+
+impl CheckOptions {
+  pub fn resolve(
+    maybe_files_config: Option<FilesConfig>,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      exclude: expand_globs(
+        maybe_files_config.map(|c| c.exclude).unwrap_or_default(),
+      )?,
+    })
+  }
 }
 
 #[derive(Clone)]
@@ -1182,6 +1197,16 @@ impl CliOptions {
       None
     };
     LintOptions::resolve(maybe_lint_config, Some(lint_flags))
+  }
+
+  pub fn resolve_check_options(&self) -> Result<CheckOptions, AnyError> {
+    let maybe_files_config = if let Some(config_file) = &self.maybe_config_file
+    {
+      config_file.to_files_config()?
+    } else {
+      None
+    };
+    CheckOptions::resolve(maybe_files_config)
   }
 
   pub fn resolve_test_options(

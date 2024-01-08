@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
 use crate::args::ConfigFile;
@@ -407,6 +407,30 @@ pub struct LanguageWorkspaceSettings {
   pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum InspectSetting {
+  Bool(bool),
+  String(String),
+}
+
+impl Default for InspectSetting {
+  fn default() -> Self {
+    InspectSetting::Bool(false)
+  }
+}
+
+impl InspectSetting {
+  pub fn to_address(&self) -> Option<String> {
+    match self {
+      InspectSetting::Bool(false) => None,
+      InspectSetting::Bool(true) => Some("127.0.0.1:9222".to_string()),
+      InspectSetting::String(s) => Some(s.clone()),
+    }
+  }
+}
+
 /// Deno language server specific settings that are applied to a workspace.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -453,6 +477,9 @@ pub struct WorkspaceSettings {
   /// A flag that indicates if internal debug logging should be made available.
   #[serde(default)]
   pub internal_debug: bool,
+
+  #[serde(default)]
+  pub internal_inspect: InspectSetting,
 
   /// Write logs to a file in a project-local directory.
   #[serde(default)]
@@ -506,6 +533,7 @@ impl Default for WorkspaceSettings {
       import_map: None,
       code_lens: Default::default(),
       internal_debug: false,
+      internal_inspect: Default::default(),
       log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
@@ -904,7 +932,7 @@ impl Config {
   }
 
   pub fn root_uri(&self) -> Option<&Url> {
-    self.workspace_folders.get(0).map(|p| &p.0)
+    self.workspace_folders.first().map(|p| &p.0)
   }
 
   pub fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
@@ -1080,6 +1108,10 @@ impl Config {
     self.settings.unscoped.log_file
   }
 
+  pub fn internal_inspect(&self) -> &InspectSetting {
+    &self.settings.unscoped.internal_inspect
+  }
+
   pub fn update_capabilities(
     &mut self,
     capabilities: &lsp::ClientCapabilities,
@@ -1152,7 +1184,7 @@ fn specifier_enabled(
     return true;
   };
   let (settings, mut folder_uri) = settings.get_for_specifier(specifier);
-  folder_uri = folder_uri.or_else(|| workspace_folders.get(0).map(|f| &f.0));
+  folder_uri = folder_uri.or_else(|| workspace_folders.first().map(|f| &f.0));
   let mut disable_paths = vec![];
   let mut enable_paths = None;
   if let Some(folder_uri) = folder_uri {
@@ -1330,6 +1362,7 @@ mod tests {
           test: true,
         },
         internal_debug: false,
+        internal_inspect: InspectSetting::Bool(false),
         log_file: false,
         lint: true,
         document_preload_limit: 1_000,

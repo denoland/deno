@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -45,6 +45,14 @@ import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 
 const {
   op_http2_connect,
+  op_http2_client_get_response,
+  op_http2_client_get_response_body_chunk,
+  op_http2_client_get_response_trailers,
+  op_http2_client_request,
+  op_http2_client_reset_stream,
+  op_http2_client_send_data,
+  op_http2_client_send_trailers,
+  op_http2_poll_client_connection,
 } = core.ensureFastOps();
 
 const kSession = Symbol("session");
@@ -389,8 +397,7 @@ export class ClientHttp2Session extends Http2Session {
       this[kDenoConnRid] = connRid;
       (async () => {
         try {
-          const promise = core.opAsync(
-            "op_http2_poll_client_connection",
+          const promise = op_http2_poll_client_connection(
             this[kDenoConnRid],
           );
           this[kPollConnPromise] = promise;
@@ -725,8 +732,7 @@ async function clientHttp2Request(
     reqHeaders,
   );
 
-  return await core.opAsync(
-    "op_http2_client_request",
+  return await op_http2_client_request(
     session[kDenoClientRid],
     pseudoHeaders,
     reqHeaders,
@@ -786,8 +792,7 @@ export class ClientHttp2Stream extends Duplex {
         session[kDenoClientRid],
         this.#rid,
       );
-      const response = await core.opAsync(
-        "op_http2_client_get_response",
+      const response = await op_http2_client_get_response(
         this.#rid,
       );
       debugHttp2(">>> after get response", response);
@@ -907,8 +912,7 @@ export class ClientHttp2Stream extends Duplex {
     this.#requestPromise
       .then(() => {
         debugHttp2(">>> _write", this.#rid, data, encoding, callback);
-        return core.opAsync(
-          "op_http2_client_send_data",
+        return op_http2_client_send_data(
           this.#rid,
           data,
         );
@@ -967,15 +971,13 @@ export class ClientHttp2Stream extends Duplex {
     debugHttp2(">>> read");
 
     (async () => {
-      const [chunk, finished] = await core.opAsync(
-        "op_http2_client_get_response_body_chunk",
+      const [chunk, finished] = await op_http2_client_get_response_body_chunk(
         this[kDenoResponse].bodyRid,
       );
 
       debugHttp2(">>> chunk", chunk, finished, this[kDenoResponse].bodyRid);
       if (chunk === null) {
-        const trailerList = await core.opAsync(
-          "op_http2_client_get_response_trailers",
+        const trailerList = await op_http2_client_get_response_trailers(
           this[kDenoResponse].bodyRid,
         );
         if (trailerList) {
@@ -1030,8 +1032,7 @@ export class ClientHttp2Stream extends Duplex {
     stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
     debugHttp2("sending trailers", this.#rid, trailers);
 
-    core.opAsync(
-      "op_http2_client_send_trailers",
+    op_http2_client_send_trailers(
       this.#rid,
       trailerList,
     ).then(() => {
@@ -1207,8 +1208,7 @@ function finishCloseStream(stream, code) {
   if (stream.pending) {
     stream.push(null);
     stream.once("ready", () => {
-      core.opAsync(
-        "op_http2_client_reset_stream",
+      op_http2_client_reset_stream(
         stream[kDenoRid],
         code,
       ).then(() => {
@@ -1224,8 +1224,7 @@ function finishCloseStream(stream, code) {
     });
   } else {
     stream.resume();
-    core.opAsync(
-      "op_http2_client_reset_stream",
+    op_http2_client_reset_stream(
       stream[kDenoRid],
       code,
     ).then(() => {

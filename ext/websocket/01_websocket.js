@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -7,7 +7,7 @@ import { URL } from "ext:deno_url/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import {
   CloseEvent,
   defineEventHandler,
@@ -21,7 +21,6 @@ import {
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 const {
-  ArrayBufferPrototype,
   ArrayBufferIsView,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -29,35 +28,38 @@ const {
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
   PromisePrototypeThen,
   RegExpPrototypeExec,
   SafeSet,
   SetPrototypeGetSize,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
   String,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
   Symbol,
-  SymbolIterator,
-  PromisePrototypeCatch,
   SymbolFor,
+  SymbolIterator,
   TypedArrayPrototypeGetByteLength,
+  Uint8Array,
 } = primordials;
-const { op_ws_check_permission_and_cancel_handle } = core.ops;
 const {
-  op_ws_create,
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
+import {
+  op_ws_check_permission_and_cancel_handle,
   op_ws_close,
-  op_ws_send_binary,
-  op_ws_send_binary_ab,
-  op_ws_send_text,
-  op_ws_next_event,
+  op_ws_create,
   op_ws_get_buffer,
   op_ws_get_buffer_as_string,
-  op_ws_get_error,
-  op_ws_send_ping,
   op_ws_get_buffered_amount,
-} = core.ensureFastOps();
+  op_ws_get_error,
+  op_ws_next_event,
+  op_ws_send_binary,
+  op_ws_send_binary_ab,
+  op_ws_send_ping,
+  op_ws_send_text,
+} from "ext:deno_websocket/00_ops.js";
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
@@ -80,11 +82,7 @@ webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
     return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
@@ -329,8 +327,7 @@ class WebSocket extends EventTarget {
 
     if (ArrayBufferIsView(data)) {
       op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      // deno-lint-ignore prefer-primordials
+    } else if (isArrayBuffer(data)) {
       op_ws_send_binary(this[_rid], new Uint8Array(data));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
@@ -590,7 +587,11 @@ function createWebSocketBranded() {
   socket[_extensions] = "";
   socket[_protocol] = "";
   socket[_url] = "";
-  socket[_binaryType] = "blob";
+  // We use ArrayBuffer for server websockets for backwards compatibility
+  // and performance reasons.
+  //
+  // https://github.com/denoland/deno/issues/15340#issuecomment-1872353134
+  socket[_binaryType] = "arraybuffer";
   socket[_idleTimeoutDuration] = 0;
   socket[_idleTimeoutTimeout] = undefined;
   return socket;

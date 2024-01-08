@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -12,6 +12,10 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
+const {
+  op_fetch_send,
+} = core.ensureFastOps();
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { byteLowerCase } from "ext:deno_web/00_infra.js";
 import {
@@ -47,7 +51,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
 const REQUEST_BODY_HEADER_NAMES = [
@@ -62,7 +66,7 @@ const REQUEST_BODY_HEADER_NAMES = [
  * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: string? }>}
  */
 function opFetchSend(rid) {
-  return core.opAsync("op_fetch_send", rid);
+  return op_fetch_send(rid);
 }
 
 /**
@@ -127,7 +131,7 @@ async function mainFetch(req, recursive, terminator) {
     const stream = req.body.streamOrStatic;
     const body = stream.body;
 
-    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
       reqBody = body;
     } else if (typeof body === "string") {
       reqBody = core.encode(body);

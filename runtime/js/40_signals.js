@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
@@ -9,13 +9,16 @@ const {
   SetPrototypeDelete,
   TypeError,
 } = primordials;
+const {
+  op_signal_poll,
+} = core.ensureFastOps();
 
 function bindSignal(signo) {
   return ops.op_signal_bind(signo);
 }
 
 function pollSignal(rid) {
-  const promise = core.opAsync("op_signal_poll", rid);
+  const promise = op_signal_poll(rid);
   core.unrefOpPromise(promise);
   return promise;
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use anyhow::anyhow;
 use bytes::Bytes;
@@ -15,13 +15,12 @@ use h2::server::Handshake;
 use h2::server::SendResponse;
 use h2::Reason;
 use h2::RecvStream;
-use hyper::service::service_fn;
 use hyper::upgrade::Upgraded;
-use hyper::Body;
 use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use hyper_util::rt::TokioIo;
 use pretty_assertions::assert_eq;
 use std::pin::Pin;
 use std::result::Result;
@@ -100,15 +99,15 @@ pub async fn run_wss2_server(port: u16) {
 }
 
 async fn echo_websocket_handler(
-  ws: fastwebsockets::WebSocket<Upgraded>,
+  ws: fastwebsockets::WebSocket<TokioIo<Upgraded>>,
 ) -> Result<(), anyhow::Error> {
-  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+  let mut ws = FragmentCollector::new(ws);
 
   loop {
     let frame = ws.read_frame().await.unwrap();
     match frame.opcode {
-      fastwebsockets::OpCode::Close => break,
-      fastwebsockets::OpCode::Text | fastwebsockets::OpCode::Binary => {
+      OpCode::Close => break,
+      OpCode::Text | OpCode::Binary => {
         ws.write_frame(frame).await.unwrap();
       }
       _ => {}
@@ -120,37 +119,40 @@ async fn echo_websocket_handler(
 
 type WsHandler =
   fn(
-    fastwebsockets::WebSocket<Upgraded>,
+    fastwebsockets::WebSocket<TokioIo<Upgraded>>,
   ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send>>;
 
 fn spawn_ws_server<S>(stream: S, handler: WsHandler)
 where
   S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-  let srv_fn = service_fn(move |mut req: Request<Body>| async move {
-    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
-      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
+  let service = hyper::service::service_fn(
+    move |mut req: http::Request<hyper::body::Incoming>| async move {
+      let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
+        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
 
-    tokio::spawn(async move {
-      let ws = upgrade_fut
-        .await
-        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
-        .unwrap();
+      tokio::spawn(async move {
+        let ws = upgrade_fut
+          .await
+          .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
+          .unwrap();
 
-      if let Err(e) = handler(ws).await {
-        eprintln!("Error in websocket connection: {}", e);
-      }
-    });
+        if let Err(e) = handler(ws).await {
+          eprintln!("Error in websocket connection: {}", e);
+        }
+      });
 
-    Ok::<_, anyhow::Error>(response)
-  });
+      Ok::<_, anyhow::Error>(response)
+    },
+  );
 
+  let io = TokioIo::new(stream);
   tokio::spawn(async move {
-    let conn_fut = hyper::server::conn::Http::new()
-      .serve_connection(stream, srv_fn)
+    let conn = hyper::server::conn::http1::Builder::new()
+      .serve_connection(io, service)
       .with_upgrades();
 
-    if let Err(e) = conn_fut.await {
+    if let Err(e) = conn.await {
       eprintln!("websocket server error: {e:?}");
     }
   });
@@ -224,11 +226,11 @@ async fn handle_wss_stream(
 }
 
 async fn close_websocket_handler(
-  ws: fastwebsockets::WebSocket<Upgraded>,
+  ws: fastwebsockets::WebSocket<TokioIo<Upgraded>>,
 ) -> Result<(), anyhow::Error> {
-  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+  let mut ws = FragmentCollector::new(ws);
 
-  ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
+  ws.write_frame(Frame::close_raw(vec![].into()))
     .await
     .unwrap();
 
@@ -236,9 +238,9 @@ async fn close_websocket_handler(
 }
 
 async fn ping_websocket_handler(
-  ws: fastwebsockets::WebSocket<Upgraded>,
+  ws: fastwebsockets::WebSocket<TokioIo<Upgraded>>,
 ) -> Result<(), anyhow::Error> {
-  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+  let mut ws = FragmentCollector::new(ws);
 
   for i in 0..9 {
     ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![].into()))
@@ -260,9 +262,7 @@ async fn ping_websocket_handler(
     assert_eq!(frame.payload, format!("hello {}", i).as_bytes());
   }
 
-  ws.write_frame(fastwebsockets::Frame::close(1000, b""))
-    .await
-    .unwrap();
+  ws.write_frame(Frame::close(1000, b"")).await.unwrap();
 
   Ok(())
 }

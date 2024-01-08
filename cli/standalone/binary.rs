@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::BTreeMap;
 use std::env::current_exe;
@@ -138,6 +138,7 @@ pub enum NodeModules {
 pub struct Metadata {
   pub argv: Vec<String>,
   pub unstable: bool,
+  pub unstable_features: Vec<String>,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
   pub location: Option<Url>,
@@ -542,6 +543,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       unstable: cli_options.unstable(),
+      unstable_features: cli_options.unstable_features(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permissions_options(),

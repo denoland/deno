@@ -1,9 +1,13 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use hyper::server::Server;
-use hyper::service::make_service_fn;
-use hyper::service::service_fn;
-use hyper::Body;
+use super::run_server;
+use super::ServerKind;
+use super::ServerOptions;
+use bytes::Bytes;
+use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::Empty;
+use http_body_util::Full;
+use hyper::body::Incoming;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
@@ -13,25 +17,27 @@ use std::net::SocketAddr;
 
 pub async fn registry_server(port: u16) {
   let registry_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let registry_server_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(registry_server_handler))
-  });
-  let registry_server =
-    Server::bind(&registry_server_addr).serve(registry_server_svc);
-  if let Err(e) = registry_server.await {
-    eprintln!("Registry server error: {:?}", e);
-  }
+
+  run_server(
+    ServerOptions {
+      addr: registry_server_addr,
+      error_msg: "Registry server error",
+      kind: ServerKind::Auto,
+    },
+    registry_server_handler,
+  )
+  .await
 }
 
 async fn registry_server_handler(
-  req: Request<Body>,
-) -> Result<Response<Body>, hyper::http::Error> {
+  req: Request<Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let path = req.uri().path();
 
   // TODO(bartlomieju): add a proper router here
   if path.starts_with("/api/scope/") {
     let body = serde_json::to_string_pretty(&json!({})).unwrap();
-    let res = Response::new(Body::from(body));
+    let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   } else if path.starts_with("/api/scopes/") {
     let body = serde_json::to_string_pretty(&json!({
@@ -40,7 +46,7 @@ async fn registry_server_handler(
       "error": null
     }))
     .unwrap();
-    let res = Response::new(Body::from(body));
+    let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   } else if path.starts_with("/api/publish_status/") {
     let body = serde_json::to_string_pretty(&json!({
@@ -49,11 +55,13 @@ async fn registry_server_handler(
       "error": null
     }))
     .unwrap();
-    let res = Response::new(Body::from(body));
+    let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   }
 
-  Response::builder()
+  let empty_body = UnsyncBoxBody::new(Empty::new());
+  let res = Response::builder()
     .status(StatusCode::NOT_FOUND)
-    .body(Body::empty())
+    .body(empty_body)?;
+  Ok(res)
 }

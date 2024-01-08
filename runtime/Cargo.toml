@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_runtime"
-version = "0.136.0"
+version = "0.138.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -93,15 +93,18 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
-fastwebsockets.workspace = true
 
 console_static_text.workspace = true
 dlopen2.workspace = true
 encoding_rs.workspace = true
+fastwebsockets.workspace = true
 filetime = "0.2.16"
 fs3.workspace = true
 http.workspace = true
-hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
 netif = "0.1.6"
@@ -109,7 +112,6 @@ notify.workspace = true
 once_cell.workspace = true
 regex.workspace = true
 ring.workspace = true
-rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"

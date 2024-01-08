@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import {
   assert,
@@ -2005,4 +2005,43 @@ Deno.test(async function testHmacJwkImport() {
     false,
     ["sign", "verify"],
   );
+});
+
+Deno.test(async function p521Import() {
+  const jwk = {
+    "crv": "P-521",
+    "ext": true,
+    "key_ops": [
+      "verify",
+    ],
+    "kty": "EC",
+    "x":
+      "AXkSI8nfkc6bu3fifXGuKKbu08g5LKPfxUNQJJYzzPgmN8XLDzx0C9Sdeejl1XoWGrheKPHl0k4tUmHw0cdInpfj",
+    "y":
+      "AT4vjsO0bzVRlN3Wthv9DewncDXS2tlTob5QojV8WX1GzOAikRfWFEP3nspoSv88U447acZAsk5IvgGJuVjgMDlx",
+  };
+  const algorithm = { name: "ECDSA", namedCurve: "P-521" };
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    algorithm,
+    true,
+    ["verify"],
+  );
+
+  assert(key instanceof CryptoKey);
+});
+
+Deno.test(async function p521Generate() {
+  const algorithm = { name: "ECDSA", namedCurve: "P-521" };
+
+  const key = await crypto.subtle.generateKey(
+    algorithm,
+    true,
+    ["sign", "verify"],
+  );
+
+  assert(key.privateKey instanceof CryptoKey);
+  assert(key.publicKey instanceof CryptoKey);
 });

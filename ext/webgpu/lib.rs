@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -75,7 +75,6 @@ pub mod queue;
 pub mod render_pass;
 pub mod sampler;
 pub mod shader;
-#[cfg(feature = "surface")]
 pub mod surface;
 pub mod texture;
 
@@ -212,7 +211,12 @@ deno_core::extension!(
     queue::op_webgpu_write_texture,
     // shader
     shader::op_webgpu_create_shader_module,
+    // surface
+    surface::op_webgpu_surface_configure,
+    surface::op_webgpu_surface_get_current_texture,
+    surface::op_webgpu_surface_present
   ],
+  esm = ["00_init.js", "02_surface.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
 );
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
@@ -21,6 +21,8 @@ type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
   Aes128Ecb(Box<ecb::Encryptor<aes::Aes128>>),
+  Aes192Ecb(Box<ecb::Encryptor<aes::Aes192>>),
+  Aes256Ecb(Box<ecb::Encryptor<aes::Aes256>>),
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, etc.
@@ -29,6 +31,8 @@ enum Cipher {
 enum Decipher {
   Aes128Cbc(Box<cbc::Decryptor<aes::Aes128>>),
   Aes128Ecb(Box<ecb::Decryptor<aes::Aes128>>),
+  Aes192Ecb(Box<ecb::Decryptor<aes::Aes192>>),
+  Aes256Ecb(Box<ecb::Decryptor<aes::Aes256>>),
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128GCM, etc.
@@ -121,6 +125,8 @@ impl Cipher {
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
+      "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
+      "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-128-gcm" => {
         let mut cipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
@@ -168,6 +174,18 @@ impl Cipher {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      Aes192Ecb(encryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
+      Aes256Ecb(encryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
       Aes128Gcm(cipher) => {
         output[..input.len()].copy_from_slice(input);
         cipher.encrypt(output);
@@ -196,6 +214,18 @@ impl Cipher {
           .map_err(|_| type_error("Cannot pad the input data"))?;
         Ok(None)
       }
+      Aes192Ecb(encryptor) => {
+        let _ = (*encryptor)
+          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot pad the input data"))?;
+        Ok(None)
+      }
+      Aes256Ecb(encryptor) => {
+        let _ = (*encryptor)
+          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot pad the input data"))?;
+        Ok(None)
+      }
       Aes128Gcm(cipher) => Ok(Some(cipher.finish().to_vec())),
       Aes256Gcm(cipher) => Ok(Some(cipher.finish().to_vec())),
     }
@@ -214,6 +244,8 @@ impl Decipher {
         Aes128Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
       "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Decryptor::new(key.into()))),
+      "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
+      "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-128-gcm" => {
         let mut decipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
@@ -261,6 +293,18 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      Aes192Ecb(decryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          decryptor.decrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
+      Aes256Ecb(decryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          decryptor.decrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
       Aes128Gcm(decipher) => {
         output[..input.len()].copy_from_slice(input);
         decipher.decrypt(output);
@@ -289,6 +333,20 @@ impl Decipher {
         Ok(())
       }
       Aes128Ecb(decryptor) => {
+        assert!(input.len() == 16);
+        let _ = (*decryptor)
+          .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot unpad the input data"))?;
+        Ok(())
+      }
+      Aes192Ecb(decryptor) => {
+        assert!(input.len() == 16);
+        let _ = (*decryptor)
+          .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot unpad the input data"))?;
+        Ok(())
+      }
+      Aes256Ecb(decryptor) => {
         assert!(input.len() == 16);
         let _ = (*decryptor)
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)

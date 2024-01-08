@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
@@ -2810,9 +2810,7 @@ fn inspect_args(app: Command) -> Command {
 
 static IMPORT_MAP_HELP: &str = concat!(
   "Load import map file from local file or remote URL.
-Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/linking_to_external_code/import_maps
+Docs: https://docs.deno.com/runtime/manual/basics/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
 );

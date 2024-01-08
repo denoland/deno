@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 
@@ -300,6 +300,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     import_map: None,
     code_lens: Default::default(),
     internal_debug: false,
+    internal_inspect: Default::default(),
     log_file: false,
     lint: false,
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl

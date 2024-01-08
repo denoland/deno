@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use serde::Serialize;
@@ -23,7 +23,6 @@ use wgpu_core::device::DeviceError;
 use wgpu_core::pipeline::CreateComputePipelineError;
 use wgpu_core::pipeline::CreateRenderPipelineError;
 use wgpu_core::pipeline::CreateShaderModuleError;
-#[cfg(feature = "surface")]
 use wgpu_core::present::ConfigureSurfaceError;
 use wgpu_core::resource::BufferAccessError;
 use wgpu_core::resource::CreateBufferError;
@@ -282,7 +281,6 @@ impl From<ClearError> for WebGpuError {
   }
 }
 
-#[cfg(feature = "surface")]
 impl From<ConfigureSurfaceError> for WebGpuError {
   fn from(err: ConfigureSurfaceError) -> Self {
     WebGpuError::Validation(fmt_err(&err))

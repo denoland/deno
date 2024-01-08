@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -12,13 +12,17 @@ import {
   setIsTrusted,
   setTarget,
 } from "ext:deno_web/02_event.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { defer } from "ext:deno_web/02_timers.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const {
+  op_broadcast_recv,
+  op_broadcast_send,
+} = core.ensureFastOps();
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSplice,
   ObjectPrototypeIsPrototypeOf,
-  PromisePrototypeThen,
   Symbol,
   SymbolFor,
   Uint8Array,
@@ -32,7 +36,7 @@ let rid = null;
 
 async function recv() {
   while (channels.length > 0) {
-    const message = await core.opAsync("op_broadcast_recv", rid);
+    const message = await op_broadcast_recv(rid);
 
     if (message === null) {
       break;
@@ -68,14 +72,6 @@ function dispatch(source, name, data) {
     defer(go);
   }
 }
-
-// Defer to avoid starving the event loop. Not using queueMicrotask()
-// for that reason: it lets promises make forward progress but can
-// still starve other parts of the event loop.
-function defer(go) {
-  PromisePrototypeThen(core.ops.op_void_async_deferred(), () => go());
-}
-
 class BroadcastChannel extends EventTarget {
   [_name];
   [_closed] = false;
@@ -126,7 +122,7 @@ class BroadcastChannel extends EventTarget {
     // Send to listeners in other VMs.
     defer(() => {
       if (!this[_closed]) {
-        core.opAsync("op_broadcast_send", rid, this[_name], data);
+        op_broadcast_send(rid, this[_name], data);
       }
     });
   }

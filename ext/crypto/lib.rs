@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -266,7 +266,7 @@ pub async fn op_crypto_sign_key(
     }
     Algorithm::Ecdsa => {
       let curve: &EcdsaSigningAlgorithm =
-        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+        args.named_curve.ok_or_else(not_supported)?.into();
 
       let rng = RingRand::SystemRandom::new();
       let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
@@ -387,9 +387,9 @@ pub async fn op_crypto_verify_key(
     }
     Algorithm::Ecdsa => {
       let signing_alg: &EcdsaSigningAlgorithm =
-        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+        args.named_curve.ok_or_else(not_supported)?.into();
       let verify_alg: &EcdsaVerificationAlgorithm =
-        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+        args.named_curve.ok_or_else(not_supported)?.into();
 
       let private_key;
 

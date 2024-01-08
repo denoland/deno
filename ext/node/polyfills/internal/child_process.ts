@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -6,6 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, internals } from "ext:core/mod.js";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
@@ -45,6 +46,10 @@ import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 
 const core = globalThis.__bootstrap.core;
+const {
+  op_node_ipc_read,
+  op_node_ipc_write,
+} = core.ensureFastOps();
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -255,8 +260,9 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      if (typeof this.#process._pipeFd == "number") {
-        setupChannel(this, this.#process._pipeFd);
+      const pipeFd = internals.getPipeFd(this.#process);
+      if (typeof pipeFd == "number") {
+        setupChannel(this, pipeFd);
       }
 
       (async () => {
@@ -1079,7 +1085,7 @@ export function setupChannel(target, ipc) {
         if (!target.connected || target.killed) {
           return;
         }
-        const msg = await core.opAsync("op_node_ipc_read", ipc);
+        const msg = await op_node_ipc_read(ipc);
         if (msg == null) {
           // Channel closed.
           target.disconnect();
@@ -1124,7 +1130,7 @@ export function setupChannel(target, ipc) {
       notImplemented("ChildProcess.send with handle");
     }
 
-    core.opAsync("op_node_ipc_write", ipc, message)
+    op_node_ipc_write(ipc, message)
       .then(() => {
         if (callback) {
           process.nextTick(callback, null);

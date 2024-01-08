@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -33,6 +33,9 @@ import {
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
+const {
+  op_node_hkdf_async,
+} = core.ensureFastOps();
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
@@ -109,7 +112,7 @@ export function hkdf(
 
   validateFunction(callback, "callback");
 
-  core.opAsync("op_node_hkdf_async", hash, key, salt, info, length)
+  op_node_hkdf_async(hash, key, salt, info, length)
     .then((okm) => callback(null, okm.buffer))
     .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::WebGpuResult;
 use deno_core::error::AnyError;
@@ -10,17 +10,6 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::rc::Rc;
 use wgpu_types::SurfaceStatus;
-
-deno_core::extension!(
-  deno_webgpu_surface,
-  deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [
-    op_webgpu_surface_configure,
-    op_webgpu_surface_get_current_texture,
-    op_webgpu_surface_present,
-  ],
-  esm = ["02_surface.js"],
-);
 
 pub struct WebGpuSurface(pub crate::Instance, pub wgpu_core::id::SurfaceId);
 impl Resource for WebGpuSurface {

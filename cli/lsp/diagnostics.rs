@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
 use super::cache;
@@ -1639,6 +1639,7 @@ let c: number = "a";
     let cache =
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
+    ts_server.start(None);
 
     // test enabled
     {

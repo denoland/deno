@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -534,6 +534,9 @@ delete Object.prototype.__proto__;
       // createLanguageService will call this immediately and cache it
       return new CancellationToken();
     },
+    getProjectVersion() {
+      return ops.op_project_version();
+    },
     getSourceFile(
       specifier,
       languageVersion,
@@ -584,6 +587,9 @@ delete Object.prototype.__proto__;
       );
       sourceFile.moduleName = specifier;
       sourceFile.version = version;
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        sourceFile.version = "1";
+      }
       sourceFileCache.set(specifier, sourceFile);
       scriptVersionCache.set(specifier, version);
       return sourceFile;
@@ -720,6 +726,9 @@ delete Object.prototype.__proto__;
     getScriptVersion(specifier) {
       if (logDebug) {
         debug(`host.getScriptVersion("${specifier}")`);
+      }
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        return "1";
       }
       // tsc requests the script version multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.

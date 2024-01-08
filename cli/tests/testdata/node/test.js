@@ -54,6 +54,13 @@ test("async throw fail", async () => {
   throw new Error("thrown from async throw fail");
 });
 
+test("nested test", async (t) => {
+  await t.test("nested 1", async (t) => {
+    await t.test("nested 2", () => {
+    });
+  });
+});
+
 test("async skip fail", async (t) => {
   t.skip();
   throw new Error("thrown from async throw fail");

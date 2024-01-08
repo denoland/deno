@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
@@ -30,6 +30,10 @@ import {
   MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
+const {
+  op_host_recv_ctrl,
+  op_host_recv_message,
+} = core.ensureFastOps();
 
 function createWorker(
   specifier,
@@ -58,11 +62,11 @@ function hostPostMessage(id, data) {
 }
 
 function hostRecvCtrl(id) {
-  return core.opAsync("op_host_recv_ctrl", id);
+  return op_host_recv_ctrl(id);
 }
 
 function hostRecvMessage(id) {
-  return core.opAsync("op_host_recv_message", id);
+  return op_host_recv_message(id);
 }
 
 class Worker extends EventTarget {

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -10,11 +10,10 @@ import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { EventTarget } from "ext:deno_web/02_event.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   ArrayBuffer,
-  ArrayBufferIsView,
   ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypeMap,
@@ -45,9 +44,18 @@ const {
   SymbolIterator,
   TypeError,
   Uint32Array,
-  Uint32ArrayPrototype,
   Uint8Array,
 } = primordials;
+const {
+  isDataView,
+  isTypedArray,
+} = core;
+const {
+  op_webgpu_buffer_get_map_async,
+  op_webgpu_request_adapter,
+  op_webgpu_request_adapter_info,
+  op_webgpu_request_device,
+} = core.ensureFastOps();
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -253,8 +261,7 @@ class GPU {
       "Argument 1",
     );
 
-    const { err, ...data } = await core.opAsync(
-      "op_webgpu_request_adapter",
+    const { err, ...data } = await op_webgpu_request_adapter(
       options.powerPreference,
       options.forceFallbackAdapter,
     );
@@ -343,8 +350,7 @@ class GPUAdapter {
       }
     }
 
-    const { rid, features, limits } = await core.opAsync(
-      "op_webgpu_request_device",
+    const { rid, features, limits } = await op_webgpu_request_device(
       this[_adapter].rid,
       descriptor.label,
       requiredFeatures,
@@ -382,8 +388,7 @@ class GPUAdapter {
       architecture,
       device,
       description,
-    } = await core.opAsync(
-      "op_webgpu_request_adapter_info",
+    } = await op_webgpu_request_adapter_info(
       this[_adapter].rid,
     );
 
@@ -1687,17 +1692,14 @@ class GPUQueue {
     });
     /** @type {ArrayBufferLike} */
     let abLike = data;
-    if (ArrayBufferIsView(data)) {
-      if (TypedArrayPrototypeGetSymbolToStringTag(data) !== undefined) {
-        // TypedArray
-        abLike = TypedArrayPrototypeGetBuffer(
-          /** @type {Uint8Array} */ (data),
-        );
-      } else {
-        // DataView
-        abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
-      }
+    if (isTypedArray(data)) {
+      abLike = TypedArrayPrototypeGetBuffer(
+        /** @type {Uint8Array} */ (data),
+      );
+    } else if (isDataView(data)) {
+      abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
     }
+
     const { err } = ops.op_webgpu_write_buffer(
       device.rid,
       bufferRid,
@@ -1741,16 +1743,12 @@ class GPUQueue {
 
     /** @type {ArrayBufferLike} */
     let abLike = data;
-    if (ArrayBufferIsView(data)) {
-      if (TypedArrayPrototypeGetSymbolToStringTag(data) !== undefined) {
-        // TypedArray
-        abLike = TypedArrayPrototypeGetBuffer(
-          /** @type {Uint8Array} */ (data),
-        );
-      } else {
-        // DataView
-        abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
-      }
+    if (isTypedArray(data)) {
+      abLike = TypedArrayPrototypeGetBuffer(
+        /** @type {Uint8Array} */ (data),
+      );
+    } else if (isDataView(data)) {
+      abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
     }
 
     const { err } = ops.op_webgpu_write_texture(
@@ -1949,8 +1947,7 @@ class GPUBuffer {
     this[_mapMode] = mode;
     this[_state] = "pending";
     const promise = PromisePrototypeThen(
-      core.opAsync(
-        "op_webgpu_buffer_get_map_async",
+      op_webgpu_buffer_get_map_async(
         bufferRid,
         device.rid,
         mode,
@@ -3776,10 +3773,8 @@ class GPURenderPassEncoder {
       selfContext: "this",
     });
     if (
-      !(ObjectPrototypeIsPrototypeOf(
-        Uint32ArrayPrototype,
-        dynamicOffsetsData,
-      ))
+      TypedArrayPrototypeGetSymbolToStringTag(dynamicOffsetsData) !==
+        "Uint32Array"
     ) {
       dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
       dynamicOffsetsDataStart = 0;
@@ -4335,10 +4330,8 @@ class GPUComputePassEncoder {
       selfContext: "this",
     });
     if (
-      !(ObjectPrototypeIsPrototypeOf(
-        Uint32ArrayPrototype,
-        dynamicOffsetsData,
-      ))
+      TypedArrayPrototypeGetSymbolToStringTag(dynamicOffsetsData) !==
+        "Uint32Array"
     ) {
       dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
       dynamicOffsetsDataStart = 0;
@@ -4553,10 +4546,8 @@ class GPURenderBundleEncoder {
       selfContext: "this",
     });
     if (
-      !(ObjectPrototypeIsPrototypeOf(
-        Uint32ArrayPrototype,
-        dynamicOffsetsData,
-      ))
+      TypedArrayPrototypeGetSymbolToStringTag(dynamicOffsetsData) !==
+        "Uint32Array"
     ) {
       dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
       dynamicOffsetsDataStart = 0;
@@ -7044,6 +7035,78 @@ webidl.converters["GPUSignedOffset32"] = (V, opts) =>
 
 // TYPEDEF: GPUFlagsConstant
 webidl.converters["GPUFlagsConstant"] = webidl.converters["unsigned long"];
+
+// ENUM: GPUCanvasAlphaMode
+webidl.converters["GPUCanvasAlphaMode"] = webidl.createEnumConverter(
+  "GPUCanvasAlphaMode",
+  [
+    "opaque",
+    "premultiplied",
+  ],
+);
+
+// NON-SPEC: ENUM: GPUPresentMode
+webidl.converters["GPUPresentMode"] = webidl.createEnumConverter(
+  "GPUPresentMode",
+  [
+    "autoVsync",
+    "autoNoVsync",
+    "fifo",
+    "fifoRelaxed",
+    "immediate",
+    "mailbox",
+  ],
+);
+
+// DICT: GPUCanvasConfiguration
+const dictMembersGPUCanvasConfiguration = [
+  { key: "device", converter: webidl.converters.GPUDevice, required: true },
+  {
+    key: "format",
+    converter: webidl.converters.GPUTextureFormat,
+    required: true,
+  },
+  {
+    key: "usage",
+    converter: webidl.converters["GPUTextureUsageFlags"],
+    defaultValue: GPUTextureUsage.RENDER_ATTACHMENT,
+  },
+  {
+    key: "alphaMode",
+    converter: webidl.converters["GPUCanvasAlphaMode"],
+    defaultValue: "opaque",
+  },
+
+  // Extended from spec
+  {
+    key: "presentMode",
+    converter: webidl.converters["GPUPresentMode"],
+  },
+  {
+    key: "width",
+    converter: webidl.converters["long"],
+    required: true,
+  },
+  {
+    key: "height",
+    converter: webidl.converters["long"],
+    required: true,
+  },
+  {
+    key: "viewFormats",
+    converter: webidl.createSequenceConverter(
+      webidl.converters["GPUTextureFormat"],
+    ),
+    get defaultValue() {
+      return [];
+    },
+  },
+];
+webidl.converters["GPUCanvasConfiguration"] = webidl
+  .createDictionaryConverter(
+    "GPUCanvasConfiguration",
+    dictMembersGPUCanvasConfiguration,
+  );
 
 const gpu = webidl.createBranded(GPU);
 export {

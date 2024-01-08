@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
@@ -8,11 +8,35 @@ const {
   op_fs_truncate_async,
   op_fs_link_async,
   op_fs_flock_async,
-} = Deno.core.ensureFastOps();
+  op_fs_chown_async,
+  op_fs_copy_file_async,
+  op_fs_fdatasync_async,
+  op_fs_fstat_async,
+  op_fs_fsync_async,
+  op_fs_funlock_async,
+  op_fs_futime_async,
+  op_fs_lstat_async,
+  op_fs_make_temp_dir_async,
+  op_fs_make_temp_file_async,
+  op_fs_mkdir_async,
+  op_fs_open_async,
+  op_fs_read_dir_async,
+  op_fs_read_file_async,
+  op_fs_read_file_text_async,
+  op_fs_read_link_async,
+  op_fs_realpath_async,
+  op_fs_remove_async,
+  op_fs_rename_async,
+  op_fs_seek_async,
+  op_fs_stat_async,
+  op_fs_symlink_async,
+  op_fs_utime_async,
+  op_fs_write_file_async,
+} = core.ensureFastOps();
+
 const {
   ArrayPrototypeFilter,
   Date,
-  DatePrototype,
   DatePrototypeGetTime,
   Error,
   Function,
@@ -26,6 +50,9 @@ const {
   SymbolIterator,
   Uint32Array,
 } = primordials;
+const {
+  isDate,
+} = core;
 import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
@@ -56,8 +83,7 @@ async function chown(
   uid,
   gid,
 ) {
-  await core.opAsync(
-    "op_fs_chown_async",
+  await op_fs_chown_async(
     pathFromURL(path),
     uid,
     gid,
@@ -78,8 +104,7 @@ async function copyFile(
   fromPath,
   toPath,
 ) {
-  await core.opAsync(
-    "op_fs_copy_file_async",
+  await op_fs_copy_file_async(
     pathFromURL(fromPath),
     pathFromURL(toPath),
   );
@@ -102,8 +127,7 @@ function makeTempDirSync(options = {}) {
 }
 
 function makeTempDir(options = {}) {
-  return core.opAsync(
-    "op_fs_make_temp_dir_async",
+  return op_fs_make_temp_dir_async(
     options.dir,
     options.prefix,
     options.suffix,
@@ -119,8 +143,7 @@ function makeTempFileSync(options = {}) {
 }
 
 function makeTempFile(options = {}) {
-  return core.opAsync(
-    "op_fs_make_temp_file_async",
+  return op_fs_make_temp_file_async(
     options.dir,
     options.prefix,
     options.suffix,
@@ -136,8 +159,7 @@ function mkdirSync(path, options) {
 }
 
 async function mkdir(path, options) {
-  await core.opAsync(
-    "op_fs_mkdir_async",
+  await op_fs_mkdir_async(
     pathFromURL(path),
     options?.recursive ?? false,
     options?.mode,
@@ -151,8 +173,7 @@ function readDirSync(path) {
 }
 
 function readDir(path) {
-  const array = core.opAsync(
-    "op_fs_read_dir_async",
+  const array = op_fs_read_dir_async(
     pathFromURL(path),
   );
   return {
@@ -170,7 +191,7 @@ function readLinkSync(path) {
 }
 
 function readLink(path) {
-  return core.opAsync("op_fs_read_link_async", pathFromURL(path));
+  return op_fs_read_link_async(pathFromURL(path));
 }
 
 function realPathSync(path) {
@@ -178,7 +199,7 @@ function realPathSync(path) {
 }
 
 function realPath(path) {
-  return core.opAsync("op_fs_realpath_async", pathFromURL(path));
+  return op_fs_realpath_async(pathFromURL(path));
 }
 
 function removeSync(
@@ -195,8 +216,7 @@ async function remove(
   path,
   options = {},
 ) {
-  await core.opAsync(
-    "op_fs_remove_async",
+  await op_fs_remove_async(
     pathFromURL(path),
     !!options.recursive,
   );
@@ -210,8 +230,7 @@ function renameSync(oldpath, newpath) {
 }
 
 async function rename(oldpath, newpath) {
-  await core.opAsync(
-    "op_fs_rename_async",
+  await op_fs_rename_async(
     pathFromURL(oldpath),
     pathFromURL(newpath),
   );
@@ -340,11 +359,11 @@ function fstatSync(rid) {
 }
 
 async function fstat(rid) {
-  return parseFileInfo(await core.opAsync("op_fs_fstat_async", rid));
+  return parseFileInfo(await op_fs_fstat_async(rid));
 }
 
 async function lstat(path) {
-  const res = await core.opAsync("op_fs_lstat_async", pathFromURL(path));
+  const res = await op_fs_lstat_async(pathFromURL(path));
   return parseFileInfo(res);
 }
 
@@ -354,7 +373,7 @@ function lstatSync(path) {
 }
 
 async function stat(path) {
-  const res = await core.opAsync("op_fs_stat_async", pathFromURL(path));
+  const res = await op_fs_stat_async(pathFromURL(path));
   return parseFileInfo(res);
 }
 
@@ -399,7 +418,7 @@ async function link(oldpath, newpath) {
 }
 
 function toUnixTimeFromEpoch(value) {
-  if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
+  if (isDate(value)) {
     const time = DatePrototypeGetTime(value);
     const seconds = MathTrunc(time / 1e3);
     const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
@@ -436,8 +455,7 @@ async function futime(
 ) {
   const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
   const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-  await core.opAsync(
-    "op_fs_futime_async",
+  await op_fs_futime_async(
     rid,
     atimeSec,
     atimeNsec,
@@ -469,8 +487,7 @@ async function utime(
 ) {
   const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
   const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-  await core.opAsync(
-    "op_fs_utime_async",
+  await op_fs_utime_async(
     pathFromURL(path),
     atimeSec,
     atimeNsec,
@@ -496,8 +513,7 @@ async function symlink(
   newpath,
   options,
 ) {
-  await core.opAsync(
-    "op_fs_symlink_async",
+  await op_fs_symlink_async(
     pathFromURL(oldpath),
     pathFromURL(newpath),
     options?.type,
@@ -509,7 +525,7 @@ function fdatasyncSync(rid) {
 }
 
 async function fdatasync(rid) {
-  await core.opAsync("op_fs_fdatasync_async", rid);
+  await op_fs_fdatasync_async(rid);
 }
 
 function fsyncSync(rid) {
@@ -517,7 +533,7 @@ function fsyncSync(rid) {
 }
 
 async function fsync(rid) {
-  await core.opAsync("op_fs_fsync_async", rid);
+  await op_fs_fsync_async(rid);
 }
 
 function flockSync(rid, exclusive) {
@@ -533,7 +549,7 @@ function funlockSync(rid) {
 }
 
 async function funlock(rid) {
-  await core.opAsync("op_fs_funlock_async", rid);
+  await op_fs_funlock_async(rid);
 }
 
 function seekSync(
@@ -549,7 +565,7 @@ function seek(
   offset,
   whence,
 ) {
-  return core.opAsync("op_fs_seek_async", rid, offset, whence);
+  return op_fs_seek_async(rid, offset, whence);
 }
 
 function openSync(
@@ -570,8 +586,7 @@ async function open(
   options,
 ) {
   if (options) checkOpenOptions(options);
-  const rid = await core.opAsync(
-    "op_fs_open_async",
+  const rid = await op_fs_open_async(
     pathFromURL(path),
     options,
   );
@@ -716,8 +731,7 @@ async function readFile(path, options) {
   }
 
   try {
-    const read = await core.opAsync(
-      "op_fs_read_file_async",
+    const read = await op_fs_read_file_async(
       pathFromURL(path),
       cancelRid,
     );
@@ -747,8 +761,7 @@ async function readTextFile(path, options) {
   }
 
   try {
-    const read = await core.opAsync(
-      "op_fs_read_file_text_async",
+    const read = await op_fs_read_file_text_async(
       pathFromURL(path),
       cancelRid,
     );
@@ -805,8 +818,7 @@ async function writeFile(
         signal: options.signal,
       });
     } else {
-      await core.opAsync(
-        "op_fs_write_file_async",
+      await op_fs_write_file_async(
         pathFromURL(path),
         options.mode,
         options.append ?? false,

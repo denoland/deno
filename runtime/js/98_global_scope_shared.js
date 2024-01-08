@@ -1,15 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-const {
-  ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
-  SymbolFor,
-} = primordials;
+import { core } from "ext:core/mod.js";
 
 import * as util from "ext:runtime/06_util.js";
-import * as location from "ext:deno_web/12_location.js";
 import * as event from "ext:deno_web/02_event.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
@@ -36,12 +29,11 @@ import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
-import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
-import * as prompt from "ext:runtime/41_prompt.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
+import { webgpu, webGPUNonEnumerable } from "ext:deno_webgpu/00_init.js";
+import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -189,224 +181,7 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
   GPUError: webGPUNonEnumerable(() => webgpu.GPUError),
   GPUValidationError: webGPUNonEnumerable(() => webgpu.GPUValidationError),
   GPUOutOfMemoryError: webGPUNonEnumerable(() => webgpu.GPUOutOfMemoryError),
+  GPUCanvasContext: webGPUNonEnumerable(() => webgpuSurface.GPUCanvasContext),
 };
 
-class Navigator {
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      console.createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(NavigatorPrototype, this),
-        keys: [
-          "hardwareConcurrency",
-          "userAgent",
-          "language",
-          "languages",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-const navigator = webidl.createBranded(Navigator);
-
-function memoizeLazy(f) {
-  let v_ = null;
-  return () => {
-    if (v_ === null) {
-      v_ = f();
-    }
-    return v_;
-  };
-}
-
-const numCpus = memoizeLazy(() => ops.op_bootstrap_numcpus());
-const userAgent = memoizeLazy(() => ops.op_bootstrap_user_agent());
-const language = memoizeLazy(() => ops.op_bootstrap_language());
-
-let webgpu;
-
-function webGPUNonEnumerable(getter) {
-  let valueIsSet = false;
-  let value;
-
-  return {
-    get() {
-      loadWebGPU();
-
-      if (valueIsSet) {
-        return value;
-      } else {
-        return getter();
-      }
-    },
-    set(v) {
-      loadWebGPU();
-
-      valueIsSet = true;
-      value = v;
-    },
-    enumerable: false,
-    configurable: true,
-  };
-}
-
-function loadWebGPU() {
-  if (!webgpu) {
-    webgpu = ops.op_lazy_load_esm("ext:deno_webgpu/01_webgpu.js");
-  }
-}
-
-ObjectDefineProperties(Navigator.prototype, {
-  gpu: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, NavigatorPrototype);
-      loadWebGPU();
-      return webgpu.gpu;
-    },
-  },
-  hardwareConcurrency: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, NavigatorPrototype);
-      return numCpus();
-    },
-  },
-  userAgent: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, NavigatorPrototype);
-      return userAgent();
-    },
-  },
-  language: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, NavigatorPrototype);
-      return language();
-    },
-  },
-  languages: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, NavigatorPrototype);
-      return [language()];
-    },
-  },
-});
-const NavigatorPrototype = Navigator.prototype;
-
-class WorkerNavigator {
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      console.createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(WorkerNavigatorPrototype, this),
-        keys: [
-          "hardwareConcurrency",
-          "userAgent",
-          "language",
-          "languages",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-const workerNavigator = webidl.createBranded(WorkerNavigator);
-
-ObjectDefineProperties(WorkerNavigator.prototype, {
-  gpu: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, WorkerNavigatorPrototype);
-      loadWebGPU();
-      return webgpu.gpu;
-    },
-  },
-  hardwareConcurrency: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return numCpus();
-    },
-  },
-  userAgent: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return userAgent();
-    },
-  },
-  language: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return language();
-    },
-  },
-  languages: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return [language()];
-    },
-  },
-});
-const WorkerNavigatorPrototype = WorkerNavigator.prototype;
-
-const mainRuntimeGlobalProperties = {
-  Location: location.locationConstructorDescriptor,
-  location: location.locationDescriptor,
-  Window: globalInterfaces.windowConstructorDescriptor,
-  window: util.getterOnly(() => globalThis),
-  self: util.getterOnly(() => globalThis),
-  Navigator: util.nonEnumerable(Navigator),
-  navigator: util.getterOnly(() => navigator),
-  alert: util.writable(prompt.alert),
-  confirm: util.writable(prompt.confirm),
-  prompt: util.writable(prompt.prompt),
-  localStorage: util.getterOnly(webStorage.localStorage),
-  sessionStorage: util.getterOnly(webStorage.sessionStorage),
-  Storage: util.nonEnumerable(webStorage.Storage),
-};
-
-const workerRuntimeGlobalProperties = {
-  WorkerLocation: location.workerLocationConstructorDescriptor,
-  location: location.workerLocationDescriptor,
-  WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
-  DedicatedWorkerGlobalScope:
-    globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
-  WorkerNavigator: util.nonEnumerable(WorkerNavigator),
-  navigator: util.getterOnly(() => workerNavigator),
-  self: util.getterOnly(() => globalThis),
-};
-
-export {
-  mainRuntimeGlobalProperties,
-  memoizeLazy,
-  unstableForWindowOrWorkerGlobalScope,
-  windowOrWorkerGlobalScope,
-  workerRuntimeGlobalProperties,
-};
+export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

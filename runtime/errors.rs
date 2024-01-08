@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -142,7 +142,7 @@ fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
   "URIError"
 }
 
-fn get_hyper_error_class(_error: &hyper::Error) -> &'static str {
+fn get_hyper_error_class(_error: &hyper_v014::Error) -> &'static str {
   "Http"
 }
 
@@ -175,9 +175,12 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
     })
-    .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
     .or_else(|| {
-      e.downcast_ref::<Arc<hyper::Error>>()
+      e.downcast_ref::<hyper_v014::Error>()
+        .map(get_hyper_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<Arc<hyper_v014::Error>>()
         .map(|e| get_hyper_error_class(e))
     })
     .or_else(|| {

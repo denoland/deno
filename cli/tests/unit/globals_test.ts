@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-window-prefix
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
@@ -194,6 +194,12 @@ Deno.test(function objectGroupBy() {
       { name: "fish", type: "meat", quantity: 22 },
     ],
   });
+});
+
+Deno.test(function objectGroupByEmpty() {
+  const empty: string[] = [];
+  const result = Object.groupBy(empty, () => "abc");
+  assertEquals(result.abc, undefined);
 });
 
 // Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map/groupBy#examples

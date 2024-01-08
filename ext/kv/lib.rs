@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 pub mod dynamic;
 mod interface;
@@ -444,16 +444,21 @@ async fn op_kv_watch_next(
   let cancel_handle = resource.cancel_handle.clone();
   let stream = RcRef::map(resource, |r| &r.stream)
     .borrow_mut()
-    .or_cancel(db_cancel_handle)
-    .or_cancel(cancel_handle)
+    .or_cancel(db_cancel_handle.clone())
+    .or_cancel(cancel_handle.clone())
     .await;
   let Ok(Ok(mut stream)) = stream else {
     return Ok(None);
   };
 
-  // doesn't need a cancel handle because the stream ends when the database
-  // connection is closed
-  let Some(res) = stream.next().await else {
+  // We hold a strong reference to `resource`, so we can't rely on the stream
+  // being dropped when the db connection is closed
+  let Ok(Ok(Some(res))) = stream
+    .next()
+    .or_cancel(db_cancel_handle)
+    .or_cancel(cancel_handle)
+    .await
+  else {
     return Ok(None);
   };
 
