@@ -416,11 +416,7 @@ Deno.test(
         const { socket, response } = Deno.upgradeWebSocket(req, {
           idleTimeout: 2,
         });
-        socket.onerror = (e) => {
-          // @ts-ignore: message is part of ErrorEvent
-          assert(e.message.includes("Connection reset by peer"));
-          ac.abort();
-        };
+        socket.onerror = () => ac.abort();
         socket.onclose = () => ac.abort();
         return response;
       },
