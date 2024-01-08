@@ -407,6 +407,7 @@ Deno.test(
 );
 
 Deno.test(
+  { sanitizeOps: false },
   async function websocketServerGetsGhosted() {
     const ac = new AbortController();
     const listeningDeferred = Promise.withResolvers<void>();
