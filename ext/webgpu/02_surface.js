@@ -169,7 +169,7 @@ class UnsafeWindowSurface {
     this.#surfaceRid = ops.op_webgpu_surface_create(system, win, display);
   }
 
-  getContext(context = "webgpu") {
+  getContext(context) {
     if (context !== "webgpu") {
       throw new TypeError("Only 'webgpu' context is supported.");
     }
