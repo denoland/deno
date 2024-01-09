@@ -5,63 +5,108 @@ use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use sha2::Digest;
+use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use tar::Header;
 
+use crate::util::glob::PathOrPatternSet;
 use crate::util::import_map::ImportMapUnfurler;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublishableTarballFile {
+  pub path: PathBuf,
+  pub size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublishableTarball {
+  pub files: Vec<PublishableTarballFile>,
+  pub diagnostics: Vec<String>,
+  pub hash: String,
+  pub bytes: Bytes,
+}
 
 pub fn create_gzipped_tarball(
   dir: &Path,
   // TODO(bartlomieju): this is too specific, factor it out into a callback that
   // returns data
-  unfurler: ImportMapUnfurler,
-) -> Result<(Bytes, Vec<String>), AnyError> {
+  unfurler: &ImportMapUnfurler,
+  exclude_patterns: &PathOrPatternSet,
+) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
-  let dir = dir
-    .canonicalize()
-    .map_err(|_| anyhow::anyhow!("Unable to canonicalize path {:?}", dir))?;
   let mut diagnostics = vec![];
+  let mut files = vec![];
 
-  let mut iterator =
-    walkdir::WalkDir::new(&dir).follow_links(false).into_iter();
+  let mut iterator = walkdir::WalkDir::new(dir).follow_links(false).into_iter();
   while let Some(entry) = iterator.next() {
     let entry = entry?;
+
+    if exclude_patterns.matches_path(entry.path()) {
+      if entry.file_type().is_dir() {
+        iterator.skip_current_dir();
+      }
+      continue;
+    }
 
     if entry.file_type().is_file() {
       let url = Url::from_file_path(entry.path())
         .map_err(|_| anyhow::anyhow!("Unable to convert path to url"))?;
       let relative_path = entry
         .path()
-        .strip_prefix(&dir)
-        .map_err(|err| anyhow::anyhow!("Unable to strip prefix: {err}"))?;
-      let relative_path = relative_path.to_str().ok_or_else(|| {
-        anyhow::anyhow!("Unable to convert path to string {:?}", relative_path)
+        .strip_prefix(dir)
+        .map_err(|err| anyhow::anyhow!("Unable to strip prefix: {err:#}"))?;
+      let relative_path_str = relative_path.to_str().ok_or_else(|| {
+        anyhow::anyhow!(
+          "Unable to convert path to string '{}'",
+          relative_path.display()
+        )
       })?;
-      let data = std::fs::read(entry.path())
-        .with_context(|| format!("Unable to read file {:?}", entry.path()))?;
-      let (content, unfurl_diagnostics) = unfurler
-        .unfurl(&url, data)
-        .with_context(|| format!("Unable to unfurl file {:?}", entry.path()))?;
+      let data = std::fs::read(entry.path()).with_context(|| {
+        format!("Unable to read file '{}'", entry.path().display())
+      })?;
+      files.push(PublishableTarballFile {
+        path: relative_path.to_path_buf(),
+        size: data.len(),
+      });
+      let (content, unfurl_diagnostics) =
+        unfurler.unfurl(&url, data).with_context(|| {
+          format!("Unable to unfurl file '{}'", entry.path().display())
+        })?;
 
       diagnostics.extend_from_slice(&unfurl_diagnostics);
       tar
-        .add_file(relative_path.to_string(), &content)
+        .add_file(relative_path_str.to_string(), &content)
         .with_context(|| {
-          format!("Unable to add file to tarball {:?}", entry.path())
+          format!("Unable to add file to tarball '{}'", entry.path().display())
         })?;
     } else if entry.file_type().is_dir() {
       if entry.file_name() == ".git" || entry.file_name() == "node_modules" {
         iterator.skip_current_dir();
       }
     } else {
-      diagnostics
-        .push(format!("Unsupported file type at path {:?}", entry.path()));
+      diagnostics.push(format!(
+        "Unsupported file type at path '{}'",
+        entry.path().display()
+      ));
     }
   }
 
   let v = tar.finish().context("Unable to finish tarball")?;
-  Ok((Bytes::from(v), diagnostics))
+  let hash_bytes: Vec<u8> = sha2::Sha256::digest(&v).iter().cloned().collect();
+  let mut hash = "sha256-".to_string();
+  for byte in hash_bytes {
+    write!(&mut hash, "{:02x}", byte).unwrap();
+  }
+
+  Ok(PublishableTarball {
+    files,
+    diagnostics,
+    hash,
+    bytes: Bytes::from(v),
+  })
 }
 
 struct TarGzArchive {
