@@ -108,23 +108,24 @@ fn raw_window(
   window: *const c_void,
   display: *const c_void,
 ) -> Result<RawHandles, AnyError> {
-  use raw_window_handle::XlibWindowHandle;
   if system != "x11" {
     return Err(type_error("Invalid system on Linux"));
   }
 
   let win_handle = {
-    use raw_window_handle::XlibWindowHandle;
-
-    let mut handle = XlibWindowHandle::empty();
-    handle.window = window as *mut c_void;
+    let mut handle = raw_window_handle::XlibWindowHandle::empty();
+    handle.window = window as *mut c_void as _;
     handle.display = display as *mut c_void;
 
     raw_window_handle::RawWindowHandle::Xlib(handle)
   };
 
-  let display_handle = raw_window_handle::RawDisplayHandle::Xlib(
-    raw_window_handle::XlibDisplayHandle::empty(),
-  );
+  let display_handle = {
+    let mut handle = raw_window_handle::XlibDisplayHandle::empty();
+    handle.display = display as *mut c_void;
+
+    raw_window_handle::RawDisplayHandle::Xlib(handle)
+  };
+
   Ok((win_handle, display_handle))
 }
