@@ -8,7 +8,7 @@ use std::time::Duration;
 pub fn start(parent_process_id: u32) {
   // use a separate thread in case the runtime gets hung up
   std::thread::spawn(move || loop {
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(10));
 
     if !is_process_active(parent_process_id) {
       std::process::exit(1);
