@@ -67,7 +67,9 @@ deno_lint = { version = "=0.53.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.15.3"
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.2"
+# todo(dsherret): investigate https://github.com/denoland/deno_semver/commit/98f9174baef199809295077b3b68c9fa58defb9b causing
+# lsp_completions_auto_import_and_quick_fix_with_import_map to fail when bumping this version
+deno_semver = "=0.5.1"
 deno_task_shell = "=0.14.0"
 eszip = "=0.57.0"
 napi_sym.workspace = true
