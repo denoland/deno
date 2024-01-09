@@ -21,6 +21,7 @@ use crate::util::path::specifier_to_file_path;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
+use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -32,7 +33,6 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
-use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -193,8 +193,11 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
-  pub loader: &'a mut dyn Loader,
-  pub analyzer: &'a dyn ModuleAnalyzer,
+  /// Whether to do fast check on workspace members. This is mostly only
+  /// useful when publishing.
+  pub workspace_fast_check: bool,
+  /// Specify `None` to use the default CLI loader.
+  pub loader: Option<&'a mut dyn Loader>,
 }
 
 pub struct ModuleGraphBuilder {
@@ -261,14 +264,12 @@ impl ModuleGraphBuilder {
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let store = self.parsed_source_cache.as_store();
-    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
     self
       .create_graph_with_options(CreateGraphOptions {
         graph_kind,
         roots,
-        loader,
-        analyzer: &analyzer,
+        loader: Some(loader),
+        workspace_fast_check: false,
       })
       .await
   }
@@ -277,14 +278,23 @@ impl ModuleGraphBuilder {
     &self,
     options: CreateGraphOptions<'_>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_workspace_config = self.options.maybe_workspace_config();
-    let workspace_members = if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)?
-    } else {
-      vec![]
-    };
+    enum MutLoaderRef<'a> {
+      Borrowed(&'a mut dyn Loader),
+      Owned(cache::FetchCacher),
+    }
 
+    impl<'a> MutLoaderRef<'a> {
+      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
+        match self {
+          Self::Borrowed(loader) => *loader,
+          Self::Owned(loader) => loader,
+        }
+      }
+    }
+
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
+    let maybe_imports = self.options.to_maybe_imports()?;
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -292,22 +302,28 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
+    let mut loader = match options.loader {
+      Some(loader) => MutLoaderRef::Borrowed(loader),
+      None => MutLoaderRef::Owned(self.create_graph_loader()),
+    };
 
     let mut graph = ModuleGraph::new(options.graph_kind);
     self
       .build_graph_with_npm_resolution(
         &mut graph,
         options.roots,
-        options.loader,
+        loader.as_mut_loader(),
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(options.analyzer),
+          module_analyzer: Some(&analyzer),
+          module_parser: Some(&parser),
           reporter: maybe_file_watcher_reporter,
-          workspace_members,
+          workspace_fast_check: options.workspace_fast_check,
+          workspace_members: self.get_deno_graph_workspace_members()?,
         },
       )
       .await?;
@@ -327,17 +343,11 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_workspace_config = self.options.maybe_workspace_config();
-    let workspace_members = if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)?
-    } else {
-      vec![]
-    };
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-    let store = self.parsed_source_cache.as_store();
-    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     let graph_kind = self.options.type_check_mode().as_graph_kind();
     let mut graph = ModuleGraph::new(graph_kind);
     let maybe_file_watcher_reporter = self
@@ -357,8 +367,10 @@ impl ModuleGraphBuilder {
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&analyzer),
+          module_parser: Some(&parser),
           reporter: maybe_file_watcher_reporter,
-          workspace_members,
+          workspace_fast_check: false,
+          workspace_members: self.get_deno_graph_workspace_members()?,
         },
       )
       .await?;
@@ -389,6 +401,30 @@ impl ModuleGraphBuilder {
     }
 
     Ok(graph)
+  }
+
+  fn get_deno_graph_workspace_members(
+    &self,
+  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)
+    } else {
+      Ok(
+        self
+          .options
+          .maybe_config_file()
+          .as_ref()
+          .and_then(|c| match config_to_workspace_member(c) {
+            Ok(m) => Some(vec![m]),
+            Err(e) => {
+              log::debug!("Deno config was not a package: {:#}", e);
+              None
+            }
+          })
+          .unwrap_or_default(),
+      )
+    }
   }
 
   pub async fn build_graph_with_npm_resolution<'a>(
@@ -435,7 +471,7 @@ impl ModuleGraphBuilder {
               .strip_prefix("jsr:")
               .and_then(|value| PackageNv::from_str(value).ok())
             {
-              graph.packages.add(key, value);
+              graph.packages.add_nv(key, value);
             }
           }
         }
@@ -777,36 +813,34 @@ pub fn workspace_config_to_workspace_members(
     .members
     .iter()
     .map(|member| {
-      workspace_member_config_try_into_workspace_member(member).with_context(
-        || {
-          format!(
-            "Failed to resolve configuration for '{}' workspace member at '{}'",
-            member.member_name,
-            member.config_file.specifier.as_str()
-          )
-        },
-      )
+      config_to_workspace_member(&member.config_file).with_context(|| {
+        format!(
+          "Failed to resolve configuration for '{}' workspace member at '{}'",
+          member.member_name,
+          member.config_file.specifier.as_str()
+        )
+      })
     })
     .collect()
 }
 
-fn workspace_member_config_try_into_workspace_member(
-  config: &deno_config::WorkspaceMemberConfig,
+fn config_to_workspace_member(
+  config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
   let nv = deno_semver::package::PackageNv {
-    name: config.package_name.clone(),
-    version: deno_semver::Version::parse_standard(&config.package_version)?,
+    name: match &config.json.name {
+      Some(name) => name.clone(),
+      None => bail!("Missing 'name' field in config file."),
+    },
+    version: match &config.json.version {
+      Some(name) => deno_semver::Version::parse_standard(name)?,
+      None => bail!("Missing 'version' field in config file."),
+    },
   };
   Ok(deno_graph::WorkspaceMember {
-    base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
+    base: config.specifier.join("./").unwrap(),
     nv,
-    exports: config
-      .config_file
-      .to_exports_config()?
-      .into_map()
-      // todo(dsherret): deno_graph should use an IndexMap
-      .into_iter()
-      .collect(),
+    exports: config.to_exports_config()?.into_map(),
   })
 }
 
