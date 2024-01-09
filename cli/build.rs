@@ -374,13 +374,20 @@ fn main() {
     panic!("Cross compiling with snapshot is not supported.");
   }
 
-  let symbols_path = std::path::Path::new("napi").join(
-    format!("generated_symbol_exports_list_{}.def", env::consts::OS).as_str(),
-  )
-  .canonicalize()
-  .expect(
-    "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
-  );
+  let symbols_file_name = match env::consts::OS {
+    "windows" => "generated_symbol_exports_list_windows.def".to_string(),
+    "macos" => "generated_symbol_exports_list_macos.def".to_string(),
+    "android" | "linux" => {
+      "generated_symbol_exports_list_linux.def".to_string()
+    }
+    os => format!("generated_symbol_exports_list_{}.def", os),
+  };
+  let symbols_path = std::path::Path::new("napi")
+    .join(symbols_file_name)
+    .canonicalize()
+    .expect(
+        "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
+    );
 
   #[cfg(target_os = "windows")]
   println!(
@@ -412,6 +419,12 @@ fn main() {
       );
     }
   }
+
+  #[cfg(target_os = "android")]
+  println!(
+    "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path.display()
+  );
 
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
