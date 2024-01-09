@@ -49,7 +49,7 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsBasic() {
     const testDir = await makeTempDir();
-    const iter = Deno.watchFs(testDir);
+    using iter = Deno.watchFs(testDir);
 
     // Asynchronously capture two fs events.
     const eventsPromise = getTwoEvents(iter);
@@ -67,8 +67,6 @@ Deno.test(
     assert(events[0].paths[0].includes(testDir));
     assert(events[1].kind == "create" || events[1].kind == "modify");
     assert(events[1].paths[0].includes(testDir));
-
-    iter.close();
   },
 );
 
