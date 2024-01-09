@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/>
 use deno_core::serde_json;
@@ -525,4 +525,22 @@ pub struct Notification {
 pub struct ExceptionThrown {
   pub timestamp: f64,
   pub exception_details: ExceptionDetails,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-executionContextCreated>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionContextCreated {
+  pub context: ExecutionContextDescription,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExecutionContextDescription>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionContextDescription {
+  pub id: ExecutionContextId,
+  pub origin: String,
+  pub name: String,
+  pub unique_id: String,
+  pub aux_data: Value,
 }

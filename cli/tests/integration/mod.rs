@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #[macro_export]
 macro_rules! itest(
@@ -121,7 +121,10 @@ mod inspector;
 mod install;
 #[path = "js_unit_tests.rs"]
 mod js_unit_tests;
-mod jsr_tests;
+#[path = "jsr_tests.rs"]
+mod jsr;
+#[path = "jupyter_tests.rs"]
+mod jupyter;
 #[path = "lint_tests.rs"]
 mod lint;
 #[path = "lsp_tests.rs"]

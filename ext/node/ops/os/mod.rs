@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::NodePermissions;
 use deno_core::error::type_error;
@@ -73,6 +73,11 @@ where
   let euid = unsafe { libc::geteuid() };
 
   Ok(euid)
+}
+
+#[op2(fast)]
+pub fn op_process_abort() {
+  std::process::abort();
 }
 
 #[op2]

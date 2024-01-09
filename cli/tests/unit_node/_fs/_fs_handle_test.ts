@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import * as path from "../../../../test_util/std/path/mod.ts";
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";

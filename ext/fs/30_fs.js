@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
@@ -37,7 +37,6 @@ const {
 const {
   ArrayPrototypeFilter,
   Date,
-  DatePrototype,
   DatePrototypeGetTime,
   Error,
   Function,
@@ -51,6 +50,9 @@ const {
   SymbolIterator,
   Uint32Array,
 } = primordials;
+const {
+  isDate,
+} = core;
 import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
@@ -416,7 +418,7 @@ async function link(oldpath, newpath) {
 }
 
 function toUnixTimeFromEpoch(value) {
-  if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
+  if (isDate(value)) {
     const time = DatePrototypeGetTime(value);
     const seconds = MathTrunc(time / 1e3);
     const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;

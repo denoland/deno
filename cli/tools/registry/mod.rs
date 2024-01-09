@@ -1,14 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::io::IsTerminal;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use bytes::Bytes;
 use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -30,6 +28,8 @@ use crate::args::Flags;
 use crate::args::PublishFlags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
+use crate::util::display::human_size;
+use crate::util::glob::PathOrPatternSet;
 use crate::util::import_map::ImportMapUnfurler;
 
 mod api;
@@ -41,6 +41,8 @@ use auth::get_auth_method;
 use auth::AuthMethod;
 use publish_order::PublishOrderGraph;
 
+use self::tar::PublishableTarball;
+
 fn ring_bell() {
   // ASCII code for the bell character.
   print!("\x07");
@@ -50,9 +52,13 @@ struct PreparedPublishPackage {
   scope: String,
   package: String,
   version: String,
-  tarball_hash: String,
-  tarball: Bytes,
-  diagnostics: Vec<String>,
+  tarball: PublishableTarball,
+}
+
+impl PreparedPublishPackage {
+  pub fn display_name(&self) -> String {
+    format!("@{}/{}@{}", self.scope, self.package, self.version)
+  }
 }
 
 static SUGGESTED_ENTRYPOINTS: [&str; 4] =
@@ -104,28 +110,23 @@ async fn prepare_publish(
   let Some((scope, package_name)) = name.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
+  let exclude_patterns = deno_json.to_files_config().and_then(|files| {
+    PathOrPatternSet::from_absolute_paths(files.unwrap_or_default().exclude)
+      .context("Invalid config file exclude pattern.")
+  })?;
 
-  let (tarball, diagnostics) = deno_core::unsync::spawn_blocking(move || {
+  let tarball = deno_core::unsync::spawn_blocking(move || {
     let unfurler = ImportMapUnfurler::new(&import_map);
-    tar::create_gzipped_tarball(&dir_path, unfurler)
+    tar::create_gzipped_tarball(&dir_path, &unfurler, &exclude_patterns)
       .context("Failed to create a tarball")
   })
   .await??;
-
-  let tarball_hash_bytes: Vec<u8> =
-    sha2::Sha256::digest(&tarball).iter().cloned().collect();
-  let mut tarball_hash = "sha256-".to_string();
-  for byte in tarball_hash_bytes {
-    write!(&mut tarball_hash, "{:02x}", byte).unwrap();
-  }
 
   Ok(Rc::new(PreparedPublishPackage {
     scope: scope.to_string(),
     package: package_name.to_string(),
     version: version.to_string(),
-    tarball_hash,
     tarball,
-    diagnostics,
   }))
 }
 
@@ -155,7 +156,7 @@ pub enum Permission<'s> {
 /// └╌╌ at file:///dev/foo/bar/foo.ts:4:5
 ///
 /// ```
-fn print_diagnostics(diagnostics: Vec<String>) {
+fn print_diagnostics(diagnostics: &[String]) {
   if !diagnostics.is_empty() {
     let len = diagnostics.len();
     log::warn!("");
@@ -194,7 +195,7 @@ async fn get_auth_headers(
       scope: &package.scope,
       package: &package.package,
       version: &package.version,
-      tarball_hash: &package.tarball_hash,
+      tarball_hash: &package.tarball.hash,
     })
     .collect::<Vec<_>>();
 
@@ -461,9 +462,9 @@ async fn perform_publish(
     .collect::<Vec<_>>();
   let diagnostics = packages
     .iter()
-    .flat_map(|p| p.diagnostics.clone())
+    .flat_map(|p| p.tarball.diagnostics.iter().cloned())
     .collect::<Vec<_>>();
-  print_diagnostics(diagnostics);
+  print_diagnostics(&diagnostics);
 
   ensure_scopes_and_packages_exist(
     client,
@@ -484,6 +485,19 @@ async fn perform_publish(
 
     for package_name in next_batch {
       let package = prepared_package_by_name.remove(&package_name).unwrap();
+
+      // todo(dsherret): output something that looks better than this even not in debug
+      if log::log_enabled!(log::Level::Debug) {
+        log::debug!("Publishing {}", package.display_name());
+        for file in &package.tarball.files {
+          log::debug!(
+            "  Tarball file {} {}",
+            human_size(file.size as f64),
+            file.path.display()
+          );
+        }
+      }
+
       let authorization = authorizations
         .remove(&(
           package.scope.clone(),
@@ -495,8 +509,7 @@ async fn perform_publish(
       let registry_url = registry_url.clone();
       let http_client = http_client.clone();
       futures.spawn(async move {
-        let display_name =
-          format!("@{}/{}@{}", package.scope, package.package, package.version);
+        let display_name = package.display_name();
         publish_package(
           &http_client,
           package,
@@ -548,22 +561,36 @@ async fn publish_package(
     .post(url)
     .header(reqwest::header::AUTHORIZATION, authorization)
     .header(reqwest::header::CONTENT_ENCODING, "gzip")
-    .body(package.tarball.clone())
+    .body(package.tarball.bytes.clone())
     .send()
     .await?;
 
   let res = api::parse_response::<api::PublishingTask>(response).await;
   let mut task = match res {
     Ok(task) => task,
-    Err(err) if err.code == "duplicateVersionPublish" => {
+    Err(mut err) if err.code == "duplicateVersionPublish" => {
+      let task = serde_json::from_value::<api::PublishingTask>(
+        err.data.get_mut("task").unwrap().take(),
+      )
+      .unwrap();
+      if task.status == "success" {
+        println!(
+          "{} @{}/{}@{}",
+          colors::green("Skipping, already published"),
+          package.scope,
+          package.package,
+          package.version
+        );
+        return Ok(());
+      }
       println!(
         "{} @{}/{}@{}",
-        colors::yellow("Skipping, already published"),
+        colors::yellow("Already uploaded, waiting for publishing"),
         package.scope,
         package.package,
         package.version
       );
-      return Ok(());
+      task
     }
     Err(err) => {
       return Err(err).with_context(|| {

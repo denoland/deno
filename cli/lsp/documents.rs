@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
@@ -24,6 +24,7 @@ use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::glob;
+use crate::util::glob::FilePatterns;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 
@@ -62,6 +63,7 @@ use std::fs::ReadDir;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
@@ -1852,13 +1854,14 @@ fn analyze_module(
   }
 }
 
+#[derive(Debug)]
 enum PendingEntry {
   /// File specified as a root url.
   SpecifiedRootFile(PathBuf),
   /// Directory that is queued to read.
-  Dir(PathBuf),
+  Dir(PathBuf, Rc<FilePatterns>),
   /// The current directory being read.
-  ReadDir(Box<ReadDir>),
+  ReadDir(Box<ReadDir>, Rc<FilePatterns>),
 }
 
 struct PreloadDocumentFinderOptions {
@@ -1873,27 +1876,22 @@ struct PreloadDocumentFinder {
   limit: usize,
   entry_count: usize,
   pending_entries: VecDeque<PendingEntry>,
-  disabled_globs: glob::GlobSet,
-  disabled_paths: HashSet<PathBuf>,
+  root_dir_entries: Vec<PendingEntry>,
+  visited_paths: HashSet<PathBuf>,
 }
 
 impl PreloadDocumentFinder {
   pub fn new(options: PreloadDocumentFinderOptions) -> Self {
     fn paths_into_globs_and_paths(
       input_paths: Vec<PathBuf>,
-    ) -> (glob::GlobSet, HashSet<PathBuf>) {
-      let mut globs = Vec::with_capacity(input_paths.len());
-      let mut paths = HashSet::with_capacity(input_paths.len());
+    ) -> glob::PathOrPatternSet {
+      let mut result = Vec::with_capacity(input_paths.len());
       for path in input_paths {
-        if let Ok(Some(glob)) =
-          glob::GlobPattern::new_if_pattern(&path.to_string_lossy())
-        {
-          globs.push(glob);
-        } else {
-          paths.insert(path);
+        if let Ok(path_or_pattern) = glob::PathOrPattern::new(path) {
+          result.push(path_or_pattern);
         }
       }
-      (glob::GlobSet::new(globs), paths)
+      glob::PathOrPatternSet::new(result)
     }
 
     fn is_allowed_root_dir(dir_path: &Path) -> bool {
@@ -1904,35 +1902,33 @@ impl PreloadDocumentFinder {
       true
     }
 
-    let (disabled_globs, disabled_paths) =
-      paths_into_globs_and_paths(options.disabled_paths);
     let mut finder = PreloadDocumentFinder {
       limit: options.limit,
       entry_count: 0,
       pending_entries: Default::default(),
-      disabled_globs,
-      disabled_paths,
+      root_dir_entries: Default::default(),
+      visited_paths: Default::default(),
     };
 
+    let file_patterns = FilePatterns {
+      include: Some(paths_into_globs_and_paths(options.enabled_paths)),
+      exclude: paths_into_globs_and_paths(options.disabled_paths),
+    };
+    let file_patterns_by_base = file_patterns.split_by_base();
+
     // initialize the finder with the initial paths
-    let mut dirs = Vec::with_capacity(options.enabled_paths.len());
-    for path in options.enabled_paths {
-      if !finder.disabled_paths.contains(&path)
-        && !finder.disabled_globs.matches_path(&path)
-      {
-        if path.is_dir() {
-          if is_allowed_root_dir(&path) {
-            dirs.push(path);
-          }
-        } else {
+    for (path, file_patterns) in file_patterns_by_base {
+      if path.is_dir() {
+        if is_allowed_root_dir(&path) {
           finder
-            .pending_entries
-            .push_back(PendingEntry::SpecifiedRootFile(path));
+            .root_dir_entries
+            .push(PendingEntry::Dir(path, Rc::new(file_patterns)));
         }
+      } else {
+        finder
+          .pending_entries
+          .push_back(PendingEntry::SpecifiedRootFile(path));
       }
-    }
-    for dir in sort_and_remove_non_leaf_dirs(dirs) {
-      finder.pending_entries.push_back(PendingEntry::Dir(dir));
     }
     finder
   }
@@ -2015,48 +2011,60 @@ impl Iterator for PreloadDocumentFinder {
       }
     }
 
-    while let Some(entry) = self.pending_entries.pop_front() {
-      match entry {
-        PendingEntry::SpecifiedRootFile(file) => {
-          // since it was a file that was specified as a root url, only
-          // verify that it's valid
-          if let Some(specifier) = Self::get_valid_specifier(&file) {
-            return Some(specifier);
-          }
-        }
-        PendingEntry::Dir(dir_path) => {
-          if let Ok(read_dir) = fs::read_dir(&dir_path) {
-            self
-              .pending_entries
-              .push_back(PendingEntry::ReadDir(Box::new(read_dir)));
-          }
-        }
-        PendingEntry::ReadDir(mut entries) => {
-          while let Some(entry) = entries.next() {
-            self.entry_count += 1;
-
-            if self.hit_limit() {
-              self.pending_entries.clear(); // stop searching
-              return None;
+    // This first drains all the pending entries then adds the root dir entries
+    // one at a time to the pending entries before draining them. This is because
+    // we're traversing based on directory depth, so we want to search deeper
+    // directories first
+    while !self.pending_entries.is_empty() || !self.root_dir_entries.is_empty()
+    {
+      while let Some(entry) = self.pending_entries.pop_front() {
+        match entry {
+          PendingEntry::SpecifiedRootFile(file) => {
+            // since it was a file that was specified as a root url, only
+            // verify that it's valid
+            if let Some(specifier) = Self::get_valid_specifier(&file) {
+              return Some(specifier);
             }
+          }
+          PendingEntry::Dir(dir_path, file_patterns) => {
+            if self.visited_paths.insert(dir_path.clone()) {
+              if let Ok(read_dir) = fs::read_dir(&dir_path) {
+                self.pending_entries.push_back(PendingEntry::ReadDir(
+                  Box::new(read_dir),
+                  file_patterns,
+                ));
+              }
+            }
+          }
+          PendingEntry::ReadDir(mut entries, file_patterns) => {
+            while let Some(entry) = entries.next() {
+              self.entry_count += 1;
 
-            if let Ok(entry) = entry {
-              let path = entry.path();
-              if let Ok(file_type) = entry.file_type() {
-                if !self.disabled_paths.contains(&path)
-                  && !self.disabled_globs.matches_path(&path)
-                {
-                  if file_type.is_dir() && is_discoverable_dir(&path) {
-                    self
-                      .pending_entries
-                      .push_back(PendingEntry::Dir(path.to_path_buf()));
-                  } else if file_type.is_file() && is_discoverable_file(&path) {
-                    if let Some(specifier) = Self::get_valid_specifier(&path) {
-                      // restore the next entries for next time
-                      self
-                        .pending_entries
-                        .push_front(PendingEntry::ReadDir(entries));
-                      return Some(specifier);
+              if self.hit_limit() {
+                self.pending_entries.clear(); // stop searching
+                return None;
+              }
+
+              if let Ok(entry) = entry {
+                let path = entry.path();
+                if let Ok(file_type) = entry.file_type() {
+                  if file_patterns.matches_path(&path) {
+                    if file_type.is_dir() && is_discoverable_dir(&path) {
+                      self.pending_entries.push_back(PendingEntry::Dir(
+                        path.to_path_buf(),
+                        file_patterns.clone(),
+                      ));
+                    } else if file_type.is_file() && is_discoverable_file(&path)
+                    {
+                      if let Some(specifier) = Self::get_valid_specifier(&path)
+                      {
+                        // restore the next entries for next time
+                        self.pending_entries.push_front(PendingEntry::ReadDir(
+                          entries,
+                          file_patterns.clone(),
+                        ));
+                        return Some(specifier);
+                      }
                     }
                   }
                 }
@@ -2065,29 +2073,14 @@ impl Iterator for PreloadDocumentFinder {
           }
         }
       }
+
+      if let Some(entry) = self.root_dir_entries.pop() {
+        self.pending_entries.push_back(entry);
+      }
     }
 
     None
   }
-}
-
-/// Removes any directories that are a descendant of another directory in the collection.
-fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
-  if dirs.is_empty() {
-    return dirs;
-  }
-
-  dirs.sort();
-  if !dirs.is_empty() {
-    for i in (0..dirs.len() - 1).rev() {
-      let prev = &dirs[i + 1];
-      if prev.starts_with(&dirs[i]) {
-        dirs.remove(i + 1);
-      }
-    }
-  }
-
-  dirs
 }
 
 #[cfg(test)]
@@ -2434,30 +2427,5 @@ console.log(b, "hello deno");
       .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     }
-  }
-
-  #[test]
-  fn test_sort_and_remove_non_leaf_dirs() {
-    fn run_test(paths: Vec<&str>, expected_output: Vec<&str>) {
-      let paths = sort_and_remove_non_leaf_dirs(
-        paths.into_iter().map(PathBuf::from).collect(),
-      );
-      let dirs: Vec<_> =
-        paths.iter().map(|dir| dir.to_string_lossy()).collect();
-      assert_eq!(dirs, expected_output);
-    }
-
-    run_test(
-      vec![
-        "/test/asdf/test/asdf/",
-        "/test/asdf/test/asdf/test.ts",
-        "/test/asdf/",
-        "/test/asdf/",
-        "/testing/456/893/",
-        "/testing/456/893/test/",
-      ],
-      vec!["/test/asdf/", "/testing/456/893/"],
-    );
-    run_test(vec![], vec![]);
   }
 }

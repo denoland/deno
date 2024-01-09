@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 
@@ -44,8 +44,8 @@ const {
   PromisePrototypeThen,
   Symbol,
   TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
-  Uint8ArrayPrototype,
 } = primordials;
 
 const {
@@ -397,7 +397,7 @@ function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
   const stream = respBody.streamOrStatic;
   const body = stream.body;
 
-  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
+  if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
     op_http_set_response_body_bytes(req, body, status);
     return;

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { parse, stringify } from "node:querystring";
 
@@ -26,5 +26,26 @@ Deno.test({
       c: "true",
       d: ["foo", "bar"],
     });
+  },
+});
+
+// https://github.com/denoland/deno/issues/21734
+Deno.test({
+  name: "stringify options no encode",
+  fn() {
+    assertEquals(
+      stringify(
+        {
+          a: "hello",
+          b: 5,
+          c: true,
+          d: ["foo", "bar"],
+        },
+        "&",
+        "=",
+        {},
+      ),
+      "a=hello&b=5&c=true&d=foo&d=bar",
+    );
   },
 });

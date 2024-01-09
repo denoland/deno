@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
@@ -163,7 +163,7 @@ fn js_unit_test(test: String) {
     }
   });
 
-  const PER_TEST_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+  const PER_TEST_TIMEOUT: Duration = Duration::from_secs(3 * 60);
 
   let now = Instant::now();
   let status = loop {

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -537,6 +537,14 @@ delete Object.prototype.__proto__;
     getProjectVersion() {
       return ops.op_project_version();
     },
+    // @ts-ignore Undocumented method.
+    getModuleSpecifierCache() {
+      return moduleSpecifierCache;
+    },
+    // @ts-ignore Undocumented method.
+    getCachedExportInfoMap() {
+      return exportMapCache;
+    },
     getSourceFile(
       specifier,
       languageVersion,
@@ -765,6 +773,12 @@ delete Object.prototype.__proto__;
       return undefined;
     },
   };
+
+  // @ts-ignore Undocumented function.
+  const moduleSpecifierCache = ts.server.createModuleSpecifierCache(host);
+
+  // @ts-ignore Undocumented function.
+  const exportMapCache = ts.createCacheableExportInfoMap(host);
 
   // override the npm install @types package diagnostics to be deno specific
   ts.setLocalizedDiagnosticMessages((() => {

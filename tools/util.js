@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   dirname,
   fromFileUrl,
@@ -14,7 +14,7 @@ export { delay } from "../test_util/std/async/delay.ts";
 
 // [toolName] --version output
 const versions = {
-  "dlint": "dlint 0.51.0",
+  "dlint": "dlint 0.52.2",
 };
 
 const compressed = new Set(["ld64.lld", "rcodesign"]);
@@ -175,7 +175,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "c249f61eaed67db26c2934b195dc51e3ab91ae03";
+const commitId = "5f2097d8247c7fbe30ba227f894d70ae5c1524c7";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 

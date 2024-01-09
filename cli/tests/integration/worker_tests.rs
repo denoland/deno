@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 itest!(workers {
     args: "test --reload --location http://127.0.0.1:4545/ -A --unstable workers/test.ts",

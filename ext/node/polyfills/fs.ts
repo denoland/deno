@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   access,
   accessPromise,
@@ -18,6 +18,7 @@ import {
   copyFilePromise,
   copyFileSync,
 } from "ext:deno_node/_fs/_fs_copy.ts";
+import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.js";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
@@ -137,6 +138,7 @@ const {
 const promises = {
   access: accessPromise,
   copyFile: copyFilePromise,
+  cp: cpPromise,
   open: openPromise,
   opendir: opendirPromise,
   rename: renamePromise,
@@ -179,6 +181,8 @@ export default {
   constants,
   copyFile,
   copyFileSync,
+  cp,
+  cpSync,
   createReadStream,
   createWriteStream,
   Dir,
@@ -280,6 +284,8 @@ export {
   constants,
   copyFile,
   copyFileSync,
+  cp,
+  cpSync,
   createReadStream,
   createWriteStream,
   Dir,

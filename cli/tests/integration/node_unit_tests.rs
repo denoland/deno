@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
@@ -52,12 +52,14 @@ util::unit_test_factory!(
     assertion_error_test,
     buffer_test,
     child_process_test,
+    console_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
     crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_hash_test = crypto / crypto_hash_test,
     crypto_key_test = crypto / crypto_key_test,
     crypto_sign_test = crypto / crypto_sign_test,
     events_test,
+    dgram_test,
     fs_test,
     http_test,
     http2_test,

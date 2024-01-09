@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -392,6 +392,16 @@ fn add_export(
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
     // it's ok to be super strict here
+    if name.is_empty() {
+      return false;
+    }
+
+    if let Some(first) = name.chars().next() {
+      if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+      }
+    }
+
     name
       .chars()
       .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
@@ -479,7 +489,7 @@ mod tests {
     let mut temp_var_count = 0;
     let mut source = vec![];
 
-    let exports = vec!["static", "server", "app", "dashed-export"];
+    let exports = vec!["static", "server", "app", "dashed-export", "3d"];
     for export in exports {
       add_export(&mut source, export, "init", &mut temp_var_count);
     }
@@ -492,6 +502,8 @@ mod tests {
         "export const app = init;".to_string(),
         "const __deno_export_2__ = init;".to_string(),
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
+        "const __deno_export_3__ = init;".to_string(),
+        "export { __deno_export_3__ as \"3d\" };".to_string(),
       ]
     )
   }
