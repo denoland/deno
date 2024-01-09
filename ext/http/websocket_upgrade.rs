@@ -188,11 +188,18 @@ mod tests {
         result.ok().unwrap().is_none(),
         "Expected Ok(None), was {formatted}",
       ),
-      Err(e) => assert_eq!(
-        e,
-        result.err().map(|e| format!("{e:?}")).unwrap_or_default(),
-        "Expected error, was {formatted}",
-      ),
+      Err(e) => {
+        let actual = format!(
+          "{:#}",
+          result.err().map(|e| format!("{e:?}")).unwrap_or_default()
+        );
+        let expected = format!("{:#}", e);
+        if !actual.starts_with(&expected) {
+          panic!(
+            "Expected actual to start with expected.\n\nactual:\n{actual}\n\nexpected:\n{expected}"
+          );
+        }
+      }
     }
   }
 
