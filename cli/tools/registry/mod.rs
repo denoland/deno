@@ -690,7 +690,6 @@ async fn prepare_packages_for_publishing(
       roots,
     )
     .await?;
-    panic!("TEMP STOP - SUCCESS");
     let mut prepared_package_by_name = HashMap::with_capacity(1);
     let package = prepare_publish(&deno_json, import_map).await?;
     let package_name = package.package.clone();
@@ -714,7 +713,6 @@ async fn prepare_packages_for_publishing(
       .collect(),
   )
   .await?;
-  panic!("TEMP STOP - SUCCESS");
 
   let mut prepared_package_by_name =
     HashMap::with_capacity(workspace_config.members.len());
@@ -768,8 +766,8 @@ async fn build_and_check_graph_for_publish(
   log::info!("Checking fast check type graph for errors...");
   surface_fast_check_type_graph_errors(&graph)?;
   log::info!("Ensuring type checks...");
-  type_checker
-    .check(
+  let diagnostics = type_checker
+    .check_diagnostics(
       graph.clone(),
       CheckOptions {
         lib: cli_options.ts_type_lib_window(),
@@ -778,6 +776,17 @@ async fn build_and_check_graph_for_publish(
       },
     )
     .await?;
+  if !diagnostics.is_empty() {
+    bail!(
+      concat!(
+        "{:#}\n\n",
+        "You may have discovered a bug in Deno's fast check implementation. ",
+        "Fast check is still early days and we would appreciate if you log a ",
+        "bug if you believe this is one: https://github.com/denoland/deno/issues/"
+      ),
+      diagnostics
+    );
+  }
   Ok(graph)
 }
 
@@ -797,10 +806,7 @@ pub async fn publish(
       Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
     });
 
-  let initial_cwd =
-    std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-
-  let directory_path = initial_cwd.join(publish_flags.directory);
+  let directory_path = cli_factory.cli_options().initial_cwd();
   // TODO: doesn't handle jsonc
   let deno_json_path = directory_path.join("deno.json");
   let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {

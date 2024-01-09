@@ -124,7 +124,7 @@ pub fn build_publish_order_graph(
   graph: &ModuleGraph,
   roots: &[MemberRoots],
 ) -> Result<PublishOrderGraph, AnyError> {
-  let packages = build_pkg_deps(&graph, roots);
+  let packages = build_pkg_deps(graph, roots);
   Ok(build_publish_order_graph_from_pkgs_deps(packages))
 }
 

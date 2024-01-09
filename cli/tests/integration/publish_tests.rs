@@ -21,15 +21,19 @@ itest!(no_token {
 });
 
 itest!(missing_deno_json {
-  args: "publish --token 'sadfasdf' $TESTDATA/publish/missing_deno_json",
+  args: "publish --token 'sadfasdf'",
   output: "publish/missing_deno_json.out",
+  cwd: Some("publish/missing_deno_json"),
+  copy_temp_dir: Some("publish/missing_deno_json"),
   exit_code: 1,
   temp_cwd: true,
 });
 
 itest!(successful {
-  args: "publish --token 'sadfasdf' $TESTDATA/publish/successful",
+  args: "publish --token 'sadfasdf'",
   output: "publish/successful.out",
+  cwd: Some("publish/successful"),
+  copy_temp_dir: Some("publish/successful"),
   envs: env_vars_for_registry(),
   http_server: true,
   temp_cwd: true,
@@ -43,7 +47,7 @@ fn ignores_directories() {
     "name": "@foo/bar",
     "version": "1.0.0",
     "exclude": [ "ignore" ],
-    "exports": "main_included.ts"
+    "exports": "./main_included.ts"
   }));
 
   let ignored_dirs = vec![
@@ -68,7 +72,6 @@ fn ignores_directories() {
     .arg("--log-level=debug")
     .arg("--token")
     .arg("sadfasdf")
-    .arg(temp_dir)
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();

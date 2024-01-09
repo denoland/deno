@@ -490,9 +490,6 @@ fn op_load(
             .fast_check_module()
             .map(|m| &*m.source)
             .unwrap_or(&*module.source);
-          // eprintln!("### {} ###", module.specifier);
-          // eprintln!("{}", source);
-          // eprintln!("HAS FAST CHECK: {}", module.fast_check_module().is_some());
           Some(Cow::Borrowed(source))
         }
         Module::Json(module) => {

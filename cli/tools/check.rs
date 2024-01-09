@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -25,6 +24,7 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
+use crate::tsc::Diagnostics;
 use crate::version;
 
 /// Options for performing a check of a module graph. Note that the decision to
@@ -70,6 +70,23 @@ impl TypeChecker {
     graph: Arc<ModuleGraph>,
     options: CheckOptions,
   ) -> Result<(), AnyError> {
+    let diagnostics = self.check_diagnostics(graph, options).await?;
+    if diagnostics.is_empty() {
+      Ok(())
+    } else {
+      Err(diagnostics.into())
+    }
+  }
+
+  /// Type check the module graph returning its diagnostics.
+  ///
+  /// It is expected that it is determined if a check and/or emit is validated
+  /// before the function is called.
+  pub async fn check_diagnostics(
+    &self,
+    graph: Arc<ModuleGraph>,
+    options: CheckOptions,
+  ) -> Result<Diagnostics, AnyError> {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
@@ -102,7 +119,7 @@ impl TypeChecker {
           type_check_mode,
           &ts_config,
         ) {
-          CheckHashResult::NoFiles => return Ok(()),
+          CheckHashResult::NoFiles => return Ok(Default::default()),
           CheckHashResult::Hash(hash) => Some(hash),
         }
       }
@@ -113,7 +130,7 @@ impl TypeChecker {
     if !options.reload {
       if let Some(check_hash) = maybe_check_hash {
         if cache.has_check_hash(check_hash) {
-          return Ok(());
+          return Ok(Default::default());
         }
       }
     }
@@ -191,11 +208,7 @@ impl TypeChecker {
 
     log::debug!("{}", response.stats);
 
-    if diagnostics.is_empty() {
-      Ok(())
-    } else {
-      Err(diagnostics.into())
-    }
+    Ok(diagnostics)
   }
 }
 
@@ -260,7 +273,12 @@ fn get_check_hash(
         }
 
         hasher.write_str(module.specifier.as_str());
-        hasher.write_str(&module.source);
+        hasher.write_str(
+          module
+            .fast_check_module()
+            .map(|s| s.source.as_ref())
+            .unwrap_or(&module.source),
+        );
       }
       Module::Node(_) => {
         // the @types/node package will be in the resolved
