@@ -159,18 +159,26 @@ function createCanvasContext(options) {
 
 // External webgpu surfaces
 
-function presentGPUCanvasContext(ctx) {
-  ctx[_present]();
+// TODO: This will extend `OffscreenCanvas` when we add it.
+class UnsafeWindowSurface {
+  #ctx;
+  #surfaceRid;
+
+  constructor(system, win, display) {
+    this.#surfaceRid = ops.op_webgpu_surface_create(system, win, display);
+  }
+
+  getContext(context = "webgpu") {
+    if (context !== "webgpu") {
+      throw new TypeError("Only 'webgpu' context is supported.");
+    }
+    this.#ctx = createCanvasContext({ surfaceRid: this.#surfaceRid });
+    return this.#ctx;
+  }
+
+  present() {
+    this.#ctx[_present]();
+  }
 }
 
-function createWindowSurface(system, p1, p2) {
-  const surfaceRid = ops.op_webgpu_surface_create(system, p1, p2);
-  return createCanvasContext({ surfaceRid });
-}
-
-export {
-  createCanvasContext,
-  createWindowSurface,
-  GPUCanvasContext,
-  presentGPUCanvasContext,
-};
+export { GPUCanvasContext, UnsafeWindowSurface };

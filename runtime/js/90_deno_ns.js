@@ -219,8 +219,7 @@ denoNsUnstableById[unstableIds.net] = {
 // denoNsUnstableById[unstableIds.unsafeProto] = {}
 
 denoNsUnstableById[unstableIds.webgpu] = {
-  createWindowSurface: webgpuSurface.createWindowSurface,
-  presentGPUCanvasContext: webgpuSurface.presentGPUCanvasContext,
+  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
 };
 
 // denoNsUnstableById[unstableIds.workerOptions] = {}
@@ -241,6 +240,7 @@ const denoNsUnstable = {
   UnsafePointer: ffi.UnsafePointer,
   UnsafePointerView: ffi.UnsafePointerView,
   UnsafeFnPointer: ffi.UnsafeFnPointer,
+  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
   flock: fs.flock,
   flockSync: fs.flockSync,
   funlock: fs.funlock,
