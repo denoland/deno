@@ -1,0 +1,4 @@
+Checking fast check type graph for errors...
+Missing explicit return type in the public API.
+    at file:///[WILDCARD]/publish/invalid_fast_check/mod.ts:2:17
+error: Had 1 fast check error.

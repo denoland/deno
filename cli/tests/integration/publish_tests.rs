@@ -29,6 +29,15 @@ itest!(missing_deno_json {
   temp_cwd: true,
 });
 
+itest!(invalid_fast_check {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/invalid_fast_check.out",
+  cwd: Some("publish/invalid_fast_check"),
+  copy_temp_dir: Some("publish/invalid_fast_check"),
+  exit_code: 1,
+  temp_cwd: true,
+});
+
 itest!(successful {
   args: "publish --token 'sadfasdf'",
   output: "publish/successful.out",
