@@ -7,3 +7,4 @@ export class Foo {
 // this won't be type checked against because the subset
 // type graph will ignore it
 const invalidTypeCheck: number = "";
+console.log(invalidTypeCheck);
