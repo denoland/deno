@@ -1,0 +1,13 @@
+Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph/meta.json
+Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/meta.json
+Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph/0.1.0_meta.json
+Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0_meta.json
+[UNORDERED_START]
+Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph/0.1.0/mod.ts
+Download http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0/mod.ts
+[UNORDERED_END]
+Check file:///V:/deno/cli/tests/testdata/jsr/subset_type_graph/main.ts
+error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+const invalidTypeCheck: number = "";
+      ~~~~~~~~~~~~~~~~
+    at http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0/mod.ts:9:7
