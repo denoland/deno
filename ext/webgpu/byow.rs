@@ -115,7 +115,6 @@ fn raw_window(
   let win_handle = {
     let mut handle = raw_window_handle::XlibWindowHandle::empty();
     handle.window = window as *mut c_void as _;
-    handle.display = display as *mut c_void;
 
     raw_window_handle::RawWindowHandle::Xlib(handle)
   };
