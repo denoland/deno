@@ -34,6 +34,35 @@ pub struct FileFlags {
   pub include: Vec<PathBuf>,
 }
 
+impl FileFlags {
+  pub fn with_absolute_paths(self, base: &Path) -> Self {
+    fn to_absolute_path(path: PathBuf, base: &Path) -> PathBuf {
+      // todo(dsherret): don't store URLs in PathBufs
+      if path.starts_with("http:")
+        || path.starts_with("https:")
+        || path.starts_with("file:")
+      {
+        path
+      } else {
+        base.join(path)
+      }
+    }
+
+    Self {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| to_absolute_path(p, base))
+        .collect(),
+      ignore: self
+        .ignore
+        .into_iter()
+        .map(|p| to_absolute_path(p, base))
+        .collect(),
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
@@ -328,7 +357,6 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
-  // TODO:
   Publish(PublishFlags),
 }
 
@@ -913,8 +941,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
-      // TODO:
-      "do-not-use-publish" => publish_parse(&mut flags, &mut m),
+      "publish" => publish_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
   } else {
@@ -2343,9 +2370,9 @@ Remote modules and multiple modules may also be specified:
 }
 
 fn publish_subcommand() -> Command {
-  Command::new("do-not-use-publish")
+  Command::new("publish")
     .hide(true)
-    .about("Publish a package to the Deno registry")
+    .about("Unstable preview feature: Publish a package")
     // TODO: .long_about()
     .defer(|cmd| {
       cmd.arg(
@@ -2353,6 +2380,7 @@ fn publish_subcommand() -> Command {
           .help(
             "The directory to the package, or workspace of packages to publish",
           )
+          .default_missing_value(".")
           .value_hint(ValueHint::DirPath)
           .required(true),
       )
@@ -2810,9 +2838,7 @@ fn inspect_args(app: Command) -> Command {
 
 static IMPORT_MAP_HELP: &str = concat!(
   "Load import map file from local file or remote URL.
-Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/linking_to_external_code/import_maps
+Docs: https://docs.deno.com/runtime/manual/basics/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
 );

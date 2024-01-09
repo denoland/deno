@@ -13,10 +13,8 @@ import {
 const {
   Uint8Array,
   ArrayPrototypePush,
-  MathMin,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
-  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 
@@ -113,26 +111,18 @@ function write(rid, data) {
 
 const READ_PER_ITER = 64 * 1024; // 64kb
 
-function readAll(r) {
-  return readAllInner(r);
-}
-async function readAllInner(r, options) {
+async function readAll(r) {
   const buffers = [];
-  const signal = options?.signal ?? null;
+
   while (true) {
-    signal?.throwIfAborted();
     const buf = new Uint8Array(READ_PER_ITER);
     const read = await r.read(buf);
     if (typeof read == "number") {
-      ArrayPrototypePush(
-        buffers,
-        new Uint8Array(TypedArrayPrototypeGetBuffer(buf), 0, read),
-      );
+      ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buf, 0, read));
     } else {
       break;
     }
   }
-  signal?.throwIfAborted();
 
   return concatBuffers(buffers);
 }
@@ -169,56 +159,6 @@ function concatBuffers(buffers) {
   }
 
   return contents;
-}
-
-function readAllSyncSized(r, size) {
-  const buf = new Uint8Array(size + 1); // 1B to detect extended files
-  let cursor = 0;
-
-  while (cursor < size) {
-    const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
-    const slice = TypedArrayPrototypeSubarray(buf, cursor, sliceEnd);
-    const read = r.readSync(slice);
-    if (typeof read == "number") {
-      cursor += read;
-    } else {
-      break;
-    }
-  }
-
-  // Handle truncated or extended files during read
-  if (cursor > size) {
-    // Read remaining and concat
-    return concatBuffers([buf, readAllSync(r)]);
-  } else { // cursor == size
-    return TypedArrayPrototypeSubarray(buf, 0, cursor);
-  }
-}
-
-async function readAllInnerSized(r, size, options) {
-  const buf = new Uint8Array(size + 1); // 1B to detect extended files
-  let cursor = 0;
-  const signal = options?.signal ?? null;
-  while (cursor < size) {
-    signal?.throwIfAborted();
-    const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
-    const slice = TypedArrayPrototypeSubarray(buf, cursor, sliceEnd);
-    const read = await r.read(slice);
-    if (typeof read == "number") {
-      cursor += read;
-    } else {
-      break;
-    }
-  }
-  signal?.throwIfAborted();
-
-  // Handle truncated or extended files during read
-  if (cursor > size) {
-    // Read remaining and concat
-    return concatBuffers([buf, await readAllInner(r, options)]);
-  } else {
-    return TypedArrayPrototypeSubarray(buf, 0, cursor);
-  }
 }
 
 class Stdin {
@@ -326,10 +266,7 @@ export {
   iterSync,
   read,
   readAll,
-  readAllInner,
-  readAllInnerSized,
   readAllSync,
-  readAllSyncSized,
   readSync,
   SeekMode,
   stderr,
