@@ -33,7 +33,6 @@ use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::Module;
-use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -418,7 +417,7 @@ impl ModuleGraphBuilder {
           .options
           .maybe_config_file()
           .as_ref()
-          .and_then(|c| match config_to_workspace_member(&c) {
+          .and_then(|c| match config_to_workspace_member(c) {
             Ok(m) => Some(vec![m]),
             Err(e) => {
               log::debug!("Deno config was not a package: {:#}", e);

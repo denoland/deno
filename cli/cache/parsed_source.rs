@@ -10,6 +10,7 @@ use deno_core::parking_lot::Mutex;
 use deno_graph::CapturingModuleParser;
 use deno_graph::ModuleParseOptions;
 use deno_graph::ModuleParser;
+use deno_graph::ParseOptions;
 
 #[derive(Default)]
 pub struct ParsedSourceCache {
@@ -38,7 +39,7 @@ impl ParsedSourceCache {
   ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
     let parser = self.as_capturing_parser();
     // this will conditionally parse because it's using a CapturingModuleParser
-    parser.parse_module(ModuleParseOptions {
+    parser.parse_module(ParseOptions {
       specifier,
       source,
       media_type,
@@ -56,10 +57,6 @@ impl ParsedSourceCache {
   /// if it exists, or else parse.
   pub fn as_capturing_parser(&self) -> CapturingModuleParser {
     CapturingModuleParser::new(None, self)
-  }
-
-  pub fn as_store(self: &Arc<Self>) -> Arc<dyn deno_graph::ParsedSourceStore> {
-    self.clone()
   }
 }
 

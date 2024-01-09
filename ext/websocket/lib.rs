@@ -562,7 +562,7 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_ws_send_binary(
   state: &mut OpState,
   #[smi] rid: ResourceId,

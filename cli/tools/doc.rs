@@ -10,7 +10,6 @@ use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use crate::util::glob::FilePatterns;
