@@ -10,7 +10,8 @@ import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const { Symbol, SymbolFor, ObjectPrototypeIsPrototypeOf } = primordials;
+const { Symbol, SymbolFor, ObjectPrototypeIsPrototypeOf, TypeError } =
+  primordials;
 import { loadWebGPU, webgpu } from "ext:deno_webgpu/00_init.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
@@ -159,7 +160,7 @@ function createCanvasContext(options) {
 
 // External webgpu surfaces
 
-// TODO: This will extend `OffscreenCanvas` when we add it.
+// TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
 class UnsafeWindowSurface {
   #ctx;
   #surfaceRid;
