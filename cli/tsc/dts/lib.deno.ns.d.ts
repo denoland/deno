@@ -5285,7 +5285,9 @@ declare namespace Deno {
   /** The event yielded from an {@linkcode HttpConn} which represents an HTTP
    * request from a remote client.
    *
-   * @category HTTP Server */
+   * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
+   */
   export interface RequestEvent {
     /** The request from the client in the form of the web platform
      * {@linkcode Request}. */
@@ -5304,7 +5306,9 @@ declare namespace Deno {
    * yields up {@linkcode RequestEvent} events, representing individual
    * requests on the HTTP server connection.
    *
-   * @category HTTP Server */
+   * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
+   */
   export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
      * need to be aware of this identifier. */
@@ -5369,6 +5373,7 @@ declare namespace Deno {
    * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
    */
   export function serveHttp(conn: Conn): HttpConn;
 
