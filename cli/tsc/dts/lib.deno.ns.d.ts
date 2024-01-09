@@ -3933,9 +3933,10 @@ declare namespace Deno {
   ): FsWatcher;
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Options which can be used with {@linkcode Deno.run}.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -3994,13 +3995,14 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
    *
    * If `success` is `true`, then `code` will be `0`, but if `success` is
    * `false`, the sub-process exit code will be set in `code`.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export type ProcessStatus =
@@ -4016,10 +4018,11 @@ declare namespace Deno {
     };
 
   /**
-   * * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export class Process<T extends RunOptions = RunOptions> {
@@ -4175,8 +4178,6 @@ declare namespace Deno {
   ): void;
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
@@ -4221,6 +4222,9 @@ declare namespace Deno {
    * {@linkcode Deno.Process}.
    *
    * Requires `allow-run` permission.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @tags allow-run
    * @category Sub Process
