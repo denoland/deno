@@ -8,7 +8,6 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
 use deno_graph::CapturingModuleParser;
-use deno_graph::ModuleParseOptions;
 use deno_graph::ModuleParser;
 use deno_graph::ParseOptions;
 
