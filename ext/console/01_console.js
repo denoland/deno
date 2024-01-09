@@ -1497,7 +1497,6 @@ function inspectError(value, ctx) {
       const splitErrorStr = StringPrototypeSplit(errorStr, "\n");
       for (let j = 0; j < splitErrorStr.length; j++) {
         finalMessage += "\n" + StringPrototypeRepeat(" ", 4) + splitErrorStr[j];
-
       }
     }
   }
