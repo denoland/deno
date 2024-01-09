@@ -9,6 +9,8 @@ use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::PathOrPatternSet;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
@@ -371,9 +373,23 @@ fn range_to_src_line_index(
 
 fn collect_coverages(
   files: FileFlags,
+  initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
+  let files = files.with_absolute_paths(initial_cwd);
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
-  let file_paths = FileCollector::new(|file_path| {
+  let file_patterns = FilePatterns {
+    include: Some({
+      let files = if files.include.is_empty() {
+        vec![initial_cwd.to_path_buf()]
+      } else {
+        files.include
+      };
+      PathOrPatternSet::from_absolute_paths(files)?
+    }),
+    exclude: PathOrPatternSet::from_absolute_paths(files.ignore)
+      .context("Invalid ignore pattern.")?,
+  };
+  let file_paths = FileCollector::new(|file_path, _| {
     file_path
       .extension()
       .map(|ext| ext == "json")
@@ -382,16 +398,13 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .ignore_vendor_folder()
-  .add_ignore_paths(&files.ignore)
-  .collect_files(if files.include.is_empty() {
-    None
-  } else {
-    Some(&files.include)
-  })?;
+  .collect_file_patterns(file_patterns)?;
 
   for file_path in file_paths {
-    let json = fs::read_to_string(file_path.as_path())?;
-    let new_coverage: cdp::ScriptCoverage = serde_json::from_str(&json)?;
+    let new_coverage = fs::read_to_string(file_path.as_path())
+      .map_err(AnyError::from)
+      .and_then(|json| serde_json::from_str(&json).map_err(AnyError::from))
+      .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
     coverages.push(new_coverage);
   }
 
@@ -451,7 +464,8 @@ pub async fn cover_files(
 
   // Use the first include path as the default output path.
   let coverage_root = coverage_flags.files.include[0].clone();
-  let script_coverages = collect_coverages(coverage_flags.files)?;
+  let script_coverages =
+    collect_coverages(coverage_flags.files, cli_options.initial_cwd())?;
   if script_coverages.is_empty() {
     return Err(generic_error("No coverage files found"));
   }
