@@ -1,38 +1,36 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // v8 builtin that's close to the upper bound non-NOPs
 Deno.bench("date_now", { n: 5e5 }, () => {
   Date.now();
 });
 
+const { op_void_sync, op_void_async, op_add } = Deno[Deno.internal].core
+  .ensureFastOps();
+
 // Fast API calls
 {
-  const { op_add } = Deno[Deno.internal].core.ops;
-  // deno-lint-ignore no-inner-declarations
-  function add(a, b) {
-    return op_add(a, b);
-  }
   // deno-lint-ignore no-inner-declarations
   function addJS(a, b) {
     return a + b;
   }
-  Deno.bench("op_add", () => add(1, 2));
+  Deno.bench("op_add", () => op_add(1, 2));
   Deno.bench("add_js", () => addJS(1, 2));
 }
 
-const { op_void_sync } = Deno[Deno.internal].core.ops;
-function sync() {
-  return op_void_sync();
-}
-sync(); // Warmup
-
 // Void ops measure op-overhead
-Deno.bench("op_void_sync", () => sync());
+Deno.bench("op_void_sync", () => op_void_sync());
 
 Deno.bench(
   "op_void_async",
   { n: 1e6 },
-  () => Deno[Deno.internal].core.opAsync("op_void_async"),
+  () => op_void_async(),
+);
+
+Deno.bench(
+  "op_void_await_async",
+  { n: 1e6 },
+  async () => await op_void_async(),
 );
 
 // A very lightweight op, that should be highly optimizable

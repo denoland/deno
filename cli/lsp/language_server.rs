@@ -1,5 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use base64::Engine;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -30,6 +31,9 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
@@ -177,6 +181,44 @@ pub struct StateSnapshot {
   pub npm: Option<StateNpmSnapshot>,
 }
 
+type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
+
+/// Used to queue tasks from inside of the language server lock that must be
+/// commenced from outside of it. For example, queue a request to cache a module
+/// after having loaded a config file which references it.
+#[derive(Debug)]
+struct LanguageServerTaskQueue {
+  task_tx: UnboundedSender<LanguageServerTaskFn>,
+  /// This is moved out to its own task after initializing.
+  task_rx: Option<UnboundedReceiver<LanguageServerTaskFn>>,
+}
+
+impl Default for LanguageServerTaskQueue {
+  fn default() -> Self {
+    let (task_tx, task_rx) = unbounded_channel();
+    Self {
+      task_tx,
+      task_rx: Some(task_rx),
+    }
+  }
+}
+
+impl LanguageServerTaskQueue {
+  fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
+    self.task_tx.send(task_fn).is_ok()
+  }
+
+  /// Panics if called more than once.
+  fn start(&mut self, ls: LanguageServer) {
+    let mut task_rx = self.task_rx.take().unwrap();
+    spawn(async move {
+      while let Some(task_fn) = task_rx.recv().await {
+        task_fn(ls.clone());
+      }
+    });
+  }
+}
+
 #[derive(Debug)]
 pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
@@ -196,6 +238,7 @@ pub struct Inner {
   /// on disk or "open" within the client.
   pub documents: Documents,
   http_client: Arc<HttpClient>,
+  task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
   module_registries: ModuleRegistry,
   /// The path to the module registries cache
@@ -500,6 +543,7 @@ impl Inner {
       maybe_import_map_uri: None,
       maybe_package_json: None,
       fmt_options: Default::default(),
+      task_queue: Default::default(),
       lint_options: Default::default(),
       maybe_testing_server: None,
       module_registries,
@@ -1002,10 +1046,12 @@ impl Inner {
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
     if let Some(config_file) = self.get_config_file()? {
+      // this doesn't need to be an actual directory because flags is specified as `None`
+      let dummy_args_cwd = PathBuf::from("/");
       let lint_options = config_file
         .to_lint_config()
         .and_then(|maybe_lint_config| {
-          LintOptions::resolve(maybe_lint_config, None)
+          LintOptions::resolve(maybe_lint_config, None, &dummy_args_cwd)
         })
         .map_err(|err| {
           anyhow!("Unable to update lint configuration: {:?}", err)
@@ -1013,7 +1059,7 @@ impl Inner {
       let fmt_options = config_file
         .to_fmt_config()
         .and_then(|maybe_fmt_config| {
-          FmtOptions::resolve(maybe_fmt_config, None)
+          FmtOptions::resolve(maybe_fmt_config, None, &dummy_args_cwd)
         })
         .map_err(|err| {
           anyhow!("Unable to update formatter configuration: {:?}", err)
@@ -1023,6 +1069,41 @@ impl Inner {
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
       self.recreate_http_client_and_dependents().await?;
+      if let Some(config_file) = self.config.maybe_config_file() {
+        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
+          if let Some(compiler_options_obj) = compiler_options.as_object() {
+            if let Some(jsx_import_source) =
+              compiler_options_obj.get("jsxImportSource")
+            {
+              if let Some(jsx_import_source) = jsx_import_source.as_str() {
+                let cache_params = lsp_custom::CacheParams {
+                  referrer: TextDocumentIdentifier {
+                    uri: config_file.specifier.clone(),
+                  },
+                  uris: vec![TextDocumentIdentifier {
+                    uri: Url::parse(&format!(
+                      "data:application/typescript;base64,{}",
+                      base64::engine::general_purpose::STANDARD.encode(
+                        format!("import '{jsx_import_source}/jsx-runtime';")
+                      )
+                    ))
+                    .unwrap(),
+                  }],
+                };
+                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+                  spawn(async move {
+                    if let Err(err) =
+                      ls.cache_request(Some(json!(cache_params))).await
+                    {
+                      lsp_warn!("{}", err);
+                    }
+                  });
+                }));
+              }
+            }
+          }
+        }
+      }
     }
 
     Ok(())
@@ -1346,6 +1427,7 @@ impl Inner {
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
+          self.ts_server.increment_project_version();
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1390,6 +1472,7 @@ impl Inner {
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
+      self.ts_server.increment_project_version();
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1442,6 +1525,7 @@ impl Inner {
     self.refresh_documents_config().await;
 
     self.diagnostics_server.invalidate_all();
+    self.ts_server.increment_project_version();
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -3254,9 +3338,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
-    }
-
-    lsp_log!("Server ready.");
+      ls.task_queue.start(self.clone());
+    };
 
     if upgrade_check_enabled() {
       // spawn to avoid lsp send/sync requirement, but also just
@@ -3279,6 +3362,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
         }
       });
     }
+
+    lsp_log!("Server ready.");
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -3303,6 +3388,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);
       inner.diagnostics_server.invalidate(&specifiers);
+      inner.ts_server.increment_project_version();
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }
@@ -3393,6 +3479,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
+      ls.ts_server.increment_project_version();
       ls.send_diagnostics_update();
     }
     performance.measure(mark);
@@ -3591,10 +3678,6 @@ impl Inner {
     let referrer = self
       .url_map
       .normalize_url(&params.referrer.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&referrer) {
-      return Ok(None);
-    }
-
     let mark = self.performance.mark_with_args("lsp.cache", &params);
     let roots = if !params.uris.is_empty() {
       params

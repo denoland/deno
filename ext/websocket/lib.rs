@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::stream::WebSocketStream;
 use bytes::Bytes;
 use deno_core::anyhow::bail;
@@ -562,7 +562,7 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_ws_send_binary(
   state: &mut OpState,
   #[smi] rid: ResourceId,

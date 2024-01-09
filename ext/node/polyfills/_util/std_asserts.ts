@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // vendored from std/assert/mod.ts
 
 import { primordials } from "ext:core/mod.js";
@@ -340,7 +340,6 @@ export function assertNotStrictEquals<T>(
  * then throw. */
 export function assertMatch(
   actual: string,
-  // deno-lint-ignore prefer-primordials
   expected: RegExp,
   msg?: string,
 ) {
@@ -356,7 +355,6 @@ export function assertMatch(
  * then throw. */
 export function assertNotMatch(
   actual: string,
-  // deno-lint-ignore prefer-primordials
   expected: RegExp,
   msg?: string,
 ) {

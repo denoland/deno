@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
@@ -27,6 +27,9 @@ const {
   SymbolIterator,
   TypeError,
 } = primordials;
+const {
+  isNativeError,
+} = core;
 import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
@@ -39,7 +42,6 @@ import {
   inspectArgs,
   quoteString,
   setNoColorFn,
-  wrapConsole,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
@@ -53,14 +55,18 @@ import {
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import {
+  unstableForWindowOrWorkerGlobalScope,
+  windowOrWorkerGlobalScope,
+} from "ext:runtime/98_global_scope_shared.js";
 import {
   mainRuntimeGlobalProperties,
   memoizeLazy,
-  unstableForWindowOrWorkerGlobalScope,
-  windowOrWorkerGlobalScope,
+} from "ext:runtime/98_global_scope_window.js";
+import {
   workerRuntimeGlobalProperties,
-} from "ext:runtime/98_global_scope.js";
+} from "ext:runtime/98_global_scope_worker.js";
 import { SymbolAsyncDispose, SymbolDispose } from "ext:deno_web/00_infra.js";
 
 // deno-lint-ignore prefer-primordials
@@ -236,7 +242,10 @@ const opPpid = memoizeLazy(() => ops.op_ppid());
 setNoColorFn(() => ops.op_bootstrap_no_color() || !ops.op_bootstrap_is_tty());
 
 function formatException(error) {
-  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
+  if (
+    isNativeError(error) ||
+    ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)
+  ) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
@@ -480,9 +489,8 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectSetPrototypeOf(globalThis, Window.prototype);
 
   if (inspectFlag) {
-    const consoleFromV8 = core.console;
     const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
+    core.wrapConsole(consoleFromDeno, core.v8Console);
   }
 
   event.setEventTargetData(globalThis);
@@ -574,8 +582,6 @@ function bootstrapWorkerRuntime(
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
-  const consoleFromV8 = globalThis.Deno.core.console;
-
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
@@ -603,7 +609,7 @@ function bootstrapWorkerRuntime(
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
   const consoleFromDeno = globalThis.console;
-  wrapConsole(consoleFromDeno, consoleFromV8);
+  core.wrapConsole(consoleFromDeno, core.v8Console);
 
   event.setEventTargetData(globalThis);
   event.saveGlobalThisReference(globalThis);

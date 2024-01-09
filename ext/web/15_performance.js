@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -19,7 +19,7 @@ import { structuredClone } from "ext:deno_web/02_structured_clone.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { EventTarget } from "ext:deno_web/02_event.js";
 import { opNow } from "ext:deno_web/02_timers.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -128,6 +128,19 @@ impl TestContextBuilder {
   pub fn cwd(mut self, cwd: impl AsRef<str>) -> Self {
     self.cwd = Some(cwd.as_ref().to_string());
     self
+  }
+
+  pub fn envs<I, K, V>(self, vars: I) -> Self
+  where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+  {
+    let mut this = self;
+    for (key, value) in vars {
+      this = this.env(key, value);
+    }
+    this
   }
 
   pub fn env(mut self, key: impl AsRef<str>, value: impl AsRef<str>) -> Self {

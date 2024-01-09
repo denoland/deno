@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
 use crate::args::DocFlags;
@@ -12,12 +12,13 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
-use crate::util::glob::expand_globs;
+use crate::util::fs::collect_specifiers;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultParsedSourceStore;
@@ -100,19 +101,28 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
-      let expanded_globs =
-        expand_globs(source_files.iter().map(PathBuf::from).collect())?;
-      let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
-        expanded_globs
-          .iter()
-          .map(|source_file| {
-            Ok(resolve_url_or_path(
-              &source_file.to_string_lossy(),
-              cli_options.initial_cwd(),
-            )?)
-          })
-          .collect();
-      let module_specifiers = module_specifiers?;
+      let module_specifiers = collect_specifiers(
+        FilePatterns {
+          include: Some(PathOrPatternSet::from_absolute_paths(
+            source_files
+              .iter()
+              .map(|p| {
+                if p.starts_with("https:")
+                  || p.starts_with("http:")
+                  || p.starts_with("file:")
+                {
+                  // todo(dsherret): don't store URLs in PathBufs
+                  PathBuf::from(p)
+                } else {
+                  cli_options.initial_cwd().join(p)
+                }
+              })
+              .collect(),
+          )?),
+          exclude: Default::default(),
+        },
+        |_, _| true,
+      )?;
       let mut loader = module_graph_builder.create_graph_loader();
       let graph = module_graph_builder
         .create_graph_with_options(CreateGraphOptions {
@@ -153,8 +163,26 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     }
   };
 
-  if let Some(html_options) = doc_flags.html {
-    generate_docs_directory(&doc_nodes_by_url, html_options)
+  if let Some(html_options) = &doc_flags.html {
+    let deno_ns = if doc_flags.source_files != DocSourceFileFlag::Builtin {
+      let deno_ns = generate_doc_nodes_for_builtin_types(
+        doc_flags.clone(),
+        cli_options,
+        capturing_parser,
+        &analyzer,
+      )
+      .await?;
+      let (_, deno_ns) = deno_ns.first().unwrap();
+
+      let deno_ns_symbols =
+        deno_doc::html::compute_namespaced_symbols(deno_ns, &[]);
+
+      Some(deno_ns_symbols)
+    } else {
+      None
+    };
+
+    generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
       .boxed_local()
       .await
   } else {
@@ -178,19 +206,70 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   }
 }
 
+struct DocResolver {}
+
+impl deno_doc::html::HrefResolver for DocResolver {
+  fn resolve_global_symbol(&self, symbol: &[String], _context: &str) -> String {
+    format!(
+      "https://deno.land/api@{}?s={}",
+      env!("CARGO_PKG_VERSION"),
+      symbol.join(".")
+    )
+  }
+
+  fn resolve_import_href(
+    &self,
+    symbol: &[String],
+    src: &str,
+  ) -> Option<String> {
+    let mut url = ModuleSpecifier::parse(src).ok()?;
+
+    if url.domain() == Some("deno.land") {
+      url.set_query(Some(&format!("s={}", symbol.join("."))));
+      return Some(url.to_string());
+    }
+
+    None
+  }
+
+  fn resolve_usage(
+    &self,
+    _current_specifier: &ModuleSpecifier,
+    current_file: &str,
+  ) -> String {
+    current_file.to_string()
+  }
+
+  fn resolve_source(&self, location: &deno_doc::Location) -> String {
+    location.filename.clone()
+  }
+}
+
 async fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
-  html_options: DocHtmlFlag,
+  html_options: &DocHtmlFlag,
+  deno_ns: Option<std::collections::HashSet<Vec<String>>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
 
   let options = deno_doc::html::GenerateOptions {
-    package_name: Some(html_options.name),
+    package_name: Some(html_options.name.to_owned()),
     main_entrypoint: None,
-    global_symbols: Default::default(),
-    global_symbol_href_resolver: Rc::new(|_, _| String::new()),
-    url_resolver: Rc::new(deno_doc::html::default_url_resolver),
+    global_symbols: deno_doc::html::NamespacedGlobalSymbols::new(
+      deno_ns
+        .map(|deno_ns| {
+          deno_ns
+            .into_iter()
+            .map(|symbol| (symbol, "deno".to_string()))
+            .collect()
+        })
+        .unwrap_or_default(),
+    ),
+    rewrite_map: None,
+    hide_module_doc_title: false,
+    href_resolver: Rc::new(DocResolver {}),
+    sidebar_flatten_namespaces: false,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)

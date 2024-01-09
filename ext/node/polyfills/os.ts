@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -31,6 +31,8 @@ import { ERR_OS_NO_HOMEDIR } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
+
+const ops = core.ops;
 
 export const constants = os;
 
@@ -127,21 +129,11 @@ export function arch(): string {
 (type as any)[Symbol.toPrimitive] = (): string => type();
 // deno-lint-ignore no-explicit-any
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
+// deno-lint-ignore no-explicit-any
+(machine as any)[Symbol.toPrimitive] = (): string => machine();
 
 export function cpus(): CPUCoreInfo[] {
-  return Array.from(Array(navigator.hardwareConcurrency), () => {
-    return {
-      model: "",
-      speed: 0,
-      times: {
-        user: 0,
-        nice: 0,
-        sys: 0,
-        idle: 0,
-        irq: 0,
-      },
-    };
-  });
+  return ops.op_cpus();
 }
 
 /**
@@ -255,6 +247,15 @@ export function version(): string {
   // TODO(kt3k): Temporarily uses Deno.osRelease().
   // Revisit this if this implementation is insufficient for any npm module
   return Deno.osRelease();
+}
+
+/** Returns the machine type as a string */
+export function machine(): string {
+  if (Deno.build.arch == "aarch64") {
+    return "arm64";
+  }
+
+  return Deno.build.arch;
 }
 
 /** Not yet implemented */
@@ -383,6 +384,7 @@ export default {
   hostname,
   loadavg,
   networkInterfaces,
+  machine,
   platform,
   release,
   setPriority,

@@ -1,13 +1,16 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals } from "../../../test_util/std/assert/mod.ts";
 import { fromFileUrl, relative } from "../../../test_util/std/path/mod.ts";
 import {
+  brotliCompress,
   brotliCompressSync,
   brotliDecompressSync,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  gzipSync,
+  unzipSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -16,6 +19,25 @@ Deno.test("brotli compression sync", () => {
   const buf = Buffer.from("hello world");
   const compressed = brotliCompressSync(buf);
   const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test("brotli compression async", async () => {
+  const buf = Buffer.from("hello world");
+  const compressed: Buffer = await new Promise((resolve) =>
+    brotliCompress(buf, (_, res) => {
+      return resolve(res);
+    })
+  );
+  assertEquals(compressed instanceof Buffer, true);
+  const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test("gzip compression sync", { sanitizeResources: false }, () => {
+  const buf = Buffer.from("hello world");
+  const compressed = gzipSync(buf);
+  const decompressed = unzipSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
 
@@ -96,3 +118,40 @@ Deno.test(
     handle.destroy();
   },
 );
+
+Deno.test("should work with dataview", () => {
+  const buf = Buffer.from("hello world");
+  const compressed = brotliCompressSync(new DataView(buf.buffer));
+  const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test("should work with a buffer from an encoded string", () => {
+  const encoder = new TextEncoder();
+  const buffer = encoder.encode("hello world");
+  const buf = Buffer.from(buffer);
+  const compressed = brotliCompressSync(buf);
+  const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test(
+  "zlib compression with dataview",
+  { sanitizeResources: false },
+  () => {
+    const buf = Buffer.from("hello world");
+    const compressed = gzipSync(new DataView(buf.buffer));
+    const decompressed = unzipSync(compressed);
+    assertEquals(decompressed.toString(), "hello world");
+  },
+);
+
+Deno.test("zlib compression with an encoded string", {
+  sanitizeResources: false,
+}, () => {
+  const encoder = new TextEncoder();
+  const buffer = encoder.encode("hello world");
+  const compressed = gzipSync(buffer);
+  const decompressed = unzipSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});

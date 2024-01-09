@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
 use deno_ast::MediaType;
@@ -49,7 +49,9 @@ extension!(runtime,
     "40_tty.js",
     "41_prompt.js",
     "90_deno_ns.js",
-    "98_global_scope.js"
+    "98_global_scope_shared.js",
+    "98_global_scope_window.js",
+    "98_global_scope_worker.js"
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]

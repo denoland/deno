@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
 use futures::Future;
@@ -56,7 +56,10 @@ where
     .boxed_local();
 
   if let Err(e) = fut.await {
-    eprintln!("{}: {:?}", options.error_msg, e);
+    let err_str = e.to_string();
+    if !err_str.contains("early eof") {
+      eprintln!("{}: {:?}", options.error_msg, e);
+    }
   }
 }
 
@@ -84,7 +87,10 @@ pub async fn run_server_with_acceptor<'a, A, F, S>(
     .boxed_local();
 
   if let Err(e) = fut.await {
-    eprintln!("{}: {:?}", error_msg, e);
+    let err_str = e.to_string();
+    if !err_str.contains("early eof") {
+      eprintln!("{}: {:?}", error_msg, e);
+    }
   }
 }
 
@@ -127,7 +133,10 @@ async fn hyper_serve_connection<I, F, S>(
   };
 
   if let Err(e) = result {
-    eprintln!("{}: {:?}", error_msg, e);
+    let err_str = e.to_string();
+    if !err_str.contains("early eof") {
+      eprintln!("{}: {:?}", error_msg, e);
+    }
   }
 }
 

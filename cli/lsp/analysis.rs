@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
@@ -423,11 +423,11 @@ fn fix_ts_import_action(
   if action.fix_name == "import" {
     let change = action
       .changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Unexpected action changes."))?;
     let text_change = change
       .text_changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Missing text change."))?;
     if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
     {

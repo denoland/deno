@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use base64::prelude::BASE64_STANDARD;
@@ -454,6 +454,54 @@ async fn main_server(
         HeaderValue::from_static("multipart/form-data;boundary=boundary"),
       );
       Ok(response)
+    }
+    (&Method::GET, "/ghost_ws_client") => {
+      use tokio::io::AsyncReadExt;
+
+      let mut tcp_stream = TcpStream::connect("localhost:4248").await.unwrap();
+      #[cfg(unix)]
+      // SAFETY: set socket keep alive.
+      unsafe {
+        use std::os::fd::AsRawFd;
+
+        let fd = tcp_stream.as_raw_fd();
+        let mut val: libc::c_int = 1;
+        let r = libc::setsockopt(
+          fd,
+          libc::SOL_SOCKET,
+          libc::SO_KEEPALIVE,
+          &mut val as *mut _ as *mut libc::c_void,
+          std::mem::size_of_val(&val) as libc::socklen_t,
+        );
+        assert_eq!(r, 0);
+      }
+
+      // Typical websocket handshake request.
+      let headers = [
+        "GET / HTTP/1.1",
+        "Host: localhost",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==",
+        "Sec-WebSocket-Version: 13",
+        "\r\n",
+      ]
+      .join("\r\n");
+      tcp_stream.write_all(headers.as_bytes()).await.unwrap();
+
+      let mut buf = [0u8; 200];
+      let n = tcp_stream.read(&mut buf).await.unwrap();
+      assert!(n > 0);
+
+      // Ghost the server:
+      // - Close the read half of the connection.
+      // - forget the TcpStream.
+      let tcp_stream = tcp_stream.into_std().unwrap();
+      let _ = tcp_stream.shutdown(std::net::Shutdown::Read);
+      std::mem::forget(tcp_stream);
+
+      let res = Response::new(empty_body());
+      Ok(res)
     }
     (_, "/multipart_form_data.txt") => {
       let b = "Preamble\r\n\

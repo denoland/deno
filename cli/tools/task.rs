@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -88,10 +88,13 @@ pub async fn execute_script(
       }
     }
 
-    // install the npm packages if we're using a managed resolver
-    if let Some(npm_resolver) = npm_resolver.as_managed() {
-      npm_resolver.ensure_top_level_package_json_install().await?;
-      npm_resolver.resolve_pending().await?;
+    // ensure the npm packages are installed if using a node_modules
+    // directory and managed resolver
+    if cli_options.has_node_modules_dir() {
+      if let Some(npm_resolver) = npm_resolver.as_managed() {
+        npm_resolver.ensure_top_level_package_json_install().await?;
+        npm_resolver.resolve_pending().await?;
+      }
     }
 
     let cwd = match task_flags.cwd {
@@ -255,7 +258,7 @@ impl ShellCommand for NpxCommand {
     &self,
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    if let Some(first_arg) = context.args.get(0).cloned() {
+    if let Some(first_arg) = context.args.first().cloned() {
       if let Some(command) = context.state.resolve_command(&first_arg) {
         let context = ShellCommandContext {
           args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),

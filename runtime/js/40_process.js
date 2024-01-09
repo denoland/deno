@@ -1,6 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 const {
   ArrayPrototypeMap,
@@ -204,16 +204,16 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
+const _pipeFd = Symbol("[[pipeFd]]");
+
+internals.getPipeFd = (process) => process[_pipeFd];
+
 class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
 
-  #pipeFd;
-  // internal, used by ext/node
-  get _pipeFd() {
-    return this.#pipeFd;
-  }
+  [_pipeFd];
 
   #pid;
   get pid() {
@@ -259,7 +259,7 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
-    this.#pipeFd = pipeFd;
+    this[_pipeFd] = pipeFd;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);

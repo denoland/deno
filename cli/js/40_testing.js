@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -16,14 +16,12 @@ const {
   ArrayPrototypeShift,
   DateNow,
   Error,
-  FunctionPrototype,
   Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
   Set,
@@ -1294,7 +1292,7 @@ function createTestContext(desc) {
 
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
-        if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, maybeFn))) {
+        if (typeof maybeFn !== "function") {
           throw new TypeError("Expected function for second argument.");
         }
         stepDesc = {
