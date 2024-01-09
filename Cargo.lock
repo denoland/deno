@@ -1158,9 +1158,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.243.0"
+version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cadc994e8ecacc8b44a60bd26e510a9913d69ff9aa2fca39f9c0378084ba722d"
+checksum = "7c18f86123119dffd1f2f016ff5b858b878971c042a18493794b219a33a69dda"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1168,7 +1168,7 @@ dependencies = [
  "bytes",
  "cooked-waker",
  "deno_ops",
- "deno_unsync 0.3.1",
+ "deno_unsync 0.3.2",
  "futures",
  "libc",
  "log",
@@ -1600,9 +1600,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.119.0"
+version = "0.120.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ac6a58c4aef86af8a55751cb157c703cd9f21f209026515412e0912ca9c2e4c"
+checksum = "ed8f888f466c80fdec64d0ec2fb12b0f56b0f1ae4815bb20a1895cc7097fb775"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1729,9 +1729,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e902f81b6d372427a99b65372379568e6350735562f3237c3daf61086e1d6e6"
+checksum = "30dff7e03584dbae188dae96a0f1876740054809b2ad0cf7c9fc5d361f20e739"
 dependencies = [
  "tokio",
 ]
@@ -5299,9 +5299,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.152.0"
+version = "0.153.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "016d49be02ecb10655486c7e0a3fe2fe9345bc4c7f3cf5c66671ff327115eabe"
+checksum = "0a53364678111a47806ca93b8485acd66a4a2d37da733564dcc3e76a91531ba6"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6144,7 +6144,7 @@ dependencies = [
  "base64 0.21.5",
  "bytes",
  "console_static_text",
- "deno_unsync 0.3.1",
+ "deno_unsync 0.3.2",
  "denokv_proto",
  "fastwebsockets",
  "flate2",
