@@ -284,7 +284,7 @@ impl Diagnostics {
   /// Modifies all the diagnostics to have their display positions
   /// modified to point at the original source.
   pub fn apply_fast_check_source_maps(&mut self, graph: &ModuleGraph) {
-    for d in &mut self.0 {
+    fn visit_diagnostic(d: &mut Diagnostic, graph: &ModuleGraph) {
       if let Some(specifier) = d
         .file_name
         .as_ref()
@@ -294,6 +294,8 @@ impl Diagnostics {
           if let Some(fast_check_module) =
             module.esm().and_then(|m| m.fast_check_module())
           {
+            // todo(dsherret): use a short lived cache to prevent parsing
+            // source maps so often
             if let Ok(source_map) =
               SourceMap::from_slice(&fast_check_module.source_map)
             {
@@ -311,6 +313,16 @@ impl Diagnostics {
           }
         }
       }
+
+      if let Some(related) = &mut d.related_information {
+        for d in related.iter_mut() {
+          visit_diagnostic(d, graph);
+        }
+      }
+    }
+
+    for d in &mut self.0 {
+      visit_diagnostic(d, graph);
     }
   }
 }
