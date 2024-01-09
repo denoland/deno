@@ -36,11 +36,8 @@ pub fn op_webgpu_surface_create(
   }
 
   let (win_handle, display_handle) = raw_window(system, p1, p2)?;
-  let surface = instance.instance_create_surface(
-    display_handle,
-    win_handle,
-    Default::default(),
-  );
+  let surface =
+    instance.instance_create_surface(display_handle, win_handle, ());
 
   let rid = state
     .resource_table
