@@ -1479,7 +1479,7 @@ function inspectError(value, ctx) {
 
   let finalMessage = "";
 
-  const destructuredError = ops.op_destructure_error(value);
+  const destructuredError = core.ops.op_destructure_error(value);
 
   let exceptionMessage = destructuredError.exceptionMessage;
   while (StringPrototypeStartsWith(exceptionMessage, "Uncaught ")) {
