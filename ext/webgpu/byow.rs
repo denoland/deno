@@ -30,7 +30,7 @@ pub fn op_webgpu_surface_create(
   //
   // - `*const c_void` deserizalizes null and v8::External.
   //
-  // - Only FFI can create v8::External.
+  // - Only FFI can export v8::External to user code.
   if p1.is_null() {
     return Err(type_error("Invalid parameters"));
   }
