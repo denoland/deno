@@ -4958,6 +4958,7 @@ declare namespace Deno {
     os:
       | "darwin"
       | "linux"
+      | "android"
       | "windows"
       | "freebsd"
       | "netbsd"

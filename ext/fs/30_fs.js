@@ -260,7 +260,7 @@ function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
   let str =
-    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd"; return {';
+    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd"; return {';
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
@@ -325,8 +325,11 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
 });
 
 function parseFileInfo(response) {
-  const unix = core.build.os === "darwin" || core.build.os === "linux" ||
-    core.build.os === "freebsd" || core.build.os === "openbsd";
+  const unix = core.build.os === "darwin" ||
+    core.build.os === "linux" ||
+    core.build.os === "android" ||
+    core.build.os === "freebsd" ||
+    core.build.os === "openbsd";
   return {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
