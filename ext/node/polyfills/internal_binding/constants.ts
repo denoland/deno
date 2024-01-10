@@ -330,7 +330,7 @@ if (buildOs === "darwin") {
       PRIORITY_HIGHEST: -20,
     },
   };
-} else if (buildOs === "linux") {
+} else if (buildOs === "linux" || buildOs === "android") {
   os = {
     UV_UDP_REUSEADDR: 4,
     dlopen: {
