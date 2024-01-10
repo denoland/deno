@@ -1186,7 +1186,7 @@ mod tests {
           code: 5023,
           start: None,
           end: None,
-          display_start: None,
+          original_source_start: None,
           message_text: Some(
             "Unknown compiler option \'invalid\'.".to_string()
           ),

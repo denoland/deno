@@ -117,7 +117,13 @@ pub struct Diagnostic {
   pub code: u64,
   pub start: Option<Position>,
   pub end: Option<Position>,
-  pub display_start: Option<Position>,
+  /// Position of this diagnostic in the original non-mapped source.
+  ///
+  /// This will exist and be different from the `start` for fast
+  /// checked modules where the TypeScript source will differ
+  /// from the original source.
+  #[serde(skip_serializing)]
+  pub original_source_start: Option<Position>,
   pub message_text: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub message_chain: Option<DiagnosticMessageChain>,
@@ -153,7 +159,7 @@ impl Diagnostic {
   fn fmt_frame(&self, f: &mut fmt::Formatter, level: usize) -> fmt::Result {
     if let (Some(file_name), Some(start)) = (
       self.file_name.as_ref(),
-      self.display_start.as_ref().or(self.start.as_ref()),
+      self.original_source_start.as_ref().or(self.start.as_ref()),
     ) {
       write!(
         f,
@@ -303,7 +309,7 @@ impl Diagnostics {
                 let maybe_token = source_map
                   .lookup_token(start.line as u32, start.character as u32);
                 if let Some(token) = maybe_token {
-                  d.display_start = Some(Position {
+                  d.original_source_start = Some(Position {
                     line: token.get_src_line() as u64,
                     character: token.get_src_col() as u64,
                   });
