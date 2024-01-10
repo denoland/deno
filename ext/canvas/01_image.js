@@ -3,6 +3,7 @@
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { BlobPrototype } from "ext:deno_web/09_file.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectPrototypeIsPrototypeOf,
@@ -30,21 +31,40 @@ webidl.converters["ImageDataSettings"] = webidl.createDictionaryConverter(
   ],
 );
 
-webidl.converters["ImageOrientation"] = webidl.createEnumConverter("ImageOrientation", [
-  "from-image", "flipY"
-]);
+webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
+  "ImageOrientation",
+  [
+    "from-image",
+    "flipY",
+  ],
+);
 
-webidl.converters["PremultiplyAlpha"] = webidl.createEnumConverter("PremultiplyAlpha", [
-  "none", "premultiply", "default"
-]);
+webidl.converters["PremultiplyAlpha"] = webidl.createEnumConverter(
+  "PremultiplyAlpha",
+  [
+    "none",
+    "premultiply",
+    "default",
+  ],
+);
 
-webidl.converters["ColorSpaceConversion"] = webidl.createEnumConverter("ColorSpaceConversion", [
-  "none", "default"
-]);
+webidl.converters["ColorSpaceConversion"] = webidl.createEnumConverter(
+  "ColorSpaceConversion",
+  [
+    "none",
+    "default",
+  ],
+);
 
-webidl.converters["ResizeQuality"] = webidl.createEnumConverter("ResizeQuality", [
-  "pixelated", "low", "medium", "high"
-]);
+webidl.converters["ResizeQuality"] = webidl.createEnumConverter(
+  "ResizeQuality",
+  [
+    "pixelated",
+    "low",
+    "medium",
+    "high",
+  ],
+);
 
 webidl.converters["ImageBitmapOptions"] = webidl.createDictionaryConverter(
   "ImageBitmapOptions",
@@ -283,19 +303,34 @@ class ImageBitmap {
 }
 const ImageBitmapPrototype = ImageBitmap.prototype;
 
-function createImageBitmap(image, sxOrOptions = undefined, sy = undefined, sw = undefined, sh = undefined, options = undefined) {
+function createImageBitmap(
+  image,
+  sxOrOptions = undefined,
+  sy = undefined,
+  sw = undefined,
+  sh = undefined,
+  options = undefined,
+) {
   const prefix = "Failed to call 'createImageBitmap'";
 
   // Overload: createImageBitmap(image [, options ])
   if (arguments.length < 3) {
-    options = webidl.converters["ImageBitmapOptions"](sxOrOptions, prefix, "Argument 2");
+    options = webidl.converters["ImageBitmapOptions"](
+      sxOrOptions,
+      prefix,
+      "Argument 2",
+    );
   } else {
     // Overload: createImageBitmap(image, sx, sy, sw, sh [, options ])
     sxOrOptions = webidl.converters["long"](sxOrOptions, prefix, "Argument 2");
     sy = webidl.converters["long"](sy, prefix, "Argument 3");
     sw = webidl.converters["long"](sw, prefix, "Argument 4");
     sh = webidl.converters["long"](sh, prefix, "Argument 5");
-    options = webidl.converters["ImageBitmapOptions"](options, prefix, "Argument 6");
+    options = webidl.converters["ImageBitmapOptions"](
+      options,
+      prefix,
+      "Argument 6",
+    );
 
     if (sw === 0) {
       return Promise.reject(new RangeError("sw has to be greater than 0"));
@@ -307,26 +342,65 @@ function createImageBitmap(image, sxOrOptions = undefined, sy = undefined, sw = 
   }
 
   if (options.resizeWidth === 0) {
-    return Promise.reject(new DOMException("options.resizeWidth has to be greater than 0", "InvalidStateError"));
+    return Promise.reject(
+      new DOMException(
+        "options.resizeWidth has to be greater than 0",
+        "InvalidStateError",
+      ),
+    );
   }
   if (options.resizeHeight === 0) {
-    return Promise.reject(new DOMException("options.resizeWidth has to be greater than 0", "InvalidStateError"));
+    return Promise.reject(
+      new DOMException(
+        "options.resizeWidth has to be greater than 0",
+        "InvalidStateError",
+      ),
+    );
   }
 
   const imageBitmap = webidl.createBranded(ImageBitmap);
 
   if (ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image)) {
-    imageBitmap[_bitmapData] = crop(image[_data], image[_width], image[_height], sxOrOptions, sy, sw, sh, options);
+    imageBitmap[_bitmapData] = processImage(
+      image[_data],
+      image[_width],
+      image[_height],
+      sxOrOptions,
+      sy,
+      sw,
+      sh,
+      options,
+    );
     return Promise.resolve(imageBitmap);
+  }
+  if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
+    return (async () => {
+      const data = await image.arrayBuffer();
+      // TODO: 2.
+      const { data: imageData, width, height } = op_image_decode_png(data);
+      imageBitmap[_bitmapData] = processImage(
+        imageData,
+        width,
+        height,
+        sxOrOptions,
+        sy,
+        sw,
+        sh,
+        options,
+      );
+      return imageBitmap;
+    })();
   } else {
     return Promise.reject(new TypeError("Invalid or unsupported image value"));
   }
 }
 
-function crop(input, width, height, sx, sy, sw, sh, options) {
+function processImage(input, width, height, sx, sy, sw, sh, options, is_blob) {
   let sourceRectangle;
 
-  if (sx !== undefined && sy !== undefined && sw !== undefined && sh !== undefined) {
+  if (
+    sx !== undefined && sy !== undefined && sw !== undefined && sh !== undefined
+  ) {
     sourceRectangle = [
       [sx, sy],
       [sx + sw, sy],
@@ -348,7 +422,9 @@ function crop(input, width, height, sx, sy, sw, sh, options) {
   if (options.resizeWidth !== undefined) {
     outputWidth = options.resizeWidth;
   } else if (options.resizeHeight !== undefined) {
-    outputWidth = MathCeil((widthOfSourceRect * options.resizeHeight) / heightOfSourceRect);
+    outputWidth = MathCeil(
+      (widthOfSourceRect * options.resizeHeight) / heightOfSourceRect,
+    );
   } else {
     outputWidth = widthOfSourceRect;
   }
@@ -357,7 +433,9 @@ function crop(input, width, height, sx, sy, sw, sh, options) {
   if (options.resizeHeight !== undefined) {
     outputHeight = options.resizeHeight;
   } else if (options.resizeWidth !== undefined) {
-    outputHeight = MathCeil((heightOfSourceRect * options.resizeWidth) / widthOfSourceRect);
+    outputHeight = MathCeil(
+      (heightOfSourceRect * options.resizeWidth) / widthOfSourceRect,
+    );
   } else {
     outputHeight = heightOfSourceRect;
   }
@@ -366,13 +444,16 @@ function crop(input, width, height, sx, sy, sw, sh, options) {
 
   for (let i = sourceRectangle[0][1]; i < sourceRectangle[3][1]; i++) {
     const startOfRow = i * (width * 4);
-    const rowColOffset = (sourceRectangle[0][0] * 4);
+    const rowColOffset = sourceRectangle[0][0] * 4;
     const start = startOfRow + rowColOffset;
     const end = start + (widthOfSourceRect * 4);
 
     const slicedRow = input.slice(start, end);
 
-    output.set(slicedRow, (i - sourceRectangle[0][1]) * (widthOfSourceRect * 4));
+    output.set(
+      slicedRow,
+      (i - sourceRectangle[0][1]) * (widthOfSourceRect * 4),
+    );
   }
 
   /*
@@ -392,6 +473,30 @@ function crop(input, width, height, sx, sy, sw, sh, options) {
 
   ]
    */
+
+  const resized = op_image_process(
+    output,
+    widthOfSourceRect,
+    heightOfSourceRect,
+    outputWidth,
+    outputHeight,
+    options.resizeQuality,
+    options.imageOrientation === "flipY",
+  );
+
+  // ignore 9.
+
+  if (options.premultiplyAlpha === "premultiply") {
+    for (let i = 0; i < outputWidth * outputHeight; i++) {
+      const color = resized.subarray(i * 4, (i + 1) * 4);
+      const alpha = color[3] / 255;
+      color[0] *= alpha;
+      color[1] *= alpha;
+      color[2] *= alpha;
+    }
+  }
+
+  return resized;
 }
 
 export { createImageBitmap, ImageBitmap, ImageData };
