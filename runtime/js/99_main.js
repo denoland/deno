@@ -341,12 +341,10 @@ function runtimeStart(
     tsVersion,
   );
   core.setBuildInfo(target);
-  // TODO(bartlomieju): should be done during snapshot time like
-  // core.setUnhandledPromiseRejectionHandler
-  core.setHandledPromiseRejectionHandler(processRejectionHandled);
 }
 
 core.setUnhandledPromiseRejectionHandler(processUnhandledPromiseRejection);
+core.setHandledPromiseRejectionHandler(processRejectionHandled);
 
 // Notification that the core received an unhandled promise rejection that is about to
 // terminate the runtime. If we can handle it, attempt to do so.
