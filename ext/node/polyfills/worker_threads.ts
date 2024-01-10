@@ -4,6 +4,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const {
+  op_require_read_closest_package_json,
+} = core.ensureFastOps(true);
 import { isAbsolute, resolve } from "node:path";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter, once } from "node:events";
@@ -12,7 +16,6 @@ import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
 
 let environmentData = new Map();
 let threads = 0;
-const { core } = globalThis.__bootstrap;
 
 export interface WorkerOptions {
   // only for typings
@@ -120,7 +123,7 @@ class _Worker extends EventEmitter {
       specifier = resolve(specifier);
       let pkg;
       try {
-        pkg = core.ops.op_require_read_closest_package_json(specifier);
+        pkg = op_require_read_closest_package_json(specifier);
       } catch (_) {
         // empty catch block when package json might not be present
       }

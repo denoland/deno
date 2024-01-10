@@ -16,17 +16,20 @@ const {
   op_net_accept_unix,
   op_net_connect_tcp,
   op_net_connect_unix,
+  op_net_join_multi_v4_udp,
+  op_net_join_multi_v6_udp,
+  op_net_leave_multi_v4_udp,
+  op_net_leave_multi_v6_udp,
   op_net_recv_udp,
   op_net_recv_unixpacket,
   op_net_send_udp,
   op_net_send_unixpacket,
   op_net_set_multi_loopback_udp,
   op_net_set_multi_ttl_udp,
-  op_net_join_multi_v4_udp,
-  op_net_join_multi_v6_udp,
-  op_net_leave_multi_v4_udp,
-  op_net_leave_multi_v6_udp,
 } = core.ensureFastOps();
+const {
+  op_cancel_handle,
+} = core.ensureFastOps(true);
 
 const {
   Error,
@@ -57,7 +60,7 @@ async function resolveDns(query, recordType, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = ops.op_cancel_handle();
+    cancelRid = op_cancel_handle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -184,11 +187,11 @@ class Conn {
 
 class TcpConn extends Conn {
   setNoDelay(noDelay = true) {
-    return ops.op_set_nodelay(this.rid, noDelay);
+    return op_set_nodelay(this.rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {
-    return ops.op_set_keepalive(this.rid, keepAlive);
+    return op_set_keepalive(this.rid, keepAlive);
   }
 }
 
@@ -453,7 +456,7 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
+      const { 0: rid, 1: addr } = op_net_listen_tcp({
         hostname: args.hostname ?? "0.0.0.0",
         port: Number(args.port),
       }, args.reusePort);
@@ -461,7 +464,7 @@ function listen(args) {
       return new Listener(rid, addr);
     }
     case "unix": {
-      const { 0: rid, 1: path } = ops.op_net_listen_unix(
+      const { 0: rid, 1: path } = op_net_listen_unix(
         args.path,
         args[listenOptionApiName] ?? "Deno.listen",
       );

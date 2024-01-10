@@ -1,7 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+const { BadResourcePrototype, InterruptedPrototype } = core;
+const {
+  op_http_headers,
+  op_http_websocket_accept_header,
+} = core.ensureFastOps();
+
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
@@ -152,7 +157,7 @@ class HttpConn {
     const innerRequest = newInnerRequest(
       method,
       url,
-      () => ops.op_http_headers(streamRid),
+      () => op_http_headers(streamRid),
       body !== null ? new InnerBody(body) : null,
       false,
     );
@@ -455,7 +460,7 @@ function upgradeWebSocket(request, options = {}) {
     );
   }
 
-  const accept = ops.op_http_websocket_accept_header(websocketKey);
+  const accept = op_http_websocket_accept_header(websocketKey);
 
   const r = newInnerResponse(101);
   r.headerList = [

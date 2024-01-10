@@ -6,9 +6,11 @@
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
-const { op_node_pbkdf2_async } = core.ensureFastOps();
+import { core } from "ext:core/mod.js";
+const {
+  op_node_pbkdf2,
+  op_node_pbkdf2_async,
+} = core.ensureFastOps();
 
 export const MAX_ALLOC = Math.pow(2, 30) - 1;
 
@@ -51,7 +53,7 @@ export function pbkdf2Sync(
   }
 
   const DK = new Uint8Array(keylen);
-  if (!ops.op_node_pbkdf2(password, salt, iterations, digest, DK)) {
+  if (!op_node_pbkdf2(password, salt, iterations, digest, DK)) {
     throw new Error("Invalid digest");
   }
 

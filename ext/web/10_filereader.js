@@ -11,7 +11,9 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_encode_binary_string,
+} = core.ensureFastOps();
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { forgivingBase64Encode } from "ext:deno_web/00_infra.js";
@@ -171,7 +173,7 @@ class FileReader extends EventTarget {
                   break;
                 }
                 case "BinaryString":
-                  this[result] = ops.op_encode_binary_string(bytes);
+                  this[result] = op_encode_binary_string(bytes);
                   break;
                 case "Text": {
                   let decoder = undefined;

@@ -10,7 +10,14 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_encoding_decode,
+  op_encoding_decode_single,
+  op_encoding_decode_utf8,
+  op_encoding_encode_into,
+  op_encoding_new_decoder,
+  op_encoding_normalize_label,
+} = core.ensureFastOps();
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
@@ -63,7 +70,7 @@ class TextDecoder {
       prefix,
       "Argument 2",
     );
-    const encoding = ops.op_encoding_normalize_label(label);
+    const encoding = op_encoding_normalize_label(label);
     this.#encoding = encoding;
     this.#fatal = options.fatal;
     this.#ignoreBOM = options.ignoreBOM;
@@ -154,10 +161,10 @@ class TextDecoder {
       if (!stream && this.#rid === null) {
         // Fast path for utf8 single pass encoding.
         if (this.#utf8SinglePass) {
-          return ops.op_encoding_decode_utf8(input, this.#ignoreBOM);
+          return op_encoding_decode_utf8(input, this.#ignoreBOM);
         }
 
-        return ops.op_encoding_decode_single(
+        return op_encoding_decode_single(
           input,
           this.#encoding,
           this.#fatal,
@@ -166,13 +173,13 @@ class TextDecoder {
       }
 
       if (this.#rid === null) {
-        this.#rid = ops.op_encoding_new_decoder(
+        this.#rid = op_encoding_new_decoder(
           this.#encoding,
           this.#fatal,
           this.#ignoreBOM,
         );
       }
-      return ops.op_encoding_decode(input, this.#rid, stream);
+      return op_encoding_decode(input, this.#rid, stream);
     } finally {
       if (!stream && this.#rid !== null) {
         core.close(this.#rid);
@@ -246,7 +253,7 @@ class TextEncoder {
         allowShared: true,
       },
     );
-    ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
+    op_encoding_encode_into(source, destination, encodeIntoBuf);
     return {
       read: encodeIntoBuf[0],
       written: encodeIntoBuf[1],

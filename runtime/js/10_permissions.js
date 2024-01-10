@@ -1,7 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_query_permission,
+  op_request_permission,
+  op_revoke_permission,
+} = core.ensureFastOps();
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const {
@@ -49,7 +53,7 @@ const permissionNames = [
  * @returns {Deno.PermissionState}
  */
 function opQuery(desc) {
-  return ops.op_query_permission(desc);
+  return op_query_permission(desc);
 }
 
 /**
@@ -57,7 +61,7 @@ function opQuery(desc) {
  * @returns {Deno.PermissionState}
  */
 function opRevoke(desc) {
-  return ops.op_revoke_permission(desc);
+  return op_revoke_permission(desc);
 }
 
 /**
@@ -65,7 +69,7 @@ function opRevoke(desc) {
  * @returns {Deno.PermissionState}
  */
 function opRequest(desc) {
-  return ops.op_request_permission(desc);
+  return op_request_permission(desc);
 }
 
 class PermissionStatus extends EventTarget {

@@ -37,6 +37,9 @@ const {
   Symbol,
   SymbolFor,
 } = primordials;
+const {
+  op_utf8_to_byte_string
+} = core.ensureFastOps();
 
 // Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
 export class TextLineStream extends TransformStream {
@@ -205,7 +208,7 @@ class EventSource extends EventTarget {
               ["accept", "text/event-stream"],
               [
                 "Last-Event-Id",
-                core.ops.op_utf8_to_byte_string(lastEventIDValueCopy),
+                op_utf8_to_byte_string(lastEventIDValueCopy),
               ],
             ],
         null,

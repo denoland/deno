@@ -9,11 +9,11 @@ import {
 import { Buffer } from "node:buffer";
 import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { core } from "ext:core/mod.js";
 const {
+  op_node_generate_secret,
   op_node_generate_secret_async,
-} = core.ensureFastOps();
+} = core.ensureFastOps(true);
 
 const kBufferMaxLength = 0x7fffffff;
 
@@ -87,7 +87,7 @@ export function randomFillSync(buf, offset = 0, size) {
   }
 
   const bytes = new Uint8Array(buf.buffer ? buf.buffer : buf, offset, size);
-  ops.op_node_generate_secret(bytes);
+  op_node_generate_secret(bytes);
 
   return buf;
 }

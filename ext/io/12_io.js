@@ -5,11 +5,13 @@
 // Thank you! We love Go! <3
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
 import {
   readableStreamForRid,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
+const {
+  op_stdin_set_raw,
+} = core.ensureFastOps(true);
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -192,7 +194,7 @@ class Stdin {
 
   setRaw(mode, options = {}) {
     const cbreak = !!(options.cbreak ?? false);
-    ops.op_stdin_set_raw(mode, cbreak);
+    op_stdin_set_raw(mode, cbreak);
   }
 }
 

@@ -41,7 +41,10 @@ import {
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
 import { core } from "ext:core/mod.js";
-const { ops } = core;
+const {
+  op_can_write_vectored,
+  op_raw_write_vectored,
+} = core.ensureFastOps();
 
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -204,13 +207,13 @@ export class LibuvStreamWrap extends HandleWrap {
     // Fast case optimization: two chunks, and all buffers.
     if (
       chunks.length === 2 && allBuffers && supportsWritev &&
-      ops.op_can_write_vectored(rid)
+      op_can_write_vectored(rid)
     ) {
       // String chunks.
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
-      ops.op_raw_write_vectored(
+      op_raw_write_vectored(
         rid,
         chunks[0],
         chunks[1],

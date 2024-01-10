@@ -11,8 +11,10 @@
 /// <reference lib="esnext" />
 
 import { core } from "ext:core/mod.js";
-const ops = core.ops;
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
+const {
+  op_fetch_custom_client,
+} = core.ensureFastOps();
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -21,7 +23,7 @@ import { SymbolDispose } from "ext:deno_web/00_infra.js";
 function createHttpClient(options) {
   options.caCerts ??= [];
   return new HttpClient(
-    ops.op_fetch_custom_client(
+    op_fetch_custom_client(
       options,
     ),
   );

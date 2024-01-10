@@ -1,7 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_kill,
+  op_run,
+  op_run_status,
+  op_spawn_child,
+  op_spawn_kill,
+  op_spawn_sync,
+  op_spawn_wait,
+} = core.ensureFastOps();
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -30,13 +38,9 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-const {
-  op_run_status,
-  op_spawn_wait,
-} = core.ensureFastOps();
 
 function opKill(pid, signo, apiName) {
-  ops.op_kill(pid, signo, apiName);
+  op_kill(pid, signo, apiName);
 }
 
 function kill(pid, signo = "SIGTERM") {
@@ -49,7 +53,7 @@ function opRunStatus(rid) {
 
 function opRun(request) {
   assert(request.cmd.length > 0);
-  return ops.op_run(request);
+  return op_run(request);
 }
 
 async function runStatus(rid) {
@@ -187,7 +191,7 @@ function spawnChildInner(opFn, command, apiName, {
 
 function spawnChild(command, options = {}) {
   return spawnChildInner(
-    ops.op_spawn_child,
+    op_spawn_child,
     command,
     "Deno.Command().spawn()",
     options,
@@ -331,12 +335,12 @@ class ChildProcess {
     if (this.#waitComplete) {
       throw new TypeError("Child process has already terminated.");
     }
-    ops.op_spawn_kill(this.#rid, signo);
+    op_spawn_kill(this.#rid, signo);
   }
 
   async [SymbolAsyncDispose]() {
     try {
-      ops.op_spawn_kill(this.#rid, "SIGTERM");
+      op_spawn_kill(this.#rid, "SIGTERM");
     } catch {
       // ignore errors from killing the process (such as ESRCH or BadResource)
     }
@@ -363,7 +367,7 @@ function spawn(command, options) {
     );
   }
   return spawnChildInner(
-    ops.op_spawn_child,
+    op_spawn_child,
     command,
     "Deno.Command().output()",
     options,
@@ -388,7 +392,7 @@ function spawnSync(command, {
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
     );
   }
-  const result = ops.op_spawn_sync({
+  const result = op_spawn_sync({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),

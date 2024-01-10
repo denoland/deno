@@ -7,10 +7,18 @@
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_webgpu_surface_configure,
+  op_webgpu_surface_get_current_texture,
+  op_webgpu_surface_present,
+} = core.ensureFastOps();
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const { Symbol, SymbolFor, ObjectPrototypeIsPrototypeOf } = primordials;
+const {
+  ObjectPrototypeIsPrototypeOf,
+  Symbol,
+  SymbolFor,
+} = primordials;
 import { loadWebGPU, webgpu } from "ext:deno_webgpu/00_init.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
@@ -52,7 +60,7 @@ class GPUCanvasContext {
       context: "configuration.device",
     });
 
-    const { err } = ops.op_webgpu_surface_configure({
+    const { err } = op_webgpu_surface_configure({
       surfaceRid: this[_surfaceRid],
       deviceRid: device.rid,
       format: configuration.format,
@@ -91,7 +99,7 @@ class GPUCanvasContext {
       return this[_currentTexture];
     }
 
-    const { rid } = ops.op_webgpu_surface_get_current_texture(
+    const { rid } = op_webgpu_surface_get_current_texture(
       device.rid,
       this[_surfaceRid],
     );
@@ -127,7 +135,7 @@ class GPUCanvasContext {
       prefix,
       context: "this",
     });
-    ops.op_webgpu_surface_present(device.rid, this[_surfaceRid]);
+    op_webgpu_surface_present(device.rid, this[_surfaceRid]);
     this[_currentTexture].destroy();
     this[_currentTexture] = undefined;
   }

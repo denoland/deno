@@ -31,9 +31,9 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { core } from "ext:core/mod.js";
 const {
+  op_node_hkdf,
   op_node_hkdf_async,
 } = core.ensureFastOps();
 
@@ -134,7 +134,7 @@ export function hkdfSync(
 
   const okm = new Uint8Array(length);
   try {
-    ops.op_node_hkdf(hash, key, salt, info, okm);
+    op_node_hkdf(hash, key, salt, info, okm);
   } catch (e) {
     throw new ERR_CRYPTO_INVALID_DIGEST(e);
   }
