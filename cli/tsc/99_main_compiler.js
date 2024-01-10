@@ -1023,6 +1023,7 @@ delete Object.prototype.__proto__;
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
+        moduleSpecifierCache.clear();
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {
