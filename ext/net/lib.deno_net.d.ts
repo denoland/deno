@@ -89,7 +89,6 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  // deno-lint-ignore no-empty-interface
   export interface TlsHandshakeInfo {
     /**
      * Contains the ALPN protocol selected during negotiation with the server.
