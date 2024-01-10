@@ -11,6 +11,7 @@ export class Foo {
 }
 
 // this won't be type checked against because the subset
-// type graph will ignore it
+// type graph omit this code because it's not part of the
+// public API.
 const invalidTypeCheck: number = "";
 console.log(invalidTypeCheck);

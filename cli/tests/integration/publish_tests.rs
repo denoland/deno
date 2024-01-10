@@ -15,7 +15,8 @@ pub fn env_vars_for_registry() -> Vec<(String, String)> {
 }
 
 itest!(no_token {
-  args: "publish publish/missing_deno_json",
+  args: "publish",
+  cwd: Some("publish/missing_deno_json"),
   output: "publish/no_token.out",
   exit_code: 1,
 });
@@ -93,4 +94,5 @@ fn publish_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()
     .envs(env_vars_for_registry())
+    .use_temp_cwd()
 }

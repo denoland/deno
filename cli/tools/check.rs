@@ -367,21 +367,18 @@ fn get_tsc_roots(
     ));
   }
 
-  let mut seen_roots =
-    HashSet::with_capacity(graph.imports.len() + graph.roots.len());
+  let mut seen =
+    HashSet::with_capacity(graph.imports.len() + graph.specifiers_count());
+  let mut pending = VecDeque::new();
 
   // put in the global types first so that they're resolved before anything else
   for import in graph.imports.values() {
     for dep in import.dependencies.values() {
       let specifier = dep.get_type().or_else(|| dep.get_code());
       if let Some(specifier) = &specifier {
-        if seen_roots.insert((*specifier).clone()) {
-          let maybe_entry = graph
-            .get(specifier)
-            .and_then(|m| maybe_get_check_entry(m, check_js));
-          if let Some(entry) = maybe_entry {
-            result.push(entry);
-          }
+        let specifier = graph.resolve(specifier);
+        if seen.insert(specifier.clone()) {
+          pending.push_back(specifier);
         }
       }
     }
@@ -389,31 +386,46 @@ fn get_tsc_roots(
 
   // then the roots
   for root in &graph.roots {
-    if seen_roots.insert((*root).clone()) {
-      if let Some(module) = graph.get(root) {
-        if let Some(entry) = maybe_get_check_entry(module, check_js) {
-          result.push(entry);
-        }
-      }
+    let specifier = graph.resolve(root);
+    if seen.insert(specifier.clone()) {
+      pending.push_back(specifier);
     }
   }
 
-  // now the rest
-  let mut pending = seen_roots.clone().into_iter().collect::<VecDeque<_>>();
+  // now walk the graph that only includes the fast check dependencies
   while let Some(specifier) = pending.pop_front() {
-    let module = graph.get(&specifier).unwrap();
+    let Some(module) = graph.get(&specifier) else {
+      continue;
+    };
     if let Some(entry) = maybe_get_check_entry(module, check_js) {
       result.push(entry);
-      if let Some(module) = module.esm() {
-        let deps = module.dependencies_prefer_fast_check();
-        for dep in deps.values() {
-          let specifier = graph
-            .resolve_dependency_from_dep(dep, /* prefer types */ true);
-          if let Some(specifier) = specifier {
-            if seen_roots.insert(specifier.clone()) {
-              pending.push_back(specifier);
-            }
+    }
+    if let Some(module) = module.esm() {
+      let deps = module.dependencies_prefer_fast_check();
+      for dep in deps.values() {
+        // walk both the code and type dependencies
+        if let Some(specifier) = dep.get_code() {
+          let specifier = graph.resolve(specifier);
+          if seen.insert(specifier.clone()) {
+            pending.push_back(specifier);
           }
+        }
+        if let Some(specifier) = dep.get_type() {
+          let specifier = graph.resolve(specifier);
+          if seen.insert(specifier.clone()) {
+            pending.push_back(specifier);
+          }
+        }
+      }
+
+      if let Some(dep) = module
+        .maybe_types_dependency
+        .as_ref()
+        .and_then(|d| d.dependency.ok())
+      {
+        let specifier = graph.resolve(&dep.specifier);
+        if seen.insert(specifier.clone()) {
+          pending.push_back(specifier);
         }
       }
     }

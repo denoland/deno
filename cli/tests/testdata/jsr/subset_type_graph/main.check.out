@@ -10,7 +10,7 @@ Check file:///[WILDCARD]/subset_type_graph/main.ts
 error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 const invalidTypeCheck: number = "";
       ~~~~~~~~~~~~~~~~
-    at http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0/mod.ts:9:7
+    at http://localhost:4545/jsr/registry/@denotest/subset_type_graph_invalid/0.1.0/mod.ts:11:7
 
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const error1: string = new Foo1().method();
