@@ -6,11 +6,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_node_child_ipc_pipe,
-  op_npm_process_state,
 } = core.ensureFastOps();
+const {
+  op_npm_process_state,
+} = core.ensureFastOps(true);
 
 import {
   ChildProcess,
@@ -831,8 +833,7 @@ function setupChildProcessIpcChannel() {
   setupChannel(process, fd);
 }
 
-globalThis.__bootstrap.internals.__setupChildProcessIpcChannel =
-  setupChildProcessIpcChannel;
+internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
 
 export default {
   fork,

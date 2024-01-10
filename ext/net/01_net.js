@@ -15,12 +15,16 @@ const {
   op_net_join_multi_v6_udp,
   op_net_leave_multi_v4_udp,
   op_net_leave_multi_v6_udp,
+  op_net_listen_tcp,
+  op_net_listen_unix,
   op_net_recv_udp,
   op_net_recv_unixpacket,
   op_net_send_udp,
   op_net_send_unixpacket,
   op_net_set_multi_loopback_udp,
   op_net_set_multi_ttl_udp,
+  op_set_keepalive,
+  op_set_nodelay,
 } = core.ensureFastOps();
 const {
   op_cancel_handle,

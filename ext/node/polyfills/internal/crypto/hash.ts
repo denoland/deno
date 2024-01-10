@@ -6,9 +6,9 @@
 
 import { core } from "ext:core/mod.js";
 const {
-  op_node_clone_hash,
   op_node_create_hash,
   op_node_get_hashes,
+  op_node_hash_clone,
   op_node_hash_digest_hex,
   op_node_hash_digest,
   op_node_hash_update_str,
@@ -98,7 +98,7 @@ export class Hash extends Transform {
   }
 
   copy(): Hash {
-    return new Hash(op_node_clone_hash(this.#context));
+    return new Hash(op_node_hash_clone(this.#context));
   }
 
   /**

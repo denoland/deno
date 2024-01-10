@@ -14,10 +14,12 @@ const {
   op_os_release,
   op_os_uptime,
   op_set_env,
-  op_set_exit_code,
   op_system_memory_info,
   op_uid,
 } = core.ensureFastOps();
+const {
+  op_set_exit_code,
+} = core.ensureFastOps(true);
 const {
   Error,
   FunctionPrototypeBind,

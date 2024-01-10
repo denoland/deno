@@ -36,7 +36,7 @@ const {
   op_ffi_unsafe_callback_close,
   op_ffi_unsafe_callback_create,
   op_ffi_unsafe_callback_ref,
-} = core.ensureFastOps();
+} = core.ensureFastOps(true);
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,

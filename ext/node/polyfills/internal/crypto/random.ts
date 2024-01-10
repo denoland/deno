@@ -10,9 +10,11 @@ const {
   op_node_check_prime_async,
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,
-  op_node_gen_prime,
   op_node_gen_prime_async,
 } = core.ensureFastOps();
+const {
+  op_node_gen_prime,
+} = core.ensureFastOps(true);
 const {
   StringPrototypePadStart,
   StringPrototypeToString,
