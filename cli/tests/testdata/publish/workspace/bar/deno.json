@@ -3,8 +3,5 @@
   "version": "1.0.0",
   "exports": {
     ".": "./mod.ts"
-  },
-  "imports": {
-    "@std/http": "./std_http.ts"
   }
 }
