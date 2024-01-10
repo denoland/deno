@@ -3,7 +3,13 @@
 import { core } from "ext:core/mod.js";
 const ops = core.ops;
 
-export type OSType = "windows" | "linux" | "android" | "darwin" | "freebsd" | "openbsd";
+export type OSType =
+  | "windows"
+  | "linux"
+  | "android"
+  | "darwin"
+  | "freebsd"
+  | "openbsd";
 
 export const osType: OSType = ops.op_node_build_os();
 

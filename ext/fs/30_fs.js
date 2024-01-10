@@ -325,8 +325,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
 });
 
 function parseFileInfo(response) {
-  const unix =
-    core.build.os === "darwin" ||
+  const unix = core.build.os === "darwin" ||
     core.build.os === "linux" ||
     core.build.os === "android" ||
     core.build.os === "freebsd" ||
