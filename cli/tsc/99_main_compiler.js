@@ -545,6 +545,9 @@ delete Object.prototype.__proto__;
     getCachedExportInfoMap() {
       return exportMapCache;
     },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
+    },
     getSourceFile(
       specifier,
       languageVersion,
@@ -1020,6 +1023,7 @@ delete Object.prototype.__proto__;
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
+        moduleSpecifierCache.clear();
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {
