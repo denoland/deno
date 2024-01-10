@@ -375,11 +375,7 @@ fn main() {
   }
 
   let symbols_file_name = match env::consts::OS {
-    "windows" => "generated_symbol_exports_list_windows.def".to_string(),
-    "macos" => "generated_symbol_exports_list_macos.def".to_string(),
-    "android" | "linux" => {
-      "generated_symbol_exports_list_linux.def".to_string()
-    }
+    "android" => "generated_symbol_exports_list_linux.def".to_string(),
     os => format!("generated_symbol_exports_list_{}.def", os),
   };
   let symbols_path = std::path::Path::new("napi")
