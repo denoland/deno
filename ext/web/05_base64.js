@@ -7,13 +7,17 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const {
+  op_base64_atob,
+  op_base64_btoa,
+} = core.ensureFastOps();
 const {
   ObjectPrototypeIsPrototypeOf,
   TypeErrorPrototype,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 /**
  * @param {string} data
@@ -24,7 +28,7 @@ function atob(data) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   data = webidl.converters.DOMString(data, prefix, "Argument 1");
   try {
-    return ops.op_base64_atob(data);
+    return op_base64_atob(data);
   } catch (e) {
     if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       throw new DOMException(
@@ -45,7 +49,7 @@ function btoa(data) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   data = webidl.converters.DOMString(data, prefix, "Argument 1");
   try {
-    return ops.op_base64_btoa(data);
+    return op_base64_btoa(data);
   } catch (e) {
     if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       throw new DOMException(

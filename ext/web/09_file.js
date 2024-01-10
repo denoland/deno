@@ -11,10 +11,21 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { ReadableStream } from "ext:deno_web/06_streams.js";
-import { URL } from "ext:deno_url/00_url.js";
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+  isDataView,
+  isTypedArray,
+} = core;
+const {
+  op_blob_create_object_url,
+  op_blob_create_part,
+  op_blob_from_object_url,
+  op_blob_read_part,
+  op_blob_remove_part,
+  op_blob_revoke_object_url,
+  op_blob_slice_part,
+} = core.ensureFastOps();
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -44,16 +55,11 @@ const {
   TypedArrayPrototypeSet,
   Uint8Array,
 } = primordials;
-const {
-  isAnyArrayBuffer,
-  isArrayBuffer,
-  isDataView,
-  isTypedArray,
-} = core;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { ReadableStream } from "ext:deno_web/06_streams.js";
+import { URL } from "ext:deno_url/00_url.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const {
-  op_blob_read_part,
-} = core.ensureFastOps();
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -568,7 +574,7 @@ webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(
 // A finalization registry to deallocate a blob part when its JS reference is
 // garbage collected.
 const registry = new SafeFinalizationRegistry((uuid) => {
-  ops.op_blob_remove_part(uuid);
+  op_blob_remove_part(uuid);
 });
 
 // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
@@ -596,7 +602,7 @@ class BlobReference {
    * @returns {BlobReference}
    */
   static fromUint8Array(data) {
-    const id = ops.op_blob_create_part(data);
+    const id = op_blob_create_part(data);
     return new BlobReference(id, TypedArrayPrototypeGetByteLength(data));
   }
 
@@ -611,7 +617,7 @@ class BlobReference {
    */
   slice(start, end) {
     const size = end - start;
-    const id = ops.op_blob_slice_part(this._id, {
+    const id = op_blob_slice_part(this._id, {
       start,
       len: size,
     });
@@ -651,7 +657,7 @@ class BlobReference {
  * @returns {Blob | null}
  */
 function blobFromObjectUrl(url) {
-  const blobData = ops.op_blob_from_object_url(url);
+  const blobData = op_blob_from_object_url(url);
   if (blobData === null) {
     return null;
   }
@@ -682,7 +688,7 @@ function createObjectURL(blob) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   blob = webidl.converters["Blob"](blob, prefix, "Argument 1");
 
-  return ops.op_blob_create_object_url(blob.type, getParts(blob));
+  return op_blob_create_object_url(blob.type, getParts(blob));
 }
 
 /**
@@ -694,7 +700,7 @@ function revokeObjectURL(url) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   url = webidl.converters["DOMString"](url, prefix, "Argument 1");
 
-  ops.op_blob_revoke_object_url(url);
+  op_blob_revoke_object_url(url);
 }
 
 URL.createObjectURL = createObjectURL;

@@ -1,8 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
-import { ReadableStream } from "ext:deno_web/06_streams.js";
+const {
+  isPromise,
+} = core;
+const {
+  op_kv_atomic_write,
+  op_kv_database_open,
+  op_kv_dequeue_next_message,
+  op_kv_encode_cursor,
+  op_kv_finish_dequeued_message,
+  op_kv_snapshot_read,
+  op_kv_watch,
+  op_kv_watch_next,
+} = core.ensureFastOps();
 const {
   ArrayFrom,
   ArrayPrototypeMap,
@@ -30,19 +41,9 @@ const {
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
-const {
-  isPromise,
-} = core;
-const {
-  op_kv_atomic_write,
-  op_kv_database_open,
-  op_kv_dequeue_next_message,
-  op_kv_encode_cursor,
-  op_kv_finish_dequeued_message,
-  op_kv_snapshot_read,
-  op_kv_watch,
-  op_kv_watch_next,
-} = core.ensureFastOps();
+
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+import { ReadableStream } from "ext:deno_web/06_streams.js";
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
