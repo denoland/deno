@@ -3,6 +3,8 @@
 
 import { getSources, ROOT_PATH } from "./util.js";
 
+const copyrightYear = 2024;
+
 const buffer = new Uint8Array(1024);
 const textDecoder = new TextDecoder();
 
@@ -49,7 +51,7 @@ export async function checkCopyright() {
   const ACCEPTABLE_LINES =
     /^(\/\/ deno-lint-.*|\/\/ Copyright.*|\/\/ Ported.*|\s*|#!\/.*)\n/;
   const COPYRIGHT_LINE =
-    "Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.";
+    `Copyright 2018-${copyrightYear} the Deno authors. All rights reserved. MIT license.`;
   const TOML_COPYRIGHT_LINE = "# " + COPYRIGHT_LINE;
   const C_STYLE_COPYRIGHT_LINE = "// " + COPYRIGHT_LINE;
 
@@ -85,6 +87,14 @@ export async function checkCopyright() {
         );
       }
     }
+  }
+
+  // check the main license file
+  const licenseText = Deno.readTextFileSync(ROOT_PATH + "/LICENSE.md");
+  if (
+    !licenseText.includes(`Copyright 2018-${copyrightYear} the Deno authors`)
+  ) {
+    errors.push(`LICENSE.md has old copyright year`);
   }
 
   if (errors.length > 0) {

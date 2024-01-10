@@ -16,6 +16,8 @@ use crate::resolver::SloppyImportsResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::fs::canonicalize_path;
+use crate::util::path::specifier_to_file_path;
 use crate::util::sync::TaskQueue;
 use crate::util::sync::TaskQueuePermit;
 
@@ -677,7 +679,7 @@ impl ModuleGraphContainer {
 pub fn has_graph_root_local_dependent_changed(
   graph: &ModuleGraph,
   root: &ModuleSpecifier,
-  changed_specifiers: &HashSet<ModuleSpecifier>,
+  canonicalized_changed_paths: &HashSet<PathBuf>,
 ) -> bool {
   let roots = vec![root.clone()];
   let mut dependent_specifiers = graph.walk(
@@ -689,11 +691,15 @@ pub fn has_graph_root_local_dependent_changed(
     },
   );
   while let Some((s, _)) = dependent_specifiers.next() {
-    if s.scheme() != "file" {
+    if let Ok(path) = specifier_to_file_path(s) {
+      if let Ok(path) = canonicalize_path(&path) {
+        if canonicalized_changed_paths.contains(&path) {
+          return true;
+        }
+      }
+    } else {
       // skip walking this remote module's dependencies
       dependent_specifiers.skip_previous_dependencies();
-    } else if changed_specifiers.contains(s) {
-      return true;
     }
   }
   false

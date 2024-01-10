@@ -488,6 +488,11 @@ pub async fn run(
     if metadata.unstable {
       checker.enable_legacy_unstable();
     }
+    for feature in metadata.unstable_features {
+      // `metadata` is valid for the whole lifetime of the program, so we
+      // can leak the string here.
+      checker.enable_feature(feature.leak());
+    }
     checker
   });
   let worker_factory = CliMainWorkerFactory::new(

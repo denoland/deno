@@ -224,7 +224,7 @@ impl ModuleLoadPreparer {
   ) -> Result<(), AnyError> {
     let lib = self.options.ts_type_lib_window();
 
-    let specifiers = self.collect_specifiers(files);
+    let specifiers = self.collect_specifiers(files)?;
     self
       .prepare_module_load(
         specifiers,
@@ -235,28 +235,30 @@ impl ModuleLoadPreparer {
       .await
   }
 
-  fn collect_specifiers(&self, files: &[String]) -> Vec<ModuleSpecifier> {
-    let excludes = match self.options.resolve_check_options() {
-      Ok(o) => o.exclude,
-      Err(_) => vec![],
-    };
-    files
-      .iter()
-      .filter_map(|file| {
-        let file_url =
-          resolve_url_or_path(file, self.options.initial_cwd()).ok()?;
-        if file_url.scheme() != "file" {
-          return Some(file_url);
-        }
-        // ignore local files that match any of files listed in `exclude` option
-        let file_path = file_url.to_file_path().ok()?;
-        if excludes.iter().any(|e| file_path.starts_with(e)) {
-          None
-        } else {
-          Some(file_url)
-        }
-      })
-      .collect::<Vec<_>>()
+  fn collect_specifiers(
+    &self,
+    files: &[String],
+  ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    let excludes = self.options.resolve_config_excludes()?;
+    Ok(
+      files
+        .iter()
+        .filter_map(|file| {
+          let file_url =
+            resolve_url_or_path(file, self.options.initial_cwd()).ok()?;
+          if file_url.scheme() != "file" {
+            return Some(file_url);
+          }
+          // ignore local files that match any of files listed in `exclude` option
+          let file_path = file_url.to_file_path().ok()?;
+          if excludes.matches_path(&file_path) {
+            None
+          } else {
+            Some(file_url)
+          }
+        })
+        .collect::<Vec<_>>(),
+    )
   }
 }
 
