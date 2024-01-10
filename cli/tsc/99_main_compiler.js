@@ -545,6 +545,9 @@ delete Object.prototype.__proto__;
     getCachedExportInfoMap() {
       return exportMapCache;
     },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
+    },
     getSourceFile(
       specifier,
       languageVersion,
