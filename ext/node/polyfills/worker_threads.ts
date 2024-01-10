@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_require_read_closest_package_json,
 } = core.ensureFastOps(true);
@@ -207,7 +207,7 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
-globalThis.__bootstrap.internals.__initWorkerThreads = () => {
+internals.__initWorkerThreads = () => {
   isMainThread =
     // deno-lint-ignore no-explicit-any
     (globalThis as any).name !== PRIVATE_WORKER_THREAD_NAME;

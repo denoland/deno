@@ -4,6 +4,17 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const {
+  op_node_clone_hash,
+  op_node_create_hash,
+  op_node_get_hashes,
+  op_node_hash_digest_hex,
+  op_node_hash_digest,
+  op_node_hash_update_str,
+  op_node_hash_update,
+} = core.ensureFastOps();
+
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
 import { Transform } from "node:stream";
@@ -22,8 +33,6 @@ import {
   KeyObject,
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
-
-const { ops } = globalThis.__bootstrap.core;
 
 // TODO(@littledivy): Use Result<T, E> instead of boolean when
 // https://bugs.chromium.org/p/v8/issues/detail?id=13600 is fixed.
@@ -65,7 +74,7 @@ export class Hash extends Transform {
   ) {
     super({
       transform(chunk: string, _encoding: string, callback: () => void) {
-        ops.op_node_hash_update(context, coerceToBytes(chunk));
+        op_node_hash_update(context, coerceToBytes(chunk));
         callback();
       },
       flush(callback: () => void) {
@@ -75,7 +84,7 @@ export class Hash extends Transform {
     });
 
     if (typeof algorithm === "string") {
-      this.#context = ops.op_node_create_hash(
+      this.#context = op_node_create_hash(
         algorithm.toLowerCase(),
       );
       if (this.#context === 0) {
@@ -89,7 +98,7 @@ export class Hash extends Transform {
   }
 
   copy(): Hash {
-    return new Hash(ops.op_node_clone_hash(this.#context));
+    return new Hash(op_node_clone_hash(this.#context));
   }
 
   /**
@@ -97,9 +106,9 @@ export class Hash extends Transform {
    */
   update(data: string | ArrayBuffer, _encoding?: string): this {
     if (typeof data === "string") {
-      unwrapErr(ops.op_node_hash_update_str(this.#context, data));
+      unwrapErr(op_node_hash_update_str(this.#context, data));
     } else {
-      unwrapErr(ops.op_node_hash_update(this.#context, coerceToBytes(data)));
+      unwrapErr(op_node_hash_update(this.#context, coerceToBytes(data)));
     }
 
     return this;
@@ -114,10 +123,10 @@ export class Hash extends Transform {
    */
   digest(encoding?: string): Buffer | string {
     if (encoding === "hex") {
-      return ops.op_node_hash_digest_hex(this.#context);
+      return op_node_hash_digest_hex(this.#context);
     }
 
-    const digest = ops.op_node_hash_digest(this.#context);
+    const digest = op_node_hash_digest(this.#context);
     if (encoding === undefined) {
       return Buffer.from(digest);
     }
@@ -237,7 +246,7 @@ export function createHash(algorithm: string, opts?: TransformOptions) {
  * @returns Array of hash algorithm names.
  */
 export function getHashes() {
-  return ops.op_node_get_hashes();
+  return op_node_get_hashes();
 }
 
 export default {
