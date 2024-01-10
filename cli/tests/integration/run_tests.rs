@@ -3677,6 +3677,11 @@ itest!(unhandled_rejection_dynamic_import2 {
   output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
 });
 
+itest!(rejection_handled {
+  args: "run --check run/rejection_handled.ts",
+  output: "run/rejection_handled.out",
+});
+
 itest!(nested_error {
   args: "run run/nested_error/main.ts",
   output: "run/nested_error/main.ts.out",

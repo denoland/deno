@@ -380,22 +380,16 @@ function processUnhandledPromiseRejection(promise, reason) {
 }
 
 function processRejectionHandled(promise, reason) {
-  console.log("processRejectionHandled called");
   const rejectionHandledEvent = new event.PromiseRejectionEvent(
     "rejectionhandled",
-    {
-      promise,
-      reason,
-    },
+    { promise, reason },
   );
 
   // Note that the handler may throw, causing a recursive "error" event
   globalThis_.dispatchEvent(rejectionHandledEvent);
 
-  if (
-    typeof internals.nodeProcessRejectionHandledCallback !== "undefined"
-  ) {
-    internals.nodeProcessRejectionHandledCallback(rejectionEvent);
+  if (typeof internals.nodeProcessRejectionHandledCallback !== "undefined") {
+    internals.nodeProcessRejectionHandledCallback(rejectionHandledEvent);
   }
 }
 
