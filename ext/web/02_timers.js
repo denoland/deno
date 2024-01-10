@@ -24,6 +24,7 @@ const {
   TypeError,
   indirectEval,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";

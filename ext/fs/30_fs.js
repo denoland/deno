@@ -2,6 +2,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  isDate,
+} = core;
+const {
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -83,9 +86,7 @@ const {
   SymbolIterator,
   Uint32Array,
 } = primordials;
-const {
-  isDate,
-} = core;
+
 import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {

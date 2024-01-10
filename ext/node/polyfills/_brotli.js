@@ -3,10 +3,6 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { Transform } from "node:stream";
-import { Buffer } from "node:buffer";
 import { core } from "ext:core/mod.js";
 const {
   op_brotli_compress,
@@ -19,6 +15,11 @@ const {
   op_create_brotli_compress,
   op_create_brotli_decompress,
 } = core.ensureFastOps();
+
+import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Transform } from "node:stream";
+import { Buffer } from "node:buffer";
 
 const enc = new TextEncoder();
 const toU8 = (input) => {

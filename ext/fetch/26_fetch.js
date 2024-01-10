@@ -17,6 +17,23 @@ const {
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
 } = core.ensureFastOps();
+const {
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  Promise,
+  PromisePrototypeThen,
+  PromisePrototypeCatch,
+  SafeArrayIterator,
+  String,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
+} = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { byteLowerCase } from "ext:deno_web/00_infra.js";
@@ -38,23 +55,6 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-const {
-  ArrayPrototypePush,
-  ArrayPrototypeSplice,
-  ArrayPrototypeFilter,
-  ArrayPrototypeIncludes,
-  Error,
-  ObjectPrototypeIsPrototypeOf,
-  Promise,
-  PromisePrototypeThen,
-  PromisePrototypeCatch,
-  SafeArrayIterator,
-  String,
-  StringPrototypeStartsWith,
-  StringPrototypeToLowerCase,
-  TypeError,
-  TypedArrayPrototypeGetSymbolToStringTag,
-} = primordials;
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",

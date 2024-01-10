@@ -4,6 +4,20 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, primordials } from "ext:core/mod.js";
+const {
+  op_node_check_prime,
+  op_node_check_prime_async,
+  op_node_check_prime_bytes,
+  op_node_check_prime_bytes_async,
+  op_node_gen_prime,
+  op_node_gen_prime_async,
+} = core.ensureFastOps();
+const {
+  StringPrototypePadStart,
+  StringPrototypeToString,
+} = primordials;
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import randomFill, {
@@ -31,19 +45,6 @@ export {
   randomFillSync,
 } from "ext:deno_node/internal/crypto/_randomFill.mjs";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
-
-import { primordials } from "ext:core/mod.js";
-const { StringPrototypePadStart, StringPrototypeToString } = primordials;
-
-import { core } from "ext:core/mod.js";
-const {
-  op_node_check_prime,
-  op_node_check_prime_async,
-  op_node_check_prime_bytes,
-  op_node_check_prime_bytes_async,
-  op_node_gen_prime,
-  op_node_gen_prime_async,
-} = core.ensureFastOps();
 
 export type LargeNumberLike =
   | ArrayBufferView

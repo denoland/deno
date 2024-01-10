@@ -2,17 +2,17 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  op_signal_bind,
+  op_signal_poll,
+  op_signal_unbind,
+} = core.ensureFastOps();
+const {
   SafeSet,
   SafeSetIterator,
   SetPrototypeAdd,
   SetPrototypeDelete,
   TypeError,
 } = primordials;
-const {
-  op_signal_bind,
-  op_signal_poll,
-  op_signal_unbind,
-} = core.ensureFastOps();
 
 function bindSignal(signo) {
   return op_signal_bind(signo);

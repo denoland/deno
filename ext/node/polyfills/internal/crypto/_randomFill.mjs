@@ -3,17 +3,18 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const {
+  op_node_generate_secret,
+  op_node_generate_secret_async,
+} = core.ensureFastOps(true);
+
 import {
   MAX_SIZE as kMaxUint32,
 } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import { Buffer } from "node:buffer";
 import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import { core } from "ext:core/mod.js";
-const {
-  op_node_generate_secret,
-  op_node_generate_secret_async,
-} = core.ensureFastOps(true);
 
 const kBufferMaxLength = 0x7fffffff;
 

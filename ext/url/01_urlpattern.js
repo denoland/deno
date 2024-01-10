@@ -8,8 +8,6 @@
 /// <reference path="./lib.deno_url.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   op_urlpattern_parse,
   op_urlpattern_process_match_input,
@@ -28,6 +26,9 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _components = Symbol("components");
 

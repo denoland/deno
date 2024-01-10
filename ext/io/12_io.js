@@ -5,10 +5,6 @@
 // Thank you! We love Go! <3
 
 import { core, primordials } from "ext:core/mod.js";
-import {
-  readableStreamForRid,
-  writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
 const {
   op_stdin_set_raw,
 } = core.ensureFastOps(true);
@@ -19,6 +15,11 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
+
+import {
+  readableStreamForRid,
+  writableStreamForRid,
+} from "ext:deno_web/06_streams.js";
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 // Seek whence values.

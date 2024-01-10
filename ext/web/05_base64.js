@@ -11,12 +11,13 @@ const {
   op_base64_atob,
   op_base64_btoa,
 } = core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   TypeErrorPrototype,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 /**
  * @param {string} data

@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { Conn, Listener } from "ext:deno_net/01_net.js";
-const { Number, TypeError } = primordials;
 const {
   op_net_accept_tls,
   op_net_connect_tls,
@@ -10,6 +8,12 @@ const {
   op_tls_handshake,
   op_tls_start,
 } = core.ensureFastOps();
+const {
+  Number,
+  TypeError,
+} = primordials;
+
+import { Conn, Listener } from "ext:deno_net/01_net.js";
 
 function opStartTls(args) {
   return op_tls_start(args);

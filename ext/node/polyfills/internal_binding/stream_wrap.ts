@@ -30,6 +30,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const {
+  op_can_write_vectored,
+  op_raw_write_vectored,
+} = core.ensureFastOps();
+
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -39,12 +45,6 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-
-import { core } from "ext:core/mod.js";
-const {
-  op_can_write_vectored,
-  op_raw_write_vectored,
-} = core.ensureFastOps();
 
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;

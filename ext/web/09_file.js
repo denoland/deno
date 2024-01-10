@@ -12,6 +12,12 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+  isDataView,
+  isTypedArray,
+} = core;
+const {
   op_blob_create_object_url,
   op_blob_create_part,
   op_blob_from_object_url,
@@ -20,9 +26,6 @@ const {
   op_blob_revoke_object_url,
   op_blob_slice_part,
 } = core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { ReadableStream } from "ext:deno_web/06_streams.js";
-import { URL } from "ext:deno_url/00_url.js";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -52,12 +55,10 @@ const {
   TypedArrayPrototypeSet,
   Uint8Array,
 } = primordials;
-const {
-  isAnyArrayBuffer,
-  isArrayBuffer,
-  isDataView,
-  isTypedArray,
-} = core;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { ReadableStream } from "ext:deno_web/06_streams.js";
+import { URL } from "ext:deno_url/00_url.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on

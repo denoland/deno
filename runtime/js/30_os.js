@@ -18,12 +18,13 @@ const {
   op_system_memory_info,
   op_uid,
 } = core.ensureFastOps();
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const {
   Error,
   FunctionPrototypeBind,
   SymbolFor,
 } = primordials;
+
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
 
 const windowDispatchEvent = FunctionPrototypeBind(
   EventTarget.prototype.dispatchEvent,

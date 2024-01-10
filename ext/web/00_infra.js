@@ -36,6 +36,7 @@ const {
   Symbol,
   TypeError,
 } = primordials;
+
 import { URLPrototype } from "ext:deno_url/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];

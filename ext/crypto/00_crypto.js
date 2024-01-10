@@ -8,6 +8,11 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  isArrayBuffer,
+  isTypedArray,
+  isDataView,
+} = core;
+const {
   op_crypto_base64url_decode,
   op_crypto_decrypt,
   op_crypto_derive_bits,
@@ -37,10 +42,6 @@ const {
   op_crypto_verify_key,
   op_crypto_wrap_key,
 } = core.ensureFastOps();
-
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -77,11 +78,10 @@ const {
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
-const {
-  isArrayBuffer,
-  isTypedArray,
-  isDataView,
-} = core;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
@@ -3395,13 +3395,13 @@ function importKeyRSA(
 
       // 2-9.
       const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
-          {
-            algorithm: normalizedAlgorithm.name,
-            // Needed to perform step 7 without normalization.
-            hash: normalizedAlgorithm.hash.name,
-          },
-          { pkcs8: keyData },
-        );
+        {
+          algorithm: normalizedAlgorithm.name,
+          // Needed to perform step 7 without normalization.
+          hash: normalizedAlgorithm.hash.name,
+        },
+        { pkcs8: keyData },
+      );
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3440,13 +3440,13 @@ function importKeyRSA(
 
       // 2-9.
       const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
-          {
-            algorithm: normalizedAlgorithm.name,
-            // Needed to perform step 7 without normalization.
-            hash: normalizedAlgorithm.hash.name,
-          },
-          { spki: keyData },
-        );
+        {
+          algorithm: normalizedAlgorithm.name,
+          // Needed to perform step 7 without normalization.
+          hash: normalizedAlgorithm.hash.name,
+        },
+        { spki: keyData },
+      );
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3689,12 +3689,12 @@ function importKeyRSA(
         }
 
         const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
-            {
-              algorithm: normalizedAlgorithm.name,
-              hash: normalizedAlgorithm.hash.name,
-            },
-            { jwkPrivateRsa: jwk },
-          );
+          {
+            algorithm: normalizedAlgorithm.name,
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { jwkPrivateRsa: jwk },
+        );
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3731,12 +3731,12 @@ function importKeyRSA(
         }
 
         const { modulusLength, publicExponent, rawData } = op_crypto_import_key(
-            {
-              algorithm: normalizedAlgorithm.name,
-              hash: normalizedAlgorithm.hash.name,
-            },
-            { jwkPublicRsa: jwk },
-          );
+          {
+            algorithm: normalizedAlgorithm.name,
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { jwkPublicRsa: jwk },
+        );
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, rawData);

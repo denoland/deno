@@ -12,13 +12,14 @@ const {
   op_webgpu_surface_get_current_texture,
   op_webgpu_surface_present,
 } = core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { loadWebGPU, webgpu } from "ext:deno_webgpu/00_init.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");

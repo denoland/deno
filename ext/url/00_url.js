@@ -6,8 +6,6 @@
 /// <reference path="../webidl/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   op_url_get_serialization,
   op_url_parse,
@@ -34,6 +32,9 @@ const {
   TypeError,
   Uint32Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");

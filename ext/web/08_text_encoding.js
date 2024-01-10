@@ -11,6 +11,11 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
@@ -18,8 +23,6 @@ const {
   op_encoding_new_decoder,
   op_encoding_normalize_label,
 } = core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
@@ -39,11 +42,9 @@ const {
   Uint32Array,
   Uint8Array,
 } = primordials;
-const {
-  isDataView,
-  isSharedArrayBuffer,
-  isTypedArray,
-} = core;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 class TextDecoder {
   /** @type {string} */

@@ -8,6 +8,10 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  isDataView,
+  isTypedArray,
+} = core;
+const {
   op_webgpu_buffer_get_map_async,
   op_webgpu_buffer_get_mapped_range,
   op_webgpu_buffer_unmap,
@@ -84,23 +88,20 @@ const {
   op_webgpu_write_buffer,
   op_webgpu_write_texture,
 } = core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { EventTarget } from "ext:deno_web/02_event.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const {
   ArrayBuffer,
+  ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypePush,
-  ObjectHasOwn,
-  ArrayPrototypeIncludes,
-  ArrayBufferPrototypeGetByteLength,
+  DataViewPrototypeGetBuffer,
   Error,
   MathMax,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeCatch,
@@ -110,22 +111,22 @@ const {
   SafeArrayIterator,
   SafePromiseAll,
   SafeSet,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  TypedArrayPrototypeGetBuffer,
-  DataViewPrototypeGetBuffer,
   SafeWeakRef,
   SetPrototypeHas,
   Symbol,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint32Array,
   Uint8Array,
 } = primordials;
-const {
-  isDataView,
-  isTypedArray,
-} = core;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { EventTarget } from "ext:deno_web/02_event.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -2764,7 +2765,8 @@ class GPUComputePipeline {
     index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
     const device = assertDevice(this, prefix, "this");
     const computePipelineRid = assertResource(this, prefix, "this");
-    const { rid, label, err } = op_webgpu_compute_pipeline_get_bind_group_layout(
+    const { rid, label, err } =
+      op_webgpu_compute_pipeline_get_bind_group_layout(
         computePipelineRid,
         index,
       );
@@ -2843,9 +2845,9 @@ class GPURenderPipeline {
     const device = assertDevice(this, prefix, "this");
     const renderPipelineRid = assertResource(this, prefix, "this");
     const { rid, label, err } = op_webgpu_render_pipeline_get_bind_group_layout(
-        renderPipelineRid,
-        index,
-      );
+      renderPipelineRid,
+      index,
+    );
     device.pushError(err);
 
     const bindGroupLayout = createGPUBindGroupLayout(

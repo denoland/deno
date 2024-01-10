@@ -3,15 +3,16 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+const {
+  op_node_cp,
+  op_node_cp_sync,
+} = core.ensureFastOps();
+
 import {
   getValidatedPath,
   validateCpOptions,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
-const {
-  op_node_cp,
-  op_node_cp_sync,
-} = core.ensureFastOps();
 
 export function cpSync(src, dest, options) {
   validateCpOptions(options);

@@ -2,39 +2,10 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferIsView,
-  ArrayBufferPrototypeGetByteLength,
-  ArrayPrototypeMap,
-  ArrayPrototypeJoin,
-  DataViewPrototypeGetByteLength,
-  ObjectDefineProperty,
-  ObjectHasOwn,
-  ObjectPrototypeIsPrototypeOf,
-  Number,
-  NumberIsSafeInteger,
-  TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypeError,
-  Uint8Array,
-  Int32Array,
-  Uint32Array,
-  BigInt64Array,
-  BigUint64Array,
-  Function,
-  ReflectHas,
-  PromisePrototypeThen,
-  MathMax,
-  MathCeil,
-  SafeMap,
-  SafeArrayIterator,
-  SafeWeakMap,
-} = primordials;
-const {
   isArrayBuffer,
   isDataView,
   isTypedArray,
 } = core;
-import { pathFromURL } from "ext:deno_web/00_infra.js";
 const {
   op_ffi_buf_copy_into,
   op_ffi_call_nonblocking,
@@ -66,6 +37,36 @@ const {
   op_ffi_unsafe_callback_create,
   op_ffi_unsafe_callback_ref,
 } = core.ensureFastOps();
+const {
+  ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayPrototypeMap,
+  ArrayPrototypeJoin,
+  DataViewPrototypeGetByteLength,
+  ObjectDefineProperty,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  Number,
+  NumberIsSafeInteger,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypeError,
+  Uint8Array,
+  Int32Array,
+  Uint32Array,
+  BigInt64Array,
+  BigUint64Array,
+  Function,
+  ReflectHas,
+  PromisePrototypeThen,
+  MathMax,
+  MathCeil,
+  SafeMap,
+  SafeArrayIterator,
+  SafeWeakMap,
+} = primordials;
+
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 /**
  * @param {BufferSource} source

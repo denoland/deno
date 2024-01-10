@@ -12,7 +12,6 @@ const {
   op_webstorage_remove,
   op_webstorage_set,
 } = core.ensureFastOps();
-import * as webidl from "ext:deno_webidl/00_webidl.js";
 const {
   Symbol,
   SymbolFor,
@@ -24,6 +23,8 @@ const {
   ReflectHas,
   Proxy,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 
 const _persistent = Symbol("[[persistent]]");
 

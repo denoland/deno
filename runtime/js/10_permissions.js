@@ -6,8 +6,6 @@ const {
   op_request_permission,
   op_revoke_permission,
 } = core.ensureFastOps();
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -26,6 +24,9 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
+
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 

@@ -4,6 +4,12 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const {
+  op_node_hkdf,
+  op_node_hkdf_async,
+} = core.ensureFastOps();
+
 import {
   validateFunction,
   validateInteger,
@@ -30,12 +36,6 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
-
-import { core } from "ext:core/mod.js";
-const {
-  op_node_hkdf,
-  op_node_hkdf_async,
-} = core.ensureFastOps();
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
