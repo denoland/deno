@@ -29,7 +29,7 @@ use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -649,7 +649,7 @@ impl WebWorker {
   pub fn execute_script(
     &mut self,
     name: &'static str,
-    source_code: ModuleCode,
+    source_code: ModuleCodeString,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())

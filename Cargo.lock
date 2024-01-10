@@ -1151,9 +1151,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.244.0"
+version = "0.245.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c18f86123119dffd1f2f016ff5b858b878971c042a18493794b219a33a69dda"
+checksum = "c820d7e4712b7519dac7b03c338d0c666a77f4122aa956c630a4a888371b206e"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1593,9 +1593,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.120.0"
+version = "0.121.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed8f888f466c80fdec64d0ec2fb12b0f56b0f1ae4815bb20a1895cc7097fb775"
+checksum = "3fe00963c45b37cc9494d134a34b72b708a8702f52024c6155958664d042ba6d"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5274,9 +5274,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.153.0"
+version = "0.154.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a53364678111a47806ca93b8485acd66a4a2d37da733564dcc3e76a91531ba6"
+checksum = "3748eaed607f7dd2b5800100e5fe7c6babe9941492974d55d0bd08775f66ebbd"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6910,7 +6910,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -6951,7 +6951,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",
