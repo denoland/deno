@@ -113,6 +113,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
+      RUST_LIB_BACKTRACE: 0
     steps:
       - name: Reconfigure Windows Storage
         if: '!(matrix.skip) && (startsWith(matrix.os, ''windows'') && !endsWith(matrix.os, ''-xl''))'
