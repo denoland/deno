@@ -14,6 +14,7 @@ const {
 } = core;
 const {
   op_crypto_base64url_decode,
+  op_crypto_base64url_encode,
   op_crypto_decrypt,
   op_crypto_derive_bits,
   op_crypto_derive_bits_x25519,
