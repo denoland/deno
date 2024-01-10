@@ -4803,6 +4803,8 @@ itest!(explicit_resource_management {
   output: "run/explicit_resource_management/main.out",
 });
 
+// NOTE(bartlomieju): `--unstable-workspaces` is not required anymore,
+// but keep it here to make sure CLI parser doesn't panic on unknown flag.
 itest!(workspaces_basic {
   args: "run -L debug -A --unstable-workspaces main.ts",
   output: "run/workspaces/basic/main.out",
@@ -4813,7 +4815,7 @@ itest!(workspaces_basic {
 });
 
 itest!(workspaces_member_outside_root_dir {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/member_outside_root_dir/main.out",
   cwd: Some("run/workspaces/member_outside_root_dir/"),
   copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
@@ -4823,7 +4825,7 @@ itest!(workspaces_member_outside_root_dir {
 });
 
 itest!(workspaces_nested_member {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/nested_member/main.out",
   cwd: Some("run/workspaces/nested_member/"),
   copy_temp_dir: Some("run/workspaces/nested_member/"),

@@ -902,7 +902,6 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
   flags.unstable_sloppy_imports = matches.get_flag("unstable-sloppy-imports");
-  flags.unstable_workspaces = matches.get_flag("unstable-workspaces");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -1032,13 +1031,12 @@ fn clap_root() -> Command {
         .global(true),
     )
     .arg(
+      // NOTE(bartlomieju): not used anymore, but kept for CLI compatibility between
+      // releases.
       Arg::new("unstable-workspaces")
         .long("unstable-workspaces")
-        .help("Enable unstable 'workspaces' feature")
-        .env("DENO_UNSTABLE_WORKSPACES")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true),
+        .global(true)
+        .hide(true)
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
