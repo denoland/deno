@@ -4180,6 +4180,14 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+itest!(error_color {
+  args: "run run/error_color.ts",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  output: "run/error_color.ts.out",
+  exit_code: 1,
+});
+
+
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",

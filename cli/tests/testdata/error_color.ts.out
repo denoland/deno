@@ -1,0 +1,7 @@
+AggregateError: hello
+    Error: foo
+        at \u001b[3m\u001b[1mfoo\u001b[22m\u001b[23m (\u001b[36mfile:///[WILDCARD]/cli/tests/testdata/error_color.ts\u001b[39m:\u001b[33m2\u001b[39m:\u001b[33m30\u001b[39m)
+        at \u001b[36mfile:///[WILDCARD]/cli/tests/testdata/error_color.ts\u001b[39m:\u001b[33m5\u001b[39m:\u001b[33m13\u001b[39m
+    \u001b[32m"bar"\u001b[39m
+    at \u001b[3m\u001b[1mfoo\u001b[22m\u001b[23m (\u001b[36mfile:///[WILDCARD]/cli/tests/testdata/error_color.ts\u001b[39m:\u001b[33m2\u001b[39m:\u001b[33m10\u001b[39m)
+    at \u001b[36mfile:///[WILDCARD]/cli/tests/testdata/error_color.ts\u001b[39m:\u001b[33m5\u001b[39m:\u001b[33m13\u001b[39m

@@ -2421,16 +2421,16 @@ Deno.test(function inspectErrorColors() {
     Deno.inspect(err, { colors: true }),
     "AggregateError: hello\n" +
       "    Error: foo\n" +
-      "        at \u001b[3m\u001b[1mfoo\u001b[22m\u001b[23m (\u001b[36mfile:///Users/crowlkats/projects/deno/denoland/deno/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2388\u001b[39m:\u001b[33m32\u001b[39m)\n" +
-      "        at \u001b[3m\u001b[1minspectErrorColors\u001b[22m\u001b[23m (\u001b[36mfile:///Users/crowlkats/projects/deno/denoland/deno/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2391\u001b[39m:\u001b[33m15\u001b[39m)\n" +
+      "        at \u001b[3m\u001b[1mfoo\u001b[22m\u001b[23m (\u001b[36mfile://[WILDCARD]/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2388\u001b[39m:\u001b[33m32\u001b[39m)\n" +
+      "        at \u001b[3m\u001b[1minspectErrorColors\u001b[22m\u001b[23m (\u001b[36mfile://[WILDCARD]/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2391\u001b[39m:\u001b[33m15\u001b[39m)\n" +
       "        at \u001b[3m\u001b[1minnerWrapped\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m551\u001b[39m:\u001b[33m11\u001b[39m)\n" +
       "        at \u001b[3m\u001b[1masyncOpSanitizer\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m197\u001b[39m:\u001b[33m33\u001b[39m)\n" +
       "        at \u001b[3m\u001b[1mresourceSanitizer\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m432\u001b[39m:\u001b[33m31\u001b[39m)\n" +
       "        at \u001b[3m\u001b[1mexitSanitizer\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m480\u001b[39m:\u001b[33m33\u001b[39m)\n" +
       "        at \u001b[3m\u001b[1mouterWrapped\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m494\u001b[39m:\u001b[33m20\u001b[39m)\n" +
       '    \u001b[32m"bar"\u001b[39m\n' +
-      "    at \u001b[3m\u001b[1mfoo\u001b[22m\u001b[23m (\u001b[36mfile:///Users/crowlkats/projects/deno/denoland/deno/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2388\u001b[39m:\u001b[33m12\u001b[39m)\n" +
-      "    at \u001b[3m\u001b[1minspectErrorColors\u001b[22m\u001b[23m (\u001b[36mfile:///Users/crowlkats/projects/deno/denoland/deno/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2391\u001b[39m:\u001b[33m15\u001b[39m)\n" +
+      "    at \u001b[3m\u001b[1mfoo\u001b[22m\u001b[23m (\u001b[36mfile://[WILDCARD]/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2388\u001b[39m:\u001b[33m12\u001b[39m)\n" +
+      "    at \u001b[3m\u001b[1minspectErrorColors\u001b[22m\u001b[23m (\u001b[36mfile://[WILDCARD]/cli/tests/unit/console_test.ts\u001b[39m:\u001b[33m2391\u001b[39m:\u001b[33m15\u001b[39m)\n" +
       "    at \u001b[3m\u001b[1minnerWrapped\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m551\u001b[39m:\u001b[33m11\u001b[39m)\n" +
       "    at \u001b[3m\u001b[1masyncOpSanitizer\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m197\u001b[39m:\u001b[33m33\u001b[39m)\n" +
       "    at \u001b[3m\u001b[1mresourceSanitizer\u001b[22m\u001b[23m (\u001b[36mext:cli/40_testing.js\u001b[39m:\u001b[33m432\u001b[39m:\u001b[33m31\u001b[39m)\n" +
