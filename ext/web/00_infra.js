@@ -7,7 +7,10 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_base64_encode,
+  op_base64_decode,
+} = core.ensureFastOps();
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -33,6 +36,7 @@ const {
   Symbol,
   TypeError,
 } = primordials;
+
 import { URLPrototype } from "ext:deno_url/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
@@ -245,7 +249,7 @@ function collectHttpQuotedString(input, position, extractValue) {
  * @returns {string}
  */
 function forgivingBase64Encode(data) {
-  return ops.op_base64_encode(data);
+  return op_base64_encode(data);
 }
 
 /**
@@ -253,7 +257,7 @@ function forgivingBase64Encode(data) {
  * @returns {Uint8Array}
  */
 function forgivingBase64Decode(data) {
-  return ops.op_base64_decode(data);
+  return op_base64_decode(data);
 }
 
 // Taken from std/encoding/base64url.ts

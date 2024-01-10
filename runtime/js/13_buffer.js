@@ -4,8 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { assert } from "ext:deno_web/00_infra.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayBufferPrototypeGetByteLength,
   TypedArrayPrototypeSubarray,
@@ -19,6 +18,8 @@ const {
   Uint8Array,
   Error,
 } = primordials;
+
+import { assert } from "ext:deno_web/00_infra.js";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond

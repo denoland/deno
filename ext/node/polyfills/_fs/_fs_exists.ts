@@ -2,7 +2,12 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-const core = globalThis.__bootstrap.core;
+
+import { core } from "ext:core/mod.js";
+const {
+  op_node_fs_exists_sync,
+} = core.ensureFastOps();
+
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 type ExistsCallback = (exists: boolean) => void;
@@ -35,5 +40,5 @@ Object.defineProperty(exists, kCustomPromisifiedSymbol, {
  */
 export function existsSync(path: string | URL): boolean {
   path = path instanceof URL ? pathFromURL(path) : path;
-  return core.ops.op_node_fs_exists_sync(path);
+  return op_node_fs_exists_sync(path);
 }
