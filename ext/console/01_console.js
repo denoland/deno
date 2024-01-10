@@ -3,6 +3,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
+const ops = core.ops;
 const {
   Array,
   ArrayBufferPrototypeGetByteLength,
@@ -1479,7 +1480,7 @@ function inspectError(value, ctx) {
 
   let finalMessage = "";
 
-  const destructuredError = core.ops.op_destructure_error(value);
+  const destructuredError = ops.op_destructure_error(value);
 
   let exceptionMessage = destructuredError.exceptionMessage;
   while (StringPrototypeStartsWith(exceptionMessage, "Uncaught ")) {
@@ -1506,7 +1507,7 @@ function inspectError(value, ctx) {
     (frame) =>
       !(frame.fileName ===
           "ext:deno_console/01_console.js" &&
-        frame.lineNumber === 1482),
+        frame.lineNumber === 1483),
   );
 
   if (frames.length > 0) {
