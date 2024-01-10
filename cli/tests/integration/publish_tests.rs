@@ -69,6 +69,26 @@ itest!(successful {
   temp_cwd: true,
 });
 
+itest!(workspace_all {
+  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  output: "publish/workspace.out",
+  cwd: Some("publish/workspace"),
+  copy_temp_dir: Some("publish/workspace"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(workspace_individual {
+  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  output: "publish/workspace_individual.out",
+  cwd: Some("publish/workspace/bar"),
+  copy_temp_dir: Some("publish/workspace"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 #[test]
 fn ignores_directories() {
   let context = publish_context_builder().build();

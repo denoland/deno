@@ -2371,7 +2371,7 @@ Remote modules and multiple modules may also be specified:
 fn publish_subcommand() -> Command {
   Command::new("publish")
     .hide(true)
-    .about("Unstable preview feature: Publish a package or workspace")
+    .about("Unstable preview feature: Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
       cmd.arg(
