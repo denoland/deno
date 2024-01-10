@@ -39,10 +39,7 @@ __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
-# TODO(bartlomieju): should we not include `dont_create_runtime_snapshot`
-# feature here and actually create the snapshot in `deno_runtime` build script?
-# How do we pass options?
-deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 lazy-regex.workspace = true
 serde.workspace = true
@@ -66,7 +63,7 @@ deno_graph = "=0.63.0"
 deno_lint = { version = "=0.53.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.15.3"
-deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 # todo(dsherret): investigate https://github.com/denoland/deno_semver/commit/98f9174baef199809295077b3b68c9fa58defb9b causing
 # lsp_completions_auto_import_and_quick_fix_with_import_map to fail when bumping this version
 deno_semver = "=0.5.1"
