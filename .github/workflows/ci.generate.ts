@@ -426,6 +426,8 @@ const ci = {
       env: {
         CARGO_TERM_COLOR: "always",
         RUST_BACKTRACE: "full",
+        // disable anyhow's library backtrace
+        RUST_LIB_BACKTRACE: 0,
       },
       steps: skipJobsIfPrAndMarkedSkip([
         reconfigureWindowsStorage,

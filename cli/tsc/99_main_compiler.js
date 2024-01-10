@@ -537,6 +537,17 @@ delete Object.prototype.__proto__;
     getProjectVersion() {
       return ops.op_project_version();
     },
+    // @ts-ignore Undocumented method.
+    getModuleSpecifierCache() {
+      return moduleSpecifierCache;
+    },
+    // @ts-ignore Undocumented method.
+    getCachedExportInfoMap() {
+      return exportMapCache;
+    },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
+    },
     getSourceFile(
       specifier,
       languageVersion,
@@ -765,6 +776,12 @@ delete Object.prototype.__proto__;
       return undefined;
     },
   };
+
+  // @ts-ignore Undocumented function.
+  const moduleSpecifierCache = ts.server.createModuleSpecifierCache(host);
+
+  // @ts-ignore Undocumented function.
+  const exportMapCache = ts.createCacheableExportInfoMap(host);
 
   // override the npm install @types package diagnostics to be deno specific
   ts.setLocalizedDiagnosticMessages((() => {
@@ -1006,6 +1023,7 @@ delete Object.prototype.__proto__;
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
+        moduleSpecifierCache.clear();
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {

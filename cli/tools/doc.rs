@@ -10,19 +10,18 @@ use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::CreateGraphOptions;
 use crate::tsc::get_types_declaration_file_text;
-use crate::util::glob::expand_globs;
+use crate::util::fs::collect_specifiers;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
 use deno_doc as doc;
-use deno_graph::CapturingModuleParser;
-use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
+use deno_graph::ModuleParser;
 use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -34,7 +33,7 @@ use std::sync::Arc;
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
   cli_options: &Arc<CliOptions>,
-  capturing_parser: CapturingModuleParser<'_>,
+  parser: &dyn ModuleParser,
   analyzer: &dyn ModuleAnalyzer,
 ) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
   let source_file_specifier =
@@ -64,7 +63,7 @@ async fn generate_doc_nodes_for_builtin_types(
     .await;
   let doc_parser = doc::DocParser::new(
     &graph,
-    capturing_parser,
+    parser,
     doc::DocParserOptions {
       diagnostics: false,
       private: doc_flags.private,
@@ -79,19 +78,16 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let module_info_cache = factory.module_info_cache()?;
-  let source_parser = deno_graph::DefaultModuleParser::new_for_analysis();
-  let store = DefaultParsedSourceStore::default();
-  let analyzer =
-    module_info_cache.as_module_analyzer(Some(&source_parser), &store);
-  let capturing_parser =
-    CapturingModuleParser::new(Some(&source_parser), &store);
+  let parsed_source_cache = factory.parsed_source_cache();
+  let capturing_parser = parsed_source_cache.as_capturing_parser();
+  let analyzer = module_info_cache.as_module_analyzer(&capturing_parser);
 
   let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
       generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
         cli_options,
-        capturing_parser,
+        &capturing_parser,
         &analyzer,
       )
       .await?
@@ -100,27 +96,30 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
 
-      let expanded_globs =
-        expand_globs(source_files.iter().map(PathBuf::from).collect())?;
-      let module_specifiers: Result<Vec<ModuleSpecifier>, AnyError> =
-        expanded_globs
-          .iter()
-          .map(|source_file| {
-            Ok(resolve_url_or_path(
-              &source_file.to_string_lossy(),
-              cli_options.initial_cwd(),
-            )?)
-          })
-          .collect();
-      let module_specifiers = module_specifiers?;
-      let mut loader = module_graph_builder.create_graph_loader();
+      let module_specifiers = collect_specifiers(
+        FilePatterns {
+          include: Some(PathOrPatternSet::from_absolute_paths(
+            source_files
+              .iter()
+              .map(|p| {
+                if p.starts_with("https:")
+                  || p.starts_with("http:")
+                  || p.starts_with("file:")
+                {
+                  // todo(dsherret): don't store URLs in PathBufs
+                  PathBuf::from(p)
+                } else {
+                  cli_options.initial_cwd().join(p)
+                }
+              })
+              .collect(),
+          )?),
+          exclude: Default::default(),
+        },
+        |_, _| true,
+      )?;
       let graph = module_graph_builder
-        .create_graph_with_options(CreateGraphOptions {
-          graph_kind: GraphKind::TypesOnly,
-          roots: module_specifiers.clone(),
-          loader: &mut loader,
-          analyzer: &analyzer,
-        })
+        .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
       if let Some(lockfile) = maybe_lockfile {
@@ -129,7 +128,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       let doc_parser = doc::DocParser::new(
         &graph,
-        capturing_parser,
+        &capturing_parser,
         doc::DocParserOptions {
           private: doc_flags.private,
           diagnostics: doc_flags.lint,
@@ -158,7 +157,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let deno_ns = generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
         cli_options,
-        capturing_parser,
+        &capturing_parser,
         &analyzer,
       )
       .await?;
