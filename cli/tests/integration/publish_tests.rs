@@ -39,6 +39,26 @@ itest!(invalid_fast_check {
   temp_cwd: true,
 });
 
+itest!(javascript_missing_decl_file {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/javascript_missing_decl_file.out",
+  cwd: Some("publish/javascript_missing_decl_file"),
+  copy_temp_dir: Some("publish/javascript_missing_decl_file"),
+  envs: env_vars_for_registry(),
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(javascript_decl_file {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/javascript_decl_file.out",
+  cwd: Some("publish/javascript_decl_file"),
+  copy_temp_dir: Some("publish/javascript_decl_file"),
+  envs: env_vars_for_registry(),
+  exit_code: 0,
+  temp_cwd: true,
+});
+
 itest!(successful {
   args: "publish --token 'sadfasdf'",
   output: "publish/successful.out",

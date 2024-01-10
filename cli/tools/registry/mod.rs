@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_ast::ModuleSpecifier;
 use deno_config::ConfigFile;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -35,6 +34,7 @@ use crate::tools::check::CheckOptions;
 use crate::tools::registry::graph::get_workspace_member_roots;
 use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
 use crate::tools::registry::graph::surface_fast_check_type_graph_errors;
+use crate::tools::registry::graph::MemberRoots;
 use crate::util::display::human_size;
 use crate::util::glob::PathOrPatternSet;
 use crate::util::import_map::ImportMapUnfurler;
@@ -74,6 +74,15 @@ impl PreparedPublishPackage {
 static SUGGESTED_ENTRYPOINTS: [&str; 4] =
   ["mod.ts", "mod.js", "index.ts", "index.js"];
 
+fn get_deno_json_package_name(
+  deno_json: &ConfigFile,
+) -> Result<String, AnyError> {
+  match deno_json.json.name.clone() {
+    Some(name) => Ok(name),
+    None => bail!("{} is missing 'name' field", deno_json.specifier),
+  }
+}
+
 async fn prepare_publish(
   deno_json: &ConfigFile,
   import_map: Arc<ImportMap>,
@@ -83,9 +92,7 @@ async fn prepare_publish(
   let Some(version) = deno_json.json.version.clone() else {
     bail!("{} is missing 'version' field", deno_json.specifier);
   };
-  let Some(name) = deno_json.json.name.clone() else {
-    bail!("{} is missing 'name' field", deno_json.specifier);
-  };
+  let name = get_deno_json_package_name(deno_json)?;
   if deno_json.json.exports.is_none() {
     let mut suggested_entrypoint = None;
 
@@ -687,12 +694,16 @@ async fn prepare_packages_for_publishing(
       module_graph_builder,
       type_checker,
       cli_options,
-      roots,
+      &[MemberRoots {
+        name: get_deno_json_package_name(&deno_json)?,
+        dir_url: deno_json.specifier.join("./").unwrap().clone(),
+        exports: roots,
+      }],
     )
     .await?;
     let mut prepared_package_by_name = HashMap::with_capacity(1);
     let package = prepare_publish(&deno_json, import_map).await?;
-    let package_name = package.package.clone();
+    let package_name = format!("@{}/{}", package.scope, package.package);
     let publish_order_graph =
       PublishOrderGraph::new_single(package_name.clone());
     prepared_package_by_name.insert(package_name, package);
@@ -706,11 +717,7 @@ async fn prepare_packages_for_publishing(
     module_graph_builder,
     type_checker,
     cli_options,
-    roots
-      .iter()
-      .flat_map(|r| r.exports.iter())
-      .cloned()
-      .collect(),
+    &roots,
   )
   .await?;
 
@@ -750,13 +757,18 @@ async fn build_and_check_graph_for_publish(
   module_graph_builder: &ModuleGraphBuilder,
   type_checker: &TypeChecker,
   cli_options: &CliOptions,
-  roots: Vec<ModuleSpecifier>,
+  packages: &[MemberRoots],
 ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
   let graph = Arc::new(
     module_graph_builder
       .create_graph_with_options(crate::graph_util::CreateGraphOptions {
+        // All because we're going to use this same graph to determine the publish order later
         graph_kind: deno_graph::GraphKind::All,
-        roots,
+        roots: packages
+          .iter()
+          .flat_map(|r| r.exports.iter())
+          .cloned()
+          .collect(),
         workspace_fast_check: true,
         loader: None,
       })
@@ -764,7 +776,7 @@ async fn build_and_check_graph_for_publish(
   );
   graph.valid()?;
   log::info!("Checking fast check type graph for errors...");
-  surface_fast_check_type_graph_errors(&graph)?;
+  surface_fast_check_type_graph_errors(&graph, packages)?;
   log::info!("Ensuring type checks...");
   let diagnostics = type_checker
     .check_diagnostics(
