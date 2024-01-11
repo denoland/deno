@@ -3049,8 +3049,12 @@ fn watch_exclude_arg() -> Arg {
   Arg::new("watch-exclude")
     .requires("watch")
     .long("watch-exclude")
-    .action(ArgAction::Set)
     .help("Exclude provided files from watch mode")
+    .value_name("FILES")
+    .num_args(0..)
+    .value_parser(value_parser!(PathBuf))
+    .use_value_delimiter(true)
+    .require_equals(true)
 }
 
 fn no_check_arg() -> Arg {
