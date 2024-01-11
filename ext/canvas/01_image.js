@@ -1,19 +1,25 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+import { core, primordials } from "ext:core/mod.js";
+const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
+  TypeError,
+  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
+  Uint8Array,
   Uint8ClampedArray,
   MathCeil,
-  MathMax,
+  PromiseResolve,
+  PromiseReject,
+  RangeError,
 } = primordials;
 
 webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
@@ -297,8 +303,38 @@ class ImageData {
 const ImageDataPrototype = ImageData.prototype;
 
 const _bitmapData = Symbol("[[bitmapData]]");
+const _detached = Symbol("[[detached]]");
 class ImageBitmap {
+  [_width];
+  [_height];
+  [_bitmapData];
+  [_detached];
+
   constructor() {
+    webidl.illegalConstructor();
+  }
+
+  get width() {
+    webidl.assertBranded(this, ImageBitmapPrototype);
+    if (TypedArrayPrototypeGetBuffer(this[_detached]).detached) {
+      return 0;
+    }
+
+    return this[_width];
+  }
+
+  get height() {
+    webidl.assertBranded(this, ImageBitmapPrototype);
+    if (TypedArrayPrototypeGetBuffer(this[_detached]).detached) {
+      return 0;
+    }
+
+    return this[_height];
+  }
+
+  close() {
+    webidl.assertBranded(this, ImageBitmapPrototype);
+    TypedArrayPrototypeGetBuffer(this[_bitmapData]).transfer();
   }
 }
 const ImageBitmapPrototype = ImageBitmap.prototype;
@@ -333,16 +369,16 @@ function createImageBitmap(
     );
 
     if (sw === 0) {
-      return Promise.reject(new RangeError("sw has to be greater than 0"));
+      return PromiseReject(new RangeError("sw has to be greater than 0"));
     }
 
     if (sh === 0) {
-      return Promise.reject(new RangeError("sh has to be greater than 0"));
+      return PromiseReject(new RangeError("sh has to be greater than 0"));
     }
   }
 
   if (options.resizeWidth === 0) {
-    return Promise.reject(
+    return PromiseReject(
       new DOMException(
         "options.resizeWidth has to be greater than 0",
         "InvalidStateError",
@@ -350,7 +386,7 @@ function createImageBitmap(
     );
   }
   if (options.resizeHeight === 0) {
-    return Promise.reject(
+    return PromiseReject(
       new DOMException(
         "options.resizeWidth has to be greater than 0",
         "InvalidStateError",
@@ -361,7 +397,7 @@ function createImageBitmap(
   const imageBitmap = webidl.createBranded(ImageBitmap);
 
   if (ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image)) {
-    imageBitmap[_bitmapData] = processImage(
+    const processedImage = processImage(
       image[_data],
       image[_width],
       image[_height],
@@ -371,14 +407,17 @@ function createImageBitmap(
       sh,
       options,
     );
-    return Promise.resolve(imageBitmap);
+    imageBitmap[_bitmapData] = processedImage.data;
+    imageBitmap[_width] = processedImage.outputWidth;
+    imageBitmap[_height] = processedImage.outputHeight;
+    return PromiseResolve(imageBitmap);
   }
   if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
     return (async () => {
       const data = await image.arrayBuffer();
-      // TODO: 2.
-      const { data: imageData, width, height } = op_image_decode_png(data);
-      imageBitmap[_bitmapData] = processImage(
+      // TODO: 2. mimesniff (we only support png)
+      const { data: imageData, width, height } = ops.op_image_decode_png(data);
+      const processedImage = processImage(
         imageData,
         width,
         height,
@@ -388,14 +427,17 @@ function createImageBitmap(
         sh,
         options,
       );
+      imageBitmap[_bitmapData] = processedImage.data;
+      imageBitmap[_width] = processedImage.outputWidth;
+      imageBitmap[_height] = processedImage.outputHeight;
       return imageBitmap;
     })();
   } else {
-    return Promise.reject(new TypeError("Invalid or unsupported image value"));
+    return PromiseReject(new TypeError("Invalid or unsupported image value"));
   }
 }
 
-function processImage(input, width, height, sx, sy, sw, sh, options, is_blob) {
+function processImage(input, width, height, sx, sy, sw, sh, options) {
   let sourceRectangle;
 
   if (
@@ -440,63 +482,43 @@ function processImage(input, width, height, sx, sy, sw, sh, options, is_blob) {
     outputHeight = heightOfSourceRect;
   }
 
-  const output = new Uint8Array(widthOfSourceRect * heightOfSourceRect * 4);
-
-  for (let i = sourceRectangle[0][1]; i < sourceRectangle[3][1]; i++) {
-    const startOfRow = i * (width * 4);
-    const rowColOffset = sourceRectangle[0][0] * 4;
-    const start = startOfRow + rowColOffset;
-    const end = start + (widthOfSourceRect * 4);
-
-    const slicedRow = input.slice(start, end);
-
-    output.set(
-      slicedRow,
-      (i - sourceRectangle[0][1]) * (widthOfSourceRect * 4),
-    );
+  if (options.colorSpaceConversion === "none") {
+    throw new TypeError("options.colorSpaceConversion 'none' is not supported");
   }
 
   /*
-  [
-    1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1,
-  ]
-  ->
-  [
-
-       1, 1, 1,
-       1, 1, 1,
-       1, 1, 1,
-
-  ]
+   * The cropping works differently than the spec specifies:
+   * The spec states to create an infinite surface and place the top-left corner
+   * of the image a 0,0 and crop based on sourceRectangle.
+   *
+   * We instead create a surface the size of sourceRectangle, and position
+   * the image at the correct location, which is the inverse of the x & y of
+   * sourceRectangle's top-left corner.
    */
-
-  const resized = op_image_process(
-    output,
-    widthOfSourceRect,
-    heightOfSourceRect,
-    outputWidth,
-    outputHeight,
-    options.resizeQuality,
-    options.imageOrientation === "flipY",
+  const data = ops.op_image_process(
+    new Uint8Array(TypedArrayPrototypeGetBuffer(input)),
+    {
+      width,
+      height,
+      surfaceWidth: widthOfSourceRect,
+      surfaceHeight: heightOfSourceRect,
+      inputX: sourceRectangle[0][0] * -1, // input_x
+      inputY: sourceRectangle[0][1] * -1, // input_y
+      outputWidth,
+      outputHeight,
+      resizeQuality: options.resizeQuality,
+      flipY: options.imageOrientation === "flipY",
+      premultiply: options.premultiplyAlpha === "default"
+        ? null
+        : (options.premultiplyAlpha === "premultiply"),
+    },
   );
 
-  // ignore 9.
-
-  if (options.premultiplyAlpha === "premultiply") {
-    for (let i = 0; i < outputWidth * outputHeight; i++) {
-      const color = resized.subarray(i * 4, (i + 1) * 4);
-      const alpha = color[3] / 255;
-      color[0] *= alpha;
-      color[1] *= alpha;
-      color[2] *= alpha;
-    }
-  }
-
-  return resized;
+  return {
+    data,
+    outputWidth,
+    outputHeight,
+  };
 }
 
 export { createImageBitmap, ImageBitmap, ImageData };

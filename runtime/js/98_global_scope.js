@@ -119,6 +119,7 @@ const windowOrWorkerGlobalScope = {
   ),
   atob: util.writable(base64.atob),
   btoa: util.writable(base64.btoa),
+  createImageBitmap: util.writable(image.createImageBitmap),
   clearInterval: util.writable(timers.clearInterval),
   clearTimeout: util.writable(timers.clearTimeout),
   caches: {
