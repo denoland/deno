@@ -23,6 +23,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsStackFrame;
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
@@ -249,14 +250,10 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   }
 }
 
-pub fn create_linter(
-  media_type: MediaType,
-  rules: Vec<&'static dyn LintRule>,
-) -> Linter {
+pub fn create_linter(rules: Vec<&'static dyn LintRule>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")
-    .media_type(media_type)
     .rules(rules)
     .build()
 }
@@ -266,12 +263,16 @@ fn lint_file(
   source_code: String,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
-  let file_name = file_path.to_string_lossy().to_string();
+  let filename = file_path.to_string_lossy().to_string();
   let media_type = MediaType::from_path(file_path);
 
-  let linter = create_linter(media_type, lint_rules);
+  let linter = create_linter(lint_rules);
 
-  let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
+  let (_, file_diagnostics) = linter.lint_file(LintFileOptions {
+    filename,
+    media_type,
+    source_code: source_code.clone(),
+  })?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -287,10 +288,13 @@ fn lint_stdin(
     return Err(generic_error("Failed to read from stdin"));
   }
 
-  let linter = create_linter(MediaType::TypeScript, lint_rules);
+  let linter = create_linter(lint_rules);
 
-  let (_, file_diagnostics) =
-    linter.lint(STDIN_FILE_NAME.to_string(), source_code.clone())?;
+  let (_, file_diagnostics) = linter.lint_file(LintFileOptions {
+    filename: STDIN_FILE_NAME.to_string(),
+    source_code: source_code.clone(),
+    media_type: MediaType::TypeScript,
+  })?;
 
   Ok((file_diagnostics, source_code))
 }

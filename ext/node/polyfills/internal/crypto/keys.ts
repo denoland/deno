@@ -4,6 +4,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const {
+  op_node_create_private_key,
+} = core.ensureFastOps();
+
 import {
   kHandle,
   kKeyObject,
@@ -38,9 +43,6 @@ import {
 import {
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "ext:deno_web/00_infra.js";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
 
 export const getArrayBufferOrView = hideStackFrames(
   (
@@ -234,7 +236,7 @@ export function createPrivateKey(
   key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
 ): PrivateKeyObject {
   const { data, format, type } = prepareAsymmetricKey(key);
-  const details = ops.op_node_create_private_key(data, format, type);
+  const details = op_node_create_private_key(data, format, type);
   const handle = setOwnedKey(copyBuffer(data));
   return new PrivateKeyObject(handle, details);
 }

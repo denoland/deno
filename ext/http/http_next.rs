@@ -769,7 +769,7 @@ pub fn op_http_set_response_body_text(
   }
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_http_set_response_body_bytes(
   external: *const c_void,
   #[buffer] buffer: JsBuffer,

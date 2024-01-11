@@ -236,7 +236,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   use std::io::BufRead;
 
