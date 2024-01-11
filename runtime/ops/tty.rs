@@ -336,7 +336,6 @@ mod tests {
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
-  state: &mut OpState,
   #[string] prompt_text: &str,
   #[string] default_value: &str,
 ) -> Result<Option<String>, AnyError> {
@@ -354,7 +353,6 @@ pub fn op_read_line_prompt(
     Err(ReadlineError::Interrupted) => {
       // SAFETY: Disable raw mode and raise SIGINT.
       unsafe {
-        drop(editor);
         libc::raise(libc::SIGINT);
       }
       Ok(None)
