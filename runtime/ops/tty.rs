@@ -50,7 +50,12 @@ use winapi::um::wincon;
 
 deno_core::extension!(
   deno_tty,
-  ops = [op_stdin_set_raw, op_isatty, op_console_size, op_read_line_prompt],
+  ops = [
+    op_stdin_set_raw,
+    op_isatty,
+    op_console_size,
+    op_read_line_prompt
+  ],
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());
@@ -347,13 +352,13 @@ pub fn op_read_line_prompt(
   match read_result {
     Ok(line) => Ok(Some(line)),
     Err(ReadlineError::Interrupted) => {
-        // SAFETY: Disable raw mode and raise SIGINT.
-        unsafe {
-          let _ = op_stdin_set_raw::call(state, false, true);
-          libc::raise(libc::SIGINT);
-        }
-        Ok(None)
-    },
+      // SAFETY: Disable raw mode and raise SIGINT.
+      unsafe {
+        let _ = op_stdin_set_raw::call(state, false, true);
+        libc::raise(libc::SIGINT);
+      }
+      Ok(None)
+    }
     Err(ReadlineError::Eof) => Ok(None),
     Err(err) => Err(err.into()),
   }
