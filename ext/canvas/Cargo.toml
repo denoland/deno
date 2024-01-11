@@ -3,9 +3,10 @@
 [package]
 name = "deno_canvas"
 version = "0.1.0"
-authors = ["the Deno authors"]
+authors.workspace = true
 edition.workspace = true
-license = "MIT"
+license.workspace = true
+repository.workspace = true
 readme = "README.md"
 description = "OffscreenCanvas implementation for Deno"
 
