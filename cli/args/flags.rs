@@ -2383,7 +2383,7 @@ fn publish_subcommand() -> Command {
       .arg(
         Arg::new("dry-run")
           .long("dry-run")
-          .help("Prepare the package to publishing, perform all checks and validations without uploading")
+          .help("Prepare the package for publishing performing all checks and validations without uploading")
           .action(ArgAction::SetTrue),
       )
     })
