@@ -327,7 +327,6 @@ pub struct VendorFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
-  pub directory: String,
   pub token: Option<String>,
   pub dry_run: bool,
 }
@@ -2373,19 +2372,10 @@ Remote modules and multiple modules may also be specified:
 fn publish_subcommand() -> Command {
   Command::new("publish")
     .hide(true)
-    .about("Unstable preview feature: Publish a package")
+    .about("Unstable preview feature: Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
       cmd.arg(
-        Arg::new("directory")
-          .help(
-            "The directory to the package, or workspace of packages to publish",
-          )
-          .default_missing_value(".")
-          .value_hint(ValueHint::DirPath)
-          .required(true),
-      )
-      .arg(
         Arg::new("token")
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
@@ -3828,7 +3818,6 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
-    directory: matches.remove_one::<String>("directory").unwrap(),
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
   });

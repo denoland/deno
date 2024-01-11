@@ -1,9 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypePush,
+  StringPrototypeCharCodeAt,
+  Uint8Array,
+} = primordials;
+
 import { isatty } from "ext:runtime/40_tty.js";
 import { stdin } from "ext:deno_io/12_io.js";
-const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
-  primordials;
+
 const LF = StringPrototypeCharCodeAt("\n", 0);
 const CR = StringPrototypeCharCodeAt("\r", 0);
 

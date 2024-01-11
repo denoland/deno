@@ -4,9 +4,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-const internals = globalThis.__bootstrap.internals;
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { core, internals } from "ext:core/mod.js";
+const {
+  op_process_abort,
+  op_geteuid,
+} = core.ensureFastOps();
+const {
+  op_set_exit_code,
+} = core.ensureFastOps(true);
+
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
@@ -99,7 +105,7 @@ export const exit = (code?: number | string) => {
 };
 
 export const abort = () => {
-  ops.op_process_abort();
+  op_process_abort();
 };
 
 function addReadOnlyProcessAlias(
@@ -440,7 +446,7 @@ class Process extends EventEmitter {
     globalProcessExitCode = code;
     code = parseInt(code) || 0;
     if (!isNaN(code)) {
-      ops.op_set_exit_code(code);
+      op_set_exit_code(code);
     }
   }
 
@@ -676,7 +682,7 @@ class Process extends EventEmitter {
 
   /** This method is removed on Windows */
   geteuid?(): number {
-    return ops.op_geteuid();
+    return op_geteuid();
   }
 
   // TODO(kt3k): Implement this when we added -e option to node compat mode

@@ -15,21 +15,75 @@ pub fn env_vars_for_registry() -> Vec<(String, String)> {
 }
 
 itest!(no_token {
-  args: "publish publish/missing_deno_json",
+  args: "publish",
+  cwd: Some("publish/missing_deno_json"),
   output: "publish/no_token.out",
   exit_code: 1,
 });
 
 itest!(missing_deno_json {
-  args: "publish --token 'sadfasdf' $TESTDATA/publish/missing_deno_json",
+  args: "publish --token 'sadfasdf'",
   output: "publish/missing_deno_json.out",
+  cwd: Some("publish/missing_deno_json"),
+  copy_temp_dir: Some("publish/missing_deno_json"),
   exit_code: 1,
   temp_cwd: true,
 });
 
+itest!(invalid_fast_check {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/invalid_fast_check.out",
+  cwd: Some("publish/invalid_fast_check"),
+  copy_temp_dir: Some("publish/invalid_fast_check"),
+  exit_code: 1,
+  temp_cwd: true,
+});
+
+itest!(javascript_missing_decl_file {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/javascript_missing_decl_file.out",
+  cwd: Some("publish/javascript_missing_decl_file"),
+  copy_temp_dir: Some("publish/javascript_missing_decl_file"),
+  envs: env_vars_for_registry(),
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(javascript_decl_file {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/javascript_decl_file.out",
+  cwd: Some("publish/javascript_decl_file"),
+  copy_temp_dir: Some("publish/javascript_decl_file"),
+  envs: env_vars_for_registry(),
+  exit_code: 0,
+  temp_cwd: true,
+});
+
 itest!(successful {
-  args: "publish --token 'sadfasdf' $TESTDATA/publish/successful",
+  args: "publish --token 'sadfasdf'",
   output: "publish/successful.out",
+  cwd: Some("publish/successful"),
+  copy_temp_dir: Some("publish/successful"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(workspace_all {
+  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  output: "publish/workspace.out",
+  cwd: Some("publish/workspace"),
+  copy_temp_dir: Some("publish/workspace"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(workspace_individual {
+  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  output: "publish/workspace_individual.out",
+  cwd: Some("publish/workspace/bar"),
+  copy_temp_dir: Some("publish/workspace"),
   envs: env_vars_for_registry(),
   http_server: true,
   temp_cwd: true,
@@ -51,7 +105,7 @@ fn ignores_directories() {
     "name": "@foo/bar",
     "version": "1.0.0",
     "exclude": [ "ignore" ],
-    "exports": "main_included.ts"
+    "exports": "./main_included.ts"
   }));
 
   let ignored_dirs = vec![
@@ -76,7 +130,6 @@ fn ignores_directories() {
     .arg("--log-level=debug")
     .arg("--token")
     .arg("sadfasdf")
-    .arg(temp_dir)
     .run();
   output.assert_exit_code(0);
   let output = output.combined_output();
@@ -89,4 +142,5 @@ fn publish_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()
     .envs(env_vars_for_registry())
+    .use_temp_cwd()
 }

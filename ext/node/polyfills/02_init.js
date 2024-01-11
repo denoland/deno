@@ -2,8 +2,9 @@
 
 // deno-lint-ignore-file
 
-const internals = globalThis.__bootstrap.internals;
+import { internals } from "ext:core/mod.js";
 const requireImpl = internals.requireImpl;
+
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 import "node:module";
 
