@@ -19,6 +19,7 @@ const {
   StringPrototypeReplaceAll,
   StringPrototypeToLowerCase,
 } = primordials;
+
 import {
   collectHttpQuotedString,
   collectSequenceOfCodepoints,

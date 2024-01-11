@@ -320,7 +320,7 @@ fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn rss() -> usize {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
 

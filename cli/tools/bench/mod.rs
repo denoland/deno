@@ -15,6 +15,8 @@ use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
+use crate::util::glob::FilePatterns;
+use crate::util::glob::PathOrPattern;
 use crate::util::path::is_script_ext;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
@@ -393,13 +395,33 @@ async fn bench_specifiers(
 }
 
 /// Checks if the path has a basename and extension Deno supports for benches.
-fn is_supported_bench_path(path: &Path) -> bool {
+fn is_supported_bench_path(path: &Path, patterns: &FilePatterns) -> bool {
+  if !is_script_ext(path) {
+    false
+  } else if has_supported_bench_path_name(path) {
+    true
+  } else {
+    // allow someone to explicitly specify a path
+    let matches_exact_path_or_pattern = patterns
+      .include
+      .as_ref()
+      .map(|p| {
+        p.inner().iter().any(|p| match p {
+          PathOrPattern::Path(p) => p == path,
+          PathOrPattern::Pattern(p) => p.matches_path(path),
+        })
+      })
+      .unwrap_or(false);
+    matches_exact_path_or_pattern
+  }
+}
+
+fn has_supported_bench_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    (basename.ends_with("_bench")
+    basename.ends_with("_bench")
       || basename.ends_with(".bench")
-      || basename == "bench")
-      && is_script_ext(path)
+      || basename == "bench"
   } else {
     false
   }
@@ -420,7 +442,7 @@ pub async fn run_benchmarks(
     Permissions::from_options(&cli_options.permissions_options())?;
 
   let specifiers =
-    collect_specifiers(&bench_options.files, is_supported_bench_path)?;
+    collect_specifiers(bench_options.files, is_supported_bench_path)?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -480,16 +502,21 @@ pub async fn run_benchmarks_with_watch(
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(include) = &bench_options.files.include {
-          let _ = watcher_communicator.watch_paths(include.clone());
+        if let Some(set) = &bench_options.files.include {
+          let watch_paths = set.base_paths();
+          if !watch_paths.is_empty() {
+            let _ = watcher_communicator.watch_paths(watch_paths);
+          }
         }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let module_graph_builder = factory.module_graph_builder().await?;
         let module_load_preparer = factory.module_load_preparer().await?;
 
-        let bench_modules =
-          collect_specifiers(&bench_options.files, is_supported_bench_path)?;
+        let bench_modules = collect_specifiers(
+          bench_options.files.clone(),
+          is_supported_bench_path,
+        )?;
 
         // Various bench files should not share the same permissions in terms of
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
@@ -509,16 +536,13 @@ pub async fn run_benchmarks_with_watch(
 
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let changed_specifiers = changed_paths
-            .into_iter()
-            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-            .collect::<HashSet<_>>();
+          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           let mut result = Vec::new();
           for bench_module_specifier in bench_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
               &bench_module_specifier,
-              &changed_specifiers,
+              &changed_paths,
             ) {
               result.push(bench_module_specifier.clone());
             }
@@ -531,8 +555,10 @@ pub async fn run_benchmarks_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
+        // todo(THIS PR): why are we collecting specifiers twice in a row?
+        // Seems like a perf bug.
         let specifiers =
-          collect_specifiers(&bench_options.files, is_supported_bench_path)?
+          collect_specifiers(bench_options.files, is_supported_bench_path)?
             .into_iter()
             .filter(|specifier| bench_modules_to_reload.contains(specifier))
             .collect::<Vec<ModuleSpecifier>>();

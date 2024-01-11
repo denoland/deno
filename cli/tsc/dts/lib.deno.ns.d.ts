@@ -1802,7 +1802,7 @@ declare namespace Deno {
    * the first error encountered while copying.
    *
    * @deprecated Use {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.copy} will be removed in the future.
+   * {@linkcode Deno.copy} will be removed in v2.0.0.
    *
    * @category I/O
    *
@@ -1820,7 +1820,7 @@ declare namespace Deno {
    * Turns a Reader, `r`, into an async iterator.
    *
    * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Deno.iter}
-   * will be removed in the future.
+   * will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -1833,7 +1833,7 @@ declare namespace Deno {
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * @deprecated Use {@linkcode ReadableStream} instead.
-   * {@linkcode Deno.iterSync} will be removed in the future.
+   * {@linkcode Deno.iterSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2505,7 +2505,7 @@ declare namespace Deno {
    * The Deno abstraction for reading and writing files.
    *
    * @deprecated Use {@linkcode Deno.FsFile} instead. {@linkcode Deno.File}
-   * will be removed in the future.
+   * will be removed in v2.0.0.
    *
    * @category File System
    */
@@ -2701,7 +2701,7 @@ declare namespace Deno {
    *
    * @deprecated Use the
    * [Web Streams API]{@link https://developer.mozilla.org/en-US/docs/Web/API/Streams_API}
-   * instead. {@linkcode Deno.Buffer} will be removed in the future.
+   * instead. {@linkcode Deno.Buffer} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2777,7 +2777,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode ReadableStream} and
    * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
-   * instead. {@linkcode Deno.readAll} will be removed in the future.
+   * instead. {@linkcode Deno.readAll} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2789,7 +2789,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode ReadableStream} and
    * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
-   * instead. {@linkcode Deno.readAllSync} will be removed in the future.
+   * instead. {@linkcode Deno.readAllSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2800,7 +2800,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
    * and {@linkcode ReadableStream.pipeTo} instead. {@linkcode Deno.writeAll}
-   * will be removed in the future.
+   * will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2812,7 +2812,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
    * and {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.writeAllSync} will be removed in the future.
+   * {@linkcode Deno.writeAllSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -3882,7 +3882,7 @@ declare namespace Deno {
     /**
      * Stops watching the file system and closes the watcher resource.
      *
-     * @deprecated Will be removed in the future.
+     * @deprecated Will be removed in v2.0.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -4958,6 +4958,7 @@ declare namespace Deno {
     os:
       | "darwin"
       | "linux"
+      | "android"
       | "windows"
       | "freebsd"
       | "netbsd"

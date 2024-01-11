@@ -7,24 +7,101 @@
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { EventTarget } from "ext:deno_web/02_event.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+const {
+  isDataView,
+  isTypedArray,
+} = core;
+const {
+  op_webgpu_buffer_get_map_async,
+  op_webgpu_buffer_get_mapped_range,
+  op_webgpu_buffer_unmap,
+  op_webgpu_command_encoder_begin_compute_pass,
+  op_webgpu_command_encoder_begin_render_pass,
+  op_webgpu_command_encoder_clear_buffer,
+  op_webgpu_command_encoder_copy_buffer_to_buffer,
+  op_webgpu_command_encoder_copy_buffer_to_texture,
+  op_webgpu_command_encoder_copy_texture_to_buffer,
+  op_webgpu_command_encoder_copy_texture_to_texture,
+  op_webgpu_command_encoder_finish,
+  op_webgpu_command_encoder_insert_debug_marker,
+  op_webgpu_command_encoder_pop_debug_group,
+  op_webgpu_command_encoder_push_debug_group,
+  op_webgpu_command_encoder_resolve_query_set,
+  op_webgpu_command_encoder_write_timestamp,
+  op_webgpu_compute_pass_dispatch_workgroups,
+  op_webgpu_compute_pass_dispatch_workgroups_indirect,
+  op_webgpu_compute_pass_end,
+  op_webgpu_compute_pass_insert_debug_marker,
+  op_webgpu_compute_pass_pop_debug_group,
+  op_webgpu_compute_pass_push_debug_group,
+  op_webgpu_compute_pass_set_bind_group,
+  op_webgpu_compute_pass_set_pipeline,
+  op_webgpu_compute_pipeline_get_bind_group_layout,
+  op_webgpu_create_bind_group,
+  op_webgpu_create_bind_group_layout,
+  op_webgpu_create_buffer,
+  op_webgpu_create_command_encoder,
+  op_webgpu_create_compute_pipeline,
+  op_webgpu_create_pipeline_layout,
+  op_webgpu_create_query_set,
+  op_webgpu_create_render_bundle_encoder,
+  op_webgpu_create_render_pipeline,
+  op_webgpu_create_sampler,
+  op_webgpu_create_shader_module,
+  op_webgpu_create_texture,
+  op_webgpu_create_texture_view,
+  op_webgpu_queue_submit,
+  op_webgpu_render_bundle_encoder_draw,
+  op_webgpu_render_bundle_encoder_draw_indexed,
+  op_webgpu_render_bundle_encoder_draw_indirect,
+  op_webgpu_render_bundle_encoder_finish,
+  op_webgpu_render_bundle_encoder_insert_debug_marker,
+  op_webgpu_render_bundle_encoder_pop_debug_group,
+  op_webgpu_render_bundle_encoder_push_debug_group,
+  op_webgpu_render_bundle_encoder_set_bind_group,
+  op_webgpu_render_bundle_encoder_set_index_buffer,
+  op_webgpu_render_bundle_encoder_set_pipeline,
+  op_webgpu_render_bundle_encoder_set_vertex_buffer,
+  op_webgpu_render_pass_begin_occlusion_query,
+  op_webgpu_render_pass_draw,
+  op_webgpu_render_pass_draw_indexed,
+  op_webgpu_render_pass_draw_indexed_indirect,
+  op_webgpu_render_pass_draw_indirect,
+  op_webgpu_render_pass_end,
+  op_webgpu_render_pass_end_occlusion_query,
+  op_webgpu_render_pass_execute_bundles,
+  op_webgpu_render_pass_insert_debug_marker,
+  op_webgpu_render_pass_pop_debug_group,
+  op_webgpu_render_pass_push_debug_group,
+  op_webgpu_render_pass_set_bind_group,
+  op_webgpu_render_pass_set_blend_constant,
+  op_webgpu_render_pass_set_index_buffer,
+  op_webgpu_render_pass_set_pipeline,
+  op_webgpu_render_pass_set_scissor_rect,
+  op_webgpu_render_pass_set_stencil_reference,
+  op_webgpu_render_pass_set_vertex_buffer,
+  op_webgpu_render_pass_set_viewport,
+  op_webgpu_render_pipeline_get_bind_group_layout,
+  op_webgpu_request_adapter,
+  op_webgpu_request_adapter_info,
+  op_webgpu_request_device,
+  op_webgpu_write_buffer,
+  op_webgpu_write_texture,
+} = core.ensureFastOps();
 const {
   ArrayBuffer,
+  ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypePush,
-  ObjectHasOwn,
-  ArrayPrototypeIncludes,
-  ArrayBufferPrototypeGetByteLength,
+  DataViewPrototypeGetBuffer,
   Error,
   MathMax,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeCatch,
@@ -34,28 +111,22 @@ const {
   SafeArrayIterator,
   SafePromiseAll,
   SafeSet,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  TypedArrayPrototypeGetBuffer,
-  DataViewPrototypeGetBuffer,
   SafeWeakRef,
   SetPrototypeHas,
   Symbol,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint32Array,
   Uint8Array,
 } = primordials;
-const {
-  isDataView,
-  isTypedArray,
-} = core;
-const {
-  op_webgpu_buffer_get_map_async,
-  op_webgpu_request_adapter,
-  op_webgpu_request_adapter_info,
-  op_webgpu_request_device,
-} = core.ensureFastOps();
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { EventTarget } from "ext:deno_web/02_event.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -994,7 +1065,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_buffer(
+    const { rid, err } = op_webgpu_create_buffer(
       device.rid,
       descriptor.label,
       descriptor.size,
@@ -1045,7 +1116,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_texture({
+    const { rid, err } = op_webgpu_create_texture({
       deviceRid: device.rid,
       ...descriptor,
       size: normalizeGPUExtent3D(descriptor.size),
@@ -1074,7 +1145,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_sampler({
+    const { rid, err } = op_webgpu_create_sampler({
       deviceRid: device.rid,
       ...descriptor,
     });
@@ -1118,7 +1189,7 @@ class GPUDevice extends EventTarget {
       }
     }
 
-    const { rid, err } = ops.op_webgpu_create_bind_group_layout(
+    const { rid, err } = op_webgpu_create_bind_group_layout(
       device.rid,
       descriptor.label,
       descriptor.entries,
@@ -1161,7 +1232,7 @@ class GPUDevice extends EventTarget {
         return rid;
       },
     );
-    const { rid, err } = ops.op_webgpu_create_pipeline_layout(
+    const { rid, err } = op_webgpu_create_pipeline_layout(
       device.rid,
       descriptor.label,
       bindGroupLayouts,
@@ -1246,7 +1317,7 @@ class GPUDevice extends EventTarget {
       }
     });
 
-    const { rid, err } = ops.op_webgpu_create_bind_group(
+    const { rid, err } = op_webgpu_create_bind_group(
       device.rid,
       descriptor.label,
       layout,
@@ -1276,7 +1347,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_shader_module(
+    const { rid, err } = op_webgpu_create_shader_module(
       device.rid,
       descriptor.label,
       descriptor.code,
@@ -1327,7 +1398,7 @@ class GPUDevice extends EventTarget {
       selfContext: "this",
     });
 
-    const { rid, err } = ops.op_webgpu_create_compute_pipeline(
+    const { rid, err } = op_webgpu_create_compute_pipeline(
       device.rid,
       descriptor.label,
       layout,
@@ -1401,7 +1472,7 @@ class GPUDevice extends EventTarget {
       };
     }
 
-    const { rid, err } = ops.op_webgpu_create_render_pipeline({
+    const { rid, err } = op_webgpu_create_render_pipeline({
       deviceRid: device.rid,
       label: descriptor.label,
       layout,
@@ -1449,7 +1520,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_command_encoder(
+    const { rid, err } = op_webgpu_create_command_encoder(
       device.rid,
       descriptor.label,
     );
@@ -1479,7 +1550,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_render_bundle_encoder({
+    const { rid, err } = op_webgpu_create_render_bundle_encoder({
       deviceRid: device.rid,
       ...descriptor,
     });
@@ -1508,7 +1579,7 @@ class GPUDevice extends EventTarget {
       "Argument 1",
     );
     const device = assertDevice(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_query_set({
+    const { rid, err } = op_webgpu_create_query_set({
       deviceRid: device.rid,
       ...descriptor,
     });
@@ -1645,7 +1716,7 @@ class GPUQueue {
         return rid;
       },
     );
-    const { err } = ops.op_webgpu_queue_submit(device.rid, commandBufferRids);
+    const { err } = op_webgpu_queue_submit(device.rid, commandBufferRids);
     for (let i = 0; i < commandBuffers.length; ++i) {
       commandBuffers[i][_rid] = undefined;
     }
@@ -1700,7 +1771,7 @@ class GPUQueue {
       abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
     }
 
-    const { err } = ops.op_webgpu_write_buffer(
+    const { err } = op_webgpu_write_buffer(
       device.rid,
       bufferRid,
       bufferOffset,
@@ -1751,7 +1822,7 @@ class GPUQueue {
       abLike = DataViewPrototypeGetBuffer(/** @type {DataView} */ (data));
     }
 
-    const { err } = ops.op_webgpu_write_texture(
+    const { err } = op_webgpu_write_texture(
       device.rid,
       {
         texture: textureRid,
@@ -2008,7 +2079,7 @@ class GPUBuffer {
     }
 
     const buffer = new ArrayBuffer(rangeSize);
-    const { rid } = ops.op_webgpu_buffer_get_mapped_range(
+    const { rid } = op_webgpu_buffer_get_mapped_range(
       bufferRid,
       offset,
       size,
@@ -2063,7 +2134,7 @@ class GPUBuffer {
       }
       for (let i = 0; i < mappedRanges.length; ++i) {
         const { 0: buffer, 1: mappedRid } = mappedRanges[i];
-        const { err } = ops.op_webgpu_buffer_unmap(
+        const { err } = op_webgpu_buffer_unmap(
           bufferRid,
           mappedRid,
           ...new SafeArrayIterator(write ? [new Uint8Array(buffer)] : []),
@@ -2235,7 +2306,7 @@ class GPUTexture {
     );
     const device = assertDevice(this, prefix, "this");
     const textureRid = assertResource(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_create_texture_view({
+    const { rid, err } = op_webgpu_create_texture_view({
       textureRid,
       ...descriptor,
     });
@@ -2694,8 +2765,8 @@ class GPUComputePipeline {
     index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
     const device = assertDevice(this, prefix, "this");
     const computePipelineRid = assertResource(this, prefix, "this");
-    const { rid, label, err } = ops
-      .op_webgpu_compute_pipeline_get_bind_group_layout(
+    const { rid, label, err } =
+      op_webgpu_compute_pipeline_get_bind_group_layout(
         computePipelineRid,
         index,
       );
@@ -2773,11 +2844,10 @@ class GPURenderPipeline {
     index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
     const device = assertDevice(this, prefix, "this");
     const renderPipelineRid = assertResource(this, prefix, "this");
-    const { rid, label, err } = ops
-      .op_webgpu_render_pipeline_get_bind_group_layout(
-        renderPipelineRid,
-        index,
-      );
+    const { rid, label, err } = op_webgpu_render_pipeline_get_bind_group_layout(
+      renderPipelineRid,
+      index,
+    );
     device.pushError(err);
 
     const bindGroupLayout = createGPUBindGroupLayout(
@@ -3011,7 +3081,7 @@ class GPUCommandEncoder {
       };
     }
 
-    const { rid } = ops.op_webgpu_command_encoder_begin_render_pass(
+    const { rid } = op_webgpu_command_encoder_begin_render_pass(
       commandEncoderRid,
       descriptor.label,
       colorAttachments,
@@ -3061,7 +3131,7 @@ class GPUCommandEncoder {
       };
     }
 
-    const { rid } = ops.op_webgpu_command_encoder_begin_compute_pass(
+    const { rid } = op_webgpu_command_encoder_begin_compute_pass(
       commandEncoderRid,
       descriptor.label,
       timestampWrites,
@@ -3126,7 +3196,7 @@ class GPUCommandEncoder {
       selfContext: "this",
     });
 
-    const { err } = ops.op_webgpu_command_encoder_copy_buffer_to_buffer(
+    const { err } = op_webgpu_command_encoder_copy_buffer_to_buffer(
       commandEncoderRid,
       sourceRid,
       sourceOffset,
@@ -3179,7 +3249,7 @@ class GPUCommandEncoder {
       selfContext: "this",
     });
 
-    const { err } = ops.op_webgpu_command_encoder_copy_buffer_to_texture(
+    const { err } = op_webgpu_command_encoder_copy_buffer_to_texture(
       commandEncoderRid,
       {
         ...source,
@@ -3243,7 +3313,7 @@ class GPUCommandEncoder {
       resourceContext: "buffer in Argument 2",
       selfContext: "this",
     });
-    const { err } = ops.op_webgpu_command_encoder_copy_texture_to_buffer(
+    const { err } = op_webgpu_command_encoder_copy_texture_to_buffer(
       commandEncoderRid,
       {
         texture: sourceTextureRid,
@@ -3303,7 +3373,7 @@ class GPUCommandEncoder {
       resourceContext: "texture in Argument 2",
       selfContext: "this",
     });
-    const { err } = ops.op_webgpu_command_encoder_copy_texture_to_texture(
+    const { err } = op_webgpu_command_encoder_copy_texture_to_texture(
       commandEncoderRid,
       {
         texture: sourceTextureRid,
@@ -3339,7 +3409,7 @@ class GPUCommandEncoder {
     const device = assertDevice(this, prefix, "this");
     const commandEncoderRid = assertResource(this, prefix, "this");
     const bufferRid = assertResource(buffer, prefix, "Argument 1");
-    const { err } = ops.op_webgpu_command_encoder_clear_buffer(
+    const { err } = op_webgpu_command_encoder_clear_buffer(
       commandEncoderRid,
       bufferRid,
       offset,
@@ -3358,7 +3428,7 @@ class GPUCommandEncoder {
     groupLabel = webidl.converters.USVString(groupLabel, prefix, "Argument 1");
     const device = assertDevice(this, prefix, "this");
     const commandEncoderRid = assertResource(this, prefix, "this");
-    const { err } = ops.op_webgpu_command_encoder_push_debug_group(
+    const { err } = op_webgpu_command_encoder_push_debug_group(
       commandEncoderRid,
       groupLabel,
     );
@@ -3370,7 +3440,7 @@ class GPUCommandEncoder {
     const prefix = "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder'";
     const device = assertDevice(this, prefix, "this");
     const commandEncoderRid = assertResource(this, prefix, "this");
-    const { err } = ops.op_webgpu_command_encoder_pop_debug_group(
+    const { err } = op_webgpu_command_encoder_pop_debug_group(
       commandEncoderRid,
     );
     device.pushError(err);
@@ -3391,7 +3461,7 @@ class GPUCommandEncoder {
     );
     const device = assertDevice(this, prefix, "this");
     const commandEncoderRid = assertResource(this, prefix, "this");
-    const { err } = ops.op_webgpu_command_encoder_insert_debug_marker(
+    const { err } = op_webgpu_command_encoder_insert_debug_marker(
       commandEncoderRid,
       markerLabel,
     );
@@ -3416,7 +3486,7 @@ class GPUCommandEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    const { err } = ops.op_webgpu_command_encoder_write_timestamp(
+    const { err } = op_webgpu_command_encoder_write_timestamp(
       commandEncoderRid,
       querySetRid,
       queryIndex,
@@ -3468,7 +3538,7 @@ class GPUCommandEncoder {
       resourceContext: "Argument 3",
       selfContext: "this",
     });
-    const { err } = ops.op_webgpu_command_encoder_resolve_query_set(
+    const { err } = op_webgpu_command_encoder_resolve_query_set(
       commandEncoderRid,
       querySetRid,
       firstQuery,
@@ -3493,7 +3563,7 @@ class GPUCommandEncoder {
     );
     const device = assertDevice(this, prefix, "this");
     const commandEncoderRid = assertResource(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_command_encoder_finish(
+    const { rid, err } = op_webgpu_command_encoder_finish(
       commandEncoderRid,
       descriptor.label,
     );
@@ -3584,7 +3654,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_set_viewport({
+    op_webgpu_render_pass_set_viewport({
       renderPassRid,
       x,
       y,
@@ -3617,7 +3687,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_set_scissor_rect(
+    op_webgpu_render_pass_set_scissor_rect(
       renderPassRid,
       x,
       y,
@@ -3638,7 +3708,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_set_blend_constant(
+    op_webgpu_render_pass_set_blend_constant(
       renderPassRid,
       normalizeGPUColor(color),
     );
@@ -3660,7 +3730,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_set_stencil_reference(
+    op_webgpu_render_pass_set_stencil_reference(
       renderPassRid,
       reference,
     );
@@ -3678,7 +3748,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_begin_occlusion_query(
+    op_webgpu_render_pass_begin_occlusion_query(
       renderPassRid,
       queryIndex,
     );
@@ -3691,7 +3761,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_end_occlusion_query(renderPassRid);
+    op_webgpu_render_pass_end_occlusion_query(renderPassRid);
   }
 
   /**
@@ -3724,7 +3794,7 @@ class GPURenderPassEncoder {
       });
       return rid;
     });
-    ops.op_webgpu_render_pass_execute_bundles(renderPassRid, bundleRids);
+    op_webgpu_render_pass_execute_bundles(renderPassRid, bundleRids);
   }
 
   end() {
@@ -3741,7 +3811,7 @@ class GPURenderPassEncoder {
       "encoder referenced by this",
     );
     const renderPassRid = assertResource(this, prefix, "this");
-    const { err } = ops.op_webgpu_render_pass_end(
+    const { err } = op_webgpu_render_pass_end(
       commandEncoderRid,
       renderPassRid,
     );
@@ -3780,7 +3850,7 @@ class GPURenderPassEncoder {
       dynamicOffsetsDataStart = 0;
       dynamicOffsetsDataLength = dynamicOffsetsData.length;
     }
-    ops.op_webgpu_render_pass_set_bind_group(
+    op_webgpu_render_pass_set_bind_group(
       renderPassRid,
       index,
       bindGroupRid,
@@ -3802,7 +3872,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_push_debug_group(renderPassRid, groupLabel);
+    op_webgpu_render_pass_push_debug_group(renderPassRid, groupLabel);
   }
 
   popDebugGroup() {
@@ -3812,7 +3882,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_pop_debug_group(renderPassRid);
+    op_webgpu_render_pass_pop_debug_group(renderPassRid);
   }
 
   /**
@@ -3831,7 +3901,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_insert_debug_marker(renderPassRid, markerLabel);
+    op_webgpu_render_pass_insert_debug_marker(renderPassRid, markerLabel);
   }
 
   /**
@@ -3859,7 +3929,7 @@ class GPURenderPassEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_render_pass_set_pipeline(renderPassRid, pipelineRid);
+    op_webgpu_render_pass_set_pipeline(renderPassRid, pipelineRid);
   }
 
   /**
@@ -3896,7 +3966,7 @@ class GPURenderPassEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_render_pass_set_index_buffer(
+    op_webgpu_render_pass_set_index_buffer(
       renderPassRid,
       bufferRid,
       indexFormat,
@@ -3935,7 +4005,7 @@ class GPURenderPassEncoder {
       resourceContext: "Argument 2",
       selfContext: "this",
     });
-    ops.op_webgpu_render_pass_set_vertex_buffer(
+    op_webgpu_render_pass_set_vertex_buffer(
       renderPassRid,
       slot,
       bufferRid,
@@ -3977,7 +4047,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_draw(
+    op_webgpu_render_pass_draw(
       renderPassRid,
       vertexCount,
       instanceCount,
@@ -4023,7 +4093,7 @@ class GPURenderPassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const renderPassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_pass_draw_indexed(
+    op_webgpu_render_pass_draw_indexed(
       renderPassRid,
       indexCount,
       instanceCount,
@@ -4068,7 +4138,7 @@ class GPURenderPassEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_render_pass_draw_indirect(
+    op_webgpu_render_pass_draw_indirect(
       renderPassRid,
       indirectBufferRid,
       indirectOffset,
@@ -4111,7 +4181,7 @@ class GPURenderPassEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_render_pass_draw_indexed_indirect(
+    op_webgpu_render_pass_draw_indexed_indirect(
       renderPassRid,
       indirectBufferRid,
       indirectOffset,
@@ -4197,7 +4267,7 @@ class GPUComputePassEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_compute_pass_set_pipeline(computePassRid, pipelineRid);
+    op_webgpu_compute_pass_set_pipeline(computePassRid, pipelineRid);
   }
 
   /**
@@ -4232,7 +4302,7 @@ class GPUComputePassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const computePassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_compute_pass_dispatch_workgroups(
+    op_webgpu_compute_pass_dispatch_workgroups(
       computePassRid,
       workgroupCountX,
       workgroupCountY,
@@ -4276,7 +4346,7 @@ class GPUComputePassEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_compute_pass_dispatch_workgroups_indirect(
+    op_webgpu_compute_pass_dispatch_workgroups_indirect(
       computePassRid,
       indirectBufferRid,
       indirectOffset,
@@ -4297,7 +4367,7 @@ class GPUComputePassEncoder {
       "encoder referenced by this",
     );
     const computePassRid = assertResource(this, prefix, "this");
-    const { err } = ops.op_webgpu_compute_pass_end(
+    const { err } = op_webgpu_compute_pass_end(
       commandEncoderRid,
       computePassRid,
     );
@@ -4337,7 +4407,7 @@ class GPUComputePassEncoder {
       dynamicOffsetsDataStart = 0;
       dynamicOffsetsDataLength = dynamicOffsetsData.length;
     }
-    ops.op_webgpu_compute_pass_set_bind_group(
+    op_webgpu_compute_pass_set_bind_group(
       computePassRid,
       index,
       bindGroupRid,
@@ -4359,7 +4429,7 @@ class GPUComputePassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const computePassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_compute_pass_push_debug_group(computePassRid, groupLabel);
+    op_webgpu_compute_pass_push_debug_group(computePassRid, groupLabel);
   }
 
   popDebugGroup() {
@@ -4369,7 +4439,7 @@ class GPUComputePassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const computePassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_compute_pass_pop_debug_group(computePassRid);
+    op_webgpu_compute_pass_pop_debug_group(computePassRid);
   }
 
   /**
@@ -4388,7 +4458,7 @@ class GPUComputePassEncoder {
     assertDevice(this[_encoder], prefix, "encoder referenced by this");
     assertResource(this[_encoder], prefix, "encoder referenced by this");
     const computePassRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_compute_pass_insert_debug_marker(
+    op_webgpu_compute_pass_insert_debug_marker(
       computePassRid,
       markerLabel,
     );
@@ -4510,7 +4580,7 @@ class GPURenderBundleEncoder {
     );
     const device = assertDevice(this, prefix, "this");
     const renderBundleEncoderRid = assertResource(this, prefix, "this");
-    const { rid, err } = ops.op_webgpu_render_bundle_encoder_finish(
+    const { rid, err } = op_webgpu_render_bundle_encoder_finish(
       renderBundleEncoderRid,
       descriptor.label,
     );
@@ -4553,7 +4623,7 @@ class GPURenderBundleEncoder {
       dynamicOffsetsDataStart = 0;
       dynamicOffsetsDataLength = dynamicOffsetsData.length;
     }
-    ops.op_webgpu_render_bundle_encoder_set_bind_group(
+    op_webgpu_render_bundle_encoder_set_bind_group(
       renderBundleEncoderRid,
       index,
       bindGroupRid,
@@ -4574,7 +4644,7 @@ class GPURenderBundleEncoder {
     groupLabel = webidl.converters.USVString(groupLabel, prefix, "Argument 1");
     assertDevice(this, prefix, "this");
     const renderBundleEncoderRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_bundle_encoder_push_debug_group(
+    op_webgpu_render_bundle_encoder_push_debug_group(
       renderBundleEncoderRid,
       groupLabel,
     );
@@ -4586,7 +4656,7 @@ class GPURenderBundleEncoder {
       "Failed to execute 'popDebugGroup' on 'GPURenderBundleEncoder'";
     assertDevice(this, prefix, "this");
     const renderBundleEncoderRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_bundle_encoder_pop_debug_group(
+    op_webgpu_render_bundle_encoder_pop_debug_group(
       renderBundleEncoderRid,
     );
   }
@@ -4606,7 +4676,7 @@ class GPURenderBundleEncoder {
     );
     assertDevice(this, prefix, "this");
     const renderBundleEncoderRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_bundle_encoder_insert_debug_marker(
+    op_webgpu_render_bundle_encoder_insert_debug_marker(
       renderBundleEncoderRid,
       markerLabel,
     );
@@ -4633,7 +4703,7 @@ class GPURenderBundleEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_render_bundle_encoder_set_pipeline(
+    op_webgpu_render_bundle_encoder_set_pipeline(
       renderBundleEncoderRid,
       pipelineRid,
     );
@@ -4666,7 +4736,7 @@ class GPURenderBundleEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_render_bundle_encoder_set_index_buffer(
+    op_webgpu_render_bundle_encoder_set_index_buffer(
       renderBundleEncoderRid,
       bufferRid,
       indexFormat,
@@ -4700,7 +4770,7 @@ class GPURenderBundleEncoder {
       resourceContext: "Argument 2",
       selfContext: "this",
     });
-    ops.op_webgpu_render_bundle_encoder_set_vertex_buffer(
+    op_webgpu_render_bundle_encoder_set_vertex_buffer(
       renderBundleEncoderRid,
       slot,
       bufferRid,
@@ -4741,7 +4811,7 @@ class GPURenderBundleEncoder {
     );
     assertDevice(this, prefix, "this");
     const renderBundleEncoderRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_bundle_encoder_draw(
+    op_webgpu_render_bundle_encoder_draw(
       renderBundleEncoderRid,
       vertexCount,
       instanceCount,
@@ -4787,7 +4857,7 @@ class GPURenderBundleEncoder {
     );
     assertDevice(this, prefix, "this");
     const renderBundleEncoderRid = assertResource(this, prefix, "this");
-    ops.op_webgpu_render_bundle_encoder_draw_indexed(
+    op_webgpu_render_bundle_encoder_draw_indexed(
       renderBundleEncoderRid,
       indexCount,
       instanceCount,
@@ -4828,7 +4898,7 @@ class GPURenderBundleEncoder {
       resourceContext: "Argument 1",
       selfContext: "this",
     });
-    ops.op_webgpu_render_bundle_encoder_draw_indirect(
+    op_webgpu_render_bundle_encoder_draw_indirect(
       renderBundleEncoderRid,
       indirectBufferRid,
       indirectOffset,
@@ -7035,6 +7105,78 @@ webidl.converters["GPUSignedOffset32"] = (V, opts) =>
 
 // TYPEDEF: GPUFlagsConstant
 webidl.converters["GPUFlagsConstant"] = webidl.converters["unsigned long"];
+
+// ENUM: GPUCanvasAlphaMode
+webidl.converters["GPUCanvasAlphaMode"] = webidl.createEnumConverter(
+  "GPUCanvasAlphaMode",
+  [
+    "opaque",
+    "premultiplied",
+  ],
+);
+
+// NON-SPEC: ENUM: GPUPresentMode
+webidl.converters["GPUPresentMode"] = webidl.createEnumConverter(
+  "GPUPresentMode",
+  [
+    "autoVsync",
+    "autoNoVsync",
+    "fifo",
+    "fifoRelaxed",
+    "immediate",
+    "mailbox",
+  ],
+);
+
+// DICT: GPUCanvasConfiguration
+const dictMembersGPUCanvasConfiguration = [
+  { key: "device", converter: webidl.converters.GPUDevice, required: true },
+  {
+    key: "format",
+    converter: webidl.converters.GPUTextureFormat,
+    required: true,
+  },
+  {
+    key: "usage",
+    converter: webidl.converters["GPUTextureUsageFlags"],
+    defaultValue: GPUTextureUsage.RENDER_ATTACHMENT,
+  },
+  {
+    key: "alphaMode",
+    converter: webidl.converters["GPUCanvasAlphaMode"],
+    defaultValue: "opaque",
+  },
+
+  // Extended from spec
+  {
+    key: "presentMode",
+    converter: webidl.converters["GPUPresentMode"],
+  },
+  {
+    key: "width",
+    converter: webidl.converters["long"],
+    required: true,
+  },
+  {
+    key: "height",
+    converter: webidl.converters["long"],
+    required: true,
+  },
+  {
+    key: "viewFormats",
+    converter: webidl.createSequenceConverter(
+      webidl.converters["GPUTextureFormat"],
+    ),
+    get defaultValue() {
+      return [];
+    },
+  },
+];
+webidl.converters["GPUCanvasConfiguration"] = webidl
+  .createDictionaryConverter(
+    "GPUCanvasConfiguration",
+    dictMembersGPUCanvasConfiguration,
+  );
 
 const gpu = webidl.createBranded(GPU);
 export {

@@ -4,7 +4,9 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_node_random_int,
+} = core.ensureFastOps();
 
 export default function randomInt(max: number): number;
 export default function randomInt(min: number, max: number): number;
@@ -49,7 +51,7 @@ export default function randomInt(
 
   min = Math.ceil(min);
   max = Math.floor(max);
-  const result = ops.op_node_random_int(min, max);
+  const result = op_node_random_int(min, max);
 
   if (cb) {
     cb(null, result);

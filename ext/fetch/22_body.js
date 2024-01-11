@@ -12,6 +12,28 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
+const {
+  ArrayBufferIsView,
+  ArrayPrototypeMap,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  JSONParse,
+  ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  TypedArrayPrototypeSlice,
+  TypeError,
+  Uint8Array,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   parseUrlEncoded,
@@ -36,27 +58,6 @@ import {
   readableStreamTee,
   readableStreamThrowIfErrored,
 } from "ext:deno_web/06_streams.js";
-const {
-  ArrayBufferIsView,
-  ArrayPrototypeMap,
-  DataViewPrototypeGetBuffer,
-  DataViewPrototypeGetByteLength,
-  DataViewPrototypeGetByteOffset,
-  JSONParse,
-  ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
-  TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  TypedArrayPrototypeSlice,
-  TypeError,
-  Uint8Array,
-} = primordials;
-const {
-  isAnyArrayBuffer,
-  isArrayBuffer,
-} = core;
 
 /**
  * @param {Uint8Array | string} chunk

@@ -84,6 +84,13 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
+  fn check_write_with_api_name(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
   fn check_sys(
     &self,
     _kind: &str,
