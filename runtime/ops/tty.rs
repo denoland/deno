@@ -354,7 +354,7 @@ pub fn op_read_line_prompt(
     Err(ReadlineError::Interrupted) => {
       // SAFETY: Disable raw mode and raise SIGINT.
       unsafe {
-        let _ = op_stdin_set_raw::call(state, false, true);
+        drop(editor);
         libc::raise(libc::SIGINT);
       }
       Ok(None)
