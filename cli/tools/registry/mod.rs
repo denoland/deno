@@ -836,6 +836,14 @@ pub async fn publish(
     bail!("No packages to publish");
   }
 
+  if publish_flags.dry_run {
+    log::warn!(
+      "{} Aborting due to --dry-run",
+      crate::colors::yellow("Warning")
+    );
+    return Ok(());
+  }
+
   perform_publish(
     cli_factory.http_client(),
     publish_order_graph,
