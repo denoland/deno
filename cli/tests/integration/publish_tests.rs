@@ -90,7 +90,9 @@ itest!(workspace_individual {
 });
 
 itest!(dry_run {
-  args: "publish --token 'sadfasdf' --dry-run $TESTDATA/publish/successful",
+  args: "publish --token 'sadfasdf' --dry-run",
+  cwd: Some("publish/successful"),
+  copy_temp_dir: Some("publish/successful"),
   output: "publish/dry_run.out",
   envs: env_vars_for_registry(),
   http_server: true,
