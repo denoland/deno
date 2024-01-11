@@ -357,7 +357,9 @@ class CallbackContext {
     signal?.addEventListener(
       "abort",
       () => {
-        op_http_cancel(this.serverRid, false);
+        if (!this.closed) {
+          op_http_cancel(this.serverRid, false);
+        }
       },
       { once: true },
     );
