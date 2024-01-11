@@ -9,6 +9,8 @@ const {
 import { isatty } from "ext:runtime/40_tty.js";
 import { stdin } from "ext:deno_io/12_io.js";
 
+const ops = core.ops;
+
 const LF = StringPrototypeCharCodeAt("\n", 0);
 const CR = StringPrototypeCharCodeAt("\r", 0);
 
@@ -35,22 +37,16 @@ function confirm(message = "Confirm") {
 }
 
 function prompt(message = "Prompt", defaultValue) {
-  defaultValue ??= null;
+  defaultValue ??= "";
 
   if (!isatty(stdin.rid)) {
     return null;
   }
 
-  if (defaultValue) {
-    message += ` [${defaultValue}]`;
-  }
-
-  message += " ";
-
-  // output in one shot to make the tests more reliable
-  core.print(message, false);
-
-  return readLineFromStdinSync() || defaultValue;
+  return ops.op_read_line_prompt(
+    `${message} `,
+    `${defaultValue}`,
+  );
 }
 
 function readLineFromStdinSync() {
