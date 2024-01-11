@@ -35,6 +35,14 @@ itest!(successful {
   temp_cwd: true,
 });
 
+itest!(dry_run {
+  args: "publish --token 'sadfasdf' --dry-run $TESTDATA/publish/successful",
+  output: "publish/dry_run.out",
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 #[test]
 fn ignores_directories() {
   let context = publish_context_builder().build();
