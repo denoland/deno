@@ -717,7 +717,7 @@ impl CliOptions {
 
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
-        println!(
+        log::info!(
           "{} Environment variable file '{}' not detected",
           colors::yellow("Info"),
           env_file_name
