@@ -41,6 +41,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
@@ -465,6 +466,7 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
+    _requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
     let permissions = if is_dynamic {
       &self.dynamic_permissions
@@ -634,6 +636,7 @@ impl ModuleLoader for CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
+    requested_module_type: RequestedModuleType,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
@@ -642,6 +645,7 @@ impl ModuleLoader for CliModuleLoader {
       specifier,
       maybe_referrer,
       is_dynamic,
+      requested_module_type,
     )))
   }
 
