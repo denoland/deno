@@ -5,36 +5,22 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  Error,
-  ObjectPrototypeIsPrototypeOf,
-  SafeSet,
-  SafeSetIterator,
-  SetPrototypeAdd,
-  SetPrototypeDelete,
   StringPrototypeCharCodeAt,
-  StringPrototypeIncludes,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
-  Symbol,
+  Promise,
+  PromisePrototypeThen,
   SymbolAsyncIterator,
   TypeError,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  Uint8Array,
 } = primordials;
 import { serve, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
-import {
-  fromInnerRequest,
-  newInnerRequest,
-  toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+import { toInnerRequest } from "ext:deno_fetch/23_request.js";
 import {
   fromInnerResponse,
   newInnerResponse,
-  ResponsePrototype,
-  toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
 import {
@@ -48,19 +34,10 @@ import {
   _server,
   _serverHandleIdleTimeout,
   createWebSocketBranded,
-  SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 const {
-  op_http_accept,
-  op_http_headers,
-  op_http_shutdown,
-  op_http_upgrade,
-  op_http_upgrade_websocket,
   op_http_websocket_accept_header,
-  op_http_write,
-  op_http_write_headers,
-  op_http_write_resource,
 } = core.ensureFastOps();
 
 class HttpConn {
@@ -131,9 +108,10 @@ function serveHttp(conn) {
     conn,
     httpConn.abortController.signal,
     async (req) => {
-      const responsePromise = Promise.withResolvers();
-      httpConn.enqueue(req, responsePromise.resolve);
-      return responsePromise.promise;
+      let resolver;
+      const promise = new Promise((r) => resolver = r);
+      httpConn.enqueue(req, resolver);
+      return promise;
     },
     (e) => {
       console.log(e);
@@ -142,7 +120,7 @@ function serveHttp(conn) {
     () => {},
   );
   httpConn.server = server;
-  server.finished.then(() => {
+  PromisePrototypeThen(server.finished, () => {
     httpConn.closeStream();
     core.tryClose(conn.rid);
   });
