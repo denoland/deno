@@ -330,8 +330,13 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
+<<<<<<< HEAD
           key: '67-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
           restore-keys: '67-cargo-home-${{ matrix.os }}'
+=======
+          key: '68-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '68-cargo-home-${{ matrix.os }}'
+>>>>>>> aa23ccd1a (1.39.3 (#21913))
         if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
@@ -343,7 +348,11 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
+<<<<<<< HEAD
           restore-keys: '67-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
+=======
+          restore-keys: '68-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
+>>>>>>> aa23ccd1a (1.39.3 (#21913))
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -640,7 +649,11 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
+<<<<<<< HEAD
           key: '67-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+=======
+          key: '68-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+>>>>>>> aa23ccd1a (1.39.3 (#21913))
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

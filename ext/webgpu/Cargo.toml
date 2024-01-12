@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_webgpu"
+<<<<<<< HEAD
 version = "0.97.0"
+=======
+version = "0.98.0"
+>>>>>>> aa23ccd1a (1.39.3 (#21913))
 authors = ["the Deno authors"]
 edition.workspace = true
 license = "MIT"
