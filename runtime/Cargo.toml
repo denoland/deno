@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.138.0"
+version = "0.139.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,8 +12,8 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
-# A feature that disables creation of startup snapshot during in the build script.
-dont_create_runtime_snapshot = []
+# A feature that disables the requirement for startup snapshot to be provided.
+dont_use_runtime_snapshot = []
 # A feature that allows excluding `./js/99_main.js` from the exported extension.
 exclude_runtime_main_js = []
 # A feature that disables embedding of the JavaScript source files in the binary.
@@ -24,7 +24,7 @@ include_js_files_for_snapshotting = [
 ]
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["dont_create_runtime_snapshot"]
+__runtime_js_sources = []
 
 [lib]
 name = "deno_runtime"
@@ -112,6 +112,7 @@ notify.workspace = true
 once_cell.workspace = true
 regex.workspace = true
 ring.workspace = true
+rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"

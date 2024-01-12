@@ -1,24 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-const {
-  ArrayPrototypePush,
-  ObjectPrototypeIsPrototypeOf,
-  StringPrototypeSplit,
-  StringPrototypeTrim,
-  Symbol,
-  SymbolFor,
-  TypeError,
-} = primordials;
-import {
-  Request,
-  RequestPrototype,
-  toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import { toInnerResponse } from "ext:deno_fetch/23_response.js";
-import { URLPrototype } from "ext:deno_url/00_url.js";
-import { getHeader } from "ext:deno_fetch/20_headers.js";
-import { readableStreamForRid } from "ext:deno_web/06_streams.js";
 const {
   op_cache_delete,
   op_cache_match,
@@ -28,6 +9,27 @@ const {
   op_cache_storage_has,
   op_cache_storage_open,
 } = core.ensureFastOps();
+const {
+  ArrayPrototypePush,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
+  Symbol,
+  SymbolFor,
+  TypeError,
+} = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import {
+  Request,
+  RequestPrototype,
+  toInnerRequest,
+} from "ext:deno_fetch/23_request.js";
+import { toInnerResponse } from "ext:deno_fetch/23_response.js";
+import { URLPrototype } from "ext:deno_url/00_url.js";
+import { getHeader } from "ext:deno_fetch/20_headers.js";
+import { readableStreamForRid } from "ext:deno_web/06_streams.js";
+
 class CacheStorage {
   constructor() {
     webidl.illegalConstructor();

@@ -1,33 +1,34 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-import {
-  readableStreamForRidUnrefable,
-  readableStreamForRidUnrefableRef,
-  readableStreamForRidUnrefableUnref,
-  writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
+const {
+  BadResourcePrototype,
+  InterruptedPrototype,
+} = core;
 const {
   op_dns_resolve,
   op_net_accept_tcp,
   op_net_accept_unix,
   op_net_connect_tcp,
   op_net_connect_unix,
+  op_net_join_multi_v4_udp,
+  op_net_join_multi_v6_udp,
+  op_net_leave_multi_v4_udp,
+  op_net_leave_multi_v6_udp,
+  op_net_listen_tcp,
+  op_net_listen_unix,
   op_net_recv_udp,
   op_net_recv_unixpacket,
   op_net_send_udp,
   op_net_send_unixpacket,
   op_net_set_multi_loopback_udp,
   op_net_set_multi_ttl_udp,
-  op_net_join_multi_v4_udp,
-  op_net_join_multi_v6_udp,
-  op_net_leave_multi_v4_udp,
-  op_net_leave_multi_v6_udp,
+  op_set_keepalive,
+  op_set_nodelay,
 } = core.ensureFastOps();
-
+const {
+  op_cancel_handle,
+} = core.ensureFastOps(true);
 const {
   Error,
   Number,
@@ -44,6 +45,15 @@ const {
   Uint8Array,
 } = primordials;
 
+import {
+  readableStreamForRidUnrefable,
+  readableStreamForRidUnrefableRef,
+  readableStreamForRidUnrefableUnref,
+  writableStreamForRid,
+} from "ext:deno_web/06_streams.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+
 async function write(rid, data) {
   return await core.write(rid, data);
 }
@@ -57,7 +67,7 @@ async function resolveDns(query, recordType, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = ops.op_cancel_handle();
+    cancelRid = op_cancel_handle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -184,11 +194,11 @@ class Conn {
 
 class TcpConn extends Conn {
   setNoDelay(noDelay = true) {
-    return ops.op_set_nodelay(this.rid, noDelay);
+    return op_set_nodelay(this.rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {
-    return ops.op_set_keepalive(this.rid, keepAlive);
+    return op_set_keepalive(this.rid, keepAlive);
   }
 }
 
@@ -453,7 +463,7 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
+      const { 0: rid, 1: addr } = op_net_listen_tcp({
         hostname: args.hostname ?? "0.0.0.0",
         port: Number(args.port),
       }, args.reusePort);
@@ -461,7 +471,7 @@ function listen(args) {
       return new Listener(rid, addr);
     }
     case "unix": {
-      const { 0: rid, 1: path } = ops.op_net_listen_unix(
+      const { 0: rid, 1: path } = op_net_listen_unix(
         args.path,
         args[listenOptionApiName] ?? "Deno.listen",
       );

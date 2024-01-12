@@ -2823,12 +2823,10 @@ mod permissions {
       .new_command()
       .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
       .with_pty(|mut console| {
-        console.expect("What is your name? [Jane Doe] ");
-        console.write_line_raw("John Doe");
-        console.expect("Your name is John Doe.");
-        console.expect("What is your name? [Jane Doe] ");
+        console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
         console.expect("Your name is Jane Doe.");
+
         console.expect("Prompt ");
         console.write_line_raw("foo");
         console.expect("Your input is foo.");
@@ -2852,9 +2850,6 @@ mod permissions {
         console.expect("Alert [Enter] ");
         console.write_line("");
         console.expect("The end of test");
-        console.expect("What is EOF? ");
-        console.write_line("");
-        console.expect("Your answer is null");
       });
   }
 
