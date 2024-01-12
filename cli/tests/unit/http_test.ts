@@ -398,7 +398,7 @@ Deno.test(
       const event = await httpConn.nextRequest();
       assert(event);
       const { respondWith } = event;
-      let cancelReason = Promise.withResolvers();
+      const cancelReason = Promise.withResolvers();
       // await assertRejects(async () => {
       let interval = 0;
       await respondWith(
