@@ -96,6 +96,8 @@ pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
 
+use self::module_info::ModuleInfoCacheSourceHash;
+
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
@@ -280,10 +282,11 @@ impl Loader for FetchCacher {
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
+    let source_hash = ModuleInfoCacheSourceHash::from_source(source.as_bytes());
     let result = self.module_info_cache.set_module_info(
       specifier,
       MediaType::from_specifier(specifier),
-      source,
+      &source_hash,
       module_info,
     );
     if let Err(err) = result {
