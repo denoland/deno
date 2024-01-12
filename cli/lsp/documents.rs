@@ -39,7 +39,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
-use deno_graph::source::StringOrBytes;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_fs::RealFs;

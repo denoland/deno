@@ -25,7 +25,6 @@ use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::StringOrBytes;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
@@ -54,8 +53,8 @@ pub struct File {
   pub maybe_types: Option<String>,
   /// The resolved media type for the file.
   pub media_type: MediaType,
-  /// The source of the file as a string.
-  pub source: StringOrBytes,
+  /// The source of the file.
+  pub source: Arc<[u8]>,
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,
@@ -86,14 +85,12 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
   let bytes = fs::read(local)?;
-  let charset = text_encoding::detect_charset(&bytes).to_string();
-  let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from_specifier(specifier);
 
   Ok(File {
     maybe_types: None,
     media_type,
-    source: source.into(),
+    source: bytes.into(),
     specifier: specifier.clone(),
     maybe_headers: None,
   })
