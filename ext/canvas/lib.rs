@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::path::PathBuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -12,6 +11,7 @@ use image::Pixel;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
