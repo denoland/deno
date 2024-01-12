@@ -336,6 +336,20 @@ class ImageBitmap {
     webidl.assertBranded(this, ImageBitmapPrototype);
     TypedArrayPrototypeGetBuffer(this[_bitmapData]).transfer();
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ImageBitmapPrototype, this),
+        keys: [
+          "width",
+          "height",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 const ImageBitmapPrototype = ImageBitmap.prototype;
 
