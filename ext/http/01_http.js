@@ -84,9 +84,13 @@ class HttpConn {
       start(controller) {
         self.enqueue = (request, respondWith) => {
           controller.enqueue({ request, respondWith });
-        }
-        self.closeStream = () => { try { controller.close(); } catch {} }
-      }
+        };
+        self.closeStream = () => {
+          try {
+            controller.close();
+          } catch {}
+        };
+      },
     }).getReader();
   }
 
@@ -123,13 +127,22 @@ class HttpConn {
 
 function serveHttp(conn) {
   const httpConn = new HttpConn();
-  const server = serveHttpOnConnection(conn, httpConn.abortController.signal, async (req) => {
-    const responsePromise = Promise.withResolvers();
-    httpConn.enqueue(req, responsePromise.resolve);
-    return responsePromise.promise;
-  }, (e) => { console.log(e); new Response("error") }, () => {});
+  const server = serveHttpOnConnection(
+    conn,
+    httpConn.abortController.signal,
+    async (req) => {
+      const responsePromise = Promise.withResolvers();
+      httpConn.enqueue(req, responsePromise.resolve);
+      return responsePromise.promise;
+    },
+    (e) => {
+      console.log(e);
+      new Response("error");
+    },
+    () => {},
+  );
   httpConn.server = server;
-  server.finished.then(() => { 
+  server.finished.then(() => {
     httpConn.closeStream();
     core.tryClose(conn.rid);
   });
@@ -138,8 +151,6 @@ function serveHttp(conn) {
 
 const _ws = {};
 const upgradeHttp = {};
-
-
 
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
 const tabCharCode = StringPrototypeCharCodeAt("\t", 0);
@@ -289,4 +300,4 @@ function upgradeWebSocket(request, options = {}) {
   return { response, socket };
 }
 
-export { _ws, HttpConn, serveHttp, serve, upgradeHttp, upgradeWebSocket };
+export { _ws, HttpConn, serve, serveHttp, upgradeHttp, upgradeWebSocket };

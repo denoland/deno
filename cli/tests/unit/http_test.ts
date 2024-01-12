@@ -733,7 +733,7 @@ Deno.test(
       assert(reqEvent);
       const { request, respondWith } = reqEvent;
       assertEquals(
-        new URL('http://' + request.url).href,
+        new URL("http://" + request.url).href,
         `http://127.0.0.1:${listenPort}/`,
       );
       assertEquals(await request.text(), "");
@@ -1320,7 +1320,7 @@ function tmpUnixSocketPath(): string {
 // https://github.com/denoland/deno/pull/13628
 Deno.test(
   {
-    ignore: true,//Deno.build.os === "windows",
+    ignore: true, //Deno.build.os === "windows",
     permissions: { read: true, write: true },
   },
   async function httpServerOnUnixSocket() {
