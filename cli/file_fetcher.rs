@@ -25,6 +25,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::StringOrBytes;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
@@ -54,7 +55,7 @@ pub struct File {
   /// The resolved media type for the file.
   pub media_type: MediaType,
   /// The source of the file as a string.
-  pub source: Arc<str>,
+  pub source: StringOrBytes,
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,

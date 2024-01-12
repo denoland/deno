@@ -45,7 +45,7 @@ use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
-use deno_graph::EsmModule;
+use deno_graph::EsModule;
 use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
@@ -298,7 +298,7 @@ impl PreparedModuleLoader {
         found_url: specifier.clone(),
         media_type: *media_type,
       }),
-      Some(deno_graph::Module::Esm(EsmModule {
+      Some(deno_graph::Module::Esm(EsModule {
         source,
         media_type,
         specifier,

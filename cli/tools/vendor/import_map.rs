@@ -249,7 +249,7 @@ fn visit_modules(
     };
 
     let parsed_source =
-      parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+      parsed_source_cache.get_parsed_source_from_es_module(module)?;
     let text_info = parsed_source.text_info().clone();
     let source_text = &module.source;
 

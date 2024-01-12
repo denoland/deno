@@ -277,7 +277,7 @@ impl Loader for FetchCacher {
   fn cache_module_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
     let result = self.module_info_cache.set_module_info(

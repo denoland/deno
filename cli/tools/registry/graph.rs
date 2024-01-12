@@ -80,10 +80,10 @@ pub fn surface_fast_check_type_graph_errors(
       let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) else {
         continue;
       };
-      let Some(esm_module) = module.esm() else {
+      let Some(es_module) = module.esm() else {
         continue;
       };
-      if let Some(diagnostic) = esm_module.fast_check_diagnostic() {
+      if let Some(diagnostic) = es_module.fast_check_diagnostic() {
         for diagnostic in diagnostic.flatten_multiple() {
           if matches!(
             diagnostic,
@@ -115,7 +115,7 @@ pub fn surface_fast_check_type_graph_errors(
       }
 
       // analyze the next dependencies
-      for dep in esm_module.dependencies_prefer_fast_check().values() {
+      for dep in es_module.dependencies_prefer_fast_check().values() {
         let Some(specifier) = graph.resolve_dependency_from_dep(dep, true)
         else {
           continue;

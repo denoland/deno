@@ -12,7 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
 use deno_graph::source::ResolutionMode;
-use deno_graph::EsmModule;
+use deno_graph::EsModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::deno_fs;
@@ -36,7 +36,7 @@ use super::specifiers::is_remote_specifier;
 pub trait VendorEnvironment {
   fn cwd(&self) -> Result<PathBuf, AnyError>;
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError>;
-  fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError>;
+  fn write_file(&self, file_path: &Path, bytes: &[u8]) -> Result<(), AnyError>;
   fn path_exists(&self, path: &Path) -> bool;
 }
 
@@ -51,8 +51,8 @@ impl VendorEnvironment for RealVendorEnvironment {
     Ok(std::fs::create_dir_all(dir_path)?)
   }
 
-  fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError> {
-    std::fs::write(file_path, text)
+  fn write_file(&self, file_path: &Path, bytes: &[u8]) -> Result<(), AnyError> {
+    std::fs::write(file_path, bytes)
       .with_context(|| format!("Failed writing {}", file_path.display()))
   }
 
@@ -159,8 +159,8 @@ pub async fn build<
   // write out all the files
   for module in &remote_modules {
     let source = match module {
-      Module::Esm(module) => &module.source,
-      Module::Json(module) => &module.source,
+      Module::Esm(module) => &module.source.bytes,
+      Module::Json(module) => &module.bytes,
       Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
     let specifier = module.specifier();
@@ -179,7 +179,7 @@ pub async fn build<
     let text =
       build_proxy_module_source(module, proxied_module, parsed_source_cache)?;
 
-    environment.write_file(&proxy_path, &text)?;
+    environment.write_file(&proxy_path, text.as_bytes())?;
   }
 
   // create the import map if necessary
@@ -195,7 +195,7 @@ pub async fn build<
       resolver,
       parsed_source_cache,
     })?;
-    environment.write_file(&import_map_path, &import_map_text)?;
+    environment.write_file(&import_map_path, &import_map_text.as_bytes())?;
   }
 
   Ok(BuildOutput {
@@ -242,7 +242,7 @@ fn validate_original_import_map(
 }
 
 fn build_proxy_module_source(
-  module: &EsmModule,
+  module: &EsModule,
   proxied_module: &ProxiedModule,
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<String, AnyError> {
@@ -269,7 +269,7 @@ fn build_proxy_module_source(
 
   // add a default export if one exists in the module
   let parsed_source =
-    parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+    parsed_source_cache.get_parsed_source_from_es_module(module)?;
   if has_default_export(&parsed_source) {
     writeln!(text, "export {{ default }} from \"{relative_specifier}\";")
       .unwrap();

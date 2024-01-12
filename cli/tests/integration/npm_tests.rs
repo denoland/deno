@@ -12,14 +12,14 @@ use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
-itest!(esm_module {
+itest!(es_module {
   args: "run --allow-read --allow-env npm/esm/main.js",
   output: "npm/esm/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
-itest!(esm_module_eval {
+itest!(es_module_eval {
   args_vec: vec![
     "eval",
     "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
@@ -29,7 +29,7 @@ itest!(esm_module_eval {
   http_server: true,
 });
 
-itest!(esm_module_deno_test {
+itest!(es_module_deno_test {
   args: "test --allow-read --allow-env --unstable npm/esm/test.js",
   output: "npm/esm/test.out",
   envs: env_vars_for_npm_tests(),

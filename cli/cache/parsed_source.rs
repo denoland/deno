@@ -17,9 +17,9 @@ pub struct ParsedSourceCache {
 }
 
 impl ParsedSourceCache {
-  pub fn get_parsed_source_from_esm_module(
+  pub fn get_parsed_source_from_es_module(
     &self,
-    module: &deno_graph::EsmModule,
+    module: &deno_graph::EsModule,
   ) -> Result<ParsedSource, deno_ast::Diagnostic> {
     self.get_or_parse_module(
       &module.specifier,

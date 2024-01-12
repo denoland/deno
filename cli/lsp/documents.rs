@@ -39,6 +39,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
+use deno_graph::source::StringOrBytes;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_fs::RealFs;
@@ -277,7 +278,7 @@ impl DocumentDependencies {
     }
   }
 
-  pub fn from_module(module: &deno_graph::EsmModule) -> Self {
+  pub fn from_module(module: &deno_graph::EsModule) -> Self {
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
@@ -285,7 +286,7 @@ impl DocumentDependencies {
   }
 }
 
-type ModuleResult = Result<deno_graph::EsmModule, deno_graph::ModuleGraphError>;
+type ModuleResult = Result<deno_graph::EsModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
 
 #[derive(Debug)]
@@ -592,7 +593,7 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  fn maybe_esm_module(&self) -> Option<&ModuleResult> {
+  fn maybe_es_module(&self) -> Option<&ModuleResult> {
     self.0.maybe_module.as_ref()
   }
 
@@ -631,7 +632,7 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_esm_module()?.as_ref().ok()?;
+    let module = self.maybe_es_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
@@ -1668,7 +1669,7 @@ impl Documents {
       return node_resolve_npm_req_ref(npm_ref, maybe_npm, referrer);
     }
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
+    let maybe_module = doc.maybe_es_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
     if let Some(specifier) =
@@ -1803,7 +1804,7 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn cache_module_info(
     &mut self,
     specifier: &deno_ast::ModuleSpecifier,
-    source: &str,
+    source: &StringOrBytes,
     module_info: &deno_graph::ModuleInfo,
   ) {
     self
