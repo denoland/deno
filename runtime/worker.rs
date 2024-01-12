@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
