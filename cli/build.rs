@@ -152,6 +152,7 @@ mod ts {
     op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
+    op_crate_libs.insert("deno.canvas", deno_webstorage::get_declaration());
     op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
     op_crate_libs.insert(
       "deno.broadcast_channel",

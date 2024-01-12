@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::PathBuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -135,3 +136,7 @@ deno_core::extension!(
   ops = [op_image_process, op_image_decode_png],
   esm = ["01_image.js"],
 );
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_canvas.d.ts")
+}
