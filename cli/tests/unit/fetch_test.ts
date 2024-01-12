@@ -1253,40 +1253,14 @@ Deno.test(
     void
   > {
     const addr = `127.0.0.1:${listenPort}`;
-    const [hostname, port] = addr.split(":");
-    const listener = Deno.listen({
-      hostname,
-      port: Number(port),
-    }) as Deno.Listener;
-
-    let httpConn: Deno.HttpConn;
-    listener.accept().then(async (conn: Deno.Conn) => {
-      httpConn = Deno.serveHttp(conn);
-
-      await httpConn.nextRequest()
-        .then(async (requestEvent: Deno.RequestEvent | null) => {
-          const hostHeader = requestEvent?.request.headers.get("Host");
-          const headersToReturn = hostHeader
-            ? { "Host": hostHeader }
-            : undefined;
-
-          await requestEvent?.respondWith(
-            new Response("", {
-              status: 200,
-              headers: headersToReturn,
-            }),
-          );
-        });
+    const server = Deno.serve({ port: listenPort }, (req) => {
+      return new Response(`Host header was ${req.headers.get("Host")}`);
     });
-
     const response = await fetch(`http://${addr}/`, {
       headers: { "Host": "example.com" },
     });
-    await response.text();
-    listener.close();
-    httpConn!.close();
-
-    assertEquals(response.headers.get("Host"), addr);
+    assertEquals(await response.text(), `Host header was ${addr}`);
+    await server.shutdown();
   },
 );
 
