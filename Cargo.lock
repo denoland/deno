@@ -1152,7 +1152,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.245.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=main#c6c6deda72e76e3c8ab7e5030a5b4acbdccd75b7"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#2107c84934a527fe4ca15557426513d31b559fde"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1593,7 +1593,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.121.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=main#c6c6deda72e76e3c8ab7e5030a5b4acbdccd75b7"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#2107c84934a527fe4ca15557426513d31b559fde"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5275,7 +5275,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.154.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=main#c6c6deda72e76e3c8ab7e5030a5b4acbdccd75b7"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#2107c84934a527fe4ca15557426513d31b559fde"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6909,7 +6909,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -6950,7 +6950,7 @@ dependencies = [
  "naga",
  "objc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",
