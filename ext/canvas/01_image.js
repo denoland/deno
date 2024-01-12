@@ -303,10 +303,12 @@ class ImageData {
 const ImageDataPrototype = ImageData.prototype;
 
 const _bitmapData = Symbol("[[bitmapData]]");
+const _detached = Symbol("[[detached]]");
 class ImageBitmap {
   [_width];
   [_height];
   [_bitmapData];
+  [_detached];
 
   constructor() {
     webidl.illegalConstructor();
@@ -314,7 +316,7 @@ class ImageBitmap {
 
   get width() {
     webidl.assertBranded(this, ImageBitmapPrototype);
-    if (TypedArrayPrototypeGetBuffer(this[_bitmapData]).detached) {
+    if (this[_detached]) {
       return 0;
     }
 
@@ -323,7 +325,7 @@ class ImageBitmap {
 
   get height() {
     webidl.assertBranded(this, ImageBitmapPrototype);
-    if (TypedArrayPrototypeGetBuffer(this[_bitmapData]).detached) {
+    if (this[_detached]) {
       return 0;
     }
 
@@ -332,7 +334,8 @@ class ImageBitmap {
 
   close() {
     webidl.assertBranded(this, ImageBitmapPrototype);
-    TypedArrayPrototypeGetBuffer(this[_bitmapData]).transfer();
+    this[_detached] = true;
+    this[_bitmapData] = null;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -533,4 +536,4 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
   };
 }
 
-export { createImageBitmap, ImageBitmap, ImageData };
+export { createImageBitmap, ImageBitmap, ImageData, _bitmapData, _detached };
