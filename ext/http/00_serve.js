@@ -667,6 +667,7 @@ function serveHttpOn(context, callback) {
   // Run the server
   const finished = (async () => {
     const rid = context.serverRid;
+    let pendingError = undefined;
     while (true) {
       let req;
       try {
@@ -688,7 +689,11 @@ function serveHttpOn(context, callback) {
         if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
           break;
         }
-        throw new Deno.errors.Http(error);
+        // In the case of `serveHttpOn`, we may have other kinds of errors that leak
+        // through `op_http_wait`. In the normal `serve` case, these errors are quietly
+        // swallowed.
+        pendingError = error;
+        break;
       }
       if (req === null) {
         break;
@@ -704,6 +709,10 @@ function serveHttpOn(context, callback) {
     await context.closing;
     context.close();
     context.closed = true;
+
+    if (pendingError) {
+      throw new Deno.errors.Http(pendingError);
+    }
   })();
 
   return {

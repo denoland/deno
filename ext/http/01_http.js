@@ -4,6 +4,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   Promise,
   PromisePrototypeThen,
+  PromisePrototypeCatch,
   SymbolAsyncIterator,
 } = primordials;
 import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
@@ -30,6 +31,7 @@ class HttpConn {
   enqueue;
   closeStream;
   server;
+  finished;
 
   constructor(remoteAddr, localAddr) {
     this.#remoteAddr = remoteAddr;
@@ -64,7 +66,7 @@ class HttpConn {
   /** @returns {void} */
   async close() {
     this.abortController.abort();
-    await this.server.finished;
+    await this.finished;
   }
 
   [SymbolDispose]() {
@@ -101,10 +103,18 @@ function serveHttp(conn) {
     () => {},
   );
   httpConn.server = server;
-  PromisePrototypeThen(server.finished, () => {
+  let promise = PromisePrototypeThen(server.finished, () => {
     httpConn.closeStream();
+    httpConn.abortController.abort();
     core.tryClose(conn.rid);
   });
+  promise = PromisePrototypeCatch(promise, (e) => {
+    console.error("Internal HTTP error", e);
+    httpConn.closeStream();
+    httpConn.abortController.abort();
+    core.tryClose(conn.rid);
+  });
+  httpConn.finished = promise;
   return httpConn;
 }
 

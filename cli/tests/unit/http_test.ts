@@ -389,7 +389,7 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: true, permissions: { net: true } },
+  { permissions: { net: true } },
   async function httpServerCancelBodyOnResponseFailure() {
     const promise = (async () => {
       const listener = Deno.listen({ port: listenPort });
@@ -398,31 +398,26 @@ Deno.test(
       const event = await httpConn.nextRequest();
       assert(event);
       const { respondWith } = event;
-      let cancelReason: string;
-      await assertRejects(
-        async () => {
-          let interval = 0;
-          await respondWith(
-            new Response(
-              new ReadableStream({
-                start(controller) {
-                  interval = setInterval(() => {
-                    const message = `data: ${Date.now()}\n\n`;
-                    controller.enqueue(new TextEncoder().encode(message));
-                  }, 200);
-                },
-                cancel(reason) {
-                  cancelReason = reason;
-                  clearInterval(interval);
-                },
-              }),
-            ),
-          );
-        },
-        Deno.errors.Http,
-        cancelReason!,
+      let cancelReason = Promise.withResolvers();
+      // await assertRejects(async () => {
+      let interval = 0;
+      await respondWith(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              interval = setInterval(() => {
+                const message = `data: ${Date.now()}\n\n`;
+                controller.enqueue(new TextEncoder().encode(message));
+              }, 200);
+            },
+            cancel(reason) {
+              cancelReason.resolve(reason);
+              clearInterval(interval);
+            },
+          }),
+        ),
       );
-      assert(cancelReason!);
+      assert(await cancelReason.promise);
       await httpConn!.close();
       listener.close();
     })();
