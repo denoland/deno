@@ -35,6 +35,7 @@ class HttpConn {
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
     this.abortController = new AbortController();
+    // deno-lint-ignore no-this-alias
     const self = this;
     // ReadableStream can be used as a simple async queue. It might not be the
     // most efficient, but this is a deprecated API and we prefer robustness.
@@ -54,7 +55,7 @@ class HttpConn {
 
   /** @returns {Promise<RequestEvent | null>} */
   async nextRequest() {
-    let next = await this.reqs.read();
+    const next = await this.reqs.read();
     if (next.done) {
       return null;
     }
@@ -88,7 +89,7 @@ function serveHttp(conn) {
   const server = serveHttpOnConnection(
     conn,
     httpConn.abortController.signal,
-    async (req) => {
+    (req) => {
       let resolver;
       const promise = new Promise((r) => resolver = r);
       httpConn.enqueue(req, resolver);
