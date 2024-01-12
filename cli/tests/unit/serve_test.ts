@@ -88,6 +88,16 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   listener!.close();
 });
 
+// Aborting the AbortController after shutdown should have no effect, and should not
+// throw BadResourceError.
+Deno.test(async function httpServerAbortAfterShutdown() {
+  const { shutdown, abort, finished } = await makeServer((_req) => new Response("ok"));
+  assertThrows(() => Deno.listen({ port: servePort }));
+  await shutdown();
+  abort();
+  await finished;
+});
+
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
 Deno.test(
