@@ -6,7 +6,6 @@ import {
 } from "../../../test_util/std/assert/mod.ts";
 import { delay } from "../../../test_util/std/async/delay.ts";
 import { fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
-import { serveTls } from "../../../test_util/std/http/server.ts";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
@@ -22,12 +21,12 @@ const rootCaCert = await Deno.readTextFile(join(tlsTestdataDir, "RootCA.pem"));
 
 Deno.test("tls.connect makes tls connection", async () => {
   const ctl = new AbortController();
-  const serve = serveTls(() => new Response("hello"), {
+  const serve = Deno.serve({
     port: 8443,
     key,
     cert,
     signal: ctl.signal,
-  });
+  }, () => new Response("hello"));
 
   await delay(200);
 
@@ -52,18 +51,18 @@ Connection: close
     ctl.abort();
   });
 
-  await serve;
+  await serve.finished;
 });
 
 // https://github.com/denoland/deno/pull/20120
 Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   const ctl = new AbortController();
-  const serve = serveTls(() => new Response("hello"), {
+  const serve = Deno.serve({
     port: 8443,
     key,
     cert,
     signal: ctl.signal,
-  });
+  }, () => new Response("hello"));
 
   await delay(200);
 
@@ -84,7 +83,7 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
     ctl.abort();
   });
 
-  await serve;
+  await serve.finished;
 });
 
 Deno.test("tls.createServer creates a TLS server", async () => {
