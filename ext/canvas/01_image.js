@@ -303,12 +303,10 @@ class ImageData {
 const ImageDataPrototype = ImageData.prototype;
 
 const _bitmapData = Symbol("[[bitmapData]]");
-const _detached = Symbol("[[detached]]");
 class ImageBitmap {
   [_width];
   [_height];
   [_bitmapData];
-  [_detached];
 
   constructor() {
     webidl.illegalConstructor();
@@ -316,7 +314,7 @@ class ImageBitmap {
 
   get width() {
     webidl.assertBranded(this, ImageBitmapPrototype);
-    if (TypedArrayPrototypeGetBuffer(this[_detached]).detached) {
+    if (TypedArrayPrototypeGetBuffer(this[_bitmapData]).detached) {
       return 0;
     }
 
@@ -325,7 +323,7 @@ class ImageBitmap {
 
   get height() {
     webidl.assertBranded(this, ImageBitmapPrototype);
-    if (TypedArrayPrototypeGetBuffer(this[_detached]).detached) {
+    if (TypedArrayPrototypeGetBuffer(this[_bitmapData]).detached) {
       return 0;
     }
 
