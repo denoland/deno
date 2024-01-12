@@ -2691,6 +2691,8 @@ async function httpServerWithErrorBody(
   });
   const init = compression ? { headers: { "content-type": "text/plain" } } : {};
   const response = new Response(rs, init);
+  respondWith(response);
+  // TODO(mmastrac): we no longer return the error here
   // const err = await assertRejects(() => respondWith(response));
   // assert(err === originalErr);
   return httpConn;
