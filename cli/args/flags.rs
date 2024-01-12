@@ -328,6 +328,7 @@ pub struct VendorFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
   pub token: Option<String>,
+  pub dry_run: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2379,6 +2380,12 @@ fn publish_subcommand() -> Command {
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Prepare the package for publishing performing all checks and validations without uploading")
+          .action(ArgAction::SetTrue),
+      )
     })
 }
 
@@ -3812,6 +3819,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
+    dry_run: matches.get_flag("dry-run"),
   });
 }
 
