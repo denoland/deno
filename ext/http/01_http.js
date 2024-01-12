@@ -45,9 +45,8 @@ class HttpConn {
           controller.enqueue({ request, respondWith });
         };
         self.closeStream = () => {
-          try {
-            controller.close();
-          } catch {}
+          controller.close();
+          self.closeStream = () => {};
         };
       },
     }).getReader();
