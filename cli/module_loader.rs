@@ -51,6 +51,7 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -228,6 +229,11 @@ impl ModuleLoadPreparer {
     let lib = self.options.ts_type_lib_window();
 
     let specifiers = self.collect_specifiers(files)?;
+
+    if specifiers.is_empty() {
+      log::warn!("{} No matching files found.", colors::yellow("Warning"));
+    }
+
     self
       .prepare_module_load(
         specifiers,
