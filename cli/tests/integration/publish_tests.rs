@@ -46,7 +46,6 @@ itest!(javascript_missing_decl_file {
   copy_temp_dir: Some("publish/javascript_missing_decl_file"),
   envs: env_vars_for_registry(),
   exit_code: 0,
-  http_server: true,
   temp_cwd: true,
 });
 
@@ -57,7 +56,6 @@ itest!(javascript_decl_file {
   copy_temp_dir: Some("publish/javascript_decl_file"),
   envs: env_vars_for_registry(),
   exit_code: 0,
-  http_server: true,
   temp_cwd: true,
 });
 
