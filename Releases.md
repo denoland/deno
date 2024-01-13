@@ -8,9 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 1.39.4 / 2024.01.13
 
-- fix(check): should not panic when all specified files excluded (#21929)
 - fix(config): regression - handle relative patterns with leading dot slash (#21922)
-- fix(publish): require http server for tests (#21919)
+- fix(check): should not panic when all specified files excluded (#21929)
 
 ### 1.39.3 / 2024.01.12
 
