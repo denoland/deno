@@ -46,7 +46,7 @@ pub struct BenchFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub source_file: String,
-  pub out_file: Option<PathBuf>,
+  pub out_file: Option<String>,
   pub watch: Option<WatchFlags>,
 }
 
@@ -1271,6 +1271,7 @@ supported in canary.
         Arg::new("output")
           .long("output")
           .short('o')
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
           .value_parser(value_parser!(PathBuf))
           .help("Output file (defaults to $PWD/<inferred-name>)")
           .value_hint(ValueHint::FilePath),
@@ -1394,6 +1395,7 @@ Generate html reports from lcov:
           Arg::new("output")
             .requires("lcov")
             .long("output")
+            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
             .help("Output file (defaults to stdout) for lcov")
             .long_help(
@@ -1421,7 +1423,6 @@ Generate html reports from lcov:
         .arg(
           Arg::new("files")
             .num_args(0..)
-            .value_parser(value_parser!(PathBuf))
             .action(ArgAction::Append)
             .value_hint(ValueHint::AnyPath),
         )
@@ -1501,6 +1502,7 @@ Show documentation for runtime built-ins:
             .action(ArgAction::Set)
             .require_equals(true)
             .value_hint(ValueHint::DirPath)
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
         )
         .arg(
@@ -1841,6 +1843,7 @@ fn jupyter_subcommand() -> Command {
       Arg::new("conn")
         .long("conn")
         .help("Path to JSON file describing connection parameters, provided by Jupyter")
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
@@ -2257,6 +2260,7 @@ update to a different location, use the --output flag
           Arg::new("output")
             .long("output")
             .help("The path to output the updated version to")
+            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
             .value_hint(ValueHint::FilePath),
         )
@@ -2311,6 +2315,7 @@ Remote modules and multiple modules may also be specified:
         Arg::new("output")
           .long("output")
           .help("The directory to output the vendored modules to")
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
           .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath),
       )
@@ -2544,6 +2549,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_READ_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2555,6 +2561,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_READ_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2566,6 +2573,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_WRITE_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2577,6 +2585,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_WRITE_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2687,6 +2696,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_FFI_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2698,6 +2708,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_FFI_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2947,6 +2958,7 @@ fn hmr_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
+      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
       .value_parser(value_parser!(PathBuf))
       .use_value_delimiter(true)
       .require_equals(true)
@@ -2973,6 +2985,7 @@ fn watch_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
+      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
       .value_parser(value_parser!(PathBuf))
       .use_value_delimiter(true)
       .require_equals(true)
@@ -3064,6 +3077,7 @@ fn lock_arg() -> Arg {
 
 If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
     .value_parser(value_parser!(PathBuf))
     .value_hint(ValueHint::FilePath)
 }
@@ -3206,7 +3220,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let source_file = matches.remove_one::<String>("source_file").unwrap();
 
   let out_file =
-    if let Some(out_file) = matches.remove_one::<PathBuf>("out_file") {
+    if let Some(out_file) = matches.remove_one::<String>("out_file") {
       flags.allow_write = Some(vec![]);
       Some(out_file)
     } else {
@@ -6049,7 +6063,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js")),
+          out_file: Some("bundle.js".to_string()),
           watch: Default::default(),
         }),
         allow_write: Some(vec![]),
@@ -6069,7 +6083,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js")),
+          out_file: Some("bundle.js".to_string()),
           watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,

@@ -1319,6 +1319,7 @@ impl Documents {
   }
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
+    #[allow(clippy::too_many_arguments)]
     fn calculate_resolver_config_hash(
       enabled_paths: &PathOrPatternSet,
       disabled_paths: &PathOrPatternSet,
