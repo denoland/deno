@@ -155,6 +155,9 @@ pub struct WatcherCommunicator {
 
   restart_mode: Mutex<WatcherRestartMode>,
 
+  /// A list of paths that should be excluded from watching.
+  paths_to_exclude: Arc<Mutex<Vec<PathBuf>>>,
+
   banner: String,
 }
 
@@ -179,6 +182,10 @@ impl WatcherCommunicator {
 
   pub fn change_restart_mode(&self, restart_mode: WatcherRestartMode) {
     *self.restart_mode.lock() = restart_mode;
+  }
+
+  pub fn exclude_paths_from_watch(&self, paths: Vec<PathBuf>) {
+    *self.paths_to_exclude.lock() = paths;
   }
 
   pub fn print(&self, msg: String) {
@@ -264,6 +271,7 @@ where
     restart_tx: restart_tx.clone(),
     restart_mode: Mutex::new(restart_mode),
     banner: colors::intense_blue(banner).to_string(),
+    paths_to_exclude: Arc::new(Mutex::new(vec![])),
   });
   info!("{} {} started.", colors::intense_blue(banner), job_name);
 
@@ -297,12 +305,12 @@ where
     }
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
-    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &watcher_communicator.paths_to_exclude);
 
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &watcher_communicator.paths_to_exclude);
       }
     };
     let operation_future = error_handler(operation(
@@ -321,7 +329,7 @@ where
         continue;
       },
       success = operation_future => {
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &watcher_communicator.paths_to_exclude);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} {}. Restarting on file change...",
@@ -334,11 +342,11 @@ where
           }
         );
       },
-    };
+    }
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &watcher_communicator.paths_to_exclude);
       }
     };
 
@@ -351,12 +359,12 @@ where
         print_after_restart();
         continue;
       },
-    };
+    }
   }
 }
 
 fn new_watcher(
-  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>
 ) -> Result<RecommendedWatcher, AnyError> {
   Ok(Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
@@ -376,15 +384,19 @@ fn new_watcher(
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
         .collect();
+
       sender.send(paths).unwrap();
     },
     Default::default(),
   )?)
 }
 
-fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
+fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf], paths_to_exclude: &Arc<Mutex<Vec<PathBuf>>>) {
   // Ignore any error e.g. `PathNotFound`
   for path in paths {
+    if paths_to_exclude.clone().lock().iter().any(|p| path.to_str().unwrap().contains(p.to_str().unwrap())) {
+      continue;
+    }
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
   log::debug!("Watching paths: {:?}", paths);
@@ -393,11 +405,12 @@ fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
 fn consume_paths_to_watch(
   watcher: &mut RecommendedWatcher,
   receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
+  paths_to_exclude: &Arc<Mutex<Vec<PathBuf>>>
 ) {
   loop {
     match receiver.try_recv() {
       Ok(paths) => {
-        add_paths_to_watcher(watcher, &paths);
+        add_paths_to_watcher(watcher, &paths, paths_to_exclude);
       }
       Err(e) => match e {
         mpsc::error::TryRecvError::Empty => {

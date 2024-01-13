@@ -134,6 +134,7 @@ async fn run_with_watch(
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+        watcher_communicator.exclude_paths_from_watch(cli_options.excluded_paths());
 
         let permissions = PermissionsContainer::new(Permissions::from_options(
           &cli_options.permissions_options(),

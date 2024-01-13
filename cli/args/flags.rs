@@ -268,7 +268,6 @@ impl RunFlags {
 pub struct WatchFlags {
   pub hmr: bool,
   pub no_clear_screen: bool,
-  pub excluded_files: Option<Vec<PathBuf>>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -276,7 +275,7 @@ pub struct WatchFlagsWithPaths {
   pub hmr: bool,
   pub paths: Vec<PathBuf>,
   pub no_clear_screen: bool,
-  pub excluded_files: Option<Vec<PathBuf>>,
+  pub excluded_paths: Vec<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1161,7 +1160,6 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
             .action(ArgAction::SetTrue),
         )
         .arg(watch_arg(false))
-        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(script_arg().last(true))
         .arg(env_file_arg())
@@ -1195,7 +1193,6 @@ If no output file is given, the output is written to standard output:
             .value_hint(ValueHint::FilePath),
         )
         .arg(watch_arg(false))
-        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(executable_ext_arg())
     })
@@ -1681,7 +1678,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .value_hint(ValueHint::AnyPath),
         )
         .arg(watch_arg(false))
-        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
         .arg(
           Arg::new("use-tabs")
@@ -2031,7 +2027,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .value_hint(ValueHint::AnyPath),
         )
         .arg(watch_arg(false))
-        .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
     })
 }
@@ -2241,7 +2236,6 @@ Directory arguments are expanded to all contained files matching the glob
         .conflicts_with("no-run")
         .conflicts_with("coverage"),
     )
-    .arg(watch_exclude_arg())
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
     .arg(
@@ -3047,7 +3041,6 @@ fn no_clear_screen_arg() -> Arg {
 
 fn watch_exclude_arg() -> Arg {
   Arg::new("watch-exclude")
-    .requires("watch")
     .long("watch-exclude")
     .help("Exclude provided files from watch mode")
     .value_name("FILES")
@@ -3055,6 +3048,7 @@ fn watch_exclude_arg() -> Arg {
     .value_parser(value_parser!(PathBuf))
     .use_value_delimiter(true)
     .require_equals(true)
+    .value_hint(ValueHint::AnyPath)
 }
 
 fn no_check_arg() -> Arg {
@@ -4188,10 +4182,6 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
     Some(WatchFlags {
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
-      excluded_files: matches
-        .remove_many::<PathBuf>("watch-exclude")
-        .map(|f| f.collect::<Vec<PathBuf>>())
-        .or_else(|| None)
     })
   } else {
     None
@@ -4206,10 +4196,10 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: false,
       no_clear_screen: matches.get_flag("no-clear-screen"),
-      excluded_files: matches
+      excluded_paths: matches
         .remove_many::<PathBuf>("watch-exclude")
         .map(|f| f.collect::<Vec<PathBuf>>())
-        .or_else(|| None)
+        .unwrap_or_else(Vec::new)
     });
   }
 
@@ -4219,10 +4209,10 @@ fn watch_arg_parse_with_paths(
       paths: paths.collect(),
       hmr: true,
       no_clear_screen: matches.get_flag("no-clear-screen"),
-      excluded_files: matches
+      excluded_paths: matches
         .remove_many::<PathBuf>("watch-exclude")
         .map(|f| f.collect::<Vec<PathBuf>>())
-        .or_else(|| None)
+        .unwrap_or_else(Vec::new)
     })
 }
 
@@ -4340,7 +4330,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: false,
-            excluded_files: None,
+            excluded_paths: vec![],
           }),
         }),
         ..Flags::default()
@@ -4364,7 +4354,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
-            excluded_files: None,
+            excluded_paths: vec![],
           }),
         }),
         ..Flags::default()
@@ -4388,7 +4378,7 @@ mod tests {
             hmr: true,
             paths: vec![],
             no_clear_screen: true,
-            excluded_files: None,
+            excluded_paths: vec![],
           }),
         }),
         ..Flags::default()
@@ -4412,7 +4402,7 @@ mod tests {
             hmr: true,
             paths: vec![PathBuf::from("foo.txt")],
             no_clear_screen: true,
-            excluded_files: None,
+            excluded_paths: vec![],
           }),
         }),
         ..Flags::default()
@@ -4438,7 +4428,7 @@ mod tests {
             hmr: false,
             paths: vec![PathBuf::from("file1"), PathBuf::from("file2")],
             no_clear_screen: false,
-            excluded_files: None,
+            excluded_paths: vec![],
           }),
         }),
         ..Flags::default()
@@ -4466,7 +4456,7 @@ mod tests {
             hmr: false,
             paths: vec![],
             no_clear_screen: true,
-            excluded_files: None,
+            excluded_paths: vec![],
           }),
         }),
         ..Flags::default()
@@ -4801,7 +4791,6 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_files: None,
           })
         }),
         ext: Some("ts".to_string()),
@@ -5044,7 +5033,6 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_files: None,
           })
         }),
         ..Flags::default()
@@ -6270,7 +6258,6 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_files: None,
           }),
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -7505,7 +7492,6 @@ mod tests {
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
-            excluded_files: None,
           }),
           reporter: Default::default(),
           junit_path: None,
