@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.39.2"
+version = "1.39.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -117,7 +117,7 @@ quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
-rustyline = { version = "=13.0.0", default-features = false, features = ["custom-bindings", "with-file-history"] }
+rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true

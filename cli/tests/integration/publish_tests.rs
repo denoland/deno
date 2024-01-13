@@ -46,6 +46,7 @@ itest!(javascript_missing_decl_file {
   copy_temp_dir: Some("publish/javascript_missing_decl_file"),
   envs: env_vars_for_registry(),
   exit_code: 0,
+  http_server: true,
   temp_cwd: true,
 });
 
@@ -55,6 +56,7 @@ itest!(javascript_decl_file {
   cwd: Some("publish/javascript_decl_file"),
   copy_temp_dir: Some("publish/javascript_decl_file"),
   envs: env_vars_for_registry(),
+  http_server: true,
   exit_code: 0,
   temp_cwd: true,
 });
@@ -84,6 +86,16 @@ itest!(workspace_individual {
   output: "publish/workspace_individual.out",
   cwd: Some("publish/workspace/bar"),
   copy_temp_dir: Some("publish/workspace"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(dry_run {
+  args: "publish --token 'sadfasdf' --dry-run",
+  cwd: Some("publish/successful"),
+  copy_temp_dir: Some("publish/successful"),
+  output: "publish/dry_run.out",
   envs: env_vars_for_registry(),
   http_server: true,
   temp_cwd: true,
