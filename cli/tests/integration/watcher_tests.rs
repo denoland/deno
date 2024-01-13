@@ -1623,6 +1623,41 @@ async fn run_watch_inspect() {
 }
 
 #[tokio::test]
+async fn run_watch_with_excluded_paths() {
+  let t = TempDir::new();
+
+  let file_to_exclude = t.path().join("file_to_exclude.js");
+  file_to_exclude.write("export const foo = 0;");
+
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch
+  .write("import { foo } from './file_to_exclude.js'; console.log(foo);");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--watch-exclude=file_to_exclude.js")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("0", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Confirm that restarting doesn't occurs when a excluded file is updated
+  file_to_exclude.write("export const foo = 42;");
+
+  wait_contains("finished", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+#[tokio::test]
 async fn run_hmr_server() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
