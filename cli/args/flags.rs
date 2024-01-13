@@ -4462,6 +4462,111 @@ mod tests {
   }
 
   #[test]
+  fn run_watch_with_excluded_paths() {
+    let r = flags_from_vec(svec!(
+      "deno",
+      "run",
+      "--watch",
+      "--watch-exclude=foo",
+      "script.ts"
+    ));
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            excluded_paths: vec![PathBuf::from("foo")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!(
+      "deno",
+      "run",
+      "--watch=foo",
+      "--watch-exclude=bar",
+      "script.ts"
+    ));
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![PathBuf::from("foo")],
+            no_clear_screen: false,
+            excluded_paths: vec![PathBuf::from("bar")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch",
+      "--watch-exclude=foo,bar",
+      "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            excluded_paths: vec![PathBuf::from("foo"), PathBuf::from("bar")],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch=foo,bar",
+      "--watch-exclude=baz,qux",
+      "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![PathBuf::from("foo"), PathBuf::from("bar")],
+            no_clear_screen: false,
+            excluded_paths: vec![
+              PathBuf::from("baz"),
+              PathBuf::from("qux"),
+            ],
+          }),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn run_reload_allow_write() {
     let r =
       flags_from_vec(svec!["deno", "run", "-r", "--allow-write", "script.ts"]);
