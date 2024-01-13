@@ -47,6 +47,7 @@ itest!(javascript_missing_decl_file {
   envs: env_vars_for_registry(),
   exit_code: 0,
   temp_cwd: true,
+  http_server: true,
 });
 
 itest!(javascript_decl_file {
@@ -57,6 +58,7 @@ itest!(javascript_decl_file {
   envs: env_vars_for_registry(),
   exit_code: 0,
   temp_cwd: true,
+  http_server: true,
 });
 
 itest!(successful {
