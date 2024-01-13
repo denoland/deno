@@ -87,6 +87,10 @@ impl TypeChecker {
     graph: Arc<ModuleGraph>,
     options: CheckOptions,
   ) -> Result<Diagnostics, AnyError> {
+    if graph.roots.is_empty() {
+      return Ok(Default::default());
+    }
+
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)

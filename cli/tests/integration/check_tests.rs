@@ -161,6 +161,12 @@ itest!(check_imported_files_listed_in_exclude_option {
   exit_code: 1,
 });
 
+itest!(check_with_excluded_file_specified {
+  args: "check lib/types.d.ts",
+  cwd: Some("check/excluded_file_specified/"),
+  output: "check/excluded_file_specified/check.out",
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();
