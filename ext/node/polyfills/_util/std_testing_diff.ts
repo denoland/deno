@@ -2,15 +2,6 @@
 // This file was vendored from std/testing/_diff.ts
 
 import { primordials } from "ext:core/mod.js";
-import {
-  bgGreen,
-  bgRed,
-  bold,
-  gray,
-  green,
-  red,
-  white,
-} from "ext:deno_node/_util/std_fmt_colors.ts";
 const {
   ArrayFrom,
   ArrayPrototypeFilter,
@@ -23,18 +14,28 @@ const {
   ArrayPrototypeReverse,
   ArrayPrototypeShift,
   ArrayPrototypeSlice,
-  ArrayPrototypeSplice,
   ArrayPrototypeSome,
+  ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
-  SafeArrayIterator,
-  SafeRegExp,
-  StringPrototypeSplit,
-  StringPrototypeReplace,
-  StringPrototypeTrim,
   MathMin,
   ObjectFreeze,
+  SafeArrayIterator,
+  SafeRegExp,
+  StringPrototypeReplace,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   Uint32Array,
 } = primordials;
+
+import {
+  bgGreen,
+  bgRed,
+  bold,
+  gray,
+  green,
+  red,
+  white,
+} from "ext:deno_node/_util/std_fmt_colors.ts";
 
 interface FarthestPoint {
   y: number;

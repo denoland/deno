@@ -1,7 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_create_worker,
+  op_host_post_message,
+  op_host_recv_ctrl,
+  op_host_recv_message,
+  op_host_terminate_worker,
+} = core.ensureFastOps();
 const {
   ArrayPrototypeFilter,
   Error,
@@ -12,6 +18,7 @@ const {
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { URL } from "ext:deno_url/00_url.js";
@@ -30,10 +37,6 @@ import {
   MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
-const {
-  op_host_recv_ctrl,
-  op_host_recv_message,
-} = core.ensureFastOps();
 
 function createWorker(
   specifier,
@@ -43,7 +46,7 @@ function createWorker(
   name,
   workerType,
 ) {
-  return ops.op_create_worker({
+  return op_create_worker({
     hasSourceCode,
     name,
     permissions: serializePermissions(permissions),
@@ -54,11 +57,11 @@ function createWorker(
 }
 
 function hostTerminateWorker(id) {
-  ops.op_host_terminate_worker(id);
+  op_host_terminate_worker(id);
 }
 
 function hostPostMessage(id, data) {
-  ops.op_host_post_message(id, data);
+  op_host_post_message(id, data);
 }
 
 function hostRecvCtrl(id) {
