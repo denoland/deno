@@ -12,8 +12,8 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
-use crate::util::glob::FilePatterns;
-use crate::util::glob::PathOrPatternSet;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -26,7 +26,6 @@ use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -98,21 +97,9 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
-          include: Some(PathOrPatternSet::from_absolute_paths(
-            source_files
-              .iter()
-              .map(|p| {
-                if p.starts_with("https:")
-                  || p.starts_with("http:")
-                  || p.starts_with("file:")
-                {
-                  // todo(dsherret): don't store URLs in PathBufs
-                  PathBuf::from(p)
-                } else {
-                  cli_options.initial_cwd().join(p)
-                }
-              })
-              .collect(),
+          include: Some(PathOrPatternSet::from_relative_path_or_patterns(
+            cli_options.initial_cwd(),
+            source_files,
           )?),
           exclude: Default::default(),
         },
