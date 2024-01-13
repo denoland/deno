@@ -12,6 +12,7 @@
 declare interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
+  "rejectionhandled": PromiseRejectionEvent;
 }
 
 /** @category Web APIs */
@@ -23,6 +24,9 @@ declare interface Window extends EventTarget {
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
+  onrejectionhandled:
     | ((this: Window, ev: PromiseRejectionEvent) => any)
     | null;
   close: () => void;

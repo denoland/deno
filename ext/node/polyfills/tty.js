@@ -1,11 +1,15 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+import { primordials } from "ext:core/mod.js";
+const {
+  Error,
+} = primordials;
+
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
-const { Error } = globalThis.__bootstrap.primordials;
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -79,6 +83,7 @@ export class WriteStream extends Socket {
     const { columns, rows } = Deno.consoleSize();
     this.columns = columns;
     this.rows = rows;
+    this.isTTY = true;
   }
 }
 

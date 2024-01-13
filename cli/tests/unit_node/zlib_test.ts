@@ -9,6 +9,8 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  gzipSync,
+  unzipSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -29,6 +31,13 @@ Deno.test("brotli compression async", async () => {
   );
   assertEquals(compressed instanceof Buffer, true);
   const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test("gzip compression sync", { sanitizeResources: false }, () => {
+  const buf = Buffer.from("hello world");
+  const compressed = gzipSync(buf);
+  const decompressed = unzipSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
 
@@ -123,5 +132,26 @@ Deno.test("should work with a buffer from an encoded string", () => {
   const buf = Buffer.from(buffer);
   const compressed = brotliCompressSync(buf);
   const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), "hello world");
+});
+
+Deno.test(
+  "zlib compression with dataview",
+  { sanitizeResources: false },
+  () => {
+    const buf = Buffer.from("hello world");
+    const compressed = gzipSync(new DataView(buf.buffer));
+    const decompressed = unzipSync(compressed);
+    assertEquals(decompressed.toString(), "hello world");
+  },
+);
+
+Deno.test("zlib compression with an encoded string", {
+  sanitizeResources: false,
+}, () => {
+  const encoder = new TextEncoder();
+  const buffer = encoder.encode("hello world");
+  const compressed = gzipSync(buffer);
+  const decompressed = unzipSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });

@@ -52,12 +52,14 @@ util::unit_test_factory!(
     assertion_error_test,
     buffer_test,
     child_process_test,
+    console_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
     crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_hash_test = crypto / crypto_hash_test,
     crypto_key_test = crypto / crypto_key_test,
     crypto_sign_test = crypto / crypto_sign_test,
     events_test,
+    dgram_test,
     fs_test,
     http_test,
     http2_test,
@@ -188,6 +190,15 @@ itest!(unhandled_rejection_web {
 itest!(unhandled_rejection_web_process {
   args: "run -A node/unhandled_rejection_web_process.ts",
   output: "node/unhandled_rejection_web_process.ts.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+// Ensure that Web `onrejectionhandled` is fired before
+// Node's `process.on('rejectionHandled')`.
+itest!(rejection_handled_web_process {
+  args: "run -A node/rejection_handled_web_process.ts",
+  output: "node/rejection_handled_web_process.ts.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });

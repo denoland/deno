@@ -63,6 +63,11 @@ pub trait NodePermissions {
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_write_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
@@ -76,6 +81,13 @@ impl NodePermissions for AllowAllNodePermissions {
     Ok(())
   }
   fn check_read_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_write_with_api_name(
     &self,
     _path: &Path,
     _api_name: Option<&str>,
@@ -238,6 +250,8 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
     ops::fs::op_node_fs_exists_sync<P>,
+    ops::fs::op_node_cp_sync<P>,
+    ops::fs::op_node_cp<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -329,6 +343,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
+    "_fs/_fs_cp.js",
     "_fs/_fs_dir.ts",
     "_fs/_fs_dirent.ts",
     "_fs/_fs_exists.ts",

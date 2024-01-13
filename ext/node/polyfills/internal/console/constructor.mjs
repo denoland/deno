@@ -5,7 +5,9 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_preview_entries,
+} = core.ensureFastOps(true);
 
 // Mock trace for now
 const trace = () => {};
@@ -502,7 +504,7 @@ const consoleMethods = {
     let isKeyValue = false;
     let i = 0;
     if (mapIter) {
-      const res = ops.op_preview_entries(tabularData, true);
+      const res = op_preview_entries(tabularData, true);
       tabularData = res[0];
       isKeyValue = res[1];
     }
@@ -537,7 +539,7 @@ const consoleMethods = {
 
     const setIter = isSetIterator(tabularData);
     if (setIter) {
-      tabularData = ops.op_preview_entries(tabularData, false);
+      tabularData = op_preview_entries(tabularData, false);
     }
 
     const setlike = setIter || mapIter || isSet(tabularData);

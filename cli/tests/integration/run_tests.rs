@@ -707,6 +707,20 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
+#[test]
+fn permission_request_long() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permission_request_long.ts"])
+    .with_pty(|mut console| {
+      console.expect(concat!(
+        "❌ Permission prompt length (100017 bytes) was larger than the configured maximum length (10240 bytes): denying request.\r\n",
+        "❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.\r\n",
+        "❌ Run again with --allow-read to bypass this check if this is really what you want to do.\r\n",
+      ));
+    });
+}
+
 itest!(deny_all_permission_args {
   args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
   output: "run/deny_all_permission_args.out",
@@ -2809,12 +2823,10 @@ mod permissions {
       .new_command()
       .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
       .with_pty(|mut console| {
-        console.expect("What is your name? [Jane Doe] ");
-        console.write_line_raw("John Doe");
-        console.expect("Your name is John Doe.");
-        console.expect("What is your name? [Jane Doe] ");
+        console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
         console.expect("Your name is Jane Doe.");
+
         console.expect("Prompt ");
         console.write_line_raw("foo");
         console.expect("Your input is foo.");
@@ -2838,9 +2850,6 @@ mod permissions {
         console.expect("Alert [Enter] ");
         console.write_line("");
         console.expect("The end of test");
-        console.expect("What is EOF? ");
-        console.write_line("");
-        console.expect("Your answer is null");
       });
   }
 
@@ -3661,6 +3670,11 @@ itest!(unhandled_rejection_dynamic_import {
 itest!(unhandled_rejection_dynamic_import2 {
   args: "run --allow-read run/unhandled_rejection_dynamic_import2/main.ts",
   output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
+});
+
+itest!(rejection_handled {
+  args: "run --check run/rejection_handled.ts",
+  output: "run/rejection_handled.out",
 });
 
 itest!(nested_error {

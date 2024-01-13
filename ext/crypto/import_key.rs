@@ -520,7 +520,12 @@ fn import_key_ec_jwk_to_point(
 
       p384::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
     }
-    _ => return Err(not_supported_error("Unsupported named curve")),
+    EcNamedCurve::P521 => {
+      let x = decode_b64url_to_field_bytes::<p521::NistP521>(&x)?;
+      let y = decode_b64url_to_field_bytes::<p521::NistP521>(&y)?;
+
+      p521::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
+    }
   };
 
   Ok(point_bytes.to_vec())
@@ -629,7 +634,15 @@ fn import_key_ec(
             return Err(data_error("invalid P-384 elliptic curve point"));
           }
         }
-        _ => return Err(not_supported_error("Unsupported named curve")),
+        EcNamedCurve::P521 => {
+          // 1-2.
+          let point = p521::EncodedPoint::from_bytes(&data)
+            .map_err(|_| data_error("invalid P-521 elliptic curve point"))?;
+          // 3.
+          if point.is_identity() {
+            return Err(data_error("invalid P-521 elliptic curve point"));
+          }
+        }
       };
       Ok(ImportKeyResult::Ec {
         raw_data: RustRawKeyData::Public(data.to_vec().into()),
@@ -755,7 +768,18 @@ fn import_key_ec(
 
             point.as_bytes().len()
           }
-          _ => return Err(not_supported_error("Unsupported named curve")),
+          EcNamedCurve::P521 => {
+            let point =
+              p521::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
+                data_error("invalid P-521 elliptic curve SPKI data")
+              })?;
+
+            if point.is_identity() {
+              return Err(data_error("invalid P-521 elliptic curve point"));
+            }
+
+            point.as_bytes().len()
+          }
         };
 
         if bytes_consumed != pk_info.subject_public_key.raw_bytes().len() {

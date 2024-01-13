@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.143.0"
+version = "0.145.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -30,6 +30,7 @@ num-traits = "0.2.14"
 once_cell.workspace = true
 p256 = { version = "0.13.2", features = ["ecdh"] }
 p384 = "0.13.0"
+p521 = "0.13.3"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
 rsa.workspace = true

@@ -18,9 +18,8 @@ import {
   setIsTrusted,
 } from "ext:deno_web/02_event.js";
 import { isDetachedBuffer } from "ext:deno_web/06_streams.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 const {
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -31,6 +30,9 @@ const {
   SymbolIterator,
   TypeError,
 } = primordials;
+const {
+  isArrayBuffer,
+} = core;
 const {
   op_message_port_recv_message,
 } = core.ensureFastOps();
@@ -282,7 +284,7 @@ function serializeJsMessageData(data, transferables) {
     const hostObjects = [];
     for (let i = 0, j = 0; i < transferables.length; i++) {
       const t = transferables[i];
-      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, t)) {
+      if (isArrayBuffer(t)) {
         if (
           ArrayBufferPrototypeGetByteLength(t) === 0 &&
           isDetachedBuffer(t)
@@ -329,9 +331,7 @@ function serializeJsMessageData(data, transferables) {
         kind: "messagePort",
         data: id,
       });
-    } else if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, transferable)
-    ) {
+    } else if (isArrayBuffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
         kind: "arrayBuffer",
         data: transferredArrayBuffers[arrayBufferI],

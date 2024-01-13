@@ -35,7 +35,7 @@ use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::resolve_url_or_path;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
@@ -138,8 +138,8 @@ impl ModuleLoadPreparer {
       .as_ref()
       .map(|r| r.as_reporter());
 
-    let store = self.parsed_source_cache.as_store();
-    let analyzer = self.module_info_cache.as_module_analyzer(None, &*store);
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
 
     log::debug!("Creating module graph.");
     let mut graph_update_permit =
@@ -163,8 +163,10 @@ impl ModuleLoadPreparer {
           file_system: Some(&DenoGraphFsAdapter(self.fs.as_ref())),
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
+          module_parser: Some(&parser),
           module_analyzer: Some(&analyzer),
           reporter: maybe_file_watcher_reporter,
+          workspace_fast_check: false,
           workspace_members,
         },
       )
@@ -224,10 +226,7 @@ impl ModuleLoadPreparer {
   ) -> Result<(), AnyError> {
     let lib = self.options.ts_type_lib_window();
 
-    let specifiers = files
-      .iter()
-      .map(|file| resolve_url_or_path(file, self.options.initial_cwd()))
-      .collect::<Result<Vec<_>, _>>()?;
+    let specifiers = self.collect_specifiers(files)?;
     self
       .prepare_module_load(
         specifiers,
@@ -237,10 +236,36 @@ impl ModuleLoadPreparer {
       )
       .await
   }
+
+  fn collect_specifiers(
+    &self,
+    files: &[String],
+  ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    let excludes = self.options.resolve_config_excludes()?;
+    Ok(
+      files
+        .iter()
+        .filter_map(|file| {
+          let file_url =
+            resolve_url_or_path(file, self.options.initial_cwd()).ok()?;
+          if file_url.scheme() != "file" {
+            return Some(file_url);
+          }
+          // ignore local files that match any of files listed in `exclude` option
+          let file_path = file_url.to_file_path().ok()?;
+          if excludes.matches_path(&file_path) {
+            None
+          } else {
+            Some(file_url)
+          }
+        })
+        .collect::<Vec<_>>(),
+    )
+  }
 }
 
-pub struct ModuleCodeSource {
-  pub code: ModuleCode,
+pub struct ModuleCodeStringSource {
+  pub code: ModuleCodeString,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -256,7 +281,7 @@ impl PreparedModuleLoader {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeSource, AnyError> {
+  ) -> Result<ModuleCodeStringSource, AnyError> {
     if specifier.scheme() == "node" {
       unreachable!(); // Node built-in modules should be handled internally.
     }
@@ -268,7 +293,7 @@ impl PreparedModuleLoader {
         media_type,
         specifier,
         ..
-      })) => Ok(ModuleCodeSource {
+      })) => Ok(ModuleCodeStringSource {
         code: source.clone().into(),
         found_url: specifier.clone(),
         media_type: *media_type,
@@ -279,7 +304,7 @@ impl PreparedModuleLoader {
         specifier,
         ..
       })) => {
-        let code: ModuleCode = match media_type {
+        let code: ModuleCodeString = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
           | MediaType::Cjs
@@ -306,7 +331,7 @@ impl PreparedModuleLoader {
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(ModuleCodeSource {
+        Ok(ModuleCodeStringSource {
           code,
           found_url: specifier.clone(),
           media_type: *media_type,
@@ -837,7 +862,7 @@ impl NpmModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     permissions: &PermissionsContainer,
-  ) -> Option<Result<ModuleCodeSource, AnyError>> {
+  ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
     if self.node_resolver.in_npm_package(specifier) {
       Some(self.load_sync(specifier, maybe_referrer, permissions))
     } else {
@@ -850,7 +875,7 @@ impl NpmModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     permissions: &PermissionsContainer,
-  ) -> Result<ModuleCodeSource, AnyError> {
+  ) -> Result<ModuleCodeStringSource, AnyError> {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
@@ -898,7 +923,7 @@ impl NpmModuleLoader {
       // esm and json code is untouched
       code
     };
-    Ok(ModuleCodeSource {
+    Ok(ModuleCodeStringSource {
       code: code.into(),
       found_url: specifier.clone(),
       media_type: MediaType::from_specifier(specifier),

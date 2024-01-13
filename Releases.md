@@ -6,6 +6,73 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.39.3 / 2024.01.12
+
+- feat(unstable): fast subset type checking of JSR dependencies (#21873)
+- fix(ci): update copright year for _fs_cp.js (#21803)
+- fix(cli): update import map url (#21824)
+- fix(compile): preserve granular unstable features (#21827)
+- fix(ext): enable prefer-primordials for internal TypeScript (#21813)
+- fix(ext/crypto): initial support for p521 in `generateKey` and `importKey`
+  (#21815)
+- fix(ext/node): add WriteStream.isTTY (#21801)
+- fix(ext/node): add fs.cp, fs.cpSync, promises.cp (#21745)
+- fix(ext/websocket): pass on uncaught errors in idleTimeout (#21846)
+- fix(fast_check): analyze identifiers in type assertions/as exprs (#21899)
+- fix(kv): improve .listenQueue types (#21781)
+- fix(lsp): implement host.getGlobalTypingsCacheLocation() (#21882)
+- fix(lsp): show test code lens for template literal names (#21798)
+- fix(lsp): use a dedicated thread for the parent process checker (#21869)
+- fix(registry): wait for already pending publish (#21663)
+- fix(task): do not eagerly auto-install packages in package.json when
+  `"nodeModulesDir": false` (#21858)
+- fix(unstable/tar): skip node_modules, .git, and config "exclude" (#21816)
+- fix(web): use rustyline for prompt (#21893)
+- fix: add EventSource typings (#21908)
+- fix: android support (#19437)
+- fix: cjs export rewritten to invalid identifier (#21853)
+- fix: update deno_lint and swc (#21718)
+- perf(lsp): use host-owned cache for auto-import completions (#21852)
+- perf: skip expanding exclude globs (#21817)
+
+### 1.39.2 / 2024.01.04
+
+- Revert "fix(runtime): Make native modal keyboard interaction consistent with
+  browsers" (#21739)
+- feat(lsp): allow to connect V8 inspector (#21482)
+- feat(lsp): cache jsxImportSource automatically (#21687)
+- feat(unstable): only allow http2 for kv remote backend (#21616)
+- fix(ci): copyright year for console_test.ts (#21787)
+- fix(cli): harden permission stdio check (#21778)
+- fix(cli): make signals tests more reliable (#21772)
+- fix(cli): respect `exclude` option for `deno check` command (#21779)
+- fix(ext/http): use arraybuffer binaryType for server websocket (#21741)
+- fix(ext/node): Implement `aes-192-ecb` and `aes-256-ecb` (#21710)
+- fix(ext/node): UdpSocket ref and unref (#21777)
+- fix(ext/node): add ClientRequest#setNoDelay (#21694)
+- fix(ext/node): add process.abort() (#21742)
+- fix(ext/node): implement os.machine (#21751)
+- fix(ext/node): querystring stringify without encode callback (#21740)
+- fix(ext/node): use node:process in _streams.mjs (#21755)
+- fix(http_client): Fix Deno.createHttpClient to accept poolIdleTimeout
+  parameter (#21603)
+- fix(jupyter): error message when install fails due to jupyter command not
+  being on PATH (#21767)
+- fix(lsp): support test code lens for Deno.test.{ignore,only}() (#21775)
+- fix(node): Implement os.cpus() (#21697)
+- fix(node): support nested tests in "node:test" (#21717)
+- fix(node/zlib): accept dataview and buffer in zlib bindings (#21756)
+- fix(node/zlib): cast Dataview and Buffer to uint8 (#21746)
+- fix(node/zlib): consistently return buffer (#21747)
+- fix(unstable): kv watch should stop when db is closed (#21665)
+- fix(unstable/byonm): support using an import map with byonm (#21786)
+- fix: `Object.groupBy` return type should be a partial (#21680)
+- fix: allow npm: specifiers in import.meta.resolve (#21716)
+- fix: strict type check for cross realms (#21669)
+- perf(coverage): faster source mapping (#21783)
+- perf(lsp): use LanguageServiceHost::getProjectVersion() (#21719)
+- perf: remove opAsync (#21690)
+
 ### 1.39.1 / 2023.12.21
 
 - fix(bench): added group banner to bench output. (#21551)
