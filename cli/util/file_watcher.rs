@@ -393,13 +393,18 @@ fn new_watcher(
 
 fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf], paths_to_exclude: &Arc<Mutex<Vec<PathBuf>>>) {
   // Ignore any error e.g. `PathNotFound`
+  let paths_to_exclude = paths_to_exclude.lock().clone();
+  let mut watched_paths = Vec::new();
+
   for path in paths {
-    if paths_to_exclude.clone().lock().iter().any(|p| path.to_str().unwrap().contains(p.to_str().unwrap())) {
+    if paths_to_exclude.iter().any(|p| path.ends_with(p)) {
       continue;
     }
+
+    watched_paths.push(path.clone());
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
-  log::debug!("Watching paths: {:?}", paths);
+  log::debug!("Watching paths: {:?}", watched_paths);
 }
 
 fn consume_paths_to_watch(
