@@ -1631,7 +1631,7 @@ async fn run_watch_with_excluded_paths() {
 
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch
-  .write("import { foo } from './file_to_exclude.js'; console.log(foo);");
+    .write("import { foo } from './file_to_exclude.js'; console.log(foo);");
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())

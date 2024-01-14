@@ -305,12 +305,20 @@ where
     }
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
-    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &watcher_communicator.paths_to_exclude);
+    consume_paths_to_watch(
+      &mut watcher,
+      &mut paths_to_watch_rx,
+      &watcher_communicator.paths_to_exclude,
+    );
 
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &watcher_communicator.paths_to_exclude);
+        add_paths_to_watcher(
+          &mut watcher,
+          &maybe_paths.unwrap(),
+          &watcher_communicator.paths_to_exclude,
+        );
       }
     };
     let operation_future = error_handler(operation(
@@ -346,7 +354,11 @@ where
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &watcher_communicator.paths_to_exclude);
+        add_paths_to_watcher(
+          &mut watcher,
+          &maybe_paths.unwrap(),
+          &watcher_communicator.paths_to_exclude,
+        );
       }
     };
 
@@ -364,7 +376,7 @@ where
 }
 
 fn new_watcher(
-  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>
+  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, AnyError> {
   Ok(Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
@@ -391,7 +403,11 @@ fn new_watcher(
   )?)
 }
 
-fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf], paths_to_exclude: &Arc<Mutex<Vec<PathBuf>>>) {
+fn add_paths_to_watcher(
+  watcher: &mut RecommendedWatcher,
+  paths: &[PathBuf],
+  paths_to_exclude: &Arc<Mutex<Vec<PathBuf>>>,
+) {
   // Ignore any error e.g. `PathNotFound`
   let paths_to_exclude = paths_to_exclude.lock().clone();
   let mut watched_paths = Vec::new();
@@ -410,7 +426,7 @@ fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf], pat
 fn consume_paths_to_watch(
   watcher: &mut RecommendedWatcher,
   receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
-  paths_to_exclude: &Arc<Mutex<Vec<PathBuf>>>
+  paths_to_exclude: &Arc<Mutex<Vec<PathBuf>>>,
 ) {
   loop {
     match receiver.try_recv() {

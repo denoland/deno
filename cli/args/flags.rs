@@ -4196,7 +4196,7 @@ fn watch_arg_parse_with_paths(
       excluded_paths: matches
         .remove_many::<PathBuf>("watch-exclude")
         .map(|f| f.collect::<Vec<PathBuf>>())
-        .unwrap_or_else(Vec::new)
+        .unwrap_or_else(Vec::new),
     });
   }
 
@@ -4209,7 +4209,7 @@ fn watch_arg_parse_with_paths(
       excluded_paths: matches
         .remove_many::<PathBuf>("watch-exclude")
         .map(|f| f.collect::<Vec<PathBuf>>())
-        .unwrap_or_else(Vec::new)
+        .unwrap_or_else(Vec::new),
     })
 }
 
@@ -4555,10 +4555,7 @@ mod tests {
             hmr: false,
             paths: vec![PathBuf::from("foo"), PathBuf::from("bar")],
             no_clear_screen: false,
-            excluded_paths: vec![
-              PathBuf::from("baz"),
-              PathBuf::from("qux"),
-            ],
+            excluded_paths: vec![PathBuf::from("baz"), PathBuf::from("qux"),],
           }),
         }),
         ..Flags::default()

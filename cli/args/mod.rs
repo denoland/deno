@@ -1487,9 +1487,13 @@ impl CliOptions {
 
   pub fn excluded_paths(&self) -> Vec<PathBuf> {
     let excluded_files = if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { excluded_paths: excluded_files, .. }),
-        ..
-      }) = &self.flags.subcommand
+      watch:
+        Some(WatchFlagsWithPaths {
+          excluded_paths: excluded_files,
+          ..
+        }),
+      ..
+    }) = &self.flags.subcommand
     {
       excluded_files.clone()
     } else {
