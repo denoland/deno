@@ -8,7 +8,9 @@ const ops = core.ops;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
+  ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  ArrayPrototypeShift,
   DateNow,
   Error,
   ErrorPrototype,
@@ -23,8 +25,9 @@ const {
   ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
-  Symbol,
   SafeSet,
+  StringPrototypeSplit,
+  Symbol,
   SymbolIterator,
   TypeError,
 } = primordials;
@@ -93,9 +96,9 @@ let globalThis_;
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
 function warnOnDeprecatedApi(apiName, stack) {
-  const stackLines = stack.split("\n");
-  stackLines.shift();
-  const stackString = stackLines.join("\n");
+  const stackLines = StringPrototypeSplit(stack, "\n");
+  ArrayPrototypeShift(stackLines);
+  const stackString = ArrayPrototypeJoin(stackLines, "\n");
 
   if (ALREADY_WARNED_DEPRECATED.has(apiName + stackString)) {
     return;
