@@ -54,6 +54,14 @@ itest!(deps_info {
   http_server: true,
 });
 
+itest!(subset_type_graph {
+  args: "check --all jsr/subset_type_graph/main.ts",
+  output: "jsr/subset_type_graph/main.check.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(version_not_found {
   args: "run jsr/version_not_found/main.ts",
   output: "jsr/version_not_found/main.out",

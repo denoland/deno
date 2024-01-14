@@ -164,14 +164,14 @@ impl LspNpmConfigHash {
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StateNpmSnapshot {
   pub node_resolver: Arc<NodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 /// Snapshot of the state used by TSC.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
@@ -1427,7 +1427,6 @@ impl Inner {
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
-          self.ts_server.increment_project_version();
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1472,7 +1471,6 @@ impl Inner {
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
-      self.ts_server.increment_project_version();
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1525,7 +1523,6 @@ impl Inner {
     self.refresh_documents_config().await;
 
     self.diagnostics_server.invalidate_all();
-    self.ts_server.increment_project_version();
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -3388,7 +3385,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);
       inner.diagnostics_server.invalidate(&specifiers);
-      inner.ts_server.increment_project_version();
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }
@@ -3479,7 +3475,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
-      ls.ts_server.increment_project_version();
       ls.send_diagnostics_update();
     }
     performance.measure(mark);
