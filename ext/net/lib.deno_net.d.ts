@@ -159,6 +159,7 @@ declare namespace Deno {
    * @tags allow-read, allow-write
    * @category Network
    */
+  // deno-lint-ignore adjacent-overload-signatures
   export function listen(
     options: UnixListenOptions & { transport: "unix" },
   ): Listener;
