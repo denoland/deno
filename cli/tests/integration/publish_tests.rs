@@ -72,7 +72,7 @@ itest!(successful {
 });
 
 itest!(workspace_all {
-  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  args: "publish --token 'sadfasdf'",
   output: "publish/workspace.out",
   cwd: Some("publish/workspace"),
   copy_temp_dir: Some("publish/workspace"),
@@ -82,7 +82,7 @@ itest!(workspace_all {
 });
 
 itest!(workspace_individual {
-  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  args: "publish --token 'sadfasdf'",
   output: "publish/workspace_individual.out",
   cwd: Some("publish/workspace/bar"),
   copy_temp_dir: Some("publish/workspace"),
