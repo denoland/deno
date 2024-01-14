@@ -84,8 +84,13 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  // deno-lint-ignore no-empty-interface
-  export interface TlsHandshakeInfo {}
+  export interface TlsHandshakeInfo {
+    /**
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
 
   /** @category Network */
   export interface TlsConn extends Conn {
@@ -247,6 +252,10 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** PEM formatted client certificate chain. */
+    certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate.  */
+    privateKey?: string;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
