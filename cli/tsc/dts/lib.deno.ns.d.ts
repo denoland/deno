@@ -28,18 +28,6 @@ declare interface ImportMeta {
    */
   url: string;
 
-  /** The absolute path of the current module.
-   *
-   * This property is only provided for local modules (ie. using `file://` URLs).
-   */
-  filename?: string;
-
-  /** The absolute path of the dirrectory containing the current module.
-   *
-   * This property is only provided for local modules (ie. using `file://` URLs).
-   */
-  dirname?: string;
-
   /** A flag that indicates if the current module is the main module that was
    * called when starting the program under Deno.
    *
