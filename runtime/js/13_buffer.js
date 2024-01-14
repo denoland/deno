@@ -4,7 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { primordials } from "ext:core/mod.js";
+import { internals, primordials } from "ext:core/mod.js";
 const {
   ArrayBufferPrototypeGetByteLength,
   TypedArrayPrototypeSubarray,
@@ -242,6 +242,7 @@ function readAllSync(r) {
 }
 
 async function writeAll(w, arr) {
+  internals.warnOnDeprecatedApi("Deno.writeAll()", (new Error()).stack);
   let nwritten = 0;
   while (nwritten < arr.length) {
     nwritten += await w.write(TypedArrayPrototypeSubarray(arr, nwritten));
@@ -249,6 +250,7 @@ async function writeAll(w, arr) {
 }
 
 function writeAllSync(w, arr) {
+  internals.warnOnDeprecatedApi("Deno.writeAllSync()", (new Error()).stack);
   let nwritten = 0;
   while (nwritten < arr.length) {
     nwritten += w.writeSync(TypedArrayPrototypeSubarray(arr, nwritten));

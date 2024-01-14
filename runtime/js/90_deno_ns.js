@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 const {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -31,7 +31,10 @@ import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 
 const denoNs = {
-  metrics: core.metrics,
+  metrics: () => {
+    internals.warnOnDeprecatedApi("Deno.metrics()", (new Error()).stack);
+    return core.metrics();
+  },
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,

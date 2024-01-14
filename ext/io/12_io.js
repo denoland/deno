@@ -4,7 +4,7 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_stdin_set_raw,
 } = core.ensureFastOps(true);
@@ -39,6 +39,7 @@ async function copy(
   dst,
   options,
 ) {
+  internals.warnOnDeprecatedApi("Deno.copy()", (new Error()).stack);
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
@@ -64,6 +65,7 @@ async function* iter(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi("Deno.iter()", (new Error()).stack);
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {
@@ -80,6 +82,7 @@ function* iterSync(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi("Deno.iterSync()", (new Error()).stack);
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {
@@ -115,6 +118,7 @@ function write(rid, data) {
 const READ_PER_ITER = 64 * 1024; // 64kb
 
 async function readAll(r) {
+  internals.warnOnDeprecatedApi("Deno.readAll()", (new Error()).stack);
   const buffers = [];
 
   while (true) {
@@ -131,6 +135,7 @@ async function readAll(r) {
 }
 
 function readAllSync(r) {
+  internals.warnOnDeprecatedApi("Deno.readAllSync()", (new Error()).stack);
   const buffers = [];
 
   while (true) {

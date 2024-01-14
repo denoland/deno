@@ -24,6 +24,7 @@ const {
   PromisePrototypeThen,
   PromiseResolve,
   Symbol,
+  SafeSet,
   SymbolIterator,
   TypeError,
 } = primordials;
@@ -88,6 +89,26 @@ ObjectDefineProperties(Symbol, {
 
 let windowIsClosing = false;
 let globalThis_;
+
+const ALREADY_WARNED_DEPRECATED = new SafeSet();
+
+function warnOnDeprecatedApi(apiName, stack) {
+  const stackLines = stack.split("\n");
+  stackLines.shift();
+  const stackString = stackLines.join("\n");
+
+  if (ALREADY_WARNED_DEPRECATED.has(apiName + stackString)) {
+    return;
+  }
+
+  ALREADY_WARNED_DEPRECATED.add(apiName + stackString);
+  console.log(
+    "%cWarning %cUse of deprecated API `" + apiName +
+      "`. This API will be removed in Deno 2.\n" + stackString,
+    "color: yellow; font-weight: bold;",
+    "color: yellow;",
+  );
+}
 
 function windowClose() {
   if (!windowIsClosing) {
@@ -432,7 +453,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, warnOnDeprecatedApi });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
