@@ -486,7 +486,11 @@ fn op_load(
       match module {
         Module::Esm(module) => {
           media_type = module.media_type;
-          Some(Cow::Borrowed(&*module.source))
+          let source = module
+            .fast_check_module()
+            .map(|m| &*m.source)
+            .unwrap_or(&*module.source);
+          Some(Cow::Borrowed(source))
         }
         Module::Json(module) => {
           media_type = MediaType::Json;
@@ -586,7 +590,7 @@ fn op_resolve(
     let resolved_dep = graph
       .get(&referrer)
       .and_then(|m| m.esm())
-      .and_then(|m| m.dependencies.get(&specifier))
+      .and_then(|m| m.dependencies_prefer_fast_check().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
     let maybe_result = match resolved_dep {
@@ -1182,6 +1186,7 @@ mod tests {
           code: 5023,
           start: None,
           end: None,
+          original_source_start: None,
           message_text: Some(
             "Unknown compiler option \'invalid\'.".to_string()
           ),

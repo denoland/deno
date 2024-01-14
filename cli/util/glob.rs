@@ -248,9 +248,11 @@ impl GlobPattern {
   }
 
   pub fn new(pattern: &str) -> Result<Self, AnyError> {
-    let pattern =
-      glob::Pattern::new(&escape_brackets(pattern).replace('\\', "/"))
-        .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))?;
+    let pattern = escape_brackets(pattern)
+      .replace('\\', "/")
+      .replace("/./", "/");
+    let pattern = glob::Pattern::new(&pattern)
+      .with_context(|| format!("Failed to expand glob: \"{}\"", pattern))?;
     Ok(Self(pattern))
   }
 

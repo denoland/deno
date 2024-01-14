@@ -43,9 +43,14 @@ export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { core } from "ext:core/mod.js";
 const {
+  op_zlib_close,
+  op_zlib_close_if_pending,
+  op_zlib_init,
+  op_zlib_new,
+  op_zlib_reset,
+  op_zlib_write,
   op_zlib_write_async,
 } = core.ensureFastOps();
 
@@ -55,11 +60,11 @@ class Zlib {
   #handle;
 
   constructor(mode) {
-    this.#handle = ops.op_zlib_new(mode);
+    this.#handle = op_zlib_new(mode);
   }
 
   close() {
-    ops.op_zlib_close(this.#handle);
+    op_zlib_close(this.#handle);
   }
 
   writeSync(
@@ -71,7 +76,7 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    const err = ops.op_zlib_write(
+    const err = op_zlib_write(
       this.#handle,
       flush,
       input,
@@ -145,7 +150,7 @@ class Zlib {
     strategy,
     dictionary,
   ) {
-    const err = ops.op_zlib_init(
+    const err = op_zlib_init(
       this.#handle,
       level,
       windowBits,
@@ -164,7 +169,7 @@ class Zlib {
   }
 
   reset() {
-    const err = ops.op_zlib_reset(this.#handle);
+    const err = op_zlib_reset(this.#handle);
     if (err != Z_OK) {
       this.#error("Failed to reset stream", err);
     }
@@ -172,7 +177,7 @@ class Zlib {
 
   #error(message, err) {
     this.onerror(message, err);
-    ops.op_zlib_close_if_pending(this.#handle);
+    op_zlib_close_if_pending(this.#handle);
   }
 }
 

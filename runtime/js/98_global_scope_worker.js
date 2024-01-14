@@ -1,7 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_bootstrap_language,
+  op_bootstrap_numcpus,
+  op_bootstrap_user_agent,
+} = core.ensureFastOps(true);
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -25,9 +29,9 @@ function memoizeLazy(f) {
   };
 }
 
-const numCpus = memoizeLazy(() => ops.op_bootstrap_numcpus());
-const userAgent = memoizeLazy(() => ops.op_bootstrap_user_agent());
-const language = memoizeLazy(() => ops.op_bootstrap_language());
+const numCpus = memoizeLazy(() => op_bootstrap_numcpus());
+const userAgent = memoizeLazy(() => op_bootstrap_user_agent());
+const language = memoizeLazy(() => op_bootstrap_language());
 
 class WorkerNavigator {
   constructor() {

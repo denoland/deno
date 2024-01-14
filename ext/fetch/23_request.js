@@ -9,6 +9,20 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeMap,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeExec,
+  StringPrototypeStartsWith,
+  Symbol,
+  SymbolFor,
+  TypeError,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { assert } from "ext:deno_web/00_infra.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -30,19 +44,6 @@ import {
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { primordials } from "ext:core/mod.js";
-const {
-  ArrayPrototypeMap,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSplice,
-  ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeExec,
-  StringPrototypeStartsWith,
-  Symbol,
-  SymbolFor,
-  TypeError,
-} = primordials;
 
 const _request = Symbol("request");
 const _headers = Symbol("headers");
