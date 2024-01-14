@@ -118,7 +118,6 @@ function write(rid, data) {
 const READ_PER_ITER = 64 * 1024; // 64kb
 
 async function readAll(r) {
-  internals.warnOnDeprecatedApi("Deno.readAll()", (new Error()).stack);
   const buffers = [];
 
   while (true) {
@@ -135,7 +134,6 @@ async function readAll(r) {
 }
 
 function readAllSync(r) {
-  internals.warnOnDeprecatedApi("Deno.readAllSync()", (new Error()).stack);
   const buffers = [];
 
   while (true) {

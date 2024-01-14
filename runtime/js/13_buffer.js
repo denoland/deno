@@ -45,6 +45,7 @@ class Buffer {
   #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
   constructor(ab) {
+    internals.warnOnDeprecatedApi("new Deno.Buffer()", (new Error()).stack);
     if (ab == null) {
       this.#buf = new Uint8Array(0);
       return;
@@ -230,12 +231,14 @@ class Buffer {
 }
 
 async function readAll(r) {
+  internals.warnOnDeprecatedApi("Deno.readAll()", (new Error()).stack);
   const buf = new Buffer();
   await buf.readFrom(r);
   return buf.bytes();
 }
 
 function readAllSync(r) {
+  internals.warnOnDeprecatedApi("Deno.readAllSync()", (new Error()).stack);
   const buf = new Buffer();
   buf.readFromSync(r);
   return buf.bytes();
