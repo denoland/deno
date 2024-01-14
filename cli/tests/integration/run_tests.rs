@@ -4804,7 +4804,7 @@ itest!(explicit_resource_management {
 });
 
 itest!(workspaces_basic {
-  args: "run -L debug -A --unstable-workspaces main.ts",
+  args: "run -L debug -A main.ts",
   output: "run/workspaces/basic/main.out",
   cwd: Some("run/workspaces/basic/"),
   copy_temp_dir: Some("run/workspaces/basic/"),
@@ -4813,7 +4813,7 @@ itest!(workspaces_basic {
 });
 
 itest!(workspaces_member_outside_root_dir {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/member_outside_root_dir/main.out",
   cwd: Some("run/workspaces/member_outside_root_dir/"),
   copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
@@ -4823,7 +4823,7 @@ itest!(workspaces_member_outside_root_dir {
 });
 
 itest!(workspaces_nested_member {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/nested_member/main.out",
   cwd: Some("run/workspaces/nested_member/"),
   copy_temp_dir: Some("run/workspaces/nested_member/"),
