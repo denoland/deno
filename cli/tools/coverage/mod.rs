@@ -23,7 +23,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -524,7 +524,7 @@ pub async fn cover_files(
 
     // Check if file was transpiled
     let original_source = file.source.clone();
-    let transpiled_code: ModuleCode = match file.media_type {
+    let transpiled_code: ModuleCodeString = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs

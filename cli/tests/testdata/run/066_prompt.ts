@@ -1,5 +1,3 @@
-const name0 = prompt("What is your name?", "Jane Doe"); // Answer John Doe
-console.log(`Your name is ${name0}.`);
 const name1 = prompt("What is your name?", "Jane Doe"); // Answer with default
 console.log(`Your name is ${name1}.`);
 const input = prompt(); // Answer foo
@@ -17,5 +15,3 @@ console.log(`Your answer is ${JSON.stringify(windows)}`);
 alert("Hi");
 alert();
 console.log("The end of test");
-const eof = prompt("What is EOF?");
-console.log(`Your answer is ${JSON.stringify(eof)}`);

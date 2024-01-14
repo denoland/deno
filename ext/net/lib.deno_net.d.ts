@@ -70,18 +70,13 @@ declare namespace Deno {
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
 
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the connection block the event loop from finishing.
+    /** Make the connection block the event loop from finishing.
      *
      * Note: the connection blocks the event loop from finishing by default.
      * This method is only meaningful after `.unref()` is called.
      */
     ref(): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the connection not block the event loop from finishing.
-     */
+    /** Make the connection not block the event loop from finishing. */
     unref(): void;
 
     readonly readable: ReadableStream<Uint8Array>;
@@ -89,8 +84,13 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  // deno-lint-ignore no-empty-interface
-  export interface TlsHandshakeInfo {}
+  export interface TlsHandshakeInfo {
+    /**
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
 
   /** @category Network */
   export interface TlsConn extends Conn {
@@ -252,6 +252,10 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** PEM formatted client certificate chain. */
+    certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate.  */
+    privateKey?: string;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

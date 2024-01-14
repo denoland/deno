@@ -67,7 +67,6 @@ extension!(runtime,
   }
 );
 
-#[allow(dead_code)]
 pub fn maybe_transpile_source(
   source: &mut ExtensionFileSource,
 ) -> Result<(), AnyError> {

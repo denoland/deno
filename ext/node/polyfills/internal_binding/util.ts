@@ -29,11 +29,13 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_node_guess_handle_type,
+} = core.ensureFastOps();
 
 const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
 export function guessHandleType(fd: number): string {
-  const type = ops.op_node_guess_handle_type(fd);
+  const type = op_node_guess_handle_type(fd);
   return handleTypes[type];
 }
 
