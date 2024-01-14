@@ -249,6 +249,7 @@ declare namespace Deno {
    * @tags allow-net, allow-read
    * @category Network
    */
+  // deno-lint-ignore adjacent-overload-signatures
   export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
   /** @category Network */
