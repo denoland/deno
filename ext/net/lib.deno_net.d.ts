@@ -138,6 +138,31 @@ declare namespace Deno {
     options: TcpListenOptions & { transport?: "tcp" },
   ): Listener;
 
+  /** Options which can be set when opening a Unix listener via
+   * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
+   *
+   * @category Network
+   */
+  export interface UnixListenOptions {
+    /** A path to the Unix Socket. */
+    path: string;
+  }
+
+  /** Listen announces on the local transport address.
+   *
+   * ```ts
+   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permission.
+   *
+   * @tags allow-read, allow-write
+   * @category Network
+   */
+  export function listen(
+    options: UnixListenOptions & { transport: "unix" },
+  ): Listener;
+
   /** @category Network */
   export interface ListenTlsOptions extends TcpListenOptions {
     /** Server private key in PEM format */
