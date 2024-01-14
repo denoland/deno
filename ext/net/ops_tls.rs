@@ -261,13 +261,6 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  if args.cert_chain.is_some() {
-    super::check_unstable(&state.borrow(), "ConnectTlsOptions.certChain");
-  }
-  if args.private_key.is_some() {
-    super::check_unstable(&state.borrow(), "ConnectTlsOptions.privateKey");
-  }
-
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();

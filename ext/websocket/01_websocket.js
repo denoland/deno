@@ -3,23 +3,24 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import { URL } from "ext:deno_url/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
 import {
-  CloseEvent,
-  defineEventHandler,
-  dispatch,
-  ErrorEvent,
-  Event,
-  EventTarget,
-  MessageEvent,
-  setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
+  op_ws_check_permission_and_cancel_handle,
+  op_ws_close,
+  op_ws_create,
+  op_ws_get_buffer,
+  op_ws_get_buffer_as_string,
+  op_ws_get_buffered_amount,
+  op_ws_get_error,
+  op_ws_next_event,
+  op_ws_send_binary,
+  op_ws_send_binary_ab,
+  op_ws_send_ping,
+  op_ws_send_text,
+} from "ext:deno_websocket/00_ops.js";
 const {
   ArrayBufferIsView,
   ArrayPrototypeJoin,
@@ -42,24 +43,24 @@ const {
   TypedArrayPrototypeGetByteLength,
   Uint8Array,
 } = primordials;
-const {
-  isAnyArrayBuffer,
-  isArrayBuffer,
-} = core;
+
+import { URL } from "ext:deno_url/00_url.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import {
-  op_ws_check_permission_and_cancel_handle,
-  op_ws_close,
-  op_ws_create,
-  op_ws_get_buffer,
-  op_ws_get_buffer_as_string,
-  op_ws_get_buffered_amount,
-  op_ws_get_error,
-  op_ws_next_event,
-  op_ws_send_binary,
-  op_ws_send_binary_ab,
-  op_ws_send_ping,
-  op_ws_send_text,
-} from "ext:deno_websocket/00_ops.js";
+  CloseEvent,
+  defineEventHandler,
+  dispatch,
+  ErrorEvent,
+  Event,
+  EventTarget,
+  MessageEvent,
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
+import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
