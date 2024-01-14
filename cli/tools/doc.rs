@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
 use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
@@ -28,17 +27,15 @@ use indexmap::IndexMap;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
-  cli_options: &Arc<CliOptions>,
   parser: &dyn ModuleParser,
   analyzer: &dyn ModuleAnalyzer,
 ) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
   let source_file_specifier =
     ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
-  let content = get_types_declaration_file_text(cli_options.unstable());
+  let content = get_types_declaration_file_text();
   let mut loader = deno_graph::source::MemoryLoader::new(
     vec![(
       source_file_specifier.to_string(),
@@ -86,7 +83,6 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     DocSourceFileFlag::Builtin => {
       generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
-        cli_options,
         &capturing_parser,
         &analyzer,
       )
@@ -156,7 +152,6 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     let deno_ns = if doc_flags.source_files != DocSourceFileFlag::Builtin {
       let deno_ns = generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
-        cli_options,
         &capturing_parser,
         &analyzer,
       )
