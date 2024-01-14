@@ -8,6 +8,12 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -23,7 +29,6 @@ const {
   Int16Array,
   Int32Array,
   Int8Array,
-  isNaN,
   MathFloor,
   MathFround,
   MathMax,
@@ -81,12 +86,6 @@ const {
   Uint8Array,
   Uint8ClampedArray,
 } = primordials;
-const {
-  isArrayBuffer,
-  isDataView,
-  isSharedArrayBuffer,
-  isTypedArray,
-} = core;
 
 function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(
@@ -355,7 +354,7 @@ converters.float = (V, prefix, context, _opts) => {
 converters["unrestricted float"] = (V, _prefix, _context, _opts) => {
   const x = toNumber(V);
 
-  if (isNaN(x)) {
+  if (NumberIsNaN(x)) {
     return x;
   }
 

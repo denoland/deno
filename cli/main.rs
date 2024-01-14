@@ -195,7 +195,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
-      let types = tsc::get_types_declaration_file_text(flags.unstable);
+      let types = tsc::get_types_declaration_file_text();
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
     #[cfg(feature = "upgrade")]

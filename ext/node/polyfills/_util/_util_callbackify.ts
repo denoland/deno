@@ -24,7 +24,6 @@
 // These are simplified versions of the "real" errors in Node.
 
 import { primordials } from "ext:core/mod.js";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
 const {
   ArrayPrototypePop,
   Error,
@@ -35,6 +34,8 @@ const {
   PromisePrototypeThen,
   TypeError,
 } = primordials;
+
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 class NodeFalsyValueRejectionError extends Error {
   public reason: unknown;

@@ -1904,7 +1904,7 @@ fn lsp_exclude_config() {
 }
 
 #[test]
-fn lsp_hover_unstable_disabled() {
+fn lsp_hover_unstable_always_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -1930,16 +1930,17 @@ fn lsp_hover_unstable_disabled() {
   assert_eq!(
     res,
     json!({
-      "contents": [
+      "contents":[
         {
-          "language": "typescript",
-          "value": "type Deno.ForeignLibraryInterface = /*unresolved*/ any",
+          "language":"typescript",
+          "value":"interface Deno.ForeignLibraryInterface"
         },
-        "",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
+        "\n\n*@category* - FFI",
       ],
-      "range": {
-        "start": { "line": 0, "character": 14 },
-        "end": { "line": 0, "character": 37 }
+      "range":{
+        "start":{ "line":0, "character":14 },
+        "end":{ "line":0, "character":37 }
       }
     })
   );
@@ -1951,6 +1952,7 @@ fn lsp_hover_unstable_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
+    // NOTE(bartlomieju): this is effectively not used anymore.
     builder.set_unstable(true);
   });
   client.did_open(json!({
@@ -5933,7 +5935,7 @@ fn lsp_completions() {
     json!({
       "label": "build",
       "kind": 6,
-      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string | undefined;\n}",
+      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string | undefined;\n}",
       "documentation": {
         "kind": "markdown",
         "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* - Runtime Environment"

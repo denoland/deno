@@ -261,13 +261,6 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  if args.cert_chain.is_some() {
-    super::check_unstable(&state.borrow(), "ConnectTlsOptions.certChain");
-  }
-  if args.private_key.is_some() {
-    super::check_unstable(&state.borrow(), "ConnectTlsOptions.privateKey");
-  }
-
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
@@ -471,7 +464,7 @@ where
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
   if args.reuse_port {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     socket.set_reuse_port(true)?;
   }
   let socket_addr = socket2::SockAddr::from(bind_addr);
