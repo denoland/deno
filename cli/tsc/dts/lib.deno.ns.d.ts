@@ -3759,7 +3759,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface OpMetrics {
     opsDispatched: number;
@@ -3777,7 +3777,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface Metrics extends OpMetrics {
     ops: Record<string, OpMetrics>;
@@ -3808,7 +3808,7 @@ declare namespace Deno {
    *
    * @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export function metrics(): Metrics;
 
