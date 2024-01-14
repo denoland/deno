@@ -4196,7 +4196,7 @@ fn watch_arg_parse_with_paths(
       excluded_paths: matches
         .remove_many::<PathBuf>("watch-exclude")
         .map(|f| f.collect::<Vec<PathBuf>>())
-        .unwrap_or_else(Vec::new),
+        .unwrap_or_default(),
     });
   }
 
@@ -4209,7 +4209,7 @@ fn watch_arg_parse_with_paths(
       excluded_paths: matches
         .remove_many::<PathBuf>("watch-exclude")
         .map(|f| f.collect::<Vec<PathBuf>>())
-        .unwrap_or_else(Vec::new),
+        .unwrap_or_default(),
     })
 }
 

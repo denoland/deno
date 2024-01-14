@@ -1486,7 +1486,7 @@ impl CliOptions {
   }
 
   pub fn excluded_paths(&self) -> Vec<PathBuf> {
-    let excluded_files = if let DenoSubcommand::Run(RunFlags {
+    if let DenoSubcommand::Run(RunFlags {
       watch:
         Some(WatchFlagsWithPaths {
           excluded_paths: excluded_files,
@@ -1498,9 +1498,7 @@ impl CliOptions {
       excluded_files.clone()
     } else {
       Vec::with_capacity(0)
-    };
-
-    excluded_files
+    }
   }
 }
 
