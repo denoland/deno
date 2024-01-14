@@ -4803,10 +4803,8 @@ itest!(explicit_resource_management {
   output: "run/explicit_resource_management/main.out",
 });
 
-// NOTE(bartlomieju): `--unstable-workspaces` is not required anymore,
-// but keep it here to make sure CLI parser doesn't panic on unknown flag.
 itest!(workspaces_basic {
-  args: "run -L debug -A --unstable-workspaces main.ts",
+  args: "run -L debug -A main.ts",
   output: "run/workspaces/basic/main.out",
   cwd: Some("run/workspaces/basic/"),
   copy_temp_dir: Some("run/workspaces/basic/"),

@@ -1029,14 +1029,6 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
-    )
-    .arg(
-      // NOTE(bartlomieju): not used anymore, but kept for CLI compatibility between
-      // releases.
-      Arg::new("unstable-workspaces")
-        .long("unstable-workspaces")
-        .global(true)
-        .hide(true)
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
