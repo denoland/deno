@@ -2,17 +2,17 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
-  ArrayPrototypeJoin,
-  NumberPrototypeToString,
-  TypeError,
-} = primordials;
-const {
   isPromise,
 } = core;
 const {
   op_cron_create,
   op_cron_next,
 } = core.ensureFastOps();
+const {
+  ArrayPrototypeJoin,
+  NumberPrototypeToString,
+  TypeError,
+} = primordials;
 
 export function formatToCronSchedule(
   value?: number | { exact: number | number[] } | {

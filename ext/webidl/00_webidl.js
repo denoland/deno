@@ -8,6 +8,12 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -80,12 +86,6 @@ const {
   Uint8Array,
   Uint8ClampedArray,
 } = primordials;
-const {
-  isArrayBuffer,
-  isDataView,
-  isSharedArrayBuffer,
-  isTypedArray,
-} = core;
 
 function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(

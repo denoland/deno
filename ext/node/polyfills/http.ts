@@ -3,9 +3,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-// import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
+import { core } from "ext:core/mod.js";
+const {
+  op_fetch_response_upgrade,
+  op_fetch_send,
+  op_node_http_request,
+} = core.ensureFastOps();
 
-const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
@@ -60,10 +64,6 @@ import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
-const {
-  op_fetch_response_upgrade,
-  op_fetch_send,
-} = core.ensureFastOps();
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -606,7 +606,7 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
-    this._req = core.ops.op_node_http_request(
+    this._req = op_node_http_request(
       this.method,
       url,
       headers,

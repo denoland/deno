@@ -178,6 +178,18 @@ itest!(task_package_json_npm_bin {
   http_server: true,
 });
 
+// should not auto-install the packages in the package.json
+// when using nodeModulesDir: false
+itest!(task_package_json_node_modules_dir_false {
+  args: "task echo",
+  cwd: Some("task/package_json_node_modules_dir_false/"),
+  output: "task/package_json_node_modules_dir_false/bin.out",
+  copy_temp_dir: Some("task/package_json_node_modules_dir_false/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
 itest!(task_both_no_arg {
   args: "task",
   cwd: Some("task/both/"),
