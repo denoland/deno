@@ -30,6 +30,7 @@ const {
   StringPrototypeReplace,
   StringPrototypeReplaceAll,
   StringPrototypeSlice,
+  StringPrototypeStartsWith,
   StringPrototypeSubstring,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
@@ -37,7 +38,7 @@ const {
   TypeError,
 } = primordials;
 
-import { URLPrototype } from "ext:deno_url/00_url.js";
+import { URL, URLPrototype } from "ext:deno_url/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
 const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
@@ -454,6 +455,13 @@ function pathFromURL(pathOrUrl) {
       ? pathFromURLWin32(pathOrUrl)
       : pathFromURLPosix(pathOrUrl);
   }
+
+  if (StringPrototypeStartsWith(pathOrUrl, "file:")) {
+    return core.build.os == "windows"
+      ? pathFromURLWin32(new URL(pathOrUrl))
+      : pathFromURLPosix(new URL(pathOrUrl));
+  }
+
   return pathOrUrl;
 }
 

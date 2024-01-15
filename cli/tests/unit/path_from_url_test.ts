@@ -8,6 +8,7 @@ const { pathFromURL } = Deno[Deno.internal];
 Deno.test(
   { ignore: Deno.build.os === "windows" },
   function pathFromURLPosix() {
+    assertEquals(pathFromURL("file:///test/directory"), "/test/directory");
     assertEquals(
       pathFromURL(new URL("file:///test/directory")),
       "/test/directory",
@@ -20,6 +21,7 @@ Deno.test(
 Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function pathFromURLWin32() {
+    assertEquals(pathFromURL("file:///c:/windows/test"), "c:\\windows\\test");
     assertEquals(
       pathFromURL(new URL("file:///c:/windows/test")),
       "c:\\windows\\test",
