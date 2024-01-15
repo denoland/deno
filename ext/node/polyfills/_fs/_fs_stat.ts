@@ -5,6 +5,7 @@
 
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { Stats } from "ext:deno_node/internal/fs/utils.mjs";
 
 export type statOptions = {
   bigint: boolean;
@@ -162,7 +163,7 @@ export type BigIntStats = {
 };
 
 export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
-  return {
+  return Object.assign(Object.create(Stats.prototype), {
     dev: origin.dev,
     ino: origin.ino,
     mode: origin.mode,
@@ -189,7 +190,7 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     isSocket: () => false,
     ctime: origin.mtime,
     ctimeMs: origin.mtime?.getTime() || null,
-  };
+  });
 }
 
 function toBigInt(number?: number | null) {

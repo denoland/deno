@@ -4,6 +4,7 @@ import { BigIntStats, stat, Stats, statSync } from "node:fs";
 import { assertEquals, fail } from "../../../../test_util/std/assert/mod.ts";
 
 export function assertStats(actual: Stats, expected: Deno.FileInfo) {
+  assertEquals(actual instanceof Stats, true);
   assertEquals(actual.dev, expected.dev);
   assertEquals(actual.gid, expected.gid);
   assertEquals(actual.size, expected.size);
