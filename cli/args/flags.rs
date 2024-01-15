@@ -3067,7 +3067,7 @@ fn lock_arg() -> Arg {
 
 If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
-          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
+    // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
     .value_parser(value_parser!(PathBuf))
     .value_hint(ValueHint::FilePath)
 }
