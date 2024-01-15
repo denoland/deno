@@ -106,9 +106,19 @@ function warnOnDeprecatedApi(apiName, stack) {
 
   ALREADY_WARNED_DEPRECATED.add(apiName + stackString);
   console.log(
-    "%cWarning %cUse of deprecated API `" + apiName +
-      "`. This API will be removed in Deno 2.\n" + stackString,
+    `%cWarning %cUse of deprecated API "${apiName}".`,
     "color: yellow; font-weight: bold;",
+    "color: yellow;",
+  );
+  console.log();
+  console.log(
+    "%cThis API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
+    "color: yellow;",
+  );
+  // TODO(bartlomieju): add API suggestion to what to migrate to
+  console.log();
+  console.log(
+    "%cThis API was called from:\n" + stackString + "\n",
     "color: yellow;",
   );
 }
