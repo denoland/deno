@@ -4939,3 +4939,8 @@ itest!(unstable_temporal_api_missing_flag {
   http_server: false,
   exit_code: 1,
 });
+
+itest!(custom_imports {
+  args: "run run/custom_imports/main.js",
+  output: "run/custom_imports/main.out",
+});

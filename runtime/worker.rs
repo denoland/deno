@@ -70,11 +70,9 @@ pub fn validate_import_attributes_callback(
   scope: &mut v8::HandleScope,
   attributes: &HashMap<String, String>,
 ) {
-  for (key, value) in attributes {
+  for (key, _value) in attributes {
     let msg = if key != "type" {
       Some(format!("\"{key}\" attribute is not supported."))
-    } else if value != "json" {
-      Some(format!("\"{value}\" is not a valid module type."))
     } else {
       None
     };
