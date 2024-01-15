@@ -4180,6 +4180,29 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+
+#[test]
+fn broken_stdout_repl() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  // drop the reader to create a broken pipe
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("repl")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
+  assert!(stderr.contains("Broken pipe (os error 32)"));
+  assert!(!stderr.contains("panic"));
+}
+
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",

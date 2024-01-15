@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::io;
+use std::io::Write;
+
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::ReplFlags;
@@ -236,15 +239,24 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
 
   // Doing this manually, instead of using `log::info!` because these messages
   // are supposed to go to stdout, not stderr.
+  // Using writeln, because println panics in certain cases 
+  // (eg: broken pipes - https://github.com/denoland/deno/issues/21861)
   if !cli_options.is_quiet() {
-    println!("Deno {}", crate::version::deno());
-    println!("exit using ctrl+d, ctrl+c, or close()");
+    let mut handle = io::stdout().lock();
+
+    writeln!(handle, "Deno {}", crate::version::deno())?;
+    writeln!(handle, "exit using ctrl+d, ctrl+c, or close()")?;
+
     if repl_flags.is_default_command {
-      println!(
+      writeln!(
+        handle,
         "{}",
         colors::yellow("REPL is running with all permissions allowed.")
-      );
-      println!("To specify permissions, run `deno repl` with allow flags.")
+      )?;
+      writeln!(
+        handle,
+        "To specify permissions, run `deno repl` with allow flags."
+      )?;
     }
   }
 
