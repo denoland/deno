@@ -707,14 +707,6 @@ impl CliOptions {
         None
       };
 
-    // TODO(bartlomieju): remove in v1.39 or v1.40.
-    if let Some(wsconfig) = &maybe_workspace_config {
-      if !wsconfig.members.is_empty() && !flags.unstable_workspaces {
-        eprintln!("Use of unstable 'workspaces' feature. The --unstable-workspaces flags must be provided.");
-        std::process::exit(70);
-      }
-    }
-
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
         bail!("Unable to load '{env_file_name}' environment variable file")

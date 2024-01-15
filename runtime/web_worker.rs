@@ -6,6 +6,7 @@ use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::import_meta_resolve_callback;
+use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -546,6 +547,9 @@ impl WebWorker {
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
       )),
       ..Default::default()
     });

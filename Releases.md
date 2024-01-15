@@ -6,6 +6,12 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.39.4 / 2024.01.13
+
+- fix(config): regression - handle relative patterns with leading dot slash
+  (#21922)
+- fix(check): should not panic when all specified files excluded (#21929)
+
 ### 1.39.3 / 2024.01.12
 
 - feat(unstable): fast subset type checking of JSR dependencies (#21873)

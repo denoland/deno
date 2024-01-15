@@ -878,7 +878,6 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_byonm = matches.get_flag("unstable-byonm");
   flags.unstable_sloppy_imports = matches.get_flag("unstable-sloppy-imports");
-  flags.unstable_workspaces = matches.get_flag("unstable-workspaces");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -1003,15 +1002,6 @@ fn clap_root() -> Command {
           "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
         )
         .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-workspaces")
-        .long("unstable-workspaces")
-        .help("Enable unstable 'workspaces' feature")
-        .env("DENO_UNSTABLE_WORKSPACES")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
