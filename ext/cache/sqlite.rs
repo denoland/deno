@@ -228,7 +228,7 @@ impl Cache for SqliteBackedCache {
   > {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    let query_result = spawn_blocking(move || {
+    let (query_result, request) = spawn_blocking(move || {
       let db = db.lock();
       let result = db.query_row(
         "SELECT response_body_key, response_headers, response_status, response_status_text, request_headers
@@ -243,10 +243,17 @@ impl Cache for SqliteBackedCache {
           let request_headers: Vec<u8> = row.get(4)?;
           let response_headers: Vec<(ByteString, ByteString)> = deserialize_headers(&response_headers);
           let request_headers: Vec<(ByteString, ByteString)> = deserialize_headers(&request_headers);
-          Ok((CacheMatchResponseMeta {request_headers, response_headers,response_status,response_status_text}, response_body_key))
+          Ok((CacheMatchResponseMeta {
+            request_headers,
+            response_headers,
+            response_status,
+            response_status_text},
+            response_body_key
+          ))
         },
       );
-      result.optional()
+      // Return ownership of request to the caller
+      result.optional().map(|x| (x, request))
     })
     .await??;
 
@@ -269,7 +276,20 @@ impl Cache for SqliteBackedCache {
         let response_path =
           get_responses_dir(cache_storage_dir, request.cache_id)
             .join(response_body_key);
-        let file = tokio::fs::File::open(response_path).await?;
+        let file = match tokio::fs::File::open(response_path).await {
+          Ok(file) => file,
+          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            // Best efforts to delete the old cache item
+            _ = self
+              .delete(CacheDeleteRequest {
+                cache_id: request.cache_id,
+                request_url: request.request_url,
+              })
+              .await;
+            return Ok(None);
+          }
+          Err(err) => return Err(err.into()),
+        };
         return Ok(Some((cache_meta, Some(CacheResponseResource::new(file)))));
       }
       Some((cache_meta, None)) => {
