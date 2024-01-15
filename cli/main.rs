@@ -325,7 +325,7 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",
     // This number is used directly in the JS code. Search
-    // for "unstableFeatures" to see where it's used.
+    // for "unstableIds" to see where it's used.
     9,
   ),
   (
