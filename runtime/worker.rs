@@ -46,6 +46,7 @@ use log::debug;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::custom_module_evaluation_cb;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
@@ -499,6 +500,7 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      custom_module_evaluation_cb: Some(Box::new(custom_module_evaluation_cb)),
       ..Default::default()
     });
 
