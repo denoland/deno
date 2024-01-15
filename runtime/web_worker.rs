@@ -3,6 +3,7 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::custom_module_evaluation_cb;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::import_meta_resolve_callback;
@@ -551,6 +552,7 @@ impl WebWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      custom_module_evaluation_cb: Some(Box::new(custom_module_evaluation_cb)),
       ..Default::default()
     });
 

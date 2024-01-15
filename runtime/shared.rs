@@ -4,6 +4,7 @@
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceTextInfo;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::extension;
@@ -134,6 +135,7 @@ fn bytes_module(
   scope: &mut v8::HandleScope,
   code: ModuleSourceCode,
 ) -> Result<CustomModuleEvaluationKind, AnyError> {
+  // FIXME:
   // FsModuleLoader always returns bytes.
   let ModuleSourceCode::Bytes(buf) = code else {
     unreachable!()
@@ -155,6 +157,7 @@ fn text_module(
   module_name: &FastString,
   code: ModuleSourceCode,
 ) -> Result<CustomModuleEvaluationKind, AnyError> {
+  // FIXME:
   // FsModuleLoader always returns bytes.
   let ModuleSourceCode::Bytes(buf) = code else {
     unreachable!()
