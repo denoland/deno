@@ -6,6 +6,7 @@ use std::fmt;
 use std::fmt::Write;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -405,7 +406,7 @@ impl<'a> GraphDisplayContext<'a> {
     graph: &'a ModuleGraph,
     npm_resolver: &'a dyn CliNpmResolver,
     writer: &mut TWrite,
-  ) -> fmt::Result {
+  ) -> Result<(), AnyError> {
     let npm_info = match npm_resolver.as_managed() {
       Some(npm_resolver) => {
         let npm_snapshot = npm_resolver.snapshot();
@@ -421,13 +422,9 @@ impl<'a> GraphDisplayContext<'a> {
     .into_writer(writer)
   }
 
-  fn into_writer<TWrite: Write>(mut self, writer: &mut TWrite) -> fmt::Result {
+  fn into_writer<TWrite: Write>(mut self, writer: &mut TWrite) -> Result<(), AnyError> {
     if self.graph.roots.is_empty() || self.graph.roots.len() > 1 {
-      return writeln!(
-        writer,
-        "{} displaying graphs that have multiple roots is not supported.",
-        colors::red("error:")
-      );
+      bail!("displaying graphs that have multiple roots is not supported.");
     }
 
     let root_specifier = self.graph.resolve(&self.graph.roots[0]);
@@ -508,21 +505,13 @@ impl<'a> GraphDisplayContext<'a> {
       }
       Err(err) => {
         if let ModuleError::Missing(_, _) = *err {
-          writeln!(
-            writer,
-            "{} module could not be found",
-            colors::red("error:")
-          )
+          bail!("module could not be found");
         } else {
-          writeln!(writer, "{} {:#}", colors::red("error:"), err)
+          bail!("{:#}", err);
         }
       }
       Ok(None) => {
-        writeln!(
-          writer,
-          "{} an internal error occurred",
-          colors::red("error:")
-        )
+        bail!("an internal error occurred");
       }
     }
   }
