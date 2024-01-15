@@ -4925,3 +4925,17 @@ Warning Sloppy module resolution (hint: specify path to index.tsx file in direct
 ",
     );
 }
+
+itest!(unstable_temporal_api {
+  args: "run --unstable-temporal --check run/unstable_temporal_api/main.ts",
+  output: "run/unstable_temporal_api/main.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+itest!(unstable_temporal_api_missing_flag {
+  args: "run run/unstable_temporal_api/missing_flag.js",
+  output: "run/unstable_temporal_api/missing_flag.out",
+  http_server: false,
+  exit_code: 1,
+});
