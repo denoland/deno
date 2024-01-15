@@ -198,8 +198,9 @@ impl Cache for SqliteBackedCache {
           break;
         }
         buf = buf2;
-        poll_fn(|cx| Pin::new(&mut file).poll_write(cx, &mut buf[..size]))
-          .await?;
+
+        // Use poll_write to avoid holding a slice across await points
+        poll_fn(|cx| Pin::new(&mut file).poll_write(cx, &buf[..size])).await?;
       }
 
       file.flush().await?;
