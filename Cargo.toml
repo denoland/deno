@@ -352,3 +352,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
+
+[patch.crates-io]
+deno_lockfile = { path = "../deno_lockfile" }
+deno_npm = { path = "../deno_npm" }
+deno_semver = { path = "../deno_semver" }

@@ -303,6 +303,12 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
+
+        if let Some(lockfile) = self.maybe_lockfile() {
+          let mut lockfile = lockfile.lock();
+          lockfile.set_package_json_deps(self.package_json_deps_provider().reqs())
+        }
+
         create_cli_npm_resolver(if self.options.unstable_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),

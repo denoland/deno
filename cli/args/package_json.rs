@@ -39,7 +39,7 @@ impl PackageJsonDepsProvider {
     self.0.as_ref()
   }
 
-  pub fn reqs(&self) -> Vec<&PackageReq> {
+  pub fn reqs(&self) -> Option<Vec<&PackageReq>> {
     match &self.0 {
       Some(deps) => {
         let mut package_reqs = deps
@@ -47,9 +47,9 @@ impl PackageJsonDepsProvider {
           .filter_map(|r| r.as_ref().ok())
           .collect::<Vec<_>>();
         package_reqs.sort(); // deterministic resolution
-        package_reqs
+        Some(package_reqs)
       }
-      None => Vec::new(),
+      None => None,
     }
   }
 }
