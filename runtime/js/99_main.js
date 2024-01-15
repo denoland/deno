@@ -96,6 +96,12 @@ let globalThis_;
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
 function warnOnDeprecatedApi(apiName, stack) {
+  if (ALREADY_WARNED_DEPRECATED.has(apiName + stack)) {
+    return;
+  }
+
+  // If we haven't warned yet, let's do some processing of the stack trace
+  // to make it more useful.
   const stackLines = StringPrototypeSplit(stack, "\n");
   ArrayPrototypeShift(stackLines);
   while (true) {
@@ -114,29 +120,32 @@ function warnOnDeprecatedApi(apiName, stack) {
     stackLines.pop();
   }
 
-  const stackString = ArrayPrototypeJoin(stackLines, "\n");
-
-  if (ALREADY_WARNED_DEPRECATED.has(apiName + stackString)) {
-    return;
-  }
-
-  ALREADY_WARNED_DEPRECATED.add(apiName + stackString);
+  ALREADY_WARNED_DEPRECATED.add(apiName + stack);
   console.log(
-    `%cWarning %cUse of deprecated API "${apiName}".`,
+    "%cWarning",
     "color: yellow; font-weight: bold;",
+  );
+  console.log(
+    `%c\u251c Use of deprecated API "${apiName}".`,
     "color: yellow;",
   );
-  console.log();
+  console.log("%c\u2502", "color: yellow;");
   console.log(
-    "%cThis API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
+    "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
     "color: yellow;",
   );
   // TODO(bartlomieju): add API suggestion to what to migrate to
+  console.log("%c\u2502", "color: yellow;");
+  console.log("%c\u2514 Stack trace:", "color: yellow;");
+  for (let i = 0; i < stackLines.length; i++) {
+    console.log(
+      `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
+        stackLines[i].trim()
+      }`,
+      "color: yellow;",
+    );
+  }
   console.log();
-  console.log(
-    "%cStack trace:\n" + stackString + "\n",
-    "color: yellow;",
-  );
 }
 
 function windowClose() {
