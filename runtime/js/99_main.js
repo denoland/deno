@@ -98,6 +98,22 @@ const ALREADY_WARNED_DEPRECATED = new SafeSet();
 function warnOnDeprecatedApi(apiName, stack) {
   const stackLines = StringPrototypeSplit(stack, "\n");
   ArrayPrototypeShift(stackLines);
+  while (true) {
+    // Filter out internal frames at the top of the stack - they are not useful
+    // to the user.
+    if (stackLines[0].includes("(ext:") || stackLines[0].includes("(node:")) {
+      stackLines.shift();
+    } else {
+      break;
+    }
+  }
+  // Now remove the last frame if it's coming from "ext:core" - this is most likely
+  // event loop tick or promise handler calling a user function - again not
+  // useful to the user.
+  if (stackLines[stackLines.length - 1].includes("(ext:core/")) {
+    stackLines.pop();
+  }
+
   const stackString = ArrayPrototypeJoin(stackLines, "\n");
 
   if (ALREADY_WARNED_DEPRECATED.has(apiName + stackString)) {
@@ -118,7 +134,7 @@ function warnOnDeprecatedApi(apiName, stack) {
   // TODO(bartlomieju): add API suggestion to what to migrate to
   console.log();
   console.log(
-    "%cThis API was called from:\n" + stackString + "\n",
+    "%cStack trace:\n" + stackString + "\n",
     "color: yellow;",
   );
 }
