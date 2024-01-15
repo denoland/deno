@@ -819,11 +819,19 @@ pub async fn publish(
     });
 
   let directory_path = cli_factory.cli_options().initial_cwd();
-  // TODO: doesn't handle jsonc
-  let deno_json_path = directory_path.join("deno.json");
+  let mut deno_json_path = directory_path.join("deno.json");
+  if !deno_json_path.exists() {
+    deno_json_path = directory_path.join("deno.jsonc");
+  }
+  if !deno_json_path.exists() {
+    bail!(
+      "Couldn't find a deno.json or a deno.jsonc configuration file in {}.",
+      directory_path.display()
+    );
+  }
   let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
     format!(
-      "Failed to read deno.json file at {}",
+      "Failed to read configuration file at {}",
       deno_json_path.display()
     )
   })?;
