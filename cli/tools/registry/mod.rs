@@ -819,18 +819,22 @@ pub async fn publish(
     });
 
   let directory_path = cli_factory.cli_options().initial_cwd();
-  // TODO: doesn't handle jsonc
-  let deno_json_path = directory_path.join("deno.json");
-  let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
-    format!(
-      "Failed to read deno.json file at {}",
-      deno_json_path.display()
-    )
-  })?;
+
+  let cli_options = cli_factory.cli_options();
+  let Some(config_file) = cli_options.maybe_config_file() else {
+    bail!(
+      "Couldn't find a deno.json or a deno.jsonc configuration file in {}.",
+      directory_path.display()
+    );
+  };
 
   let (publish_order_graph, prepared_package_by_name) =
-    prepare_packages_for_publishing(&cli_factory, deno_json, import_map)
-      .await?;
+    prepare_packages_for_publishing(
+      &cli_factory,
+      config_file.clone(),
+      import_map,
+    )
+    .await?;
 
   if prepared_package_by_name.is_empty() {
     bail!("No packages to publish");
