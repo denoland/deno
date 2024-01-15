@@ -71,6 +71,16 @@ itest!(successful {
   temp_cwd: true,
 });
 
+itest!(config_file_jsonc {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/deno_jsonc.out",
+  cwd: Some("publish/deno_jsonc"),
+  copy_temp_dir: Some("publish/deno_jsonc"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(workspace_all {
   args: "publish --token 'sadfasdf'",
   output: "publish/workspace.out",
