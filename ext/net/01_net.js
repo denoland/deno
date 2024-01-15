@@ -463,9 +463,10 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
+      const port = validatePort(args.port);
       const { 0: rid, 1: addr } = op_net_listen_tcp({
         hostname: args.hostname ?? "0.0.0.0",
-        port: Number(args.port),
+        port,
       }, args.reusePort);
       addr.transport = "tcp";
       return new Listener(rid, addr);
@@ -484,6 +485,18 @@ function listen(args) {
     default:
       throw new TypeError(`Unsupported transport: '${transport}'`);
   }
+}
+
+function validatePort(maybePort) {
+  if (typeof maybePort !== "number" || isNaN(maybePort) ||!Number.isInteger(maybePort) ) {
+    throw new TypeError(`Invalid port, expected integer but got: '${maybePort}'`);
+  }
+
+  if (maybePort < 0 || maybePort > 65535) {
+    throw new RangeError(`Invalid port (out of range): '${maybePort}'`);
+  }
+
+  return maybePort;
 }
 
 function createListenDatagram(udpOpFn, unixOpFn) {
