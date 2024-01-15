@@ -812,6 +812,35 @@ Deno.test(
   },
 );
 
+Deno.test({permissions: {net: true}},  function() {
+  assertThrows(() => Deno.serve({
+    handler: (_request) => new Response(),
+    // @ts-expect-error: `port` should not be a string
+    port: "4501",
+  }), TypeError, `Invalid port, expected integer but got: '4501'`)
+});
+
+Deno.test({permissions: {net: true}},  function() {
+  assertThrows(() => Deno.serve({
+    handler: (_request) => new Response(),
+    port: 45.1,
+  }), TypeError, `Invalid port, expected integer but got: '45.1'`)
+});
+
+Deno.test({permissions: {net: true}},  function() {
+  assertThrows(() => Deno.serve({
+    handler: (_request) => new Response(),
+    port: NaN,
+  }), TypeError, `Invalid port, expected integer but got: 'NaN'`)
+});
+
+Deno.test({permissions: {net: true}},  function() {
+  assertThrows(() => Deno.serve({
+    handler: (_request) => new Response(),
+    port: -111,
+  }), TypeError, `Invalid port (out of range): '-111'`)
+});
+
 function createUrlTest(
   name: string,
   methodAndPath: string,
