@@ -4939,3 +4939,10 @@ itest!(unstable_temporal_api_missing_flag {
   http_server: false,
   exit_code: 1,
 });
+
+itest!(warn_on_deprecated_api {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main.out",
+  http_server: true,
+  exit_code: 0,
+});

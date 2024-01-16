@@ -95,7 +95,7 @@ let globalThis_;
 
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
-function warnOnDeprecatedApi(apiName, stack) {
+function warnOnDeprecatedApi(apiName, stack, suggestion) {
   if (ALREADY_WARNED_DEPRECATED.has(apiName + stack)) {
     return;
   }
@@ -120,13 +120,19 @@ function warnOnDeprecatedApi(apiName, stack) {
     stackLines.pop();
   }
 
+  let isFromRemoteDependency = false;
+  const firstStackLine = stackLines[0];
+  if (firstStackLine && !firstStackLine.includes("file:")) {
+    isFromRemoteDependency = true;
+  }
+
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
   console.log(
     "%cWarning",
     "color: yellow; font-weight: bold;",
   );
   console.log(
-    `%c\u251c Use of deprecated API "${apiName}".`,
+    `%c\u251c Use of deprecated "${apiName}" API.`,
     "color: yellow;",
   );
   console.log("%c\u2502", "color: yellow;");
@@ -134,7 +140,23 @@ function warnOnDeprecatedApi(apiName, stack) {
     "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
     "color: yellow;",
   );
-  // TODO(bartlomieju): add API suggestion to what to migrate to
+  console.log("%c\u2502", "color: yellow;");
+  console.log(
+    `%c\u251c Suggestion: ${suggestion}`,
+    "color: yellow;",
+  );
+  if (isFromRemoteDependency) {
+    console.log("%c\u2502", "color: yellow;");
+    console.log(
+      `%c\u251c Suggestion: It appears this API is used by a remote dependency.`,
+      "color: yellow;",
+    );
+    console.log(
+      "%c\u2502             Try upgrading to the latest version of that dependency.",
+      "color: yellow;",
+    );
+  }
+
   console.log("%c\u2502", "color: yellow;");
   console.log("%c\u2514 Stack trace:", "color: yellow;");
   for (let i = 0; i < stackLines.length; i++) {
