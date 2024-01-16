@@ -9,12 +9,13 @@ use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
-use crate::util::glob::FilePatterns;
-use crate::util::glob::PathOrPatternSet;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -375,19 +376,25 @@ fn collect_coverages(
   files: FileFlags,
   initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
-  let files = files.with_absolute_paths(initial_cwd);
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
   let file_patterns = FilePatterns {
     include: Some({
-      let files = if files.include.is_empty() {
-        vec![initial_cwd.to_path_buf()]
+      if files.include.is_empty() {
+        PathOrPatternSet::new(vec![PathOrPattern::Path(
+          initial_cwd.to_path_buf(),
+        )])
       } else {
-        files.include
-      };
-      PathOrPatternSet::from_absolute_paths(files)?
+        PathOrPatternSet::from_relative_path_or_patterns(
+          initial_cwd,
+          &files.include,
+        )?
+      }
     }),
-    exclude: PathOrPatternSet::from_absolute_paths(files.ignore)
-      .context("Invalid ignore pattern.")?,
+    exclude: PathOrPatternSet::from_relative_path_or_patterns(
+      initial_cwd,
+      &files.ignore,
+    )
+    .context("Invalid ignore pattern.")?,
   };
   let file_paths = FileCollector::new(|file_path, _| {
     file_path
@@ -463,7 +470,9 @@ pub async fn cover_files(
   assert!(!coverage_flags.files.include.is_empty());
 
   // Use the first include path as the default output path.
-  let coverage_root = coverage_flags.files.include[0].clone();
+  let coverage_root = cli_options
+    .initial_cwd()
+    .join(&coverage_flags.files.include[0]);
   let script_coverages =
     collect_coverages(coverage_flags.files, cli_options.initial_cwd())?;
   if script_coverages.is_empty() {
