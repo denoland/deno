@@ -490,12 +490,12 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
     [some]: [Function: some] { [length]: 1, [name]: "some" },
     [reduce]: [Function: reduce] { [length]: 1, [name]: "reduce" },
     [reduceRight]: [Function: reduceRight] { [length]: 1, [name]: "reduceRight" },
-    [toLocaleString]: [Function: toLocaleString] { [length]: 0, [name]: "toLocaleString" },
-    [toString]: [Function: toString] { [length]: 0, [name]: "toString" },
     [toReversed]: [Function: toReversed] { [length]: 0, [name]: "toReversed" },
     [toSorted]: [Function: toSorted] { [length]: 1, [name]: "toSorted" },
     [toSpliced]: [Function: toSpliced] { [length]: 2, [name]: "toSpliced" },
     [with]: [Function: with] { [length]: 2, [name]: "with" },
+    [toLocaleString]: [Function: toLocaleString] { [length]: 0, [name]: "toLocaleString" },
+    [toString]: [Function: toString] { [length]: 0, [name]: "toString" },
     [Symbol(Symbol.iterator)]: [Function: values] { [length]: 0, [name]: "values" },
     [Symbol(Symbol.unscopables)]: [Object: null prototype] {
       at: true,
@@ -510,10 +510,10 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
       flatMap: true,
       includes: true,
       keys: true,
-      values: true,
       toReversed: true,
       toSorted: true,
-      toSpliced: true
+      toSpliced: true,
+      values: true
     }
   ],
   [isArray]: [Function: isArray] { [length]: 1, [name]: "isArray" },

@@ -3415,7 +3415,7 @@ declare namespace Deno {
   }
 
   /** Reads the directory given by `path` and returns an async iterable of
-   * {@linkcode Deno.DirEntry}.
+   * {@linkcode Deno.DirEntry}. The order of entries is not guaranteed.
    *
    * ```ts
    * for await (const dirEntry of Deno.readDir("/")) {
@@ -3433,7 +3433,7 @@ declare namespace Deno {
   export function readDir(path: string | URL): AsyncIterable<DirEntry>;
 
   /** Synchronously reads the directory given by `path` and returns an iterable
-   * of `Deno.DirEntry`.
+   * of {@linkcode Deno.DirEntry}. The order of entries is not guaranteed.
    *
    * ```ts
    * for (const dirEntry of Deno.readDirSync("/")) {
@@ -3759,7 +3759,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface OpMetrics {
     opsDispatched: number;
@@ -3777,7 +3777,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface Metrics extends OpMetrics {
     ops: Record<string, OpMetrics>;
@@ -3808,7 +3808,7 @@ declare namespace Deno {
    *
    * @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export function metrics(): Metrics;
 
@@ -3933,9 +3933,10 @@ declare namespace Deno {
   ): FsWatcher;
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Options which can be used with {@linkcode Deno.run}.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -3994,13 +3995,14 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
    *
    * If `success` is `true`, then `code` will be `0`, but if `success` is
    * `false`, the sub-process exit code will be set in `code`.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export type ProcessStatus =
@@ -4016,10 +4018,11 @@ declare namespace Deno {
     };
 
   /**
-   * * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export class Process<T extends RunOptions = RunOptions> {
@@ -4175,8 +4178,6 @@ declare namespace Deno {
   ): void;
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
@@ -4221,6 +4222,9 @@ declare namespace Deno {
    * {@linkcode Deno.Process}.
    *
    * Requires `allow-run` permission.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @tags allow-run
    * @category Sub Process
@@ -5286,7 +5290,9 @@ declare namespace Deno {
   /** The event yielded from an {@linkcode HttpConn} which represents an HTTP
    * request from a remote client.
    *
-   * @category HTTP Server */
+   * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
+   */
   export interface RequestEvent {
     /** The request from the client in the form of the web platform
      * {@linkcode Request}. */
@@ -5305,7 +5311,9 @@ declare namespace Deno {
    * yields up {@linkcode RequestEvent} events, representing individual
    * requests on the HTTP server connection.
    *
-   * @category HTTP Server */
+   * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
+   */
   export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
      * need to be aware of this identifier. */
@@ -5370,6 +5378,7 @@ declare namespace Deno {
    * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
    */
   export function serveHttp(conn: Conn): HttpConn;
 
