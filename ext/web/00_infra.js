@@ -456,7 +456,7 @@ function pathFromURL(pathOrUrl) {
       : pathFromURLPosix(pathOrUrl);
   }
 
-  if (StringPrototypeStartsWith(pathOrUrl, "file:")) {
+  if (StringPrototypeStartsWith(pathOrUrl, "file:///")) {
     return core.build.os == "windows"
       ? pathFromURLWin32(new URL(pathOrUrl))
       : pathFromURLPosix(new URL(pathOrUrl));
