@@ -30,37 +30,8 @@ use super::flags_net;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
-  pub ignore: Vec<PathBuf>,
-  pub include: Vec<PathBuf>,
-}
-
-impl FileFlags {
-  pub fn with_absolute_paths(self, base: &Path) -> Self {
-    fn to_absolute_path(path: PathBuf, base: &Path) -> PathBuf {
-      // todo(dsherret): don't store URLs in PathBufs
-      if path.starts_with("http:")
-        || path.starts_with("https:")
-        || path.starts_with("file:")
-      {
-        path
-      } else {
-        base.join(path)
-      }
-    }
-
-    Self {
-      include: self
-        .include
-        .into_iter()
-        .map(|p| to_absolute_path(p, base))
-        .collect(),
-      ignore: self
-        .ignore
-        .into_iter()
-        .map(|p| to_absolute_path(p, base))
-        .collect(),
-    }
-  }
+  pub ignore: Vec<String>,
+  pub include: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -75,7 +46,7 @@ pub struct BenchFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub source_file: String,
-  pub out_file: Option<PathBuf>,
+  pub out_file: Option<String>,
   pub watch: Option<WatchFlags>,
 }
 
@@ -181,7 +152,7 @@ pub struct FmtFlags {
 impl FmtFlags {
   pub fn is_stdin(&self) -> bool {
     let args = &self.files.include;
-    args.len() == 1 && args[0].to_string_lossy() == "-"
+    args.len() == 1 && args[0] == "-"
   }
 }
 
@@ -233,7 +204,7 @@ pub struct LintFlags {
 impl LintFlags {
   pub fn is_stdin(&self) -> bool {
     let args = &self.files.include;
-    args.len() == 1 && args[0].to_string_lossy() == "-"
+    args.len() == 1 && args[0] == "-"
   }
 }
 
@@ -706,8 +677,12 @@ impl Flags {
     use DenoSubcommand::*;
 
     match &self.subcommand {
-      Fmt(FmtFlags { files, .. }) => Some(files.include.clone()),
-      Lint(LintFlags { files, .. }) => Some(files.include.clone()),
+      Fmt(FmtFlags { files, .. }) => {
+        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
+      }
+      Lint(LintFlags { files, .. }) => {
+        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
+      }
       Run(RunFlags { script, .. }) => {
         if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
           if module_specifier.scheme() == "file"
@@ -730,6 +705,7 @@ impl Flags {
       Task(TaskFlags {
         cwd: Some(path), ..
       }) => {
+        // todo(dsherret): Why is this canonicalized? Document why.
         // attempt to resolve the config file from the task subcommand's
         // `--cwd` when specified
         match canonicalize_path(&PathBuf::from(path)) {
@@ -1124,8 +1100,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
             .num_args(1..)
             .use_value_delimiter(true)
             .require_equals(true)
-            .help("Ignore files")
-            .value_parser(value_parser!(PathBuf)),
+            .help("Ignore files"),
         )
         .arg(
           Arg::new("filter")
@@ -1139,7 +1114,6 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
           Arg::new("files")
             .help("List of file names to run")
             .num_args(..)
-            .value_parser(value_parser!(PathBuf))
             .action(ArgAction::Append),
         )
         .arg(
@@ -1176,11 +1150,7 @@ If no output file is given, the output is written to standard output:
             .required(true)
             .value_hint(ValueHint::FilePath),
         )
-        .arg(
-          Arg::new("out_file")
-            .value_parser(value_parser!(PathBuf))
-            .value_hint(ValueHint::FilePath),
-        )
+        .arg(Arg::new("out_file").value_hint(ValueHint::FilePath))
         .arg(watch_arg(false))
         .arg(no_clear_screen_arg())
         .arg(executable_ext_arg())
@@ -1291,6 +1261,7 @@ supported in canary.
         Arg::new("output")
           .long("output")
           .short('o')
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
           .value_parser(value_parser!(PathBuf))
           .help("Output file (defaults to $PWD/<inferred-name>)")
           .value_hint(ValueHint::FilePath),
@@ -1414,6 +1385,7 @@ Generate html reports from lcov:
           Arg::new("output")
             .requires("lcov")
             .long("output")
+            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
             .help("Output file (defaults to stdout) for lcov")
             .long_help(
@@ -1441,7 +1413,6 @@ Generate html reports from lcov:
         .arg(
           Arg::new("files")
             .num_args(0..)
-            .value_parser(value_parser!(PathBuf))
             .action(ArgAction::Append)
             .value_hint(ValueHint::AnyPath),
         )
@@ -1521,6 +1492,7 @@ Show documentation for runtime built-ins:
             .action(ArgAction::Set)
             .require_equals(true)
             .value_hint(ValueHint::DirPath)
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
         )
         .arg(
@@ -1651,7 +1623,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .arg(
           Arg::new("ignore")
             .long("ignore")
-            .value_parser(value_parser!(PathBuf))
             .num_args(1..)
             .use_value_delimiter(true)
             .require_equals(true)
@@ -1660,7 +1631,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         )
         .arg(
           Arg::new("files")
-            .value_parser(value_parser!(PathBuf))
             .num_args(1..)
             .action(ArgAction::Append)
             .required(false)
@@ -1863,6 +1833,7 @@ fn jupyter_subcommand() -> Command {
       Arg::new("conn")
         .long("conn")
         .help("Path to JSON file describing connection parameters, provided by Jupyter")
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
@@ -1988,7 +1959,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
           Arg::new("ignore")
             .long("ignore")
             .num_args(1..)
-            .value_parser(value_parser!(PathBuf))
             .use_value_delimiter(true)
             .require_equals(true)
             .help("Ignore linting particular source files")
@@ -2009,7 +1979,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         )
         .arg(
           Arg::new("files")
-            .value_parser(value_parser!(PathBuf))
             .num_args(1..)
             .action(ArgAction::Append)
             .required(false)
@@ -2128,7 +2097,6 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("ignore")
         .long("ignore")
         .num_args(1..)
-        .value_parser(value_parser!(PathBuf))
         .use_value_delimiter(true)
         .require_equals(true)
         .help("Ignore files")
@@ -2216,7 +2184,6 @@ Directory arguments are expanded to all contained files matching the glob
         .help("List of file names to run")
         .num_args(0..)
         .action(ArgAction::Append)
-        .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -2283,6 +2250,7 @@ update to a different location, use the --output flag
           Arg::new("output")
             .long("output")
             .help("The path to output the updated version to")
+            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
             .value_hint(ValueHint::FilePath),
         )
@@ -2337,6 +2305,7 @@ Remote modules and multiple modules may also be specified:
         Arg::new("output")
           .long("output")
           .help("The directory to output the vendored modules to")
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
           .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath),
       )
@@ -2570,6 +2539,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_READ_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2581,6 +2551,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_READ_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2592,6 +2563,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_WRITE_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2603,6 +2575,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_WRITE_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2713,6 +2686,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_FFI_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2724,6 +2698,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_FFI_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2973,6 +2948,7 @@ fn hmr_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
+      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
       .value_parser(value_parser!(PathBuf))
       .use_value_delimiter(true)
       .require_equals(true)
@@ -2999,6 +2975,7 @@ fn watch_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
+      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
       .value_parser(value_parser!(PathBuf))
       .use_value_delimiter(true)
       .require_equals(true)
@@ -3090,6 +3067,7 @@ fn lock_arg() -> Arg {
 
 If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
+    // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
     .value_parser(value_parser!(PathBuf))
     .value_hint(ValueHint::FilePath)
 }
@@ -3194,7 +3172,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let json = matches.get_flag("json");
 
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3207,7 +3185,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .extend(matches.remove_many::<String>("script_arg").unwrap());
   }
 
-  let include = if let Some(files) = matches.remove_many::<PathBuf>("files") {
+  let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
   } else {
     Vec::new()
@@ -3232,7 +3210,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let source_file = matches.remove_one::<String>("source_file").unwrap();
 
   let out_file =
-    if let Some(out_file) = matches.remove_one::<PathBuf>("out_file") {
+    if let Some(out_file) = matches.remove_one::<String>("out_file") {
       flags.allow_write = Some(vec![]);
       Some(out_file)
     } else {
@@ -3320,12 +3298,11 @@ fn completions_parse(
 }
 
 fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let default_files = vec![PathBuf::from("coverage")];
-  let files = match matches.remove_many::<PathBuf>("files") {
+  let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
-    None => default_files,
+    None => vec!["coverage".to_string()], // default
   };
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3448,11 +3425,11 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
   ext_arg_parse(flags, matches);
 
-  let include = match matches.remove_many::<PathBuf>("files") {
+  let include = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3547,11 +3524,11 @@ fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
-  let files = match matches.remove_many::<PathBuf>("files") {
+  let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3666,7 +3643,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   // interactive prompts, unless done by user code
   flags.no_prompt = true;
 
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3725,7 +3702,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None
   };
 
-  let include = if let Some(files) = matches.remove_many::<PathBuf>("files") {
+  let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
   } else {
     Vec::new()
@@ -4642,10 +4619,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
           use_tabs: None,
@@ -4771,8 +4745,8 @@ mod tests {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
           files: FileFlags {
-            include: vec![PathBuf::from("foo.ts")],
-            ignore: vec![PathBuf::from("bar.js")],
+            include: vec!["foo.ts".to_string()],
+            ignore: vec!["bar.js".to_string()],
           },
           use_tabs: None,
           line_width: None,
@@ -4825,7 +4799,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
           files: FileFlags {
-            include: vec![PathBuf::from("foo.ts")],
+            include: vec!["foo.ts".to_string()],
             ignore: vec![],
           },
           use_tabs: None,
@@ -4916,10 +4890,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string(),],
             ignore: vec![],
           },
           rules: false,
@@ -4946,10 +4917,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -4977,10 +4945,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -5006,10 +4971,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
             include: vec![],
-            ignore: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            ignore: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           },
           rules: false,
           maybe_rules_tags: None,
@@ -5103,7 +5065,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("script_1.ts")],
+            include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -5131,7 +5093,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("script_1.ts")],
+            include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -5160,7 +5122,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("script_1.ts")],
+            include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -6091,7 +6053,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js")),
+          out_file: Some("bundle.js".to_string()),
           watch: Default::default(),
         }),
         allow_write: Some(vec![]),
@@ -6111,7 +6073,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js")),
+          out_file: Some("bundle.js".to_string()),
           watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -7081,7 +7043,7 @@ mod tests {
           filter: Some("- foo".to_string()),
           allow_none: true,
           files: FileFlags {
-            include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
+            include: vec!["dir1/".to_string(), "dir2/".to_string()],
             ignore: vec![],
           },
           shuffle: None,
@@ -7410,7 +7372,7 @@ mod tests {
           allow_none: false,
           shuffle: None,
           files: FileFlags {
-            include: vec![PathBuf::from("./")],
+            include: vec!["./".to_string()],
             ignore: vec![],
           },
           concurrent_jobs: None,
@@ -7925,7 +7887,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("foo.json")],
+            include: vec!["foo.json".to_string()],
             ignore: vec![],
           },
           include: vec![r"^file:".to_string()],
@@ -7951,7 +7913,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("foo.json")],
+            include: vec!["foo.json".to_string()],
             ignore: vec![],
           },
           include: vec![r"^file:".to_string()],
@@ -7972,7 +7934,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("coverage")],
+            include: vec!["coverage".to_string()],
             ignore: vec![],
           },
           include: vec![r"^file:".to_string()],
@@ -8010,7 +7972,7 @@ mod tests {
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
+      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
@@ -8020,7 +7982,7 @@ mod tests {
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
+      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
     );
   }
 
@@ -8319,7 +8281,7 @@ mod tests {
           json: true,
           no_run: true,
           files: FileFlags {
-            include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
+            include: vec!["dir1/".to_string(), "dir2/".to_string()],
             ignore: vec![],
           },
           watch: Default::default(),
