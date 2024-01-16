@@ -473,7 +473,7 @@ pub fn run_powershell_script_file(
   Ok(())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CheckOutputIntegrationTest<'a> {
   pub args: &'a str,
   pub args_vec: Vec<&'a str>,
@@ -484,6 +484,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
+  pub strip_ansi: bool,
   pub temp_cwd: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
@@ -491,6 +492,26 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub copy_temp_dir: Option<&'a str>,
   /// Relative to "testdata" directory
   pub cwd: Option<&'a str>,
+}
+
+impl Default for CheckOutputIntegrationTest<'_> {
+  fn default() -> Self {
+    Self {
+      args: "",
+      args_vec: vec![],
+      output: "",
+      input: None,
+      output_str: None,
+      exit_code: 0,
+      http_server: false,
+      envs: vec![],
+      strip_ansi: true,
+      env_clear: false,
+      temp_cwd: false,
+      copy_temp_dir: None,
+      cwd: None,
+    }
+  }
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -524,6 +545,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     }
     if self.env_clear {
       command_builder = command_builder.env_clear();
+    }
+    if self.strip_ansi {
+      command_builder = command_builder.strip_ansi();
     }
     if let Some(cwd) = &self.cwd {
       command_builder = command_builder.current_dir(cwd);

@@ -4180,6 +4180,14 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+itest!(inspect_color_overwrite {
+  args: "run run/inspect_color_overwrite.ts",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  strip_ansi: false,
+  output: "run/inspect_color_overwrite.ts.out",
+  exit_code: 0,
+});
+
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
