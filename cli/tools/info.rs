@@ -422,7 +422,10 @@ impl<'a> GraphDisplayContext<'a> {
     .into_writer(writer)
   }
 
-  fn into_writer<TWrite: Write>(mut self, writer: &mut TWrite) -> Result<(), AnyError> {
+  fn into_writer<TWrite: Write>(
+    mut self,
+    writer: &mut TWrite,
+  ) -> Result<(), AnyError> {
     if self.graph.roots.is_empty() || self.graph.roots.len() > 1 {
       bail!("displaying graphs that have multiple roots is not supported.");
     }
