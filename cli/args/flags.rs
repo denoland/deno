@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
 use clap::Arg;
@@ -824,8 +825,9 @@ impl Flags {
   }
 }
 
+// TODO: add colors here:
 static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
-    DENO_AUTH_TOKENS     A semi-colon separated list of bearer tokens and
+    <bold><green>DENO_AUTH_TOKENS</green></bold>     A semi-colon separated list of bearer tokens and
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
@@ -858,6 +860,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
 
+// TODO: add colors here:
 static DENO_HELP: &str = concat!(
   "A modern JavaScript and TypeScript runtime
 
@@ -988,7 +991,14 @@ fn clap_root() -> Command {
 
   let mut cmd = Command::new("deno")
     .bin_name("deno")
-    .color(ColorChoice::Never)
+    .styles(
+      clap::builder::Styles::styled()
+        .header(AnsiColor::Yellow.on_default())
+        .usage(AnsiColor::Green.on_default())
+        .literal(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default())
+    )
+    // .color(ColorChoice::Never)
     .max_term_width(80)
     .version(crate::version::deno())
     .long_version(long_version)
