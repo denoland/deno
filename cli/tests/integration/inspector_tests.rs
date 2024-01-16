@@ -425,8 +425,12 @@ async fn inspector_pause() {
 #[tokio::test]
 async fn inspector_port_collision() {
   // Skip this test on WSL, which allows multiple processes to listen on the
-  // same port, rather than making `bind()` fail with `EADDRINUSE`.
-  if cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
+  // same port, rather than making `bind()` fail with `EADDRINUSE`. We also
+  // skip this test on Windows because it will occasionally flake, possibly
+  // due to a similar issue.
+  if (cfg!(target_os = "linux")
+    && std::env::var_os("WSL_DISTRO_NAME").is_some())
+    || cfg!(windows)
   {
     return;
   }
@@ -560,9 +564,6 @@ async fn inspector_does_not_hang() {
   assert!(tester.child.wait().unwrap().success());
 }
 
-// TODO(bartlomieju): this test has become flaky and I this this is related
-// to the new `deno_core` op driver.
-#[ignore]
 #[tokio::test]
 async fn inspector_without_brk_runs_code() {
   let script = util::testdata_path().join("inspector/inspector4.js");
