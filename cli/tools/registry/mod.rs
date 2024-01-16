@@ -36,7 +36,6 @@ use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
 use crate::tools::registry::graph::surface_fast_check_type_graph_errors;
 use crate::tools::registry::graph::MemberRoots;
 use crate::util::display::human_size;
-use crate::util::glob::PathOrPatternSet;
 use crate::util::import_map::ImportMapUnfurler;
 
 mod api;
@@ -127,10 +126,9 @@ async fn prepare_publish(
   let Some((scope, package_name)) = name.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-  let exclude_patterns = deno_json.to_files_config().and_then(|files| {
-    PathOrPatternSet::from_absolute_paths(files.unwrap_or_default().exclude)
-      .context("Invalid config file exclude pattern.")
-  })?;
+  let exclude_patterns = deno_json
+    .to_files_config()
+    .map(|files| files.unwrap_or_default().exclude)?;
 
   let tarball = deno_core::unsync::spawn_blocking(move || {
     let unfurler = ImportMapUnfurler::new(&import_map);

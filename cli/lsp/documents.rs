@@ -23,14 +23,15 @@ use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
-use crate::util::glob;
-use crate::util::glob::FilePatterns;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
@@ -843,8 +844,8 @@ impl FileSystemDocuments {
 }
 
 pub struct UpdateDocumentConfigOptions<'a> {
-  pub enabled_paths: Vec<PathBuf>,
-  pub disabled_paths: Vec<PathBuf>,
+  pub enabled_paths: PathOrPatternSet,
+  pub disabled_paths: PathOrPatternSet,
   pub document_preload_limit: usize,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
@@ -1318,8 +1319,10 @@ impl Documents {
   }
 
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
+    #[allow(clippy::too_many_arguments)]
     fn calculate_resolver_config_hash(
-      enabled_paths: &[PathBuf],
+      enabled_paths: &PathOrPatternSet,
+      disabled_paths: &PathOrPatternSet,
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
@@ -1327,14 +1330,27 @@ impl Documents {
       maybe_package_json_deps: Option<&PackageJsonDeps>,
       maybe_unstable_flags: Option<&Vec<String>>,
     ) -> u64 {
+      fn get_pattern_set_vec(set: &PathOrPatternSet) -> Vec<Cow<'_, str>> {
+        let mut paths = set
+          .inner()
+          .iter()
+          .map(|p| match p {
+            PathOrPattern::Path(p) => {
+              Cow::Owned(p.to_string_lossy().to_string())
+            }
+            PathOrPattern::RemoteUrl(p) => Cow::Borrowed(p.as_str()),
+            PathOrPattern::Pattern(p) => Cow::Borrowed(p.as_str()),
+          })
+          .collect::<Vec<_>>();
+        // ensure these are sorted so the hashing is deterministic
+        paths.sort_unstable();
+        paths
+      }
+
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(document_preload_limit);
-      hasher.write_hashable(&{
-        // ensure these are sorted so the hashing is deterministic
-        let mut enabled_paths = enabled_paths.to_vec();
-        enabled_paths.sort_unstable();
-        enabled_paths
-      });
+      hasher.write_hashable(&get_pattern_set_vec(enabled_paths));
+      hasher.write_hashable(&get_pattern_set_vec(disabled_paths));
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
@@ -1372,6 +1388,7 @@ impl Documents {
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
       &options.enabled_paths,
+      &options.disabled_paths,
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
@@ -1447,8 +1464,8 @@ impl Documents {
 
   fn refresh_dependencies(
     &mut self,
-    enabled_paths: Vec<PathBuf>,
-    disabled_paths: Vec<PathBuf>,
+    enabled_paths: PathOrPatternSet,
+    disabled_paths: PathOrPatternSet,
     document_preload_limit: usize,
   ) {
     let resolver = self.resolver.as_graph_resolver();
@@ -1883,8 +1900,8 @@ enum PendingEntry {
 }
 
 struct PreloadDocumentFinderOptions {
-  enabled_paths: Vec<PathBuf>,
-  disabled_paths: Vec<PathBuf>,
+  enabled_paths: PathOrPatternSet,
+  disabled_paths: PathOrPatternSet,
   limit: usize,
 }
 
@@ -1900,18 +1917,6 @@ struct PreloadDocumentFinder {
 
 impl PreloadDocumentFinder {
   pub fn new(options: PreloadDocumentFinderOptions) -> Self {
-    fn paths_into_globs_and_paths(
-      input_paths: Vec<PathBuf>,
-    ) -> glob::PathOrPatternSet {
-      let mut result = Vec::with_capacity(input_paths.len());
-      for path in input_paths {
-        if let Ok(path_or_pattern) = glob::PathOrPattern::new(path) {
-          result.push(path_or_pattern);
-        }
-      }
-      glob::PathOrPatternSet::new(result)
-    }
-
     fn is_allowed_root_dir(dir_path: &Path) -> bool {
       if dir_path.parent().is_none() {
         // never search the root directory of a drive
@@ -1929,8 +1934,8 @@ impl PreloadDocumentFinder {
     };
 
     let file_patterns = FilePatterns {
-      include: Some(paths_into_globs_and_paths(options.enabled_paths)),
-      exclude: paths_into_globs_and_paths(options.disabled_paths),
+      include: Some(options.enabled_paths),
+      exclude: options.disabled_paths,
     };
     let file_patterns_by_base = file_patterns.split_by_base();
 
@@ -2242,8 +2247,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_paths: vec![],
-        disabled_paths: vec![],
+        enabled_paths: Default::default(),
+        disabled_paths: Default::default(),
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2284,8 +2289,8 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_paths: vec![],
-        disabled_paths: vec![],
+        enabled_paths: Default::default(),
+        disabled_paths: Default::default(),
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2352,17 +2357,17 @@ console.log(b, "hello deno");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
     let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: vec![
-        temp_dir.path().to_path_buf().join("root1"),
-        temp_dir.path().to_path_buf().join("root2").join("file1.ts"),
-        temp_dir
-          .path()
-          .to_path_buf()
-          .join("root2")
-          .join("main.min.ts"),
-        temp_dir.path().to_path_buf().join("root2").join("folder"),
-      ],
-      disabled_paths: Vec::new(),
+      enabled_paths: PathOrPatternSet::from_relative_path_or_patterns(
+        temp_dir.path().as_path(),
+        &[
+          "root1".to_string(),
+          "root2/file1.ts".to_string(),
+          "root2/main.min.ts".to_string(),
+          "root2/folder".to_string(),
+        ],
+      )
+      .unwrap(),
+      disabled_paths: Default::default(),
       limit: 1_000,
     })
     .collect::<Vec<_>>();
@@ -2392,8 +2397,10 @@ console.log(b, "hello deno");
 
     // now try iterating with a low limit
     let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: vec![temp_dir.path().to_path_buf()],
-      disabled_paths: Vec::new(),
+      enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
+        temp_dir.path().to_path_buf(),
+      )]),
+      disabled_paths: Default::default(),
       limit: 10, // entries and not results
     })
     .collect::<Vec<_>>();
@@ -2405,12 +2412,18 @@ console.log(b, "hello deno");
 
     // now try with certain directories and files disabled
     let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: vec![temp_dir.path().to_path_buf()],
-      disabled_paths: vec![
-        temp_dir.path().to_path_buf().join("root1"),
-        temp_dir.path().to_path_buf().join("root2").join("file1.ts"),
-        temp_dir.path().to_path_buf().join("**/*.js"), // ignore js files
-      ],
+      enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
+        temp_dir.path().to_path_buf(),
+      )]),
+      disabled_paths: PathOrPatternSet::from_relative_path_or_patterns(
+        temp_dir.path().as_path(),
+        &[
+          "root1".to_string(),
+          "root2/file1.ts".to_string(),
+          "**/*.js".to_string(), // ignore js files
+        ],
+      )
+      .unwrap(),
       limit: 1_000,
     })
     .collect::<Vec<_>>();
@@ -2430,16 +2443,20 @@ console.log(b, "hello deno");
   pub fn test_pre_load_document_finder_disallowed_dirs() {
     if cfg!(windows) {
       let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        enabled_paths: vec![PathBuf::from("C:\\")],
-        disabled_paths: Vec::new(),
+        enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
+          PathBuf::from("C:\\"),
+        )]),
+        disabled_paths: Default::default(),
         limit: 1_000,
       })
       .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     } else {
       let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        enabled_paths: vec![PathBuf::from("/")],
-        disabled_paths: Vec::new(),
+        enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
+          PathBuf::from("/"),
+        )]),
+        disabled_paths: Default::default(),
         limit: 1_000,
       })
       .collect::<Vec<_>>();
