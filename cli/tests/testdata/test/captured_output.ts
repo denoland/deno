@@ -1,5 +1,4 @@
 Deno.test("output", async () => {
-  // deno-lint-ignore no-deprecated-deno-api
   await new Deno.Command(Deno.execPath(), {
     args: ["eval", "console.log(0); console.error(1);"],
   }).spawn().status;
