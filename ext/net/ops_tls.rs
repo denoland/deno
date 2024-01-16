@@ -27,6 +27,7 @@ use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::rustls::Certificate;
+use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::PrivateKey;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::ServerName;
@@ -230,8 +231,7 @@ where
   let tls_config = Arc::new(tls_config);
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    tls_config,
-    hostname_dns,
+    ClientConnection::new(tls_config, hostname_dns).unwrap(),
     TLS_BUFFER_SIZE,
   );
 
@@ -327,8 +327,7 @@ where
 
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    tls_config,
-    hostname_dns,
+    ClientConnection::new(tls_config, hostname_dns).unwrap(),
     TLS_BUFFER_SIZE,
   );
 
