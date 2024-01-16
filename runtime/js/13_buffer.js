@@ -4,7 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { internals, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayBufferPrototypeGetByteLength,
   TypedArrayPrototypeSubarray,
@@ -45,7 +45,6 @@ class Buffer {
   #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
   constructor(ab) {
-    internals.warnOnDeprecatedApi("new Deno.Buffer()", (new Error()).stack);
     if (ab == null) {
       this.#buf = new Uint8Array(0);
       return;
@@ -231,21 +230,18 @@ class Buffer {
 }
 
 async function readAll(r) {
-  internals.warnOnDeprecatedApi("Deno.readAll()", (new Error()).stack);
   const buf = new Buffer();
   await buf.readFrom(r);
   return buf.bytes();
 }
 
 function readAllSync(r) {
-  internals.warnOnDeprecatedApi("Deno.readAllSync()", (new Error()).stack);
   const buf = new Buffer();
   buf.readFromSync(r);
   return buf.bytes();
 }
 
 async function writeAll(w, arr) {
-  internals.warnOnDeprecatedApi("Deno.writeAll()", (new Error()).stack);
   let nwritten = 0;
   while (nwritten < arr.length) {
     nwritten += await w.write(TypedArrayPrototypeSubarray(arr, nwritten));
@@ -253,7 +249,6 @@ async function writeAll(w, arr) {
 }
 
 function writeAllSync(w, arr) {
-  internals.warnOnDeprecatedApi("Deno.writeAllSync()", (new Error()).stack);
   let nwritten = 0;
   while (nwritten < arr.length) {
     nwritten += w.writeSync(TypedArrayPrototypeSubarray(arr, nwritten));
