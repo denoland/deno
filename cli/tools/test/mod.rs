@@ -16,8 +16,6 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
-use crate::util::glob::FilePatterns;
-use crate::util::glob::PathOrPattern;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
@@ -26,6 +24,8 @@ use crate::worker::CliMainWorkerFactory;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -1065,6 +1065,7 @@ fn is_supported_test_path_predicate(
       .map(|p| {
         p.inner().iter().any(|p| match p {
           PathOrPattern::Path(p) => p == path,
+          PathOrPattern::RemoteUrl(_) => true,
           PathOrPattern::Pattern(p) => p.matches_path(path),
         })
       })
