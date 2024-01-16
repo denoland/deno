@@ -8,8 +8,8 @@ const ops = core.ops;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
-  ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  ArrayPrototypePop,
   ArrayPrototypeShift,
   DateNow,
   Error,
@@ -26,7 +26,9 @@ const {
   PromisePrototypeThen,
   PromiseResolve,
   SafeSet,
+  StringPrototypeIncludes,
   StringPrototypeSplit,
+  StringPrototypeTrim,
   Symbol,
   SymbolIterator,
   TypeError,
@@ -107,8 +109,11 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
   while (true) {
     // Filter out internal frames at the top of the stack - they are not useful
     // to the user.
-    if (stackLines[0].includes("(ext:") || stackLines[0].includes("(node:")) {
-      stackLines.shift();
+    if (
+      StringPrototypeIncludes(stackLines[0], "(ext:") ||
+      StringPrototypeIncludes(stackLines[0], "(node:")
+    ) {
+      ArrayPrototypeShift(stackLines);
     } else {
       break;
     }
@@ -116,13 +121,15 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
   // Now remove the last frame if it's coming from "ext:core" - this is most likely
   // event loop tick or promise handler calling a user function - again not
   // useful to the user.
-  if (stackLines[stackLines.length - 1].includes("(ext:core/")) {
-    stackLines.pop();
+  if (
+    StringPrototypeIncludes(stackLines[stackLines.length - 1], "(ext:core/")
+  ) {
+    ArrayPrototypePop(stackLines);
   }
 
   let isFromRemoteDependency = false;
   const firstStackLine = stackLines[0];
-  if (firstStackLine && !firstStackLine.includes("file:")) {
+  if (firstStackLine && !StringPrototypeIncludes(firstStackLine, "file:")) {
     isFromRemoteDependency = true;
   }
 
@@ -162,7 +169,7 @@ function warnOnDeprecatedApi(apiName, stack, suggestion) {
   for (let i = 0; i < stackLines.length; i++) {
     console.log(
       `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
-        stackLines[i].trim()
+        StringPrototypeTrim(stackLines[i])
       }`,
       "color: yellow;",
     );
