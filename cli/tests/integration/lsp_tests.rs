@@ -857,7 +857,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
-        "type": 1,
+        "type": "added",
         "configurationType": "denoJson"
       }],
     }))
@@ -880,7 +880,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
-        "type": 2,
+        "type": "changed",
         "configurationType": "denoJson"
       }],
     }))
@@ -900,7 +900,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
-        "type": 3,
+        "type": "removed",
         "configurationType": "denoJson"
       }],
     }))
@@ -920,7 +920,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("package.json").unwrap(),
-        "type": 1,
+        "type": "added",
         "configurationType": "packageJson"
       }],
     }))
@@ -940,7 +940,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("package.json").unwrap(),
-        "type": 2,
+        "type": "changed",
         "configurationType": "packageJson"
       }],
     }))
@@ -960,7 +960,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("package.json").unwrap(),
-        "type": 3,
+        "type": "removed",
         "configurationType": "packageJson"
       }],
     }))
