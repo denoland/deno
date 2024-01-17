@@ -4183,7 +4183,7 @@ fn broken_stdout() {
 itest!(inspect_color_overwrite {
   args: "run run/inspect_color_overwrite.ts",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-  strip_ansi: false,
+  skip_strip_ansi: true,
   output: "run/inspect_color_overwrite.ts.out",
   exit_code: 0,
 });
