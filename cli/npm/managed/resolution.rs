@@ -388,21 +388,6 @@ fn populate_lockfile_from_snapshot(
 fn npm_package_to_lockfile_info(
   pkg: &NpmResolutionPackage,
 ) -> NpmPackageLockfileInfo {
-  fn integrity_for_lockfile(
-    integrity: NpmPackageVersionDistInfoIntegrity,
-  ) -> String {
-    match integrity {
-      NpmPackageVersionDistInfoIntegrity::Integrity {
-        algorithm,
-        base64_hash,
-      } => format!("{}-{}", algorithm, base64_hash),
-      NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {
-        integrity.to_string()
-      }
-      NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => hex.to_string(),
-    }
-  }
-
   let dependencies = pkg
     .dependencies
     .iter()
@@ -415,7 +400,7 @@ fn npm_package_to_lockfile_info(
   NpmPackageLockfileInfo {
     display_id: pkg.id.nv.to_string(),
     serialized_id: pkg.id.as_serialized(),
-    integrity: integrity_for_lockfile(pkg.dist.integrity()),
+    integrity: pkg.dist.integrity().for_lockfile(),
     dependencies,
   }
 }

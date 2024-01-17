@@ -357,3 +357,4 @@ opt-level = 3
 deno_lockfile = { path = "../deno_lockfile" }
 deno_npm = { path = "../deno_npm" }
 deno_semver = { path = "../deno_semver" }
+deno_graph = { path = "../deno_graph" }

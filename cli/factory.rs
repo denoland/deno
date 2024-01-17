@@ -60,8 +60,11 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
+use std::collections::BTreeSet;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -304,9 +307,33 @@ impl CliFactory {
       .get_or_try_init_async(async {
         let fs = self.fs();
 
-        if let Some(lockfile) = self.maybe_lockfile() {
+        let maybe_lockfile = self.maybe_lockfile();
+        if let Some(lockfile) = maybe_lockfile.as_ref() {
+          // todo(THIS PR): makes no sense for this to be here
+          let import_map = self.maybe_import_map().await?;
+            let import_map_deps = import_map.as_ref().map(|import_map| {
+              let mut entries = BTreeSet::new();
+              let import_entries = import_map
+                .imports()
+                .entries()
+                .chain(import_map.scopes().flat_map(|s| s.imports.entries()));
+              for entry in import_entries {
+                if let Some(value) = entry.value {
+                  if let Ok(req_ref) =
+                    JsrPackageReqReference::from_specifier(value)
+                  {
+                    entries.insert(format!("jsr:{}", req_ref.req()));
+                  } else if let Ok(req_ref) =
+                    NpmPackageReqReference::from_specifier(value)
+                  {
+                    entries.insert(format!("npm:{}", req_ref.req()));
+                  }
+                }
+              }
+              entries
+            });
           let mut lockfile = lockfile.lock();
-          lockfile.set_package_json_deps(self.package_json_deps_provider().reqs())
+          lockfile.set_deps(self.package_json_deps_provider().reqs().map(|reqs| reqs.into_iter().map(|s| s.to_string()).collect()), import_map_deps);
         }
 
         create_cli_npm_resolver(if self.options.unstable_byonm() {
@@ -326,7 +353,7 @@ impl CliFactory {
               Some(snapshot) => {
                 CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
               }
-              None => match self.maybe_lockfile() {
+              None => match maybe_lockfile.as_ref() {
                 Some(lockfile) => {
                   CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
                     lockfile.clone(),
@@ -335,7 +362,7 @@ impl CliFactory {
                 None => CliNpmResolverManagedSnapshotOption::Specified(None),
               },
             },
-            maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
+            maybe_lockfile: maybe_lockfile.as_ref().cloned(),
             fs: fs.clone(),
             http_client: self.http_client().clone(),
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
