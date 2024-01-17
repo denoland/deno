@@ -1126,11 +1126,12 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.6.5"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97979f94af93f388822233278ede930414efa273d6eb495de7680f2a6862a4d3"
+checksum = "62edb1811b076bf29670385098bc6e1cfee37dae70b71a665e7a1534098ba805"
 dependencies = [
  "anyhow",
+ "glob",
  "indexmap",
  "jsonc-parser",
  "log",
@@ -4998,9 +4999,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-tokio-stream"
-version = "0.2.17"
+version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ded7a36e8ac05b8ada77a84c5ceec95361942ee9dedb60a82f93f788a791aae8"
+checksum = "c9f0b619386efa23ba0955910896567698dc802cab625ea97a69e7340f986e6f"
 dependencies = [
  "futures",
  "rustls",

@@ -23,6 +23,7 @@ use deno_core::ToJsBuffer;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
+use deno_tls::rustls::ClientConnection;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
 use http::header::CONNECTION;
@@ -236,8 +237,7 @@ async fn handshake_http1_wss(
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
-    tls_config.into(),
-    dnsname,
+    ClientConnection::new(tls_config.into(), dnsname).unwrap(),
     NonZeroUsize::new(65536),
   );
   // If we can bail on an http/1.1 ALPN mismatch here, we can avoid doing extra work
@@ -261,8 +261,11 @@ async fn handshake_http2_wss(
   let dnsname =
     ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   // We need to better expose the underlying errors here
-  let mut tls_connector =
-    TlsStream::new_client_side(tcp_socket, tls_config.into(), dnsname, None);
+  let mut tls_connector = TlsStream::new_client_side(
+    tcp_socket,
+    ClientConnection::new(tls_config.into(), dnsname).unwrap(),
+    None,
+  );
   let handshake = tls_connector.handshake().await?;
   if handshake.alpn.is_none() {
     bail!("Didn't receive h2 alpn, aborting connection");
