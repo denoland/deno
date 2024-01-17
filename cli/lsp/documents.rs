@@ -1348,10 +1348,7 @@ impl Documents {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(document_preload_limit);
       hasher.write_hashable(
-        &file_patterns
-          .include
-          .as_ref()
-          .map(|enabled_paths| get_pattern_set_vec(enabled_paths)),
+        &file_patterns.include.as_ref().map(get_pattern_set_vec),
       );
       hasher.write_hashable(&get_pattern_set_vec(&file_patterns.exclude));
       if let Some(import_map) = maybe_import_map {
@@ -1937,7 +1934,7 @@ impl PreloadDocumentFinder {
     for file_patterns in file_patterns_by_base {
       let path = &file_patterns.base;
       if path.is_dir() {
-        if is_allowed_root_dir(&path) {
+        if is_allowed_root_dir(path) {
           finder
             .root_dir_entries
             .push(PendingEntry::Dir(path.clone(), Rc::new(file_patterns)));
