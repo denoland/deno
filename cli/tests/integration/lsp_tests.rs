@@ -1904,7 +1904,7 @@ fn lsp_exclude_config() {
 }
 
 #[test]
-fn lsp_hover_unstable_disabled() {
+fn lsp_hover_unstable_always_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -1930,16 +1930,17 @@ fn lsp_hover_unstable_disabled() {
   assert_eq!(
     res,
     json!({
-      "contents": [
+      "contents":[
         {
-          "language": "typescript",
-          "value": "type Deno.ForeignLibraryInterface = /*unresolved*/ any",
+          "language":"typescript",
+          "value":"interface Deno.ForeignLibraryInterface"
         },
-        "",
+        "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
+        "\n\n*@category* - FFI",
       ],
-      "range": {
-        "start": { "line": 0, "character": 14 },
-        "end": { "line": 0, "character": 37 }
+      "range":{
+        "start":{ "line":0, "character":14 },
+        "end":{ "line":0, "character":37 }
       }
     })
   );
@@ -1951,6 +1952,7 @@ fn lsp_hover_unstable_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
+    // NOTE(bartlomieju): this is effectively not used anymore.
     builder.set_unstable(true);
   });
   client.did_open(json!({
@@ -9010,68 +9012,458 @@ fn lsp_workspace_symbol() {
   );
   assert_eq!(
     res,
-    json!([{
-      "name": "fieldA",
-      "kind": 8,
-      "location": {
-        "uri": "file:///a/file.ts",
-        "range": {
-          "start": { "line": 1, "character": 2 },
-          "end": { "line": 1, "character": 17 }
-        }
-      },
-      "containerName": "A"
-    }, {
-      "name": "fieldB",
-      "kind": 8,
-      "location": {
-        "uri": "file:///a/file.ts",
-        "range": {
-          "start": { "line": 2, "character": 2 },
-          "end": { "line": 2, "character": 17 }
-        }
-      },
-      "containerName": "A"
-    }, {
-      "name": "fieldC",
-      "kind": 8,
-      "location": {
-        "uri": "file:///a/file_01.ts",
-        "range": {
-          "start": { "line": 1, "character": 2 },
-          "end": { "line": 1, "character": 17 }
-        }
-      },
-      "containerName": "B"
-    }, {
-      "name": "fieldD",
-      "kind": 8,
-      "location": {
-        "uri": "file:///a/file_01.ts",
-        "range": {
-          "start": { "line": 2, "character": 2 },
-          "end": { "line": 2, "character": 17 }
-        }
-      },
-      "containerName": "B"
-    }, {
-      "name": "ClassFieldDecoratorContext",
-      "kind": 11,
-      "location": {
-        "uri": "deno:/asset/lib.decorators.d.ts",
-        "range": {
-          "start": {
-            "line": 343,
-            "character": 0,
-          },
-          "end": {
-            "line": 385,
-            "character": 1,
-          },
+    json!([
+      {
+        "name": "fieldA",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 2
+            },
+            "end": {
+              "line": 1,
+              "character": 17
+            }
+          }
         },
+        "containerName": "A"
       },
-      "containerName": "",
-    }])
+      {
+        "name": "fieldB",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 2
+            },
+            "end": {
+              "line": 2,
+              "character": 17
+            }
+          }
+        },
+        "containerName": "A"
+      },
+      {
+        "name": "fieldC",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file_01.ts",
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 2
+            },
+            "end": {
+              "line": 1,
+              "character": 17
+            }
+          }
+        },
+        "containerName": "B"
+      },
+      {
+        "name": "fieldD",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file_01.ts",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 2
+            },
+            "end": {
+              "line": 2,
+              "character": 17
+            }
+          }
+        },
+        "containerName": "B"
+      },
+      {
+        "name": "fields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3139,
+              "character": 4
+            },
+            "end": {
+              "line": 3139,
+              "character": 55
+            }
+          }
+        },
+        "containerName": "CalendarProtocol"
+      },
+      {
+        "name": "fields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3309,
+              "character": 4
+            },
+            "end": {
+              "line": 3309,
+              "character": 47
+            }
+          }
+        },
+        "containerName": "Calendar"
+      },
+      {
+        "name": "ClassFieldDecoratorContext",
+        "kind": 11,
+        "location": {
+          "uri": "deno:/asset/lib.decorators.d.ts",
+          "range": {
+            "start": {
+              "line": 343,
+              "character": 0
+            },
+            "end": {
+              "line": 385,
+              "character": 1
+            }
+          }
+        },
+        "containerName": ""
+      },
+      {
+        "name": "dateFromFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3117,
+              "character": 4
+            },
+            "end": {
+              "line": 3120,
+              "character": 26
+            }
+          }
+        },
+        "containerName": "CalendarProtocol"
+      },
+      {
+        "name": "dateFromFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3287,
+              "character": 4
+            },
+            "end": {
+              "line": 3290,
+              "character": 26
+            }
+          }
+        },
+        "containerName": "Calendar"
+      },
+      {
+        "name": "getISOFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3413,
+              "character": 4
+            },
+            "end": {
+              "line": 3413,
+              "character": 39
+            }
+          }
+        },
+        "containerName": "PlainDate"
+      },
+      {
+        "name": "getISOFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3576,
+              "character": 4
+            },
+            "end": {
+              "line": 3576,
+              "character": 43
+            }
+          }
+        },
+        "containerName": "PlainDateTime"
+      },
+      {
+        "name": "getISOFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3625,
+              "character": 4
+            },
+            "end": {
+              "line": 3625,
+              "character": 39
+            }
+          }
+        },
+        "containerName": "PlainMonthDay"
+      },
+      {
+        "name": "getISOFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3744,
+              "character": 4
+            },
+            "end": {
+              "line": 3744,
+              "character": 39
+            }
+          }
+        },
+        "containerName": "PlainTime"
+      },
+      {
+        "name": "getISOFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3897,
+              "character": 4
+            },
+            "end": {
+              "line": 3897,
+              "character": 39
+            }
+          }
+        },
+        "containerName": "PlainYearMonth"
+      },
+      {
+        "name": "getISOFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 4056,
+              "character": 4
+            },
+            "end": {
+              "line": 4056,
+              "character": 43
+            }
+          }
+        },
+        "containerName": "ZonedDateTime"
+      },
+      {
+        "name": "mergeFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3140,
+              "character": 4
+            },
+            "end": {
+              "line": 3143,
+              "character": 31
+            }
+          }
+        },
+        "containerName": "CalendarProtocol"
+      },
+      {
+        "name": "mergeFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3310,
+              "character": 4
+            },
+            "end": {
+              "line": 3313,
+              "character": 31
+            }
+          }
+        },
+        "containerName": "Calendar"
+      },
+      {
+        "name": "monthDayFromFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3125,
+              "character": 4
+            },
+            "end": {
+              "line": 3128,
+              "character": 30
+            }
+          }
+        },
+        "containerName": "CalendarProtocol"
+      },
+      {
+        "name": "monthDayFromFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3295,
+              "character": 4
+            },
+            "end": {
+              "line": 3298,
+              "character": 30
+            }
+          }
+        },
+        "containerName": "Calendar"
+      },
+      {
+        "name": "PlainDateISOFields",
+        "kind": 5,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3329,
+              "character": 2
+            },
+            "end": {
+              "line": 3334,
+              "character": 4
+            }
+          }
+        },
+        "containerName": "Temporal"
+      },
+      {
+        "name": "PlainDateTimeISOFields",
+        "kind": 5,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3440,
+              "character": 2
+            },
+            "end": {
+              "line": 3451,
+              "character": 4
+            }
+          }
+        },
+        "containerName": "Temporal"
+      },
+      {
+        "name": "PlainTimeISOFields",
+        "kind": 5,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3645,
+              "character": 2
+            },
+            "end": {
+              "line": 3652,
+              "character": 4
+            }
+          }
+        },
+        "containerName": "Temporal"
+      },
+      {
+        "name": "yearMonthFromFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3121,
+              "character": 4
+            },
+            "end": {
+              "line": 3124,
+              "character": 31
+            }
+          }
+        },
+        "containerName": "CalendarProtocol"
+      },
+      {
+        "name": "yearMonthFromFields",
+        "kind": 6,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3291,
+              "character": 4
+            },
+            "end": {
+              "line": 3294,
+              "character": 31
+            }
+          }
+        },
+        "containerName": "Calendar"
+      },
+      {
+        "name": "ZonedDateTimeISOFields",
+        "kind": 5,
+        "location": {
+          "uri": "deno:/asset/lib.deno.unstable.d.ts",
+          "range": {
+            "start": {
+              "line": 3926,
+              "character": 2
+            },
+            "end": {
+              "line": 3939,
+              "character": 4
+            }
+          }
+        },
+        "containerName": "Temporal"
+      }
+    ])
   );
   client.shutdown();
 }

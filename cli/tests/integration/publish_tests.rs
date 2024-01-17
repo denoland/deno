@@ -46,6 +46,7 @@ itest!(javascript_missing_decl_file {
   copy_temp_dir: Some("publish/javascript_missing_decl_file"),
   envs: env_vars_for_registry(),
   exit_code: 0,
+  http_server: true,
   temp_cwd: true,
 });
 
@@ -55,6 +56,7 @@ itest!(javascript_decl_file {
   cwd: Some("publish/javascript_decl_file"),
   copy_temp_dir: Some("publish/javascript_decl_file"),
   envs: env_vars_for_registry(),
+  http_server: true,
   exit_code: 0,
   temp_cwd: true,
 });
@@ -69,8 +71,18 @@ itest!(successful {
   temp_cwd: true,
 });
 
+itest!(config_file_jsonc {
+  args: "publish --token 'sadfasdf'",
+  output: "publish/deno_jsonc.out",
+  cwd: Some("publish/deno_jsonc"),
+  copy_temp_dir: Some("publish/deno_jsonc"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(workspace_all {
-  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  args: "publish --token 'sadfasdf'",
   output: "publish/workspace.out",
   cwd: Some("publish/workspace"),
   copy_temp_dir: Some("publish/workspace"),
@@ -80,10 +92,20 @@ itest!(workspace_all {
 });
 
 itest!(workspace_individual {
-  args: "publish --unstable-workspaces --token 'sadfasdf'",
+  args: "publish --token 'sadfasdf'",
   output: "publish/workspace_individual.out",
   cwd: Some("publish/workspace/bar"),
   copy_temp_dir: Some("publish/workspace"),
+  envs: env_vars_for_registry(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(dry_run {
+  args: "publish --token 'sadfasdf' --dry-run",
+  cwd: Some("publish/successful"),
+  copy_temp_dir: Some("publish/successful"),
+  output: "publish/dry_run.out",
   envs: env_vars_for_registry(),
   http_server: true,
   temp_cwd: true,

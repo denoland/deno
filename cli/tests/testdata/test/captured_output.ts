@@ -1,10 +1,7 @@
 Deno.test("output", async () => {
-  // deno-lint-ignore no-deprecated-deno-api
-  const p = Deno.run({
-    cmd: [Deno.execPath(), "eval", "console.log(0); console.error(1);"],
-  });
-  await p.status();
-  await p.close();
+  await new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log(0); console.error(1);"],
+  }).spawn().status;
   new Deno.Command(Deno.execPath(), {
     args: ["eval", "console.log(2); console.error(3);"],
     stdout: "inherit",
