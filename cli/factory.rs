@@ -53,6 +53,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
+use deno_core::serde_json;
 use deno_graph::GraphKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -301,6 +302,57 @@ impl CliFactory {
   pub async fn npm_resolver(
     &self,
   ) -> Result<&Arc<dyn CliNpmResolver>, AnyError> {
+    fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+      let Some(obj) = value.and_then(|v| v.as_object()) else {
+        return Vec::new();
+      };
+      let mut items = Vec::with_capacity(obj.len());
+      for value in obj.values() {
+        if let serde_json::Value::String(value) = value {
+          items.push(value);
+        }
+      }
+      items
+    }
+
+    fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+      let Some(obj) = value.and_then(|v| v.as_object()) else {
+        return Vec::new();
+      };
+      obj.values().flat_map(|v| imports_values(Some(v))).collect()
+    }
+
+    fn values_to_set<'a>(
+      values: impl Iterator<Item = &'a String>,
+    ) -> BTreeSet<String> {
+      let mut entries = BTreeSet::new();
+      for value in values {
+        if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
+          entries.insert(format!("jsr:{}", req_ref.req()));
+        } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
+          entries.insert(format!("npm:{}", req_ref.req()));
+        }
+      }
+      entries
+    }
+
+    fn import_map_value_deps(
+      value: &serde_json::Value,
+    ) -> Option<BTreeSet<String>> {
+      let obj = value.as_object()?;
+      let values = imports_values(obj.get("imports"))
+        .into_iter()
+        .chain(scope_values(obj.get("scopes")).into_iter());
+      Some(values_to_set(values))
+    }
+
+    fn deno_json_deps(config: &deno_config::ConfigFile) -> BTreeSet<String> {
+      let values = imports_values(config.json.imports.as_ref())
+        .into_iter()
+        .chain(scope_values(config.json.scopes.as_ref()).into_iter());
+      values_to_set(values)
+    }
+
     self
       .services
       .npm_resolver
@@ -310,30 +362,27 @@ impl CliFactory {
         let maybe_lockfile = self.maybe_lockfile();
         if let Some(lockfile) = maybe_lockfile.as_ref() {
           // todo(THIS PR): makes no sense for this to be here
-          let import_map = self.maybe_import_map().await?;
-            let import_map_deps = import_map.as_ref().map(|import_map| {
-              let mut entries = BTreeSet::new();
-              let import_entries = import_map
-                .imports()
-                .entries()
-                .chain(import_map.scopes().flat_map(|s| s.imports.entries()));
-              for entry in import_entries {
-                if let Some(value) = entry.value {
-                  if let Ok(req_ref) =
-                    JsrPackageReqReference::from_specifier(value)
-                  {
-                    entries.insert(format!("jsr:{}", req_ref.req()));
-                  } else if let Ok(req_ref) =
-                    NpmPackageReqReference::from_specifier(value)
-                  {
-                    entries.insert(format!("npm:{}", req_ref.req()));
-                  }
-                }
-              }
-              entries
-            });
           let mut lockfile = lockfile.lock();
-          lockfile.set_deps(self.package_json_deps_provider().reqs().map(|reqs| reqs.into_iter().map(|s| s.to_string()).collect()), import_map_deps);
+          let package_json_deps = self.package_json_deps_provider().reqs().map(|reqs| reqs.into_iter().map(|s| s.to_string()).collect());
+          let config = match self.options.maybe_workspace_config() {
+            Some(workspace_config) => {
+              deno_lockfile::WorkspaceConfig {
+                package_json_deps,
+                deps: import_map_value_deps(&workspace_config.base_import_map_value),
+                members: workspace_config.members.iter().map(|member| {
+                  (member.package_name.clone(), deno_json_deps(&member.config_file))
+                }).collect(),
+              }
+            }
+            None => {
+              deno_lockfile::WorkspaceConfig {
+                package_json_deps,
+                deps: self.options.maybe_config_file().as_ref().map(deno_json_deps),
+                members: Default::default(),
+              }
+            }
+          };
+          lockfile.update_workspace_config(config);
         }
 
         create_cli_npm_resolver(if self.options.unstable_byonm() {
