@@ -857,7 +857,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
-        "type": 1,
+        "type": "added",
         "configurationType": "denoJson"
       }],
     }))
@@ -880,7 +880,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
-        "type": 2,
+        "type": "changed",
         "configurationType": "denoJson"
       }],
     }))
@@ -900,7 +900,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("deno.json").unwrap(),
-        "type": 3,
+        "type": "removed",
         "configurationType": "denoJson"
       }],
     }))
@@ -920,7 +920,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("package.json").unwrap(),
-        "type": 1,
+        "type": "added",
         "configurationType": "packageJson"
       }],
     }))
@@ -940,7 +940,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("package.json").unwrap(),
-        "type": 2,
+        "type": "changed",
         "configurationType": "packageJson"
       }],
     }))
@@ -960,7 +960,7 @@ fn lsp_did_change_deno_configuration_notification() {
     Some(json!({
       "changes": [{
         "uri": temp_dir.uri().join("package.json").unwrap(),
-        "type": 3,
+        "type": "removed",
         "configurationType": "packageJson"
       }],
     }))
@@ -10037,9 +10037,8 @@ Deno.test({
   assert_eq!(res.enqueued[0].text_document.uri, specifier);
   assert_eq!(res.enqueued[0].ids.len(), 1);
   let id = res.enqueued[0].ids[0].clone();
-
-  let (method, notification) = client.read_notification::<Value>();
-  assert_eq!(method, "deno/testRunProgress");
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
   assert_eq!(
     notification,
     Some(json!({
@@ -10056,8 +10055,8 @@ Deno.test({
     }))
   );
 
-  let (method, notification) = client.read_notification::<Value>();
-  assert_eq!(method, "deno/testRunProgress");
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
   let notification_value = notification
     .as_ref()
     .unwrap()
@@ -10092,8 +10091,8 @@ Deno.test({
     }))
   );
 
-  let (method, notification) = client.read_notification::<Value>();
-  assert_eq!(method, "deno/testRunProgress");
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
   assert_eq!(
     notification,
     Some(json!({
@@ -10111,8 +10110,8 @@ Deno.test({
     }))
   );
 
-  let (method, notification) = client.read_notification::<Value>();
-  assert_eq!(method, "deno/testRunProgress");
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
   let mut notification = notification.unwrap();
   let duration = notification
     .as_object_mut()
@@ -10140,8 +10139,8 @@ Deno.test({
     })
   );
 
-  let (method, notification) = client.read_notification::<Value>();
-  assert_eq!(method, "deno/testRunProgress");
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
   let notification = notification.unwrap();
   let obj = notification.as_object().unwrap();
   assert_eq!(obj.get("id"), Some(&json!(1)));
@@ -10159,8 +10158,8 @@ Deno.test({
       );
       assert!(message.contains_key("duration"));
 
-      let (method, notification) = client.read_notification::<Value>();
-      assert_eq!(method, "deno/testRunProgress");
+      let notification =
+        client.read_notification_with_method::<Value>("deno/testRunProgress");
       assert_eq!(
         notification,
         Some(json!({
@@ -10193,8 +10192,8 @@ Deno.test({
 
   assert_eq!(client.read_diagnostics().all().len(), 0);
 
-  let (method, notification) = client.read_notification::<Value>();
-  assert_eq!(method, "deno/testModuleDelete");
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModuleDelete");
   assert_eq!(
     notification,
     Some(json!({
