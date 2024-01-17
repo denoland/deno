@@ -9,7 +9,6 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map_from_specifier;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
-use deno_config::glob::PathOrPattern;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -1666,15 +1665,7 @@ fn resolve_files(
     }
   }
   Ok(FilePatterns {
-    include: {
-      let files = match maybe_files_config.include {
-        Some(include) => include,
-        None => PathOrPatternSet::new(vec![PathOrPattern::Path(
-          initial_cwd.to_path_buf(),
-        )]),
-      };
-      Some(files)
-    },
+    include: maybe_files_config.include,
     exclude: maybe_files_config.exclude,
   })
 }

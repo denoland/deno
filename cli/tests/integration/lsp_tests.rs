@@ -8507,13 +8507,15 @@ fn lsp_format_exclude_default_config() {
 #[test]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir_path = context.temp_dir().path();
+  // Also test out using a non-json file extension here.
+  // What should matter is the language identifier.
+  let lock_file_path = temp_dir_path.join("file.lock");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      // Also test out using a non-json file extension here.
-      // What should matter is the language identifier.
-      "uri": "file:///a/file.lock",
+      "uri": lock_file_path.uri_file(),
       "languageId": "json",
       "version": 1,
       "text": "{\"key\":\"value\"}"
@@ -8524,7 +8526,7 @@ fn lsp_format_json() {
     "textDocument/formatting",
     json!({
         "textDocument": {
-          "uri": "file:///a/file.lock"
+          "uri": lock_file_path.uri_file(),
         },
         "options": {
           "tabSize": 2,
