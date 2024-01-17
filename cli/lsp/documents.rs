@@ -844,8 +844,7 @@ impl FileSystemDocuments {
 }
 
 pub struct UpdateDocumentConfigOptions<'a> {
-  pub enabled_paths: PathOrPatternSet,
-  pub disabled_paths: PathOrPatternSet,
+  pub file_patterns: FilePatterns,
   pub document_preload_limit: usize,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
@@ -1321,8 +1320,7 @@ impl Documents {
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     #[allow(clippy::too_many_arguments)]
     fn calculate_resolver_config_hash(
-      enabled_paths: &PathOrPatternSet,
-      disabled_paths: &PathOrPatternSet,
+      file_patterns: &FilePatterns,
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
@@ -1349,8 +1347,13 @@ impl Documents {
 
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(document_preload_limit);
-      hasher.write_hashable(&get_pattern_set_vec(enabled_paths));
-      hasher.write_hashable(&get_pattern_set_vec(disabled_paths));
+      hasher.write_hashable(
+        &file_patterns
+          .include
+          .as_ref()
+          .map(|enabled_paths| get_pattern_set_vec(enabled_paths)),
+      );
+      hasher.write_hashable(&get_pattern_set_vec(&file_patterns.exclude));
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
@@ -1387,8 +1390,7 @@ impl Documents {
       .maybe_config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &options.enabled_paths,
-      &options.disabled_paths,
+      &options.file_patterns,
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
@@ -1450,8 +1452,7 @@ impl Documents {
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
       self.refresh_dependencies(
-        options.enabled_paths,
-        options.disabled_paths,
+        options.file_patterns,
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
@@ -1464,8 +1465,7 @@ impl Documents {
 
   fn refresh_dependencies(
     &mut self,
-    enabled_paths: PathOrPatternSet,
-    disabled_paths: PathOrPatternSet,
+    file_patterns: FilePatterns,
     document_preload_limit: usize,
   ) {
     let resolver = self.resolver.as_graph_resolver();
@@ -1487,8 +1487,7 @@ impl Documents {
       log::debug!("Preloading documents from enabled urls...");
       let mut finder =
         PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-          enabled_paths,
-          disabled_paths,
+          file_patterns,
           limit: document_preload_limit,
         });
       for specifier in finder.by_ref() {
@@ -1900,8 +1899,7 @@ enum PendingEntry {
 }
 
 struct PreloadDocumentFinderOptions {
-  enabled_paths: PathOrPatternSet,
-  disabled_paths: PathOrPatternSet,
+  file_patterns: FilePatterns,
   limit: usize,
 }
 
@@ -1933,24 +1931,21 @@ impl PreloadDocumentFinder {
       visited_paths: Default::default(),
     };
 
-    let file_patterns = FilePatterns {
-      include: Some(options.enabled_paths),
-      exclude: options.disabled_paths,
-    };
-    let file_patterns_by_base = file_patterns.split_by_base();
+    let file_patterns_by_base = options.file_patterns.split_by_base();
 
     // initialize the finder with the initial paths
-    for (path, file_patterns) in file_patterns_by_base {
+    for file_patterns in file_patterns_by_base {
+      let path = &file_patterns.base;
       if path.is_dir() {
         if is_allowed_root_dir(&path) {
           finder
             .root_dir_entries
-            .push(PendingEntry::Dir(path, Rc::new(file_patterns)));
+            .push(PendingEntry::Dir(path.clone(), Rc::new(file_patterns)));
         }
       } else {
         finder
           .pending_entries
-          .push_back(PendingEntry::SpecifiedRootFile(path));
+          .push_back(PendingEntry::SpecifiedRootFile(path.clone()));
       }
     }
     finder
@@ -2247,8 +2242,9 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_paths: Default::default(),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns::new_with_base(
+          documents_path.to_path_buf(),
+        ),
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2289,8 +2285,9 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(UpdateDocumentConfigOptions {
-        enabled_paths: Default::default(),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns::new_with_base(
+          documents_path.to_path_buf(),
+        ),
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2357,17 +2354,22 @@ console.log(b, "hello deno");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
     let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: PathOrPatternSet::from_relative_path_or_patterns(
-        temp_dir.path().as_path(),
-        &[
-          "root1".to_string(),
-          "root2/file1.ts".to_string(),
-          "root2/main.min.ts".to_string(),
-          "root2/folder".to_string(),
-        ],
-      )
-      .unwrap(),
-      disabled_paths: Default::default(),
+      file_patterns: FilePatterns {
+        base: temp_dir.path().to_path_buf(),
+        include: Some(
+          PathOrPatternSet::from_relative_path_or_patterns(
+            temp_dir.path().as_path(),
+            &[
+              "root1".to_string(),
+              "root2/file1.ts".to_string(),
+              "root2/main.min.ts".to_string(),
+              "root2/folder".to_string(),
+            ],
+          )
+          .unwrap(),
+        ),
+        exclude: Default::default(),
+      },
       limit: 1_000,
     })
     .collect::<Vec<_>>();
@@ -2397,10 +2399,11 @@ console.log(b, "hello deno");
 
     // now try iterating with a low limit
     let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-        temp_dir.path().to_path_buf(),
-      )]),
-      disabled_paths: Default::default(),
+      file_patterns: FilePatterns {
+        base: temp_dir.path().to_path_buf(),
+        include: Default::default(),
+        exclude: Default::default(),
+      },
       limit: 10, // entries and not results
     })
     .collect::<Vec<_>>();
@@ -2412,18 +2415,19 @@ console.log(b, "hello deno");
 
     // now try with certain directories and files disabled
     let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-      enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-        temp_dir.path().to_path_buf(),
-      )]),
-      disabled_paths: PathOrPatternSet::from_relative_path_or_patterns(
-        temp_dir.path().as_path(),
-        &[
-          "root1".to_string(),
-          "root2/file1.ts".to_string(),
-          "**/*.js".to_string(), // ignore js files
-        ],
-      )
-      .unwrap(),
+      file_patterns: FilePatterns {
+        base: temp_dir.path().to_path_buf(),
+        include: Default::default(),
+        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+          temp_dir.path().as_path(),
+          &[
+            "root1".to_string(),
+            "root2/file1.ts".to_string(),
+            "**/*.js".to_string(), // ignore js files
+          ],
+        )
+        .unwrap(),
+      },
       limit: 1_000,
     })
     .collect::<Vec<_>>();
@@ -2443,20 +2447,22 @@ console.log(b, "hello deno");
   pub fn test_pre_load_document_finder_disallowed_dirs() {
     if cfg!(windows) {
       let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-          PathBuf::from("C:\\"),
-        )]),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns {
+          base: PathBuf::from("C:\\"),
+          include: Default::default(),
+          exclude: Default::default(),
+        },
         limit: 1_000,
       })
       .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     } else {
       let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
-        enabled_paths: PathOrPatternSet::new(vec![PathOrPattern::Path(
-          PathBuf::from("/"),
-        )]),
-        disabled_paths: Default::default(),
+        file_patterns: FilePatterns {
+          base: PathBuf::from("/"),
+          include: Default::default(),
+          exclude: Default::default(),
+        },
         limit: 1_000,
       })
       .collect::<Vec<_>>();

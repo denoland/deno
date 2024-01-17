@@ -2,6 +2,7 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -542,14 +543,14 @@ impl Inner {
       diagnostics_server,
       documents,
       http_client,
-      initial_cwd,
+      initial_cwd: initial_cwd.clone(),
       maybe_global_cache_path: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
       maybe_package_json: None,
-      fmt_options: Default::default(),
+      fmt_options: FmtOptions::new_with_base(initial_cwd.clone()),
       task_queue: Default::default(),
-      lint_options: Default::default(),
+      lint_options: LintOptions::new_with_base(initial_cwd),
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
@@ -1049,8 +1050,8 @@ impl Inner {
 
   async fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.config.clear_config_file();
-    self.fmt_options = Default::default();
-    self.lint_options = Default::default();
+    self.fmt_options = FmtOptions::new_with_base(self.initial_cwd.clone());
+    self.lint_options = LintOptions::new_with_base(self.initial_cwd.clone());
     if let Some(config_file) = self.get_config_file()? {
       let lint_options = config_file
         .to_lint_config()
@@ -1351,8 +1352,11 @@ impl Inner {
 
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
-      enabled_paths: self.config.get_enabled_paths(),
-      disabled_paths: self.config.get_disabled_paths(),
+      file_patterns: FilePatterns {
+        base: self.initial_cwd.clone(),
+        include: Some(self.config.get_enabled_paths()),
+        exclude: self.config.get_disabled_paths(),
+      },
       document_preload_limit: self
         .config
         .workspace_settings()

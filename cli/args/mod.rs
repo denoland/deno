@@ -243,7 +243,7 @@ impl BenchOptions {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub check: bool,
   pub options: FmtOptionsConfig,
@@ -251,6 +251,14 @@ pub struct FmtOptions {
 }
 
 impl FmtOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      check: false,
+      options: FmtOptionsConfig::default(),
+      files: FilePatterns::new_with_base(base),
+    }
+  }
+
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
     maybe_fmt_flags: Option<FmtFlags>,
@@ -368,7 +376,7 @@ pub enum LintReporterKind {
   Compact,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
@@ -376,6 +384,14 @@ pub struct LintOptions {
 }
 
 impl LintOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      rules: Default::default(),
+      files: FilePatterns::new_with_base(base),
+      reporter_kind: Default::default(),
+    }
+  }
+
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
     maybe_lint_flags: Option<LintFlags>,
@@ -1647,7 +1663,8 @@ fn resolve_files(
   maybe_file_flags: Option<FileFlags>,
   initial_cwd: &Path,
 ) -> Result<FilePatterns, AnyError> {
-  let mut maybe_files_config = maybe_files_config.unwrap_or_default();
+  let mut maybe_files_config = maybe_files_config
+    .unwrap_or_else(|| FilePatterns::new_with_base(initial_cwd.to_path_buf()));
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
       maybe_files_config.include =
@@ -1664,10 +1681,7 @@ fn resolve_files(
         )?;
     }
   }
-  Ok(FilePatterns {
-    include: maybe_files_config.include,
-    exclude: maybe_files_config.exclude,
-  })
+  Ok(maybe_files_config)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1887,6 +1901,7 @@ mod test {
 
     let resolved_files = resolve_files(
       Some(FilePatterns {
+        base: temp_dir_path.to_path_buf(),
         include: Some(
           PathOrPatternSet::from_relative_path_or_patterns(
             temp_dir_path,
