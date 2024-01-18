@@ -41,6 +41,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -148,6 +149,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     original_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
+    _requested_module_type: RequestedModuleType,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let is_data_uri = get_source_from_data_url(original_specifier).ok();
     if let Some((source, _)) = is_data_uri {
@@ -487,6 +489,11 @@ pub async fn run(
     // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
     if metadata.unstable {
       checker.enable_legacy_unstable();
+    }
+    for feature in metadata.unstable_features {
+      // `metadata` is valid for the whole lifetime of the program, so we
+      // can leak the string here.
+      checker.enable_feature(feature.leak());
     }
     checker
   });

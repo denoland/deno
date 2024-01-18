@@ -2,7 +2,6 @@
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
-use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -12,16 +11,19 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 use deno_ast::MediaType;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsStackFrame;
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
@@ -66,21 +68,26 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
           let factory = CliFactory::from_flags(flags).await?;
           let cli_options = factory.cli_options();
           let lint_options = cli_options.resolve_lint_options(lint_flags)?;
-          let files =
-            collect_lint_files(&lint_options.files).and_then(|files| {
+          let files = collect_lint_files(lint_options.files.clone()).and_then(
+            |files| {
               if files.is_empty() {
                 Err(generic_error("No target files found."))
               } else {
                 Ok(files)
               }
-            })?;
+            },
+          )?;
           _ = watcher_communicator.watch_paths(files.clone());
 
           let lint_paths = if let Some(paths) = changed_paths {
             // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
             files
               .iter()
-              .any(|path| paths.contains(path))
+              .any(|path| {
+                canonicalize_path(path)
+                  .map(|p| paths.contains(&p))
+                  .unwrap_or(false)
+              })
               .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
@@ -109,13 +116,14 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       reporter_lock.lock().unwrap().close(1);
       success
     } else {
-      let target_files = collect_lint_files(files).and_then(|files| {
-        if files.is_empty() {
-          Err(generic_error("No target files found."))
-        } else {
-          Ok(files)
-        }
-      })?;
+      let target_files =
+        collect_lint_files(files.clone()).and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
       debug!("Found {} files", target_files.len());
       lint_files(factory, lint_options, target_files).await?
     };
@@ -191,13 +199,12 @@ async fn lint_files(
   Ok(!has_error.is_raised())
 }
 
-fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_script_ext)
+fn collect_lint_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(|path, _| is_script_ext(path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
-    .add_ignore_paths(&files.exclude)
-    .collect_files(files.include.as_deref())
+    .collect_file_patterns(files)
 }
 
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
@@ -243,14 +250,10 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   }
 }
 
-pub fn create_linter(
-  media_type: MediaType,
-  rules: Vec<&'static dyn LintRule>,
-) -> Linter {
+pub fn create_linter(rules: Vec<&'static dyn LintRule>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")
-    .media_type(media_type)
     .rules(rules)
     .build()
 }
@@ -260,12 +263,16 @@ fn lint_file(
   source_code: String,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
-  let file_name = file_path.to_string_lossy().to_string();
+  let filename = file_path.to_string_lossy().to_string();
   let media_type = MediaType::from_path(file_path);
 
-  let linter = create_linter(media_type, lint_rules);
+  let linter = create_linter(lint_rules);
 
-  let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
+  let (_, file_diagnostics) = linter.lint_file(LintFileOptions {
+    filename,
+    media_type,
+    source_code: source_code.clone(),
+  })?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -281,10 +288,13 @@ fn lint_stdin(
     return Err(generic_error("Failed to read from stdin"));
   }
 
-  let linter = create_linter(MediaType::TypeScript, lint_rules);
+  let linter = create_linter(lint_rules);
 
-  let (_, file_diagnostics) =
-    linter.lint(STDIN_FILE_NAME.to_string(), source_code.clone())?;
+  let (_, file_diagnostics) = linter.lint_file(LintFileOptions {
+    filename: STDIN_FILE_NAME.to_string(),
+    source_code: source_code.clone(),
+    media_type: MediaType::TypeScript,
+  })?;
 
   Ok((file_diagnostics, source_code))
 }

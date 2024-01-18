@@ -27,6 +27,7 @@ use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::rustls::Certificate;
+use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::PrivateKey;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::ServerName;
@@ -230,8 +231,7 @@ where
   let tls_config = Arc::new(tls_config);
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    tls_config,
-    hostname_dns,
+    ClientConnection::new(tls_config, hostname_dns).unwrap(),
     TLS_BUFFER_SIZE,
   );
 
@@ -260,13 +260,6 @@ where
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
-
-  if args.cert_chain.is_some() {
-    super::check_unstable(&state.borrow(), "ConnectTlsOptions.certChain");
-  }
-  if args.private_key.is_some() {
-    super::check_unstable(&state.borrow(), "ConnectTlsOptions.privateKey");
-  }
 
   {
     let mut s = state.borrow_mut();
@@ -334,8 +327,7 @@ where
 
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    tls_config,
-    hostname_dns,
+    ClientConnection::new(tls_config, hostname_dns).unwrap(),
     TLS_BUFFER_SIZE,
   );
 
@@ -471,7 +463,7 @@ where
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
   if args.reuse_port {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     socket.set_reuse_port(true)?;
   }
   let socket_addr = socket2::SockAddr::from(bind_addr);

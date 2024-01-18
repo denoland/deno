@@ -16,9 +16,9 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
+pub use deno_config::glob::FilePatterns;
 pub use deno_config::BenchConfig;
 pub use deno_config::ConfigFile;
-pub use deno_config::FilesConfig;
 pub use deno_config::FmtOptionsConfig;
 pub use deno_config::JsxImportSourceConfig;
 pub use deno_config::LintRulesConfig;
@@ -69,9 +69,9 @@ use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::glob::expand_globs;
 use crate::version;
 
+use deno_config::glob::PathOrPatternSet;
 use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
@@ -217,7 +217,7 @@ impl CacheSetting {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BenchOptions {
-  pub files: FilesConfig,
+  pub files: FilePatterns,
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
@@ -227,12 +227,14 @@ impl BenchOptions {
   pub fn resolve(
     maybe_bench_config: Option<BenchConfig>,
     maybe_bench_flags: Option<BenchFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let bench_flags = maybe_bench_flags.unwrap_or_default();
     Ok(Self {
       files: resolve_files(
         maybe_bench_config.map(|c| c.files),
         Some(bench_flags.files),
+        initial_cwd,
       )?,
       filter: bench_flags.filter,
       json: bench_flags.json,
@@ -241,17 +243,26 @@ impl BenchOptions {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub check: bool,
   pub options: FmtOptionsConfig,
-  pub files: FilesConfig,
+  pub files: FilePatterns,
 }
 
 impl FmtOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      check: false,
+      options: FmtOptionsConfig::default(),
+      files: FilePatterns::new_with_base(base),
+    }
+  }
+
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
     maybe_fmt_flags: Option<FmtFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let (maybe_config_options, maybe_config_files) =
       maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
@@ -265,6 +276,7 @@ impl FmtOptions {
       files: resolve_files(
         maybe_config_files,
         maybe_fmt_flags.map(|f| f.files),
+        initial_cwd,
       )?,
     })
   }
@@ -313,7 +325,7 @@ fn resolve_fmt_options(
 
 #[derive(Clone)]
 pub struct TestOptions {
-  pub files: FilesConfig,
+  pub files: FilePatterns,
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
@@ -330,6 +342,7 @@ impl TestOptions {
   pub fn resolve(
     maybe_test_config: Option<TestConfig>,
     maybe_test_flags: Option<TestFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let test_flags = maybe_test_flags.unwrap_or_default();
 
@@ -337,6 +350,7 @@ impl TestOptions {
       files: resolve_files(
         maybe_test_config.map(|c| c.files),
         Some(test_flags.files),
+        initial_cwd,
       )?,
       allow_none: test_flags.allow_none,
       concurrent_jobs: test_flags
@@ -362,17 +376,26 @@ pub enum LintReporterKind {
   Compact,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
-  pub files: FilesConfig,
+  pub files: FilePatterns,
   pub reporter_kind: LintReporterKind,
 }
 
 impl LintOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      rules: Default::default(),
+      files: FilePatterns::new_with_base(base),
+      reporter_kind: Default::default(),
+    }
+  }
+
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
     maybe_lint_flags: Option<LintFlags>,
+    initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
@@ -420,7 +443,11 @@ impl LintOptions {
       maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
-      files: resolve_files(maybe_config_files, Some(maybe_file_flags))?,
+      files: resolve_files(
+        maybe_config_files,
+        Some(maybe_file_flags),
+        initial_cwd,
+      )?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,
         maybe_rules_tags,
@@ -694,14 +721,6 @@ impl CliOptions {
       } else {
         None
       };
-
-    // TODO(bartlomieju): remove in v1.39 or v1.40.
-    if let Some(wsconfig) = &maybe_workspace_config {
-      if !wsconfig.members.is_empty() && !flags.unstable_workspaces {
-        eprintln!("Use of unstable 'workspaces' feature. The --unstable-workspaces flags must be provided.");
-        std::process::exit(70);
-      }
-    }
 
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
@@ -1167,7 +1186,7 @@ impl CliOptions {
     } else {
       None
     };
-    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags))
+    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags), &self.initial_cwd)
   }
 
   pub fn resolve_lint_options(
@@ -1179,7 +1198,17 @@ impl CliOptions {
     } else {
       None
     };
-    LintOptions::resolve(maybe_lint_config, Some(lint_flags))
+    LintOptions::resolve(maybe_lint_config, Some(lint_flags), &self.initial_cwd)
+  }
+
+  pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
+    let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
+    {
+      config_file.to_files_config()?
+    } else {
+      None
+    };
+    Ok(maybe_config_files.map(|f| f.exclude).unwrap_or_default())
   }
 
   pub fn resolve_test_options(
@@ -1191,7 +1220,7 @@ impl CliOptions {
     } else {
       None
     };
-    TestOptions::resolve(maybe_test_config, Some(test_flags))
+    TestOptions::resolve(maybe_test_config, Some(test_flags), &self.initial_cwd)
   }
 
   pub fn resolve_bench_options(
@@ -1204,7 +1233,11 @@ impl CliOptions {
     } else {
       None
     };
-    BenchOptions::resolve(maybe_bench_config, Some(bench_flags))
+    BenchOptions::resolve(
+      maybe_bench_config,
+      Some(bench_flags),
+      &self.initial_cwd,
+    )
   }
 
   /// Vector of user script CLI arguments.
@@ -1626,26 +1659,29 @@ impl StorageKeyResolver {
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
-  maybe_files_config: Option<FilesConfig>,
+  maybe_files_config: Option<FilePatterns>,
   maybe_file_flags: Option<FileFlags>,
-) -> Result<FilesConfig, AnyError> {
-  let mut result = maybe_files_config.unwrap_or_default();
+  initial_cwd: &Path,
+) -> Result<FilePatterns, AnyError> {
+  let mut maybe_files_config = maybe_files_config
+    .unwrap_or_else(|| FilePatterns::new_with_base(initial_cwd.to_path_buf()));
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
-      result.include = Some(file_flags.include);
+      maybe_files_config.include =
+        Some(PathOrPatternSet::from_relative_path_or_patterns(
+          initial_cwd,
+          &file_flags.include,
+        )?);
     }
     if !file_flags.ignore.is_empty() {
-      result.exclude = file_flags.ignore;
+      maybe_files_config.exclude =
+        PathOrPatternSet::from_relative_path_or_patterns(
+          initial_cwd,
+          &file_flags.ignore,
+        )?;
     }
   }
-  // Now expand globs if there are any
-  result.include = match result.include {
-    Some(include) => Some(expand_globs(include)?),
-    None => None,
-  };
-  result.exclude = expand_globs(result.exclude)?;
-
-  Ok(result)
+  Ok(maybe_files_config)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1667,6 +1703,8 @@ pub fn npm_pkg_req_ref_to_binary_command(
 
 #[cfg(test)]
 mod test {
+  use crate::util::fs::FileCollector;
+
   use super::*;
   use pretty_assertions::assert_eq;
 
@@ -1854,53 +1892,65 @@ mod test {
     temp_dir.write("pages/[id].ts", "");
 
     let temp_dir_path = temp_dir.path().as_path();
-    let error = resolve_files(
-      Some(FilesConfig {
-        include: Some(vec![temp_dir_path.join("data/**********.ts")]),
-        exclude: vec![],
-      }),
-      None,
+    let error = PathOrPatternSet::from_relative_path_or_patterns(
+      temp_dir_path,
+      &["data/**********.ts".to_string()],
     )
     .unwrap_err();
     assert!(error.to_string().starts_with("Failed to expand glob"));
 
     let resolved_files = resolve_files(
-      Some(FilesConfig {
-        include: Some(vec![
-          temp_dir_path.join("data/test1.?s"),
-          temp_dir_path.join("nested/foo/*.ts"),
-          temp_dir_path.join("nested/fizz/*.ts"),
-          temp_dir_path.join("pages/[id].ts"),
-        ]),
-        exclude: vec![temp_dir_path.join("nested/**/*bazz.ts")],
+      Some(FilePatterns {
+        base: temp_dir_path.to_path_buf(),
+        include: Some(
+          PathOrPatternSet::from_relative_path_or_patterns(
+            temp_dir_path,
+            &[
+              "data/test1.?s".to_string(),
+              "nested/foo/*.ts".to_string(),
+              "nested/fizz/*.ts".to_string(),
+              "pages/[id].ts".to_string(),
+            ],
+          )
+          .unwrap(),
+        ),
+        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+          temp_dir_path,
+          &["nested/**/*bazz.ts".to_string()],
+        )
+        .unwrap(),
       }),
       None,
+      temp_dir_path,
     )
     .unwrap();
 
+    let mut files = FileCollector::new(|_, _| true)
+      .ignore_git_folder()
+      .ignore_node_modules()
+      .ignore_vendor_folder()
+      .collect_file_patterns(resolved_files)
+      .unwrap();
+
+    files.sort();
+
     assert_eq!(
-      resolved_files.include,
-      Some(vec![
-        temp_dir_path.join("data/test1.js"),
-        temp_dir_path.join("data/test1.ts"),
-        temp_dir_path.join("nested/foo/bar.ts"),
-        temp_dir_path.join("nested/foo/bazz.ts"),
-        temp_dir_path.join("nested/foo/fizz.ts"),
-        temp_dir_path.join("nested/foo/foo.ts"),
-        temp_dir_path.join("nested/fizz/bar.ts"),
-        temp_dir_path.join("nested/fizz/bazz.ts"),
-        temp_dir_path.join("nested/fizz/fizz.ts"),
-        temp_dir_path.join("nested/fizz/foo.ts"),
-        temp_dir_path.join("pages/[id].ts"),
-      ])
-    );
-    assert_eq!(
-      resolved_files.exclude,
+      files,
       vec![
-        temp_dir_path.join("nested/fizz/bazz.ts"),
-        temp_dir_path.join("nested/foo/bazz.ts"),
+        "data/test1.js",
+        "data/test1.ts",
+        "nested/fizz/bar.ts",
+        "nested/fizz/fizz.ts",
+        "nested/fizz/foo.ts",
+        "nested/foo/bar.ts",
+        "nested/foo/fizz.ts",
+        "nested/foo/foo.ts",
+        "pages/[id].ts",
       ]
-    )
+      .into_iter()
+      .map(|p| normalize_path(temp_dir_path.join(p)))
+      .collect::<Vec<_>>()
+    );
   }
 
   #[test]

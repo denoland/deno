@@ -13,6 +13,9 @@ use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -21,7 +24,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -220,20 +223,11 @@ fn generate_coverage_report(
       continue;
     }
 
-    let dest_line_index = text_lines.line_index(
-      text_lines
-        .byte_index_from_char_index(function.ranges[0].start_char_offset),
+    let line_index = range_to_src_line_index(
+      &function.ranges[0],
+      &text_lines,
+      &maybe_source_map,
     );
-    let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-      source_map
-        .tokens()
-        .find(|token| token.get_dst_line() as usize == dest_line_index)
-        .map(|token| token.get_src_line() as usize)
-        .unwrap_or(0)
-    } else {
-      dest_line_index
-    };
-
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
       line_index,
@@ -244,18 +238,8 @@ fn generate_coverage_report(
   for (block_number, function) in script_coverage.functions.iter().enumerate() {
     let block_hits = function.ranges[0].count;
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-      let source_line_index = text_lines.line_index(
-        text_lines.byte_index_from_char_index(range.start_char_offset),
-      );
-      let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-        source_map
-          .tokens()
-          .find(|token| token.get_dst_line() as usize == source_line_index)
-          .map(|token| token.get_src_line() as usize)
-          .unwrap_or(0)
-      } else {
-        source_line_index
-      };
+      let line_index =
+        range_to_src_line_index(range, &text_lines, &maybe_source_map);
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -370,11 +354,50 @@ fn generate_coverage_report(
   coverage_report
 }
 
+fn range_to_src_line_index(
+  range: &cdp::CoverageRange,
+  text_lines: &TextLines,
+  maybe_source_map: &Option<SourceMap>,
+) -> usize {
+  let source_lc = text_lines.line_and_column_index(
+    text_lines.byte_index_from_char_index(range.start_char_offset),
+  );
+  if let Some(source_map) = maybe_source_map.as_ref() {
+    source_map
+      .lookup_token(source_lc.line_index as u32, source_lc.column_index as u32)
+      .map(|token| token.get_src_line() as usize)
+      .unwrap_or(0)
+  } else {
+    source_lc.line_index
+  }
+}
+
 fn collect_coverages(
   files: FileFlags,
+  initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
-  let file_paths = FileCollector::new(|file_path| {
+  let file_patterns = FilePatterns {
+    base: initial_cwd.to_path_buf(),
+    include: Some({
+      if files.include.is_empty() {
+        PathOrPatternSet::new(vec![PathOrPattern::Path(
+          initial_cwd.to_path_buf(),
+        )])
+      } else {
+        PathOrPatternSet::from_relative_path_or_patterns(
+          initial_cwd,
+          &files.include,
+        )?
+      }
+    }),
+    exclude: PathOrPatternSet::from_relative_path_or_patterns(
+      initial_cwd,
+      &files.ignore,
+    )
+    .context("Invalid ignore pattern.")?,
+  };
+  let file_paths = FileCollector::new(|file_path, _| {
     file_path
       .extension()
       .map(|ext| ext == "json")
@@ -383,16 +406,13 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .ignore_vendor_folder()
-  .add_ignore_paths(&files.ignore)
-  .collect_files(if files.include.is_empty() {
-    None
-  } else {
-    Some(&files.include)
-  })?;
+  .collect_file_patterns(file_patterns)?;
 
   for file_path in file_paths {
-    let json = fs::read_to_string(file_path.as_path())?;
-    let new_coverage: cdp::ScriptCoverage = serde_json::from_str(&json)?;
+    let new_coverage = fs::read_to_string(file_path.as_path())
+      .map_err(AnyError::from)
+      .and_then(|json| serde_json::from_str(&json).map_err(AnyError::from))
+      .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
     coverages.push(new_coverage);
   }
 
@@ -451,8 +471,11 @@ pub async fn cover_files(
   assert!(!coverage_flags.files.include.is_empty());
 
   // Use the first include path as the default output path.
-  let coverage_root = coverage_flags.files.include[0].clone();
-  let script_coverages = collect_coverages(coverage_flags.files)?;
+  let coverage_root = cli_options
+    .initial_cwd()
+    .join(&coverage_flags.files.include[0]);
+  let script_coverages =
+    collect_coverages(coverage_flags.files, cli_options.initial_cwd())?;
   if script_coverages.is_empty() {
     return Err(generic_error("No coverage files found"));
   }
@@ -511,7 +534,7 @@ pub async fn cover_files(
 
     // Check if file was transpiled
     let original_source = file.source.clone();
-    let transpiled_code: ModuleCode = match file.media_type {
+    let transpiled_code: ModuleCodeString = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs

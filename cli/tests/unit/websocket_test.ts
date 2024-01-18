@@ -405,3 +405,33 @@ Deno.test(
     await Promise.all([deferred.promise, server.finished]);
   },
 );
+
+Deno.test(
+  { sanitizeOps: false },
+  async function websocketServerGetsGhosted() {
+    const ac = new AbortController();
+    const listeningDeferred = Promise.withResolvers<void>();
+
+    const server = Deno.serve({
+      handler: (req) => {
+        const { socket, response } = Deno.upgradeWebSocket(req, {
+          idleTimeout: 2,
+        });
+        socket.onerror = () => socket.close();
+        socket.onclose = () => ac.abort();
+        return response;
+      },
+      signal: ac.signal,
+      onListen: () => listeningDeferred.resolve(),
+      hostname: "localhost",
+      port: servePort,
+    });
+
+    await listeningDeferred.promise;
+    const r = await fetch("http://localhost:4545/ghost_ws_client");
+    assertEquals(r.status, 200);
+    await r.body?.cancel();
+
+    await server.finished;
+  },
+);

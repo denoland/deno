@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
@@ -11,6 +8,10 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8ClampedArray,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 webidl.converters["PredefinedColorSpace"] = webidl.createEnumConverter(
   "PredefinedColorSpace",

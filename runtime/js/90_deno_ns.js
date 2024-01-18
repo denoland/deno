@@ -1,7 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_net_listen_udp,
+  op_net_listen_unixpacket,
+  op_runtime_memory_usage,
+} = core.ensureFastOps();
 
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
@@ -50,7 +54,7 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  memoryUsage: () => ops.op_runtime_memory_usage(),
+  memoryUsage: () => op_runtime_memory_usage(),
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
   chdir: fs.chdir,
@@ -163,9 +167,10 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  unsafeProto: 8,
-  webgpu: 9,
-  workerOptions: 10,
+  temporal: 8,
+  unsafeProto: 9,
+  webgpu: 10,
+  workerOptions: 11,
 };
 
 const denoNsUnstableById = {};
@@ -210,8 +215,8 @@ denoNsUnstableById[unstableIds.kv] = {
 
 denoNsUnstableById[unstableIds.net] = {
   listenDatagram: net.createListenDatagram(
-    ops.op_net_listen_udp,
-    ops.op_net_listen_unixpacket,
+    op_net_listen_udp,
+    op_net_listen_unixpacket,
   ),
 };
 
@@ -224,8 +229,8 @@ denoNsUnstableById[unstableIds.net] = {
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
   listenDatagram: net.createListenDatagram(
-    ops.op_net_listen_udp,
-    ops.op_net_listen_unixpacket,
+    op_net_listen_udp,
+    op_net_listen_unixpacket,
   ),
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,

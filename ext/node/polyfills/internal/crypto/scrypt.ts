@@ -29,9 +29,9 @@ SOFTWARE.
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { core } from "ext:core/mod.js";
 const {
+  op_node_scrypt_sync,
   op_node_scrypt_async,
 } = core.ensureFastOps();
 
@@ -78,7 +78,7 @@ export function scryptSync(
   }
 
   const buf = Buffer.alloc(keylen);
-  ops.op_node_scrypt_sync(
+  op_node_scrypt_sync(
     password,
     salt,
     keylen,

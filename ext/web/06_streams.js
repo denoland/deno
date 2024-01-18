@@ -8,6 +8,12 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   op_arraybuffer_was_detached,
   op_transfer_arraybuffer,
   op_readable_stream_resource_allocate,
@@ -19,24 +25,13 @@ const {
   op_readable_stream_resource_close,
   op_readable_stream_resource_await_close,
 } = core.ensureFastOps();
-// TODO(mmastrac): use readAll
 const {
+  // TODO(mmastrac): use readAll
   op_read_all,
 } = core.ensureFastOps(true);
-
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "ext:deno_web/02_structured_clone.js";
-import {
-  AbortSignalPrototype,
-  add,
-  newSignal,
-  remove,
-  signalAbort,
-} from "ext:deno_web/03_abort_signal.js";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayPrototypeMap,
@@ -96,6 +91,17 @@ const {
   WeakMapPrototypeSet,
   queueMicrotask,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+import {
+  AbortSignalPrototype,
+  add,
+  newSignal,
+  remove,
+  signalAbort,
+} from "ext:deno_web/03_abort_signal.js";
+
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
 
@@ -272,8 +278,7 @@ class Queue {
  * @returns {boolean}
  */
 function isDetachedBuffer(O) {
-  // deno-lint-ignore prefer-primordials
-  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+  if (isSharedArrayBuffer(O)) {
     return false;
   }
   return ArrayBufferPrototypeGetByteLength(O) === 0 &&
@@ -286,11 +291,7 @@ function isDetachedBuffer(O) {
  */
 function canTransferArrayBuffer(O) {
   assert(typeof O === "object");
-  assert(
-    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, O) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O),
-  );
+  assert(isAnyArrayBuffer(O));
   if (isDetachedBuffer(O)) {
     return false;
   }
@@ -311,8 +312,7 @@ function transferArrayBuffer(O) {
  * @returns {number}
  */
 function getArrayBufferByteLength(O) {
-  // deno-lint-ignore prefer-primordials
-  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+  if (isSharedArrayBuffer(O)) {
     // TODO(petamoriken): use primordials
     // deno-lint-ignore prefer-primordials
     return O.byteLength;
@@ -328,8 +328,7 @@ function getArrayBufferByteLength(O) {
 function cloneAsUint8Array(O) {
   assert(typeof O === "object");
   assert(ArrayBufferIsView(O));
-  if (TypedArrayPrototypeGetSymbolToStringTag(O) !== undefined) {
-    // TypedArray
+  if (isTypedArray(O)) {
     return TypedArrayPrototypeSlice(
       new Uint8Array(
         TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (O)),
@@ -338,7 +337,6 @@ function cloneAsUint8Array(O) {
       ),
     );
   } else {
-    // DataView
     return TypedArrayPrototypeSlice(
       new Uint8Array(
         DataViewPrototypeGetBuffer(/** @type {DataView} */ (O)),
@@ -1340,21 +1338,21 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   }
 
   let buffer, byteLength, byteOffset;
-  if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
-    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
-    byteLength = DataViewPrototypeGetByteLength(
-      /** @type {DataView} */ (chunk),
-    );
-    byteOffset = DataViewPrototypeGetByteOffset(
-      /** @type {DataView} */ (chunk),
-    );
-  } else {
+  if (isTypedArray(chunk)) {
     buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (chunk));
     byteLength = TypedArrayPrototypeGetByteLength(
       /** @type {Uint8Array} */ (chunk),
     );
     byteOffset = TypedArrayPrototypeGetByteOffset(
       /** @type {Uint8Array} */ (chunk),
+    );
+  } else {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+    byteLength = DataViewPrototypeGetByteLength(
+      /** @type {DataView} */ (chunk),
+    );
+    byteOffset = DataViewPrototypeGetByteOffset(
+      /** @type {DataView} */ (chunk),
     );
   }
 
@@ -1461,7 +1459,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
 ) {
   let cloneResult;
   try {
-    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
+    if (isArrayBuffer(buffer)) {
       cloneResult = ArrayBufferPrototypeSlice(
         buffer,
         byteOffset,
@@ -2292,11 +2290,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
   assert(controller[_pendingPullIntos].length !== 0);
 
   let buffer, byteLength, byteOffset;
-  if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
-    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
-    byteLength = DataViewPrototypeGetByteLength(/** @type {DataView} */ (view));
-    byteOffset = DataViewPrototypeGetByteOffset(/** @type {DataView} */ (view));
-  } else {
+  if (isTypedArray(view)) {
     buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (view));
     byteLength = TypedArrayPrototypeGetByteLength(
       /** @type {Uint8Array} */ (view),
@@ -2304,7 +2298,12 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
     byteOffset = TypedArrayPrototypeGetByteOffset(
       /** @type {Uint8Array} */ (view),
     );
+  } else {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+    byteLength = DataViewPrototypeGetByteLength(/** @type {DataView} */ (view));
+    byteOffset = DataViewPrototypeGetByteOffset(/** @type {DataView} */ (view));
   }
+
   assert(!isDetachedBuffer(buffer));
   const firstDescriptor = controller[_pendingPullIntos][0];
   const state = controller[_stream][_state];
@@ -3364,13 +3363,13 @@ function readableByteStreamTee(stream) {
         }
         if (chunk !== undefined) {
           let byteLength;
-          if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
-            byteLength = DataViewPrototypeGetByteLength(
-              /** @type {DataView} */ (chunk),
-            );
-          } else {
+          if (isTypedArray(chunk)) {
             byteLength = TypedArrayPrototypeGetByteLength(
               /** @type {Uint8Array} */ (chunk),
+            );
+          } else {
+            byteLength = DataViewPrototypeGetByteLength(
+              /** @type {DataView} */ (chunk),
             );
           }
           assert(byteLength === 0);
@@ -5581,15 +5580,15 @@ class ReadableStreamBYOBReader {
     }
 
     let buffer, byteLength;
-    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
-      byteLength = DataViewPrototypeGetByteLength(
-        /** @type {DataView} */ (view),
-      );
-    } else {
+    if (isTypedArray(view)) {
       buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (view));
       byteLength = TypedArrayPrototypeGetByteLength(
         /** @type {Uint8Array} */ (view),
+      );
+    } else {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (view),
       );
     }
     if (byteLength === 0) {
@@ -5613,7 +5612,7 @@ class ReadableStreamBYOBReader {
     if (options.min === 0) {
       return PromiseReject(new TypeError("options.min must be non-zero"));
     }
-    if (TypedArrayPrototypeGetSymbolToStringTag(view) !== undefined) {
+    if (isTypedArray(view)) {
       if (options.min > TypedArrayPrototypeGetLength(view)) {
         return PromiseReject(
           new RangeError("options.min must be smaller or equal to view's size"),
@@ -5745,12 +5744,12 @@ class ReadableStreamBYOBRequest {
     }
 
     let buffer, byteLength;
-    if (TypedArrayPrototypeGetSymbolToStringTag(this[_view]) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(this[_view]);
-      byteLength = DataViewPrototypeGetByteLength(this[_view]);
-    } else {
+    if (isTypedArray(this[_view])) {
       buffer = TypedArrayPrototypeGetBuffer(this[_view]);
       byteLength = TypedArrayPrototypeGetByteLength(this[_view]);
+    } else {
+      buffer = DataViewPrototypeGetBuffer(this[_view]);
+      byteLength = DataViewPrototypeGetByteLength(this[_view]);
     }
     if (isDetachedBuffer(buffer)) {
       throw new TypeError(
@@ -5774,10 +5773,10 @@ class ReadableStreamBYOBRequest {
     }
 
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(view);
-    } else {
+    if (isTypedArray(view)) {
       buffer = TypedArrayPrototypeGetBuffer(view);
+    } else {
+      buffer = DataViewPrototypeGetBuffer(view);
     }
     if (isDetachedBuffer(buffer)) {
       throw new TypeError(
@@ -5864,15 +5863,15 @@ class ReadableByteStreamController {
     const arg1 = "Argument 1";
     chunk = webidl.converters.ArrayBufferView(chunk, prefix, arg1);
     let buffer, byteLength;
-    if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
-      byteLength = DataViewPrototypeGetByteLength(
-        /** @type {DataView} */ (chunk),
-      );
-    } else {
+    if (isTypedArray(chunk)) {
       buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (chunk));
       byteLength = TypedArrayPrototypeGetByteLength(
         /** @type {Uint8Array} */ (chunk),
+      );
+    } else {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (chunk),
       );
     }
     if (byteLength === 0) {

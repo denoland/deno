@@ -494,6 +494,8 @@ export const errorMap = new Map<number, [string, string]>(
     ? codeToErrorDarwin
     : osType === "linux"
     ? codeToErrorLinux
+    : osType === "android"
+    ? codeToErrorLinux
     : osType === "freebsd"
     ? codeToErrorFreebsd
     : osType === "openbsd"
@@ -507,6 +509,8 @@ export const codeMap = new Map<string, number>(
     : osType === "darwin"
     ? errorToCodeDarwin
     : osType === "linux"
+    ? errorToCodeLinux
+    : osType === "android"
     ? errorToCodeLinux
     : osType === "freebsd"
     ? errorToCodeFreebsd

@@ -1,14 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
-
-import { setExitHandler } from "ext:runtime/30_os.js";
-import { Console } from "ext:deno_console/01_console.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
-
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
@@ -16,14 +10,12 @@ const {
   ArrayPrototypeShift,
   DateNow,
   Error,
-  FunctionPrototype,
   Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
   Set,
@@ -31,6 +23,11 @@ const {
   SymbolToStringTag,
   TypeError,
 } = primordials;
+
+import { setExitHandler } from "ext:runtime/30_os.js";
+import { Console } from "ext:deno_console/01_console.js";
+import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 
 const opSanitizerDelayResolveQueue = [];
 let hasSetOpSanitizerDelayMacrotask = false;
@@ -160,7 +157,7 @@ let opIdHostRecvCtrl = -1;
 let opNames = null;
 
 function populateOpNames() {
-  opNames = core.ops.op_op_names();
+  opNames = ops.op_op_names();
   opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
   opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
 }
@@ -174,7 +171,7 @@ function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
     if (opNames === null) populateOpNames();
-    const res = core.ops.op_test_op_sanitizer_collect(
+    const res = ops.op_test_op_sanitizer_collect(
       desc.id,
       false,
       opIdHostRecvMessage,
@@ -182,7 +179,7 @@ function assertOps(fn) {
     );
     if (res !== 0) {
       await opSanitizerDelay(res === 2);
-      core.ops.op_test_op_sanitizer_collect(
+      ops.op_test_op_sanitizer_collect(
         desc.id,
         true,
         opIdHostRecvMessage,
@@ -197,7 +194,7 @@ function assertOps(fn) {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      let res = core.ops.op_test_op_sanitizer_finish(
+      let res = ops.op_test_op_sanitizer_finish(
         desc.id,
         false,
         opIdHostRecvMessage,
@@ -205,7 +202,7 @@ function assertOps(fn) {
       );
       if (res === 1 || res === 2) {
         await opSanitizerDelay(res === 2);
-        res = core.ops.op_test_op_sanitizer_finish(
+        res = ops.op_test_op_sanitizer_finish(
           desc.id,
           true,
           opIdHostRecvMessage,
@@ -214,7 +211,7 @@ function assertOps(fn) {
       }
       postTraces = new Map(core.opCallTraces);
       if (res === 3) {
-        report = core.ops.op_test_op_sanitizer_report(desc.id);
+        report = ops.op_test_op_sanitizer_report(desc.id);
       }
     }
 
@@ -1294,7 +1291,7 @@ function createTestContext(desc) {
 
       let stepDesc;
       if (typeof nameOrFnOrOptions === "string") {
-        if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, maybeFn))) {
+        if (typeof maybeFn !== "function") {
           throw new TypeError("Expected function for second argument.");
         }
         stepDesc = {

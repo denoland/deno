@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
@@ -22,7 +23,7 @@ use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -60,6 +61,32 @@ pub fn import_meta_resolve_callback(
     &referrer,
     deno_core::ResolutionKind::DynamicImport,
   )
+}
+
+// TODO(bartlomieju): temporary measurement until we start supporting more
+// module types
+pub fn validate_import_attributes_callback(
+  scope: &mut v8::HandleScope,
+  attributes: &HashMap<String, String>,
+) {
+  for (key, value) in attributes {
+    let msg = if key != "type" {
+      Some(format!("\"{key}\" attribute is not supported."))
+    } else if value != "json" {
+      Some(format!("\"{value}\" is not a valid module type."))
+    } else {
+      None
+    };
+
+    let Some(msg) = msg else {
+      continue;
+    };
+
+    let message = v8::String::new(scope, &msg).unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
+    return;
+  }
 }
 
 #[derive(Clone, Default)]
@@ -308,7 +335,7 @@ impl MainWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+    // `runtime/web_worker.rs` and `runtime/snapshot.rs`!
     let mut extensions = vec![
       // Web APIs
       deno_webidl::deno_webidl::init_ops_and_esm(),
@@ -428,8 +455,17 @@ impl MainWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
-    options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+    #[cfg(all(
+      feature = "include_js_files_for_snapshotting",
+      not(feature = "__runtime_js_sources")
+    ))]
+    options
+      .startup_snapshot
+      .as_ref()
+      .expect("Sources are not embedded and a user snapshot was not provided.");
+
+    #[cfg(not(feature = "dont_use_runtime_snapshot"))]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, if you want to create a runtime without a snapshot use 'dont_use_runtime_snapshot' Cargo feature.");
 
     let has_notified_of_inspector_disconnect = AtomicBool::new(false);
     let wait_for_inspector_disconnect_callback = Box::new(move || {
@@ -442,9 +478,7 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: options
-        .startup_snapshot
-        .or_else(crate::js::deno_isolate_init),
+      startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
       source_map_getter: options.source_map_getter,
       skip_op_registration: options.skip_op_registration,
@@ -461,6 +495,9 @@ impl MainWorker {
       ),
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
       )),
       ..Default::default()
     });
@@ -537,7 +574,7 @@ impl MainWorker {
   pub fn execute_script(
     &mut self,
     script_name: &'static str,
-    source_code: ModuleCode,
+    source_code: ModuleCodeString,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }

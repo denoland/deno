@@ -3,47 +3,10 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import { URL } from "ext:deno_url/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import {
-  CloseEvent,
-  defineEventHandler,
-  dispatch,
-  ErrorEvent,
-  Event,
-  EventTarget,
-  MessageEvent,
-  setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
 const {
-  ArrayBufferPrototype,
-  ArrayBufferIsView,
-  ArrayPrototypeJoin,
-  ArrayPrototypeMap,
-  ArrayPrototypeSome,
-  ErrorPrototypeToString,
-  ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
-  PromisePrototypeThen,
-  RegExpPrototypeExec,
-  SafeSet,
-  SetPrototypeGetSize,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
-  String,
-  StringPrototypeEndsWith,
-  StringPrototypeToLowerCase,
-  Symbol,
-  SymbolIterator,
-  PromisePrototypeCatch,
-  SymbolFor,
-  TypedArrayPrototypeGetByteLength,
-} = primordials;
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
 import {
   op_ws_check_permission_and_cancel_handle,
   op_ws_close,
@@ -58,6 +21,46 @@ import {
   op_ws_send_ping,
   op_ws_send_text,
 } from "ext:deno_websocket/00_ops.js";
+const {
+  ArrayBufferIsView,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypeSome,
+  ErrorPrototypeToString,
+  ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  RegExpPrototypeExec,
+  SafeSet,
+  SetPrototypeGetSize,
+  String,
+  StringPrototypeEndsWith,
+  StringPrototypeToLowerCase,
+  Symbol,
+  SymbolFor,
+  SymbolIterator,
+  TypedArrayPrototypeGetByteLength,
+  Uint8Array,
+} = primordials;
+
+import { URL } from "ext:deno_url/00_url.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import {
+  CloseEvent,
+  defineEventHandler,
+  dispatch,
+  ErrorEvent,
+  Event,
+  EventTarget,
+  MessageEvent,
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
+import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
@@ -80,11 +83,7 @@ webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
     return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
@@ -329,8 +328,7 @@ class WebSocket extends EventTarget {
 
     if (ArrayBufferIsView(data)) {
       op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      // deno-lint-ignore prefer-primordials
+    } else if (isArrayBuffer(data)) {
       op_ws_send_binary(this[_rid], new Uint8Array(data));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
@@ -505,12 +503,15 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await op_ws_send_ping(this[_rid]);
+          await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
               const reason = "No response from ping frame.";
-              await op_ws_close(this[_rid], 1001, reason);
+              await PromisePrototypeCatch(
+                op_ws_close(this[_rid], 1001, reason),
+                () => {},
+              );
               this[_readyState] = CLOSED;
 
               const errEvent = new ErrorEvent("error", {
