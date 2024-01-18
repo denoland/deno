@@ -1637,6 +1637,8 @@ export class ServerImpl extends EventEmitter {
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),
         });
+        // Update socket held by `req`.
+        req.socket = socket;
         this.emit("upgrade", req, socket, Buffer.from([]));
         return response;
       } else {
