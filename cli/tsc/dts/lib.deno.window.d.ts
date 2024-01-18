@@ -4,8 +4,8 @@
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="deno.webgpu" />
-/// <reference lib="deno.webstorage" />
 /// <reference lib="deno.canvas" />
+/// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
