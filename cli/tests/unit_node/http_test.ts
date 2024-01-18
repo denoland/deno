@@ -743,7 +743,7 @@ Deno.test(
       const req = http.request(options);
       req.end();
 
-      req.on("upgrade", (res, socket, _upgradeHead) => {
+      req.on("upgrade", (_res, socket, _upgradeHead) => {
         socket.end();
         // @ts-ignore it's a socket for real
         serverSocket!.end();
