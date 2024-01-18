@@ -1,20 +1,20 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any no-var
+// deno-lint-ignore-file no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
 /** @category Web APIs */
-type PredefinedColorSpace = "srgb" | "display-p3";
+declare type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** @category Web APIs */
-interface ImageDataSettings {
+declare interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
 }
 
 /** @category Web APIs */
-interface ImageData {
+declare interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
   readonly data: Uint8ClampedArray;
   readonly height: number;
@@ -32,6 +32,18 @@ declare var ImageData: {
     settings?: ImageDataSettings,
   ): ImageData;
 };
+
+/** @category Web APIs */
+declare type ColorSpaceConversion = "default" | "none";
+
+/** @category Web APIs */
+declare type ImageOrientation = "flipY" | "from-image" | "none";
+
+/** @category Web APIs */
+declare type PremultiplyAlpha = "default" | "none" | "premultiply";
+
+/** @category Web APIs */
+declare type ResizeQuality = "high" | "low" | "medium" | "pixelated";
 
 /** @category Web APIs */
 declare type ImageBitmapSource = Blob | ImageData;
@@ -60,3 +72,16 @@ declare function createImageBitmap(
   sh: number,
   options?: ImageBitmapOptions,
 ): Promise<ImageBitmap>;
+
+/** @category Web APIs */
+interface ImageBitmap {
+  readonly height: number;
+  readonly width: number;
+  close(): void;
+}
+
+/** @category Web APIs */
+declare var ImageBitmap: {
+  prototype: ImageBitmap;
+  new (): ImageBitmap;
+};

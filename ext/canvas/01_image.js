@@ -6,6 +6,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
+import { sniffImage } from "ext:deno_web/01_mimesniff.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
@@ -430,7 +431,13 @@ function createImageBitmap(
   if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
     return (async () => {
       const data = await image.arrayBuffer();
-      // TODO: 2. mimesniff (we only support png)
+      const mimetype = sniffImage(image.type);
+      if (mimetype !== "image/png") {
+        throw new DOMException(
+          `Unsupported type '${image.type}'`,
+          "InvalidStateError",
+        );
+      }
       const { data: imageData, width, height } = ops.op_image_decode_png(data);
       const processedImage = processImage(
         imageData,
@@ -536,4 +543,4 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
   };
 }
 
-export { createImageBitmap, ImageBitmap, ImageData, _bitmapData, _detached };
+export { _bitmapData, _detached, createImageBitmap, ImageBitmap, ImageData };
