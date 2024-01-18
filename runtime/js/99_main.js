@@ -10,6 +10,7 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  ArrayPrototypePop,
   ArrayPrototypeShift,
   DateNow,
   Error,
@@ -26,7 +27,9 @@ const {
   PromisePrototypeThen,
   PromiseResolve,
   SafeSet,
+  StringPrototypeIncludes,
   StringPrototypeSplit,
+  StringPrototypeTrim,
   Symbol,
   SymbolIterator,
   TypeError,
@@ -93,9 +96,14 @@ ObjectDefineProperties(Symbol, {
 let windowIsClosing = false;
 let globalThis_;
 
+let deprecatedApiWarningDisabled = false;
 const ALREADY_WARNED_DEPRECATED = new SafeSet();
 
-function warnOnDeprecatedApi(apiName, stack) {
+function warnOnDeprecatedApi(apiName, stack, suggestion) {
+  if (deprecatedApiWarningDisabled) {
+    return;
+  }
+
   if (ALREADY_WARNED_DEPRECATED.has(apiName + stack)) {
     return;
   }
@@ -107,8 +115,11 @@ function warnOnDeprecatedApi(apiName, stack) {
   while (true) {
     // Filter out internal frames at the top of the stack - they are not useful
     // to the user.
-    if (stackLines[0].includes("(ext:") || stackLines[0].includes("(node:")) {
-      stackLines.shift();
+    if (
+      StringPrototypeIncludes(stackLines[0], "(ext:") ||
+      StringPrototypeIncludes(stackLines[0], "(node:")
+    ) {
+      ArrayPrototypeShift(stackLines);
     } else {
       break;
     }
@@ -116,36 +127,60 @@ function warnOnDeprecatedApi(apiName, stack) {
   // Now remove the last frame if it's coming from "ext:core" - this is most likely
   // event loop tick or promise handler calling a user function - again not
   // useful to the user.
-  if (stackLines[stackLines.length - 1].includes("(ext:core/")) {
-    stackLines.pop();
+  if (
+    StringPrototypeIncludes(stackLines[stackLines.length - 1], "(ext:core/")
+  ) {
+    ArrayPrototypePop(stackLines);
+  }
+
+  let isFromRemoteDependency = false;
+  const firstStackLine = stackLines[0];
+  if (firstStackLine && !StringPrototypeIncludes(firstStackLine, "file:")) {
+    isFromRemoteDependency = true;
   }
 
   ALREADY_WARNED_DEPRECATED.add(apiName + stack);
-  console.log(
+  console.error(
     "%cWarning",
     "color: yellow; font-weight: bold;",
   );
-  console.log(
-    `%c\u251c Use of deprecated API "${apiName}".`,
+  console.error(
+    `%c\u251c Use of deprecated "${apiName}" API.`,
     "color: yellow;",
   );
-  console.log("%c\u2502", "color: yellow;");
-  console.log(
+  console.error("%c\u2502", "color: yellow;");
+  console.error(
     "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
     "color: yellow;",
   );
-  // TODO(bartlomieju): add API suggestion to what to migrate to
-  console.log("%c\u2502", "color: yellow;");
-  console.log("%c\u2514 Stack trace:", "color: yellow;");
+  console.error("%c\u2502", "color: yellow;");
+  console.error(
+    `%c\u251c Suggestion: ${suggestion}`,
+    "color: yellow;",
+  );
+  if (isFromRemoteDependency) {
+    console.error("%c\u2502", "color: yellow;");
+    console.error(
+      `%c\u251c Suggestion: It appears this API is used by a remote dependency.`,
+      "color: yellow;",
+    );
+    console.error(
+      "%c\u2502             Try upgrading to the latest version of that dependency.",
+      "color: yellow;",
+    );
+  }
+
+  console.error("%c\u2502", "color: yellow;");
+  console.error("%c\u2514 Stack trace:", "color: yellow;");
   for (let i = 0; i < stackLines.length; i++) {
-    console.log(
+    console.error(
       `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
-        stackLines[i].trim()
+        StringPrototypeTrim(stackLines[i])
       }`,
       "color: yellow;",
     );
   }
-  console.log();
+  console.error();
 }
 
 function windowClose() {
@@ -526,8 +561,10 @@ function bootstrapMainRuntime(runtimeOptions) {
     3: inspectFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
+    7: shouldDisableDeprecatedApiWarning,
   } = runtimeOptions;
 
+  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -652,8 +689,10 @@ function bootstrapWorkerRuntime(
     4: enableTestingFeaturesFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
+    7: shouldDisableDeprecatedApiWarning,
   } = runtimeOptions;
 
+  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
