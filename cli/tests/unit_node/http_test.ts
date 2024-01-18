@@ -716,7 +716,9 @@ Deno.test(
     });
     // @ts-ignore it's a socket for real
     let serverSocket;
-    server.on("upgrade", (_req, socket, _head) => {
+    server.on("upgrade", (req, socket, _head) => {
+      // https://github.com/denoland/deno/issues/21979
+      assert(req.socket?.write);
       socket.write(
         "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
           "Upgrade: WebSocket\r\n" +
@@ -741,7 +743,7 @@ Deno.test(
       const req = http.request(options);
       req.end();
 
-      req.on("upgrade", (_res, socket, _upgradeHead) => {
+      req.on("upgrade", (res, socket, _upgradeHead) => {
         socket.end();
         // @ts-ignore it's a socket for real
         serverSocket!.end();
