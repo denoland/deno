@@ -2823,12 +2823,10 @@ mod permissions {
       .new_command()
       .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
       .with_pty(|mut console| {
-        console.expect("What is your name? [Jane Doe] ");
-        console.write_line_raw("John Doe");
-        console.expect("Your name is John Doe.");
-        console.expect("What is your name? [Jane Doe] ");
+        console.expect("What is your name? Jane Doe");
         console.write_line_raw("");
         console.expect("Your name is Jane Doe.");
+
         console.expect("Prompt ");
         console.write_line_raw("foo");
         console.expect("Your input is foo.");
@@ -2852,9 +2850,6 @@ mod permissions {
         console.expect("Alert [Enter] ");
         console.write_line("");
         console.expect("The end of test");
-        console.expect("What is EOF? ");
-        console.write_line("");
-        console.expect("Your answer is null");
       });
   }
 
@@ -3675,6 +3670,11 @@ itest!(unhandled_rejection_dynamic_import {
 itest!(unhandled_rejection_dynamic_import2 {
   args: "run --allow-read run/unhandled_rejection_dynamic_import2/main.ts",
   output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
+});
+
+itest!(rejection_handled {
+  args: "run --check run/rejection_handled.ts",
+  output: "run/rejection_handled.out",
 });
 
 itest!(nested_error {
@@ -4804,7 +4804,7 @@ itest!(explicit_resource_management {
 });
 
 itest!(workspaces_basic {
-  args: "run -L debug -A --unstable-workspaces main.ts",
+  args: "run -L debug -A main.ts",
   output: "run/workspaces/basic/main.out",
   cwd: Some("run/workspaces/basic/"),
   copy_temp_dir: Some("run/workspaces/basic/"),
@@ -4813,7 +4813,7 @@ itest!(workspaces_basic {
 });
 
 itest!(workspaces_member_outside_root_dir {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/member_outside_root_dir/main.out",
   cwd: Some("run/workspaces/member_outside_root_dir/"),
   copy_temp_dir: Some("run/workspaces/member_outside_root_dir/"),
@@ -4823,7 +4823,7 @@ itest!(workspaces_member_outside_root_dir {
 });
 
 itest!(workspaces_nested_member {
-  args: "run -A --unstable-workspaces main.ts",
+  args: "run -A main.ts",
   output: "run/workspaces/nested_member/main.out",
   cwd: Some("run/workspaces/nested_member/"),
   copy_temp_dir: Some("run/workspaces/nested_member/"),
@@ -4925,3 +4925,17 @@ Warning Sloppy module resolution (hint: specify path to index.tsx file in direct
 ",
     );
 }
+
+itest!(unstable_temporal_api {
+  args: "run --unstable-temporal --check run/unstable_temporal_api/main.ts",
+  output: "run/unstable_temporal_api/main.out",
+  http_server: false,
+  exit_code: 0,
+});
+
+itest!(unstable_temporal_api_missing_flag {
+  args: "run run/unstable_temporal_api/missing_flag.js",
+  output: "run/unstable_temporal_api/missing_flag.out",
+  http_server: false,
+  exit_code: 1,
+});

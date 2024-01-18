@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
 use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
 use crate::args::DocSourceFileFlag;
@@ -12,8 +11,8 @@ use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
-use crate::util::glob::FilePatterns;
-use crate::util::glob::PathOrPatternSet;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -26,19 +25,16 @@ use deno_graph::ModuleSpecifier;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
-  cli_options: &Arc<CliOptions>,
   parser: &dyn ModuleParser,
   analyzer: &dyn ModuleAnalyzer,
 ) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
   let source_file_specifier =
     ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
-  let content = get_types_declaration_file_text(cli_options.unstable());
+  let content = get_types_declaration_file_text();
   let mut loader = deno_graph::source::MemoryLoader::new(
     vec![(
       source_file_specifier.to_string(),
@@ -86,7 +82,6 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     DocSourceFileFlag::Builtin => {
       generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
-        cli_options,
         &capturing_parser,
         &analyzer,
       )
@@ -98,21 +93,9 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
-          include: Some(PathOrPatternSet::from_absolute_paths(
-            source_files
-              .iter()
-              .map(|p| {
-                if p.starts_with("https:")
-                  || p.starts_with("http:")
-                  || p.starts_with("file:")
-                {
-                  // todo(dsherret): don't store URLs in PathBufs
-                  PathBuf::from(p)
-                } else {
-                  cli_options.initial_cwd().join(p)
-                }
-              })
-              .collect(),
+          include: Some(PathOrPatternSet::from_relative_path_or_patterns(
+            cli_options.initial_cwd(),
+            source_files,
           )?),
           exclude: Default::default(),
         },
@@ -156,7 +139,6 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     let deno_ns = if doc_flags.source_files != DocSourceFileFlag::Builtin {
       let deno_ns = generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
-        cli_options,
         &capturing_parser,
         &analyzer,
       )

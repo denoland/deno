@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
@@ -60,6 +61,32 @@ pub fn import_meta_resolve_callback(
     &referrer,
     deno_core::ResolutionKind::DynamicImport,
   )
+}
+
+// TODO(bartlomieju): temporary measurement until we start supporting more
+// module types
+pub fn validate_import_attributes_callback(
+  scope: &mut v8::HandleScope,
+  attributes: &HashMap<String, String>,
+) {
+  for (key, value) in attributes {
+    let msg = if key != "type" {
+      Some(format!("\"{key}\" attribute is not supported."))
+    } else if value != "json" {
+      Some(format!("\"{value}\" is not a valid module type."))
+    } else {
+      None
+    };
+
+    let Some(msg) = msg else {
+      continue;
+    };
+
+    let message = v8::String::new(scope, &msg).unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
+    return;
+  }
 }
 
 #[derive(Clone, Default)]
@@ -469,6 +496,9 @@ impl MainWorker {
       ),
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
       )),
       ..Default::default()
     });

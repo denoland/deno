@@ -12,8 +12,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use tar::Header;
 
-use crate::util::glob::PathOrPatternSet;
 use crate::util::import_map::ImportMapUnfurler;
+use deno_config::glob::PathOrPatternSet;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {

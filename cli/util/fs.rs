@@ -1,14 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-pub use deno_core::normalize_path;
-use deno_core::unsync::spawn_blocking;
-use deno_core::ModuleSpecifier;
-use deno_runtime::deno_crypto::rand;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::PathClean;
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt::Write as FmtWrite;
@@ -22,14 +13,22 @@ use std::sync::Arc;
 use std::time::Duration;
 use walkdir::WalkDir;
 
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+pub use deno_core::normalize_path;
+use deno_core::unsync::spawn_blocking;
+use deno_core::ModuleSpecifier;
+use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::PathClean;
+
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
-
-use super::glob::FilePatterns;
-use super::glob::PathOrPattern;
-use super::glob::PathOrPatternSet;
-use super::path::specifier_to_file_path;
 
 /// Writes the file to the file system at a temporary path, then
 /// renames it to the destination in a single sys call in order
@@ -359,32 +358,16 @@ pub fn collect_specifiers(
     for path_or_pattern in path_or_patterns {
       match path_or_pattern {
         PathOrPattern::Path(path) => {
-          // todo(dsherret): we should improve this to not store URLs in a PathBuf
-          let path_str = path.to_string_lossy();
-          let lowercase_path = path_str.to_lowercase();
-          if lowercase_path.starts_with("http://")
-            || lowercase_path.starts_with("https://")
-          {
-            // take out the url
-            let url = ModuleSpecifier::parse(&path_str)
-              .with_context(|| format!("Invalid URL '{}'", path_str))?;
-            prepared.push(url);
-          } else if lowercase_path.starts_with("file://") {
-            let url = ModuleSpecifier::parse(&path_str)
-              .with_context(|| format!("Invalid URL '{}'", path_str))?;
-            let p = specifier_to_file_path(&url)?;
-            if p.is_dir() {
-              result.push(PathOrPattern::Path(p));
-            } else {
-              prepared.push(url)
-            }
-          } else if path.is_dir() {
+          if path.is_dir() {
             result.push(PathOrPattern::Path(path));
           } else if !files.exclude.matches_path(&path) {
             let url = ModuleSpecifier::from_file_path(&path)
               .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))?;
             prepared.push(url);
           }
+        }
+        PathOrPattern::RemoteUrl(remote_url) => {
+          prepared.push(remote_url);
         }
         PathOrPattern::Pattern(pattern) => {
           // add it back
@@ -824,16 +807,12 @@ mod tests {
     create_files(&ignore_dir_path, &ignore_dir_files);
 
     let file_patterns = FilePatterns {
-      include: Some(
-        PathOrPatternSet::from_absolute_paths(
-          vec![root_dir_path.to_path_buf()],
-        )
-        .unwrap(),
-      ),
-      exclude: PathOrPatternSet::from_absolute_paths(vec![
-        ignore_dir_path.to_path_buf()
-      ])
-      .unwrap(),
+      include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
+        root_dir_path.to_path_buf(),
+      )])),
+      exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+        ignore_dir_path.to_path_buf(),
+      )]),
     };
     let file_collector = FileCollector::new(|path, _| {
       // exclude dotfiles
@@ -892,17 +871,15 @@ mod tests {
 
     // test opting out of ignoring by specifying the dir
     let file_patterns = FilePatterns {
-      include: Some(
-        PathOrPatternSet::from_absolute_paths(vec![
-          root_dir_path.to_path_buf(),
+      include: Some(PathOrPatternSet::new(vec![
+        PathOrPattern::Path(root_dir_path.to_path_buf()),
+        PathOrPattern::Path(
           root_dir_path.to_path_buf().join("child/node_modules/"),
-        ])
-        .unwrap(),
-      ),
-      exclude: PathOrPatternSet::from_absolute_paths(vec![
-        ignore_dir_path.to_path_buf()
-      ])
-      .unwrap(),
+        ),
+      ])),
+      exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+        ignore_dir_path.to_path_buf(),
+      )]),
     };
     let result = file_collector.collect_file_patterns(file_patterns).unwrap();
     let expected = [
@@ -972,17 +949,19 @@ mod tests {
     let result = collect_specifiers(
       FilePatterns {
         include: Some(
-          PathOrPatternSet::from_absolute_paths(vec![
-            PathBuf::from("http://localhost:8080"),
-            root_dir_path.to_path_buf(),
-            PathBuf::from("https://localhost:8080".to_string()),
-          ])
+          PathOrPatternSet::from_relative_path_or_patterns(
+            root_dir_path.as_path(),
+            &[
+              "http://localhost:8080".to_string(),
+              "./".to_string(),
+              "https://localhost:8080".to_string(),
+            ],
+          )
           .unwrap(),
         ),
-        exclude: PathOrPatternSet::from_absolute_paths(vec![
-          ignore_dir_path.to_path_buf()
-        ])
-        .unwrap(),
+        exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+          ignore_dir_path.to_path_buf(),
+        )]),
       },
       predicate,
     )
@@ -1018,14 +997,14 @@ mod tests {
     };
     let result = collect_specifiers(
       FilePatterns {
-        include: Some(
-          PathOrPatternSet::from_absolute_paths(vec![PathBuf::from(format!(
+        include: Some(PathOrPatternSet::new(vec![PathOrPattern::new(
+          &format!(
             "{}{}",
             scheme,
             root_dir_path.join("child").to_string().replace('\\', "/")
-          ))])
-          .unwrap(),
-        ),
+          ),
+        )
+        .unwrap()])),
         exclude: Default::default(),
       },
       predicate,
