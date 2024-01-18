@@ -111,9 +111,11 @@ function callbackify<ResultT>(
       throw new NodeInvalidArgTypeError("last");
     }
     const cb = (...args: unknown[]) => {
+      // deno-lint-ignore prefer-primordials
       maybeCb.apply(this, args);
     };
     PromisePrototypeThen(
+      // deno-lint-ignore prefer-primordials
       this.apply(args),
       (ret: unknown) => {
         nextTick(FunctionPrototypeBind(cb, this, null, ret));
