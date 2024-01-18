@@ -13,6 +13,7 @@ use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
+use deno_runtime::colors;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
@@ -33,12 +34,10 @@ pub async fn kernel(
   flags: Flags,
   jupyter_flags: JupyterFlags,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    eprintln!(
-      "Unstable subcommand 'deno jupyter'. The --unstable flag must be provided."
-    );
-    std::process::exit(70);
-  }
+  log::info!(
+    "{} \"deno jupyter\" is unstable and might change in the future.",
+    colors::yellow("Warning"),
+  );
 
   if !jupyter_flags.install && !jupyter_flags.kernel {
     install::status()?;

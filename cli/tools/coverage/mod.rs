@@ -378,6 +378,7 @@ fn collect_coverages(
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
   let file_patterns = FilePatterns {
+    base: initial_cwd.to_path_buf(),
     include: Some({
       if files.include.is_empty() {
         PathOrPatternSet::new(vec![PathOrPattern::Path(
