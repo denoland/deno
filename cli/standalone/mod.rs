@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
@@ -38,8 +38,10 @@ use deno_core::futures::FutureExt;
 use deno_core::v8_set_flags;
 use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -147,13 +149,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
     original_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
+    _requested_module_type: RequestedModuleType,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let is_data_uri = get_source_from_data_url(original_specifier).ok();
     if let Some((source, _)) = is_data_uri {
       return Box::pin(deno_core::futures::future::ready(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          source.into(),
+          ModuleSourceCode::String(source.into()),
           original_specifier,
         ),
       )));
@@ -178,7 +181,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               MediaType::Json => ModuleType::Json,
               _ => ModuleType::JavaScript,
             },
-            code_source.code,
+            ModuleSourceCode::String(code_source.code),
             original_specifier,
             &code_source.found_url,
           ),
@@ -215,7 +218,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             unreachable!();
           }
         },
-        code.into(),
+        ModuleSourceCode::String(code.into()),
         &original_specifier,
         &found_specifier,
       ))
@@ -487,6 +490,11 @@ pub async fn run(
     if metadata.unstable {
       checker.enable_legacy_unstable();
     }
+    for feature in metadata.unstable_features {
+      // `metadata` is valid for the whole lifetime of the program, so we
+      // can leak the string here.
+      checker.enable_feature(feature.leak());
+    }
     checker
   });
   let worker_factory = CliMainWorkerFactory::new(
@@ -530,6 +538,7 @@ pub async fn run(
       unstable: metadata.unstable,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
+    None,
   );
 
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));

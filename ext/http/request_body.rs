@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use bytes::Bytes;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
@@ -9,9 +9,9 @@ use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::RcRef;
 use deno_core::Resource;
-use hyper1::body::Body;
-use hyper1::body::Incoming;
-use hyper1::body::SizeHint;
+use hyper::body::Body;
+use hyper::body::Incoming;
+use hyper::body::SizeHint;
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::rc::Rc;

@@ -1,11 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_core::error::AnyError;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -76,7 +76,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCode, AnyError> {
+  ) -> Result<ModuleCodeString, AnyError> {
     let source_hash = self.get_source_hash(source);
 
     if let Some(emit_code) =

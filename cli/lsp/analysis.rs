@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
@@ -133,7 +133,7 @@ pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let linter = create_linter(parsed_source.media_type(), lint_rules);
+  let linter = create_linter(lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
@@ -423,11 +423,11 @@ fn fix_ts_import_action(
   if action.fix_name == "import" {
     let change = action
       .changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Unexpected action changes."))?;
     let text_change = change
       .text_changes
-      .get(0)
+      .first()
       .ok_or_else(|| anyhow!("Missing text change."))?;
     if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
     {

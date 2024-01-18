@@ -1,10 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::import_meta_resolve_callback;
+use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -28,7 +30,7 @@ use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -43,7 +45,6 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
-use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -182,6 +183,7 @@ impl WebWorkerInternalHandle {
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(&mut self) {
     self.cancel.cancel();
+    self.terminate_waker.wake();
 
     // This function can be called multiple times by whomever holds
     // the handle. However only a single "termination" should occur so
@@ -397,7 +399,7 @@ impl WebWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/worker.rs` and `runtime/snapshot.rs`!
+    // `runtime/worker.rs` and `runtime/snapshot.rs`!
 
     let mut extensions = vec![
       // Web APIs
@@ -408,6 +410,7 @@ impl WebWorker {
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -507,8 +510,17 @@ impl WebWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
-    options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+    #[cfg(all(
+      feature = "include_js_files_for_snapshotting",
+      not(feature = "__runtime_js_sources")
+    ))]
+    options
+      .startup_snapshot
+      .as_ref()
+      .expect("Sources are not embedded and a user snapshot was not provided.");
+
+    #[cfg(not(feature = "dont_use_runtime_snapshot"))]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, if you want to create a runtime without a snapshot use 'dont_use_runtime_snapshot' Cargo feature.");
 
     // Hook up the summary metrics if the user or subcommand requested them
     let (op_summary_metrics, op_metrics_factory_fn) =
@@ -522,25 +534,23 @@ impl WebWorker {
         (None, None)
       };
 
-    // Clear extension modules from the module map, except preserve `node:*`
-    // modules as `node:` specifiers.
-    let preserve_snapshotted_modules =
-      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: options
-        .startup_snapshot
-        .or_else(crate::js::deno_isolate_init),
+      startup_snapshot: options.startup_snapshot,
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
-      preserve_snapshotted_modules,
       feature_checker: Some(options.feature_checker.clone()),
       op_metrics_factory_fn,
+      import_meta_resolve_callback: Some(Box::new(
+        import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
+      )),
       ..Default::default()
     });
 
@@ -650,7 +660,7 @@ impl WebWorker {
   pub fn execute_script(
     &mut self,
     name: &'static str,
-    source_code: ModuleCode,
+    source_code: ModuleCodeString,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())
@@ -696,9 +706,8 @@ impl WebWorker {
         maybe_result
       }
 
-      event_loop_result = self.js_runtime.run_event_loop(false) => {
+      event_loop_result = self.js_runtime.run_event_loop(PollEventLoopOptions::default()) => {
         event_loop_result?;
-
         receiver.await
       }
     }
@@ -712,10 +721,7 @@ impl WebWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
-    let poll_options = PollEventLoopOptions {
-      wait_for_inspector: false,
-      ..Default::default()
-    };
+    let poll_options = PollEventLoopOptions::default();
 
     tokio::select! {
       biased;
@@ -730,7 +736,6 @@ impl WebWorker {
            return Ok(());
         }
         event_loop_result?;
-
         receiver.await
       }
     }
@@ -748,7 +753,7 @@ impl WebWorker {
 
     self.internal_handle.terminate_waker.register(cx.waker());
 
-    match self.js_runtime.poll_event_loop2(cx, poll_options) {
+    match self.js_runtime.poll_event_loop(cx, poll_options) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.terminate_if_needed() {

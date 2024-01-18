@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
@@ -45,14 +45,25 @@ fn macos_shared_libraries() {
   // target/release/deno:
   //  /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 1953.1.0)
   //  /System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1228.0.0)
+  //  /System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (compatibility version 1.2.0, current version 1.11.0, weak)
+  //  /System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 341.16.0, weak)
+  //  /System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1774.0.4, weak)
+  //  /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders (compatibility version 1.0.0, current version 127.0.19, weak)
   // 	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
-  const EXPECTED: [&str; 5] = [
-    "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
-    "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
-    "/usr/lib/libiconv.2.dylib",
-    "/usr/lib/libSystem.B.dylib",
-    "/usr/lib/libobjc.A.dylib",
+  // 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+
+  // path and whether its weak or not
+  const EXPECTED: [(&str, bool); 9] = [
+    ("/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation", false),
+    ("/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices", false),
+    ("/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore", true),
+    ("/System/Library/Frameworks/Metal.framework/Versions/A/Metal", true),
+    ("/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics", true),
+    ("/System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders", true),
+    ("/usr/lib/libiconv.2.dylib", false),
+    ("/usr/lib/libSystem.B.dylib", false),
+    ("/usr/lib/libobjc.A.dylib", false),
   ];
 
   let otool = std::process::Command::new("otool")
@@ -64,9 +75,9 @@ fn macos_shared_libraries() {
   let output = std::str::from_utf8(&otool.stdout).unwrap();
   // Ensure that the output contains only the expected shared libraries.
   for line in output.lines().skip(1) {
-    let path = line.split_whitespace().next().unwrap();
+    let (path, attributes) = line.trim().split_once(' ').unwrap();
     assert!(
-      EXPECTED.contains(&path),
+      EXPECTED.contains(&(path, attributes.ends_with("weak)"))),
       "Unexpected shared library: {}",
       path
     );

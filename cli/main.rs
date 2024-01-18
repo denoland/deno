@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod args;
 mod auth_tokens;
@@ -195,7 +195,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
-      let types = tsc::get_types_declaration_file_text(flags.unstable);
+      let types = tsc::get_types_declaration_file_text();
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
     #[cfg(feature = "upgrade")]
@@ -271,7 +271,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js`.
+// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
 pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
   // flag name
   &str,
@@ -286,44 +286,57 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     1,
   ),
   (
+    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Deno.cron API",
+    2,
+  ),
+  (
     deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
     "Enable unstable FFI APIs",
-    2,
+    3,
   ),
   (
     deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
     "Enable unstable file system APIs",
-    3,
-  ),
-  (
-    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Key-Value store APIs",
     4,
-  ),
-  (
-    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
-    "Enable unstable net APIs",
-    5,
   ),
   (
     deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
     "Enable unstable HTTP APIs",
+    5,
+  ),
+  (
+    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Key-Value store APIs",
     6,
   ),
   (
-    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Web Worker APIs",
+    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
+    "Enable unstable net APIs",
     7,
   ),
   (
-    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Deno.cron API",
+    "temporal",
+    "Enable unstable Temporal API",
+    // Not used in JS
     8,
   ),
   (
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",
+    // This number is used directly in the JS code. Search
+    // for "unstableIds" to see where it's used.
     9,
+  ),
+  (
+    deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
+    "Enable unstable `WebGPU` API",
+    10,
+  ),
+  (
+    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
+    "Enable unstable Web Worker APIs",
+    11,
   ),
 ];
 
@@ -387,7 +400,15 @@ pub fn main() {
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
-      _ => vec![],
+      _ => {
+        if flags.unstable
+          || flags.unstable_features.contains(&"temporal".to_string())
+        {
+          vec!["--harmony-temporal".to_string()]
+        } else {
+          vec![]
+        }
+      }
     };
     init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
     deno_core::JsRuntime::init_platform(None);
@@ -401,4 +422,21 @@ pub fn main() {
     unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
 
   std::process::exit(exit_code);
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn unstable_granular_flag_names_sorted() {
+    let flags = UNSTABLE_GRANULAR_FLAGS
+      .iter()
+      .map(|(name, _, _)| name.to_string())
+      .collect::<Vec<_>>();
+    let mut sorted_flags = flags.clone();
+    sorted_flags.sort();
+    // sort the flags by name so they appear nicely in the help text
+    assert_eq!(flags, sorted_flags);
+  }
 }

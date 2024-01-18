@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -6,10 +6,19 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, internals } from "ext:core/mod.js";
+const {
+  op_node_child_ipc_pipe,
+} = core.ensureFastOps();
+const {
+  op_npm_process_state,
+} = core.ensureFastOps(true);
+
 import {
   ChildProcess,
   ChildProcessOptions,
   normalizeSpawnArguments,
+  setupChannel,
   type SpawnOptions,
   spawnSync as _spawnSync,
   type SpawnSyncOptions,
@@ -46,8 +55,6 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
-
-const { core } = globalThis.__bootstrap;
 
 const MAX_BUFFER = 1024 * 1024;
 
@@ -149,8 +156,7 @@ export function fork(
   options.shell = false;
 
   Object.assign(options.env ??= {}, {
-    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: core.ops
-      .op_npm_process_state(),
+    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: op_npm_process_state(),
   });
 
   return spawn(options.execPath, args, options);
@@ -820,6 +826,14 @@ export function execFileSync(
 
   return ret.stdout as string | Buffer;
 }
+
+function setupChildProcessIpcChannel() {
+  const fd = op_node_child_ipc_pipe();
+  if (typeof fd != "number" || fd < 0) return;
+  setupChannel(process, fd);
+}
+
+internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
 
 export default {
   fork,

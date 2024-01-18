@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CompileFlags;
 use crate::args::Flags;
@@ -37,6 +37,18 @@ pub async fn compile(
     vec
   };
 
+  // this is not supported, so show a warning about it, but don't error in order
+  // to allow someone to still run `deno compile` when this is in a deno.json
+  if cli_options.unstable_sloppy_imports() {
+    log::warn!(
+      concat!(
+        "{} Sloppy imports are not supported in deno compile. ",
+        "The compiled executable may encouter runtime errors.",
+      ),
+      crate::colors::yellow("Warning"),
+    );
+  }
+
   let output_path = resolve_compile_executable_output_path(
     &compile_flags,
     cli_options.initial_cwd(),
@@ -71,8 +83,9 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)?;
-  binary_writer
+  let mut file = std::fs::File::create(&output_path)
+    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
+  let write_result = binary_writer
     .write_bin(
       &mut file,
       eszip,
@@ -81,8 +94,13 @@ pub async fn compile(
       cli_options,
     )
     .await
-    .with_context(|| format!("Writing {}", output_path.display()))?;
+    .with_context(|| format!("Writing {}", output_path.display()));
   drop(file);
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the output path
+    let _ = std::fs::remove_file(output_path);
+    return Err(err);
+  }
 
   // set it as executable
   #[cfg(unix)]

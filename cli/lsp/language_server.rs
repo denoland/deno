@@ -1,5 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use base64::Engine;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -30,6 +31,9 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
@@ -102,6 +106,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_cli_npm_resolver_for_lsp;
@@ -159,14 +164,14 @@ impl LspNpmConfigHash {
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StateNpmSnapshot {
   pub node_resolver: Arc<NodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 /// Snapshot of the state used by TSC.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
@@ -174,6 +179,44 @@ pub struct StateSnapshot {
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub npm: Option<StateNpmSnapshot>,
+}
+
+type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
+
+/// Used to queue tasks from inside of the language server lock that must be
+/// commenced from outside of it. For example, queue a request to cache a module
+/// after having loaded a config file which references it.
+#[derive(Debug)]
+struct LanguageServerTaskQueue {
+  task_tx: UnboundedSender<LanguageServerTaskFn>,
+  /// This is moved out to its own task after initializing.
+  task_rx: Option<UnboundedReceiver<LanguageServerTaskFn>>,
+}
+
+impl Default for LanguageServerTaskQueue {
+  fn default() -> Self {
+    let (task_tx, task_rx) = unbounded_channel();
+    Self {
+      task_tx,
+      task_rx: Some(task_rx),
+    }
+  }
+}
+
+impl LanguageServerTaskQueue {
+  fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
+    self.task_tx.send(task_fn).is_ok()
+  }
+
+  /// Panics if called more than once.
+  fn start(&mut self, ls: LanguageServer) {
+    let mut task_rx = self.task_rx.take().unwrap();
+    spawn(async move {
+      while let Some(task_fn) = task_rx.recv().await {
+        task_fn(ls.clone());
+      }
+    });
+  }
 }
 
 #[derive(Debug)]
@@ -195,6 +238,7 @@ pub struct Inner {
   /// on disk or "open" within the client.
   pub documents: Documents,
   http_client: Arc<HttpClient>,
+  task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
   module_registries: ModuleRegistry,
   /// The path to the module registries cache
@@ -256,12 +300,14 @@ impl LanguageServer {
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
+        unstable_sloppy_imports: cli_options.unstable_sloppy_imports(),
       };
       let graph = module_graph_builder
         .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
         &graph,
+        factory.fs().as_ref(),
         &roots,
         graph_util::GraphValidOptions {
           is_vendoring: false,
@@ -497,6 +543,7 @@ impl Inner {
       maybe_import_map_uri: None,
       maybe_package_json: None,
       fmt_options: Default::default(),
+      task_queue: Default::default(),
       lint_options: Default::default(),
       maybe_testing_server: None,
       module_registries,
@@ -999,10 +1046,12 @@ impl Inner {
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
     if let Some(config_file) = self.get_config_file()? {
+      // this doesn't need to be an actual directory because flags is specified as `None`
+      let dummy_args_cwd = PathBuf::from("/");
       let lint_options = config_file
         .to_lint_config()
         .and_then(|maybe_lint_config| {
-          LintOptions::resolve(maybe_lint_config, None)
+          LintOptions::resolve(maybe_lint_config, None, &dummy_args_cwd)
         })
         .map_err(|err| {
           anyhow!("Unable to update lint configuration: {:?}", err)
@@ -1010,7 +1059,7 @@ impl Inner {
       let fmt_options = config_file
         .to_fmt_config()
         .and_then(|maybe_fmt_config| {
-          FmtOptions::resolve(maybe_fmt_config, None)
+          FmtOptions::resolve(maybe_fmt_config, None, &dummy_args_cwd)
         })
         .map_err(|err| {
           anyhow!("Unable to update formatter configuration: {:?}", err)
@@ -1020,6 +1069,41 @@ impl Inner {
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
       self.recreate_http_client_and_dependents().await?;
+      if let Some(config_file) = self.config.maybe_config_file() {
+        if let Ok((compiler_options, _)) = config_file.to_compiler_options() {
+          if let Some(compiler_options_obj) = compiler_options.as_object() {
+            if let Some(jsx_import_source) =
+              compiler_options_obj.get("jsxImportSource")
+            {
+              if let Some(jsx_import_source) = jsx_import_source.as_str() {
+                let cache_params = lsp_custom::CacheParams {
+                  referrer: TextDocumentIdentifier {
+                    uri: config_file.specifier.clone(),
+                  },
+                  uris: vec![TextDocumentIdentifier {
+                    uri: Url::parse(&format!(
+                      "data:application/typescript;base64,{}",
+                      base64::engine::general_purpose::STANDARD.encode(
+                        format!("import '{jsx_import_source}/jsx-runtime';")
+                      )
+                    ))
+                    .unwrap(),
+                  }],
+                };
+                self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+                  spawn(async move {
+                    if let Err(err) =
+                      ls.cache_request(Some(json!(cache_params))).await
+                    {
+                      lsp_warn!("{}", err);
+                    }
+                  });
+                }));
+              }
+            }
+          }
+        }
+      }
     }
 
     Ok(())
@@ -1042,7 +1126,7 @@ impl Inner {
       "experimentalDecorators": true,
       "isolatedModules": true,
       "jsx": "react",
-      "lib": ["deno.ns", "deno.window"],
+      "lib": ["deno.ns", "deno.window", "deno.unstable"],
       "module": "esnext",
       "moduleDetection": "force",
       "noEmit": true,
@@ -1053,14 +1137,6 @@ impl Inner {
       // TODO(@kitsonk) remove for Deno 1.15
       "useUnknownInCatchVariables": false,
     }));
-    let config = &self.config;
-    let workspace_settings = config.workspace_settings();
-    if workspace_settings.unstable {
-      let unstable_libs = json!({
-        "lib": ["deno.ns", "deno.window", "deno.unstable"]
-      });
-      tsconfig.merge(&unstable_libs);
-    }
     if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
       self.client.show_message(MessageType::WARNING, err);
     }
@@ -1080,7 +1156,7 @@ async fn create_npm_resolver(
   let is_byonm = std::env::var("DENO_UNSTABLE_BYONM").as_deref() == Ok("1")
     || maybe_config_file
       .as_ref()
-      .map(|c| c.json.unstable.iter().any(|c| c == "byonm"))
+      .map(|c| c.has_unstable("byonm"))
       .unwrap_or(false);
   create_cli_npm_resolver_for_lsp(if is_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
@@ -1222,6 +1298,10 @@ impl Inner {
       }
       self.config.update_capabilities(&params.capabilities);
     }
+
+    self
+      .ts_server
+      .start(self.config.internal_inspect().to_address());
 
     self.update_debug_flag();
     // Check to see if we need to change the cache path
@@ -1549,7 +1629,10 @@ impl Inner {
           .iter()
           .filter(|e| files_to_check.contains(&e.uri))
           .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-            file_event: e.clone(),
+            uri: e.uri.clone(),
+            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+              e.typ,
+            ),
             configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
           }),
       );
@@ -1580,7 +1663,10 @@ impl Inner {
           .iter()
           .filter(|e| files_to_check.contains(&e.uri))
           .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-            file_event: e.clone(),
+            uri: e.uri.clone(),
+            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+              e.typ,
+            ),
             configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
           }),
       );
@@ -3223,6 +3309,30 @@ impl tower_lsp::LanguageServer for LanguageServer {
         );
         ls.maybe_testing_server = Some(test_server);
       }
+
+      let mut config_events = vec![];
+      if let Some(config_file) = ls.config.maybe_config_file() {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          uri: config_file.specifier.clone(),
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+        });
+      }
+      if let Some(package_json) = &ls.maybe_package_json {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          uri: package_json.specifier(),
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
+        });
+      }
+      if !config_events.is_empty() {
+        ls.client.send_did_change_deno_configuration_notification(
+          lsp_custom::DidChangeDenoConfigurationNotificationParams {
+            changes: config_events,
+          },
+        );
+      }
+
       (ls.client.clone(), ls.http_client.clone())
     };
 
@@ -3240,15 +3350,15 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
+      init_log_file(ls.config.log_file());
       if let Err(err) = ls.update_tsconfig().await {
         ls.client.show_message(MessageType::WARNING, err);
       }
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
-    }
-
-    lsp_log!("Server ready.");
+      ls.task_queue.start(self.clone());
+    };
 
     if upgrade_check_enabled() {
       // spawn to avoid lsp send/sync requirement, but also just
@@ -3271,6 +3381,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
         }
       });
     }
+
+    lsp_log!("Server ready.");
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -3583,10 +3695,6 @@ impl Inner {
     let referrer = self
       .url_map
       .normalize_url(&params.referrer.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&referrer) {
-      return Ok(None);
-    }
-
     let mark = self.performance.mark_with_args("lsp.cache", &params);
     let roots = if !params.uris.is_empty() {
       params
@@ -3803,18 +3911,30 @@ impl Inner {
           .join("\n    - ")
       )
       .unwrap();
+
       contents
-        .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
-      let mut averages = self.performance.averages();
-      averages.sort();
-      for average in averages {
+        .push_str("\n## Performance (last 3 000 entries)\n\n|Name|Count|Duration|\n|---|---|---|\n");
+      let mut averages = self.performance.averages_as_f64();
+      averages.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, count, average_duration) in averages {
+        writeln!(contents, "|{}|{}|{}ms|", name, count, average_duration)
+          .unwrap();
+      }
+
+      contents.push_str(
+        "\n## Performance (total)\n\n|Name|Count|Duration|\n|---|---|---|\n",
+      );
+      let mut measurements_by_type = self.performance.measurements_by_type();
+      measurements_by_type.sort_by(|a, b| a.0.cmp(&b.0));
+      for (name, total_count, total_duration) in measurements_by_type {
         writeln!(
           contents,
-          "|{}|{}ms|{}|",
-          average.name, average.average_duration, average.count
+          "|{}|{}|{:.3}ms|",
+          name, total_count, total_duration
         )
         .unwrap();
       }
+
       Some(contents)
     } else {
       let asset_or_doc = self.get_maybe_asset_or_document(&specifier);

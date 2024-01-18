@@ -1,10 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
-use crate::colors;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
@@ -14,6 +13,9 @@ use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -22,14 +24,12 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::Error;
 use std::io::Write;
-use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
 use text_lines::TextLines;
@@ -37,6 +37,8 @@ use uuid::Uuid;
 
 mod merge;
 mod range_tree;
+mod reporter;
+mod util;
 use merge::ProcessCoverage;
 
 pub struct CoverageCollector {
@@ -156,6 +158,7 @@ impl CoverageCollector {
   }
 }
 
+#[derive(Debug, Clone)]
 struct BranchCoverageItem {
   line_index: usize,
   block_number: usize,
@@ -164,16 +167,19 @@ struct BranchCoverageItem {
   is_hit: bool,
 }
 
+#[derive(Debug, Clone)]
 struct FunctionCoverageItem {
   name: String,
   line_index: usize,
   execution_count: i64,
 }
 
-struct CoverageReport {
+#[derive(Debug, Clone)]
+pub struct CoverageReport {
   url: ModuleSpecifier,
   named_functions: Vec<FunctionCoverageItem>,
   branches: Vec<BranchCoverageItem>,
+  /// (line_index, number_of_hits)
   found_lines: Vec<(usize, i64)>,
   output: Option<PathBuf>,
 }
@@ -217,20 +223,11 @@ fn generate_coverage_report(
       continue;
     }
 
-    let dest_line_index = text_lines.line_index(
-      text_lines
-        .byte_index_from_char_index(function.ranges[0].start_char_offset),
+    let line_index = range_to_src_line_index(
+      &function.ranges[0],
+      &text_lines,
+      &maybe_source_map,
     );
-    let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-      source_map
-        .tokens()
-        .find(|token| token.get_dst_line() as usize == dest_line_index)
-        .map(|token| token.get_src_line() as usize)
-        .unwrap_or(0)
-    } else {
-      dest_line_index
-    };
-
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
       line_index,
@@ -241,18 +238,8 @@ fn generate_coverage_report(
   for (block_number, function) in script_coverage.functions.iter().enumerate() {
     let block_hits = function.ranges[0].count;
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-      let source_line_index = text_lines.line_index(
-        text_lines.byte_index_from_char_index(range.start_char_offset),
-      );
-      let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-        source_map
-          .tokens()
-          .find(|token| token.get_dst_line() as usize == source_line_index)
-          .map(|token| token.get_src_line() as usize)
-          .unwrap_or(0)
-      } else {
-        source_line_index
-      };
+      let line_index =
+        range_to_src_line_index(range, &text_lines, &maybe_source_map);
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -361,217 +348,55 @@ fn generate_coverage_report(
       line_counts
         .into_iter()
         .enumerate()
-        .map(|(index, count)| (index, count))
         .collect::<Vec<(usize, i64)>>()
     };
 
   coverage_report
 }
 
-enum CoverageReporterKind {
-  Pretty,
-  Lcov,
-}
-
-fn create_reporter(
-  kind: CoverageReporterKind,
-) -> Box<dyn CoverageReporter + Send> {
-  match kind {
-    CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
-    CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
+fn range_to_src_line_index(
+  range: &cdp::CoverageRange,
+  text_lines: &TextLines,
+  maybe_source_map: &Option<SourceMap>,
+) -> usize {
+  let source_lc = text_lines.line_and_column_index(
+    text_lines.byte_index_from_char_index(range.start_char_offset),
+  );
+  if let Some(source_map) = maybe_source_map.as_ref() {
+    source_map
+      .lookup_token(source_lc.line_index as u32, source_lc.column_index as u32)
+      .map(|token| token.get_src_line() as usize)
+      .unwrap_or(0)
+  } else {
+    source_lc.line_index
   }
-}
-
-trait CoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError>;
-
-  fn done(&mut self);
-}
-
-struct LcovCoverageReporter {}
-
-impl LcovCoverageReporter {
-  pub fn new() -> LcovCoverageReporter {
-    LcovCoverageReporter {}
-  }
-}
-
-impl CoverageReporter for LcovCoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    _file_text: &str,
-  ) -> Result<(), AnyError> {
-    // pipes output to stdout if no file is specified
-    let out_mode: Result<Box<dyn Write>, Error> = match coverage_report.output {
-      // only append to the file as the file should be created already
-      Some(ref path) => File::options()
-        .append(true)
-        .open(path)
-        .map(|f| Box::new(f) as Box<dyn Write>),
-      None => Ok(Box::new(io::stdout())),
-    };
-    let mut out_writer = out_mode?;
-
-    let file_path = coverage_report
-      .url
-      .to_file_path()
-      .ok()
-      .and_then(|p| p.to_str().map(|p| p.to_string()))
-      .unwrap_or_else(|| coverage_report.url.to_string());
-    writeln!(out_writer, "SF:{file_path}")?;
-
-    for function in &coverage_report.named_functions {
-      writeln!(
-        out_writer,
-        "FN:{},{}",
-        function.line_index + 1,
-        function.name
-      )?;
-    }
-
-    for function in &coverage_report.named_functions {
-      writeln!(
-        out_writer,
-        "FNDA:{},{}",
-        function.execution_count, function.name
-      )?;
-    }
-
-    let functions_found = coverage_report.named_functions.len();
-    writeln!(out_writer, "FNF:{functions_found}")?;
-    let functions_hit = coverage_report
-      .named_functions
-      .iter()
-      .filter(|f| f.execution_count > 0)
-      .count();
-    writeln!(out_writer, "FNH:{functions_hit}")?;
-
-    for branch in &coverage_report.branches {
-      let taken = if let Some(taken) = &branch.taken {
-        taken.to_string()
-      } else {
-        "-".to_string()
-      };
-
-      writeln!(
-        out_writer,
-        "BRDA:{},{},{},{}",
-        branch.line_index + 1,
-        branch.block_number,
-        branch.branch_number,
-        taken
-      )?;
-    }
-
-    let branches_found = coverage_report.branches.len();
-    writeln!(out_writer, "BRF:{branches_found}")?;
-    let branches_hit =
-      coverage_report.branches.iter().filter(|b| b.is_hit).count();
-    writeln!(out_writer, "BRH:{branches_hit}")?;
-    for (index, count) in &coverage_report.found_lines {
-      writeln!(out_writer, "DA:{},{}", index + 1, count)?;
-    }
-
-    let lines_hit = coverage_report
-      .found_lines
-      .iter()
-      .filter(|(_, count)| *count != 0)
-      .count();
-    writeln!(out_writer, "LH:{lines_hit}")?;
-
-    let lines_found = coverage_report.found_lines.len();
-    writeln!(out_writer, "LF:{lines_found}")?;
-
-    writeln!(out_writer, "end_of_record")?;
-    Ok(())
-  }
-
-  fn done(&mut self) {}
-}
-
-struct PrettyCoverageReporter {}
-
-impl PrettyCoverageReporter {
-  pub fn new() -> PrettyCoverageReporter {
-    PrettyCoverageReporter {}
-  }
-}
-
-impl CoverageReporter for PrettyCoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError> {
-    let lines = file_text.split('\n').collect::<Vec<_>>();
-    print!("cover {} ... ", coverage_report.url);
-
-    let hit_lines = coverage_report
-      .found_lines
-      .iter()
-      .filter(|(_, count)| *count > 0)
-      .map(|(index, _)| *index);
-
-    let missed_lines = coverage_report
-      .found_lines
-      .iter()
-      .filter(|(_, count)| *count == 0)
-      .map(|(index, _)| *index);
-
-    let lines_found = coverage_report.found_lines.len();
-    let lines_hit = hit_lines.count();
-    let line_ratio = lines_hit as f32 / lines_found as f32;
-
-    let line_coverage =
-      format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found);
-
-    if line_ratio >= 0.9 {
-      println!("{}", colors::green(&line_coverage));
-    } else if line_ratio >= 0.75 {
-      println!("{}", colors::yellow(&line_coverage));
-    } else {
-      println!("{}", colors::red(&line_coverage));
-    }
-
-    let mut last_line = None;
-    for line_index in missed_lines {
-      const WIDTH: usize = 4;
-      const SEPARATOR: &str = "|";
-
-      // Put a horizontal separator between disjoint runs of lines
-      if let Some(last_line) = last_line {
-        if last_line + 1 != line_index {
-          let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
-        }
-      }
-
-      println!(
-        "{:width$} {} {}",
-        line_index + 1,
-        colors::gray(SEPARATOR),
-        colors::red(&lines[line_index]),
-        width = WIDTH
-      );
-
-      last_line = Some(line_index);
-    }
-    Ok(())
-  }
-
-  fn done(&mut self) {}
 }
 
 fn collect_coverages(
   files: FileFlags,
+  initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
-  let file_paths = FileCollector::new(|file_path| {
+  let file_patterns = FilePatterns {
+    include: Some({
+      if files.include.is_empty() {
+        PathOrPatternSet::new(vec![PathOrPattern::Path(
+          initial_cwd.to_path_buf(),
+        )])
+      } else {
+        PathOrPatternSet::from_relative_path_or_patterns(
+          initial_cwd,
+          &files.include,
+        )?
+      }
+    }),
+    exclude: PathOrPatternSet::from_relative_path_or_patterns(
+      initial_cwd,
+      &files.ignore,
+    )
+    .context("Invalid ignore pattern.")?,
+  };
+  let file_paths = FileCollector::new(|file_path, _| {
     file_path
       .extension()
       .map(|ext| ext == "json")
@@ -580,16 +405,13 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .ignore_vendor_folder()
-  .add_ignore_paths(&files.ignore)
-  .collect_files(if files.include.is_empty() {
-    None
-  } else {
-    Some(&files.include)
-  })?;
+  .collect_file_patterns(file_patterns)?;
 
   for file_path in file_paths {
-    let json = fs::read_to_string(file_path.as_path())?;
-    let new_coverage: cdp::ScriptCoverage = serde_json::from_str(&json)?;
+    let new_coverage = fs::read_to_string(file_path.as_path())
+      .map_err(AnyError::from)
+      .and_then(|json| serde_json::from_str(&json).map_err(AnyError::from))
+      .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
     coverages.push(new_coverage);
   }
 
@@ -645,7 +467,17 @@ pub async fn cover_files(
   let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
 
-  let script_coverages = collect_coverages(coverage_flags.files)?;
+  assert!(!coverage_flags.files.include.is_empty());
+
+  // Use the first include path as the default output path.
+  let coverage_root = cli_options
+    .initial_cwd()
+    .join(&coverage_flags.files.include[0]);
+  let script_coverages =
+    collect_coverages(coverage_flags.files, cli_options.initial_cwd())?;
+  if script_coverages.is_empty() {
+    return Err(generic_error("No coverage files found"));
+  }
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,
@@ -665,13 +497,7 @@ pub async fn cover_files(
     vec![]
   };
 
-  let reporter_kind = if coverage_flags.lcov {
-    CoverageReporterKind::Lcov
-  } else {
-    CoverageReporterKind::Pretty
-  };
-
-  let mut reporter = create_reporter(reporter_kind);
+  let mut reporter = reporter::create(coverage_flags.r#type);
 
   let out_mode = match coverage_flags.output {
     Some(ref path) => match File::create(path) {
@@ -707,7 +533,7 @@ pub async fn cover_files(
 
     // Check if file was transpiled
     let original_source = file.source.clone();
-    let transpiled_code: ModuleCode = match file.media_type {
+    let transpiled_code: ModuleCodeString = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
@@ -748,7 +574,7 @@ pub async fn cover_files(
     }
   }
 
-  reporter.done();
+  reporter.done(&coverage_root);
 
   Ok(())
 }

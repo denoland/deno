@@ -1,4 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+import { core } from "ext:core/mod.js";
+const {
+  op_node_build_os,
+} = core.ensureFastOps(true);
+
 let os: {
   dlopen: {
     RTLD_DEEPBIND?: number;
@@ -196,8 +202,7 @@ let os: {
   UV_UDP_REUSEADDR: number;
 };
 
-const core = globalThis.__bootstrap.core;
-const buildOs = core.ops.op_node_build_os();
+const buildOs = op_node_build_os();
 if (buildOs === "darwin") {
   os = {
     UV_UDP_REUSEADDR: 4,
@@ -330,7 +335,7 @@ if (buildOs === "darwin") {
       PRIORITY_HIGHEST: -20,
     },
   };
-} else if (buildOs === "linux") {
+} else if (buildOs === "linux" || buildOs === "android") {
   os = {
     UV_UDP_REUSEADDR: 4,
     dlopen: {

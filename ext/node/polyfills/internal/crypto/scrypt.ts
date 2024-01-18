@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 /*
 MIT License
 
@@ -29,8 +29,11 @@ SOFTWARE.
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { core } from "ext:core/mod.js";
+const {
+  op_node_scrypt_sync,
+  op_node_scrypt_async,
+} = core.ensureFastOps();
 
 type Opts = Partial<{
   N: number;
@@ -75,7 +78,7 @@ export function scryptSync(
   }
 
   const buf = Buffer.alloc(keylen);
-  ops.op_node_scrypt_sync(
+  op_node_scrypt_sync(
     password,
     salt,
     keylen,
@@ -110,8 +113,7 @@ export function scrypt(
   }
 
   try {
-    core.opAsync(
-      "op_node_scrypt_async",
+    op_node_scrypt_async(
       password,
       salt,
       keylen,

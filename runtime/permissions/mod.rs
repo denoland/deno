@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -1376,8 +1376,21 @@ impl deno_node::NodePermissions for PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
-    self.0.lock().read.check(path, None)
+  fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, api_name)
+  }
+
+  #[inline(always)]
+  fn check_write_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, api_name)
   }
 
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {

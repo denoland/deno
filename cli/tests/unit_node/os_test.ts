@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-undef
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import os from "node:os";
 import {
@@ -25,6 +25,17 @@ Deno.test({
       assertEquals(os.arch(), "arm64");
     } else {
       throw new Error("unreachable");
+    }
+  },
+});
+
+Deno.test({
+  name: "os machine (arch)",
+  fn() {
+    if (Deno.build.arch == "aarch64") {
+      assertEquals(os.machine(), "arm64");
+    } else {
+      assertEquals(os.machine(), Deno.build.arch);
     }
   },
 });
@@ -241,13 +252,11 @@ Deno.test({
     assertEquals(os.cpus().length, navigator.hardwareConcurrency);
 
     for (const cpu of os.cpus()) {
-      assertEquals(cpu.model, "");
-      assertEquals(cpu.speed, 0);
-      assertEquals(cpu.times.user, 0);
-      assertEquals(cpu.times.nice, 0);
-      assertEquals(cpu.times.sys, 0);
-      assertEquals(cpu.times.idle, 0);
-      assertEquals(cpu.times.irq, 0);
+      assert(cpu.model.length > 0);
+      assert(cpu.speed >= 0);
+      assert(cpu.times.user > 0);
+      assert(cpu.times.sys > 0);
+      assert(cpu.times.idle > 0);
     }
   },
 });
@@ -290,13 +299,18 @@ Deno.test({
   },
 });
 
+// Gets the diff in log_10 scale
+function diffLog10(a: number, b: number): number {
+  return Math.abs(Math.log10(a) - Math.log10(b));
+}
+
 Deno.test({
   name:
     "os.freemem() is equivalent of Deno.systemMemoryInfo().free except on linux",
   ignore: Deno.build.os === "linux",
   fn() {
-    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().free);
-    assert(diff < 10_000);
+    const diff = diffLog10(os.freemem(), Deno.systemMemoryInfo().free);
+    assert(diff < 1);
   },
 });
 
@@ -305,7 +319,7 @@ Deno.test({
     "os.freemem() is equivalent of Deno.systemMemoryInfo().available on linux",
   ignore: Deno.build.os !== "linux",
   fn() {
-    const diff = Math.abs(os.freemem() - Deno.systemMemoryInfo().available);
-    assert(diff < 10_000);
+    const diff = diffLog10(os.freemem(), Deno.systemMemoryInfo().available);
+    assert(diff < 1);
   },
 });

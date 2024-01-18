@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -8,7 +8,6 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
-use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::FmtOptions;
@@ -18,10 +17,12 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
 use crate::util::text_encoding;
 use deno_ast::ParsedSource;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -72,7 +73,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
           let cli_options = factory.cli_options();
           let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
           let files =
-            collect_fmt_files(&fmt_options.files).and_then(|files| {
+            collect_fmt_files(fmt_options.files.clone()).and_then(|files| {
               if files.is_empty() {
                 Err(generic_error("No target files found."))
               } else {
@@ -85,13 +86,21 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
               // check all files on any changed (https://github.com/denoland/deno/issues/12446)
               files
                 .iter()
-                .any(|path| paths.contains(path))
+                .any(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .then_some(files)
                 .unwrap_or_else(|| [].to_vec())
             } else {
               files
                 .into_iter()
-                .filter(|path| paths.contains(path))
+                .filter(|path| {
+                  canonicalize_path(path)
+                    .map(|path| paths.contains(&path))
+                    .unwrap_or(false)
+                })
                 .collect::<Vec<_>>()
             }
           } else {
@@ -108,13 +117,14 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     let factory = CliFactory::from_flags(flags).await?;
     let cli_options = factory.cli_options();
     let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-    let files = collect_fmt_files(&fmt_options.files).and_then(|files| {
-      if files.is_empty() {
-        Err(generic_error("No target files found."))
-      } else {
-        Ok(files)
-      }
-    })?;
+    let files =
+      collect_fmt_files(fmt_options.files.clone()).and_then(|files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      })?;
     format_files(factory, fmt_options, files).await?;
   }
 
@@ -144,13 +154,12 @@ async fn format_files(
   Ok(())
 }
 
-fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_supported_ext_fmt)
+fn collect_fmt_files(files: FilePatterns) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(|path, _| is_supported_ext_fmt(path))
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
-    .add_ignore_paths(&files.exclude)
-    .collect_files(files.include.as_deref())
+    .collect_file_patterns(files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -523,7 +532,7 @@ fn get_resolved_typescript_config(
   if let Some(single_quote) = options.single_quote {
     if single_quote {
       builder.quote_style(
-        dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
+        dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
       );
     }
   }
@@ -791,5 +800,24 @@ mod test {
     .unwrap();
 
     assert_eq!(result, Some("11".to_string()));
+  }
+
+  #[test]
+  fn test_single_quote_true_prefers_single_quote() {
+    let file_text = format_file(
+      &PathBuf::from("test.ts"),
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log(\"bye\")\n",
+      &FmtOptionsConfig {
+        single_quote: Some(true),
+        ..Default::default()
+      },
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      // should use double quotes for the string with a single quote
+      "console.log(\"there's\");\nconsole.log('hi');\nconsole.log('bye');\n",
+    );
   }
 }

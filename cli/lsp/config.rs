@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
 use crate::args::ConfigFile;
@@ -6,6 +6,8 @@ use crate::lsp::logging::lsp_warn;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use deno_ast::MediaType;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_config::FmtOptionsConfig;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
@@ -407,6 +409,30 @@ pub struct LanguageWorkspaceSettings {
   pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum InspectSetting {
+  Bool(bool),
+  String(String),
+}
+
+impl Default for InspectSetting {
+  fn default() -> Self {
+    InspectSetting::Bool(false)
+  }
+}
+
+impl InspectSetting {
+  pub fn to_address(&self) -> Option<String> {
+    match self {
+      InspectSetting::Bool(false) => None,
+      InspectSetting::Bool(true) => Some("127.0.0.1:9222".to_string()),
+      InspectSetting::String(s) => Some(s.clone()),
+    }
+  }
+}
+
 /// Deno language server specific settings that are applied to a workspace.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -453,6 +479,13 @@ pub struct WorkspaceSettings {
   /// A flag that indicates if internal debug logging should be made available.
   #[serde(default)]
   pub internal_debug: bool,
+
+  #[serde(default)]
+  pub internal_inspect: InspectSetting,
+
+  /// Write logs to a file in a project-local directory.
+  #[serde(default)]
+  pub log_file: bool,
 
   /// A flag that indicates if linting is enabled for the workspace.
   #[serde(default = "default_to_true")]
@@ -502,6 +535,8 @@ impl Default for WorkspaceSettings {
       import_map: None,
       code_lens: Default::default(),
       internal_debug: false,
+      internal_inspect: Default::default(),
+      log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
@@ -717,10 +752,7 @@ impl ConfigSnapshot {
         }
       }
     }
-    if !self.specifier_enabled(specifier) {
-      return false;
-    }
-    true
+    self.specifier_enabled(specifier)
   }
 }
 
@@ -899,7 +931,7 @@ impl Config {
   }
 
   pub fn root_uri(&self) -> Option<&Url> {
-    self.workspace_folders.get(0).map(|p| &p.0)
+    self.workspace_folders.first().map(|p| &p.0)
   }
 
   pub fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
@@ -1022,7 +1054,7 @@ impl Config {
     true
   }
 
-  pub fn get_enabled_paths(&self) -> Vec<PathBuf> {
+  pub fn get_enabled_paths(&self) -> PathOrPatternSet {
     let mut paths = vec![];
     for (workspace_uri, _) in &self.workspace_folders {
       let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
@@ -1032,23 +1064,28 @@ impl Config {
       let settings = self.workspace_settings_for_specifier(workspace_uri);
       if let Some(enable_paths) = &settings.enable_paths {
         for path in enable_paths {
-          paths.push(workspace_path.join(path));
+          match PathOrPattern::from_relative(&workspace_path, path) {
+            Ok(path_or_pattern) => paths.push(path_or_pattern),
+            Err(err) => {
+              lsp_log!("Invalid enable path '{}': {:#}", path, err);
+            }
+          }
         }
       } else {
-        paths.push(workspace_path);
+        paths.push(PathOrPattern::Path(workspace_path));
       }
     }
     paths.sort();
     paths.dedup();
-    paths
+    PathOrPatternSet::new(paths)
   }
 
-  pub fn get_disabled_paths(&self) -> Vec<PathBuf> {
-    let mut paths = vec![];
+  pub fn get_disabled_paths(&self) -> PathOrPatternSet {
+    let mut path_or_patterns = vec![];
     if let Some(cf) = self.maybe_config_file() {
       if let Some(files) = cf.to_files_config().ok().flatten() {
-        for path in files.exclude {
-          paths.push(path);
+        for path in files.exclude.into_path_or_patterns() {
+          path_or_patterns.push(path);
         }
       }
     }
@@ -1060,15 +1097,23 @@ impl Config {
       let settings = self.workspace_settings_for_specifier(workspace_uri);
       if settings.enable.unwrap_or_else(|| self.has_config_file()) {
         for path in &settings.disable_paths {
-          paths.push(workspace_path.join(path));
+          path_or_patterns.push(PathOrPattern::Path(workspace_path.join(path)));
         }
       } else {
-        paths.push(workspace_path);
+        path_or_patterns.push(PathOrPattern::Path(workspace_path));
       }
     }
-    paths.sort();
-    paths.dedup();
-    paths
+    path_or_patterns.sort();
+    path_or_patterns.dedup();
+    PathOrPatternSet::new(path_or_patterns)
+  }
+
+  pub fn log_file(&self) -> bool {
+    self.settings.unscoped.log_file
+  }
+
+  pub fn internal_inspect(&self) -> &InspectSetting {
+    &self.settings.unscoped.internal_inspect
   }
 
   pub fn update_capabilities(
@@ -1143,7 +1188,7 @@ fn specifier_enabled(
     return true;
   };
   let (settings, mut folder_uri) = settings.get_for_specifier(specifier);
-  folder_uri = folder_uri.or_else(|| workspace_folders.get(0).map(|f| &f.0));
+  folder_uri = folder_uri.or_else(|| workspace_folders.first().map(|f| &f.0));
   let mut disable_paths = vec![];
   let mut enable_paths = None;
   if let Some(folder_uri) = folder_uri {
@@ -1321,6 +1366,8 @@ mod tests {
           test: true,
         },
         internal_debug: false,
+        internal_inspect: InspectSetting::Bool(false),
+        log_file: false,
         lint: true,
         document_preload_limit: 1_000,
         suggest: DenoCompletionSettings {
@@ -1544,13 +1591,13 @@ mod tests {
 
     assert_eq!(
       config.get_enabled_paths(),
-      vec![
-        PathBuf::from("/root1/sub_dir"),
-        PathBuf::from("/root1/sub_dir/other"),
-        PathBuf::from("/root1/test.ts"),
-        PathBuf::from("/root2/other.ts"),
-        PathBuf::from("/root3/"),
-      ]
+      PathOrPatternSet::new(vec![
+        PathOrPattern::Path(PathBuf::from("/root1/sub_dir")),
+        PathOrPattern::Path(PathBuf::from("/root1/sub_dir/other")),
+        PathOrPattern::Path(PathBuf::from("/root1/test.ts")),
+        PathOrPattern::Path(PathBuf::from("/root2/other.ts")),
+        PathOrPattern::Path(PathBuf::from("/root3/")),
+      ])
     );
   }
 

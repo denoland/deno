@@ -1,15 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::futures::channel::mpsc;
 use deno_core::OpState;
 
-use std::cell::RefCell;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
 use std::path::Path;
-use std::rc::Rc;
 
 mod call;
 mod callback;
@@ -59,13 +56,6 @@ pub trait FfiPermissions {
   fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
 }
 
-pub(crate) type PendingFfiAsyncWork = Box<dyn FnOnce()>;
-
-pub(crate) struct FfiState {
-  pub(crate) async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
-  pub(crate) async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
-}
-
 deno_core::extension!(deno_ffi,
   deps = [ deno_web ],
   parameters = [P: FfiPermissions],
@@ -101,35 +91,4 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
   ],
   esm = [ "00_ffi.js" ],
-  event_loop_middleware = event_loop_middleware,
 );
-
-fn event_loop_middleware(
-  op_state_rc: Rc<RefCell<OpState>>,
-  _cx: &mut std::task::Context,
-) -> bool {
-  // FFI callbacks coming in from other threads will call in and get queued.
-  let mut maybe_scheduling = false;
-
-  let mut op_state = op_state_rc.borrow_mut();
-  if let Some(ffi_state) = op_state.try_borrow_mut::<FfiState>() {
-    // TODO(mmastrac): This should be a SmallVec to avoid allocations in most cases
-    let mut work_items = Vec::with_capacity(1);
-
-    while let Ok(Some(async_work_fut)) =
-      ffi_state.async_work_receiver.try_next()
-    {
-      // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
-      work_items.push(async_work_fut);
-      maybe_scheduling = true;
-    }
-
-    // Drop the op_state and ffi_state borrows
-    drop(op_state);
-    for async_work_fut in work_items.into_iter() {
-      async_work_fut();
-    }
-  }
-
-  maybe_scheduling
-}

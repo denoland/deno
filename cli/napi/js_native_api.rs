@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #![allow(non_upper_case_globals)]
 
@@ -1361,13 +1361,15 @@ fn napi_close_escapable_handle_scope(
 #[napi_sym::napi_sym]
 fn napi_close_handle_scope(
   env: *mut Env,
-  scope: napi_handle_scope,
+  _scope: napi_handle_scope,
 ) -> napi_status {
   let env = &mut *env;
   if env.open_handle_scopes == 0 {
     return napi_handle_scope_mismatch;
   }
-  let _scope = &mut *(scope as *mut v8::HandleScope);
+  // TODO: We are not opening a handle scope, therefore we cannot close it
+  // TODO: this is also not implemented in napi_open_handle_scope
+  // let _scope = &mut *(scope as *mut v8::HandleScope);
   env.open_handle_scopes -= 1;
   napi_ok
 }
@@ -2381,6 +2383,7 @@ fn napi_open_handle_scope(
 ) -> napi_status {
   let env = &mut *env;
 
+  // TODO: this is also not implemented in napi_close_handle_scope
   // *result = &mut env.scope() as *mut _ as napi_handle_scope;
   env.open_handle_scopes += 1;
   napi_ok

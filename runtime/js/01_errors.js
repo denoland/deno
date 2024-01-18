@@ -1,8 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 const { BadResource, Interrupted } = core;
-const primordials = globalThis.__bootstrap.primordials;
 const { Error } = primordials;
 
 class NotFound extends Error {

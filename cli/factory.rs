@@ -1,6 +1,5 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -40,6 +39,7 @@ use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
+use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -60,7 +60,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
@@ -383,6 +382,11 @@ impl CliFactory {
         Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
           fs: self.fs().clone(),
           cjs_resolutions: Some(self.cjs_resolutions().clone()),
+          sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
+            Some(SloppyImportsResolver::new(self.fs().clone()))
+          } else {
+            None
+          },
           node_resolver: Some(self.node_resolver().await?.clone()),
           npm_resolver: if self.options.no_npm() {
             None
@@ -668,6 +672,7 @@ impl CliFactory {
       self.maybe_lockfile().clone(),
       self.feature_checker().clone(),
       self.create_cli_main_worker_options()?,
+      self.options.node_ipc_fd(),
     ))
   }
 
@@ -692,18 +697,11 @@ impl CliFactory {
       is_inspecting: self.options.is_inspecting(),
       is_npm_main: self.options.is_npm_main(),
       location: self.options.location_flag().clone(),
-      maybe_binary_npm_command_name: {
-        let mut maybe_binary_command_name = None;
-        if let DenoSubcommand::Run(flags) = self.options.sub_command() {
-          if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
-            // if the user ran a binary command, we'll need to set process.argv[0]
-            // to be the name of the binary command instead of deno
-            maybe_binary_command_name =
-              Some(npm_pkg_req_ref_to_binary_command(&pkg_ref));
-          }
-        }
-        maybe_binary_command_name
-      },
+      // if the user ran a binary command, we'll need to set process.argv[0]
+      // to be the name of the binary command instead of deno
+      maybe_binary_npm_command_name: self
+        .options
+        .take_binary_npm_command_name(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self

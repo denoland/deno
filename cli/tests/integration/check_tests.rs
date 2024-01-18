@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use util::env_vars_for_npm_tests;
@@ -131,6 +131,40 @@ itest!(check_deno_unstable_not_found {
 itest!(check_deno_unstable_from_config {
   args: "check --quiet --config check/deno_unstable_not_found/deno.json check/deno_unstable_not_found/main.ts",
   output_str: Some(""),
+});
+
+itest!(check_with_exclude_option_by_dir {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/ignored/index.ts",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(check_with_exclude_option_by_glob {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_glob.json check/exclude_option/ignored/index.ts",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(check_without_exclude_option {
+  args:
+    "check --quiet --config check/exclude_option/deno.json check/exclude_option/ignored/index.ts",
+  output: "check/exclude_option/exclude_option.ts.error.out",
+  exit_code: 1,
+});
+
+itest!(check_imported_files_listed_in_exclude_option {
+  args:
+    "check --quiet --config check/exclude_option/deno.exclude_dir.json check/exclude_option/index.ts",
+  output: "check/exclude_option/exclude_option.ts.error.out",
+  exit_code: 1,
+});
+
+itest!(check_with_excluded_file_specified {
+  args: "check lib/types.d.ts",
+  cwd: Some("check/excluded_file_specified/"),
+  output: "check/excluded_file_specified/check.out",
 });
 
 #[test]

@@ -1,7 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
+use deno_runtime::deno_tls::rustls::ClientConnection;
 use deno_runtime::deno_tls::rustls_pemfile;
 use lsp_types::Url;
 use std::io::BufReader;
@@ -240,8 +241,11 @@ async fn listen_tls_alpn() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
     .unwrap();
-  let mut tls_stream =
-    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+  let mut tls_stream = TlsStream::new_client_side(
+    tcp_stream,
+    ClientConnection::new(cfg, hostname).unwrap(),
+    None,
+  );
 
   let handshake = tls_stream.handshake().await.unwrap();
 
@@ -289,8 +293,11 @@ async fn listen_tls_alpn_fail() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await
     .unwrap();
-  let mut tls_stream =
-    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+  let mut tls_stream = TlsStream::new_client_side(
+    tcp_stream,
+    ClientConnection::new(cfg, hostname).unwrap(),
+    None,
+  );
 
   tls_stream.handshake().await.unwrap_err();
 

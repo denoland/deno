@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -1624,6 +1624,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to read
    * bytes into an array buffer asynchronously.
    *
+   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Reader}
+   * will be removed in v2.0.0.
+   *
    * @category I/O */
   export interface Reader {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
@@ -1657,6 +1660,9 @@ declare namespace Deno {
   /**
    * An abstract interface which when implemented provides an interface to read
    * bytes into an array buffer synchronously.
+   *
+   * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode ReaderSync}
+   * will be removed in v2.0.0.
    *
    * @category I/O */
   export interface ReaderSync {
@@ -1692,6 +1698,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to write
    * bytes from an array buffer to a file/resource asynchronously.
    *
+   * @deprecated Use {@linkcode WritableStream} instead. {@linkcode Writer}
+   * will be removed in v2.0.0.
+   *
    * @category I/O */
   export interface Writer {
     /** Writes `p.byteLength` bytes from `p` to the underlying data stream. It
@@ -1716,6 +1725,9 @@ declare namespace Deno {
    * An abstract interface which when implemented provides an interface to write
    * bytes from an array buffer to a file/resource synchronously.
    *
+   * @deprecated Use {@linkcode WritableStream} instead. {@linkcode WriterSync}
+   * will be removed in v2.0.0.
+   *
    * @category I/O */
   export interface WriterSync {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
@@ -1733,6 +1745,9 @@ declare namespace Deno {
   /**
    * An abstract interface which when implemented provides an interface to close
    * files/resources that were previously opened.
+   *
+   * @deprecated Use {@linkcode ReadableStream} and {@linkcode WritableStream}
+   * instead. {@linkcode Closer} will be removed in v2.0.0.
    *
    * @category I/O */
   export interface Closer {
@@ -1787,7 +1802,7 @@ declare namespace Deno {
    * the first error encountered while copying.
    *
    * @deprecated Use {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.copy} will be removed in the future.
+   * {@linkcode Deno.copy} will be removed in v2.0.0.
    *
    * @category I/O
    *
@@ -1805,7 +1820,7 @@ declare namespace Deno {
    * Turns a Reader, `r`, into an async iterator.
    *
    * @deprecated Use {@linkcode ReadableStream} instead. {@linkcode Deno.iter}
-   * will be removed in the future.
+   * will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -1818,7 +1833,7 @@ declare namespace Deno {
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * @deprecated Use {@linkcode ReadableStream} instead.
-   * {@linkcode Deno.iterSync} will be removed in the future.
+   * {@linkcode Deno.iterSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2490,7 +2505,7 @@ declare namespace Deno {
    * The Deno abstraction for reading and writing files.
    *
    * @deprecated Use {@linkcode Deno.FsFile} instead. {@linkcode Deno.File}
-   * will be removed in the future.
+   * will be removed in v2.0.0.
    *
    * @category File System
    */
@@ -2686,7 +2701,7 @@ declare namespace Deno {
    *
    * @deprecated Use the
    * [Web Streams API]{@link https://developer.mozilla.org/en-US/docs/Web/API/Streams_API}
-   * instead. {@linkcode Deno.Buffer} will be removed in the future.
+   * instead. {@linkcode Deno.Buffer} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2762,7 +2777,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode ReadableStream} and
    * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
-   * instead. {@linkcode Deno.readAll} will be removed in the future.
+   * instead. {@linkcode Deno.readAll} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2774,7 +2789,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode ReadableStream} and
    * [`toArrayBuffer()`](https://deno.land/std/streams/to_array_buffer.ts?s=toArrayBuffer)
-   * instead. {@linkcode Deno.readAllSync} will be removed in the future.
+   * instead. {@linkcode Deno.readAllSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2785,7 +2800,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
    * and {@linkcode ReadableStream.pipeTo} instead. {@linkcode Deno.writeAll}
-   * will be removed in the future.
+   * will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2797,7 +2812,7 @@ declare namespace Deno {
    *
    * @deprecated Use {@linkcode WritableStream}, {@linkcode ReadableStream.from}
    * and {@linkcode ReadableStream.pipeTo} instead.
-   * {@linkcode Deno.writeAllSync} will be removed in the future.
+   * {@linkcode Deno.writeAllSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -3289,10 +3304,10 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     ino: number | null;
-    /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
+    /** The underlying raw `st_mode` bits that contain the standard Unix
+     * permissions for this file/directory.
      *
-     * The underlying raw `st_mode` bits that contain the standard Unix
-     * permissions for this file/directory. */
+     * _Linux/Mac OS only._ */
     mode: number | null;
     /** Number of hard links pointing to this file.
      *
@@ -3400,7 +3415,7 @@ declare namespace Deno {
   }
 
   /** Reads the directory given by `path` and returns an async iterable of
-   * {@linkcode Deno.DirEntry}.
+   * {@linkcode Deno.DirEntry}. The order of entries is not guaranteed.
    *
    * ```ts
    * for await (const dirEntry of Deno.readDir("/")) {
@@ -3418,7 +3433,7 @@ declare namespace Deno {
   export function readDir(path: string | URL): AsyncIterable<DirEntry>;
 
   /** Synchronously reads the directory given by `path` and returns an iterable
-   * of `Deno.DirEntry`.
+   * of {@linkcode Deno.DirEntry}. The order of entries is not guaranteed.
    *
    * ```ts
    * for (const dirEntry of Deno.readDirSync("/")) {
@@ -3744,7 +3759,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface OpMetrics {
     opsDispatched: number;
@@ -3762,7 +3777,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface Metrics extends OpMetrics {
     ops: Record<string, OpMetrics>;
@@ -3793,7 +3808,7 @@ declare namespace Deno {
    *
    * @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export function metrics(): Metrics;
 
@@ -3867,7 +3882,7 @@ declare namespace Deno {
     /**
      * Stops watching the file system and closes the watcher resource.
      *
-     * @deprecated Will be removed in the future.
+     * @deprecated Will be removed in v2.0.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -3918,9 +3933,10 @@ declare namespace Deno {
   ): FsWatcher;
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Options which can be used with {@linkcode Deno.run}.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -3979,13 +3995,14 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
    *
    * If `success` is `true`, then `code` will be `0`, but if `success` is
    * `false`, the sub-process exit code will be set in `code`.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export type ProcessStatus =
@@ -4001,10 +4018,11 @@ declare namespace Deno {
     };
 
   /**
-   * * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @category Sub Process */
   export class Process<T extends RunOptions = RunOptions> {
@@ -4160,8 +4178,6 @@ declare namespace Deno {
   ): void;
 
   /**
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   *
    * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
@@ -4206,6 +4222,9 @@ declare namespace Deno {
    * {@linkcode Deno.Process}.
    *
    * Requires `allow-run` permission.
+   *
+   * @deprecated Use {@linkcode Deno.Command} instead. {@linkcode Deno.run}
+   * will be removed in v2.0.0.
    *
    * @tags allow-run
    * @category Sub Process
@@ -4943,6 +4962,7 @@ declare namespace Deno {
     os:
       | "darwin"
       | "linux"
+      | "android"
       | "windows"
       | "freebsd"
       | "netbsd"
@@ -5270,7 +5290,9 @@ declare namespace Deno {
   /** The event yielded from an {@linkcode HttpConn} which represents an HTTP
    * request from a remote client.
    *
-   * @category HTTP Server */
+   * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
+   */
   export interface RequestEvent {
     /** The request from the client in the form of the web platform
      * {@linkcode Request}. */
@@ -5289,7 +5311,9 @@ declare namespace Deno {
    * yields up {@linkcode RequestEvent} events, representing individual
    * requests on the HTTP server connection.
    *
-   * @category HTTP Server */
+   * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
+   */
   export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
      * need to be aware of this identifier. */
@@ -5354,6 +5378,7 @@ declare namespace Deno {
    * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
+   * @deprecated Use {@linkcode serve} instead.
    */
   export function serveHttp(conn: Conn): HttpConn;
 
@@ -5939,6 +5964,50 @@ declare namespace Deno {
     handler: ServeHandler;
   }
 
+  export interface ServeUnixOptions {
+    /** The unix domain socket path to listen on. */
+    path: string;
+
+    /** An {@linkcode AbortSignal} to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server starts listening. */
+    onListen?: (params: { path: string }) => void;
+  }
+
+  /** Information for a unix domain socket HTTP request.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeUnixHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.UnixAddr;
+  }
+
+  /** A handler for unix domain socket HTTP requests. Consumes a request and returns a response.
+   *
+   * If a handler throws, the server calling the handler will assume the impact
+   * of the error is isolated to the individual request. It will catch the error
+   * and if necessary will close the underlying connection.
+   *
+   * @category HTTP Server
+   */
+  export type ServeUnixHandler = (
+    request: Request,
+    info: ServeUnixHandlerInfo,
+  ) => Response | Promise<Response>;
+
+  /**
+   * @category HTTP Server
+   */
+  export interface ServeUnixInit {
+    /** The handler to invoke to process each incoming request. */
+    handler: ServeUnixHandler;
+  }
+
   /** An instance of the server created using `Deno.serve()` API.
    *
    * @category HTTP Server
@@ -5959,6 +6028,11 @@ declare namespace Deno {
 
     /** Make the server not block the event loop from finishing. */
     unref(): void;
+
+    /** Gracefully close the server. No more new connections will be accepted,
+     * while pending requests will be allowed to finish.
+     */
+    shutdown(): Promise<void>;
   }
 
   /**
@@ -5978,6 +6052,55 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(handler: ServeHandler): HttpServer;
+  /** Serves HTTP requests with the given option bag and handler.
+   *
+   * You can specify the socket path with `path` option.
+   *
+   * ```ts
+   * Deno.serve(
+   *   { path: "path/to/socket" },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * ```
+   *
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve(
+   *    { signal: ac.signal, path: "path/to/socket" },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message
+   * `Listening on path/to/socket` on listening. If you like to
+   * change this behavior, you can specify a custom `onListen` callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   path: "path/to/socket",
+   * }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeUnixOptions,
+    handler: ServeUnixHandler,
+  ): HttpServer;
   /** Serves HTTP requests with the given option bag and handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -6037,6 +6160,33 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
+  ): HttpServer;
+  /** Serves HTTP requests with the given option bag.
+   *
+   * You can specify an object with the path option, which is the
+   * unix domain socket to listen on.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * const server = Deno.serve({
+   *   path: "path/to/socket",
+   *   handler: (_req) => new Response("Hello, world"),
+   *   signal: ac.signal,
+   *   onListen({ path }) {
+   *     console.log(`Server started at ${path}`);
+   *   },
+   * });
+   * server.finished.then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    options: ServeUnixInit & ServeUnixOptions,
   ): HttpServer;
   /** Serves HTTP requests with the given option bag.
    *

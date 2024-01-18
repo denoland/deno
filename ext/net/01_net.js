@@ -1,17 +1,34 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-import {
-  readableStreamForRidUnrefable,
-  readableStreamForRidUnrefableRef,
-  readableStreamForRidUnrefableUnref,
-  writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
-
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  BadResourcePrototype,
+  InterruptedPrototype,
+} = core;
+const {
+  op_dns_resolve,
+  op_net_accept_tcp,
+  op_net_accept_unix,
+  op_net_connect_tcp,
+  op_net_connect_unix,
+  op_net_join_multi_v4_udp,
+  op_net_join_multi_v6_udp,
+  op_net_leave_multi_v4_udp,
+  op_net_leave_multi_v6_udp,
+  op_net_listen_tcp,
+  op_net_listen_unix,
+  op_net_recv_udp,
+  op_net_recv_unixpacket,
+  op_net_send_udp,
+  op_net_send_unixpacket,
+  op_net_set_multi_loopback_udp,
+  op_net_set_multi_ttl_udp,
+  op_set_keepalive,
+  op_set_nodelay,
+} = core.ensureFastOps();
+const {
+  op_cancel_handle,
+} = core.ensureFastOps(true);
 const {
   Error,
   Number,
@@ -28,6 +45,15 @@ const {
   Uint8Array,
 } = primordials;
 
+import {
+  readableStreamForRidUnrefable,
+  readableStreamForRidUnrefableRef,
+  readableStreamForRidUnrefableUnref,
+  writableStreamForRid,
+} from "ext:deno_web/06_streams.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+
 async function write(rid, data) {
   return await core.write(rid, data);
 }
@@ -41,13 +67,13 @@ async function resolveDns(query, recordType, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = ops.op_cancel_handle();
+    cancelRid = op_cancel_handle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
 
   try {
-    return await core.opAsync("op_dns_resolve", {
+    return await op_dns_resolve({
       cancelRid,
       query,
       recordType,
@@ -168,11 +194,11 @@ class Conn {
 
 class TcpConn extends Conn {
   setNoDelay(noDelay = true) {
-    return ops.op_set_nodelay(this.rid, noDelay);
+    return op_set_nodelay(this.rid, noDelay);
   }
 
   setKeepAlive(keepAlive = true) {
-    return ops.op_set_keepalive(this.rid, keepAlive);
+    return op_set_keepalive(this.rid, keepAlive);
   }
 }
 
@@ -201,10 +227,10 @@ class Listener {
     let promise;
     switch (this.addr.transport) {
       case "tcp":
-        promise = core.opAsync("op_net_accept_tcp", this.rid);
+        promise = op_net_accept_tcp(this.rid);
         break;
       case "unix":
-        promise = core.opAsync("op_net_accept_unix", this.rid);
+        promise = op_net_accept_unix(this.rid);
         break;
       default:
         throw new Error(`Unsupported transport: ${this.addr.transport}`);
@@ -279,6 +305,8 @@ class Listener {
 class Datagram {
   #rid = 0;
   #addr = null;
+  #unref = false;
+  #promise = null;
 
   constructor(rid, addr, bufSize = 1024) {
     this.#rid = rid;
@@ -295,8 +323,7 @@ class Datagram {
   }
 
   async joinMulticastV4(addr, multiInterface) {
-    await core.opAsync(
-      "op_net_join_multi_v4_udp",
+    await op_net_join_multi_v4_udp(
       this.rid,
       addr,
       multiInterface,
@@ -304,22 +331,19 @@ class Datagram {
 
     return {
       leave: () =>
-        core.opAsync(
-          "op_net_leave_multi_v4_udp",
+        op_net_leave_multi_v4_udp(
           this.rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
-        core.opAsync(
-          "op_net_set_multi_loopback_udp",
+        op_net_set_multi_loopback_udp(
           this.rid,
           true,
           loopback,
         ),
       setTTL: (ttl) =>
-        core.opAsync(
-          "op_net_set_multi_ttl_udp",
+        op_net_set_multi_ttl_udp(
           this.rid,
           ttl,
         ),
@@ -327,8 +351,7 @@ class Datagram {
   }
 
   async joinMulticastV6(addr, multiInterface) {
-    await core.opAsync(
-      "op_net_join_multi_v6_udp",
+    await op_net_join_multi_v6_udp(
       this.rid,
       addr,
       multiInterface,
@@ -336,15 +359,13 @@ class Datagram {
 
     return {
       leave: () =>
-        core.opAsync(
-          "op_net_leave_multi_v6_udp",
+        op_net_leave_multi_v6_udp(
           this.rid,
           addr,
           multiInterface,
         ),
       setLoopback: (loopback) =>
-        core.opAsync(
-          "op_net_set_multi_loopback_udp",
+        op_net_set_multi_loopback_udp(
           this.rid,
           false,
           loopback,
@@ -358,18 +379,18 @@ class Datagram {
     let remoteAddr;
     switch (this.addr.transport) {
       case "udp": {
-        ({ 0: nread, 1: remoteAddr } = await core.opAsync(
-          "op_net_recv_udp",
+        this.#promise = op_net_recv_udp(
           this.rid,
           buf,
-        ));
+        );
+        if (this.#unref) core.unrefOpPromise(this.#promise);
+        ({ 0: nread, 1: remoteAddr } = await this.#promise);
         remoteAddr.transport = "udp";
         break;
       }
       case "unixpacket": {
         let path;
-        ({ 0: nread, 1: path } = await core.opAsync(
-          "op_net_recv_unixpacket",
+        ({ 0: nread, 1: path } = await op_net_recv_unixpacket(
           this.rid,
           buf,
         ));
@@ -386,15 +407,13 @@ class Datagram {
   async send(p, opts) {
     switch (this.addr.transport) {
       case "udp":
-        return await core.opAsync(
-          "op_net_send_udp",
+        return await op_net_send_udp(
           this.rid,
           { hostname: opts.hostname ?? "127.0.0.1", port: opts.port },
           p,
         );
       case "unixpacket":
-        return await core.opAsync(
-          "op_net_send_unixpacket",
+        return await op_net_send_unixpacket(
           this.rid,
           opts.path,
           p,
@@ -406,6 +425,20 @@ class Datagram {
 
   close() {
     core.close(this.rid);
+  }
+
+  ref() {
+    this.#unref = false;
+    if (this.#promise !== null) {
+      core.refOpPromise(this.#promise);
+    }
+  }
+
+  unref() {
+    this.#unref = true;
+    if (this.#promise !== null) {
+      core.unrefOpPromise(this.#promise);
+    }
   }
 
   async *[SymbolAsyncIterator]() {
@@ -430,7 +463,7 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
+      const { 0: rid, 1: addr } = op_net_listen_tcp({
         hostname: args.hostname ?? "0.0.0.0",
         port: Number(args.port),
       }, args.reusePort);
@@ -438,7 +471,7 @@ function listen(args) {
       return new Listener(rid, addr);
     }
     case "unix": {
-      const { 0: rid, 1: path } = ops.op_net_listen_unix(
+      const { 0: rid, 1: path } = op_net_listen_unix(
         args.path,
         args[listenOptionApiName] ?? "Deno.listen",
       );
@@ -485,8 +518,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-        "op_net_connect_tcp",
+      const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tcp(
         {
           hostname: args.hostname ?? "127.0.0.1",
           port: args.port,
@@ -497,8 +529,7 @@ async function connect(args) {
       return new TcpConn(rid, remoteAddr, localAddr);
     }
     case "unix": {
-      const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-        "op_net_connect_unix",
+      const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_unix(
         args.path,
       );
       return new UnixConn(

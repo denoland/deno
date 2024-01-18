@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url::Url;
 use test_util as util;
@@ -663,3 +663,9 @@ fn conditionally_loads_type_graph() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
+
+itest!(test_include_relative_pattern_dot_slash {
+  args: "test",
+  output: "test/relative_pattern_dot_slash/output.out",
+  cwd: Some("test/relative_pattern_dot_slash"),
+});

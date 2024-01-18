@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -10,7 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
@@ -30,7 +30,6 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
-const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,

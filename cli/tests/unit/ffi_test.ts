@@ -1,6 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertThrows } from "./test_util.ts";
+import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 Deno.test({ permissions: { ffi: true } }, function dlopenInvalidArguments() {
   const filename = "/usr/lib/libc.so.6";
@@ -98,3 +98,40 @@ Deno.test({ permissions: { ffi: true } }, function pointerOf() {
   );
   assertEquals(Number(baseAddress) + 80, float64AddressOffset);
 });
+
+Deno.test({ permissions: { ffi: true } }, function callWithError() {
+  const throwCb = () => {
+    throw new Error("Error");
+  };
+  const cb = new Deno.UnsafeCallback({
+    parameters: [],
+    result: "void",
+  }, throwCb);
+  const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
+    parameters: [],
+    result: "void",
+  });
+  assertThrows(() => fnPointer.call());
+  cb.close();
+});
+
+Deno.test(
+  { permissions: { ffi: true }, ignore: true },
+  async function callNonBlockingWithError() {
+    const throwCb = () => {
+      throw new Error("Error");
+    };
+    const cb = new Deno.UnsafeCallback({
+      parameters: [],
+      result: "void",
+    }, throwCb);
+    const fnPointer = new Deno.UnsafeFnPointer(cb.pointer, {
+      parameters: [],
+      result: "void",
+      nonblocking: true,
+    });
+    // TODO(mmastrac): currently ignored as we do not thread callback exceptions through nonblocking pointers
+    await assertRejects(async () => await fnPointer.call());
+    cb.close();
+  },
+);

@@ -1,11 +1,17 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  op_webstorage_clear,
+  op_webstorage_get,
+  op_webstorage_iterate_keys,
+  op_webstorage_key,
+  op_webstorage_length,
+  op_webstorage_remove,
+  op_webstorage_set,
+} = core.ensureFastOps();
 const {
   Symbol,
   SymbolFor,
@@ -18,6 +24,8 @@ const {
   Proxy,
 } = primordials;
 
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+
 const _persistent = Symbol("[[persistent]]");
 
 class Storage {
@@ -29,7 +37,7 @@ class Storage {
 
   get length() {
     webidl.assertBranded(this, StoragePrototype);
-    return ops.op_webstorage_length(this[_persistent]);
+    return op_webstorage_length(this[_persistent]);
   }
 
   key(index) {
@@ -38,7 +46,7 @@ class Storage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
 
-    return ops.op_webstorage_key(index, this[_persistent]);
+    return op_webstorage_key(index, this[_persistent]);
   }
 
   setItem(key, value) {
@@ -48,7 +56,7 @@ class Storage {
     key = webidl.converters.DOMString(key, prefix, "Argument 1");
     value = webidl.converters.DOMString(value, prefix, "Argument 2");
 
-    ops.op_webstorage_set(key, value, this[_persistent]);
+    op_webstorage_set(key, value, this[_persistent]);
   }
 
   getItem(key) {
@@ -57,7 +65,7 @@ class Storage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     key = webidl.converters.DOMString(key, prefix, "Argument 1");
 
-    return ops.op_webstorage_get(key, this[_persistent]);
+    return op_webstorage_get(key, this[_persistent]);
   }
 
   removeItem(key) {
@@ -66,12 +74,12 @@ class Storage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     key = webidl.converters.DOMString(key, prefix, "Argument 1");
 
-    ops.op_webstorage_remove(key, this[_persistent]);
+    op_webstorage_remove(key, this[_persistent]);
   }
 
   clear() {
     webidl.assertBranded(this, StoragePrototype);
-    ops.op_webstorage_clear(this[_persistent]);
+    op_webstorage_clear(this[_persistent]);
   }
 }
 
@@ -127,7 +135,7 @@ function createStorage(persistent) {
     },
 
     ownKeys() {
-      return ops.op_webstorage_iterate_keys(persistent);
+      return op_webstorage_iterate_keys(persistent);
     },
 
     getOwnPropertyDescriptor(target, key) {

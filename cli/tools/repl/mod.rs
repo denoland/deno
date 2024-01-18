@@ -1,13 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::ReplFlags;
+use crate::cdp;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
+use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -31,7 +33,57 @@ pub use session::REPL_INTERNALS_NAME;
 use super::test::TestEvent;
 use super::test::TestEventSender;
 
-#[allow(clippy::await_holding_refcell_ref)]
+struct Repl {
+  session: ReplSession,
+  editor: ReplEditor,
+  message_handler: RustylineSyncMessageHandler,
+}
+
+impl Repl {
+  async fn run(&mut self) -> Result<(), AnyError> {
+    loop {
+      let line = read_line_and_poll(
+        &mut self.session,
+        &mut self.message_handler,
+        self.editor.clone(),
+      )
+      .await;
+      match line {
+        Ok(line) => {
+          self.editor.set_should_exit_on_interrupt(false);
+          self.editor.update_history(line.clone());
+          let output = self.session.evaluate_line_and_get_output(&line).await;
+
+          // We check for close and break here instead of making it a loop condition to get
+          // consistent behavior in when the user evaluates a call to close().
+          if self.session.closing().await? {
+            break;
+          }
+
+          println!("{output}");
+        }
+        Err(ReadlineError::Interrupted) => {
+          if self.editor.should_exit_on_interrupt() {
+            break;
+          }
+          self.editor.set_should_exit_on_interrupt(true);
+          println!("press ctrl+c again to exit");
+          continue;
+        }
+        Err(ReadlineError::Eof) => {
+          break;
+        }
+        Err(err) => {
+          println!("Error: {err:?}");
+          break;
+        }
+      }
+    }
+
+    Ok(())
+  }
+}
+
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
@@ -40,7 +92,7 @@ async fn read_line_and_poll(
   let mut line_fut = spawn_blocking(move || editor.readline());
   let mut poll_worker = true;
   let notifications_rc = repl_session.notifications.clone();
-  let mut notifications = notifications_rc.borrow_mut();
+  let mut notifications = notifications_rc.lock().await;
 
   loop {
     tokio::select! {
@@ -69,14 +121,11 @@ async fn read_line_and_poll(
       }
       message = notifications.next() => {
         if let Some(message) = message {
-          let method = message.get("method").unwrap().as_str().unwrap();
-          if method == "Runtime.exceptionThrown" {
-            let params = message.get("params").unwrap().as_object().unwrap();
-            let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
-            let text = exception_details.get("text").unwrap().as_str().unwrap();
-            let exception = exception_details.get("exception").unwrap().as_object().unwrap();
-            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
-            println!("{text} {description}");
+          let notification: cdp::Notification = serde_json::from_value(message).unwrap();
+          if notification.method == "Runtime.exceptionThrown" {
+            let exception_thrown: cdp::ExceptionThrown = serde_json::from_value(notification.params).unwrap();
+            let (message, description) = exception_thrown.exception_details.get_message_and_description();
+            println!("{} {}", message, description);
           }
         }
       }
@@ -132,7 +181,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .await?;
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
-  let mut repl_session = ReplSession::initialize(
+  let session = ReplSession::initialize(
     cli_options,
     npm_resolver,
     resolver,
@@ -142,20 +191,27 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     test_event_receiver,
   )
   .await?;
-  let mut rustyline_channel = rustyline_channel();
+  let rustyline_channel = rustyline_channel();
 
   let helper = EditorHelper {
-    context_id: repl_session.context_id,
+    context_id: session.context_id,
     sync_sender: rustyline_channel.0,
   };
 
   let editor = ReplEditor::new(helper, history_file_path)?;
 
+  let mut repl = Repl {
+    session,
+    editor,
+    message_handler: rustyline_channel.1,
+  };
+
   if let Some(eval_files) = repl_flags.eval_files {
     for eval_file in eval_files {
       match read_eval_file(cli_options, file_fetcher, &eval_file).await {
         Ok(eval_source) => {
-          let output = repl_session
+          let output = repl
+            .session
             .evaluate_line_and_get_output(&eval_source)
             .await;
           // only output errors
@@ -171,7 +227,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   }
 
   if let Some(eval) = repl_flags.eval {
-    let output = repl_session.evaluate_line_and_get_output(&eval).await;
+    let output = repl.session.evaluate_line_and_get_output(&eval).await;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
       println!("Error in --eval flag: {error_text}");
@@ -192,44 +248,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     }
   }
 
-  loop {
-    let line = read_line_and_poll(
-      &mut repl_session,
-      &mut rustyline_channel.1,
-      editor.clone(),
-    )
-    .await;
-    match line {
-      Ok(line) => {
-        editor.set_should_exit_on_interrupt(false);
-        editor.update_history(line.clone());
-        let output = repl_session.evaluate_line_and_get_output(&line).await;
+  repl.run().await?;
 
-        // We check for close and break here instead of making it a loop condition to get
-        // consistent behavior in when the user evaluates a call to close().
-        if repl_session.closing().await? {
-          break;
-        }
-
-        println!("{output}");
-      }
-      Err(ReadlineError::Interrupted) => {
-        if editor.should_exit_on_interrupt() {
-          break;
-        }
-        editor.set_should_exit_on_interrupt(true);
-        println!("press ctrl+c again to exit");
-        continue;
-      }
-      Err(ReadlineError::Eof) => {
-        break;
-      }
-      Err(err) => {
-        println!("Error: {err:?}");
-        break;
-      }
-    }
-  }
-
-  Ok(repl_session.worker.exit_code())
+  Ok(repl.session.worker.exit_code())
 }

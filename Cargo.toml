@@ -1,4 +1,4 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
 resolver = "2"
@@ -25,6 +25,7 @@ members = [
   "ext/node",
   "ext/url",
   "ext/web",
+  "ext/webgpu",
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
@@ -39,42 +40,43 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.31.6", features = ["transpiling"] }
-deno_core = { version = "0.234.0" }
+deno_ast = { version = "1.0.1", features = ["transpiling"] }
+deno_core = { version = "0.246.0" }
 
-deno_runtime = { version = "0.134.0", path = "./runtime" }
-napi_sym = { version = "0.56.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.120.0", path = "./bench_util" }
+deno_runtime = { version = "0.140.0", path = "./runtime" }
+napi_sym = { version = "0.62.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.126.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
 
-denokv_proto = "0.4.0"
+denokv_proto = "0.5.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.4.0" }
-denokv_remote = "0.4.0"
+denokv_sqlite = { default-features = false, version = "0.5.0" }
+denokv_remote = "0.5.0"
 
 # exts
-deno_broadcast_channel = { version = "0.120.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.58.0", path = "./ext/cache" }
-deno_console = { version = "0.126.0", path = "./ext/console" }
-deno_cron = { version = "0.6.0", path = "./ext/cron" }
-deno_crypto = { version = "0.140.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.150.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.113.0", path = "./ext/ffi" }
-deno_fs = { version = "0.36.0", path = "./ext/fs" }
-deno_http = { version = "0.123.0", path = "./ext/http" }
-deno_io = { version = "0.36.0", path = "./ext/io" }
-deno_net = { version = "0.118.0", path = "./ext/net" }
-deno_node = { version = "0.63.0", path = "./ext/node" }
-deno_kv = { version = "0.34.0", path = "./ext/kv" }
-deno_tls = { version = "0.113.0", path = "./ext/tls" }
-deno_url = { version = "0.126.0", path = "./ext/url" }
-deno_web = { version = "0.157.0", path = "./ext/web" }
-deno_webidl = { version = "0.126.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.131.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.121.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.56.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.126.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.64.0", path = "./ext/cache" }
+deno_console = { version = "0.132.0", path = "./ext/console" }
+deno_cron = { version = "0.12.0", path = "./ext/cron" }
+deno_crypto = { version = "0.146.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.156.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.119.0", path = "./ext/ffi" }
+deno_fs = { version = "0.42.0", path = "./ext/fs" }
+deno_http = { version = "0.129.0", path = "./ext/http" }
+deno_io = { version = "0.42.0", path = "./ext/io" }
+deno_net = { version = "0.124.0", path = "./ext/net" }
+deno_node = { version = "0.69.0", path = "./ext/node" }
+deno_kv = { version = "0.40.0", path = "./ext/kv" }
+deno_tls = { version = "0.119.0", path = "./ext/tls" }
+deno_url = { version = "0.132.0", path = "./ext/url" }
+deno_web = { version = "0.163.0", path = "./ext/web" }
+deno_webgpu = { version = "0.99.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.132.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.137.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.127.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.62.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -94,17 +96,21 @@ data-encoding = "2.3.3"
 dlopen2 = "0.6.1"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
-fastwebsockets = "=0.5.0"
+fastwebsockets = { version = "0.6", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"
 flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
 hex = "0.4"
-http = "0.2.9"
-h2 = { version = "0.3.17", features = ["unstable"] }
+http_v02 = { package = "http", version = "0.2.9" }
+http = "1.0"
+h2 = "0.4"
 httparse = "1.8.0"
-hyper = { version = "0.14.26", features = ["runtime", "http1"] }
+hyper-util = { version = "=0.1.2", features = ["tokio", "server", "server-auto"] }
+http-body-util = "0.1"
+hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
+hyper = { version = "=1.1.0", features = ["full"] }
 indexmap = { version = "2", features = ["serde"] }
 libc = "0.2.126"
 libz-sys = { version = "1.1", default-features = false }
@@ -125,13 +131,14 @@ prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
 lazy-regex = "3"
-reqwest = { version = "0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
+reqwest = { version = "=0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.21.8"
+rustls = "0.21.10"
 rustls-pemfile = "1.0.0"
-rustls-tokio-stream = "=0.2.16"
+rustls-tokio-stream = "=0.2.20"
 rustls-webpki = "0.101.4"
+rustyline = "=13.0.0"
 webpki-roots = "0.25.2"
 scopeguard = "1.2.0"
 saffron = "=0.1.0"
@@ -163,6 +170,12 @@ p384 = { version = "0.13.0", features = ["ecdh"] }
 # crypto
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 hkdf = "0.12.3"
+
+# webgpu
+raw-window-handle = "0.5.0"
+wgpu-core = { version = "=0.18", features = ["raw-window-handle"] }
+wgpu-types = "=0.18"
+wgpu-hal = "=0.18"
 
 # macros
 proc-macro2 = "1"
@@ -256,6 +269,8 @@ opt-level = 3
 [profile.bench.package.bytes]
 opt-level = 3
 [profile.bench.package.futures-util]
+opt-level = 3
+[profile.bench.package.fastwebsockets]
 opt-level = 3
 [profile.bench.package.hyper]
 opt-level = 3

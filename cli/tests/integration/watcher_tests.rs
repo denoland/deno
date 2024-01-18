@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use flaky_test::flaky_test;
 use test_util as util;
@@ -967,7 +967,11 @@ async fn run_watch_error_messages() {
   let (_, mut stderr_lines) = child_lines(&mut child);
 
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("error: Uncaught SyntaxError: outer", &mut stderr_lines).await;
+  wait_contains(
+    "error: Uncaught (in promise) SyntaxError: outer",
+    &mut stderr_lines,
+  )
+  .await;
   wait_contains("Caused by: TypeError: inner", &mut stderr_lines).await;
   wait_contains("Process failed", &mut stderr_lines).await;
 

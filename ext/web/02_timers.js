@@ -1,8 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  op_now,
+  op_sleep,
+  op_timer_handle,
+  op_void_async_deferred,
+} = core.ensureFastOps();
 const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -20,15 +24,15 @@ const {
   TypeError,
   indirectEval,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
-const { op_sleep, op_void_async_deferred } = core.ensureFastOps();
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
 function opNow() {
-  ops.op_now(hrU8);
+  op_now(hrU8);
   return (hr[0] * 1000 + hr[1] / 1e6);
 }
 
@@ -112,7 +116,7 @@ function initializeTimer(
     // TODO(@andreubotella): Deal with overflow.
     // https://github.com/whatwg/html/issues/7358
     id = nextId++;
-    const cancelRid = ops.op_timer_handle();
+    const cancelRid = op_timer_handle();
     timerInfo = { cancelRid, isRef: true, promise: null };
 
     // Step 4 in "run steps after a timeout".
@@ -387,9 +391,17 @@ function unrefTimer(id) {
   core.unrefOpPromise(timerInfo.promise);
 }
 
+// Defer to avoid starving the event loop. Not using queueMicrotask()
+// for that reason: it lets promises make forward progress but can
+// still starve other parts of the event loop.
+function defer(go) {
+  PromisePrototypeThen(op_void_async_deferred(), () => go());
+}
+
 export {
   clearInterval,
   clearTimeout,
+  defer,
   handleTimerMacrotask,
   opNow,
   refTimer,

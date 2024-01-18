@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -9,32 +9,42 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
+  op_encoding_decode,
+  op_encoding_decode_single,
+  op_encoding_decode_utf8,
+  op_encoding_encode_into,
+  op_encoding_new_decoder,
+  op_encoding_normalize_label,
+} = core.ensureFastOps();
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   SymbolFor,
-  TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  Uint8Array,
-  ObjectPrototypeIsPrototypeOf,
-  ArrayBufferIsView,
+  TypedArrayPrototypeSubarray,
   Uint32Array,
+  Uint8Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 class TextDecoder {
   /** @type {string} */
@@ -61,7 +71,7 @@ class TextDecoder {
       prefix,
       "Argument 2",
     );
-    const encoding = ops.op_encoding_normalize_label(label);
+    const encoding = op_encoding_normalize_label(label);
     this.#encoding = encoding;
     this.#fatal = options.fatal;
     this.#ignoreBOM = options.ignoreBOM;
@@ -112,51 +122,37 @@ class TextDecoder {
     try {
       /** @type {ArrayBufferLike} */
       let buffer = input;
-      if (ArrayBufferIsView(input)) {
-        if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
-          // TypedArray
-          buffer = TypedArrayPrototypeGetBuffer(
-            /** @type {Uint8Array} */ (input),
-          );
-        } else {
-          // DataView
-          buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (input));
-        }
+      if (isTypedArray(input)) {
+        buffer = TypedArrayPrototypeGetBuffer(
+          /** @type {Uint8Array} */ (input),
+        );
+      } else if (isDataView(input)) {
+        buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (input));
       }
 
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          // deno-lint-ignore prefer-primordials
-          SharedArrayBuffer.prototype,
-          buffer,
-        )
-      ) {
+      if (isSharedArrayBuffer(buffer)) {
         // We clone the data into a non-shared ArrayBuffer so we can pass it
         // to Rust.
         // `input` is now a Uint8Array, and calling the TypedArray constructor
         // with a TypedArray argument copies the data.
-        if (ArrayBufferIsView(input)) {
-          if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
-            // TypedArray
-            input = new Uint8Array(
-              buffer,
-              TypedArrayPrototypeGetByteOffset(
-                /** @type {Uint8Array} */ (input),
-              ),
-              TypedArrayPrototypeGetByteLength(
-                /** @type {Uint8Array} */ (input),
-              ),
-            );
-          } else {
-            // DataView
-            input = new Uint8Array(
-              buffer,
-              DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
-              DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
-            );
-          }
+        if (isTypedArray(input)) {
+          input = new Uint8Array(
+            buffer,
+            TypedArrayPrototypeGetByteOffset(
+              /** @type {Uint8Array} */ (input),
+            ),
+            TypedArrayPrototypeGetByteLength(
+              /** @type {Uint8Array} */ (input),
+            ),
+          );
+        } else if (isDataView(input)) {
+          input = new Uint8Array(
+            buffer,
+            DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+            DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+          );
         } else {
           input = new Uint8Array(buffer);
         }
@@ -166,10 +162,10 @@ class TextDecoder {
       if (!stream && this.#rid === null) {
         // Fast path for utf8 single pass encoding.
         if (this.#utf8SinglePass) {
-          return ops.op_encoding_decode_utf8(input, this.#ignoreBOM);
+          return op_encoding_decode_utf8(input, this.#ignoreBOM);
         }
 
-        return ops.op_encoding_decode_single(
+        return op_encoding_decode_single(
           input,
           this.#encoding,
           this.#fatal,
@@ -178,13 +174,13 @@ class TextDecoder {
       }
 
       if (this.#rid === null) {
-        this.#rid = ops.op_encoding_new_decoder(
+        this.#rid = op_encoding_new_decoder(
           this.#encoding,
           this.#fatal,
           this.#ignoreBOM,
         );
       }
-      return ops.op_encoding_decode(input, this.#rid, stream);
+      return op_encoding_decode(input, this.#rid, stream);
     } finally {
       if (!stream && this.#rid !== null) {
         core.close(this.#rid);
@@ -258,7 +254,7 @@ class TextEncoder {
         allowShared: true,
       },
     );
-    ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
+    op_encoding_encode_into(source, destination, encodeIntoBuf);
     return {
       read: encodeIntoBuf[0],
       written: encodeIntoBuf[1],

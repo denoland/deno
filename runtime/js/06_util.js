@@ -1,8 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  op_bootstrap_log_level,
+} = core.ensureFastOps();
 const {
   Promise,
   SafeArrayIterator,
@@ -21,7 +22,7 @@ const logSource = "JS";
 let logLevel_ = null;
 function logLevel() {
   if (logLevel_ === null) {
-    logLevel_ = ops.op_bootstrap_log_level() || 3;
+    logLevel_ = op_bootstrap_log_level() || 3;
   }
   return logLevel_;
 }

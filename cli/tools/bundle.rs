@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
 
@@ -99,9 +99,10 @@ async fn bundle_action(
   let out_file = &bundle_flags.out_file;
 
   if let Some(out_file) = out_file {
+    let out_file = cli_options.initial_cwd().join(out_file);
     let output_bytes = bundle_output.code.as_bytes();
     let output_len = output_bytes.len();
-    util::fs::write_file(out_file, output_bytes, 0o644)?;
+    util::fs::write_file(&out_file, output_bytes, 0o644)?;
     log::info!(
       "{} {:?} ({})",
       colors::green("Emit"),

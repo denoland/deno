@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -124,6 +124,7 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
+  node_ipc: Option<i64>,
 }
 
 impl SharedWorkerState {
@@ -210,12 +211,9 @@ impl CliMainWorker {
       self
         .worker
         .js_runtime
-        .with_event_loop(
+        .with_event_loop_future(
           coverage_collector.stop_collecting().boxed_local(),
-          PollEventLoopOptions {
-            wait_for_inspector: false,
-            ..Default::default()
-          },
+          PollEventLoopOptions::default(),
         )
         .await?;
     }
@@ -223,12 +221,9 @@ impl CliMainWorker {
       self
         .worker
         .js_runtime
-        .with_event_loop(
+        .with_event_loop_future(
           hmr_runner.stop().boxed_local(),
-          PollEventLoopOptions {
-            wait_for_inspector: false,
-            ..Default::default()
-          },
+          PollEventLoopOptions::default(),
         )
         .await?;
     }
@@ -339,12 +334,9 @@ impl CliMainWorker {
       self
         .worker
         .js_runtime
-        .with_event_loop(
+        .with_event_loop_future(
           coverage_collector.start_collecting().boxed_local(),
-          PollEventLoopOptions {
-            wait_for_inspector: false,
-            ..Default::default()
-          },
+          PollEventLoopOptions::default(),
         )
         .await?;
       Ok(Some(coverage_collector))
@@ -370,12 +362,9 @@ impl CliMainWorker {
     self
       .worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         hmr_runner.start().boxed_local(),
-        PollEventLoopOptions {
-          wait_for_inspector: false,
-          ..Default::default()
-        },
+        PollEventLoopOptions::default(),
       )
       .await?;
 
@@ -415,6 +404,7 @@ impl CliMainWorkerFactory {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
+    node_ipc: Option<i64>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -435,6 +425,7 @@ impl CliMainWorkerFactory {
         maybe_inspector_server,
         maybe_lockfile,
         feature_checker,
+        node_ipc,
       }),
     }
   }
@@ -596,6 +587,7 @@ impl CliMainWorkerFactory {
           .options
           .maybe_binary_npm_command_name
           .clone(),
+        node_ipc_fd: shared.node_ipc,
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -637,13 +629,13 @@ impl CliMainWorkerFactory {
     );
 
     if self.shared.subcommand.needs_test() {
-      worker.js_runtime.execute_script_static(
+      worker.js_runtime.lazy_load_es_module_from_code(
         "ext:cli/40_testing.js",
-        include_str!("js/40_testing.js"),
+        deno_core::FastString::StaticAscii(include_str!("js/40_testing.js")),
       )?;
-      worker.js_runtime.execute_script_static(
+      worker.js_runtime.lazy_load_es_module_from_code(
         "ext:cli/40_jupyter.js",
-        include_str!("js/40_jupyter.js"),
+        deno_core::FastString::StaticAscii(include_str!("js/40_jupyter.js")),
       )?;
     }
 
@@ -793,6 +785,7 @@ fn create_web_worker_callback(
           .options
           .maybe_binary_npm_command_name
           .clone(),
+        node_ipc_fd: None,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

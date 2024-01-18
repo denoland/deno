@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #![allow(clippy::undocumented_unsafe_blocks)]
 
@@ -254,6 +254,20 @@ pub extern "C" fn call_stored_function_thread_safe_and_log() {
       }
       STORED_FUNCTION.unwrap()();
       println!("STORED_FUNCTION called");
+    }
+  });
+}
+
+#[no_mangle]
+pub extern "C" fn call_stored_function_2_thread_safe(arg: u8) {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION_2.is_none() {
+        return;
+      }
+      println!("Calling");
+      STORED_FUNCTION_2.unwrap()(arg);
     }
   });
 }

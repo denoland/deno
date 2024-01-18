@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -70,18 +70,13 @@ declare namespace Deno {
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
 
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the connection block the event loop from finishing.
+    /** Make the connection block the event loop from finishing.
      *
      * Note: the connection blocks the event loop from finishing by default.
      * This method is only meaningful after `.unref()` is called.
      */
     ref(): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the connection not block the event loop from finishing.
-     */
+    /** Make the connection not block the event loop from finishing. */
     unref(): void;
 
     readonly readable: ReadableStream<Uint8Array>;
@@ -89,8 +84,13 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  // deno-lint-ignore no-empty-interface
-  export interface TlsHandshakeInfo {}
+  export interface TlsHandshakeInfo {
+    /**
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
 
   /** @category Network */
   export interface TlsConn extends Conn {
@@ -224,8 +224,33 @@ declare namespace Deno {
   }
 
   /** @category Network */
+  export interface UnixConnectOptions {
+    transport: "unix";
+    path: string;
+  }
+
+  /** @category Network */
   // deno-lint-ignore no-empty-interface
   export interface UnixConn extends Conn {}
+
+  /** Connects to the hostname (default is "127.0.0.1") and port on the named
+   * transport (default is "tcp"), and resolves to the connection (`Conn`).
+   *
+   * ```ts
+   * const conn1 = await Deno.connect({ port: 80 });
+   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
+   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```
+   *
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
+   *
+   * @tags allow-net, allow-read
+   * @category Network
+   */
+  // deno-lint-ignore adjacent-overload-signatures
+  export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
   /** @category Network */
   export interface ConnectTlsOptions {
@@ -252,6 +277,10 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** PEM formatted client certificate chain. */
+    certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate.  */
+    privateKey?: string;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

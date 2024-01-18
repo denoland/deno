@@ -1,9 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use once_cell::sync::Lazy;
 use std::fmt;
+use std::fmt::Write as _;
 use std::io::IsTerminal;
-use std::io::Write;
 use termcolor::Ansi;
 use termcolor::Color::Ansi256;
 use termcolor::Color::Black;
@@ -43,114 +43,181 @@ pub fn enable_ansi() {
   BufferWriter::stdout(ColorChoice::AlwaysAnsi);
 }
 
-fn style<S: AsRef<str>>(s: S, colorspec: ColorSpec) -> impl fmt::Display {
-  if !use_color() {
-    return String::from(s.as_ref());
+/// A struct that can adapt a `fmt::Write` to a `std::io::Write`. If anything
+/// that can not be represented as UTF-8 is written to this writer, it will
+/// return an error.
+struct StdFmtStdIoWriter<'a>(&'a mut dyn fmt::Write);
+
+impl std::io::Write for StdFmtStdIoWriter<'_> {
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    let str = std::str::from_utf8(buf).map_err(|_| {
+      std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "failed to convert bytes to str",
+      )
+    })?;
+    match self.0.write_str(str) {
+      Ok(_) => Ok(buf.len()),
+      Err(_) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "failed to write to fmt::Write",
+      )),
+    }
   }
-  let mut v = Vec::new();
-  let mut ansi_writer = Ansi::new(&mut v);
-  ansi_writer.set_color(&colorspec).unwrap();
-  ansi_writer.write_all(s.as_ref().as_bytes()).unwrap();
-  ansi_writer.reset().unwrap();
-  String::from_utf8_lossy(&v).into_owned()
+
+  fn flush(&mut self) -> std::io::Result<()> {
+    Ok(())
+  }
 }
 
-pub fn red_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
+/// A struct that can adapt a `std::io::Write` to a `fmt::Write`.
+struct StdIoStdFmtWriter<'a>(&'a mut dyn std::io::Write);
+
+impl fmt::Write for StdIoStdFmtWriter<'_> {
+  fn write_str(&mut self, s: &str) -> fmt::Result {
+    self.0.write_all(s.as_bytes()).map_err(|_| fmt::Error)?;
+    Ok(())
+  }
+}
+
+struct Style<I: fmt::Display> {
+  colorspec: ColorSpec,
+  inner: I,
+}
+
+impl<I: fmt::Display> fmt::Display for Style<I> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    if !use_color() {
+      return fmt::Display::fmt(&self.inner, f);
+    }
+    let mut ansi_writer = Ansi::new(StdFmtStdIoWriter(f));
+    ansi_writer
+      .set_color(&self.colorspec)
+      .map_err(|_| fmt::Error)?;
+    write!(StdIoStdFmtWriter(&mut ansi_writer), "{}", self.inner)?;
+    ansi_writer.reset().map_err(|_| fmt::Error)?;
+    Ok(())
+  }
+}
+
+#[inline]
+fn style<'a>(
+  s: impl fmt::Display + 'a,
+  colorspec: ColorSpec,
+) -> impl fmt::Display + 'a {
+  Style {
+    colorspec,
+    inner: s,
+  }
+}
+
+pub fn red_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red)).set_bold(true);
   style(s, style_spec)
 }
 
-pub fn green_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn green_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Green)).set_bold(true);
   style(s, style_spec)
 }
 
-pub fn italic<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn italic<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_italic(true);
   style(s, style_spec)
 }
 
-pub fn italic_gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn italic_gray<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(8))).set_italic(true);
   style(s, style_spec)
 }
 
-pub fn italic_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn italic_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true).set_italic(true);
   style(s, style_spec)
 }
 
-pub fn white_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn white_on_red<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Red)).set_fg(Some(White));
   style(s, style_spec)
 }
 
-pub fn black_on_green<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn black_on_green<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Green)).set_fg(Some(Black));
   style(s, style_spec)
 }
 
-pub fn yellow<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn yellow<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Yellow));
   style(s, style_spec)
 }
 
-pub fn cyan<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn cyan<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Cyan));
   style(s, style_spec)
 }
-pub fn cyan_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
+
+pub fn cyan_with_underline<'a>(
+  s: impl fmt::Display + 'a,
+) -> impl fmt::Display + 'a {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Cyan)).set_underline(true);
+  style(s, style_spec)
+}
+
+pub fn cyan_bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Cyan)).set_bold(true);
   style(s, style_spec)
 }
 
-pub fn magenta<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn magenta<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Magenta));
   style(s, style_spec)
 }
 
-pub fn red<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn red<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red));
   style(s, style_spec)
 }
 
-pub fn green<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn green<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Green));
   style(s, style_spec)
 }
 
-pub fn bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn bold<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true);
   style(s, style_spec)
 }
 
-pub fn gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn gray<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(245)));
   style(s, style_spec)
 }
 
-pub fn intense_blue<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn intense_blue<'a>(s: impl fmt::Display + 'a) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Blue)).set_intense(true);
   style(s, style_spec)
 }
 
-pub fn white_bold_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
+pub fn white_bold_on_red<'a>(
+  s: impl fmt::Display + 'a,
+) -> impl fmt::Display + 'a {
   let mut style_spec = ColorSpec::new();
   style_spec
     .set_bold(true)

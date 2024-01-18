@@ -1,7 +1,18 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// @ts-ignore internal api
-const core = Deno.core;
+import { core, internals, primordials } from "ext:core/mod.js";
+const {
+  isPromise,
+} = core;
+const {
+  op_cron_create,
+  op_cron_next,
+} = core.ensureFastOps();
+const {
+  ArrayPrototypeJoin,
+  NumberPrototypeToString,
+  TypeError,
+} = primordials;
 
 export function formatToCronSchedule(
   value?: number | { exact: number | number[] } | {
@@ -13,7 +24,7 @@ export function formatToCronSchedule(
   if (value === undefined) {
     return "*";
   } else if (typeof value === "number") {
-    return value.toString();
+    return NumberPrototypeToString(value);
   } else {
     const { exact } = value as { exact: number | number[] };
     if (exact === undefined) {
@@ -37,9 +48,9 @@ export function formatToCronSchedule(
       }
     } else {
       if (typeof exact === "number") {
-        return exact.toString();
+        return NumberPrototypeToString(exact);
       } else {
-        return exact.join(",");
+        return ArrayPrototypeJoin(exact, ",");
       }
     }
   }
@@ -102,7 +113,7 @@ function cron(
     throw new TypeError("Deno.cron requires a handler");
   }
 
-  const rid = core.ops.op_cron_create(
+  const rid = op_cron_create(
     name,
     schedule,
     options?.backoffSchedule,
@@ -122,13 +133,13 @@ function cron(
   return (async () => {
     let success = true;
     while (true) {
-      const r = await core.opAsync("op_cron_next", rid, success);
+      const r = await op_cron_next(rid, success);
       if (r === false) {
         break;
       }
       try {
         const result = handler();
-        const _res = result instanceof Promise ? (await result) : result;
+        const _res = isPromise(result) ? (await result) : result;
         success = true;
       } catch (error) {
         console.error(`Exception in cron handler ${name}`, error);
@@ -137,5 +148,9 @@ function cron(
     }
   })();
 }
+
+// For testing
+internals.formatToCronSchedule = formatToCronSchedule;
+internals.parseScheduleToString = parseScheduleToString;
 
 export { cron };

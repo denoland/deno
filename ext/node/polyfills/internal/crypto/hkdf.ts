@@ -1,8 +1,14 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+
+import { core } from "ext:core/mod.js";
+const {
+  op_node_hkdf,
+  op_node_hkdf_async,
+} = core.ensureFastOps();
 
 import {
   validateFunction,
@@ -30,9 +36,6 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
-
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
@@ -109,7 +112,7 @@ export function hkdf(
 
   validateFunction(callback, "callback");
 
-  core.opAsync("op_node_hkdf_async", hash, key, salt, info, length)
+  op_node_hkdf_async(hash, key, salt, info, length)
     .then((okm) => callback(null, okm.buffer))
     .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
 }
@@ -131,7 +134,7 @@ export function hkdfSync(
 
   const okm = new Uint8Array(length);
   try {
-    ops.op_node_hkdf(hash, key, salt, info, okm);
+    op_node_hkdf(hash, key, salt, info, okm);
   } catch (e) {
     throw new ERR_CRYPTO_INVALID_DIGEST(e);
   }

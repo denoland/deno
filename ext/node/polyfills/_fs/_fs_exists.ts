@@ -1,7 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+
+import { core } from "ext:core/mod.js";
+const {
+  op_node_fs_exists_sync,
+} = core.ensureFastOps();
 
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
@@ -35,10 +40,5 @@ Object.defineProperty(exists, kCustomPromisifiedSymbol, {
  */
 export function existsSync(path: string | URL): boolean {
   path = path instanceof URL ? pathFromURL(path) : path;
-  try {
-    Deno.lstatSync(path);
-    return true;
-  } catch (_err) {
-    return false;
-  }
+  return op_node_fs_exists_sync(path);
 }

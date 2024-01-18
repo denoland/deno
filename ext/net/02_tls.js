@@ -1,17 +1,26 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  op_net_accept_tls,
+  op_net_connect_tls,
+  op_net_listen_tls,
+  op_tls_handshake,
+  op_tls_start,
+} = core.ensureFastOps();
+const {
+  Number,
+  TypeError,
+} = primordials;
+
 import { Conn, Listener } from "ext:deno_net/01_net.js";
-const primordials = globalThis.__bootstrap.primordials;
-const { Number, TypeError } = primordials;
 
 function opStartTls(args) {
-  return core.opAsync("op_tls_start", args);
+  return op_tls_start(args);
 }
 
 function opTlsHandshake(rid) {
-  return core.opAsync("op_tls_handshake", rid);
+  return op_tls_handshake(rid);
 }
 
 class TlsConn extends Conn {
@@ -33,8 +42,7 @@ async function connectTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-    "op_net_connect_tls",
+  const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
     { certFile, caCerts, certChain, privateKey, alpnProtocols },
   );
@@ -45,8 +53,7 @@ async function connectTls({
 
 class TlsListener extends Listener {
   async accept() {
-    const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-      "op_net_accept_tls",
+    const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_accept_tls(
       this.rid,
     );
     localAddr.transport = "tcp";
@@ -69,7 +76,7 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  const { 0: rid, 1: localAddr } = ops.op_net_listen_tls(
+  const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },
     { cert, certFile, key, keyFile, alpnProtocols, reusePort },
   );

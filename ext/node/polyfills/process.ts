@@ -1,12 +1,18 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-const internals = globalThis.__bootstrap.internals;
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+import { core, internals } from "ext:core/mod.js";
+const {
+  op_process_abort,
+  op_geteuid,
+} = core.ensureFastOps();
+const {
+  op_set_exit_code,
+} = core.ensureFastOps(true);
+
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module from "node:module";
@@ -68,10 +74,7 @@ import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
 const notImplementedEvents = [
-  "disconnect",
-  "message",
   "multipleResolves",
-  "rejectionHandled",
   "worker",
 ];
 
@@ -98,6 +101,10 @@ export const exit = (code?: number | string) => {
   }
 
   process.reallyExit(process.exitCode || 0);
+};
+
+export const abort = () => {
+  op_process_abort();
 };
 
 function addReadOnlyProcessAlias(
@@ -417,6 +424,9 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = exit;
 
+  /** https://nodejs.org/api/process.html#processabort */
+  abort = abort;
+
   // Undocumented Node API that is used by `signal-exit` which in turn
   // is used by `node-tap`. It was marked for removal a couple of years
   // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
@@ -435,7 +445,7 @@ class Process extends EventEmitter {
     globalProcessExitCode = code;
     code = parseInt(code) || 0;
     if (!isNaN(code)) {
-      ops.op_set_exit_code(code);
+      op_set_exit_code(code);
     }
   }
 
@@ -671,7 +681,7 @@ class Process extends EventEmitter {
 
   /** This method is removed on Windows */
   geteuid?(): number {
-    return ops.op_geteuid();
+    return op_geteuid();
   }
 
   // TODO(kt3k): Implement this when we added -e option to node compat mode
@@ -735,6 +745,7 @@ export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
 
 let unhandledRejectionListenerCount = 0;
+let rejectionHandledListenerCount = 0;
 let uncaughtExceptionListenerCount = 0;
 let beforeExitListenerCount = 0;
 let exitListenerCount = 0;
@@ -743,6 +754,9 @@ process.on("newListener", (event: string) => {
   switch (event) {
     case "unhandledRejection":
       unhandledRejectionListenerCount++;
+      break;
+    case "rejectionHandled":
+      rejectionHandledListenerCount++;
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount++;
@@ -763,6 +777,9 @@ process.on("removeListener", (event: string) => {
   switch (event) {
     case "unhandledRejection":
       unhandledRejectionListenerCount--;
+      break;
+    case "rejectionHandled":
+      rejectionHandledListenerCount--;
       break;
     case "uncaughtException":
       uncaughtExceptionListenerCount--;
@@ -824,6 +841,16 @@ function synchronizeListeners() {
     };
   } else {
     internals.nodeProcessUnhandledRejectionCallback = undefined;
+  }
+
+  // Install special "handledrejection" handler, that will be called
+  // last.
+  if (rejectionHandledListenerCount > 0) {
+    internals.nodeProcessRejectionHandledCallback = (event) => {
+      process.emit("rejectionHandled", event.reason, event.promise);
+    };
+  } else {
+    internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
   if (uncaughtExceptionListenerCount > 0) {

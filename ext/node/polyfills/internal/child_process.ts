@@ -1,10 +1,27 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+
+import { core, internals } from "ext:core/mod.js";
+const {
+  op_node_ipc_read,
+  op_node_ipc_write,
+} = core.ensureFastOps();
+import {
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSort,
+  ArrayPrototypeUnshift,
+  ObjectHasOwn,
+  StringPrototypeToUpperCase,
+} from "ext:deno_node/internal/primordials.mjs";
 
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
@@ -29,17 +46,6 @@ import {
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import {
-  ArrayIsArray,
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSort,
-  ArrayPrototypeUnshift,
-  ObjectHasOwn,
-  StringPrototypeToUpperCase,
-} from "ext:deno_node/internal/primordials.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
@@ -167,12 +173,13 @@ export class ChildProcess extends EventEmitter {
       signal,
       windowsVerbatimArguments = false,
     } = options || {};
+    const normalizedStdio = normalizeStdioOption(stdio);
     const [
       stdin = "pipe",
       stdout = "pipe",
       stderr = "pipe",
       _channel, // TODO(kt3k): handle this correctly
-    ] = normalizeStdioOption(stdio);
+    ] = normalizedStdio;
     const [cmd, cmdArgs] = buildCommand(
       command,
       args || [],
@@ -180,6 +187,8 @@ export class ChildProcess extends EventEmitter {
     );
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
+
+    const ipc = normalizedStdio.indexOf("ipc");
 
     const stringEnv = mapValues(env, (value) => value.toString());
     try {
@@ -191,6 +200,7 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        ipc, // internal
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -249,6 +259,11 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
+      const pipeFd = internals.getPipeFd(this.#process);
+      if (typeof pipeFd == "number") {
+        setupChannel(this, pipeFd);
+      }
+
       (async () => {
         const status = await this.#process.status;
         this.exitCode = status.code;
@@ -286,6 +301,10 @@ export class ChildProcess extends EventEmitter {
         throw err;
       }
     }
+
+    /* Cancel any pending IPC I/O */
+    this.disconnect?.();
+
     this.killed = true;
     this.signalCode = denoSignal;
     return this.killed;
@@ -1058,9 +1077,89 @@ function toDenoArgs(args: string[]): string[] {
   return denoArgs;
 }
 
+export function setupChannel(target, ipc) {
+  async function readLoop() {
+    try {
+      while (true) {
+        if (!target.connected || target.killed) {
+          return;
+        }
+        const msg = await op_node_ipc_read(ipc);
+        if (msg == null) {
+          // Channel closed.
+          target.disconnect();
+          return;
+        }
+
+        process.nextTick(handleMessage, msg);
+      }
+    } catch (err) {
+      if (
+        err instanceof Deno.errors.Interrupted ||
+        err instanceof Deno.errors.BadResource
+      ) {
+        return;
+      }
+    }
+  }
+
+  function handleMessage(msg) {
+    target.emit("message", msg);
+  }
+
+  target.send = function (message, handle, options, callback) {
+    if (typeof handle === "function") {
+      callback = handle;
+      handle = undefined;
+      options = undefined;
+    } else if (typeof options === "function") {
+      callback = options;
+      options = undefined;
+    } else if (options !== undefined) {
+      validateObject(options, "options");
+    }
+
+    options = { swallowErrors: false, ...options };
+
+    if (message === undefined) {
+      throw new TypeError("ERR_MISSING_ARGS", "message");
+    }
+
+    if (handle !== undefined) {
+      notImplemented("ChildProcess.send with handle");
+    }
+
+    op_node_ipc_write(ipc, message)
+      .then(() => {
+        if (callback) {
+          process.nextTick(callback, null);
+        }
+      });
+  };
+
+  target.connected = true;
+
+  target.disconnect = function () {
+    if (!this.connected) {
+      this.emit("error", new Error("IPC channel is already disconnected"));
+      return;
+    }
+
+    this.connected = false;
+    process.nextTick(() => {
+      core.close(ipc);
+      target.emit("disconnect");
+    });
+  };
+
+  // Start reading messages from the channel.
+  readLoop();
+}
+
 export default {
   ChildProcess,
   normalizeSpawnArguments,
   stdioStringToArray,
   spawnSync,
+  setupChannel,
 };

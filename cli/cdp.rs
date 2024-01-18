@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/>
 use deno_core::serde_json;
@@ -322,6 +322,17 @@ pub struct ExceptionDetails {
   pub exception_meta_data: Option<serde_json::Map<String, Value>>,
 }
 
+impl ExceptionDetails {
+  pub fn get_message_and_description(&self) -> (String, String) {
+    let description = self
+      .exception
+      .clone()
+      .and_then(|ex| ex.description)
+      .unwrap_or_else(|| "undefined".to_string());
+    (self.text.to_string(), description)
+  }
+}
+
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-StackTrace>
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -501,4 +512,35 @@ pub struct StartPreciseCoverageResponse {
 pub struct TakePreciseCoverageResponse {
   pub result: Vec<ScriptCoverage>,
   pub timestamp: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Notification {
+  pub method: String,
+  pub params: Value,
+}
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-exceptionThrown>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExceptionThrown {
+  pub timestamp: f64,
+  pub exception_details: ExceptionDetails,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-executionContextCreated>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionContextCreated {
+  pub context: ExecutionContextDescription,
+}
+
+/// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExecutionContextDescription>
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionContextDescription {
+  pub id: ExecutionContextId,
+  pub origin: String,
+  pub name: String,
+  pub unique_id: String,
+  pub aux_data: Value,
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cdp;
 use crate::colors;
@@ -341,7 +341,7 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize) -> bool {
+  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
     !line.is_empty()
   }
 
@@ -422,7 +422,7 @@ impl Highlighter for EditorHelper {
 
 #[derive(Clone)]
 pub struct ReplEditor {
-  inner: Arc<Mutex<Editor<EditorHelper>>>,
+  inner: Arc<Mutex<Editor<EditorHelper, rustyline::history::FileHistory>>>,
   history_file_path: Option<PathBuf>,
   errored_on_history_save: Arc<AtomicBool>,
   should_exit_on_interrupt: Arc<AtomicBool>,
@@ -482,7 +482,7 @@ impl ReplEditor {
   }
 
   pub fn update_history(&self, entry: String) {
-    self.inner.lock().add_history_entry(entry);
+    let _ = self.inner.lock().add_history_entry(entry);
     if let Some(history_file_path) = &self.history_file_path {
       if let Err(e) = self.inner.lock().append_history(history_file_path) {
         if self.errored_on_history_save.load(Relaxed) {

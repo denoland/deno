@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-undef
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import process, { argv, env } from "node:process";
 import { Readable } from "node:stream";

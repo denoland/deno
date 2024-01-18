@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
 
@@ -711,14 +711,15 @@ function discoverTestsToRun(
             1,
           ) as ManifestTestVariation[]
         ) {
-          if (!path) continue;
-          const url = new URL(path, "http://web-platform.test:8000");
-          if (
-            !url.pathname.endsWith(".any.html") &&
-            !url.pathname.endsWith(".window.html") &&
-            !url.pathname.endsWith(".worker.html") &&
-            !url.pathname.endsWith(".worker-module.html")
-          ) {
+          // Test keys ending with ".html" include their own html boilerplate.
+          // Test keys ending with ".js" will have the necessary boilerplate generated and
+          // the manifest path will contain the full path to the generated html test file.
+          // See: https://web-platform-tests.org/writing-tests/testharness.html
+          if (!key.endsWith(".html") && !key.endsWith(".js")) continue;
+
+          const testHtmlPath = path ?? `${prefix}/${key}`;
+          const url = new URL(testHtmlPath, "http://web-platform.test:8000");
+          if (!url.pathname.endsWith(".html")) {
             continue;
           }
           // These tests require an HTTP2 compatible server.

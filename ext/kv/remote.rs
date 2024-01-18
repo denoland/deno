@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
@@ -66,6 +66,15 @@ pub struct PermissionChecker<P: RemoteDbHandlerPermissions> {
   _permissions: PhantomData<P>,
 }
 
+impl<P: RemoteDbHandlerPermissions> Clone for PermissionChecker<P> {
+  fn clone(&self) -> Self {
+    Self {
+      state: self.state.clone(),
+      _permissions: PhantomData,
+    }
+  }
+}
+
 impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
   for PermissionChecker<P>
 {
@@ -128,7 +137,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
         pool_max_idle_per_host: None,
         pool_idle_timeout: None,
-        http1: true,
+        http1: false,
         http2: true,
       },
     )?;

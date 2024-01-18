@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use test_util::assert_contains;
@@ -825,7 +825,7 @@ fn repl_reject() {
     console.write_line(r#"Promise.reject(new Error("foo"));"#);
     console.expect("Promise {");
     console.expect("  <rejected> Error: foo");
-    console.expect("Uncaught (in promise) Error: foo");
+    console.expect("Uncaught Error: foo");
     console.expect("    at <anonymous>");
     console.write_line("console.log(2);");
     console.expect("2");
@@ -857,7 +857,7 @@ fn repl_error_undefined() {
     console.expect("Uncaught undefined");
     console.write_line(r#"Promise.reject();"#);
     console.expect("Promise { <rejected> undefined }");
-    console.expect("Uncaught (in promise) undefined");
+    console.expect("Uncaught undefined");
     console.write_line(r#"reportError(undefined);"#);
     console.expect("undefined");
     console.expect("Uncaught undefined");

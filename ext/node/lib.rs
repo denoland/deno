@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -30,6 +30,9 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use ops::ipc::ChildPipeFd;
+pub use ops::ipc::IpcJsonStreamResource;
+pub use ops::v8::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
@@ -50,8 +53,21 @@ pub trait NodePermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+  #[inline(always)]
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+    self.check_read_with_api_name(path, None)
+  }
+  fn check_read_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
   fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_write_with_api_name(
+    &self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
@@ -64,7 +80,18 @@ impl NodePermissions for AllowAllNodePermissions {
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_write_with_api_name(
+    &self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     Ok(())
   }
   fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
@@ -134,11 +161,6 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 #[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
-}
-
-#[op2(fast)]
-fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
-  value.is_array_buffer() || value.is_shared_array_buffer()
 }
 
 #[op2(fast)]
@@ -227,9 +249,13 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
+    ops::fs::op_node_fs_exists_sync<P>,
+    ops::fs::op_node_cp_sync<P>,
+    ops::fs::op_node_cp<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_vm_run_in_new_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
@@ -269,8 +295,9 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
+    ops::os::op_cpus<P>,
+    ops::os::op_process_abort,
     op_node_build_os,
-    op_is_any_arraybuffer,
     op_node_is_promise_rejected,
     op_npm_process_state,
     ops::require::op_require_init_paths,
@@ -297,6 +324,9 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::crypto::op_node_create_private_key,
+    ops::ipc::op_node_child_ipc_pipe,
+    ops::ipc::op_node_ipc_write,
+    ops::ipc::op_node_ipc_read,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -313,6 +343,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
+    "_fs/_fs_cp.js",
     "_fs/_fs_dir.ts",
     "_fs/_fs_dirent.ts",
     "_fs/_fs_exists.ts",
@@ -507,7 +538,7 @@ deno_core::extension!(deno_node,
     "perf_hooks.ts" with_specifier "node:perf_hooks",
     "process.ts" with_specifier "node:process",
     "punycode.ts" with_specifier "node:punycode",
-    "querystring.ts" with_specifier "node:querystring",
+    "querystring.js" with_specifier "node:querystring",
     "readline.ts" with_specifier "node:readline",
     "repl.ts" with_specifier "node:repl",
     "stream.ts" with_specifier "node:stream",

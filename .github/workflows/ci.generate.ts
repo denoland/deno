@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 61;
+const cacheVersion = 69;
 
 const ubuntuRunner = "ubuntu-22.04";
 const ubuntuXlRunner = "ubuntu-22.04-xl";
@@ -426,6 +426,8 @@ const ci = {
       env: {
         CARGO_TERM_COLOR: "always",
         RUST_BACKTRACE: "full",
+        // disable anyhow's library backtrace
+        RUST_LIB_BACKTRACE: 0,
       },
       steps: skipJobsIfPrAndMarkedSkip([
         reconfigureWindowsStorage,

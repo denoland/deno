@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -1160,6 +1160,16 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true, read: true } },
+  function createHttpClientAcceptPoolIdleTimeout() {
+    const client = Deno.createHttpClient({
+      poolIdleTimeout: 1000,
+    });
+    client.close();
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchCustomClientUserAgent(): Promise<
     void
@@ -1614,6 +1624,33 @@ Deno.test(
     assert(res.ok);
     assertEquals(res.headers.get("host"), "example.com");
     await res.body?.cancel();
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function createHttpClientExplicitResourceManagement() {
+    using client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/assets/fixture.json", {
+      client,
+    });
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function createHttpClientExplicitResourceManagementDoubleClose() {
+    using client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/assets/fixture.json", {
+      client,
+    });
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    // Close the client even though we declared it with `using` to confirm that
+    // the cleanup done as per `Symbol.dispose` will not throw any errors.
     client.close();
   },
 );

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
@@ -50,7 +50,6 @@ mod diagnostics;
 
 pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
-pub use self::diagnostics::DiagnosticMessageChain;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
 
@@ -79,19 +78,20 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
-pub fn get_types_declaration_file_text(unstable: bool) -> String {
+pub fn get_types_declaration_file_text() -> String {
   let mut assets = get_asset_texts_from_new_runtime()
     .unwrap()
     .into_iter()
     .map(|a| (a.specifier, a.text))
     .collect::<HashMap<_, _>>();
 
-  let mut lib_names = vec![
+  let lib_names = vec![
     "deno.ns",
     "deno.console",
     "deno.url",
     "deno.web",
     "deno.fetch",
+    "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
     "deno.crypto",
@@ -100,11 +100,8 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.shared_globals",
     "deno.cache",
     "deno.window",
+    "deno.unstable",
   ];
-
-  if unstable {
-    lib_names.push("deno.unstable");
-  }
 
   lib_names
     .into_iter()
@@ -325,6 +322,8 @@ pub struct Response {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): we have similar struct in `tsc.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 #[derive(Debug)]
 struct State {
   hash_data: u64,
@@ -438,7 +437,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: Option<String>,
+  data: String,
   version: Option<String>,
   script_kind: i32,
 }
@@ -448,7 +447,7 @@ struct LoadResponse {
 fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,
-) -> Result<LoadResponse, AnyError> {
+) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
 
   let specifier = normalize_specifier(load_specifier, &state.current_dir)
@@ -463,9 +462,7 @@ fn op_load(
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if load_specifier == "internal:///missing_dependency.d.ts" {
-    hash = Some("1".to_string());
-    media_type = MediaType::Dts;
-    Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
+    None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, state.hash_data);
@@ -486,7 +483,11 @@ fn op_load(
       match module {
         Module::Esm(module) => {
           media_type = module.media_type;
-          Some(Cow::Borrowed(&*module.source))
+          let source = module
+            .fast_check_module()
+            .map(|m| &*m.source)
+            .unwrap_or(&*module.source);
+          Some(Cow::Borrowed(source))
         }
         Module::Json(module) => {
           media_type = MediaType::Json;
@@ -518,18 +519,19 @@ fn op_load(
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
       Some(Cow::Owned(code))
     } else {
-      media_type = MediaType::Unknown;
       None
     };
     hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     maybe_source
   };
-
-  Ok(LoadResponse {
-    data: data.map(String::from),
+  let Some(data) = data else {
+    return Ok(None);
+  };
+  Ok(Some(LoadResponse {
+    data: data.into_owned(),
     version: hash,
     script_kind: as_ts_script_kind(media_type),
-  })
+  }))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -585,7 +587,7 @@ fn op_resolve(
     let resolved_dep = graph
       .get(&referrer)
       .and_then(|m| m.esm())
-      .and_then(|m| m.dependencies.get(&specifier))
+      .and_then(|m| m.dependencies_prefer_fast_check().get(&specifier))
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
     let maybe_result = match resolved_dep {
@@ -763,6 +765,8 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): this mechanism is questionable.
+// Can't we use something more efficient here?
 #[op2]
 fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   let state = state.borrow_mut::<State>();
@@ -821,7 +825,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     },
   );
 
-  let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
   let request_value = json!({
     "config": request.config,
     "debug": request.debug,
@@ -840,9 +843,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     ..Default::default()
   });
 
-  runtime
-    .execute_script(located_script_name!(), startup_source)
-    .context("Could not properly start the compiler runtime.")?;
   runtime.execute_script(located_script_name!(), exec_source)?;
 
   let op_state = runtime.op_state();
@@ -1006,7 +1006,7 @@ mod tests {
       .execute_script_static(
         "<anon>",
         r#"
-      if (!(startup)) {
+      if (!(globalThis.exec)) {
           throw Error("bad");
         }
         console.log(`ts version: ${ts.version}`);
@@ -1078,9 +1078,10 @@ mod tests {
     )
     .await;
     let actual = op_load::call(&mut state, "asset:///lib.dom.d.ts")
-      .expect("should have invoked op");
+      .expect("should have invoked op")
+      .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
-    assert_eq!(actual.data.unwrap(), expected);
+    assert_eq!(actual.data, expected);
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
@@ -1094,7 +1095,8 @@ mod tests {
     )
     .await;
     let actual = op_load::call(&mut state, "internal:///.tsbuildinfo")
-      .expect("should have invoked op");
+      .expect("should have invoked op")
+      .expect("load should have succeeded");
     assert_eq!(
       serde_json::to_value(actual).unwrap(),
       json!({
@@ -1110,14 +1112,7 @@ mod tests {
     let mut state = setup(None, None, None).await;
     let actual = op_load::call(&mut state, "https://deno.land/x/mod.ts")
       .expect("should have invoked op");
-    assert_eq!(
-      serde_json::to_value(actual).unwrap(),
-      json!({
-        "data": null,
-        "version": null,
-        "scriptKind": 0,
-      })
-    )
+    assert_eq!(serde_json::to_value(actual).unwrap(), json!(null));
   }
 
   #[tokio::test]
@@ -1188,6 +1183,7 @@ mod tests {
           code: 5023,
           start: None,
           end: None,
+          original_source_start: None,
           message_text: Some(
             "Unknown compiler option \'invalid\'.".to_string()
           ),

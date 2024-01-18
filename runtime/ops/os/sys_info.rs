@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 #[cfg(target_family = "windows")]
 use std::sync::Once;
 
@@ -6,7 +6,7 @@ type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
 
 pub fn loadavg() -> LoadAvg {
-  #[cfg(target_os = "linux")]
+  #[cfg(any(target_os = "android", target_os = "linux"))]
   {
     use libc::SI_LOAD_SHIFT;
 
@@ -56,6 +56,22 @@ pub fn os_release() -> String {
       }
       _ => String::from(""),
     }
+  }
+  #[cfg(target_os = "android")]
+  {
+    let mut info = std::mem::MaybeUninit::uninit();
+    // SAFETY: `info` is a valid pointer to a `libc::utsname` struct.
+    let res = unsafe { libc::uname(info.as_mut_ptr()) };
+    if res != 0 {
+      return String::from("");
+    }
+    // SAFETY: `uname` returns 0 on success, and `info` is initialized.
+    let mut info = unsafe { info.assume_init() };
+    let len = info.release.len();
+    info.release[len - 1] = 0;
+    // SAFETY: `info.release` is a valid pointer and NUL-terminated.
+    let c_str = unsafe { std::ffi::CStr::from_ptr(info.release.as_ptr()) };
+    c_str.to_string_lossy().into_owned()
   }
   #[cfg(any(
     target_vendor = "apple",
@@ -198,7 +214,7 @@ pub fn mem_info() -> Option<MemInfo> {
     swap_total: 0,
     swap_free: 0,
   };
-  #[cfg(target_os = "linux")]
+  #[cfg(any(target_os = "android", target_os = "linux"))]
   {
     let mut info = std::mem::MaybeUninit::uninit();
     // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
@@ -343,7 +359,7 @@ pub fn mem_info() -> Option<MemInfo> {
 pub fn os_uptime() -> u64 {
   let uptime: u64;
 
-  #[cfg(target_os = "linux")]
+  #[cfg(any(target_os = "android", target_os = "linux"))]
   {
     let mut info = std::mem::MaybeUninit::uninit();
     // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.

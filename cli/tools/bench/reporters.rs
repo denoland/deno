@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use serde::Serialize;
 
@@ -12,6 +12,7 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
 }
 
 #[derive(Debug, Serialize)]
@@ -91,6 +92,8 @@ impl BenchReporter for JsonReporter {
       });
     }
   }
+
+  fn report_uncaught_error(&mut self, _origin: &str, _error: Box<JsError>) {}
 }
 
 pub struct ConsoleReporter {
@@ -175,13 +178,6 @@ impl BenchReporter for ConsoleReporter {
       }
 
       Some(group) => {
-        if self.group.is_none()
-          && self.has_ungrouped
-          && self.group_measurements.is_empty()
-        {
-          println!();
-        }
-
         if self.group.is_none() || group != self.group.as_ref().unwrap() {
           self.report_group_summary();
         }
@@ -189,7 +185,7 @@ impl BenchReporter for ConsoleReporter {
         if (self.group.is_none() && self.has_ungrouped)
           || (self.group.is_some() && self.group_measurements.is_empty())
         {
-          println!();
+          println!("{} {}", colors::gray("group"), colors::green(group));
         }
 
         self.group = Some(group.clone());
@@ -209,7 +205,6 @@ impl BenchReporter for ConsoleReporter {
     }
 
     let options = self.options.as_ref().unwrap();
-
     match result {
       BenchResult::Ok(stats) => {
         let mut desc = desc.clone();
@@ -293,6 +288,7 @@ impl BenchReporter for ConsoleReporter {
         )
       );
     }
+    println!();
 
     self.baseline = false;
     self.group_measurements.clear();
@@ -300,5 +296,16 @@ impl BenchReporter for ConsoleReporter {
 
   fn report_end(&mut self, _: &BenchReport) {
     self.report_group_summary();
+  }
+
+  fn report_uncaught_error(&mut self, _origin: &str, error: Box<JsError>) {
+    println!(
+      "{}: {}",
+      colors::red_bold("error"),
+      format_test_error(&error)
+    );
+    println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
+    println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+    println!();
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -249,7 +249,7 @@ export class OutgoingMessage extends Stream {
     }
 
     name = name.toString();
-    headers[name.toLowerCase()] = [name, value.toString()];
+    headers[name.toLowerCase()] = [name, String(value)];
     return this;
   }
 

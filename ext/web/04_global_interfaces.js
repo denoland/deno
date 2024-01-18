@@ -1,10 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
 import { EventTarget } from "ext:deno_web/02_event.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   Symbol,
   SymbolToStringTag,

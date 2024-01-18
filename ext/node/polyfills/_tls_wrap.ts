@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -84,8 +84,7 @@ export class TLSSocket extends net.Socket {
   constructor(socket: any, opts: any = kEmptyObject) {
     const tlsOptions = { ...opts };
 
-    let hostname = tlsOptions?.secureContext?.servername;
-    hostname = opts.host;
+    const hostname = opts.servername ?? opts.host ?? socket._host;
     tlsOptions.hostname = hostname;
 
     const _cert = tlsOptions?.secureContext?.cert;

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -55,7 +55,7 @@ pub fn op_node_check_prime(
   primes::is_probably_prime(&BigInt::from(num), checks)
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_node_check_prime_bytes(
   #[anybuffer] bytes: &[u8],
   #[number] checks: usize,

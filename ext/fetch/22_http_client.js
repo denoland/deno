@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -10,8 +10,12 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
+import { core } from "ext:core/mod.js";
+
+import { SymbolDispose } from "ext:deno_web/00_infra.js";
+const {
+  op_fetch_custom_client,
+} = core.ensureFastOps();
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -20,7 +24,7 @@ const ops = core.ops;
 function createHttpClient(options) {
   options.caCerts ??= [];
   return new HttpClient(
-    ops.op_fetch_custom_client(
+    op_fetch_custom_client(
       options,
     ),
   );
@@ -33,8 +37,13 @@ class HttpClient {
   constructor(rid) {
     this.rid = rid;
   }
+
   close() {
     core.close(this.rid);
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.rid);
   }
 }
 const HttpClientPrototype = HttpClient.prototype;

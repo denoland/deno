@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod blob;
 mod compression;
@@ -117,6 +117,7 @@ deno_core::extension!(deno_web,
     "13_message_port.js",
     "14_compression.js",
     "15_performance.js",
+    "16_image_data.js",
   ],
   options = {
     blob_store: Arc<BlobStore>,

@@ -1,11 +1,35 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, internals, primordials } from "ext:core/mod.js";
+const {
+  op_require_as_file_path,
+  op_require_break_on_next_statement,
+  op_require_init_paths,
+  op_require_is_deno_dir_package,
+  op_require_is_request_relative,
+  op_require_node_module_paths,
+  op_require_package_imports_resolve,
+  op_require_path_basename,
+  op_require_path_dirname,
+  op_require_path_is_absolute,
+  op_require_path_resolve,
+  op_require_proxy_path,
+  op_require_read_file,
+  op_require_read_package_scope,
+  op_require_real_path,
+  op_require_resolve_deno_dir,
+  op_require_resolve_exports,
+  op_require_resolve_lookup_paths,
+  op_require_stat,
+  op_require_try_self,
+  op_require_try_self_parent_path,
+} = core.ensureFastOps();
+const {
+  op_napi_open,
+  op_require_read_closest_package_json,
+} = core.ensureFastOps(true);
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -14,32 +38,33 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  Error,
+  JSONParse,
+  ObjectCreate,
+  ObjectEntries,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
   ObjectHasOwn,
-  ObjectSetPrototypeOf,
   ObjectKeys,
-  ObjectEntries,
   ObjectPrototype,
-  ObjectCreate,
+  ObjectSetPrototypeOf,
   Proxy,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
   SafeMap,
   SafeWeakMap,
-  SafeArrayIterator,
-  JSONParse,
   String,
+  StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
-  StringPrototypeIndexOf,
   StringPrototypeIncludes,
+  StringPrototypeIndexOf,
   StringPrototypeMatch,
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
-  StringPrototypeCharCodeAt,
-  RegExpPrototypeTest,
-  Error,
   TypeError,
 } = primordials;
+
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 import _httpAgent from "ext:deno_node/_http_agent.mjs";
@@ -250,11 +275,11 @@ function pathDirname(filepath) {
   } else if (filepath === "") {
     return ".";
   }
-  return ops.op_require_path_dirname(filepath);
+  return op_require_path_dirname(filepath);
 }
 
 function pathResolve(...args) {
-  return ops.op_require_path_resolve(args);
+  return op_require_path_resolve(args);
 }
 
 const nativeModulePolyfill = new SafeMap();
@@ -278,7 +303,7 @@ function stat(filename) {
       return result;
     }
   }
-  const result = ops.op_require_stat(filename);
+  const result = op_require_stat(filename);
   if (statCache !== null && result >= 0) {
     statCache.set(filename, result);
   }
@@ -308,7 +333,7 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
     requestPath,
     "package.json",
   );
-  const pkg = ops.op_require_read_package_scope(packageJsonPath)?.main;
+  const pkg = op_require_read_package_scope(packageJsonPath)?.main;
   if (!pkg) {
     return tryExtensions(
       pathResolve(requestPath, "index"),
@@ -362,7 +387,7 @@ function toRealPath(requestPath) {
   if (maybeCached) {
     return maybeCached;
   }
-  const rp = ops.op_require_real_path(requestPath);
+  const rp = op_require_real_path(requestPath);
   realpathCache.set(requestPath, rp);
   return rp;
 }
@@ -381,7 +406,7 @@ function tryExtensions(p, exts, isMain) {
 // Find the longest (possibly multi-dot) extension registered in
 // Module._extensions
 function findLongestRegisteredExtension(filename) {
-  const name = ops.op_require_path_basename(filename);
+  const name = op_require_path_basename(filename);
   let currentExtension;
   let index;
   let startIndex = 0;
@@ -515,7 +540,7 @@ function resolveExports(
     return false;
   }
 
-  return ops.op_require_resolve_exports(
+  return op_require_resolve_exports(
     usesLocalNodeModulesDir,
     modulesPath,
     request,
@@ -526,7 +551,7 @@ function resolveExports(
 }
 
 Module._findPath = function (request, paths, isMain, parentPath) {
-  const absoluteRequest = ops.op_require_path_is_absolute(request);
+  const absoluteRequest = op_require_path_is_absolute(request);
   if (absoluteRequest) {
     paths = [""];
   } else if (!paths || paths.length === 0) {
@@ -570,10 +595,10 @@ Module._findPath = function (request, paths, isMain, parentPath) {
     if (usesLocalNodeModulesDir) {
       basePath = pathResolve(curPath, request);
     } else {
-      const isDenoDirPackage = ops.op_require_is_deno_dir_package(
+      const isDenoDirPackage = op_require_is_deno_dir_package(
         curPath,
       );
-      const isRelative = ops.op_require_is_request_relative(
+      const isRelative = op_require_is_request_relative(
         request,
       );
       basePath = (isDenoDirPackage && !isRelative)
@@ -620,16 +645,16 @@ Module._findPath = function (request, paths, isMain, parentPath) {
  * @returns {string[]} List of module directories
  */
 Module._nodeModulePaths = function (fromPath) {
-  return ops.op_require_node_module_paths(fromPath);
+  return op_require_node_module_paths(fromPath);
 };
 
 Module._resolveLookupPaths = function (request, parent) {
   const paths = [];
 
-  if (ops.op_require_is_request_relative(request)) {
+  if (op_require_is_request_relative(request)) {
     ArrayPrototypePush(
       paths,
-      parent?.filename ? ops.op_require_path_dirname(parent.filename) : ".",
+      parent?.filename ? op_require_path_dirname(parent.filename) : ".",
     );
     return paths;
   }
@@ -637,7 +662,7 @@ Module._resolveLookupPaths = function (request, parent) {
   if (
     !usesLocalNodeModulesDir && parent?.filename && parent.filename.length > 0
   ) {
-    const denoDirPath = ops.op_require_resolve_deno_dir(
+    const denoDirPath = op_require_resolve_deno_dir(
       request,
       parent.filename,
     );
@@ -645,7 +670,7 @@ Module._resolveLookupPaths = function (request, parent) {
       ArrayPrototypePush(paths, denoDirPath);
     }
   }
-  const lookupPathsResult = ops.op_require_resolve_lookup_paths(
+  const lookupPathsResult = op_require_resolve_lookup_paths(
     request,
     parent?.paths,
     parent?.filename ?? "",
@@ -767,7 +792,7 @@ Module._resolveFilename = function (
 
   if (typeof options === "object" && options !== null) {
     if (ArrayIsArray(options.paths)) {
-      const isRelative = ops.op_require_is_request_relative(
+      const isRelative = op_require_is_request_relative(
         request,
       );
 
@@ -802,7 +827,7 @@ Module._resolveFilename = function (
 
   if (parent?.filename) {
     if (request[0] === "#") {
-      const maybeResolved = ops.op_require_package_imports_resolve(
+      const maybeResolved = op_require_package_imports_resolve(
         parent.filename,
         request,
       );
@@ -813,12 +838,12 @@ Module._resolveFilename = function (
   }
 
   // Try module self resolution first
-  const parentPath = ops.op_require_try_self_parent_path(
+  const parentPath = op_require_try_self_parent_path(
     !!parent,
     parent?.filename,
     parent?.id,
   );
-  const selfResolved = ops.op_require_try_self(parentPath, request);
+  const selfResolved = op_require_try_self(parentPath, request);
   if (selfResolved) {
     const cacheKey = request + "\x00" +
       (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));
@@ -834,7 +859,7 @@ Module._resolveFilename = function (
     parentPath,
   );
   if (filename) {
-    return ops.op_require_real_path(filename);
+    return op_require_real_path(filename);
   }
   const requireStack = [];
   for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
@@ -878,7 +903,7 @@ Module.prototype.load = function (filename) {
 
   // Canonicalize the path so it's not pointing to the symlinked directory
   // in `node_modules` directory of the referrer.
-  this.filename = ops.op_require_real_path(filename);
+  this.filename = op_require_real_path(filename);
   this.paths = Module._nodeModulePaths(
     pathDirname(this.filename),
   );
@@ -991,7 +1016,7 @@ Module.prototype._compile = function (content, filename) {
 
   if (hasInspectBrk && !hasBrokenOnInspectBrk) {
     hasBrokenOnInspectBrk = true;
-    ops.op_require_break_on_next_statement();
+    op_require_break_on_next_statement();
   }
 
   const {
@@ -1034,10 +1059,10 @@ Module.prototype._compile = function (content, filename) {
 };
 
 Module._extensions[".js"] = function (module, filename) {
-  const content = ops.op_require_read_file(filename);
+  const content = op_require_read_file(filename);
 
   if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = ops.op_require_read_closest_package_json(filename);
+    const pkg = op_require_read_closest_package_json(filename);
     if (pkg && pkg.exists && pkg.typ === "module") {
       throw createRequireEsmError(
         filename,
@@ -1072,7 +1097,7 @@ function stripBOM(content) {
 
 // Native extension for .json
 Module._extensions[".json"] = function (module, filename) {
-  const content = ops.op_require_read_file(filename);
+  const content = op_require_read_file(filename);
 
   try {
     module.exports = JSONParse(stripBOM(content));
@@ -1087,11 +1112,11 @@ Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("fsevents.node")) {
     throw new Error("Using fsevents module is currently not supported");
   }
-  module.exports = ops.op_napi_open(filename, globalThis);
+  module.exports = op_napi_open(filename, globalThis);
 };
 
 function createRequireFromPath(filename) {
-  const proxyPath = ops.op_require_proxy_path(filename);
+  const proxyPath = op_require_proxy_path(filename);
   const mod = new Module(proxyPath);
   mod.filename = proxyPath;
   mod.paths = Module._nodeModulePaths(mod.path);
@@ -1154,14 +1179,14 @@ function createRequire(filenameOrUrl) {
       `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
     );
   }
-  const filename = ops.op_require_as_file_path(fileUrlStr);
+  const filename = op_require_as_file_path(fileUrlStr);
   return createRequireFromPath(filename);
 }
 
 Module.createRequire = createRequire;
 
 Module._initPaths = function () {
-  const paths = ops.op_require_init_paths();
+  const paths = op_require_init_paths();
   modulePaths = paths;
   Module.globalPaths = ArrayPrototypeSlice(modulePaths);
 };

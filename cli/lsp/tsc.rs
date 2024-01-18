@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::CodeActionData;
 use super::code_lens;
@@ -36,6 +36,7 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
@@ -51,7 +52,9 @@ use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use lazy_regex::lazy_regex;
 use log::error;
@@ -63,13 +66,16 @@ use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 use text_size::TextRange;
 use text_size::TextSize;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
@@ -208,48 +214,68 @@ fn normalize_diagnostic(
   Ok(())
 }
 
-#[derive(Clone, Debug)]
 pub struct TsServer {
   performance: Arc<Performance>,
+  cache: Arc<dyn HttpCache>,
   sender: mpsc::UnboundedSender<Request>,
+  receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   specifier_map: Arc<TscSpecifierMap>,
+  inspector_server: Mutex<Option<Arc<InspectorServer>>>,
+}
+
+impl std::fmt::Debug for TsServer {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("TsServer")
+      .field("performance", &self.performance)
+      .field("cache", &self.cache)
+      .field("sender", &self.sender)
+      .field("receiver", &self.receiver)
+      .field("specifier_map", &self.specifier_map)
+      .field("inspector_server", &self.inspector_server.lock().is_some())
+      .finish()
+  }
 }
 
 impl TsServer {
   pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
-    let specifier_map = Arc::new(TscSpecifierMap::new());
-    let specifier_map_ = specifier_map.clone();
-    let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
-    let perf = performance.clone();
-    let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(perf, cache, specifier_map_);
-
-      let runtime = create_basic_runtime();
-      runtime.block_on(async {
-        let mut started = false;
-        while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
-          if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false).unwrap();
-            started = true;
-          }
-          let value =
-            request(&mut ts_runtime, state_snapshot, req, token.clone());
-          let was_sent = tx.send(value).is_ok();
-          // Don't print the send error if the token is cancelled, it's expected
-          // to fail in that case and this commonly occurs.
-          if !was_sent && !token.is_cancelled() {
-            lsp_warn!("Unable to send result to client.");
-          }
-        }
-      })
-    });
-
+    let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
     Self {
       performance,
+      cache,
       sender: tx,
-      specifier_map,
+      receiver: Mutex::new(Some(request_rx)),
+      specifier_map: Arc::new(TscSpecifierMap::new()),
+      inspector_server: Mutex::new(None),
     }
+  }
+
+  pub fn start(&self, inspector_server_addr: Option<String>) {
+    let maybe_inspector_server = inspector_server_addr.and_then(|addr| {
+      let addr: SocketAddr = match addr.parse() {
+        Ok(addr) => addr,
+        Err(err) => {
+          lsp_warn!("Invalid inspector server address \"{}\": {}", &addr, err);
+          return None;
+        }
+      };
+      Some(Arc::new(InspectorServer::new(addr, "deno-lsp-tsc")))
+    });
+    *self.inspector_server.lock() = maybe_inspector_server.clone();
+    // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
+    // on the `TsServer` struct.
+    let receiver = self.receiver.lock().take().unwrap();
+    let performance = self.performance.clone();
+    let cache = self.cache.clone();
+    let specifier_map = self.specifier_map.clone();
+    let _join_handle = thread::spawn(move || {
+      run_tsc_thread(
+        receiver,
+        performance.clone(),
+        cache.clone(),
+        specifier_map.clone(),
+        maybe_inspector_server,
+      )
+    });
   }
 
   pub async fn get_diagnostics(
@@ -3116,6 +3142,23 @@ impl CompletionEntryDetails {
     } else {
       None
     };
+    let mut text_edit = original_item.text_edit.clone();
+    if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      if let Some(text_edit) = &mut text_edit {
+        match text_edit {
+          lsp::CompletionTextEdit::Edit(text_edit) => {
+            text_edit.new_text = text_edit
+              .new_text
+              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+          }
+          lsp::CompletionTextEdit::InsertAndReplace(insert_replace_edit) => {
+            insert_replace_edit.new_text = insert_replace_edit
+              .new_text
+              .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+          }
+        }
+      }
+    }
     let (command, additional_text_edits) = parse_code_actions(
       self.code_actions.as_ref(),
       data,
@@ -3140,6 +3183,7 @@ impl CompletionEntryDetails {
       detail,
       documentation,
       command,
+      text_edit,
       additional_text_edits,
       insert_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
@@ -3778,6 +3822,8 @@ impl TscSpecifierMap {
   }
 }
 
+// TODO(bartlomieju): we have similar struct in `cli/tsc/mod.rs` - maybe at least change
+// the name of the struct to avoid confusion?
 struct State {
   last_id: usize,
   performance: Arc<Performance>,
@@ -3844,7 +3890,8 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 #[op2(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  let mark = state.performance.mark("tsc.op.op_is_node_file");
+  let r = match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .state_snapshot
       .npm
@@ -3852,7 +3899,9 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
       .map(|n| n.npm_resolver.in_npm_package(&specifier))
       .unwrap_or(false),
     Err(_) => false,
-  }
+  };
+  state.performance.measure(mark);
+  r
 }
 
 #[derive(Debug, Serialize)]
@@ -3876,11 +3925,7 @@ fn op_load<'s>(
   let specifier = state.specifier_map.normalize(specifier)?;
   let maybe_load_response =
     if specifier.as_str() == "internal:///missing_dependency.d.ts" {
-      Some(LoadResponse {
-        data: Arc::from("declare const __: any;\nexport = __;\n"),
-        script_kind: crate::tsc::as_ts_script_kind(MediaType::Dts),
-        version: Some("1".to_string()),
-      })
+      None
     } else {
       let asset_or_document = state.get_asset_or_document(&specifier);
       asset_or_document.map(|doc| LoadResponse {
@@ -3948,6 +3993,7 @@ fn op_respond(state: &mut OpState, #[serde] args: Response) {
 #[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_script_names");
   let documents = &state.state_snapshot.documents;
   let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
@@ -3977,7 +4023,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     );
     for specifier in specifiers {
       if seen.insert(specifier.as_str()) {
-        if let Some(specifier) = documents.resolve_redirected(specifier) {
+        if let Some(specifier) = documents.resolve_specifier(specifier) {
           // only include dependencies we know to exist otherwise typescript will error
           if documents.exists(&specifier) {
             result.push(specifier.to_string());
@@ -3987,13 +4033,15 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  result
+  let r = result
     .into_iter()
     .map(|s| match ModuleSpecifier::parse(&s) {
       Ok(s) => state.specifier_map.denormalize(&s),
       Err(_) => s,
     })
-    .collect()
+    .collect();
+  state.performance.measure(mark);
+  r
 }
 
 #[op2]
@@ -4003,25 +4051,91 @@ fn op_script_version(
   #[string] specifier: &str,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
-  // this op is very "noisy" and measuring its performance is not useful, so we
-  // don't measure it uniquely anymore.
+  let mark = state.performance.mark("tsc.op.op_script_version");
   let specifier = state.specifier_map.normalize(specifier)?;
-  Ok(state.script_version(&specifier))
+  let r = state.script_version(&specifier);
+  state.performance.measure(mark);
+  Ok(r)
 }
 
-/// Create and setup a JsRuntime based on a snapshot. It is expected that the
-/// supplied snapshot is an isolate that contains the TypeScript language
-/// server.
-fn js_runtime(
+#[op2]
+#[string]
+fn op_project_version(state: &mut OpState) -> String {
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("tsc.op.op_project_version");
+  let r = state.state_snapshot.documents.project_version();
+  state.performance.measure(mark);
+  r
+}
+
+fn run_tsc_thread(
+  mut request_rx: UnboundedReceiver<Request>,
   performance: Arc<Performance>,
   cache: Arc<dyn HttpCache>,
   specifier_map: Arc<TscSpecifierMap>,
-) -> JsRuntime {
-  JsRuntime::new(RuntimeOptions {
+  maybe_inspector_server: Option<Arc<InspectorServer>>,
+) {
+  let has_inspector_server = maybe_inspector_server.is_some();
+  // Create and setup a JsRuntime based on a snapshot. It is expected that the
+  // supplied snapshot is an isolate that contains the TypeScript language
+  // server.
+  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance, cache, specifier_map)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
+    inspector: maybe_inspector_server.is_some(),
     ..Default::default()
-  })
+  });
+
+  if let Some(server) = maybe_inspector_server {
+    server.register_inspector(
+      "ext:deno_tsc/99_main_compiler.js".to_string(),
+      &mut tsc_runtime,
+      false,
+    );
+  }
+
+  let tsc_future = async {
+    start_tsc(&mut tsc_runtime, false).unwrap();
+    let (request_signal_tx, mut request_signal_rx) = mpsc::unbounded_channel::<()>();
+    let tsc_runtime = Rc::new(tokio::sync::Mutex::new(tsc_runtime));
+    let tsc_runtime_ = tsc_runtime.clone();
+    let event_loop_fut = async {
+      loop {
+        if has_inspector_server {
+          tsc_runtime_.lock().await.run_event_loop(PollEventLoopOptions {
+            wait_for_inspector: false,
+            pump_v8_message_loop: true,
+          }).await.ok();
+        }
+        request_signal_rx.recv_many(&mut vec![], 1000).await;
+      }
+    };
+    tokio::pin!(event_loop_fut);
+    loop {
+      tokio::select! {
+        biased;
+        (maybe_request, mut tsc_runtime) = async { (request_rx.recv().await, tsc_runtime.lock().await) } => {
+          if let Some((req, state_snapshot, tx, token)) = maybe_request {
+            let value = request(&mut tsc_runtime, state_snapshot, req, token.clone());
+            request_signal_tx.send(()).unwrap();
+            let was_sent = tx.send(value).is_ok();
+            // Don't print the send error if the token is cancelled, it's expected
+            // to fail in that case and this commonly occurs.
+            if !was_sent && !token.is_cancelled() {
+              lsp_warn!("Unable to send result to client.");
+            }
+          } else {
+            break;
+          }
+        },
+        _ = &mut event_loop_fut => {}
+      }
+    }
+  }
+  .boxed_local();
+
+  let runtime = create_basic_runtime();
+  runtime.block_on(tsc_future)
 }
 
 deno_core::extension!(deno_tsc,
@@ -4033,6 +4147,7 @@ deno_core::extension!(deno_tsc,
     op_respond,
     op_script_names,
     op_script_version,
+    op_project_version,
   ],
   options = {
     performance: Arc<Performance>,
@@ -4057,7 +4172,7 @@ deno_core::extension!(deno_tsc,
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+fn start_tsc(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
@@ -4512,6 +4627,7 @@ mod tests {
     let snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance, cache.clone());
+    ts_server.start(None);
     let ts_config = TsConfig::new(config);
     assert!(ts_server
       .configure(snapshot.clone(), ts_config,)
@@ -4977,6 +5093,14 @@ mod tests {
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
+    let snapshot = {
+      let mut documents = snapshot.documents.clone();
+      documents.increment_project_version();
+      Arc::new(StateSnapshot {
+        documents,
+        ..snapshot.as_ref().clone()
+      })
+    };
     let specifier = resolve_url("file:///a.ts").unwrap();
     let diagnostics = ts_server
       .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())

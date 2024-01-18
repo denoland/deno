@@ -1,15 +1,19 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  op_url_get_serialization,
+  op_url_parse,
+  op_url_parse_search_params,
+  op_url_parse_with_base,
+  op_url_reparse,
+  op_url_stringify_search_params,
+} = core.ensureFastOps();
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -28,6 +32,9 @@ const {
   TypeError,
   Uint32Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
@@ -51,7 +58,7 @@ const SET_USERNAME = 8;
  * @returns {string}
  */
 function opUrlReparse(href, setter, value) {
-  const status = ops.op_url_reparse(
+  const status = op_url_reparse(
     href,
     setter,
     value,
@@ -67,9 +74,9 @@ function opUrlReparse(href, setter, value) {
  */
 function opUrlParse(href, maybeBase) {
   if (maybeBase === undefined) {
-    return ops.op_url_parse(href, componentsBuf);
+    return op_url_parse(href, componentsBuf);
   }
-  return ops.op_url_parse_with_base(
+  return op_url_parse_with_base(
     href,
     maybeBase,
     componentsBuf,
@@ -86,7 +93,7 @@ function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
   } else if (status === 1) {
-    return ops.op_url_get_serialization();
+    return op_url_get_serialization();
   } else {
     throw new TypeError(
       `Invalid URL: '${href}'` +
@@ -124,7 +131,7 @@ class URLSearchParams {
       if (init[0] == "?") {
         init = StringPrototypeSlice(init, 1);
       }
-      this[_list] = ops.op_url_parse_search_params(init);
+      this[_list] = op_url_parse_search_params(init);
     } else if (ArrayIsArray(init)) {
       // Overload: sequence<sequence<USVString>>
       this[_list] = ArrayPrototypeMap(init, (pair, i) => {
@@ -315,7 +322,7 @@ class URLSearchParams {
    */
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype);
-    return ops.op_url_stringify_search_params(this[_list]);
+    return op_url_stringify_search_params(this[_list]);
   }
 
   get size() {
@@ -437,7 +444,7 @@ class URL {
   #updateSearchParams() {
     if (this.#queryObject !== null) {
       const params = this.#queryObject[_list];
-      const newParams = ops.op_url_parse_search_params(
+      const newParams = op_url_parse_search_params(
         StringPrototypeSlice(this.search, 1),
       );
       ArrayPrototypeSplice(
@@ -824,7 +831,7 @@ const URLPrototype = URL.prototype;
  * @returns {[string, string][]}
  */
 function parseUrlEncoded(bytes) {
-  return ops.op_url_parse_search_params(null, bytes);
+  return op_url_parse_search_params(null, bytes);
 }
 
 webidl

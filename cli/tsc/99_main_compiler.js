@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -226,6 +226,8 @@ delete Object.prototype.__proto__;
             impliedNodeFormat: isCjsCache.has(fileName)
               ? ts.ModuleKind.CommonJS
               : ts.ModuleKind.ESNext,
+            // in the lsp we want to be able to show documentation
+            jsDocParsingMode: ts.JSDocParsingMode.ParseAll,
           },
           version,
           true,
@@ -517,6 +519,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.fileExists("${specifier}")`);
       }
+      // TODO(bartlomieju): is this assumption still valid?
       // this is used by typescript to find the libs path
       // so we can completely ignore it
       return false;
@@ -525,11 +528,25 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
-      return ops.op_load(specifier).data;
+      return ops.op_load(specifier)?.data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
       return new CancellationToken();
+    },
+    getProjectVersion() {
+      return ops.op_project_version();
+    },
+    // @ts-ignore Undocumented method.
+    getModuleSpecifierCache() {
+      return moduleSpecifierCache;
+    },
+    // @ts-ignore Undocumented method.
+    getCachedExportInfoMap() {
+      return exportMapCache;
+    },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
     },
     getSourceFile(
       specifier,
@@ -537,11 +554,12 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
-      const createOptions = getCreateSourceFileOptions(languageVersion);
       if (logDebug) {
         debug(
           `host.getSourceFile("${specifier}", ${
-            ts.ScriptTarget[createOptions.languageVersion]
+            ts.ScriptTarget[
+              getCreateSourceFileOptions(languageVersion).languageVersion
+            ]
           })`,
         );
       }
@@ -568,16 +586,21 @@ delete Object.prototype.__proto__;
         specifier,
         data,
         {
-          ...createOptions,
+          ...getCreateSourceFileOptions(languageVersion),
           impliedNodeFormat: isCjsCache.has(specifier)
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
+          // no need to parse docs for `deno check`
+          jsDocParsingMode: ts.JSDocParsingMode.ParseForTypeErrors,
         },
         false,
         scriptKind,
       );
       sourceFile.moduleName = specifier;
       sourceFile.version = version;
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        sourceFile.version = "1";
+      }
       sourceFileCache.set(specifier, sourceFile);
       scriptVersionCache.set(specifier, version);
       return sourceFile;
@@ -715,6 +738,9 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getScriptVersion("${specifier}")`);
       }
+      if (specifier.startsWith(ASSETS_URL_PREFIX)) {
+        return "1";
+      }
       // tsc requests the script version multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptVersionCache.has(specifier)) {
@@ -750,6 +776,12 @@ delete Object.prototype.__proto__;
       return undefined;
     },
   };
+
+  // @ts-ignore Undocumented function.
+  const moduleSpecifierCache = ts.server.createModuleSpecifierCache(host);
+
+  // @ts-ignore Undocumented function.
+  const exportMapCache = ts.createCacheableExportInfoMap(host);
 
   // override the npm install @types package diagnostics to be deno specific
   ts.setLocalizedDiagnosticMessages((() => {
@@ -958,6 +990,9 @@ delete Object.prototype.__proto__;
    * @param {number} id
    * @param {any} data
    */
+  // TODO(bartlomieju): this feels needlessly generic, both type chcking
+  // and language server use it with inefficient serialization. Id is not used
+  // anyway...
   function respond(id, data = null) {
     ops.op_respond({ id, data });
   }
@@ -988,6 +1023,7 @@ delete Object.prototype.__proto__;
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
+        moduleSpecifierCache.clear();
         return respond(id, true);
       }
       case "$getSupportedCodeFixes": {
@@ -1041,6 +1077,7 @@ delete Object.prototype.__proto__;
     }
   }
 
+  let hasStarted = false;
   /** @param {{ debug: boolean; }} init */
   function serverInit({ debug: debugFlag }) {
     if (hasStarted) {
@@ -1056,19 +1093,6 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host, documentRegistry);
     isNodeSourceFileCache.clear();
     debug("serverRestart()");
-  }
-
-  let hasStarted = false;
-
-  /** Startup the runtime environment, setting various flags.
-   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg
-   */
-  function startup({ debugFlag = false }) {
-    if (hasStarted) {
-      throw new Error("The compiler runtime already started.");
-    }
-    hasStarted = true;
-    setLogDebug(!!debugFlag, "TS");
   }
 
   // A build time only op that provides some setup information that is used to
@@ -1156,7 +1180,6 @@ delete Object.prototype.__proto__;
   // checking TypeScript.
   /** @type {any} */
   const global = globalThis;
-  global.startup = startup;
   global.exec = exec;
   global.getAssets = getAssets;
 

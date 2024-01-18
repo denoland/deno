@@ -1,8 +1,13 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  op_create_worker,
+  op_host_post_message,
+  op_host_recv_ctrl,
+  op_host_recv_message,
+  op_host_terminate_worker,
+} = core.ensureFastOps();
 const {
   ArrayPrototypeFilter,
   Error,
@@ -13,6 +18,7 @@ const {
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { URL } from "ext:deno_url/00_url.js";
@@ -40,7 +46,7 @@ function createWorker(
   name,
   workerType,
 ) {
-  return ops.op_create_worker({
+  return op_create_worker({
     hasSourceCode,
     name,
     permissions: serializePermissions(permissions),
@@ -51,19 +57,19 @@ function createWorker(
 }
 
 function hostTerminateWorker(id) {
-  ops.op_host_terminate_worker(id);
+  op_host_terminate_worker(id);
 }
 
 function hostPostMessage(id, data) {
-  ops.op_host_post_message(id, data);
+  op_host_post_message(id, data);
 }
 
 function hostRecvCtrl(id) {
-  return core.opAsync("op_host_recv_ctrl", id);
+  return op_host_recv_ctrl(id);
 }
 
 function hostRecvMessage(id) {
-  return core.opAsync("op_host_recv_message", id);
+  return op_host_recv_message(id);
 }
 
 class Worker extends EventTarget {

@@ -1,10 +1,43 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const primordials = globalThis.__bootstrap.primordials;
-const internals = globalThis.__bootstrap.internals;
+import { core, internals, primordials } from "ext:core/mod.js";
+const {
+  BadResourcePrototype,
+  InterruptedPrototype,
+} = core;
+const {
+  op_http_close_after_finish,
+  op_http_get_request_headers,
+  op_http_get_request_method_and_url,
+  op_http_read_request_body,
+  op_http_serve,
+  op_http_serve_on,
+  op_http_set_promise_complete,
+  op_http_set_response_body_bytes,
+  op_http_set_response_body_resource,
+  op_http_set_response_body_text,
+  op_http_set_response_header,
+  op_http_set_response_headers,
+  op_http_set_response_trailers,
+  op_http_upgrade_raw,
+  op_http_upgrade_websocket_next,
+  op_http_try_wait,
+  op_http_wait,
+  op_http_cancel,
+  op_http_close,
+} = core.ensureFastOps();
+const {
+  ArrayPrototypePush,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  Symbol,
+  TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  Uint8Array,
+} = primordials;
 
-const { BadResourcePrototype, InterruptedPrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
 import {
@@ -38,39 +71,7 @@ import {
 import { listen, listenOptionApiName, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
-const {
-  ArrayPrototypePush,
-  ObjectHasOwn,
-  ObjectPrototypeIsPrototypeOf,
-  PromisePrototypeCatch,
-  PromisePrototypeThen,
-  Symbol,
-  TypeError,
-  Uint8Array,
-  Uint8ArrayPrototype,
-} = primordials;
 
-const {
-  op_http_close_after_finish,
-  op_http_get_request_headers,
-  op_http_get_request_method_and_url,
-  op_http_read_request_body,
-  op_http_serve,
-  op_http_serve_on,
-  op_http_set_promise_complete,
-  op_http_set_response_body_bytes,
-  op_http_set_response_body_resource,
-  op_http_set_response_body_text,
-  op_http_set_response_header,
-  op_http_set_response_headers,
-  op_http_set_response_trailers,
-  op_http_upgrade_raw,
-  op_http_upgrade_websocket_next,
-  op_http_try_wait,
-  op_http_wait,
-  op_http_cancel,
-  op_http_close,
-} = core.ensureFastOps();
 const _upgraded = Symbol("_upgraded");
 
 function internalServerError() {
@@ -399,7 +400,7 @@ function fastSyncResponseOrStream(req, respBody, status, innerRequest) {
   const stream = respBody.streamOrStatic;
   const body = stream.body;
 
-  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
+  if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
     op_http_set_response_body_bytes(req, body, status);
     return;

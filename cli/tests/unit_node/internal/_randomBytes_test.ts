@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -6,7 +6,7 @@ import {
   assertThrows,
 } from "../../../../test_util/std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { randomBytes } from "node:crypto";
+import { pseudoRandomBytes, randomBytes } from "node:crypto";
 
 const MAX_RANDOM_VALUES = 65536;
 const MAX_SIZE = 4294967295;
@@ -89,4 +89,24 @@ Deno.test("[std/node/crypto] randomBytes callback isn't called twice if error is
     prelude: `import { randomBytes } from ${JSON.stringify(importUrl)}`,
     invocation: "randomBytes(0, ",
   });
+});
+
+// https://github.com/denoland/deno/issues/21632
+Deno.test("pseudoRandomBytes works", function () {
+  assertEquals(pseudoRandomBytes(0).length, 0, "len: " + 0);
+  assertEquals(pseudoRandomBytes(3).length, 3, "len: " + 3);
+  assertEquals(pseudoRandomBytes(30).length, 30, "len: " + 30);
+  assertEquals(pseudoRandomBytes(300).length, 300, "len: " + 300);
+  assertEquals(
+    pseudoRandomBytes(17 + MAX_RANDOM_VALUES).length,
+    17 + MAX_RANDOM_VALUES,
+    "len: " + 17 + MAX_RANDOM_VALUES,
+  );
+  assertEquals(
+    pseudoRandomBytes(MAX_RANDOM_VALUES * 100).length,
+    MAX_RANDOM_VALUES * 100,
+    "len: " + MAX_RANDOM_VALUES * 100,
+  );
+  assertThrows(() => pseudoRandomBytes(MAX_SIZE + 1));
+  assertThrows(() => pseudoRandomBytes(-1));
 });

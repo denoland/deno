@@ -1,6 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -23,6 +24,7 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
+use crate::tsc::Diagnostics;
 use crate::version;
 
 /// Options for performing a check of a module graph. Note that the decision to
@@ -68,6 +70,27 @@ impl TypeChecker {
     graph: Arc<ModuleGraph>,
     options: CheckOptions,
   ) -> Result<(), AnyError> {
+    let diagnostics = self.check_diagnostics(graph, options).await?;
+    if diagnostics.is_empty() {
+      Ok(())
+    } else {
+      Err(diagnostics.into())
+    }
+  }
+
+  /// Type check the module graph returning its diagnostics.
+  ///
+  /// It is expected that it is determined if a check and/or emit is validated
+  /// before the function is called.
+  pub async fn check_diagnostics(
+    &self,
+    graph: Arc<ModuleGraph>,
+    options: CheckOptions,
+  ) -> Result<Diagnostics, AnyError> {
+    if graph.roots.is_empty() {
+      return Ok(Default::default());
+    }
+
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
@@ -100,7 +123,7 @@ impl TypeChecker {
           type_check_mode,
           &ts_config,
         ) {
-          CheckHashResult::NoFiles => return Ok(()),
+          CheckHashResult::NoFiles => return Ok(Default::default()),
           CheckHashResult::Hash(hash) => Some(hash),
         }
       }
@@ -111,7 +134,7 @@ impl TypeChecker {
     if !options.reload {
       if let Some(check_hash) = maybe_check_hash {
         if cache.has_check_hash(check_hash) {
-          return Ok(());
+          return Ok(Default::default());
         }
       }
     }
@@ -152,7 +175,7 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
-    let diagnostics = if type_check_mode == TypeCheckMode::Local {
+    let mut diagnostics = if type_check_mode == TypeCheckMode::Local {
       response.diagnostics.filter(|d| {
         if let Some(file_name) = &d.file_name {
           if !file_name.starts_with("http") {
@@ -175,6 +198,8 @@ impl TypeChecker {
       response.diagnostics
     };
 
+    diagnostics.apply_fast_check_source_maps(&graph);
+
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
       cache.set_tsbuildinfo(&graph.roots[0], &tsbuildinfo);
     }
@@ -187,11 +212,7 @@ impl TypeChecker {
 
     log::debug!("{}", response.stats);
 
-    if diagnostics.is_empty() {
-      Ok(())
-    } else {
-      Err(diagnostics.into())
-    }
+    Ok(diagnostics)
   }
 }
 
@@ -256,7 +277,12 @@ fn get_check_hash(
         }
 
         hasher.write_str(module.specifier.as_str());
-        hasher.write_str(&module.source);
+        hasher.write_str(
+          module
+            .fast_check_module()
+            .map(|s| s.source.as_ref())
+            .unwrap_or(&module.source),
+        );
       }
       Module::Node(_) => {
         // the @types/node package will be in the resolved
@@ -345,21 +371,18 @@ fn get_tsc_roots(
     ));
   }
 
-  let mut seen_roots =
-    HashSet::with_capacity(graph.imports.len() + graph.roots.len());
+  let mut seen =
+    HashSet::with_capacity(graph.imports.len() + graph.specifiers_count());
+  let mut pending = VecDeque::new();
 
   // put in the global types first so that they're resolved before anything else
   for import in graph.imports.values() {
     for dep in import.dependencies.values() {
       let specifier = dep.get_type().or_else(|| dep.get_code());
       if let Some(specifier) = &specifier {
-        if seen_roots.insert(*specifier) {
-          let maybe_entry = graph
-            .get(specifier)
-            .and_then(|m| maybe_get_check_entry(m, check_js));
-          if let Some(entry) = maybe_entry {
-            result.push(entry);
-          }
+        let specifier = graph.resolve(specifier);
+        if seen.insert(specifier.clone()) {
+          pending.push_back(specifier);
         }
       }
     }
@@ -367,23 +390,50 @@ fn get_tsc_roots(
 
   // then the roots
   for root in &graph.roots {
-    if let Some(module) = graph.get(root) {
-      if seen_roots.insert(root) {
-        if let Some(entry) = maybe_get_check_entry(module, check_js) {
-          result.push(entry);
+    let specifier = graph.resolve(root);
+    if seen.insert(specifier.clone()) {
+      pending.push_back(specifier);
+    }
+  }
+
+  // now walk the graph that only includes the fast check dependencies
+  while let Some(specifier) = pending.pop_front() {
+    let Some(module) = graph.get(&specifier) else {
+      continue;
+    };
+    if let Some(entry) = maybe_get_check_entry(module, check_js) {
+      result.push(entry);
+    }
+    if let Some(module) = module.esm() {
+      let deps = module.dependencies_prefer_fast_check();
+      for dep in deps.values() {
+        // walk both the code and type dependencies
+        if let Some(specifier) = dep.get_code() {
+          let specifier = graph.resolve(specifier);
+          if seen.insert(specifier.clone()) {
+            pending.push_back(specifier);
+          }
+        }
+        if let Some(specifier) = dep.get_type() {
+          let specifier = graph.resolve(specifier);
+          if seen.insert(specifier.clone()) {
+            pending.push_back(specifier);
+          }
+        }
+      }
+
+      if let Some(dep) = module
+        .maybe_types_dependency
+        .as_ref()
+        .and_then(|d| d.dependency.ok())
+      {
+        let specifier = graph.resolve(&dep.specifier);
+        if seen.insert(specifier.clone()) {
+          pending.push_back(specifier);
         }
       }
     }
   }
-
-  // now the rest
-  result.extend(graph.modules().filter_map(|module| {
-    if seen_roots.contains(module.specifier()) {
-      None
-    } else {
-      maybe_get_check_entry(module, check_js)
-    }
-  }));
 
   result
 }

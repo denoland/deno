@@ -1,7 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
-use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
@@ -25,6 +24,8 @@ use crate::worker::CliMainWorkerFactory;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -411,6 +412,41 @@ pub async fn test_specifier(
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  match test_specifier_inner(
+    worker_factory,
+    permissions,
+    specifier.clone(),
+    &sender,
+    fail_fast_tracker,
+    options,
+  )
+  .await
+  {
+    Ok(()) => Ok(()),
+    Err(error) => {
+      if error.is::<JsError>() {
+        sender.send(TestEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(error.downcast::<JsError>().unwrap()),
+        ))?;
+        Ok(())
+      } else {
+        Err(error)
+      }
+    }
+  }
+}
+
+/// Test a single specifier as documentation containing test programs, an executable test module or
+/// both.
+async fn test_specifier_inner(
+  worker_factory: Arc<CliMainWorkerFactory>,
+  permissions: Permissions,
+  specifier: ModuleSpecifier,
+  sender: &TestEventSender,
+  fail_fast_tracker: FailFastTracker,
+  options: TestSpecifierOptions,
+) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
@@ -439,22 +475,12 @@ pub async fn test_specifier(
   }
 
   // We execute the main module as a side module so that import.meta.main is not set.
-  match worker.execute_side_module_possibly_with_npm().await {
-    Ok(()) => {}
-    Err(error) => {
-      if error.is::<JsError>() {
-        sender.send(TestEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(error.downcast::<JsError>().unwrap()),
-        ))?;
-        return Ok(());
-      } else {
-        return Err(error);
-      }
-    }
-  }
+  worker.execute_side_module_possibly_with_npm().await?;
 
   let mut worker = worker.into_main_worker();
+
+  // Ensure that there are no pending exceptions before we start running tests
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
   worker.dispatch_load_event(located_script_name!())?;
 
@@ -466,15 +492,16 @@ pub async fn test_specifier(
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
 
+  // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
+  // want to wait forever here.
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
+
   if let Some(coverage_collector) = coverage_collector.as_mut() {
     worker
       .js_runtime
-      .with_event_loop(
+      .with_event_loop_future(
         coverage_collector.stop_collecting().boxed_local(),
-        PollEventLoopOptions {
-          wait_for_inspector: false,
-          ..Default::default()
-        },
+        PollEventLoopOptions::default(),
       )
       .await?;
   }
@@ -545,11 +572,18 @@ pub async fn run_tests_for_worker(
       // but haven't responded to settle.
       let waker = noop_waker();
       let mut cx = Context::from_waker(&waker);
-      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+      let _ = worker
+        .js_runtime
+        .poll_event_loop(&mut cx, PollEventLoopOptions::default());
     }
 
     let earlier = SystemTime::now();
-    let result = match worker.js_runtime.call_and_await(&function).await {
+    let call = worker.js_runtime.call(&function);
+    let result = match worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await
+    {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
@@ -1015,14 +1049,42 @@ pub async fn report_tests(
   (Ok(()), receiver)
 }
 
+fn is_supported_test_path_predicate(
+  path: &Path,
+  patterns: &FilePatterns,
+) -> bool {
+  if !is_script_ext(path) {
+    false
+  } else if has_supported_test_path_name(path) {
+    true
+  } else {
+    // allow someone to explicitly specify a path
+    let matches_exact_path_or_pattern = patterns
+      .include
+      .as_ref()
+      .map(|p| {
+        p.inner().iter().any(|p| match p {
+          PathOrPattern::Path(p) => p == path,
+          PathOrPattern::RemoteUrl(_) => true,
+          PathOrPattern::Pattern(p) => p.matches_path(path),
+        })
+      })
+      .unwrap_or(false);
+    matches_exact_path_or_pattern
+  }
+}
+
 /// Checks if the path has a basename and extension Deno supports for tests.
 pub(crate) fn is_supported_test_path(path: &Path) -> bool {
+  has_supported_test_path_name(path) && is_script_ext(path)
+}
+
+fn has_supported_test_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    (basename.ends_with("_test")
+    basename.ends_with("_test")
       || basename.ends_with(".test")
-      || basename == "test")
-      && is_script_ext(path)
+      || basename == "test"
   } else {
     false
   }
@@ -1061,13 +1123,15 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  files: &FilesConfig,
+  files: FilePatterns,
   include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let module_specifiers = collect_specifiers(files, is_supported_test_path)?;
+  // todo(dsherret): there's no need to collect twice as it's slow
+  let module_specifiers =
+    collect_specifiers(files.clone(), is_supported_test_path_predicate)?;
 
   if *include_inline {
-    return collect_specifiers(files, is_supported_test_ext).map(
+    return collect_specifiers(files, |p, _| is_supported_test_ext(p)).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1103,7 +1167,7 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   file_fetcher: &FileFetcher,
-  files: &FilesConfig,
+  files: FilePatterns,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
@@ -1141,7 +1205,7 @@ pub async fn run_tests(
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     file_fetcher,
-    &test_options.files,
+    test_options.files.clone(),
     &test_options.doc,
   )
   .await?;
@@ -1231,8 +1295,11 @@ pub async fn run_tests_with_watch(
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(include) = &test_options.files.include {
-          let _ = watcher_communicator.watch_paths(include.clone());
+        if let Some(set) = &test_options.files.include {
+          let watch_paths = set.base_paths();
+          if !watch_paths.is_empty() {
+            let _ = watcher_communicator.watch_paths(watch_paths);
+          }
         }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
@@ -1241,30 +1308,37 @@ pub async fn run_tests_with_watch(
         let module_graph_builder = factory.module_graph_builder().await?;
         let file_fetcher = factory.file_fetcher()?;
         let test_modules = if test_options.doc {
-          collect_specifiers(&test_options.files, is_supported_test_ext)
+          collect_specifiers(test_options.files.clone(), |p, _| {
+            is_supported_test_ext(p)
+          })
         } else {
-          collect_specifiers(&test_options.files, is_supported_test_path)
+          collect_specifiers(
+            test_options.files.clone(),
+            is_supported_test_path_predicate,
+          )
         }?;
+
         let permissions =
           Permissions::from_options(&cli_options.permissions_options())?;
-
         let graph = module_graph_builder
           .create_graph(graph_kind, test_modules.clone())
           .await?;
-        graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
+        graph_valid_with_cli_options(
+          &graph,
+          factory.fs().as_ref(),
+          &test_modules,
+          &cli_options,
+        )?;
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let changed_specifiers = changed_paths
-            .into_iter()
-            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-            .collect::<HashSet<_>>();
           let mut result = Vec::new();
+          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
               &test_module_specifier,
-              &changed_specifiers,
+              &changed_paths,
             ) {
               result.push(test_module_specifier.clone());
             }
@@ -1279,7 +1353,7 @@ pub async fn run_tests_with_watch(
         let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           file_fetcher,
-          &test_options.files,
+          test_options.files.clone(),
           &test_options.doc,
         )
         .await?

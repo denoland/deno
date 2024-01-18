@@ -1,11 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-// import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
+import { core } from "ext:core/mod.js";
+const {
+  op_fetch_response_upgrade,
+  op_fetch_send,
+  op_node_http_request,
+} = core.ensureFastOps();
 
-const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
 import {
@@ -602,7 +606,7 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
-    this._req = core.ops.op_node_http_request(
+    this._req = op_node_http_request(
       this.method,
       url,
       headers,
@@ -656,7 +660,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        const res = await core.opAsync("op_fetch_send", this._req.requestRid);
+        const res = await op_fetch_send(this._req.requestRid);
         try {
           cb?.();
         } catch (_) {
@@ -710,8 +714,7 @@ class ClientRequest extends OutgoingMessage {
             throw new Error("not implemented CONNECT");
           }
 
-          const upgradeRid = await core.opAsync(
-            "op_fetch_response_upgrade",
+          const upgradeRid = await op_fetch_response_upgrade(
             res.responseRid,
           );
           assert(typeof res.remoteAddrIp !== "undefined");
@@ -891,6 +894,11 @@ class ClientRequest extends OutgoingMessage {
       value = value.join("; ");
     }
     headers.push([key, value]);
+  }
+
+  // Once a socket is assigned to this request and is connected socket.setNoDelay() will be called.
+  setNoDelay() {
+    this.socket?.setNoDelay?.();
   }
 }
 
@@ -1394,7 +1402,7 @@ export class ServerResponse extends NodeWritable {
   }
 
   getHeader(name: string) {
-    return this.#headers.get(name);
+    return this.#headers.get(name) ?? undefined;
   }
   removeHeader(name: string) {
     return this.#headers.delete(name);
@@ -1457,6 +1465,10 @@ export class ServerResponse extends NodeWritable {
 
     // @ts-expect-error The signature for cb is stricter than the one implemented here
     return super.end(chunk, encoding, cb);
+  }
+
+  flushHeaders() {
+    // no-op
   }
 
   // Undocumented API used by `npm:compression`.

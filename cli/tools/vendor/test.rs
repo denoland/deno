@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -300,6 +300,7 @@ fn build_resolver(
     node_resolver: None,
     npm_resolver: None,
     cjs_resolutions: None,
+    sloppy_imports_resolver: None,
     package_json_deps_provider: Default::default(),
     maybe_jsx_import_source_config,
     maybe_import_map: original_import_map.map(Arc::new),

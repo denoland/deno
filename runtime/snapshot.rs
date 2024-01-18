@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
@@ -7,6 +7,7 @@ use crate::shared::runtime;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::snapshot_util::*;
+use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
 use std::path::Path;
@@ -76,7 +77,18 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
-  fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
+  fn check_read_with_api_name(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
+    unreachable!("snapshotting!")
+  }
+  fn check_write_with_api_name(
+    &self,
+    _p: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
@@ -199,6 +211,7 @@ pub fn create_runtime_snapshot(
       Default::default(),
       Default::default(),
     ),
+    deno_webgpu::deno_webgpu::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
@@ -256,7 +269,13 @@ pub fn create_runtime_snapshot(
     startup_snapshot: None,
     extensions,
     compression_cb: None,
-    with_runtime_cb: None,
+    with_runtime_cb: Some(Box::new(|rt| {
+      let isolate = rt.v8_isolate();
+      let scope = &mut v8::HandleScope::new(isolate);
+
+      let ctx = v8::Context::new(scope);
+      assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+    })),
     skip_op_registration: false,
   });
   for path in output.files_loaded_during_snapshot {

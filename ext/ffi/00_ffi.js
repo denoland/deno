@@ -1,11 +1,44 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  isArrayBuffer,
+  isDataView,
+  isTypedArray,
+} = core;
+const {
+  op_ffi_buf_copy_into,
+  op_ffi_call_nonblocking,
+  op_ffi_call_ptr,
+  op_ffi_call_ptr_nonblocking,
+  op_ffi_cstr_read,
+  op_ffi_get_buf,
+  op_ffi_get_static,
+  op_ffi_load,
+  op_ffi_ptr_create,
+  op_ffi_ptr_equals,
+  op_ffi_ptr_of,
+  op_ffi_ptr_of_exact,
+  op_ffi_ptr_offset,
+  op_ffi_ptr_value,
+  op_ffi_read_bool,
+  op_ffi_read_f32,
+  op_ffi_read_f64,
+  op_ffi_read_i16,
+  op_ffi_read_i32,
+  op_ffi_read_i64,
+  op_ffi_read_i8,
+  op_ffi_read_ptr,
+  op_ffi_read_u16,
+  op_ffi_read_u32,
+  op_ffi_read_u64,
+  op_ffi_read_u8,
+  op_ffi_unsafe_callback_close,
+  op_ffi_unsafe_callback_create,
+  op_ffi_unsafe_callback_ref,
+} = core.ensureFastOps(true);
 const {
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
@@ -17,7 +50,6 @@ const {
   NumberIsSafeInteger,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
   Int32Array,
@@ -33,6 +65,7 @@ const {
   SafeArrayIterator,
   SafeWeakMap,
 } = primordials;
+
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 /**
@@ -40,14 +73,10 @@ import { pathFromURL } from "ext:deno_web/00_infra.js";
  * @returns {number}
  */
 function getBufferSourceByteLength(source) {
-  if (ArrayBufferIsView(source)) {
-    if (TypedArrayPrototypeGetSymbolToStringTag(source) !== undefined) {
-      // TypedArray
-      return TypedArrayPrototypeGetByteLength(source);
-    } else {
-      // DataView
-      return DataViewPrototypeGetByteLength(source);
-    }
+  if (isTypedArray(source)) {
+    return TypedArrayPrototypeGetByteLength(source);
+  } else if (isDataView(source)) {
+    return DataViewPrototypeGetByteLength(source);
   }
   return ArrayBufferPrototypeGetByteLength(source);
 }
@@ -62,56 +91,56 @@ class UnsafePointerView {
   }
 
   getBool(offset = 0) {
-    return ops.op_ffi_read_bool(
+    return op_ffi_read_bool(
       this.pointer,
       offset,
     );
   }
 
   getUint8(offset = 0) {
-    return ops.op_ffi_read_u8(
+    return op_ffi_read_u8(
       this.pointer,
       offset,
     );
   }
 
   getInt8(offset = 0) {
-    return ops.op_ffi_read_i8(
+    return op_ffi_read_i8(
       this.pointer,
       offset,
     );
   }
 
   getUint16(offset = 0) {
-    return ops.op_ffi_read_u16(
+    return op_ffi_read_u16(
       this.pointer,
       offset,
     );
   }
 
   getInt16(offset = 0) {
-    return ops.op_ffi_read_i16(
+    return op_ffi_read_i16(
       this.pointer,
       offset,
     );
   }
 
   getUint32(offset = 0) {
-    return ops.op_ffi_read_u32(
+    return op_ffi_read_u32(
       this.pointer,
       offset,
     );
   }
 
   getInt32(offset = 0) {
-    return ops.op_ffi_read_i32(
+    return op_ffi_read_i32(
       this.pointer,
       offset,
     );
   }
 
   getBigUint64(offset = 0) {
-    ops.op_ffi_read_u64(
+    op_ffi_read_u64(
       this.pointer,
       offset,
       U32_BUFFER,
@@ -120,7 +149,7 @@ class UnsafePointerView {
   }
 
   getBigInt64(offset = 0) {
-    ops.op_ffi_read_i64(
+    op_ffi_read_i64(
       this.pointer,
       offset,
       U32_BUFFER,
@@ -129,42 +158,42 @@ class UnsafePointerView {
   }
 
   getFloat32(offset = 0) {
-    return ops.op_ffi_read_f32(
+    return op_ffi_read_f32(
       this.pointer,
       offset,
     );
   }
 
   getFloat64(offset = 0) {
-    return ops.op_ffi_read_f64(
+    return op_ffi_read_f64(
       this.pointer,
       offset,
     );
   }
 
   getPointer(offset = 0) {
-    return ops.op_ffi_read_ptr(
+    return op_ffi_read_ptr(
       this.pointer,
       offset,
     );
   }
 
   getCString(offset = 0) {
-    return ops.op_ffi_cstr_read(
+    return op_ffi_cstr_read(
       this.pointer,
       offset,
     );
   }
 
   static getCString(pointer, offset = 0) {
-    return ops.op_ffi_cstr_read(
+    return op_ffi_cstr_read(
       pointer,
       offset,
     );
   }
 
   getArrayBuffer(byteLength, offset = 0) {
-    return ops.op_ffi_get_buf(
+    return op_ffi_get_buf(
       this.pointer,
       offset,
       byteLength,
@@ -172,7 +201,7 @@ class UnsafePointerView {
   }
 
   static getArrayBuffer(pointer, byteLength, offset = 0) {
-    return ops.op_ffi_get_buf(
+    return op_ffi_get_buf(
       pointer,
       offset,
       byteLength,
@@ -180,7 +209,7 @@ class UnsafePointerView {
   }
 
   copyInto(destination, offset = 0) {
-    ops.op_ffi_buf_copy_into(
+    op_ffi_buf_copy_into(
       this.pointer,
       offset,
       destination,
@@ -189,7 +218,7 @@ class UnsafePointerView {
   }
 
   static copyInto(pointer, destination, offset = 0) {
-    ops.op_ffi_buf_copy_into(
+    op_ffi_buf_copy_into(
       pointer,
       offset,
       destination,
@@ -205,14 +234,14 @@ const OUT_BUFFER_64 = new BigInt64Array(
 const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
   static create(value) {
-    return ops.op_ffi_ptr_create(value);
+    return op_ffi_ptr_create(value);
   }
 
   static equals(a, b) {
     if (a === null || b === null) {
       return a === b;
     }
-    return ops.op_ffi_ptr_equals(a, b);
+    return op_ffi_ptr_equals(a, b);
   }
 
   static of(value) {
@@ -222,15 +251,15 @@ class UnsafePointer {
     let pointer;
     if (ArrayBufferIsView(value)) {
       if (value.length === 0) {
-        pointer = ops.op_ffi_ptr_of_exact(value);
+        pointer = op_ffi_ptr_of_exact(value);
       } else {
-        pointer = ops.op_ffi_ptr_of(value);
+        pointer = op_ffi_ptr_of(value);
       }
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
+    } else if (isArrayBuffer(value)) {
       if (value.length === 0) {
-        pointer = ops.op_ffi_ptr_of_exact(new Uint8Array(value));
+        pointer = op_ffi_ptr_of_exact(new Uint8Array(value));
       } else {
-        pointer = ops.op_ffi_ptr_of(new Uint8Array(value));
+        pointer = op_ffi_ptr_of(new Uint8Array(value));
       }
     } else {
       throw new TypeError(
@@ -244,14 +273,14 @@ class UnsafePointer {
   }
 
   static offset(value, offset) {
-    return ops.op_ffi_ptr_offset(value, offset);
+    return op_ffi_ptr_offset(value, offset);
   }
 
   static value(value) {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       value = value.pointer;
     }
-    ops.op_ffi_ptr_value(value, OUT_BUFFER);
+    op_ffi_ptr_value(value, OUT_BUFFER);
     const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
     if (NumberIsSafeInteger(result)) {
       return result;
@@ -276,8 +305,7 @@ class UnsafeFnPointer {
   call(...parameters) {
     if (this.definition.nonblocking) {
       if (this.#structSize === null) {
-        return core.opAsync(
-          "op_ffi_call_ptr_nonblocking",
+        return op_ffi_call_ptr_nonblocking(
           this.pointer,
           this.definition,
           parameters,
@@ -285,8 +313,7 @@ class UnsafeFnPointer {
       } else {
         const buffer = new Uint8Array(this.#structSize);
         return PromisePrototypeThen(
-          core.opAsync(
-            "op_ffi_call_ptr_nonblocking",
+          op_ffi_call_ptr_nonblocking(
             this.pointer,
             this.definition,
             parameters,
@@ -297,14 +324,14 @@ class UnsafeFnPointer {
       }
     } else {
       if (this.#structSize === null) {
-        return ops.op_ffi_call_ptr(
+        return op_ffi_call_ptr(
           this.pointer,
           this.definition,
           parameters,
         );
       } else {
         const buffer = new Uint8Array(this.#structSize);
-        ops.op_ffi_call_ptr(
+        op_ffi_call_ptr(
           this.pointer,
           this.definition,
           parameters,
@@ -398,7 +425,7 @@ class UnsafeCallback {
         "Invalid UnsafeCallback, cannot be nonblocking",
       );
     }
-    const { 0: rid, 1: pointer } = ops.op_ffi_unsafe_callback_create(
+    const { 0: rid, 1: pointer } = op_ffi_unsafe_callback_create(
       definition,
       callback,
     );
@@ -421,8 +448,7 @@ class UnsafeCallback {
         // Re-refing
         core.refOpPromise(this.#refpromise);
       } else {
-        this.#refpromise = core.opAsync(
-          "op_ffi_unsafe_callback_ref",
+        this.#refpromise = op_ffi_unsafe_callback_ref(
           this.#rid,
         );
       }
@@ -441,7 +467,7 @@ class UnsafeCallback {
 
   close() {
     this.#refcount = 0;
-    ops.op_ffi_unsafe_callback_close(this.#rid);
+    op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
@@ -452,7 +478,7 @@ class DynamicLibrary {
   symbols = {};
 
   constructor(path, symbols) {
-    ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
+    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
       if (!ObjectHasOwn(symbols, symbol)) {
         continue;
@@ -473,7 +499,7 @@ class DynamicLibrary {
         }
 
         const name = symbols[symbol].name || symbol;
-        const value = ops.op_ffi_get_static(
+        const value = op_ffi_get_static(
           this.#rid,
           name,
           type,
@@ -509,8 +535,7 @@ class DynamicLibrary {
             value: (...parameters) => {
               if (isStructResult) {
                 const buffer = new Uint8Array(structSize);
-                const ret = core.opAsync(
-                  "op_ffi_call_nonblocking",
+                const ret = op_ffi_call_nonblocking(
                   this.#rid,
                   symbol,
                   parameters,
@@ -521,8 +546,7 @@ class DynamicLibrary {
                   () => buffer,
                 );
               } else {
-                return core.opAsync(
-                  "op_ffi_call_nonblocking",
+                return op_ffi_call_nonblocking(
                   this.#rid,
                   symbol,
                   parameters,

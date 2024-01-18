@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -6,7 +6,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeIncludes,
   MapPrototypeGet,
@@ -19,6 +19,7 @@ const {
   StringPrototypeReplaceAll,
   StringPrototypeToLowerCase,
 } = primordials;
+
 import {
   collectHttpQuotedString,
   collectSequenceOfCodepoints,
