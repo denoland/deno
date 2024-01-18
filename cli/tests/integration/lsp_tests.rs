@@ -8507,13 +8507,15 @@ fn lsp_format_exclude_default_config() {
 #[test]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir_path = context.temp_dir().path();
+  // Also test out using a non-json file extension here.
+  // What should matter is the language identifier.
+  let lock_file_path = temp_dir_path.join("file.lock");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      // Also test out using a non-json file extension here.
-      // What should matter is the language identifier.
-      "uri": "file:///a/file.lock",
+      "uri": lock_file_path.uri_file(),
       "languageId": "json",
       "version": 1,
       "text": "{\"key\":\"value\"}"
@@ -8524,7 +8526,7 @@ fn lsp_format_json() {
     "textDocument/formatting",
     json!({
         "textDocument": {
-          "uri": "file:///a/file.lock"
+          "uri": lock_file_path.uri_file(),
         },
         "options": {
           "tabSize": 2,
@@ -8635,11 +8637,12 @@ fn lsp_json_import_with_query_string() {
 #[test]
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let markdown_file = context.temp_dir().path().join("file.md");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.md",
+      "uri": markdown_file.uri_file(),
       "languageId": "markdown",
       "version": 1,
       "text": "#   Hello World"
@@ -8650,7 +8653,7 @@ fn lsp_format_markdown() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.md"
+        "uri": markdown_file.uri_file()
       },
       "options": {
         "tabSize": 2,
@@ -8705,11 +8708,12 @@ fn lsp_format_with_config() {
     builder.set_config("./deno.fmt.jsonc");
   });
 
+  let ts_file = temp_dir.path().join("file.ts");
   client
     .did_open(
       json!({
         "textDocument": {
-          "uri": "file:///a/file.ts",
+          "uri": ts_file.uri_file(),
           "languageId": "typescript",
           "version": 1,
           "text": "export async function someVeryLongFunctionName() {\nconst response = fetch(\"http://localhost:4545/some/non/existent/path.json\");\nconsole.log(response.text());\nconsole.log(\"finished!\")\n}"
@@ -8722,7 +8726,7 @@ fn lsp_format_with_config() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts"
+        "uri": ts_file.uri_file()
       },
       "options": {
         "tabSize": 2,
