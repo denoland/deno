@@ -27,7 +27,6 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePop,
   Error,
-  FunctionPrototypeApply,
   FunctionPrototypeBind,
   ObjectDefineProperties,
   ObjectGetOwnPropertyDescriptors,
@@ -112,10 +111,10 @@ function callbackify<ResultT>(
       throw new NodeInvalidArgTypeError("last");
     }
     const cb = (...args: unknown[]) => {
-      FunctionPrototypeApply(maybeCb, this, args);
+      maybeCb.apply(this, args);
     };
     PromisePrototypeThen(
-      FunctionPrototypeApply(this, args),
+      this.apply(args),
       (ret: unknown) => {
         nextTick(FunctionPrototypeBind(cb, this, null, ret));
       },
