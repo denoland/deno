@@ -3415,7 +3415,7 @@ declare namespace Deno {
   }
 
   /** Reads the directory given by `path` and returns an async iterable of
-   * {@linkcode Deno.DirEntry}.
+   * {@linkcode Deno.DirEntry}. The order of entries is not guaranteed.
    *
    * ```ts
    * for await (const dirEntry of Deno.readDir("/")) {
@@ -3433,7 +3433,7 @@ declare namespace Deno {
   export function readDir(path: string | URL): AsyncIterable<DirEntry>;
 
   /** Synchronously reads the directory given by `path` and returns an iterable
-   * of `Deno.DirEntry`.
+   * of {@linkcode Deno.DirEntry}. The order of entries is not guaranteed.
    *
    * ```ts
    * for (const dirEntry of Deno.readDirSync("/")) {
@@ -3759,7 +3759,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface OpMetrics {
     opsDispatched: number;
@@ -3777,7 +3777,7 @@ declare namespace Deno {
 
   /** @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export interface Metrics extends OpMetrics {
     ops: Record<string, OpMetrics>;
@@ -3808,7 +3808,7 @@ declare namespace Deno {
    *
    * @category Observability
    *
-   * @deprecated This API has been deprecated in Deno v1.37.1.
+   * @deprecated {@linkcode Deno.metrics} will be removed in v2.0.0.
    */
   export function metrics(): Metrics;
 

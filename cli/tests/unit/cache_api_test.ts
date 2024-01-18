@@ -189,3 +189,19 @@ Deno.test(async function cachePutOverwrite() {
   const res_ = await cache.match(request);
   assertEquals(await res_?.text(), "res2");
 });
+
+// Ensure that we can successfully put a response backed by a resource
+Deno.test(async function cachePutResource() {
+  const tempFile = Deno.makeTempFileSync({ prefix: "deno-", suffix: ".txt" });
+  Deno.writeTextFileSync(tempFile, "Contents".repeat(1024));
+
+  const file = Deno.openSync(tempFile);
+
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const request = new Request("https://example.com/file");
+  await cache.put(request, new Response(file.readable));
+  const res = await cache.match(request);
+  assertEquals(await res?.text(), "Contents".repeat(1024));
+});

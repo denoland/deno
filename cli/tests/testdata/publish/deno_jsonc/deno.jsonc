@@ -1,0 +1,11 @@
+{
+  // It's .jsonc file so it can have comments
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@std/http": "./std_http.ts"
+  }
+}
