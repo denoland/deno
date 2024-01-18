@@ -1,0 +1,72 @@
+Download http://localhost:4545/run/warn_on_deprecated_api/mod.ts
+Warning
+├ Use of deprecated "Deno.run()" API.
+│
+├ This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.
+│
+├ Suggestion: Use "Deno.Command()" API instead.
+│
+└ Stack trace:
+  └─ at [WILDCARD]warn_on_deprecated_api/main.js:3:16
+
+hello world
+Warning
+├ Use of deprecated "Deno.run()" API.
+│
+├ This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.
+│
+├ Suggestion: Use "Deno.Command()" API instead.
+│
+└ Stack trace:
+  ├─ at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
+  └─ at [WILDCARD]warn_on_deprecated_api/main.js:25:7
+
+hello world
+Warning
+├ Use of deprecated "Deno.run()" API.
+│
+├ This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.
+│
+├ Suggestion: Use "Deno.Command()" API instead.
+│
+└ Stack trace:
+  ├─ at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
+  └─ at [WILDCARD]warn_on_deprecated_api/main.js:26:7
+
+hello world
+Warning
+├ Use of deprecated "Deno.run()" API.
+│
+├ This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.
+│
+├ Suggestion: Use "Deno.Command()" API instead.
+│
+└ Stack trace:
+  ├─ at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
+  └─ at [WILDCARD]warn_on_deprecated_api/main.js:29:9
+
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+Warning
+├ Use of deprecated "Deno.run()" API.
+│
+├ This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.
+│
+├ Suggestion: Use "Deno.Command()" API instead.
+│
+├ Suggestion: It appears this API is used by a remote dependency.
+│             Try upgrading to the latest version of that dependency.
+│
+└ Stack trace:
+  ├─ at runEcho (http://localhost:4545/run/warn_on_deprecated_api/mod.ts:2:18)
+  └─ at [WILDCARD]warn_on_deprecated_api/main.js:32:7
+
+hello world
