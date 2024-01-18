@@ -6,9 +6,12 @@
 import { core } from "ext:core/mod.js";
 const {
   op_fetch_response_upgrade,
-  op_fetch_send,
   op_node_http_request,
 } = core.ensureFastOps();
+// TODO(bartlomieju): this ops is also used in `ext/fetch/26_fetch.js`.
+const {
+  op_fetch_send,
+} = core.ensureFastOps(true);
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
