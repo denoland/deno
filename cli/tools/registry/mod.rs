@@ -128,7 +128,7 @@ async fn prepare_publish(
   };
   let exclude_patterns = deno_json
     .to_files_config()
-    .map(|files| files.unwrap_or_default().exclude)?;
+    .map(|files| files.map(|f| f.exclude).unwrap_or_default())?;
 
   let tarball = deno_core::unsync::spawn_blocking(move || {
     let unfurler = ImportMapUnfurler::new(&import_map);
