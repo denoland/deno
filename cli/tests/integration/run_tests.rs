@@ -4946,3 +4946,18 @@ itest!(warn_on_deprecated_api {
   http_server: true,
   exit_code: 0,
 });
+
+itest!(warn_on_deprecated_api_with_flag {
+  args: "run -A --quiet run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main_disabled_flag.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_with_env_var {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
+  output: "run/warn_on_deprecated_api/main_disabled_env.out",
+  http_server: true,
+  exit_code: 0,
+});
