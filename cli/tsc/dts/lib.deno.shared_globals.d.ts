@@ -522,9 +522,9 @@ declare interface WorkerOptions {
 
 /** @category Web Workers */
 declare interface Worker extends EventTarget {
-  onerror?: (e: ErrorEvent) => void;
-  onmessage?: (e: MessageEvent) => void;
-  onmessageerror?: (e: MessageEvent) => void;
+  onerror: (this: Worker, e: ErrorEvent) => any | null;
+  onmessage: (this: Worker, e: MessageEvent) => any | null;
+  onmessageerror: (this: Worker, e: MessageEvent) => any | null;
   postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof WorkerEventMap>(
