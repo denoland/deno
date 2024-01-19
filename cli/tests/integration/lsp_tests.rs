@@ -856,7 +856,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
         "type": "added",
         "configurationType": "denoJson"
       }],
@@ -879,7 +880,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
         "type": "changed",
         "configurationType": "denoJson"
       }],
@@ -899,7 +901,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("deno.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
         "type": "removed",
         "configurationType": "denoJson"
       }],
@@ -919,7 +922,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("package.json").unwrap(),
         "type": "added",
         "configurationType": "packageJson"
       }],
@@ -939,7 +943,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("package.json").unwrap(),
         "type": "changed",
         "configurationType": "packageJson"
       }],
@@ -959,7 +964,8 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "uri": temp_dir.uri().join("package.json").unwrap(),
+        "scopeUri": temp_dir.uri(),
+        "fileUri": temp_dir.uri().join("package.json").unwrap(),
         "type": "removed",
         "configurationType": "packageJson"
       }],
