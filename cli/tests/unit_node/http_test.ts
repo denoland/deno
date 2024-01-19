@@ -187,8 +187,8 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
 Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
-  let remoteAddress = "";
-  let remotePort: number | null = null;
+  let remoteAddress: string | undefined;
+  let remotePort: number | undefined;
   const server = http.createServer((req, res) => {
     remoteAddress = req.socket.remoteAddress;
     remotePort = req.socket.remotePort;
