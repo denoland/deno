@@ -78,14 +78,14 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
-pub fn get_types_declaration_file_text(unstable: bool) -> String {
+pub fn get_types_declaration_file_text() -> String {
   let mut assets = get_asset_texts_from_new_runtime()
     .unwrap()
     .into_iter()
     .map(|a| (a.specifier, a.text))
     .collect::<HashMap<_, _>>();
 
-  let mut lib_names = vec![
+  let lib_names = vec![
     "deno.ns",
     "deno.console",
     "deno.url",
@@ -100,11 +100,8 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.shared_globals",
     "deno.cache",
     "deno.window",
+    "deno.unstable",
   ];
-
-  if unstable {
-    lib_names.push("deno.unstable");
-  }
 
   lib_names
     .into_iter()

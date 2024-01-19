@@ -41,6 +41,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
@@ -50,6 +51,7 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -227,6 +229,11 @@ impl ModuleLoadPreparer {
     let lib = self.options.ts_type_lib_window();
 
     let specifiers = self.collect_specifiers(files)?;
+
+    if specifiers.is_empty() {
+      log::warn!("{} No matching files found.", colors::yellow("Warning"));
+    }
+
     self
       .prepare_module_load(
         specifiers,
@@ -465,6 +472,7 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
+    requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
     let permissions = if is_dynamic {
       &self.dynamic_permissions
@@ -492,11 +500,21 @@ impl CliModuleLoader {
       // because we don't need it
       code_without_source_map(code_source.code)
     };
+    let module_type = match code_source.media_type {
+      MediaType::Json => ModuleType::Json,
+      _ => ModuleType::JavaScript,
+    };
+
+    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
+    // import attributes) is not JSON we need to fail.
+    if module_type == ModuleType::Json
+      && requested_module_type != RequestedModuleType::Json
+    {
+      return Err(generic_error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
+    }
+
     Ok(ModuleSource::new_with_redirect(
-      match code_source.media_type {
-        MediaType::Json => ModuleType::Json,
-        _ => ModuleType::JavaScript,
-      },
+      module_type,
       ModuleSourceCode::String(code),
       specifier,
       &code_source.found_url,
@@ -634,6 +652,7 @@ impl ModuleLoader for CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
+    requested_module_type: RequestedModuleType,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
@@ -642,6 +661,7 @@ impl ModuleLoader for CliModuleLoader {
       specifier,
       maybe_referrer,
       is_dynamic,
+      requested_module_type,
     )))
   }
 

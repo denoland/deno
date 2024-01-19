@@ -36,7 +36,6 @@ use crate::tools::registry::graph::resolve_config_file_roots_from_exports;
 use crate::tools::registry::graph::surface_fast_check_type_graph_errors;
 use crate::tools::registry::graph::MemberRoots;
 use crate::util::display::human_size;
-use crate::util::glob::PathOrPatternSet;
 use crate::util::import_map::ImportMapUnfurler;
 
 mod api;
@@ -127,10 +126,9 @@ async fn prepare_publish(
   let Some((scope, package_name)) = name.split_once('/') else {
     bail!("Invalid package name, use '@<scope_name>/<package_name> format");
   };
-  let exclude_patterns = deno_json.to_files_config().and_then(|files| {
-    PathOrPatternSet::from_absolute_paths(files.unwrap_or_default().exclude)
-      .context("Invalid config file exclude pattern.")
-  })?;
+  let exclude_patterns = deno_json
+    .to_files_config()
+    .map(|files| files.map(|f| f.exclude).unwrap_or_default())?;
 
   let tarball = deno_core::unsync::spawn_blocking(move || {
     let unfurler = ImportMapUnfurler::new(&import_map);
@@ -819,21 +817,33 @@ pub async fn publish(
     });
 
   let directory_path = cli_factory.cli_options().initial_cwd();
-  // TODO: doesn't handle jsonc
-  let deno_json_path = directory_path.join("deno.json");
-  let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
-    format!(
-      "Failed to read deno.json file at {}",
-      deno_json_path.display()
-    )
-  })?;
+
+  let cli_options = cli_factory.cli_options();
+  let Some(config_file) = cli_options.maybe_config_file() else {
+    bail!(
+      "Couldn't find a deno.json or a deno.jsonc configuration file in {}.",
+      directory_path.display()
+    );
+  };
 
   let (publish_order_graph, prepared_package_by_name) =
-    prepare_packages_for_publishing(&cli_factory, deno_json, import_map)
-      .await?;
+    prepare_packages_for_publishing(
+      &cli_factory,
+      config_file.clone(),
+      import_map,
+    )
+    .await?;
 
   if prepared_package_by_name.is_empty() {
     bail!("No packages to publish");
+  }
+
+  if publish_flags.dry_run {
+    log::warn!(
+      "{} Aborting due to --dry-run",
+      crate::colors::yellow("Warning")
+    );
+    return Ok(());
   }
 
   perform_publish(

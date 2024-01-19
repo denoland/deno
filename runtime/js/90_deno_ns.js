@@ -168,9 +168,10 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  unsafeProto: 8,
-  webgpu: 9,
-  workerOptions: 10,
+  temporal: 8,
+  unsafeProto: 9,
+  webgpu: 10,
+  workerOptions: 11,
 };
 
 const denoNsUnstableById = {};

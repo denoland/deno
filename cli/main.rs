@@ -195,7 +195,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
-      let types = tsc::get_types_declaration_file_text(flags.unstable);
+      let types = tsc::get_types_declaration_file_text();
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
     #[cfg(feature = "upgrade")]
@@ -316,21 +316,27 @@ pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
     7,
   ),
   (
+    "temporal",
+    "Enable unstable Temporal API",
+    // Not used in JS
+    8,
+  ),
+  (
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",
     // This number is used directly in the JS code. Search
-    // for "unstableFeatures" to see where it's used.
-    8,
+    // for "unstableIds" to see where it's used.
+    9,
   ),
   (
     deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
     "Enable unstable `WebGPU` API",
-    9,
+    10,
   ),
   (
     deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
     "Enable unstable Web Worker APIs",
-    10,
+    11,
   ),
 ];
 
@@ -394,7 +400,15 @@ pub fn main() {
       // Using same default as VSCode:
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
-      _ => vec![],
+      _ => {
+        if flags.unstable
+          || flags.unstable_features.contains(&"temporal".to_string())
+        {
+          vec!["--harmony-temporal".to_string()]
+        } else {
+          vec![]
+        }
+      }
     };
     init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
     deno_core::JsRuntime::init_platform(None);
