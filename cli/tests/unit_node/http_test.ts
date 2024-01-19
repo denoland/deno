@@ -184,6 +184,30 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
   }
 });
 
+Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  let remoteAddress = "";
+  let remotePort = NaN;
+  const server = http.createServer((req, res) => {
+    remoteAddress = req.socket.remoteAddress;
+    remotePort = req.socket.remotePort;
+    res.end();
+  });
+  server.listen(async () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const res = await fetch(
+      `http://127.0.0.1:${port}/`,
+    );
+    await res.arrayBuffer();
+    assertEquals(remoteAddress, "127.0.0.1");
+    assertEquals(typeof remotePort, "number");
+    server.close(() => resolve());
+  });
+  await promise;
+});
+
 Deno.test("[node/http] request default protocol", async () => {
   const deferred1 = Promise.withResolvers<void>();
   const deferred2 = Promise.withResolvers<void>();

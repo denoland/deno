@@ -283,10 +283,16 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
-  constructor(opts = {}) {
+  constructor(
+    opts: {
+      encrypted?: boolean | undefined;
+      remotePort?: number | undefined;
+      remoteAddress?: string | undefined;
+    } = {},
+  ) {
     super();
-    this.remoteAddress = opts.hostname;
-    this.remotePort = opts.port;
+    this.remoteAddress = opts.remoteAddress;
+    this.remotePort = opts.remotePort;
     this.encrypted = opts.encrypted;
     this.writable = true;
     this.readable = true;
