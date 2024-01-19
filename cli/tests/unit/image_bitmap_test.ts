@@ -2,9 +2,6 @@
 
 import { assertEquals } from "./test_util.ts";
 
-// @ts-ignore: Deno[Deno.internal].core allowed
-const { getBitmapData } = Deno[Deno.internal];
-
 function generateNumberedData(n: number): Uint8ClampedArray {
   return new Uint8ClampedArray(
     Array.from({ length: n }, (_, i) => [i + 1, 0, 0, 1]).flat(),
@@ -16,7 +13,8 @@ Deno.test(async function imageBitmapDirect() {
   const imageData = new ImageData(data, 3, 1);
   const imageBitmap = await createImageBitmap(imageData);
   assertEquals(
-    getBitmapData(imageBitmap),
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    Deno[Deno.internal].getBitmapData(imageBitmap),
     new Uint8Array(data.buffer),
   );
 });
@@ -26,7 +24,8 @@ Deno.test(async function imageBitmapCrop() {
   const imageData = new ImageData(data, 3, 3);
   const imageBitmap = await createImageBitmap(imageData, 1, 1, 1, 1);
   assertEquals(
-    getBitmapData(imageBitmap),
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    Deno[Deno.internal].getBitmapData(imageBitmap),
     new Uint8Array([5, 0, 0, 1]),
   );
 });
@@ -35,8 +34,9 @@ Deno.test(async function imageBitmapCropPartialNegative() {
   const data = generateNumberedData(3 * 3);
   const imageData = new ImageData(data, 3, 3);
   const imageBitmap = await createImageBitmap(imageData, -1, -1, 2, 2);
+  // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore
-  assertEquals(getBitmapData(imageBitmap), new Uint8Array([
+  assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
     0, 0, 0, 0,   0, 0, 0, 0,
     0, 0, 0, 0,   1, 0, 0, 1
   ]));
@@ -46,8 +46,9 @@ Deno.test(async function imageBitmapCropGreater() {
   const data = generateNumberedData(3 * 3);
   const imageData = new ImageData(data, 3, 3);
   const imageBitmap = await createImageBitmap(imageData, -1, -1, 5, 5);
+  // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore
-  assertEquals(getBitmapData(imageBitmap), new Uint8Array([
+  assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
     0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
     0, 0, 0, 0,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   0, 0, 0, 0,
     0, 0, 0, 0,   4, 0, 0, 1,   5, 0, 0, 1,   6, 0, 0, 1,   0, 0, 0, 0,
@@ -64,8 +65,9 @@ Deno.test(async function imageBitmapScale() {
     resizeWidth: 5,
     resizeQuality: "pixelated",
   });
+  // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore
-  assertEquals(getBitmapData(imageBitmap), new Uint8Array([
+  assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
     1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1,
     1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1,
     1, 0, 0, 1,   1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,   3, 0, 0, 1,
@@ -80,8 +82,9 @@ Deno.test(async function imageBitmapFlipY() {
   const imageBitmap = await createImageBitmap(imageData, {
     imageOrientation: "flipY",
   });
+  // @ts-ignore: Deno[Deno.internal].core allowed
   // deno-fmt-ignore
-  assertEquals(getBitmapData(imageBitmap), new Uint8Array([
+  assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
     7, 0, 0, 1,   8, 0, 0, 1,   9, 0, 0, 1,
     4, 0, 0, 1,   5, 0, 0, 1,   6, 0, 0, 1,
     1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,
