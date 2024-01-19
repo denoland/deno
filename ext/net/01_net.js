@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -59,6 +59,11 @@ async function write(rid, data) {
 }
 
 function shutdown(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.shutdown()",
+    new Error().stack,
+    "Use `conn.closeWrite()` instead.",
+  );
   return core.shutdown(rid);
 }
 
@@ -144,7 +149,7 @@ class Conn {
   }
 
   closeWrite() {
-    return shutdown(this.rid);
+    return core.shutdown(this.rid);
   }
 
   get readable() {

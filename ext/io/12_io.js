@@ -4,7 +4,7 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_stdin_set_raw,
 } = core.ensureFastOps(true);
@@ -93,22 +93,42 @@ function* iterSync(
 }
 
 function readSync(rid, buffer) {
+  internals.warnOnDeprecatedApi(
+    "Deno.readSync()",
+    new Error().stack,
+    "Use `reader.readSync()` instead.",
+  );
   if (buffer.length === 0) return 0;
   const nread = core.readSync(rid, buffer);
   return nread === 0 ? null : nread;
 }
 
 async function read(rid, buffer) {
+  internals.warnOnDeprecatedApi(
+    "Deno.read()",
+    new Error().stack,
+    "Use `reader.read()` instead.",
+  );
   if (buffer.length === 0) return 0;
   const nread = await core.read(rid, buffer);
   return nread === 0 ? null : nread;
 }
 
 function writeSync(rid, data) {
+  internals.warnOnDeprecatedApi(
+    "Deno.writeSync()",
+    new Error().stack,
+    "Use `writer.writeSync()` instead.",
+  );
   return core.writeSync(rid, data);
 }
 
 function write(rid, data) {
+  internals.warnOnDeprecatedApi(
+    "Deno.write()",
+    new Error().stack,
+    "Use `writer.write()` instead.",
+  );
   return core.write(rid, data);
 }
 
@@ -166,29 +186,39 @@ function concatBuffers(buffers) {
 
 class Stdin {
   #readable;
+  #rid = 0;
 
   constructor() {
   }
 
   get rid() {
-    return 0;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdin.rid",
+      new Error().stack,
+      "Use instance methods directly instead.",
+    );
+    return this.#rid;
   }
 
-  read(p) {
-    return read(this.rid, p);
+  async read(p) {
+    if (buffer.length === 0) return 0;
+    const nread = await core.read(this.#rid, p);
+    return nread === 0 ? null : nread;
   }
 
   readSync(p) {
-    return readSync(this.rid, p);
+    if (buffer.length === 0) return 0;
+    const nread = core.readSync(this.#rid, p);
+    return nread === 0 ? null : nread;
   }
 
   close() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.rid);
+      this.#readable = readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
@@ -201,29 +231,35 @@ class Stdin {
 
 class Stdout {
   #writable;
+  #rid = 1;
 
   constructor() {
   }
 
   get rid() {
-    return 1;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdout.rid",
+      new Error().stack,
+      "Use instance methods directly instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return core.write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return core.writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -231,29 +267,35 @@ class Stdout {
 
 class Stderr {
   #writable;
+  #rid = 2;
 
   constructor() {
   }
 
   get rid() {
-    return 2;
+    internals.warnOnDeprecatedApi(
+      "Deno.stderr.rid",
+      new Error().stack,
+      "Use instance methods directly instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return core.write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return core.writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }

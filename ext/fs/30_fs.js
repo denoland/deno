@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isDate,
 } = core;
@@ -391,11 +391,21 @@ function parseFileInfo(response) {
 }
 
 function fstatSync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fstatSync()",
+    new Error().stack,
+    "Use `file.statSync()` instead.",
+  );
   op_fs_fstat_sync(rid, statBuf);
   return statStruct(statBuf);
 }
 
 async function fstat(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fstat()",
+    new Error().stack,
+    "Use `file.stat()` instead.",
+  );
   return parseFileInfo(await op_fs_fstat_async(rid));
 }
 
@@ -431,10 +441,20 @@ function ftruncateSync(rid, len) {
 }
 
 async function ftruncate(rid, len) {
+  internals.warnOnDeprecatedApi(
+    "Deno.ftruncate()",
+    new Error().stack,
+    "Use `file.truncate()` instead.",
+  );
   await op_fs_ftruncate_async(rid, coerceLen(len));
 }
 
 function truncateSync(path, len) {
+  internals.warnOnDeprecatedApi(
+    "Deno.truncateSync()",
+    new Error().stack,
+    "Use `file.truncateSync()` instead.",
+  );
   op_fs_truncate_sync(path, coerceLen(len));
 }
 
@@ -480,6 +500,11 @@ function futimeSync(
   atime,
   mtime,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.futimeSync()",
+    new Error().stack,
+    "Use `file.utimeSync()` instead.",
+  );
   const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
   const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
   op_fs_futime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
@@ -490,6 +515,11 @@ async function futime(
   atime,
   mtime,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.futime()",
+    new Error().stack,
+    "Use `file.utime()` instead.",
+  );
   const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
   const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
   await op_fs_futime_async(
@@ -558,18 +588,38 @@ async function symlink(
 }
 
 function fdatasyncSync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fdatasyncSync()",
+    new Error().stack,
+    "(suggestion)",
+  );
   op_fs_fdatasync_sync(rid);
 }
 
 async function fdatasync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fdatasync()",
+    new Error().stack,
+    "(suggestion)",
+  );
   await op_fs_fdatasync_async(rid);
 }
 
 function fsyncSync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fsyncSync()",
+    new Error().stack,
+    "(suggestion)",
+  );
   op_fs_fsync_sync(rid);
 }
 
 async function fsync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fsync()",
+    new Error().stack,
+    "(suggestion)",
+  );
   await op_fs_fsync_async(rid);
 }
 
@@ -594,6 +644,11 @@ function seekSync(
   offset,
   whence,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.seekSync()",
+    new Error().stack,
+    "Use `seeker.seekSync()` instead.",
+  );
   return op_fs_seek_sync(rid, offset, whence);
 }
 
@@ -602,6 +657,11 @@ function seek(
   offset,
   whence,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.seek()",
+    new Error().stack,
+    "Use `seeker.seek()` instead.",
+  );
   return op_fs_seek_async(rid, offset, whence);
 }
 
@@ -660,69 +720,74 @@ class FsFile {
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.FsFile.rid",
+      new Error().stack,
+      "Use instance methods directly instead.",
+    );
     return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
-  truncate(len) {
-    return ftruncate(this.rid, len);
+  async truncate(len) {
+    return await op_fs_ftruncate_async(this.#rid, coerceLen(len));
   }
 
   truncateSync(len) {
-    return ftruncateSync(this.rid, len);
+    return op_fs_truncate_sync(this.#rid, coerceLen(len));
   }
 
   read(p) {
-    return read(this.rid, p);
+    return read(this.#rid, p);
   }
 
   readSync(p) {
-    return readSync(this.rid, p);
+    return readSync(this.#rid, p);
   }
 
   seek(offset, whence) {
-    return seek(this.rid, offset, whence);
+    return op_fs_seek_async(this.#rid, offset, whence);
   }
 
   seekSync(offset, whence) {
-    return seekSync(this.rid, offset, whence);
+    return op_fs_seek_sync(this.#rid, offset, whence);
   }
 
-  stat() {
-    return fstat(this.rid);
+  async stat() {
+    return parseFileInfo(await op_fs_fstat_async(this.#rid));
   }
 
   statSync() {
-    return fstatSync(this.rid);
+    return fstatSync(this.#rid);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.rid);
+      this.#readable = readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
 
   [SymbolDispose]() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 }
 

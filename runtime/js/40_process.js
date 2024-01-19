@@ -71,8 +71,10 @@ async function runStatus(rid) {
 }
 
 class Process {
+  #rid;
+
   constructor(res) {
-    this.rid = res.rid;
+    this.#rid = res.rid;
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
@@ -88,8 +90,17 @@ class Process {
     }
   }
 
+  get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.Process.rid",
+      new Error().stack,
+      "Use instance methods directly instead.",
+    );
+    return this.#rid;
+  }
+
   status() {
-    return runStatus(this.rid);
+    return runStatus(this.#rid);
   }
 
   async output() {
@@ -115,7 +126,7 @@ class Process {
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   kill(signo = "SIGTERM") {

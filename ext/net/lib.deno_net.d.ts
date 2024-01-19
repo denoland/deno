@@ -362,6 +362,9 @@ declare namespace Deno {
    * Deno.shutdown(conn.rid);
    * ```
    *
+   * @deprecated Use `conn.closeWrite()` instead.
+   * {@linkcode Deno.shutdown} will be removed in v2.0.0.
+   *
    * @category Network
    */
   export function shutdown(rid: number): Promise<void>;

@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -27,6 +27,11 @@ class FsWatcher {
   }
 
   get rid() {
+    internals.warnOnDeprecatedApi(
+      "Deno.FsWatcher.rid",
+      new Error().stack,
+      "Use instance methods directly instead.",
+    );
     return this.#rid;
   }
 
