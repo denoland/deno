@@ -92,7 +92,6 @@ function loadImage() {
   }
 }
 
-
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
   AbortController: util.nonEnumerable(abortSignal.AbortController),
