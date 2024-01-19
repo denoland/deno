@@ -63,7 +63,7 @@ pub struct CheckFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompileFlags {
   pub source_file: String,
-  pub output: Option<PathBuf>,
+  pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
   pub no_terminal: bool,
@@ -1261,8 +1261,7 @@ supported in canary.
         Arg::new("output")
           .long("output")
           .short('o')
-          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-          .value_parser(value_parser!(PathBuf))
+          .value_parser(value_parser!(String))
           .help("Output file (defaults to $PWD/<inferred-name>)")
           .value_hint(ValueHint::FilePath),
       )
@@ -3249,7 +3248,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut script = matches.remove_many::<String>("script_arg").unwrap();
   let source_file = script.next().unwrap();
   let args = script.collect();
-  let output = matches.remove_one::<PathBuf>("output");
+  let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
   let no_terminal = matches.get_flag("no-terminal");
   let include = match matches.remove_many::<String>("include") {
@@ -7852,7 +7851,7 @@ mod tests {
         subcommand: DenoSubcommand::Compile(CompileFlags {
           source_file: "https://examples.deno.land/color-logging.ts"
             .to_string(),
-          output: Some(PathBuf::from("colors")),
+          output: Some(String::from("colors")),
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,
           no_terminal: true,

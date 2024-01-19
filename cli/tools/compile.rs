@@ -170,31 +170,34 @@ async fn resolve_compile_executable_output_path(
   let module_specifier =
     resolve_url_or_path(&compile_flags.source_file, current_dir)?;
 
-  let mut output = compile_flags.output.clone();
-
-  if let Some(out) = output.as_ref() {
+  let output_flag = compile_flags.output.clone();
+  let mut output_path = if let Some(out) = output_flag.as_ref() {
+    let mut out_path = PathBuf::from(out);
     if path_has_trailing_slash(out) {
       if let Some(infer_file_name) = infer_name_from_url(&module_specifier)
         .await
         .map(PathBuf::from)
       {
-        output = Some(out.join(infer_file_name));
+        out_path = out_path.join(infer_file_name);
       }
     } else {
-      output = Some(out.to_path_buf());
+      out_path = out_path.to_path_buf();
     }
-  }
+    Some(out_path)
+    } else {
+      None
+    };
 
-  if output.is_none() {
-    output = infer_name_from_url(&module_specifier)
+  if output_flag.is_none() {
+    output_path = infer_name_from_url(&module_specifier)
       .await
       .map(PathBuf::from)
   }
 
-  output.ok_or_else(|| generic_error(
+  output_path.ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
-  )).map(|output| {
-    get_os_specific_filepath(output, &compile_flags.target)
+  )).map(|output_path| {
+    get_os_specific_filepath(output_path, &compile_flags.target)
   })
 }
 
@@ -227,7 +230,7 @@ mod test {
     let path = resolve_compile_executable_output_path(
       &CompileFlags {
         source_file: "mod.ts".to_string(),
-        output: Some(PathBuf::from("./file")),
+        output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
         no_terminal: false,
@@ -249,7 +252,7 @@ mod test {
     let path = resolve_compile_executable_output_path(
       &CompileFlags {
         source_file: "mod.ts".to_string(),
-        output: Some(PathBuf::from("./file")),
+        output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: vec![],

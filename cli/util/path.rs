@@ -162,16 +162,12 @@ pub fn relative_specifier(
 
 /// This function checks if input path has trailing slash or not. If input path
 /// has trailing slash it will return true else it will return false.
-pub fn path_has_trailing_slash(path: &Path) -> bool {
-  if let Some(path_str) = path.to_str() {
-    if cfg!(windows) {
-      path_str.ends_with('\\')
-    } else {
-      path_str.ends_with('/')
-    }
+pub fn path_has_trailing_slash(path: &str) -> bool {
+  if cfg!(windows) {
+    path.ends_with('\\')
   } else {
-    false
-  }
+    path.ends_with('/')
+  } 
 }
 
 /// Gets a path with the specified file stem suffix.
@@ -246,7 +242,7 @@ pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
 
 #[cfg(test)]
 mod test {
-  use super::*;
+use super::*;
 
   #[test]
   fn test_is_script_ext() {
@@ -416,8 +412,7 @@ mod test {
     }
 
     fn run_test(path_str: &str, expected: bool) {
-      let path = Path::new(path_str);
-      let result = path_has_trailing_slash(path);
+      let result = path_has_trailing_slash(path_str);
       assert_eq!(result, expected);
     }
   }
