@@ -33,8 +33,65 @@ import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { webgpu, webGPUNonEnumerable } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
-import * as image from "ext:deno_canvas/01_image.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
+
+const { op_lazy_load_esm } = core.ensureFastOps(true);
+let image;
+
+function ImageNonEnumerable(getter) {
+  let valueIsSet = false;
+  let value;
+
+  return {
+    get() {
+      loadImage();
+
+      if (valueIsSet) {
+        return value;
+      } else {
+        return getter();
+      }
+    },
+    set(v) {
+      loadImage();
+
+      valueIsSet = true;
+      value = v;
+    },
+    enumerable: false,
+    configurable: true,
+  };
+}
+function ImageWritable(getter) {
+  let valueIsSet = false;
+  let value;
+
+  return {
+    get() {
+      loadImage();
+
+      if (valueIsSet) {
+        return value;
+      } else {
+        return getter();
+      }
+    },
+    set(v) {
+      loadImage();
+
+      valueIsSet = true;
+      value = v;
+    },
+    enumerable: true,
+    configurable: true,
+  };
+}
+function loadImage() {
+  if (!image) {
+    image = op_lazy_load_esm("ext:deno_canvas/01_image.js");
+  }
+}
+
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -60,8 +117,8 @@ const windowOrWorkerGlobalScope = {
   FileReader: util.nonEnumerable(fileReader.FileReader),
   FormData: util.nonEnumerable(formData.FormData),
   Headers: util.nonEnumerable(headers.Headers),
-  ImageData: util.nonEnumerable(image.ImageData),
-  ImageBitmap: util.nonEnumerable(image.ImageBitmap),
+  ImageData: ImageNonEnumerable(() => image.ImageData),
+  ImageBitmap: ImageNonEnumerable(() => image.ImageBitmap),
   MessageEvent: util.nonEnumerable(event.MessageEvent),
   Performance: util.nonEnumerable(performance.Performance),
   PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
@@ -111,7 +168,7 @@ const windowOrWorkerGlobalScope = {
   ),
   atob: util.writable(base64.atob),
   btoa: util.writable(base64.btoa),
-  createImageBitmap: util.writable(image.createImageBitmap),
+  createImageBitmap: ImageWritable(() => image.createImageBitmap),
   clearInterval: util.writable(timers.clearInterval),
   clearTimeout: util.writable(timers.clearTimeout),
   caches: {

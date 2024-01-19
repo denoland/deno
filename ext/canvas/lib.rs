@@ -134,7 +134,7 @@ deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
   ops = [op_image_process, op_image_decode_png],
-  esm = ["01_image.js"],
+  lazy_loaded_esm = ["01_image.js"],
 );
 
 pub fn get_declaration() -> PathBuf {
