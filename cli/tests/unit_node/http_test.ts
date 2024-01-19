@@ -188,7 +188,7 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
   const { promise, resolve } = Promise.withResolvers<void>();
 
   let remoteAddress = "";
-  let remotePort = NaN;
+  let remotePort: number | null = null;
   const server = http.createServer((req, res) => {
     remoteAddress = req.socket.remoteAddress;
     remotePort = req.socket.remotePort;
