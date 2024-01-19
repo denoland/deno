@@ -27,6 +27,7 @@ use crate::args::deno_registry_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
+use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::http_util::HttpClient;
@@ -84,6 +85,7 @@ fn get_deno_json_package_name(
 
 async fn prepare_publish(
   deno_json: &ConfigFile,
+  source_cache: Arc<ParsedSourceCache>,
   import_map: Arc<ImportMap>,
 ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
   let config_path = deno_json.specifier.to_file_path().unwrap();
@@ -132,8 +134,13 @@ async fn prepare_publish(
 
   let tarball = deno_core::unsync::spawn_blocking(move || {
     let unfurler = ImportMapUnfurler::new(&import_map);
-    tar::create_gzipped_tarball(&dir_path, &unfurler, &exclude_patterns)
-      .context("Failed to create a tarball")
+    tar::create_gzipped_tarball(
+      &dir_path,
+      &*source_cache,
+      &unfurler,
+      &exclude_patterns,
+    )
+    .context("Failed to create a tarball")
   })
   .await??;
 
@@ -683,6 +690,7 @@ async fn prepare_packages_for_publishing(
 > {
   let maybe_workspace_config = deno_json.to_workspace_config()?;
   let module_graph_builder = cli_factory.module_graph_builder().await?.as_ref();
+  let source_cache = cli_factory.parsed_source_cache();
   let type_checker = cli_factory.type_checker().await?;
   let cli_options = cli_factory.cli_options();
 
@@ -700,7 +708,8 @@ async fn prepare_packages_for_publishing(
     )
     .await?;
     let mut prepared_package_by_name = HashMap::with_capacity(1);
-    let package = prepare_publish(&deno_json, import_map).await?;
+    let package =
+      prepare_publish(&deno_json, source_cache.clone(), import_map).await?;
     let package_name = format!("@{}/{}", package.scope, package.package);
     let publish_order_graph =
       PublishOrderGraph::new_single(package_name.clone());
@@ -731,8 +740,9 @@ async fn prepare_packages_for_publishing(
       .cloned()
       .map(|member| {
         let import_map = import_map.clone();
+        let source_cache = source_cache.clone();
         deno_core::unsync::spawn(async move {
-          let package = prepare_publish(&member.config_file, import_map)
+          let package = prepare_publish(&member.config_file, source_cache, import_map)
             .await
             .with_context(|| {
               format!("Failed preparing '{}'.", member.package_name)

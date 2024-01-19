@@ -1,12 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::ParsedSource;
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
-use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
 use import_map::ImportMap;
 
@@ -24,44 +22,9 @@ impl<'a> ImportMapUnfurler<'a> {
   pub fn unfurl(
     &self,
     url: &ModuleSpecifier,
-    data: Vec<u8>,
-  ) -> Result<(Vec<u8>, Vec<String>), AnyError> {
-    let mut diagnostics = vec![];
-    let media_type = MediaType::from_specifier(url);
-
-    match media_type {
-      MediaType::JavaScript
-      | MediaType::Jsx
-      | MediaType::Mjs
-      | MediaType::Cjs
-      | MediaType::TypeScript
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Tsx => {
-        // continue
-      }
-      MediaType::SourceMap
-      | MediaType::Unknown
-      | MediaType::Json
-      | MediaType::Wasm
-      | MediaType::TsBuildInfo => {
-        // not unfurlable data
-        return Ok((data, diagnostics));
-      }
-    }
-
-    let text = String::from_utf8(data)?;
-    let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: url.to_string(),
-      text_info: deno_ast::SourceTextInfo::from_string(text),
-      media_type,
-      capture_tokens: false,
-      maybe_syntax: None,
-      scope_analysis: false,
-    })?;
+    parsed_source: &ParsedSource,
+  ) -> (String, Vec<String>) {
+    let mut diagnostics = Vec::new();
     let mut text_changes = Vec::new();
     let module_info = DefaultModuleAnalyzer::module_info(&parsed_source);
     let analyze_specifier =
@@ -133,25 +96,12 @@ impl<'a> ImportMapUnfurler<'a> {
         &mut text_changes,
       );
     }
-    Ok((
-      deno_ast::apply_text_changes(
-        parsed_source.text_info().text_str(),
-        text_changes,
-      )
-      .into_bytes(),
-      diagnostics,
-    ))
-  }
 
-  #[cfg(test)]
-  fn unfurl_to_string(
-    &self,
-    url: &ModuleSpecifier,
-    data: Vec<u8>,
-  ) -> Result<(String, Vec<String>), AnyError> {
-    let (data, diagnostics) = self.unfurl(url, data)?;
-    let content = String::from_utf8(data)?;
-    Ok((content, diagnostics))
+    let rewritten_text = deno_ast::apply_text_changes(
+      parsed_source.text_info().text_str(),
+      text_changes,
+    );
+    (rewritten_text, diagnostics)
   }
 }
 
@@ -250,10 +200,26 @@ fn to_range(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_core::serde_json::json;
+  use deno_core::url::Url;
   use import_map::ImportMapWithDiagnostics;
   use pretty_assertions::assert_eq;
+
+  fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
+    let media_type = MediaType::from_specifier(&specifier);
+    let parse_result = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      media_type,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+      text_info: deno_ast::SourceTextInfo::new(source_code.into()),
+    })
+    .unwrap();
+    parse_result
+  }
 
   #[test]
   fn test_unfurling() {
@@ -286,9 +252,8 @@ const test5 = await import(`lib${expr}`);
 const test6 = await import(`${expr}`);
 "#;
       let specifier = ModuleSpecifier::parse("file:///dev/mod.ts").unwrap();
-      let (unfurled_source, d) = unfurler
-        .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
-        .unwrap();
+      let source = parse_ast(&specifier, source_code);
+      let (unfurled_source, d) = unfurler.unfurl(&specifier, &source);
       assert_eq!(d.len(), 2);
       assert!(d[0].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
       assert!(d[1].starts_with("Dynamic import was not analyzable and won't use the import map once published."));
@@ -316,9 +281,8 @@ import bar from "lib/bar.ts";
 import fizz from "fizz";
 "#;
       let specifier = ModuleSpecifier::parse("file:///dev/mod").unwrap();
-      let (unfurled_source, d) = unfurler
-        .unfurl_to_string(&specifier, source_code.as_bytes().to_vec())
-        .unwrap();
+      let source = parse_ast(&specifier, source_code);
+      let (unfurled_source, d) = unfurler.unfurl(&specifier, &source);
       assert!(d.is_empty());
       assert_eq!(unfurled_source, source_code);
     }
