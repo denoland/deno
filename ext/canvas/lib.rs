@@ -46,9 +46,20 @@ fn op_image_process(
 ) -> Result<ToJsBuffer, AnyError> {
   let view =
     RgbaImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
-  let mut surface = RgbaImage::new(args.surface_width, args.surface_height);
 
-  image::imageops::overlay(&mut surface, &view, args.input_x, args.input_y);
+  let surface = if !(args.width == args.surface_width
+    && args.height == args.surface_height
+    && args.input_x == 0
+    && args.input_y == 0)
+  {
+    let mut surface = RgbaImage::new(args.surface_width, args.surface_height);
+
+    image::imageops::overlay(&mut surface, &view, args.input_x, args.input_y);
+
+    surface
+  } else {
+    view
+  };
 
   let filter_type = match args.resize_quality {
     ImageResizeQuality::Pixelated => FilterType::Nearest,
