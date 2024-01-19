@@ -460,12 +460,16 @@ pub struct Flags {
   pub reload: bool,
   pub seed: Option<u64>,
   pub strace_ops: Option<Vec<String>>,
+
+  // NOTE(bartlomieju): keep these `unstable_*` in sync with
+  // `cli/standalone/binary.rs` otherwise some unstable features might not be
+  // enabled in standalone binaries.
   pub unstable: bool,
   pub unstable_bare_node_builtins: bool,
   pub unstable_byonm: bool,
   pub unstable_sloppy_imports: bool,
-  pub unstable_workspaces: bool,
   pub unstable_features: Vec<String>,
+
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }

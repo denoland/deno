@@ -137,8 +137,6 @@ pub enum NodeModules {
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
-  pub unstable: bool,
-  pub unstable_features: Vec<String>,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
   pub location: Option<Url>,
@@ -151,6 +149,14 @@ pub struct Metadata {
   pub entrypoint: ModuleSpecifier,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
+
+  // NOTE(bartlomieju): keep these in sync with `cli/args/flags.rs` otherwise
+  // some unstable features might not be enabled in standalone binaries.
+  pub unstable: bool,
+  pub unstable_bare_node_builtins: bool,
+  pub unstable_byonm: bool,
+  pub unstable_sloppy_imports: bool,
+  pub unstable_features: Vec<String>,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -543,8 +549,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
-      unstable: cli_options.unstable(),
-      unstable_features: cli_options.unstable_features(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permissions_options(),
@@ -560,6 +564,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       node_modules,
       disable_deprecated_api_warning: cli_options
         .disable_deprecated_api_warning,
+      unstable: cli_options.unstable(),
+      unstable_bare_node_builtins: cli_options.unstable_bare_node_builtins(),
+      unstable_byonm: cli_options.unstable_byonm(),
+      unstable_sloppy_imports: cli_options.unstable_sloppy_imports(),
+      unstable_features: cli_options.unstable_features(),
     };
 
     write_binary_bytes(
