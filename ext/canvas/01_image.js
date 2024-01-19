@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
@@ -542,5 +542,11 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
     outputHeight,
   };
 }
+
+function getBitmapData(imageBitmap) {
+  return imageBitmap[_bitmapData];
+}
+
+internals.getBitmapData = getBitmapData;
 
 export { _bitmapData, _detached, createImageBitmap, ImageBitmap, ImageData };
