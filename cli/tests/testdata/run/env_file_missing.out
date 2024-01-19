@@ -1,4 +1,4 @@
-Info Environment variable file 'missing' not detected
+Warning The `--env` flag was used, but the dotenv file 'missing' was not found.
 undefined
 undefined
 undefined

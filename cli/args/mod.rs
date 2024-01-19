@@ -718,8 +718,8 @@ impl CliOptions {
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
         log::info!(
-          "{} Environment variable file '{}' not detected",
-          colors::yellow("Info"),
+          "{} The `--env` flag was used, but the dotenv file '{}' was not found.",
+          colors::yellow("Warning"),
           env_file_name
         );
       }
