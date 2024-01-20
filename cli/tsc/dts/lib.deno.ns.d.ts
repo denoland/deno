@@ -1876,12 +1876,22 @@ declare namespace Deno {
 
   /** Synchronously open a file and return an instance of
    * {@linkcode Deno.FsFile}. The file does not need to previously exist if
-   * using the `create` or `createNew` open options. It is the caller's
-   * responsibility to close the file when finished with it.
+   * using the `create` or `createNew` open options. The caller may have the
+   * resulting file automatically closed by the runtime once it's out of scope
+   * by declaring the file variable with the `using` keyword.
    *
    * ```ts
    * using file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
    * // Do work with file
+   * ```
+   *
+   * Alternatively, the caller may manually close the resource when finished with
+   * it.
+   *
+   * ```ts
+   * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
+   * // Do work with file
+   * file.close();
    * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on
@@ -2193,6 +2203,15 @@ declare namespace Deno {
    * const file = await Deno.open("my_file.txt");
    * // do work with "file" object
    * Deno.close(file.rid);
+   * ```
+   * 
+   * It is recommended to define the variable with the `using` keyword so the
+   * runtime will automatically close the resource when it goes out of scope.
+   * Doing so negates the need to manually close the resource.
+   * 
+   * ```ts
+   * using file = await Deno.open("my_file.txt");
+   * // do work with "file" object
    * ```
    *
    * @category I/O
