@@ -2204,11 +2204,11 @@ declare namespace Deno {
    * // do work with "file" object
    * Deno.close(file.rid);
    * ```
-   * 
+   *
    * It is recommended to define the variable with the `using` keyword so the
    * runtime will automatically close the resource when it goes out of scope.
    * Doing so negates the need to manually close the resource.
-   * 
+   *
    * ```ts
    * using file = await Deno.open("my_file.txt");
    * // do work with "file" object
