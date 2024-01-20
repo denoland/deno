@@ -18,7 +18,7 @@ Deno.test(
     Deno.ftruncateSync(file.rid, -5);
     assertEquals(Deno.readFileSync(filename).byteLength, 0);
 
-    Deno.close(file.rid);
+    file.close();
     Deno.removeSync(filename);
   },
 );
@@ -40,7 +40,7 @@ Deno.test(
     await Deno.ftruncate(file.rid, -5);
     assertEquals((await Deno.readFile(filename)).byteLength, 0);
 
-    Deno.close(file.rid);
+    file.close();
     await Deno.remove(filename);
   },
 );

@@ -1934,7 +1934,7 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * const numberOfBytesRead = await Deno.read(file.rid, buf); // 11 bytes
    * const text = new TextDecoder().decode(buf);  // "hello world"
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * @deprecated Use `reader.read()` instead. {@linkcode Deno.read} will be
@@ -1967,7 +1967,7 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
    * const text = new TextDecoder().decode(buf);  // "hello world"
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * @deprecated Use `.readSync()` instead. {@linkcode Deno.readSync} will be
@@ -1992,7 +1992,7 @@ declare namespace Deno {
    * const data = encoder.encode("Hello world");
    * const file = await Deno.open("/foo/bar.txt", { write: true });
    * const bytesWritten = await Deno.write(file.rid, data); // 11
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * @deprecated Use `writer.write()` instead. {@linkcode Deno.write} will be
@@ -2018,7 +2018,7 @@ declare namespace Deno {
    * const data = encoder.encode("Hello world");
    * const file = Deno.openSync("/foo/bar.txt", { write: true });
    * const bytesWritten = Deno.writeSync(file.rid, data); // 11
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * @deprecated Use `writer.writeSync()` instead. {@linkcode Deno.writeSync}
@@ -2219,7 +2219,7 @@ declare namespace Deno {
    * ```ts
    * const file = await Deno.open("my_file.txt");
    * // do work with "file" object
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * @deprecated Use `closer.close()` instead. {@linkcode Deno.close} will be

@@ -119,7 +119,7 @@ Deno.test(
         resolve();
       });
     });
-    Deno.close(file.rid);
+    file.close();
 
     const data = await Deno.readFile(tempFile);
     await Deno.remove(tempFile);
@@ -225,7 +225,7 @@ Deno.test(
         resolve();
       });
     });
-    Deno.close(file.rid);
+    file.close();
 
     const fileInfo = await Deno.stat(filename);
     await Deno.remove(filename);
@@ -271,7 +271,7 @@ Deno.test(
     });
 
     writeFileSync(file.rid, "hello world");
-    Deno.close(file.rid);
+    file.close();
 
     const data = Deno.readFileSync(tempFile);
     Deno.removeSync(tempFile);

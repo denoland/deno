@@ -12,7 +12,7 @@ Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", ()
 
   const file = Deno.openSync("README.md");
   assert(!isatty(file.rid));
-  Deno.close(file.rid);
+  file.close();
 });
 
 Deno.test("[node/tty isatty] returns false for irrelevant values", () => {

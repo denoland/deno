@@ -88,7 +88,7 @@ Deno.test({
         fail("No error expected");
       })
       .finally(async () => {
-        Deno.close(file.rid);
+        file.close();
         await Deno.remove(tempFile);
       });
   },
@@ -174,7 +174,7 @@ Deno.test({
       read: true,
     });
     appendFileSync(file.rid, "hello world");
-    Deno.close(file.rid);
+    file.close();
     const data = Deno.readFileSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");
     Deno.removeSync(tempFile);

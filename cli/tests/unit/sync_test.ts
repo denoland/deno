@@ -11,10 +11,10 @@ Deno.test(
       create: true,
     });
     const data = new Uint8Array(64);
-    Deno.writeSync(file.rid, data);
+    file.writeSync(data);
     Deno.fdatasyncSync(file.rid);
     assertEquals(Deno.readFileSync(filename), data);
-    Deno.close(file.rid);
+    file.close();
     Deno.removeSync(filename);
   },
 );
@@ -29,10 +29,10 @@ Deno.test(
       create: true,
     });
     const data = new Uint8Array(64);
-    await Deno.write(file.rid, data);
+    await file.write(data);
     await Deno.fdatasync(file.rid);
     assertEquals(await Deno.readFile(filename), data);
-    Deno.close(file.rid);
+    file.close();
     await Deno.remove(filename);
   },
 );
@@ -50,7 +50,7 @@ Deno.test(
     Deno.ftruncateSync(file.rid, size);
     Deno.fsyncSync(file.rid);
     assertEquals(Deno.statSync(filename).size, size);
-    Deno.close(file.rid);
+    file.close();
     Deno.removeSync(filename);
   },
 );
@@ -68,7 +68,7 @@ Deno.test(
     await Deno.ftruncate(file.rid, size);
     await Deno.fsync(file.rid);
     assertEquals((await Deno.stat(filename)).size, size);
-    Deno.close(file.rid);
+    file.close();
     await Deno.remove(filename);
   },
 );

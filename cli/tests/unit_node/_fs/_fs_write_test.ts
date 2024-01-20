@@ -21,7 +21,7 @@ Deno.test({
         resolve(nwritten);
       });
     });
-    Deno.close(file.rid);
+    file.close();
 
     const data = await Deno.readFile(tempFile);
     await Deno.remove(tempFile);
@@ -42,7 +42,7 @@ Deno.test({
     });
     const buffer = Buffer.from("hello world");
     const bytesWrite = writeSync(file.rid, buffer, 0, 5);
-    Deno.close(file.rid);
+    file.close();
 
     const data = Deno.readFileSync(tempFile);
     Deno.removeSync(tempFile);
