@@ -55,6 +55,7 @@ use deno_core::FeatureChecker;
 
 use deno_core::serde_json;
 use deno_graph::GraphKind;
+use deno_lockfile::WorkspaceMemberConfig;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -63,6 +64,7 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::BTreeSet;
@@ -363,26 +365,39 @@ impl CliFactory {
         if let Some(lockfile) = maybe_lockfile.as_ref() {
           // todo(THIS PR): makes no sense for this to be here
           let mut lockfile = lockfile.lock();
-          let package_json_deps = self.package_json_deps_provider().reqs().map(|reqs| reqs.into_iter().map(|s| s.to_string()).collect());
+          let package_json_deps = self.package_json_deps_provider().reqs().map(|reqs| reqs.into_iter().map(|s| format!("npm:{}", s)).collect());
           let config = match self.options.maybe_workspace_config() {
             Some(workspace_config) => {
               deno_lockfile::WorkspaceConfig {
-                package_json_deps,
-                deps: import_map_value_deps(&workspace_config.base_import_map_value),
+                root: WorkspaceMemberConfig {
+                  package_json_deps,
+                  dependencies: import_map_value_deps(&workspace_config.base_import_map_value),
+                },
                 members: workspace_config.members.iter().map(|member| {
-                  (member.package_name.clone(), deno_json_deps(&member.config_file))
+                  (member.package_name.clone(), WorkspaceMemberConfig {
+                    package_json_deps: None,
+                    dependencies: Some(deno_json_deps(&member.config_file)),
+                  })
                 }).collect(),
               }
             }
             None => {
               deno_lockfile::WorkspaceConfig {
-                package_json_deps,
-                deps: self.options.maybe_config_file().as_ref().map(deno_json_deps),
+                root: WorkspaceMemberConfig {
+                  package_json_deps,
+                  dependencies: self.options.maybe_config_file().as_ref().map(deno_json_deps),
+                },
                 members: Default::default(),
               }
             }
           };
-          lockfile.update_workspace_config(config);
+          lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
+            config,
+            nv_to_jsr_url: |nv| {
+              let nv = PackageNv::from_str(nv).ok()?;
+              Some(deno_graph::source::recommended_registry_package_url(crate::args::deno_registry_url(), &nv).to_string())
+            }
+        });
         }
 
         create_cli_npm_resolver(if self.options.unstable_byonm() {

@@ -10,7 +10,6 @@ use deno_core::parking_lot::RwLock;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
-use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
