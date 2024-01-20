@@ -6,6 +6,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  op_isatty,
+} = core.ensureFastOps();
+const {
   op_stdin_set_raw,
 } = core.ensureFastOps(true);
 const {
@@ -197,6 +200,10 @@ class Stdin {
     const cbreak = !!(options.cbreak ?? false);
     op_stdin_set_raw(mode, cbreak);
   }
+
+  isatty() {
+    return op_isatty(this.rid);
+  }
 }
 
 class Stdout {
@@ -227,6 +234,10 @@ class Stdout {
     }
     return this.#writable;
   }
+
+  isatty() {
+    return op_isatty(this.rid);
+  }
 }
 
 class Stderr {
@@ -256,6 +267,10 @@ class Stderr {
       this.#writable = writableStreamForRid(this.rid);
     }
     return this.#writable;
+  }
+
+  isatty() {
+    return op_isatty(this.rid);
   }
 }
 

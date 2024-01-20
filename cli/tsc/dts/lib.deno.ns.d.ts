@@ -2499,6 +2499,19 @@ declare namespace Deno {
     close(): void;
 
     [Symbol.dispose](): void;
+
+    /**
+     * Checks if the current resource is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * using file = await Deno.open("my_file.txt");
+     * file.isatty(); // false
+     * ```
+     *
+     * @category I/O
+     */
+    isatty(): boolean;
   }
 
   /**
@@ -2576,6 +2589,17 @@ declare namespace Deno {
      * @category I/O
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
+    /**
+     * Checks if `stdin` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdin.isatty(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isatty(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2593,6 +2617,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stdout`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stdout` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stdout.isatty(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isatty(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2610,6 +2645,17 @@ declare namespace Deno {
     readonly rid: number;
     /** A writable stream interface to `stderr`. */
     readonly writable: WritableStream<Uint8Array>;
+    /**
+     * Checks if `stderr` is a TTY (terminal).
+     *
+     * ```ts
+     * // This example is system and context specific
+     * Deno.stderr.isatty(); // true
+     * ```
+     *
+     * @category I/O
+     */
+    isatty(): boolean;
   };
 
   /**
@@ -2691,6 +2737,9 @@ declare namespace Deno {
    * Deno.close(nonTTYRid);
    * Deno.close(ttyRid);
    * ```
+   *
+   * @deprecated Use `resource.isatty()` instead.
+   * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O
    */

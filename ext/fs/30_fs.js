@@ -66,6 +66,7 @@ const {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
+  op_isatty,
 } = core.ensureFastOps();
 const {
   op_cancel_handle,
@@ -723,6 +724,10 @@ class FsFile {
 
   [SymbolDispose]() {
     core.tryClose(this.rid);
+  }
+
+  isatty() {
+    return op_isatty(this.rid);
   }
 }
 

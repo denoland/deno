@@ -45,31 +45,27 @@ export function createWritableStdioStream(writer, name) {
     columns: {
       enumerable: true,
       configurable: true,
-      get: () =>
-        Deno.isatty?.(writer?.rid) ? Deno.consoleSize?.().columns : undefined,
+      get: () => writer?.isatty() ? Deno.consoleSize?.().columns : undefined,
     },
     rows: {
       enumerable: true,
       configurable: true,
-      get: () =>
-        Deno.isatty?.(writer?.rid) ? Deno.consoleSize?.().rows : undefined,
+      get: () => writer?.isatty() ? Deno.consoleSize?.().rows : undefined,
     },
     isTTY: {
       enumerable: true,
       configurable: true,
-      get: () => Deno.isatty?.(writer?.rid),
+      get: () => writer?.isatty(),
     },
     getWindowSize: {
       enumerable: true,
       configurable: true,
       value: () =>
-        Deno.isatty?.(writer?.rid)
-          ? Object.values(Deno.consoleSize?.())
-          : undefined,
+        writer?.isatty() ? Object.values(Deno.consoleSize?.()) : undefined,
     },
   });
 
-  if (Deno.isatty?.(writer?.rid)) {
+  if (writer?.isatty()) {
     // These belong on tty.WriteStream(), but the TTY streams currently have
     // following problems:
     // 1. Using them here introduces a circular dependency.
@@ -180,7 +176,7 @@ export const initStdin = () => {
     enumerable: true,
     configurable: true,
     get() {
-      return Deno.isatty?.(io.stdin.rid);
+      return op_isatty(io.stdin.rid);
     },
   });
   stdin._isRawMode = false;

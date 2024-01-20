@@ -851,3 +851,9 @@ Deno.test(
     // calling [Symbol.dispose] after manual close is a no-op
   },
 );
+
+Deno.test({ permissions: { read: true } }, function fsFileIsatty() {
+  // CI not under TTY, so cannot test stdin/stdout/stderr.
+  using file = Deno.openSync("cli/tests/testdata/assets/hello.txt");
+  assert(!file.isatty());
+});
