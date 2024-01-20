@@ -176,7 +176,7 @@ export const initStdin = () => {
     enumerable: true,
     configurable: true,
     get() {
-      return op_isatty(io.stdin.rid);
+      return io.stdin.isatty();
     },
   });
   stdin._isRawMode = false;
