@@ -5245,7 +5245,7 @@ declare namespace Deno {
    * );
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
    * Deno.ftruncateSync(file.rid, 7);
-   * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
+   * file.seekSync(0, Deno.SeekMode.Start);
    * const data = new Uint8Array(32);
    * Deno.readSync(file.rid, data);
    * console.log(new TextDecoder().decode(data)); // Hello W
