@@ -117,7 +117,7 @@ impl Default for DocSourceFileFlag {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocHtmlFlag {
   pub name: String,
-  pub output: PathBuf,
+  pub output: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1490,8 +1490,7 @@ Show documentation for runtime built-ins:
             .action(ArgAction::Set)
             .require_equals(true)
             .value_hint(ValueHint::DirPath)
-          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-            .value_parser(value_parser!(PathBuf))
+            .value_parser(value_parser!(String))
         )
         .arg(
           Arg::new("private")
@@ -3367,8 +3366,8 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let html = if matches.get_flag("html") {
     let name = matches.remove_one::<String>("name").unwrap();
     let output = matches
-      .remove_one::<PathBuf>("output")
-      .unwrap_or(PathBuf::from("./docs/"));
+      .remove_one::<String>("output")
+      .unwrap_or(String::from("./docs/"));
     Some(DocHtmlFlag { name, output })
   } else {
     None
@@ -7563,7 +7562,7 @@ mod tests {
           lint: false,
           html: Some(DocHtmlFlag {
             name: "My library".to_string(),
-            output: PathBuf::from("./docs/"),
+            output: String::from("./docs/"),
           }),
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
           filter: None,
@@ -7589,7 +7588,7 @@ mod tests {
           json: false,
           html: Some(DocHtmlFlag {
             name: "My library".to_string(),
-            output: PathBuf::from("./foo"),
+            output: String::from("./foo"),
           }),
           lint: true,
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
