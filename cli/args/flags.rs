@@ -96,7 +96,7 @@ pub enum CoverageType {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct CoverageFlags {
   pub files: FileFlags,
-  pub output: Option<PathBuf>,
+  pub output: Option<String>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub r#type: CoverageType,
@@ -1384,8 +1384,7 @@ Generate html reports from lcov:
           Arg::new("output")
             .requires("lcov")
             .long("output")
-            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-            .value_parser(value_parser!(PathBuf))
+            .value_parser(value_parser!(String))
             .help("Output file (defaults to stdout) for lcov")
             .long_help(
               "Exports the coverage report in lcov format to the given file.
@@ -3322,7 +3321,7 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   } else {
     CoverageType::Summary
   };
-  let output = matches.remove_one::<PathBuf>("output");
+  let output = matches.remove_one::<String>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
       include: files,
@@ -7918,7 +7917,7 @@ mod tests {
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           r#type: CoverageType::Lcov,
-          output: Some(PathBuf::from("foo.lcov")),
+          output: Some(String::from("foo.lcov")),
         }),
         ..Flags::default()
       }
