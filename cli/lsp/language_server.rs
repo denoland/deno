@@ -1176,7 +1176,7 @@ async fn create_npm_resolver(
         }
         None => CliNpmResolverManagedSnapshotOption::Specified(None),
       },
-      // Don't provide the lockfile or package.json. We don't want these resolvers
+      // Don't provide the lockfile. We don't want these resolvers
       // updating it. Only the cache request should update the lockfile.
       maybe_lockfile: None,
       fs: Arc::new(deno_fs::RealFs),
