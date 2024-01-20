@@ -230,7 +230,7 @@ Deno.test({
 Deno.test(function webgpuNullWindowSurfaceThrows() {
   assertThrows(
     () => {
-      // @ts-expect-error
+      // @ts-expect-error: runtime test for null handle
       new Deno.UnsafeWindowSurface("cocoa", null, null);
     },
   );
