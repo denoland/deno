@@ -1174,11 +1174,10 @@ declare namespace Deno {
      *
      * ```ts
      * Deno.bench("foo", async (t) => {
-     *   const file = await Deno.open("data.txt");
+     *   using file = await Deno.open("data.txt");
      *   t.start();
      *   // some operation on `file`...
      *   t.end();
-     *   file.close();
      * });
      * ```
      */
@@ -1846,8 +1845,17 @@ declare namespace Deno {
 
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
-   * open options. It is the caller's responsibility to close the file when
-   * finished with it.
+   * open options. The caller may have the resulting file automatically closed
+   * by the runtime once it's out of scope by declaring the file variable with
+   * the `using` keyword.
+   *
+   * ```ts
+   * using file = await Deno.open("/foo/bar.txt", { read: true, write: true });
+   * // Do work with file
+   * ```
+   *
+   * Alternatively, the caller may manually close the resource when finished with
+   * it.
    *
    * ```ts
    * const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
@@ -1872,9 +1880,8 @@ declare namespace Deno {
    * responsibility to close the file when finished with it.
    *
    * ```ts
-   * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
+   * using file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
    * // Do work with file
-   * file.close();
    * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on
@@ -2021,7 +2028,7 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = await Deno.open(
+   * using file = await Deno.open(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2033,14 +2040,13 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * await file.read(buf);
    * console.log(new TextDecoder().decode(buf)); // "world"
-   * file.close();
    * ```
    *
    * The seek modes work as follows:
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = await Deno.open(
+   * using file = await Deno.open(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2052,7 +2058,6 @@ declare namespace Deno {
    * console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * file.close();
    * ```
    *
    * @category I/O
@@ -2068,7 +2073,7 @@ declare namespace Deno {
    * start) is returned.
    *
    * ```ts
-   * const file = Deno.openSync(
+   * using file = Deno.openSync(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2080,14 +2085,13 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * file.readSync(buf);
    * console.log(new TextDecoder().decode(buf)); // "world"
-   * file.close();
    * ```
    *
    * The seek modes work as follows:
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = Deno.openSync(
+   * using file = Deno.openSync(
    *   "hello.txt",
    *   { read: true, write: true, truncate: true, create: true },
    * );
@@ -2099,7 +2103,6 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-   * file.close();
    * ```
    *
    * @category I/O
@@ -2202,14 +2205,13 @@ declare namespace Deno {
    * recommended over using the discreet functions within the `Deno` namespace.
    *
    * ```ts
-   * const file = await Deno.open("/foo/bar.txt", { read: true });
+   * using file = await Deno.open("/foo/bar.txt", { read: true });
    * const fileInfo = await file.stat();
    * if (fileInfo.isFile) {
    *   const buf = new Uint8Array(100);
    *   const numberOfBytesRead = await file.read(buf); // 11 bytes
    *   const text = new TextDecoder().decode(buf);  // "hello world"
    * }
-   * file.close();
    * ```
    *
    * @category File System
@@ -2232,7 +2234,7 @@ declare namespace Deno {
      * based APIs.
      *
      * ```ts
-     * const file = await Deno.open("my_file.txt", { read: true });
+     * using file = await Deno.open("my_file.txt", { read: true });
      * const decoder = new TextDecoder();
      * for await (const chunk of file.readable) {
      *   console.log(decoder.decode(chunk));
@@ -2246,13 +2248,12 @@ declare namespace Deno {
      *
      * ```ts
      * const items = ["hello", "world"];
-     * const file = await Deno.open("my_file.txt", { write: true });
+     * using file = await Deno.open("my_file.txt", { write: true });
      * const encoder = new TextEncoder();
      * const writer = file.writable.getWriter();
      * for (const item of items) {
      *   await writer.write(encoder.encode(item));
      * }
-     * file.close();
      * ```
      */
     readonly writable: WritableStream<Uint8Array>;
@@ -2270,9 +2271,8 @@ declare namespace Deno {
      * ```ts
      * const encoder = new TextEncoder();
      * const data = encoder.encode("Hello world");
-     * const file = await Deno.open("/foo/bar.txt", { write: true });
+     * using file = await Deno.open("/foo/bar.txt", { write: true });
      * const bytesWritten = await file.write(data); // 11
-     * file.close();
      * ```
      *
      * @category I/O
@@ -2288,9 +2288,8 @@ declare namespace Deno {
      * ```ts
      * const encoder = new TextEncoder();
      * const data = encoder.encode("Hello world");
-     * const file = Deno.openSync("/foo/bar.txt", { write: true });
+     * using file = Deno.openSync("/foo/bar.txt", { write: true });
      * const bytesWritten = file.writeSync(data); // 11
-     * file.close();
      * ```
      */
     writeSync(p: Uint8Array): number;
@@ -2300,21 +2299,19 @@ declare namespace Deno {
      * ### Truncate the entire file
      *
      * ```ts
-     * const file = await Deno.open("my_file.txt", { write: true });
+     * using file = await Deno.open("my_file.txt", { write: true });
      * await file.truncate();
-     * file.close();
      * ```
      *
      * ### Truncate part of the file
      *
      * ```ts
      * // if "my_file.txt" contains the text "hello world":
-     * const file = await Deno.open("my_file.txt", { write: true });
+     * using file = await Deno.open("my_file.txt", { write: true });
      * await file.truncate(7);
      * const buf = new Uint8Array(100);
      * await file.read(buf);
      * const text = new TextDecoder().decode(buf); // "hello w"
-     * file.close();
      * ```
      */
     truncate(len?: number): Promise<void>;
@@ -2325,21 +2322,19 @@ declare namespace Deno {
      * ### Truncate the entire file
      *
      * ```ts
-     * const file = Deno.openSync("my_file.txt", { write: true });
+     * using file = Deno.openSync("my_file.txt", { write: true });
      * file.truncateSync();
-     * file.close();
      * ```
      *
      * ### Truncate part of the file
      *
      * ```ts
      * // if "my_file.txt" contains the text "hello world":
-     * const file = Deno.openSync("my_file.txt", { write: true });
+     * using file = Deno.openSync("my_file.txt", { write: true });
      * file.truncateSync(7);
      * const buf = new Uint8Array(100);
      * file.readSync(buf);
      * const text = new TextDecoder().decode(buf); // "hello w"
-     * file.close();
      * ```
      */
     truncateSync(len?: number): void;
@@ -2356,11 +2351,10 @@ declare namespace Deno {
      *
      * ```ts
      * // if "/foo/bar.txt" contains the text "hello world":
-     * const file = await Deno.open("/foo/bar.txt");
+     * using file = await Deno.open("/foo/bar.txt");
      * const buf = new Uint8Array(100);
      * const numberOfBytesRead = await file.read(buf); // 11 bytes
      * const text = new TextDecoder().decode(buf);  // "hello world"
-     * file.close();
      * ```
      */
     read(p: Uint8Array): Promise<number | null>;
@@ -2377,11 +2371,10 @@ declare namespace Deno {
      *
      * ```ts
      * // if "/foo/bar.txt" contains the text "hello world":
-     * const file = Deno.openSync("/foo/bar.txt");
+     * using file = Deno.openSync("/foo/bar.txt");
      * const buf = new Uint8Array(100);
      * const numberOfBytesRead = file.readSync(buf); // 11 bytes
      * const text = new TextDecoder().decode(buf);  // "hello world"
-     * file.close();
      * ```
      */
     readSync(p: Uint8Array): number | null;
@@ -2390,7 +2383,7 @@ declare namespace Deno {
      *
      * ```ts
      * // Given file pointing to file with "Hello world", which is 11 bytes long:
-     * const file = await Deno.open(
+     * using file = await Deno.open(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
      * );
@@ -2402,7 +2395,6 @@ declare namespace Deno {
      * const buf = new Uint8Array(100);
      * await file.read(buf);
      * console.log(new TextDecoder().decode(buf)); // "world"
-     * file.close();
      * ```
      *
      * The seek modes work as follows:
@@ -2428,7 +2420,7 @@ declare namespace Deno {
      * The new position within the resource (bytes from the start) is returned.
      *
      * ```ts
-     * const file = Deno.openSync(
+     * using file = Deno.openSync(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
      * );
@@ -2440,14 +2432,13 @@ declare namespace Deno {
      * const buf = new Uint8Array(100);
      * file.readSync(buf);
      * console.log(new TextDecoder().decode(buf)); // "world"
-     * file.close();
      * ```
      *
      * The seek modes work as follows:
      *
      * ```ts
      * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-     * const file = Deno.openSync(
+     * using file = Deno.openSync(
      *   "hello.txt",
      *   { read: true, write: true, truncate: true, create: true },
      * );
@@ -2459,7 +2450,6 @@ declare namespace Deno {
      * console.log(file.seekSync(2, Deno.SeekMode.Current)); // "8"
      * // Seek backwards 2 bytes from the end of the file
      * console.log(file.seekSync(-2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
-     * file.close();
      * ```
      */
     seekSync(offset: number | bigint, whence: SeekMode): number;
@@ -2468,10 +2458,9 @@ declare namespace Deno {
      * ```ts
      * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
-     * const file = await Deno.open("hello.txt");
+     * using file = await Deno.open("hello.txt");
      * const fileInfo = await file.stat();
      * assert(fileInfo.isFile);
-     * file.close();
      * ```
      */
     stat(): Promise<FileInfo>;
@@ -2480,10 +2469,9 @@ declare namespace Deno {
      * ```ts
      * import { assert } from "https://deno.land/std/assert/mod.ts";
      *
-     * const file = Deno.openSync("hello.txt")
+     * using file = Deno.openSync("hello.txt")
      * const fileInfo = file.statSync();
      * assert(fileInfo.isFile);
-     * file.close();
      * ```
      */
     statSync(): FileInfo;
@@ -2491,9 +2479,8 @@ declare namespace Deno {
      * important to avoid leaking resources.
      *
      * ```ts
-     * const file = await Deno.open("my_file.txt");
+     * using file = await Deno.open("my_file.txt");
      * // do work with "file" object
-     * file.close();
      * ```
      */
     close(): void;
