@@ -180,7 +180,7 @@ pub struct InstallFlags {
 pub struct JupyterFlags {
   pub install: bool,
   pub kernel: bool,
-  pub conn_file: Option<PathBuf>,
+  pub conn_file: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1830,8 +1830,7 @@ fn jupyter_subcommand() -> Command {
       Arg::new("conn")
         .long("conn")
         .help("Path to JSON file describing connection parameters, provided by Jupyter")
-          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-        .value_parser(value_parser!(PathBuf))
+        .value_parser(value_parser!(String))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
     .about("Deno kernel for Jupyter notebooks")
@@ -3497,7 +3496,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let conn_file = matches.remove_one::<PathBuf>("conn");
+  let conn_file = matches.remove_one::<String>("conn");
   let kernel = matches.get_flag("kernel");
   let install = matches.get_flag("install");
 
@@ -8469,7 +8468,7 @@ mod tests {
         subcommand: DenoSubcommand::Jupyter(JupyterFlags {
           install: false,
           kernel: true,
-          conn_file: Some(PathBuf::from("path/to/conn/file")),
+          conn_file: Some(String::from("path/to/conn/file")),
         }),
         unstable: true,
         ..Flags::default()
