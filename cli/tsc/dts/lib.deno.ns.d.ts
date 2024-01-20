@@ -2138,7 +2138,7 @@ declare namespace Deno {
    *   { read: true, write: true, create: true },
    * );
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 1);
+   * await file.truncate(1);
    * await Deno.fsync(file.rid);
    * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
    * ```
