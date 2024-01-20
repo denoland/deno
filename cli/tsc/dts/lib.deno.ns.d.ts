@@ -2294,9 +2294,15 @@ declare namespace Deno {
      * ```
      */
     readonly writable: WritableStream<Uint8Array>;
-    /** The constructor which takes a resource ID. Generally `FsFile` should
+    /**
+     * The constructor which takes a resource ID. Generally `FsFile` should
      * not be constructed directly. Instead use {@linkcode Deno.open} or
-     * {@linkcode Deno.openSync} to create a new instance of `FsFile`. */
+     * {@linkcode Deno.openSync} to create a new instance of `FsFile`.
+     *
+     * @deprecated Use {@linkcode Deno.open} or {@linkcode Deno.openSync} to
+     * create a new instance of {@linkcode Deno.FsFile} instead.
+     * {@linkcode Deno.FsFile} will be removed in v2.0.0.
+     */
     constructor(rid: number);
     /** Write the contents of the array buffer (`p`) to the file.
      *
