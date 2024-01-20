@@ -3,7 +3,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   op_console_size,
   op_isatty,
-} = core.ensureFastOps();
+} = core.ensureFastOps(true);
 const {
   Uint32Array,
 } = primordials;

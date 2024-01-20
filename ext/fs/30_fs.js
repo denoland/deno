@@ -66,10 +66,10 @@ const {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
-  op_isatty,
 } = core.ensureFastOps();
 const {
   op_cancel_handle,
+  op_isatty,
 } = core.ensureFastOps(true);
 const {
   ArrayPrototypeFilter,

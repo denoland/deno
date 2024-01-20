@@ -6,10 +6,8 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  op_isatty,
-} = core.ensureFastOps();
-const {
   op_stdin_set_raw,
+  op_isatty,
 } = core.ensureFastOps(true);
 const {
   Uint8Array,
