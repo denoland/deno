@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_npm::registry::parse_dep_entry_name_and_raw_version;
-use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
@@ -16,8 +15,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum PackageJsonDepValueParseError {
-  #[error(transparent)]
-  SchemeValue(#[from] PackageDepNpmSchemeValueParseError),
   #[error(transparent)]
   Specifier(#[from] VersionReqSpecifierParseError),
   #[error("Not implemented scheme '{scheme}'")]
@@ -77,9 +74,7 @@ pub fn get_local_package_json_version_reqs(
         scheme: value.split(':').next().unwrap().to_string(),
       });
     }
-    let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value)
-      .map_err(PackageJsonDepValueParseError::SchemeValue)?;
-
+    let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value);
     let result = VersionReq::parse_from_specifier(version_req);
     match result {
       Ok(version_req) => Ok(PackageReq {
@@ -158,27 +153,6 @@ mod test {
   use std::path::PathBuf;
 
   use super::*;
-
-  #[test]
-  fn test_parse_dep_entry_name_and_raw_version() {
-    let cases = [
-      ("test", "^1.2", Ok(("test", "^1.2"))),
-      ("test", "1.x - 2.6", Ok(("test", "1.x - 2.6"))),
-      ("test", "npm:package@^1.2", Ok(("package", "^1.2"))),
-      (
-        "test",
-        "npm:package",
-        Err("Could not find @ symbol in npm url 'npm:package'"),
-      ),
-    ];
-    for (key, value, expected_result) in cases {
-      let result = parse_dep_entry_name_and_raw_version(key, value);
-      match result {
-        Ok(result) => assert_eq!(result, expected_result.unwrap()),
-        Err(err) => assert_eq!(err.to_string(), expected_result.err().unwrap()),
-      }
-    }
-  }
 
   fn get_local_package_json_version_reqs_for_tests(
     package_json: &PackageJson,

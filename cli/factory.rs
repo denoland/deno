@@ -339,6 +339,8 @@ impl CliFactory {
             }
           };
           lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
+            no_npm: self.options.no_npm(),
+            no_config: self.options.no_config(),
             config,
             nv_to_jsr_url: |nv| {
               let nv = PackageNv::from_str(nv).ok()?;

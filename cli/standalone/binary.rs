@@ -18,7 +18,6 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::package::PackageReq;
@@ -50,7 +49,6 @@ const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 #[derive(Serialize, Deserialize)]
 enum SerializablePackageJsonDepValueParseError {
-  SchemeValue(String),
   Specifier(String),
   Unsupported { scheme: String },
 }
@@ -58,9 +56,6 @@ enum SerializablePackageJsonDepValueParseError {
 impl SerializablePackageJsonDepValueParseError {
   pub fn from_err(err: PackageJsonDepValueParseError) -> Self {
     match err {
-      PackageJsonDepValueParseError::SchemeValue(err) => {
-        Self::SchemeValue(err.value)
-      }
       PackageJsonDepValueParseError::Specifier(err) => {
         Self::Specifier(err.source.to_string())
       }
@@ -72,11 +67,6 @@ impl SerializablePackageJsonDepValueParseError {
 
   pub fn into_err(self) -> PackageJsonDepValueParseError {
     match self {
-      SerializablePackageJsonDepValueParseError::SchemeValue(value) => {
-        PackageJsonDepValueParseError::SchemeValue(
-          PackageDepNpmSchemeValueParseError { value },
-        )
-      }
       SerializablePackageJsonDepValueParseError::Specifier(source) => {
         PackageJsonDepValueParseError::Specifier(
           VersionReqSpecifierParseError {
