@@ -38,6 +38,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
+use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
@@ -261,7 +262,14 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);
-      } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
+      } else if let Some(args::LockfileError::IntegrityCheckFailed(e)) =
+        error.downcast_ref::<args::LockfileError>()
+      {
+        error_string = e.to_string();
+        error_code = 10;
+      } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
+        error.downcast_ref::<SnapshotFromLockfileError>()
+      {
         error_string = e.to_string();
         error_code = 10;
       }

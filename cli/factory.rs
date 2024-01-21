@@ -293,10 +293,84 @@ impl CliFactory {
   }
 
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
-    self
-      .services
-      .lockfile
-      .get_or_init(|| self.options.maybe_lockfile())
+    self.services.lockfile.get_or_init(|| {
+      let maybe_lockfile = self.options.maybe_lockfile();
+
+      // initialize the lockfile with the workspace's configuration
+      if let Some(lockfile) = &maybe_lockfile {
+        let package_json_deps = self
+          .package_json_deps_provider()
+          .reqs()
+          .map(|reqs| reqs.into_iter().map(|s| format!("npm:{}", s)).collect())
+          .unwrap_or_default();
+        let mut lockfile = lockfile.lock();
+        let config = match self.options.maybe_workspace_config() {
+          Some(workspace_config) => deno_lockfile::WorkspaceConfig {
+            root: WorkspaceMemberConfig {
+              package_json_deps,
+              dependencies: import_map_deps(
+                &workspace_config.base_import_map_value,
+              )
+              .into_iter()
+              .map(|req| req.to_string())
+              .collect(),
+            },
+            members: workspace_config
+              .members
+              .iter()
+              .map(|member| {
+                (
+                  member.package_name.clone(),
+                  WorkspaceMemberConfig {
+                    package_json_deps: Default::default(),
+                    dependencies: deno_json_deps(&member.config_file)
+                      .into_iter()
+                      .map(|req| req.to_string())
+                      .collect(),
+                  },
+                )
+              })
+              .collect(),
+          },
+          None => deno_lockfile::WorkspaceConfig {
+            root: WorkspaceMemberConfig {
+              package_json_deps,
+              dependencies: self
+                .options
+                .maybe_config_file()
+                .as_ref()
+                .map(|config| {
+                  deno_json_deps(config)
+                    .into_iter()
+                    .map(|req| req.to_string())
+                    .collect()
+                })
+                .unwrap_or_default(),
+            },
+            members: Default::default(),
+          },
+        };
+        lockfile.set_workspace_config(
+          deno_lockfile::SetWorkspaceConfigOptions {
+            no_npm: self.options.no_npm(),
+            no_config: self.options.no_config(),
+            config,
+            nv_to_jsr_url: |nv| {
+              let nv = PackageNv::from_str(nv).ok()?;
+              Some(
+                deno_graph::source::recommended_registry_package_url(
+                  crate::args::deno_registry_url(),
+                  &nv,
+                )
+                .to_string(),
+              )
+            },
+          },
+        );
+      }
+
+      maybe_lockfile
+    })
   }
 
   pub async fn npm_resolver(
@@ -307,48 +381,6 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-
-        let maybe_lockfile = self.maybe_lockfile();
-        if let Some(lockfile) = maybe_lockfile.as_ref() {
-          // todo(THIS PR): makes no sense for this to be here
-          let mut lockfile = lockfile.lock();
-          let package_json_deps = self.package_json_deps_provider().reqs().map(|reqs| reqs.into_iter().map(|s| format!("npm:{}", s)).collect());
-          let config = match self.options.maybe_workspace_config() {
-            Some(workspace_config) => {
-              deno_lockfile::WorkspaceConfig {
-                root: WorkspaceMemberConfig {
-                  package_json_deps,
-                  dependencies: Some(import_map_deps(&workspace_config.base_import_map_value).into_iter().map(|req| req.to_string()).collect()),
-                },
-                members: workspace_config.members.iter().map(|member| {
-                  (member.package_name.clone(), WorkspaceMemberConfig {
-                    package_json_deps: None,
-                    dependencies: Some(deno_json_deps(&member.config_file).into_iter().map(|req| req.to_string()).collect()),
-                  })
-                }).collect(),
-              }
-            }
-            None => {
-              deno_lockfile::WorkspaceConfig {
-                root: WorkspaceMemberConfig {
-                  package_json_deps,
-                  dependencies: self.options.maybe_config_file().as_ref().map(|config| deno_json_deps(config).into_iter().map(|req| req.to_string()).collect()),
-                },
-                members: Default::default(),
-              }
-            }
-          };
-          lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
-            no_npm: self.options.no_npm(),
-            no_config: self.options.no_config(),
-            config,
-            nv_to_jsr_url: |nv| {
-              let nv = PackageNv::from_str(nv).ok()?;
-              Some(deno_graph::source::recommended_registry_package_url(crate::args::deno_registry_url(), &nv).to_string())
-            }
-        });
-        }
-
         create_cli_npm_resolver(if self.options.unstable_byonm() {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
@@ -366,7 +398,7 @@ impl CliFactory {
               Some(snapshot) => {
                 CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
               }
-              None => match maybe_lockfile.as_ref() {
+              None => match self.maybe_lockfile().as_ref() {
                 Some(lockfile) => {
                   CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
                     lockfile.clone(),
@@ -375,7 +407,7 @@ impl CliFactory {
                 None => CliNpmResolverManagedSnapshotOption::Specified(None),
               },
             },
-            maybe_lockfile: maybe_lockfile.as_ref().cloned(),
+            maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
             fs: fs.clone(),
             http_client: self.http_client().clone(),
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),

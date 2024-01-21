@@ -1154,8 +1154,14 @@ fn lock_deno_json_package_json_deps() {
     }
   }));
 
-  // now remove the deno.json
-  deno_json.remove_file();
+  // now remove the deps from the deno.json
+  deno_json.write("{}");
+  main_ts.write("");
+  context
+    .new_command()
+    .args("cache main.ts")
+    .run()
+    .skip_output_check();
 
   lockfile.assert_matches_json(json!({
     "version": "3",
