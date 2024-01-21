@@ -2160,6 +2160,9 @@ declare namespace Deno {
    * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
    * ```
    *
+   * @deprecated Use {@linkcode Deno.FsFile.datasync} instead.
+   * {@linkcode Deno.fdatasync} will be removed in v2.0.0.
+   *
    * @category I/O
    */
   export function fdatasync(rid: number): Promise<void>;
@@ -2177,6 +2180,9 @@ declare namespace Deno {
    * Deno.fdatasyncSync(file.rid);
    * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
    * ```
+   *
+   * @deprecated Use {@linkcode Deno.FsFile.datasyncSync} instead.
+   * {@linkcode Deno.fdatasyncSync} will be removed in v2.0.0.
    *
    * @category I/O
    */
@@ -2487,6 +2493,38 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
+    /**
+     * Flushes any pending data operations of the given file stream to disk.
+     *  ```ts
+     * using file = await Deno.open(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello World"));
+     * await file.datasync();
+     * console.log(await Deno.readTextFile("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    datasync(): Promise<void>;
+    /**
+     * Synchronously flushes any pending data operations of the given file stream
+     * to disk.
+     *
+     *  ```ts
+     * using file = Deno.openSync(
+     *   "my_file.txt",
+     *   { read: true, write: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello World"));
+     * file.datasyncSync();
+     * console.log(Deno.readTextFileSync("my_file.txt")); // Hello World
+     * ```
+     *
+     * @category I/O
+     */
+    datasyncSync(): void;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *

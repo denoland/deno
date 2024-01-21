@@ -851,3 +851,39 @@ Deno.test(
     // calling [Symbol.dispose] after manual close is a no-op
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fsFileDatasyncSyncSuccess() {
+    const filename = Deno.makeTempDirSync() + "/test_fdatasyncSync.txt";
+    const file = Deno.openSync(filename, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const data = new Uint8Array(64);
+    file.writeSync(data);
+    file.datasyncSync();
+    assertEquals(Deno.readFileSync(filename), data);
+    file.close();
+    Deno.removeSync(filename);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function fsFileDatasyncSuccess() {
+    const filename = (await Deno.makeTempDir()) + "/test_fdatasync.txt";
+    const file = await Deno.open(filename, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const data = new Uint8Array(64);
+    await file.write(data);
+    await file.datasync();
+    assertEquals(await Deno.readFile(filename), data);
+    file.close();
+    await Deno.remove(filename);
+  },
+);

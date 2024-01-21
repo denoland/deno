@@ -4,14 +4,15 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+import { FsFile } from "ext:deno_fs/30_fs.js";
 
 export function fdatasync(
   fd: number,
   callback: CallbackWithError,
 ) {
-  Deno.fdatasync(fd).then(() => callback(null), callback);
+  new FsFile(fd).datasync().then(() => callback(null), callback);
 }
 
 export function fdatasyncSync(fd: number) {
-  Deno.fdatasyncSync(fd);
+  new FsFile(fd).datasyncSync();
 }

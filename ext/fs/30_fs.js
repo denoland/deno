@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isDate,
 } = core;
@@ -558,10 +558,20 @@ async function symlink(
 }
 
 function fdatasyncSync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fdatasyncSync()",
+    new Error().stack,
+    "Use `file.datasyncSync()` instead.",
+  );
   op_fs_fdatasync_sync(rid);
 }
 
 async function fdatasync(rid) {
+  internals.warnOnDeprecatedApi(
+    "Deno.fdatasync()",
+    new Error().stack,
+    "Use `await file.datasync()` instead.",
+  );
   await op_fs_fdatasync_async(rid);
 }
 
@@ -701,6 +711,14 @@ class FsFile {
 
   statSync() {
     return fstatSync(this.rid);
+  }
+
+  async datasync() {
+    await op_fs_fdatasync_async(this.rid);
+  }
+
+  datasyncSync() {
+    op_fs_fdatasync_sync(this.rid);
   }
 
   close() {
