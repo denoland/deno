@@ -244,7 +244,7 @@ pub struct WatchFlags {
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlagsWithPaths {
   pub hmr: bool,
-  pub paths: Vec<PathBuf>,
+  pub paths: Vec<String>,
   pub no_clear_screen: bool,
 }
 
@@ -2944,8 +2944,7 @@ fn hmr_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
-      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-      .value_parser(value_parser!(PathBuf))
+      .value_parser(value_parser!(String))
       .use_value_delimiter(true)
       .require_equals(true)
       .long_help(
@@ -2971,8 +2970,7 @@ fn watch_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
-      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-      .value_parser(value_parser!(PathBuf))
+      .value_parser(value_parser!(String))
       .use_value_delimiter(true)
       .require_equals(true)
       .long_help(
@@ -4137,7 +4135,7 @@ fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
 fn watch_arg_parse_with_paths(
   matches: &mut ArgMatches,
 ) -> Option<WatchFlagsWithPaths> {
-  if let Some(paths) = matches.remove_many::<PathBuf>("watch") {
+  if let Some(paths) = matches.remove_many::<String>("watch") {
     return Some(WatchFlagsWithPaths {
       paths: paths.collect(),
       hmr: false,
@@ -4146,7 +4144,7 @@ fn watch_arg_parse_with_paths(
   }
 
   matches
-    .remove_many::<PathBuf>("hmr")
+    .remove_many::<String>("hmr")
     .map(|paths| WatchFlagsWithPaths {
       paths: paths.collect(),
       hmr: true,
@@ -4335,7 +4333,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
             hmr: true,
-            paths: vec![PathBuf::from("foo.txt")],
+            paths: vec![String::from("foo.txt")],
             no_clear_screen: true,
           }),
         }),
@@ -4360,7 +4358,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
-            paths: vec![PathBuf::from("file1"), PathBuf::from("file2")],
+            paths: vec![String::from("file1"), String::from("file2")],
             no_clear_screen: false,
           }),
         }),

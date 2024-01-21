@@ -1471,29 +1471,31 @@ impl CliOptions {
   }
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {
-    let mut paths = if let DenoSubcommand::Run(RunFlags {
+    let mut full_paths = Vec::new();
+    if let DenoSubcommand::Run(RunFlags {
       watch: Some(WatchFlagsWithPaths { paths, .. }),
       ..
     }) = &self.flags.subcommand
     {
-      paths.clone()
-    } else {
-      Vec::with_capacity(2)
+      for path in paths {
+        full_paths.push(self.initial_cwd().join(path));
+      }
     };
+
     if let Ok(Some(import_map_path)) = self
       .resolve_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
-      paths.push(import_map_path);
+      full_paths.push(import_map_path);
     }
     if let Some(specifier) = self.maybe_config_file_specifier() {
       if specifier.scheme() == "file" {
         if let Ok(path) = specifier.to_file_path() {
-          paths.push(path);
+          full_paths.push(path);
         }
       }
     }
-    paths
+    full_paths
   }
 }
 
