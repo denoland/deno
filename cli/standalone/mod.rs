@@ -539,6 +539,7 @@ pub async fn run(
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
     None,
+    metadata.disable_deprecated_api_warning,
   );
 
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));

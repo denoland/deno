@@ -140,6 +140,7 @@ pub struct Metadata {
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
   pub node_modules: Option<NodeModules>,
+  pub disable_deprecated_api_warning: bool,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -547,6 +548,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       entrypoint: entrypoint.clone(),
       maybe_import_map,
       node_modules,
+      disable_deprecated_api_warning: cli_options
+        .disable_deprecated_api_warning,
     };
 
     write_binary_bytes(
