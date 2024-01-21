@@ -24,7 +24,7 @@ Deno.test({
   name: "ASYNC: truncate entire file contents",
   async fn() {
     const filePath = Deno.makeTempFileSync();
-    await Deno.writeFile(filePath, new TextEncoder().encode("hello world"));
+    await Deno.writeTextFile(filePath, "hello world");
     const file = await Deno.open(filePath, {
       read: true,
       write: true,
@@ -57,7 +57,7 @@ Deno.test({
   name: "ASYNC: truncate file to a size of precisely len bytes",
   async fn() {
     const filePath = Deno.makeTempFileSync();
-    await Deno.writeFile(filePath, new TextEncoder().encode("hello world"));
+    await Deno.writeTextFile(filePath, "hello world");
     const file = await Deno.open(filePath, {
       read: true,
       write: true,
