@@ -6473,7 +6473,6 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
           "import chalk from 'npm:chalk@~5';\n",
           "import {entryB} from 'npm:@denotest/types-exports-subpaths@1/nested/entry-b';\n",
           "import {printHello} from 'print_hello';\n",
-          "import {entryB} from 'npm:@denotest/types-exports-subpaths@1/nested/entry-b';\n",
           "\n",
         ),
       }
