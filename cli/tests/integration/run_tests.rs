@@ -1047,6 +1047,21 @@ fn lock_deno_json_package_json_deps() {
     .run()
     .skip_output_check();
   let lockfile = temp_dir.join("deno.lock");
+  // todo(dsherret): it would be nice if the test server didn't produce
+  // different hashes depending on what operating system it's running on
+  let esm_basic_integrity = lockfile
+    .read_json_value()
+    .get("packages")
+    .unwrap()
+    .get("npm")
+    .unwrap()
+    .get("@denotest/esm-basic@1.0.0")
+    .unwrap()
+    .get("integrity")
+    .unwrap()
+    .as_str()
+    .unwrap()
+    .to_string();
   lockfile.assert_matches_json(json!({
     "version": "3",
     "packages": {
@@ -1056,7 +1071,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
-          "integrity": "sha512-d4xM3xFg7CXOg2CVsDAU7Q6pKvyFz1/MJpMjaZYsOnJifm9bRbH6nhg77gNqsTpF9RDkourrjKxLAXae4FSvXQ==",
+          "integrity": esm_basic_integrity,
           "dependencies": {}
         }
       }
@@ -1106,7 +1121,7 @@ fn lock_deno_json_package_json_deps() {
       },
       "npm": {
         "@denotest/esm-basic@1.0.0": {
-          "integrity": "sha512-d4xM3xFg7CXOg2CVsDAU7Q6pKvyFz1/MJpMjaZYsOnJifm9bRbH6nhg77gNqsTpF9RDkourrjKxLAXae4FSvXQ==",
+          "integrity": esm_basic_integrity,
           "dependencies": {}
         }
       }

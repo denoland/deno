@@ -1550,7 +1550,7 @@ r#"Download http://localhost:4545/npm/registry/@denotest/bin
 error: Integrity check failed for npm package: "@denotest/bin@1.0.0". Unable to verify that the package
 is the same as when the lockfile was generated.
 
-Actual: sha512-28ndZLyo7AMfeSwgDGzsKnsb9ObeH+vVDKGsSJMd3MibMTKbls7ozY5EWFrCi1vaLAg20P9kWhN06/w74T0gMg==
+Actual: sha512-[WILDCARD]
 Expected: sha512-foobar
 
 This could be caused by:
