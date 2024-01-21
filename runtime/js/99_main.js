@@ -8,7 +8,6 @@ const ops = core.ops;
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
-  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypeShift,
