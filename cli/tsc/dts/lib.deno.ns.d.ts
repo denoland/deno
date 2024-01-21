@@ -2487,19 +2487,6 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
-    /** Close the file. Closing a file when you are finished with it is
-     * important to avoid leaking resources.
-     *
-     * ```ts
-     * const file = await Deno.open("my_file.txt");
-     * // do work with "file" object
-     * file.close();
-     * ```
-     */
-    close(): void;
-
-    [Symbol.dispose](): void;
-
     /**
      * Checks if the current resource is a TTY (terminal).
      *
@@ -2512,6 +2499,18 @@ declare namespace Deno {
      * @category I/O
      */
     isatty(): boolean;
+    /** Close the file. Closing a file when you are finished with it is
+     * important to avoid leaking resources.
+     *
+     * ```ts
+     * const file = await Deno.open("my_file.txt");
+     * // do work with "file" object
+     * file.close();
+     * ```
+     */
+    close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /**
