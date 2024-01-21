@@ -24,7 +24,7 @@ pub fn import_map_deps(value: &serde_json::Value) -> HashSet<JsrDepPackageReq> {
   };
   let values = imports_values(obj.get("imports"))
     .into_iter()
-    .chain(scope_values(obj.get("scopes")).into_iter());
+    .chain(scope_values(obj.get("scopes")));
   values_to_set(values)
 }
 
@@ -33,7 +33,7 @@ pub fn deno_json_deps(
 ) -> HashSet<JsrDepPackageReq> {
   let values = imports_values(config.json.imports.as_ref())
     .into_iter()
-    .chain(scope_values(config.json.scopes.as_ref()).into_iter());
+    .chain(scope_values(config.json.scopes.as_ref()));
   values_to_set(values)
 }
 

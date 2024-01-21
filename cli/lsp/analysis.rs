@@ -215,7 +215,7 @@ impl<'a> TsResponseImportMapper<'a> {
             if let Some(import_map) = self.maybe_import_map {
               let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
               let mut matches = Vec::new();
-              for entry in import_map.entries_for_referrer(&referrer) {
+              for entry in import_map.entries_for_referrer(referrer) {
                 if let Some(value) = entry.raw_value {
                   if let Ok(package_ref) =
                     NpmPackageReqReference::from_str(value)
@@ -235,7 +235,7 @@ impl<'a> TsResponseImportMapper<'a> {
               }
 
               // select the shortest match
-              matches.sort_by(|a, b| a.len().cmp(&b.len()));
+              matches.sort_by_key(|a| a.len());
               if let Some(matched) = matches.first() {
                 return Some(matched.to_string());
               }
