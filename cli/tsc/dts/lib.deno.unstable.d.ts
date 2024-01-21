@@ -3,6 +3,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
+/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 
@@ -763,6 +764,31 @@ declare namespace Deno {
     filename: string | URL,
     symbols: Const<S>,
   ): DynamicLibrary<S>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   *  Creates a presentable WebGPU surface from given window and
+   *  display handles.
+   *
+   *  The parameters correspond to the table below:
+   *
+   *  | system            | winHandle     | displayHandle   |
+   *  | ----------------- | ------------- | --------------- |
+   *  | "cocoa" (macOS)   | `NSView*`     | -               |
+   *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
+   *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
+   *
+   * @category WebGPU
+   */
+  export class UnsafeWindowSurface {
+    constructor(
+      system: "cocoa" | "win32" | "x11",
+      windowHandle: UnsafePointerView,
+      displayHandle: UnsafePointerView | null,
+    );
+    getContext(context: "webgpu"): GPUCanvasContext;
+    present(): void;
+  }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

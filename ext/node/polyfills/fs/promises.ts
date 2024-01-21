@@ -2,6 +2,7 @@
 import { promises as fsPromises } from "node:fs";
 
 export const access = fsPromises.access;
+export const constants = fsPromises.constants;
 export const copyFile = fsPromises.copyFile;
 export const open = fsPromises.open;
 export const opendir = fsPromises.opendir;
