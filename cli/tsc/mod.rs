@@ -103,6 +103,7 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.webstorage",
     "deno.canvas",
     "deno.crypto",
+    "deno.geometry",
     "deno.broadcast_channel",
     "deno.net",
     "deno.shared_globals",

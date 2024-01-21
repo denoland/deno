@@ -14,6 +14,7 @@ members = [
   "ext/fetch",
   "ext/ffi",
   "ext/fs",
+  "ext/geometry",
   "ext/http",
   "ext/io",
   "ext/kv",
@@ -78,6 +79,7 @@ deno_crypto = { version = "0.198.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.208.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.171.0", path = "./ext/ffi" }
 deno_fs = { version = "0.94.0", path = "./ext/fs" }
+deno_geometry = { version = "0.1.0", path = "./ext/geometry" }
 deno_http = { version = "0.182.0", path = "./ext/http" }
 deno_io = { version = "0.94.0", path = "./ext/io" }
 deno_kv = { version = "0.92.0", path = "./ext/kv" }
@@ -227,6 +229,9 @@ opentelemetry_sdk = "0.27.0"
 hkdf = "0.12.3"
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 
+# geometry
+nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
+
 # webgpu
 raw-window-handle = "0.6.0"
 wgpu-core = "0.21.1"
@@ -296,6 +301,8 @@ opt-level = 3
 [profile.release.package.deno_fetch]
 opt-level = 3
 [profile.release.package.deno_ffi]
+opt-level = 3
+[profile.release.package.deno_geometry]
 opt-level = 3
 [profile.release.package.deno_http]
 opt-level = 3

@@ -372,6 +372,7 @@ impl MainWorker {
           ..Default::default()
         },
       ),
+      deno_geometry::deno_geometry::init_ops_and_esm(),
       deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(
         create_cache,
       ),

@@ -13,6 +13,7 @@ const libs = [
   join(ROOT_PATH, "ext/webstorage/lib.deno_webstorage.d.ts"),
   join(ROOT_PATH, "ext/canvas/lib.deno_canvas.d.ts"),
   join(ROOT_PATH, "ext/crypto/lib.deno_crypto.d.ts"),
+  join(ROOT_PATH, "ext/geometry/lib.deno_geometry.d.ts"),
   join(ROOT_PATH, "ext/net/lib.deno_net.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.ns.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.shared_globals.d.ts"),
