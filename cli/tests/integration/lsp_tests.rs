@@ -9438,7 +9438,7 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3217,
+              "line": 3317,
               "character": 4
             },
             "end": {
