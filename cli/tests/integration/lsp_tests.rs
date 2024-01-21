@@ -6450,6 +6450,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     "imports": {
       "print_hello": "http://localhost:4545/subdir/print_hello.ts",
       "chalk": "npm:chalk@~5",
+      "nested/": "npm:/@denotest/types-exports-subpaths@1/nested/",
       "types-exports-subpaths/": "npm:/@denotest/types-exports-subpaths@1/"
     }
   }"#;
@@ -6471,6 +6472,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
           "import chalk from 'npm:chalk@~5';\n",
           "import chalk from 'npm:chalk@~5';\n",
           "import {printHello} from 'print_hello';\n",
+          "import {entryB} from 'npm:@denotest/types-exports-subpaths@1/nested/entry-b';\n",
           "\n",
         ),
       }
@@ -6483,6 +6485,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "arguments": [
         [
           "npm:@denotest/types-exports-subpaths@1/client",
+          "npm:@denotest/types-exports-subpaths@1/nested/entry-b",
           "npm:chalk@^5.0",
           "npm:chalk@~5",
           "http://localhost:4545/subdir/print_hello.ts",
@@ -6821,6 +6824,54 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }]
       }
     }])
+  );
+
+  // try auto-import with npm package with sub-path on value side of import map
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/nested_path.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "entry",
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/nested_path.ts",
+    (0, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "entryB")
+    .unwrap();
+
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "entryB",
+      "labelDetails": {
+        "description": "nested/entry-b",
+      },
+      "kind": 3,
+      "detail": "function entryB(): \"b\"",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import { entryB } from \"nested/entry-b\";\n\n"
+        }
+      ]
+    })
   );
 }
 

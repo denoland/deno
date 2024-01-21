@@ -214,25 +214,30 @@ impl<'a> TsResponseImportMapper<'a> {
             let sub_path = self.resolve_package_path(specifier);
             if let Some(import_map) = self.maybe_import_map {
               let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
+              let mut matches = Vec::new();
               for entry in import_map.entries_for_referrer(&referrer) {
                 if let Some(value) = entry.raw_value {
                   if let Ok(package_ref) =
                     NpmPackageReqReference::from_str(value)
                   {
                     if pkg_reqs.contains(package_ref.req()) {
-                      let sub_path = sub_path.as_deref().unwrap_or("/");
-                      let right_sub_path =
-                        package_ref.sub_path().unwrap_or("/");
-                      let left_sub_path = sub_path
-                        .strip_prefix(right_sub_path)
-                        .unwrap_or(sub_path);
-                      return Some(format!(
-                        "{}{}",
-                        entry.raw_key, left_sub_path
-                      ));
+                      let sub_path = sub_path.as_deref().unwrap_or("");
+                      let value_sub_path = package_ref.sub_path().unwrap_or("");
+                      if let Some(key_sub_path) =
+                        sub_path.strip_prefix(value_sub_path)
+                      {
+                        matches
+                          .push(format!("{}{}", entry.raw_key, key_sub_path));
+                      }
                     }
                   }
                 }
+              }
+
+              // select the shortest match
+              matches.sort_by(|a, b| a.len().cmp(&b.len()));
+              if let Some(matched) = matches.first() {
+                return Some(matched.to_string());
               }
             }
 
@@ -276,6 +281,22 @@ impl<'a> TsResponseImportMapper<'a> {
     // a search for the .d.ts file instead
     if specifier_path.extension().and_then(|e| e.to_str()) == Some("js") {
       search_paths.insert(0, specifier_path.with_extension("d.ts"));
+    } else if let Some(file_name) =
+      specifier_path.file_name().and_then(|f| f.to_str())
+    {
+      // In some other cases, typescript will provide the .d.ts extension, but the
+      // export might not have a .d.ts defined. In that case, look for the corresponding
+      // JavaScript file after not being able to find the .d.ts file.
+      if let Some(file_stem) = file_name.strip_suffix(".d.ts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.js", file_stem)));
+      } else if let Some(file_stem) = file_name.strip_suffix(".d.cts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.cjs", file_stem)));
+      } else if let Some(file_stem) = file_name.strip_suffix(".d.mts") {
+        search_paths
+          .push(specifier_path.with_file_name(format!("{}.mjs", file_stem)));
+      }
     }
 
     for search_path in search_paths {
