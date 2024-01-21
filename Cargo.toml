@@ -358,3 +358,4 @@ deno_lockfile = { path = "../deno_lockfile" }
 deno_npm = { path = "../deno_npm" }
 deno_graph = { path = "../deno_graph" }
 deno_semver = { path = "../deno_semver" }
+import_map = { path = "../import_map/rs-lib" }

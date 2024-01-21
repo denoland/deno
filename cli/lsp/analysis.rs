@@ -25,12 +25,14 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
@@ -211,17 +213,24 @@ impl<'a> TsResponseImportMapper<'a> {
           if !pkg_reqs.is_empty() {
             let sub_path = self.resolve_package_path(specifier);
             if let Some(import_map) = self.maybe_import_map {
-              for pkg_req in &pkg_reqs {
-                let paths = vec![
-                  concat_npm_specifier("npm:", pkg_req, sub_path.as_deref()),
-                  concat_npm_specifier("npm:/", pkg_req, sub_path.as_deref()),
-                ];
-                for path in paths {
-                  if let Some(mapped_path) = ModuleSpecifier::parse(&path)
-                    .ok()
-                    .and_then(|s| import_map.lookup(&s, referrer))
+              let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
+              for entry in import_map.entries_for_referrer(&referrer) {
+                if let Some(value) = entry.raw_value {
+                  if let Ok(package_ref) =
+                    NpmPackageReqReference::from_str(value)
                   {
-                    return Some(mapped_path);
+                    if pkg_reqs.contains(package_ref.req()) {
+                      let sub_path = sub_path.as_deref().unwrap_or("/");
+                      let right_sub_path =
+                        package_ref.sub_path().unwrap_or("/");
+                      let left_sub_path = sub_path
+                        .strip_prefix(right_sub_path)
+                        .unwrap_or(sub_path);
+                      return Some(format!(
+                        "{}{}",
+                        entry.raw_key, left_sub_path
+                      ));
+                    }
                   }
                 }
               }
