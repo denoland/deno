@@ -731,16 +731,16 @@ class FsFile {
     return this.#writable;
   }
 
-  [SymbolDispose]() {
-    core.tryClose(this.rid);
-  }
-
   async sync() {
     await op_fs_fsync_async(this.rid);
   }
 
   syncSync() {
     op_fs_fsync_sync(this.rid);
+  }
+
+  [SymbolDispose]() {
+    core.tryClose(this.rid);
   }
 }
 

@@ -2493,19 +2493,6 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
-    /** Close the file. Closing a file when you are finished with it is
-     * important to avoid leaking resources.
-     *
-     * ```ts
-     * const file = await Deno.open("my_file.txt");
-     * // do work with "file" object
-     * file.close();
-     * ```
-     */
-    close(): void;
-
-    [Symbol.dispose](): void;
-
     /**
      * Flushes any pending data and metadata operations of the given file
      * stream to disk.
@@ -2524,7 +2511,6 @@ declare namespace Deno {
      * @category I/O
      */
     sync(): Promise<void>;
-
     /**
      * Synchronously flushes any pending data and metadata operations of the given
      * file stream to disk.
@@ -2543,6 +2529,18 @@ declare namespace Deno {
      * @category I/O
      */
     syncSync(): void;
+    /** Close the file. Closing a file when you are finished with it is
+     * important to avoid leaking resources.
+     *
+     * ```ts
+     * const file = await Deno.open("my_file.txt");
+     * // do work with "file" object
+     * file.close();
+     * ```
+     */
+    close(): void;
+
+    [Symbol.dispose](): void;
   }
 
   /**
