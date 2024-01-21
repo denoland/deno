@@ -101,7 +101,7 @@ const OP_DETAILS = {
     "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
     "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
     "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
-    "op_fsync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fsync` call"],
+    "op_fsync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `file.fsync` call"],
     "op_ftruncate_async": ["truncate a file", "awaiting the result of a `Deno.ftruncate` call"],
     "op_funlock_async": ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
     "op_futime_async": ["change file timestamps", "awaiting the result of a `Deno.futime` call"],
