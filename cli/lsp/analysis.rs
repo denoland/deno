@@ -233,7 +233,6 @@ impl<'a> TsResponseImportMapper<'a> {
                   }
                 }
               }
-
               // select the shortest match
               matches.sort_by_key(|a| a.len());
               if let Some(matched) = matches.first() {

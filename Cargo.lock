@@ -1329,9 +1329,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.63.4"
+version = "0.63.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be751db3da720bcd35d42f9c0967a04cafd52d554d79262426d1c00179b0c085"
+checksum = "d7cf16929b6a267be4bc535877303a3a36b3595b6b27543baa07d3b77b679d92"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1342,7 +1342,7 @@ dependencies = [
  "import_map",
  "indexmap",
  "log",
- "monch 0.5.0",
+ "monch 0.4.3",
  "once_cell",
  "parking_lot 0.12.1",
  "regex",
@@ -1455,9 +1455,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.18.0"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfe06eda519ed05b69da567bcba1d728c482fd553ddaa2ffe008468158da6de0"
+checksum = "8cd29f62e6dec60e585f579df3e9c2fc562aadf881319152974bc442a9042077"
 dependencies = [
  "ring",
  "serde",
@@ -1584,6 +1584,8 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.15.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "718b0b55031643de7808f8b426661b22a685820f1f459e028776bcc49e07b881"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1591,7 +1593,7 @@ dependencies = [
  "deno_semver",
  "futures",
  "log",
- "monch 0.5.0",
+ "monch 0.4.3",
  "serde",
  "thiserror",
 ]
@@ -1689,14 +1691,14 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.14.0"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a94a6fd5d889087748f4794887f28756a01b718dae92a316db0951222231325a"
+checksum = "fc8ddb4362a79ef3d264df363eef77c25c976964132bf672b682c5816ebdcfd1"
 dependencies = [
  "anyhow",
  "futures",
  "glob",
- "monch 0.4.3",
+ "monch 0.5.0",
  "os_pipe",
  "path-dedot",
  "tokio",
