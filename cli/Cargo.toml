@@ -64,7 +64,7 @@ deno_lint = { version = "=0.53.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.15.3"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.3"
+deno_semver = "=0.5.4"
 deno_task_shell = "=0.14.0"
 eszip = "=0.57.0"
 napi_sym.workspace = true
@@ -97,7 +97,7 @@ flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
 hex.workspace = true
-import_map = { version = "=0.18.1", features = ["ext"] }
+import_map = { version = "=0.18.2", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex.workspace = true

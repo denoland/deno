@@ -1665,7 +1665,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.3"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b49e14effd9df8ed261f7a1a34ac19bbaf0fa940c59bd19a6d8313cf41525e1c"
 dependencies = [
  "monch 0.5.0",
  "once_cell",
@@ -3155,7 +3157,9 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.18.1"
+version = "0.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "556779a5de0289679854a5344c22f466698fd2661f7170db90df7fa5013b281e"
 dependencies = [
  "indexmap",
  "log",
