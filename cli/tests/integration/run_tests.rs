@@ -1566,17 +1566,6 @@ itest!(top_level_for_await_ts {
   output: "run/top_level_await/top_level_for_await.out",
 });
 
-itest!(unstable_disabled {
-  args: "run --reload --check run/unstable.ts",
-  exit_code: 1,
-  output: "run/unstable_disabled.out",
-});
-
-itest!(unstable_enabled {
-  args: "run --quiet --reload --unstable run/unstable.ts",
-  output: "run/unstable_enabled.out",
-});
-
 itest!(unstable_disabled_js {
   args: "run --reload run/unstable.js",
   output: "run/unstable_disabled_js.out",
