@@ -9096,11 +9096,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3139,
+              "line": 3165,
               "character": 4
             },
             "end": {
-              "line": 3139,
+              "line": 3165,
               "character": 55
             }
           }
@@ -9114,11 +9114,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3309,
+              "line": 3335,
               "character": 4
             },
             "end": {
-              "line": 3309,
+              "line": 3335,
               "character": 47
             }
           }
@@ -9150,11 +9150,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3117,
+              "line": 3143,
               "character": 4
             },
             "end": {
-              "line": 3120,
+              "line": 3146,
               "character": 26
             }
           }
@@ -9168,11 +9168,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3287,
+              "line": 3313,
               "character": 4
             },
             "end": {
-              "line": 3290,
+              "line": 3316,
               "character": 26
             }
           }
@@ -9186,11 +9186,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3413,
+              "line": 3439,
               "character": 4
             },
             "end": {
-              "line": 3413,
+              "line": 3439,
               "character": 39
             }
           }
@@ -9204,11 +9204,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3576,
+              "line": 3602,
               "character": 4
             },
             "end": {
-              "line": 3576,
+              "line": 3602,
               "character": 43
             }
           }
@@ -9222,11 +9222,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3625,
+              "line": 3651,
               "character": 4
             },
             "end": {
-              "line": 3625,
+              "line": 3651,
               "character": 39
             }
           }
@@ -9240,11 +9240,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3744,
+              "line": 3770,
               "character": 4
             },
             "end": {
-              "line": 3744,
+              "line": 3770,
               "character": 39
             }
           }
@@ -9258,11 +9258,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3897,
+              "line": 3923,
               "character": 4
             },
             "end": {
-              "line": 3897,
+              "line": 3923,
               "character": 39
             }
           }
@@ -9276,11 +9276,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 4056,
+              "line": 4082,
               "character": 4
             },
             "end": {
-              "line": 4056,
+              "line": 4082,
               "character": 43
             }
           }
@@ -9294,11 +9294,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3140,
+              "line": 3166,
               "character": 4
             },
             "end": {
-              "line": 3143,
+              "line": 3169,
               "character": 31
             }
           }
@@ -9312,11 +9312,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3310,
+              "line": 3336,
               "character": 4
             },
             "end": {
-              "line": 3313,
+              "line": 3339,
               "character": 31
             }
           }
@@ -9330,11 +9330,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3125,
+              "line": 3151,
               "character": 4
             },
             "end": {
-              "line": 3128,
+              "line": 3154,
               "character": 30
             }
           }
@@ -9348,11 +9348,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3295,
+              "line": 3321,
               "character": 4
             },
             "end": {
-              "line": 3298,
+              "line": 3324,
               "character": 30
             }
           }
@@ -9366,11 +9366,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3329,
+              "line": 3355,
               "character": 2
             },
             "end": {
-              "line": 3334,
+              "line": 3360,
               "character": 4
             }
           }
@@ -9384,11 +9384,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3440,
+              "line": 3466,
               "character": 2
             },
             "end": {
-              "line": 3451,
+              "line": 3477,
               "character": 4
             }
           }
@@ -9402,11 +9402,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3645,
+              "line": 3671,
               "character": 2
             },
             "end": {
-              "line": 3652,
+              "line": 3678,
               "character": 4
             }
           }
@@ -9420,11 +9420,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3121,
+              "line": 3317,
               "character": 4
             },
             "end": {
-              "line": 3124,
+              "line": 3320,
               "character": 31
             }
           }
@@ -9438,11 +9438,11 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
           "range": {
             "start": {
-              "line": 3291,
+              "line": 3952,
               "character": 4
             },
             "end": {
-              "line": 3294,
+              "line": 3965,
               "character": 31
             }
           }
