@@ -2246,8 +2246,7 @@ update to a different location, use the --output flag
           Arg::new("output")
             .long("output")
             .help("The path to output the updated version to")
-            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-            .value_parser(value_parser!(PathBuf))
+            .value_parser(value_parser!(String))
             .value_hint(ValueHint::FilePath),
         )
         .arg(
@@ -4217,6 +4216,24 @@ mod tests {
           canary: false,
           version: None,
           output: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_with_output_flag() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "--output", "example.txt"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: false,
+          canary: false,
+          version: None,
+          output: Some(String::from("example.txt")),
         }),
         ..Flags::default()
       }
