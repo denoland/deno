@@ -758,10 +758,7 @@ itest!(env_file {
 
 itest!(env_file_missing {
   args: "run --env=missing --allow-env run/env_file.ts",
-  output_str: Some(
-    "error: Unable to load 'missing' environment variable file\n"
-  ),
-  exit_code: 1,
+  output: "run/env_file_missing.out",
 });
 
 itest!(_091_use_define_for_class_fields {
