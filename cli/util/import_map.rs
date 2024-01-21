@@ -1,16 +1,77 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
+
 use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::JsrOrNpmPackageReq;
 use import_map::ImportMap;
 
 use crate::graph_util::format_range_with_colors;
+
+pub fn import_map_deps(
+  value: &serde_json::Value,
+) -> HashSet<JsrOrNpmPackageReq> {
+  let Some(obj) = value.as_object() else {
+    return Default::default();
+  };
+  let values = imports_values(obj.get("imports"))
+    .into_iter()
+    .chain(scope_values(obj.get("scopes")).into_iter());
+  values_to_set(values)
+}
+
+pub fn deno_json_deps(
+  config: &deno_config::ConfigFile,
+) -> HashSet<JsrOrNpmPackageReq> {
+  let values = imports_values(config.json.imports.as_ref())
+    .into_iter()
+    .chain(scope_values(config.json.scopes.as_ref()).into_iter());
+  values_to_set(values)
+}
+
+fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+  let Some(obj) = value.and_then(|v| v.as_object()) else {
+    return Vec::new();
+  };
+  let mut items = Vec::with_capacity(obj.len());
+  for value in obj.values() {
+    if let serde_json::Value::String(value) = value {
+      items.push(value);
+    }
+  }
+  items
+}
+
+fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
+  let Some(obj) = value.and_then(|v| v.as_object()) else {
+    return Vec::new();
+  };
+  obj.values().flat_map(|v| imports_values(Some(v))).collect()
+}
+
+fn values_to_set<'a>(
+  values: impl Iterator<Item = &'a String>,
+) -> HashSet<JsrOrNpmPackageReq> {
+  let mut entries = HashSet::new();
+  for value in values {
+    if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
+      entries.insert(JsrOrNpmPackageReq::jsr(req_ref.into_inner().req));
+    } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
+      entries.insert(JsrOrNpmPackageReq::npm(req_ref.into_inner().req));
+    }
+  }
+  entries
+}
 
 pub struct ImportMapUnfurler<'a> {
   import_map: &'a ImportMap,

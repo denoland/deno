@@ -44,6 +44,8 @@ use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::import_map::deno_json_deps;
+use crate::util::import_map::import_map_deps;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -53,7 +55,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
-use deno_core::serde_json;
 use deno_graph::GraphKind;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_runtime::deno_fs;
@@ -62,12 +63,9 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use log::warn;
-use std::collections::BTreeSet;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -304,57 +302,6 @@ impl CliFactory {
   pub async fn npm_resolver(
     &self,
   ) -> Result<&Arc<dyn CliNpmResolver>, AnyError> {
-    fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
-      let Some(obj) = value.and_then(|v| v.as_object()) else {
-        return Vec::new();
-      };
-      let mut items = Vec::with_capacity(obj.len());
-      for value in obj.values() {
-        if let serde_json::Value::String(value) = value {
-          items.push(value);
-        }
-      }
-      items
-    }
-
-    fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
-      let Some(obj) = value.and_then(|v| v.as_object()) else {
-        return Vec::new();
-      };
-      obj.values().flat_map(|v| imports_values(Some(v))).collect()
-    }
-
-    fn values_to_set<'a>(
-      values: impl Iterator<Item = &'a String>,
-    ) -> BTreeSet<String> {
-      let mut entries = BTreeSet::new();
-      for value in values {
-        if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
-          entries.insert(format!("jsr:{}", req_ref.req()));
-        } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
-          entries.insert(format!("npm:{}", req_ref.req()));
-        }
-      }
-      entries
-    }
-
-    fn import_map_value_deps(
-      value: &serde_json::Value,
-    ) -> Option<BTreeSet<String>> {
-      let obj = value.as_object()?;
-      let values = imports_values(obj.get("imports"))
-        .into_iter()
-        .chain(scope_values(obj.get("scopes")).into_iter());
-      Some(values_to_set(values))
-    }
-
-    fn deno_json_deps(config: &deno_config::ConfigFile) -> BTreeSet<String> {
-      let values = imports_values(config.json.imports.as_ref())
-        .into_iter()
-        .chain(scope_values(config.json.scopes.as_ref()).into_iter());
-      values_to_set(values)
-    }
-
     self
       .services
       .npm_resolver
@@ -371,12 +318,12 @@ impl CliFactory {
               deno_lockfile::WorkspaceConfig {
                 root: WorkspaceMemberConfig {
                   package_json_deps,
-                  dependencies: import_map_value_deps(&workspace_config.base_import_map_value),
+                  dependencies: Some(import_map_deps(&workspace_config.base_import_map_value).into_iter().map(|req| req.to_string()).collect()),
                 },
                 members: workspace_config.members.iter().map(|member| {
                   (member.package_name.clone(), WorkspaceMemberConfig {
                     package_json_deps: None,
-                    dependencies: Some(deno_json_deps(&member.config_file)),
+                    dependencies: Some(deno_json_deps(&member.config_file).into_iter().map(|req| req.to_string()).collect()),
                   })
                 }).collect(),
               }
@@ -385,7 +332,7 @@ impl CliFactory {
               deno_lockfile::WorkspaceConfig {
                 root: WorkspaceMemberConfig {
                   package_json_deps,
-                  dependencies: self.options.maybe_config_file().as_ref().map(deno_json_deps),
+                  dependencies: self.options.maybe_config_file().as_ref().map(|config| deno_json_deps(config).into_iter().map(|req| req.to_string()).collect()),
                 },
                 members: Default::default(),
               }
