@@ -11,16 +11,14 @@ use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::MediaType;
 use deno_graph::TypeScriptReference;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::JsrOrNpmPackageReq;
 use import_map::ImportMap;
 
 use crate::graph_util::format_range_with_colors;
 
-pub fn import_map_deps(
-  value: &serde_json::Value,
-) -> HashSet<JsrOrNpmPackageReq> {
+pub fn import_map_deps(value: &serde_json::Value) -> HashSet<JsrDepPackageReq> {
   let Some(obj) = value.as_object() else {
     return Default::default();
   };
@@ -32,7 +30,7 @@ pub fn import_map_deps(
 
 pub fn deno_json_deps(
   config: &deno_config::ConfigFile,
-) -> HashSet<JsrOrNpmPackageReq> {
+) -> HashSet<JsrDepPackageReq> {
   let values = imports_values(config.json.imports.as_ref())
     .into_iter()
     .chain(scope_values(config.json.scopes.as_ref()).into_iter());
@@ -61,13 +59,13 @@ fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
 
 fn values_to_set<'a>(
   values: impl Iterator<Item = &'a String>,
-) -> HashSet<JsrOrNpmPackageReq> {
+) -> HashSet<JsrDepPackageReq> {
   let mut entries = HashSet::new();
   for value in values {
     if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
-      entries.insert(JsrOrNpmPackageReq::jsr(req_ref.into_inner().req));
+      entries.insert(JsrDepPackageReq::jsr(req_ref.into_inner().req));
     } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
-      entries.insert(JsrOrNpmPackageReq::npm(req_ref.into_inner().req));
+      entries.insert(JsrDepPackageReq::npm(req_ref.into_inner().req));
     }
   }
   entries
