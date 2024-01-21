@@ -16,6 +16,7 @@ members = [
   "ext/fetch",
   "ext/ffi",
   "ext/fs",
+  "ext/geometry",
   "ext/http",
   "ext/io",
   "ext/kv",
@@ -68,6 +69,7 @@ deno_crypto = { version = "0.151.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.161.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.124.0", path = "./ext/ffi" }
 deno_fs = { version = "0.47.0", path = "./ext/fs" }
+deno_geometry = { version = "0.1.0", path = "./ext/geometry" }
 deno_http = { version = "0.134.0", path = "./ext/http" }
 deno_io = { version = "0.47.0", path = "./ext/io" }
 deno_kv = { version = "0.45.0", path = "./ext/kv" }
@@ -257,6 +259,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_crypto]
 opt-level = 3
+[profile.bench.package.deno_geometry]
+opt-level = 3
 [profile.bench.package.deno_node]
 opt-level = 3
 [profile.bench.package.num-bigint-dig]
@@ -314,6 +318,8 @@ opt-level = 3
 [profile.release.package.deno_web]
 opt-level = 3
 [profile.release.package.deno_crypto]
+opt-level = 3
+[profile.release.package.deno_geometry]
 opt-level = 3
 [profile.release.package.deno_node]
 opt-level = 3
