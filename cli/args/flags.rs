@@ -286,7 +286,7 @@ pub struct UpgradeFlags {
   pub force: bool,
   pub canary: bool,
   pub version: Option<String>,
-  pub output: Option<PathBuf>,
+  pub output: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3749,7 +3749,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let force = matches.get_flag("force");
   let canary = matches.get_flag("canary");
   let version = matches.remove_one::<String>("version");
-  let output = matches.remove_one::<PathBuf>("output");
+  let output = matches.remove_one::<String>("output");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
