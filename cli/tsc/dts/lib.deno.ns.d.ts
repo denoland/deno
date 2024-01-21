@@ -3766,7 +3766,7 @@ declare namespace Deno {
    *
    * ```ts
    * const file = await Deno.makeTempFile();
-   * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
+   * await Deno.writeTextFile(file, "Hello World");
    * await Deno.truncate(file, 7);
    * const data = await Deno.readFile(file);
    * console.log(new TextDecoder().decode(data));  // "Hello W"
