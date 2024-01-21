@@ -682,6 +682,7 @@ pub struct CliOptions {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
+  pub disable_deprecated_api_warning: bool,
 }
 
 impl CliOptions {
@@ -728,6 +729,10 @@ impl CliOptions {
       }
     }
 
+    let disable_deprecated_api_warning = flags.log_level
+      == Some(log::Level::Error)
+      || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
+
     Ok(Self {
       flags,
       initial_cwd,
@@ -738,6 +743,7 @@ impl CliOptions {
       maybe_vendor_folder,
       overrides: Default::default(),
       maybe_workspace_config,
+      disable_deprecated_api_warning,
     })
   }
 
@@ -1043,6 +1049,7 @@ impl CliOptions {
       maybe_lockfile: self.maybe_lockfile.clone(),
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
+      disable_deprecated_api_warning: self.disable_deprecated_api_warning,
     }
   }
 
