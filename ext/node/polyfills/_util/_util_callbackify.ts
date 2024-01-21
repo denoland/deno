@@ -24,17 +24,18 @@
 // These are simplified versions of the "real" errors in Node.
 
 import { primordials } from "ext:core/mod.js";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
 const {
   ArrayPrototypePop,
+  ReflectApply,
   Error,
-  FunctionPrototypeApply,
   FunctionPrototypeBind,
   ObjectDefineProperties,
   ObjectGetOwnPropertyDescriptors,
   PromisePrototypeThen,
   TypeError,
 } = primordials;
+
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 class NodeFalsyValueRejectionError extends Error {
   public reason: unknown;
@@ -111,10 +112,10 @@ function callbackify<ResultT>(
       throw new NodeInvalidArgTypeError("last");
     }
     const cb = (...args: unknown[]) => {
-      FunctionPrototypeApply(maybeCb, this, args);
+      ReflectApply(maybeCb, this, args);
     };
     PromisePrototypeThen(
-      FunctionPrototypeApply(this, args),
+      ReflectApply(this, args),
       (ret: unknown) => {
         nextTick(FunctionPrototypeBind(cb, this, null, ret));
       },

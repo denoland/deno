@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.39.2"
+version = "1.39.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -39,10 +39,7 @@ __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
-# TODO(bartlomieju): should we not include `dont_create_runtime_snapshot`
-# feature here and actually create the snapshot in `deno_runtime` build script?
-# How do we pass options?
-deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 lazy-regex.workspace = true
 serde.workspace = true
@@ -58,18 +55,18 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = "=0.6.1"
-deno_config = "=0.6.5"
+deno_config = "=0.8.1"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.85.0", features = ["html"] }
-deno_emit = "=0.32.0"
-deno_graph = "=0.62.2"
-deno_lint = { version = "=0.52.2", features = ["docs"] }
+deno_doc = { version = "=0.93.0", features = ["html"] }
+deno_emit = "=0.33.0"
+deno_graph = "=0.63.3"
+deno_lint = { version = "=0.53.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "0.15.3"
-deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
-deno_semver = "0.5.1"
-deno_task_shell = "=0.14.0"
-eszip = "=0.56.0"
+deno_npm = "=0.15.3"
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_semver = "=0.5.4"
+deno_task_shell = "=0.14.3"
+eszip = "=0.57.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -79,9 +76,9 @@ bincode = "=1.3.3"
 bytes.workspace = true
 cache_control.workspace = true
 chrono.workspace = true
-clap = { version = "=4.3.3", features = ["env", "string"] }
-clap_complete = "=4.3.1"
-clap_complete_fig = "=4.3.1"
+clap = { version = "=4.4.17", features = ["env", "string"] }
+clap_complete = "=4.4.7"
+clap_complete_fig = "=4.4.2"
 console_static_text.workspace = true
 dashmap = "5.5.3"
 data-encoding.workspace = true
@@ -91,7 +88,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.1"
 dprint-plugin-jupyter = "=0.1.2"
 dprint-plugin-markdown = "=0.16.3"
-dprint-plugin-typescript = "=0.88.7"
+dprint-plugin-typescript = "=0.88.8"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
@@ -100,7 +97,7 @@ flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
 hex.workspace = true
-import_map = { version = "=0.18.0", features = ["ext"] }
+import_map = { version = "=0.18.2", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex.workspace = true
@@ -118,7 +115,7 @@ quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
-rustyline = { version = "=13.0.0", default-features = false, features = ["custom-bindings", "with-file-history"] }
+rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true

@@ -1313,3 +1313,22 @@ declare interface GPUExtent3DDict {
 
 /** @category WebGPU */
 declare type GPUExtent3D = number[] | GPUExtent3DDict;
+
+/** @category WebGPU */
+declare type GPUCanvasAlphaMode = "opaque" | "premultiplied";
+
+/** @category WebGPU */
+declare interface GPUCanvasConfiguration {
+  device: GPUDevice;
+  format: GPUTextureFormat;
+  usage?: GPUTextureUsageFlags;
+  viewFormats?: GPUTextureFormat[];
+  colorSpace?: "srgb" | "display-p3";
+  alphaMode?: GPUCanvasAlphaMode;
+}
+/** @category WebGPU */
+declare interface GPUCanvasContext {
+  configure(configuration: GPUCanvasConfiguration): undefined;
+  unconfigure(): undefined;
+  getCurrentTexture(): GPUTexture;
+}

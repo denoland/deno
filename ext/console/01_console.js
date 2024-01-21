@@ -4,6 +4,36 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
+  isAnyArrayBuffer,
+  isArgumentsObject,
+  isArrayBuffer,
+  isAsyncFunction,
+  isBigIntObject,
+  isBooleanObject,
+  isBoxedPrimitive,
+  isDataView,
+  isDate,
+  isGeneratorFunction,
+  isMap,
+  isMapIterator,
+  isModuleNamespaceObject,
+  isNativeError,
+  isNumberObject,
+  isPromise,
+  isRegExp,
+  isSet,
+  isSetIterator,
+  isStringObject,
+  isTypedArray,
+  isWeakMap,
+  isWeakSet,
+} = core;
+const {
+  op_get_constructor_name,
+  op_get_non_index_property_names,
+  op_preview_entries,
+} = core.ensureFastOps(true);
+const {
   Array,
   ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
@@ -30,13 +60,12 @@ const {
   DatePrototypeGetTime,
   DatePrototypeToISOString,
   Error,
-  ErrorPrototype,
   ErrorCaptureStackTrace,
+  ErrorPrototype,
   ErrorPrototypeToString,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
-  NumberIsNaN,
   MapPrototypeDelete,
   MapPrototypeEntries,
   MapPrototypeForEach,
@@ -52,6 +81,7 @@ const {
   MathSqrt,
   Number,
   NumberIsInteger,
+  NumberIsNaN,
   NumberParseInt,
   NumberPrototypeToString,
   NumberPrototypeValueOf,
@@ -90,8 +120,8 @@ const {
   SafeSetIterator,
   SafeStringIterator,
   SetPrototypeAdd,
-  SetPrototypeHas,
   SetPrototypeGetSize,
+  SetPrototypeHas,
   SetPrototypeValues,
   String,
   StringPrototypeCharCodeAt,
@@ -125,36 +155,6 @@ const {
   TypedArrayPrototypeGetLength,
   Uint8Array,
 } = primordials;
-const {
-  isAnyArrayBuffer,
-  isArgumentsObject,
-  isArrayBuffer,
-  isAsyncFunction,
-  isBigIntObject,
-  isBooleanObject,
-  isBoxedPrimitive,
-  isDataView,
-  isDate,
-  isGeneratorFunction,
-  isMap,
-  isMapIterator,
-  isModuleNamespaceObject,
-  isNativeError,
-  isNumberObject,
-  isPromise,
-  isRegExp,
-  isSet,
-  isSetIterator,
-  isStringObject,
-  isTypedArray,
-  isWeakSet,
-  isWeakMap,
-} = core;
-const {
-  op_get_non_index_property_names,
-  op_get_constructor_name,
-  op_preview_entries,
-} = core.ensureFastOps(true);
 
 let noColor = () => false;
 
@@ -188,6 +188,7 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
+  temporal: "magenta",
 };
 
 const defaultFG = 39;
@@ -776,6 +777,55 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
             return ctx.stylize(base, "date");
           }
         }
+      } else if (
+        proxyDetails === null &&
+        typeof globalThis.Temporal !== "undefined" &&
+        (
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.Instant.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.ZonedDateTime.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainDate.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainTime.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainDateTime.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainYearMonth.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.PlainMonthDay.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.Duration.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.TimeZone.prototype,
+            value,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            globalThis.Temporal.Calendar.prototype,
+            value,
+          )
+        )
+      ) {
+        // Temporal is not available in primordials yet
+        // deno-lint-ignore prefer-primordials
+        return ctx.stylize(value.toString(), "temporal");
       } else if (
         (proxyDetails === null &&
           (isNativeError(value) ||

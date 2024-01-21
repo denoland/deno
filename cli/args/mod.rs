@@ -16,9 +16,9 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
+pub use deno_config::glob::FilePatterns;
 pub use deno_config::BenchConfig;
 pub use deno_config::ConfigFile;
-pub use deno_config::FilesConfig;
 pub use deno_config::FmtOptionsConfig;
 pub use deno_config::JsxImportSourceConfig;
 pub use deno_config::LintRulesConfig;
@@ -69,10 +69,9 @@ use thiserror::Error;
 
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::glob::FilePatterns;
-use crate::util::glob::PathOrPatternSet;
 use crate::version;
 
+use deno_config::glob::PathOrPatternSet;
 use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
@@ -244,7 +243,7 @@ impl BenchOptions {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub check: bool,
   pub options: FmtOptionsConfig,
@@ -252,6 +251,14 @@ pub struct FmtOptions {
 }
 
 impl FmtOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      check: false,
+      options: FmtOptionsConfig::default(),
+      files: FilePatterns::new_with_base(base),
+    }
+  }
+
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
     maybe_fmt_flags: Option<FmtFlags>,
@@ -369,7 +376,7 @@ pub enum LintReporterKind {
   Compact,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
@@ -377,6 +384,14 @@ pub struct LintOptions {
 }
 
 impl LintOptions {
+  pub fn new_with_base(base: PathBuf) -> Self {
+    Self {
+      rules: Default::default(),
+      files: FilePatterns::new_with_base(base),
+      reporter_kind: Default::default(),
+    }
+  }
+
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
     maybe_lint_flags: Option<LintFlags>,
@@ -667,6 +682,7 @@ pub struct CliOptions {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
+  pub disable_deprecated_api_warning: bool,
 }
 
 impl CliOptions {
@@ -707,14 +723,6 @@ impl CliOptions {
         None
       };
 
-    // TODO(bartlomieju): remove in v1.39 or v1.40.
-    if let Some(wsconfig) = &maybe_workspace_config {
-      if !wsconfig.members.is_empty() && !flags.unstable_workspaces {
-        eprintln!("Use of unstable 'workspaces' feature. The --unstable-workspaces flags must be provided.");
-        std::process::exit(70);
-      }
-    }
-
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
         log::info!(
@@ -724,6 +732,10 @@ impl CliOptions {
         );
       }
     }
+
+    let disable_deprecated_api_warning = flags.log_level
+      == Some(log::Level::Error)
+      || std::env::var("DENO_NO_DEPRECATION_WARNINGS").ok().is_some();
 
     Ok(Self {
       flags,
@@ -735,6 +747,7 @@ impl CliOptions {
       maybe_vendor_folder,
       overrides: Default::default(),
       maybe_workspace_config,
+      disable_deprecated_api_warning,
     })
   }
 
@@ -790,26 +803,11 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    if self.flags.unstable
-      || !self.flags.unstable_features.is_empty()
-      || self
-        .maybe_config_file
-        .as_ref()
-        .map(|f| !f.json.unstable.is_empty())
-        .unwrap_or(false)
-    {
-      TsTypeLib::UnstableDenoWindow
-    } else {
-      TsTypeLib::DenoWindow
-    }
+    TsTypeLib::DenoWindow
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {
-    if self.flags.unstable {
-      TsTypeLib::UnstableDenoWorker
-    } else {
-      TsTypeLib::DenoWorker
-    }
+    TsTypeLib::DenoWorker
   }
 
   pub fn cache_setting(&self) -> CacheSetting {
@@ -1055,6 +1053,7 @@ impl CliOptions {
       maybe_lockfile: self.maybe_lockfile.clone(),
       maybe_workspace_config: self.maybe_workspace_config.clone(),
       overrides: self.overrides.clone(),
+      disable_deprecated_api_warning: self.disable_deprecated_api_warning,
     }
   }
 
@@ -1199,16 +1198,13 @@ impl CliOptions {
   }
 
   pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
-    let maybe_files_config = if let Some(config_file) = &self.maybe_config_file
+    let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
     {
       config_file.to_files_config()?
     } else {
       None
     };
-    PathOrPatternSet::from_absolute_paths(
-      maybe_files_config.map(|c| c.exclude).unwrap_or_default(),
-    )
-    .context("Invalid config file exclude pattern.")
+    Ok(maybe_config_files.map(|f| f.exclude).unwrap_or_default())
   }
 
   pub fn resolve_test_options(
@@ -1659,31 +1655,29 @@ impl StorageKeyResolver {
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
-  maybe_files_config: Option<FilesConfig>,
+  maybe_files_config: Option<FilePatterns>,
   maybe_file_flags: Option<FileFlags>,
   initial_cwd: &Path,
 ) -> Result<FilePatterns, AnyError> {
-  let mut maybe_files_config = maybe_files_config.unwrap_or_default();
+  let mut maybe_files_config = maybe_files_config
+    .unwrap_or_else(|| FilePatterns::new_with_base(initial_cwd.to_path_buf()));
   if let Some(file_flags) = maybe_file_flags {
-    let file_flags = file_flags.with_absolute_paths(initial_cwd);
     if !file_flags.include.is_empty() {
-      maybe_files_config.include = Some(file_flags.include);
+      maybe_files_config.include =
+        Some(PathOrPatternSet::from_relative_path_or_patterns(
+          initial_cwd,
+          &file_flags.include,
+        )?);
     }
     if !file_flags.ignore.is_empty() {
-      maybe_files_config.exclude = file_flags.ignore
+      maybe_files_config.exclude =
+        PathOrPatternSet::from_relative_path_or_patterns(
+          initial_cwd,
+          &file_flags.ignore,
+        )?;
     }
   }
-  Ok(FilePatterns {
-    include: {
-      let files = match maybe_files_config.include {
-        Some(include) => include,
-        None => vec![initial_cwd.to_path_buf()],
-      };
-      Some(PathOrPatternSet::from_absolute_paths(files)?)
-    },
-    exclude: PathOrPatternSet::from_absolute_paths(maybe_files_config.exclude)
-      .context("Invalid exclude.")?,
-  })
+  Ok(maybe_files_config)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1894,26 +1888,33 @@ mod test {
     temp_dir.write("pages/[id].ts", "");
 
     let temp_dir_path = temp_dir.path().as_path();
-    let error = resolve_files(
-      Some(FilesConfig {
-        include: Some(vec![temp_dir_path.join("data/**********.ts")]),
-        exclude: vec![],
-      }),
-      None,
+    let error = PathOrPatternSet::from_relative_path_or_patterns(
       temp_dir_path,
+      &["data/**********.ts".to_string()],
     )
     .unwrap_err();
     assert!(error.to_string().starts_with("Failed to expand glob"));
 
     let resolved_files = resolve_files(
-      Some(FilesConfig {
-        include: Some(vec![
-          temp_dir_path.join("data/test1.?s"),
-          temp_dir_path.join("nested/foo/*.ts"),
-          temp_dir_path.join("nested/fizz/*.ts"),
-          temp_dir_path.join("pages/[id].ts"),
-        ]),
-        exclude: vec![temp_dir_path.join("nested/**/*bazz.ts")],
+      Some(FilePatterns {
+        base: temp_dir_path.to_path_buf(),
+        include: Some(
+          PathOrPatternSet::from_relative_path_or_patterns(
+            temp_dir_path,
+            &[
+              "data/test1.?s".to_string(),
+              "nested/foo/*.ts".to_string(),
+              "nested/fizz/*.ts".to_string(),
+              "pages/[id].ts".to_string(),
+            ],
+          )
+          .unwrap(),
+        ),
+        exclude: PathOrPatternSet::from_relative_path_or_patterns(
+          temp_dir_path,
+          &["nested/**/*bazz.ts".to_string()],
+        )
+        .unwrap(),
       }),
       None,
       temp_dir_path,

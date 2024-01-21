@@ -839,7 +839,7 @@ fn analyze_jsx_pragmas(
 
   let mut analyzed_pragmas = AnalyzedJsxPragmas::default();
 
-  for c in parsed_source.get_leading_comments().iter() {
+  for c in parsed_source.get_leading_comments()?.iter() {
     if c.kind != CommentKind::Block {
       continue; // invalid
     }
