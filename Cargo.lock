@@ -992,7 +992,7 @@ dependencies = [
  "libz-sys",
  "log",
  "lsp-types",
- "monch",
+ "monch 0.5.0",
  "napi_sym",
  "nix 0.26.2",
  "notify",
@@ -1150,9 +1150,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.247.0"
+version = "0.248.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff6e8ee2e08528c1da4f5a48659c67d12012e831c737f6266534d4f550ccc8c3"
+checksum = "974d075b6647aa6cca14ea75c3833f8996b1c3e487adcde490977f21ac14e27e"
 dependencies = [
  "anyhow",
  "bit-set",
@@ -1342,7 +1342,7 @@ dependencies = [
  "import_map",
  "indexmap",
  "log",
- "monch",
+ "monch 0.4.3",
  "once_cell",
  "parking_lot 0.12.1",
  "regex",
@@ -1593,16 +1593,16 @@ dependencies = [
  "deno_semver",
  "futures",
  "log",
- "monch",
+ "monch 0.4.3",
  "serde",
  "thiserror",
 ]
 
 [[package]]
 name = "deno_ops"
-version = "0.123.0"
+version = "0.124.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19f29c5fe78479c3fa437409dca009363feb77036c067d6f3682adff8d06f547"
+checksum = "a1bc46bc85a26530e196a5f675dab6e06fb86b9104dc6fdc31cfc9ae1832d911"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1678,11 +1678,11 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.1"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2d3f7f5a3b2ace62b8fdede8585f5fdbd4e7dba9cb33fcaf0db54887316feaa"
+checksum = "b49e14effd9df8ed261f7a1a34ac19bbaf0fa940c59bd19a6d8313cf41525e1c"
 dependencies = [
- "monch",
+ "monch 0.5.0",
  "once_cell",
  "serde",
  "thiserror",
@@ -1691,14 +1691,14 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.14.0"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a94a6fd5d889087748f4794887f28756a01b718dae92a316db0951222231325a"
+checksum = "fc8ddb4362a79ef3d264df363eef77c25c976964132bf672b682c5816ebdcfd1"
 dependencies = [
  "anyhow",
  "futures",
  "glob",
- "monch",
+ "monch 0.5.0",
  "os_pipe",
  "path-dedot",
  "tokio",
@@ -3170,9 +3170,9 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.18.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1624c269d2ca7427d79471c8ba799abe9215e706cc0182d7b86fc856a35d565b"
+checksum = "556779a5de0289679854a5344c22f466698fd2661f7170db90df7fa5013b281e"
 dependencies = [
  "indexmap",
  "log",
@@ -3732,6 +3732,12 @@ name = "monch"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4519a88847ba2d5ead3dc53f1060ec6a571de93f325d9c5c4968147382b1cbc3"
+
+[[package]]
+name = "monch"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b52c1b33ff98142aecea13138bd399b68aa7ab5d9546c300988c345004001eea"
 
 [[package]]
 name = "multimap"
@@ -5255,9 +5261,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.156.0"
+version = "0.157.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48ad52e56e21faee5d310a898ab77f83abdab737fde1e97fa6a8cd6615d139ef"
+checksum = "8853e607c700ade0acb853aafda7e4cc1f752f4ebb35b0e2ecbf42e784e6d0e0"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6089,7 +6095,7 @@ dependencies = [
  "lazy-regex",
  "libc",
  "lsp-types",
- "monch",
+ "monch 0.5.0",
  "nix 0.26.2",
  "once_cell",
  "os_pipe",

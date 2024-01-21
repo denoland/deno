@@ -395,8 +395,7 @@ Deno.test(
   async function runRedirectStdin() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
-    const encoder = new TextEncoder();
-    await Deno.writeFile(fileName, encoder.encode("hello"));
+    await Deno.writeTextFile(fileName, "hello");
     const file = await Deno.open(fileName);
 
     // deno-lint-ignore no-deprecated-deno-api
