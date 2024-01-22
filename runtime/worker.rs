@@ -434,9 +434,6 @@ impl MainWorker {
       runtime::init_ops_and_esm(),
     ];
 
-    #[cfg(require_runtime_snapshot)]
-    debug_assert!(cfg!(not(feature = "__runtime_js_sources")), "'require_runtime_snapshot' may not be specified with '__runtime_js_sources'");
-
     for extension in &mut extensions {
       #[cfg(not(feature = "__runtime_js_sources"))]
       {
@@ -467,8 +464,8 @@ impl MainWorker {
       .as_ref()
       .expect("Sources are not embedded and a user snapshot was not provided.");
 
-    #[cfg(feature = "require_runtime_snapshot")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'require_runtime_snapshot' is used.");
+    #[cfg(not(feature = "dont_use_runtime_snapshot"))]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, if you want to create a runtime without a snapshot use 'dont_use_runtime_snapshot' Cargo feature.");
 
     let has_notified_of_inspector_disconnect = AtomicBool::new(false);
     let wait_for_inspector_disconnect_callback = Box::new(move || {

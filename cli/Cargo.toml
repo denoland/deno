@@ -39,7 +39,7 @@ __runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["require_runtime_snapshot"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 lazy-regex.workspace = true
 serde.workspace = true
