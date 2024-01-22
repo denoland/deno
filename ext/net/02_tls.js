@@ -15,17 +15,9 @@ const {
 
 import { Conn, Listener } from "ext:deno_net/01_net.js";
 
-function opStartTls(args) {
-  return op_tls_start(args);
-}
-
-function opTlsHandshake(rid) {
-  return op_tls_handshake(rid);
-}
-
 class TlsConn extends Conn {
   handshake() {
-    return opTlsHandshake(this.rid);
+    return op_tls_handshake(this.rid);
   }
 }
 
@@ -87,15 +79,13 @@ async function startTls(
   conn,
   {
     hostname = "127.0.0.1",
-    certFile = undefined,
     caCerts = [],
     alpnProtocols = undefined,
   } = {},
 ) {
-  const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
+  const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_tls_start({
     rid: conn.rid,
     hostname,
-    certFile,
     caCerts,
     alpnProtocols,
   });
