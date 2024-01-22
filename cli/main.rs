@@ -349,7 +349,7 @@ pub fn main() {
         eprintln!(
           "⚠️  {}",
           colors::yellow(
-            "The `--unstable` is not needed for `deno check` anymore."
+            "The `--unstable` flag is not needed for `deno check` anymore."
           )
         );
       } else {
