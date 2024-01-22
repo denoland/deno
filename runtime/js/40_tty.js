@@ -19,7 +19,7 @@ function isatty(rid) {
   internals.warnOnDeprecatedApi(
     "Deno.isatty()",
     new Error().stack,
-    "Use `resource.isatty()` instead.",
+    "Use `resource.isTerminal()` instead.",
   );
   return op_is_terminal(rid);
 }
