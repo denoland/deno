@@ -69,7 +69,7 @@ const {
 } = core.ensureFastOps();
 const {
   op_cancel_handle,
-  op_isatty,
+  op_is_terminal,
 } = core.ensureFastOps(true);
 const {
   ArrayPrototypeFilter,
@@ -726,8 +726,8 @@ class FsFile {
     core.tryClose(this.rid);
   }
 
-  isatty() {
-    return op_isatty(this.rid);
+  isTerminal() {
+    return op_is_terminal(this.rid);
   }
 }
 

@@ -2,7 +2,7 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_console_size,
-  op_isatty,
+  op_is_terminal,
 } = core.ensureFastOps(true);
 const {
   Uint32Array,
@@ -21,7 +21,7 @@ function isatty(rid) {
     new Error().stack,
     "Use `resource.isatty()` instead.",
   );
-  return op_isatty(rid);
+  return op_is_terminal(rid);
 }
 
 export { consoleSize, isatty };

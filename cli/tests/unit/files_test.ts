@@ -855,5 +855,5 @@ Deno.test(
 Deno.test({ permissions: { read: true } }, function fsFileIsatty() {
   // CI not under TTY, so cannot test stdin/stdout/stderr.
   using file = Deno.openSync("cli/tests/testdata/assets/hello.txt");
-  assert(!file.isatty());
+  assert(!file.isTerminal());
 });

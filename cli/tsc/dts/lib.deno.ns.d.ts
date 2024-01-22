@@ -2493,12 +2493,12 @@ declare namespace Deno {
      * ```ts
      * // This example is system and context specific
      * using file = await Deno.open("my_file.txt");
-     * file.isatty(); // false
+     * file.isTerminal(); // false
      * ```
      *
      * @category I/O
      */
-    isatty(): boolean;
+    isTerminal(): boolean;
     /** Close the file. Closing a file when you are finished with it is
      * important to avoid leaking resources.
      *
@@ -2593,12 +2593,12 @@ declare namespace Deno {
      *
      * ```ts
      * // This example is system and context specific
-     * Deno.stdin.isatty(); // true
+     * Deno.stdin.isTerminal(); // true
      * ```
      *
      * @category I/O
      */
-    isatty(): boolean;
+    isTerminal(): boolean;
   };
   /** A reference to `stdout` which can be used to write directly to `stdout`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2621,12 +2621,12 @@ declare namespace Deno {
      *
      * ```ts
      * // This example is system and context specific
-     * Deno.stdout.isatty(); // true
+     * Deno.stdout.isTerminal(); // true
      * ```
      *
      * @category I/O
      */
-    isatty(): boolean;
+    isTerminal(): boolean;
   };
   /** A reference to `stderr` which can be used to write directly to `stderr`.
    * It implements the Deno specific {@linkcode Writer}, {@linkcode WriterSync},
@@ -2649,12 +2649,12 @@ declare namespace Deno {
      *
      * ```ts
      * // This example is system and context specific
-     * Deno.stderr.isatty(); // true
+     * Deno.stderr.isTerminal(); // true
      * ```
      *
      * @category I/O
      */
-    isatty(): boolean;
+    isTerminal(): boolean;
   };
 
   /**
@@ -2737,7 +2737,7 @@ declare namespace Deno {
    * Deno.close(ttyRid);
    * ```
    *
-   * @deprecated Use `resource.isatty()` instead.
+   * @deprecated Use `resource.isTerminal()` instead.
    * {@linkcode Deno.isatty} will be removed in v2.0.0.
    *
    * @category I/O

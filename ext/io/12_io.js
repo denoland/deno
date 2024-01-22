@@ -7,7 +7,7 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   op_stdin_set_raw,
-  op_isatty,
+  op_is_terminal,
 } = core.ensureFastOps(true);
 const {
   Uint8Array,
@@ -199,8 +199,8 @@ class Stdin {
     op_stdin_set_raw(mode, cbreak);
   }
 
-  isatty() {
-    return op_isatty(this.rid);
+  isTerminal() {
+    return op_is_terminal(this.rid);
   }
 }
 
@@ -233,8 +233,8 @@ class Stdout {
     return this.#writable;
   }
 
-  isatty() {
-    return op_isatty(this.rid);
+  isTerminal() {
+    return op_is_terminal(this.rid);
   }
 }
 
@@ -267,8 +267,8 @@ class Stderr {
     return this.#writable;
   }
 
-  isatty() {
-    return op_isatty(this.rid);
+  isTerminal() {
+    return op_is_terminal(this.rid);
   }
 }
 

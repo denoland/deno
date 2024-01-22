@@ -5,7 +5,7 @@ const {
   Error,
 } = primordials;
 const {
-  op_isatty,
+  op_is_terminal,
 } = core.ensureFastOps(true);
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
@@ -20,7 +20,7 @@ function isatty(fd) {
     return false;
   }
   try {
-    return op_isatty(fd);
+    return op_is_terminal(fd);
   } catch (_) {
     return false;
   }
