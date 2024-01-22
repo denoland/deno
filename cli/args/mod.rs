@@ -1478,7 +1478,12 @@ impl CliOptions {
     }) = &self.flags.subcommand
     {
       for path in paths {
-        full_paths.push(self.initial_cwd().join(path));
+        let converted_path = PathBuf::from(path);
+        if converted_path.is_absolute() {
+          full_paths.push(converted_path);
+        } else {
+          full_paths.push(self.initial_cwd().join(path));
+        }
       }
     };
 
