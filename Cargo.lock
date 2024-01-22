@@ -968,7 +968,7 @@ dependencies = [
  "deno_emit",
  "deno_graph",
  "deno_lint",
- "deno_lockfile 0.17.2",
+ "deno_lockfile",
  "deno_npm",
  "deno_runtime",
  "deno_semver",
@@ -1489,18 +1489,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_lockfile"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfe06eda519ed05b69da567bcba1d728c482fd553ddaa2ffe008468158da6de0"
-dependencies = [
- "ring",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "deno_media_type"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1624,7 +1612,7 @@ checksum = "376262760b173ff01f8f5d05d58a64f6d863472396afb5582590fa0949342854"
 dependencies = [
  "anyhow",
  "async-trait",
- "deno_lockfile 0.18.0",
+ "deno_lockfile",
  "deno_semver",
  "futures",
  "log",

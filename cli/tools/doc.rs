@@ -137,24 +137,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   };
 
   if let Some(html_options) = &doc_flags.html {
-    let deno_ns = if doc_flags.source_files != DocSourceFileFlag::Builtin {
-      let deno_ns = generate_doc_nodes_for_builtin_types(
-        doc_flags.clone(),
-        &capturing_parser,
-        &analyzer,
-      )
-      .await?;
-      let (_, deno_ns) = deno_ns.first().unwrap();
-
-      let deno_ns_symbols =
-        deno_doc::html::compute_namespaced_symbols(deno_ns, &[]);
-
-      Some(deno_ns_symbols)
-    } else {
-      None
-    };
-
-    generate_docs_directory(&doc_nodes_by_url, html_options, deno_ns)
+    generate_docs_directory(&doc_nodes_by_url, html_options)
       .boxed_local()
       .await
   } else {
@@ -181,12 +164,12 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 struct DocResolver {}
 
 impl deno_doc::html::HrefResolver for DocResolver {
-  fn resolve_global_symbol(&self, symbol: &[String], _context: &str) -> String {
-    format!(
+  fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
+    Some(format!(
       "https://deno.land/api@{}?s={}",
       env!("CARGO_PKG_VERSION"),
       symbol.join(".")
-    )
+    ))
   }
 
   fn resolve_import_href(
@@ -220,7 +203,6 @@ impl deno_doc::html::HrefResolver for DocResolver {
 async fn generate_docs_directory(
   doc_nodes_by_url: &IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
-  deno_ns: Option<std::collections::HashSet<Vec<String>>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
@@ -228,16 +210,6 @@ async fn generate_docs_directory(
   let options = deno_doc::html::GenerateOptions {
     package_name: Some(html_options.name.to_owned()),
     main_entrypoint: None,
-    global_symbols: deno_doc::html::NamespacedGlobalSymbols::new(
-      deno_ns
-        .map(|deno_ns| {
-          deno_ns
-            .into_iter()
-            .map(|symbol| (symbol, "deno".to_string()))
-            .collect()
-        })
-        .unwrap_or_default(),
-    ),
     rewrite_map: None,
     hide_module_doc_title: false,
     href_resolver: Rc::new(DocResolver {}),
