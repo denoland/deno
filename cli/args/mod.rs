@@ -725,7 +725,11 @@ impl CliOptions {
 
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
-        bail!("Unable to load '{env_file_name}' environment variable file")
+        log::info!(
+          "{} The `--env` flag was used, but the dotenv file '{}' was not found.",
+          colors::yellow("Warning"),
+          env_file_name
+        );
       }
     }
 
