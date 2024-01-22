@@ -292,7 +292,7 @@ pub struct UpgradeFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VendorFlags {
   pub specifiers: Vec<String>,
-  pub output_path: Option<PathBuf>,
+  pub output_path: Option<String>,
   pub force: bool,
 }
 
@@ -2300,8 +2300,7 @@ Remote modules and multiple modules may also be specified:
         Arg::new("output")
           .long("output")
           .help("The directory to output the vendored modules to")
-          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-          .value_parser(value_parser!(PathBuf))
+          .value_parser(value_parser!(String))
           .value_hint(ValueHint::DirPath),
       )
       .arg(
@@ -3771,7 +3770,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .remove_many::<String>("specifiers")
       .map(|p| p.collect())
       .unwrap_or_default(),
-    output_path: matches.remove_one::<PathBuf>("output"),
+    output_path: matches.remove_one::<String>("output"),
     force: matches.get_flag("force"),
   });
 }
@@ -8047,7 +8046,7 @@ mod tests {
         subcommand: DenoSubcommand::Vendor(VendorFlags {
           specifiers: svec!["mod.ts", "deps.test.ts"],
           force: true,
-          output_path: Some(PathBuf::from("out_dir")),
+          output_path: Some(String::from("out_dir")),
         }),
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
         import_map_path: Some("import_map.json".to_string()),
