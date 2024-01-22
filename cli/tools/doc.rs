@@ -146,10 +146,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .await?;
       let (_, deno_ns) = deno_ns.first().unwrap();
 
-      let deno_ns_symbols =
-        deno_doc::html::compute_namespaced_symbols(deno_ns, &[]);
-
-      deno_ns_symbols
+      deno_doc::html::compute_namespaced_symbols(deno_ns, &[])
     } else {
       Default::default()
     };
