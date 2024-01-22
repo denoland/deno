@@ -183,8 +183,8 @@ Deno.test(
     const listener = Deno.listenTls({
       hostname,
       port,
-      certFile: "cli/tests/testdata/tls/localhost.crt",
-      keyFile: "cli/tests/testdata/tls/localhost.key",
+      cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+      key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
     });
 
     const response = encoder.encode(
@@ -296,8 +296,8 @@ async function tlsPair(): Promise<[Deno.Conn, Deno.Conn]> {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "cli/tests/testdata/tls/localhost.crt",
-    keyFile: "cli/tests/testdata/tls/localhost.key",
+    cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+    key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
   });
 
   const acceptPromise = listener.accept();
@@ -320,8 +320,8 @@ async function tlsAlpn(
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "cli/tests/testdata/tls/localhost.crt",
-    keyFile: "cli/tests/testdata/tls/localhost.key",
+    cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+    key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
     alpnProtocols: ["deno", "rocks"],
   });
 
@@ -725,8 +725,8 @@ async function tlsWithTcpFailureTestImpl(
   const tlsListener = Deno.listenTls({
     hostname: "localhost",
     port: tlsPort,
-    certFile: "cli/tests/testdata/tls/localhost.crt",
-    keyFile: "cli/tests/testdata/tls/localhost.key",
+    cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+    key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
   });
 
   const tcpPort = getPort();
@@ -1019,8 +1019,8 @@ function createHttpsListener(port: number): Deno.Listener {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "./cli/tests/testdata/tls/localhost.crt",
-    keyFile: "./cli/tests/testdata/tls/localhost.key",
+    cert: Deno.readTextFileSync("./cli/tests/testdata/tls/localhost.crt"),
+    key: Deno.readTextFileSync("./cli/tests/testdata/tls/localhost.key"),
   });
 
   serve(listener);
@@ -1285,8 +1285,8 @@ Deno.test(
     const listener = Deno.listenTls({
       hostname,
       port,
-      certFile: "cli/tests/testdata/tls/localhost.crt",
-      keyFile: "cli/tests/testdata/tls/localhost.key",
+      cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+      key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
     });
     const acceptPromise = listener.accept();
     const connectPromise = Deno.connectTls({
@@ -1354,8 +1354,8 @@ Deno.test(
       const listener = Deno.listenTls({
         hostname,
         port,
-        certFile: "cli/tests/testdata/tls/localhost.crt",
-        keyFile: "cli/tests/testdata/tls/localhost.key",
+        cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+        key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
       });
       for await (const conn of listener) {
         for (let i = 0; i < 10; i++) {

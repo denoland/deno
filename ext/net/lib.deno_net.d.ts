@@ -148,13 +148,15 @@ declare namespace Deno {
      * `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     * @deprecated Pass the certificate directly to the `cert` option instead.
+     * This option will be removed in Deno 2.0.
      */
     certFile?: string;
     /** Server private key file. Requires `--allow-read`.
      *
      * @tags allow-read
-     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     * @deprecated Pass the key directly to the `key` option instead. This
+     * option will be removed in Deno 2.0.
      */
     keyFile?: string;
 
@@ -171,7 +173,11 @@ declare namespace Deno {
    * security).
    *
    * ```ts
-   * const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
+   * using listener = Deno.listenTls({
+   *   port: 443,
+   *   cert: Deno.readTextFileSync("./server.crt"),
+   *   key: Deno.readTextFileSync("./server.key"),
+   * });
    * ```
    *
    * Requires `allow-net` permission.
@@ -263,8 +269,8 @@ declare namespace Deno {
     /**
      * Server certificate file.
      *
-     * @deprecated This option is deprecated and will be removed in a future
-     * release.
+     * @deprecated Pass the certificate directly to the `caCerts` option. This
+     * option will be removed in Deno 2.0.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the

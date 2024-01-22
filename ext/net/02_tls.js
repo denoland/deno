@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   op_net_accept_tls,
   op_net_connect_tls,
@@ -76,6 +76,20 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
+  if (keyFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ListenTlsOptions.keyFile",
+      new Error().stack,
+      "Pass the key to the `key` option instead.",
+    );
+  }
+  if (certFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ListenTlsOptions.certFile",
+      new Error().stack,
+      "Pass the cert to the `cert` option instead.",
+    );
+  }
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port: Number(port) },
     { cert, certFile, key, keyFile, alpnProtocols, reusePort },
@@ -92,6 +106,13 @@ async function startTls(
     alpnProtocols = undefined,
   } = {},
 ) {
+  if (certFile !== undefined) {
+    internals.warnOnDeprecatedApi(
+      "Deno.ListenTlsOptions.certFile",
+      new Error().stack,
+      "Pass the cert to the `cert` option instead.",
+    );
+  }
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await opStartTls({
     rid: conn.rid,
     hostname,

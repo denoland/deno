@@ -327,8 +327,8 @@ Deno.test(
       const listener = Deno.listenTls({
         hostname,
         port,
-        certFile: "cli/tests/testdata/tls/localhost.crt",
-        keyFile: "cli/tests/testdata/tls/localhost.key",
+        cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+        key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
       });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
@@ -2452,8 +2452,8 @@ Deno.test(
     const listener = Deno.listenTls({
       hostname,
       port,
-      certFile: "cli/tests/testdata/tls/localhost.crt",
-      keyFile: "cli/tests/testdata/tls/localhost.key",
+      cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+      key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
     });
 
     const caCerts = [
@@ -2758,8 +2758,8 @@ for (const compression of [true, false]) {
       const listener = Deno.listenTls({
         hostname,
         port,
-        certFile: "cli/tests/testdata/tls/localhost.crt",
-        keyFile: "cli/tests/testdata/tls/localhost.key",
+        cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
+        key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
         alpnProtocols: ["h2"],
       });
       const server = httpServerWithErrorBody(listener, compression);
