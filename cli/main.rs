@@ -33,6 +33,8 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -271,75 +273,6 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
-// NOTE(bartlomieju): keep IDs in sync with `runtime/90_deno_ns.js` (search for `unstableFeatures`)
-pub(crate) static UNSTABLE_GRANULAR_FLAGS: &[(
-  // flag name
-  &str,
-  // help text
-  &str,
-  // id to enable it in runtime/99_main.js
-  i32,
-)] = &[
-  (
-    deno_runtime::deno_broadcast_channel::UNSTABLE_FEATURE_NAME,
-    "Enable unstable `BroadcastChannel` API",
-    1,
-  ),
-  (
-    deno_runtime::deno_cron::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Deno.cron API",
-    2,
-  ),
-  (
-    deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME,
-    "Enable unstable FFI APIs",
-    3,
-  ),
-  (
-    deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME,
-    "Enable unstable file system APIs",
-    4,
-  ),
-  (
-    deno_runtime::ops::http::UNSTABLE_FEATURE_NAME,
-    "Enable unstable HTTP APIs",
-    5,
-  ),
-  (
-    deno_runtime::deno_kv::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Key-Value store APIs",
-    6,
-  ),
-  (
-    deno_runtime::deno_net::UNSTABLE_FEATURE_NAME,
-    "Enable unstable net APIs",
-    7,
-  ),
-  (
-    "temporal",
-    "Enable unstable Temporal API",
-    // Not used in JS
-    8,
-  ),
-  (
-    "unsafe-proto",
-    "Enable unsafe __proto__ support. This is a security risk.",
-    // This number is used directly in the JS code. Search
-    // for "unstableIds" to see where it's used.
-    9,
-  ),
-  (
-    deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME,
-    "Enable unstable `WebGPU` API",
-    10,
-  ),
-  (
-    deno_runtime::ops::worker_host::UNSTABLE_FEATURE_NAME,
-    "Enable unstable Web Worker APIs",
-    11,
-  ),
-];
-
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   eprintln!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
@@ -438,21 +371,4 @@ pub fn main() {
     unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
 
   std::process::exit(exit_code);
-}
-
-#[cfg(test)]
-mod test {
-  use super::*;
-
-  #[test]
-  fn unstable_granular_flag_names_sorted() {
-    let flags = UNSTABLE_GRANULAR_FLAGS
-      .iter()
-      .map(|(name, _, _)| name.to_string())
-      .collect::<Vec<_>>();
-    let mut sorted_flags = flags.clone();
-    sorted_flags.sort();
-    // sort the flags by name so they appear nicely in the help text
-    assert_eq!(flags, sorted_flags);
-  }
 }

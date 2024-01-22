@@ -17,6 +17,7 @@ deno_core::extension!(
     op_bootstrap_log_level,
     op_bootstrap_no_color,
     op_bootstrap_is_tty,
+    op_bootstrap_unstable_args,
     op_snapshot_options,
   ],
   options = {
@@ -67,6 +68,23 @@ pub fn op_bootstrap_numcpus(state: &mut OpState) -> u32 {
 #[string]
 pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
   state.borrow::<BootstrapOptions>().user_agent.clone()
+}
+
+#[op2]
+#[string]
+pub fn op_bootstrap_unstable_args(state: &mut OpState) -> String {
+  let options = state.borrow::<BootstrapOptions>();
+  if options.unstable {
+    return String::from("--unstable");
+  }
+
+  let mut flags = vec![];
+  for (name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
+    if options.unstable_features.contains(id) {
+      flags.push(format!("--unstable-{}", name));
+    }
+  }
+  flags.join(" ")
 }
 
 #[op2]

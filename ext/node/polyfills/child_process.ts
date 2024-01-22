@@ -9,6 +9,7 @@
 import { core, internals } from "ext:core/mod.js";
 const {
   op_node_child_ipc_pipe,
+  op_bootstrap_unstable_args,
 } = core.ensureFastOps();
 const {
   op_npm_process_state,
@@ -130,7 +131,7 @@ export function fork(
   }
   args = [
     "run",
-    "--unstable", // TODO(kt3k): Remove when npm: is stable
+    op_bootstrap_unstable_args(),
     "--node-modules-dir",
     "-A",
     ...stringifiedV8Flags,
