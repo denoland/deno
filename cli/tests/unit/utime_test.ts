@@ -11,7 +11,7 @@ Deno.test(
   async function futimeSyncSuccess() {
     const testDir = await Deno.makeTempDir();
     const filename = testDir + "/file.txt";
-    const file = await Deno.open(filename, {
+    using file = await Deno.open(filename, {
       create: true,
       write: true,
     });
@@ -24,7 +24,6 @@ Deno.test(
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
     assertEquals(fileInfo.mtime, new Date(mtime * 1000));
-    file.close();
   },
 );
 
@@ -33,7 +32,7 @@ Deno.test(
   function futimeSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
-    const file = Deno.openSync(filename, {
+    using file = Deno.openSync(filename, {
       create: true,
       write: true,
     });
@@ -46,7 +45,6 @@ Deno.test(
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
     assertEquals(fileInfo.mtime, new Date(mtime * 1000));
-    file.close();
   },
 );
 
