@@ -294,7 +294,7 @@ pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
   eprintln!(
     "⚠️  {}",
     colors::yellow(format!(
-      "The `{}` API was used with `--unstable` flag. The `--unstable` flag is deprecated, use granular `--unstable-{}` instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
+      "The `{}` API was used with `--unstable` flag. The `--unstable` flag is deprecated and will be removed in Deno 2.0, use granular `--unstable-{}` instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
       api_name, feature
     ))
   );
