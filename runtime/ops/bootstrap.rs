@@ -71,20 +71,20 @@ pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
 }
 
 #[op2]
-#[string]
-pub fn op_bootstrap_unstable_args(state: &mut OpState) -> String {
+#[serde]
+pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
   let options = state.borrow::<BootstrapOptions>();
   if options.unstable {
-    return String::from("--unstable");
+    return vec!["--unstable".to_string()];
   }
 
-  let mut flags = vec![];
+  let mut flags = Vec::new();
   for (name, _, id) in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
     if options.unstable_features.contains(id) {
       flags.push(format!("--unstable-{}", name));
     }
   }
-  flags.join(" ")
+  flags
 }
 
 #[op2]
