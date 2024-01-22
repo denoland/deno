@@ -327,8 +327,8 @@ Deno.test(
       const listener = Deno.listenTls({
         hostname,
         port,
-        cert: await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt"),
-        key: await Deno.readTextFile("cli/tests/testdata/tls/localhost.key"),
+        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
       });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
