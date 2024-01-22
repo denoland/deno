@@ -340,9 +340,18 @@ pub fn main() {
       eprintln!(
         "⚠️  {}",
         colors::yellow(
-          "The `--unstable` flag is deprecated, use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
+          "The `--unstable` flag is deprecated and will be removed in Deno 2.0, use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
         )
       );
+
+      if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
+        eprintln!(
+          "⚠️  {}",
+          colors::yellow(
+            "The `--unstable` flag has no effect with `deno check`, Use `--unstable-*` instead."
+          )
+        );
+      }
     }
 
     let default_v8_flags = match flags.subcommand {
