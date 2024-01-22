@@ -419,16 +419,16 @@ pub struct Flags {
   pub deny_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
   pub deny_net: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<PathBuf>>,
-  pub deny_ffi: Option<Vec<PathBuf>>,
-  pub allow_read: Option<Vec<PathBuf>>,
-  pub deny_read: Option<Vec<PathBuf>>,
+  pub allow_ffi: Option<Vec<String>>,
+  pub deny_ffi: Option<Vec<String>>,
+  pub allow_read: Option<Vec<String>>,
+  pub deny_read: Option<Vec<String>>,
   pub allow_run: Option<Vec<String>>,
   pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
   pub deny_sys: Option<Vec<String>>,
-  pub allow_write: Option<Vec<PathBuf>>,
-  pub deny_write: Option<Vec<PathBuf>>,
+  pub allow_write: Option<Vec<String>>,
+  pub deny_write: Option<Vec<String>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
@@ -443,7 +443,7 @@ pub struct Flags {
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
-  pub ignore: Vec<PathBuf>,
+  pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub env_file: Option<String>,
   pub inspect_brk: Option<SocketAddr>,
@@ -451,7 +451,7 @@ pub struct Flags {
   pub inspect: Option<SocketAddr>,
   pub location: Option<Url>,
   pub lock_write: bool,
-  pub lock: Option<PathBuf>,
+  pub lock: Option<String>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
   pub no_lock: bool,
@@ -470,10 +470,10 @@ pub struct Flags {
   pub v8_flags: Vec<String>,
 }
 
-fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
+fn join_paths(allowlist: &[String], d: &str) -> String {
   allowlist
     .iter()
-    .map(|path| path.to_str().unwrap().to_string())
+    .map(|path| path.to_string())
     .collect::<Vec<String>>()
     .join(d)
 }
@@ -2533,8 +2533,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_READ_HELP)
-        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-        .value_parser(value_parser!(PathBuf))
+        .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -2545,8 +2544,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_READ_HELP)
-        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-        .value_parser(value_parser!(PathBuf))
+        .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -2557,8 +2555,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_WRITE_HELP)
-        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-        .value_parser(value_parser!(PathBuf))
+        .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -2569,8 +2566,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_WRITE_HELP)
-        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-        .value_parser(value_parser!(PathBuf))
+        .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -2680,8 +2676,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_FFI_HELP)
-        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-        .value_parser(value_parser!(PathBuf))
+        .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -2692,8 +2687,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_FFI_HELP)
-        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-        .value_parser(value_parser!(PathBuf))
+        .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -3059,8 +3053,7 @@ fn lock_arg() -> Arg {
 
 If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
-    // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
-    .value_parser(value_parser!(PathBuf))
+    .value_parser(value_parser!(String))
     .value_hint(ValueHint::FilePath)
 }
 
@@ -3804,19 +3797,19 @@ fn compile_args_without_check_parse(
 
 fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   unsafely_ignore_certificate_errors_parse(flags, matches);
-  if let Some(read_wl) = matches.remove_many::<PathBuf>("allow-read") {
+  if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
     flags.allow_read = Some(read_wl.collect());
   }
 
-  if let Some(read_wl) = matches.remove_many::<PathBuf>("deny-read") {
+  if let Some(read_wl) = matches.remove_many::<String>("deny-read") {
     flags.deny_read = Some(read_wl.collect());
   }
 
-  if let Some(write_wl) = matches.remove_many::<PathBuf>("allow-write") {
+  if let Some(write_wl) = matches.remove_many::<String>("allow-write") {
     flags.allow_write = Some(write_wl.collect());
   }
 
-  if let Some(write_wl) = matches.remove_many::<PathBuf>("deny-write") {
+  if let Some(write_wl) = matches.remove_many::<String>("deny-write") {
     flags.deny_write = Some(write_wl.collect());
   }
 
@@ -3860,12 +3853,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     debug!("sys info denylist: {:#?}", &flags.deny_sys);
   }
 
-  if let Some(ffi_wl) = matches.remove_many::<PathBuf>("allow-ffi") {
+  if let Some(ffi_wl) = matches.remove_many::<String>("allow-ffi") {
     flags.allow_ffi = Some(ffi_wl.collect());
     debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
 
-  if let Some(ffi_wl) = matches.remove_many::<PathBuf>("deny-ffi") {
+  if let Some(ffi_wl) = matches.remove_many::<String>("deny-ffi") {
     flags.deny_ffi = Some(ffi_wl.collect());
     debug!("ffi denylist: {:#?}", &flags.deny_ffi);
   }
@@ -4067,8 +4060,8 @@ fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn lock_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.contains_id("lock") {
     let lockfile = matches
-      .remove_one::<PathBuf>("lock")
-      .unwrap_or_else(|| PathBuf::from("./deno.lock"));
+      .remove_one::<String>("lock")
+      .unwrap_or_else(|| String::from("./deno.lock"));
     flags.lock = Some(lockfile);
   }
 }
@@ -5405,7 +5398,7 @@ mod tests {
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
@@ -5518,7 +5511,7 @@ mod tests {
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
@@ -5587,18 +5580,18 @@ mod tests {
   fn allow_read_allowlist() {
     use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
-    let temp_dir = temp_dir_guard.path().to_path_buf();
+    let temp_dir = temp_dir_guard.path().to_string();
 
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-read=.,{}", temp_dir.to_str().unwrap()),
+      format!("--allow-read=.,{}", temp_dir),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        allow_read: Some(vec![PathBuf::from("."), temp_dir]),
+        allow_read: Some(vec![String::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -5611,18 +5604,18 @@ mod tests {
   fn deny_read_denylist() {
     use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
-    let temp_dir = temp_dir_guard.path().to_path_buf();
+    let temp_dir = temp_dir_guard.path().to_string();
 
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--deny-read=.,{}", temp_dir.to_str().unwrap()),
+      format!("--deny-read=.,{}", temp_dir),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        deny_read: Some(vec![PathBuf::from("."), temp_dir]),
+        deny_read: Some(vec![String::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -5635,18 +5628,18 @@ mod tests {
   fn allow_write_allowlist() {
     use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
-    let temp_dir = temp_dir_guard.path().to_path_buf();
+    let temp_dir = temp_dir_guard.path().to_string();
 
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-write=.,{}", temp_dir.to_str().unwrap()),
+      format!("--allow-write=.,{}", temp_dir),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        allow_write: Some(vec![PathBuf::from("."), temp_dir]),
+        allow_write: Some(vec![String::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -5659,18 +5652,18 @@ mod tests {
   fn deny_write_denylist() {
     use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
-    let temp_dir = temp_dir_guard.path().to_path_buf();
+    let temp_dir = temp_dir_guard.path().to_string();
 
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--deny-write=.,{}", temp_dir.to_str().unwrap()),
+      format!("--deny-write=.,{}", temp_dir),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        deny_write: Some(vec![PathBuf::from("."), temp_dir]),
+        deny_write: Some(vec![String::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
@@ -6112,7 +6105,7 @@ mod tests {
         }),
         type_check_mode: TypeCheckMode::Local,
         lock_write: true,
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         ..Flags::default()
       }
     );
@@ -6409,7 +6402,7 @@ mod tests {
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
@@ -6940,7 +6933,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         lock_write: true,
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         ..Flags::default()
       }
     );
@@ -6971,7 +6964,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         lock_write: true,
-        lock: Some(PathBuf::from("./deno.lock")),
+        lock: Some(String::from("./deno.lock")),
         ..Flags::default()
       }
     );
@@ -6991,7 +6984,7 @@ mod tests {
           "script.ts".to_string(),
         )),
         lock_write: true,
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         ..Flags::default()
       }
     );
@@ -7873,7 +7866,7 @@ mod tests {
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         lock_write: true,
         ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
@@ -8050,7 +8043,7 @@ mod tests {
         }),
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
         import_map_path: Some("import_map.json".to_string()),
-        lock: Some(PathBuf::from("lock.json")),
+        lock: Some(String::from("lock.json")),
         reload: true,
         ..Flags::default()
       }

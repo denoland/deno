@@ -452,7 +452,7 @@ async fn resolve_shim_data(
       extra_files.push((
         copy_path,
         fs::read_to_string(lock_path)
-          .with_context(|| format!("error reading {}", lock_path.display()))?,
+          .with_context(|| format!("error reading {}", lock_path))?,
       ));
     } else {
       // Provide an empty lockfile so that this overwrites any existing lockfile
