@@ -20,6 +20,11 @@ function isatty(fd) {
     return false;
   }
   try {
+    /**
+     * TODO: Treat `fd` as real file descriptors. Currently, `rid` 0, 1, 2
+     * correspond to `fd` 0, 1, 2 (stdin, stdout, stderr). This may change in
+     * the future.
+     */
     return op_is_terminal(fd);
   } catch (_) {
     return false;
