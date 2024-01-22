@@ -3690,8 +3690,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     // deprecated though so it's not worth changing the code to use the log
     // crate here and this is only done for testing anyway.
     eprintln!(
-      "{}",
-      crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
+      "⚠️ {}",
+      crate::colors::yellow("The `--jobs` flag is deprecated and will be removed in Deno 2.0.\nUse the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\nLearn more at: https://docs.deno.com/runtime/manual/basics/env_variables"),
     );
     if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
       Some(value)
