@@ -33,6 +33,7 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -149,14 +150,14 @@ pub struct Metadata {
   pub entrypoint: ModuleSpecifier,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
-
+  pub unstable_config: UnstableConfig,
   // NOTE(bartlomieju): keep these in sync with `cli/args/flags.rs` otherwise
   // some unstable features might not be enabled in standalone binaries.
-  pub unstable: bool,
-  pub unstable_bare_node_builtins: bool,
-  pub unstable_byonm: bool,
-  pub unstable_sloppy_imports: bool,
-  pub unstable_features: Vec<String>,
+  // pub unstable: bool,
+  // pub unstable_bare_node_builtins: bool,
+  // pub unstable_byonm: bool,
+  // pub unstable_sloppy_imports: bool,
+  // pub unstable_features: Vec<String>,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -564,11 +565,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       node_modules,
       disable_deprecated_api_warning: cli_options
         .disable_deprecated_api_warning,
-      unstable: cli_options.unstable(),
-      unstable_bare_node_builtins: cli_options.unstable_bare_node_builtins(),
-      unstable_byonm: cli_options.unstable_byonm(),
-      unstable_sloppy_imports: cli_options.unstable_sloppy_imports(),
-      unstable_features: cli_options.unstable_features(),
+      unstable_config: UnstableConfig {
+        legacy_flag_enabled: cli_options.legacy_unstable_flag(),
+        bare_node_builtins: cli_options.unstable_bare_node_builtins(),
+        byonm: cli_options.unstable_byonm(),
+        sloppy_imports: cli_options.unstable_sloppy_imports(),
+        features: cli_options.unstable_features(),
+      },
     };
 
     write_binary_bytes(

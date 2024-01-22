@@ -405,6 +405,17 @@ pub enum CaData {
   Bytes(Vec<u8>),
 }
 
+#[derive(
+  Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
+)]
+pub struct UnstableConfig {
+  pub legacy_flag_enabled: bool,
+  pub bare_node_builtins: bool,
+  pub byonm: bool,
+  pub sloppy_imports: bool,
+  pub features: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -461,15 +472,15 @@ pub struct Flags {
   pub seed: Option<u64>,
   pub strace_ops: Option<Vec<String>>,
 
+  pub unstable_config: UnstableConfig,
   // NOTE(bartlomieju): keep these `unstable_*` in sync with
   // `cli/standalone/binary.rs` otherwise some unstable features might not be
   // enabled in standalone binaries.
-  pub unstable: bool,
-  pub unstable_bare_node_builtins: bool,
-  pub unstable_byonm: bool,
-  pub unstable_sloppy_imports: bool,
-  pub unstable_features: Vec<String>,
-
+  // pub unstable: bool,
+  // pub unstable_bare_node_builtins: bool,
+  // pub unstable_byonm: bool,
+  // pub unstable_sloppy_imports: bool,
+  // pub unstable_features: Vec<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }
@@ -869,19 +880,20 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   let mut flags = Flags::default();
 
   if matches.get_flag("unstable") {
-    flags.unstable = true;
+    flags.unstable_config.legacy_flag_enabled = true;
   }
 
   for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
     if matches.get_flag(&format!("unstable-{}", name)) {
-      flags.unstable_features.push(name.to_string());
+      flags.unstable_config.features.push(name.to_string());
     }
   }
 
-  flags.unstable_bare_node_builtins =
+  flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_byonm = matches.get_flag("unstable-byonm");
-  flags.unstable_sloppy_imports = matches.get_flag("unstable-sloppy-imports");
+  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_config.sloppy_imports =
+    matches.get_flag("unstable-sloppy-imports");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);

@@ -378,7 +378,7 @@ async fn resolve_shim_data(
     TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
-  if flags.unstable {
+  if flags.unstable_config.legacy_flag_enabled {
     executable_args.push("--unstable".to_string());
   }
 
