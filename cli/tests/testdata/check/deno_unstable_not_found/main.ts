@@ -1,2 +1,0 @@
-Deno.openKv;
-Deno.createHttpClient;

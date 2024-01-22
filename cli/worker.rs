@@ -125,6 +125,7 @@ struct SharedWorkerState {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   feature_checker: Arc<FeatureChecker>,
   node_ipc: Option<i64>,
+  disable_deprecated_api_warning: bool,
 }
 
 impl SharedWorkerState {
@@ -405,6 +406,7 @@ impl CliMainWorkerFactory {
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
+    disable_deprecated_api_warning: bool,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -426,6 +428,7 @@ impl CliMainWorkerFactory {
         maybe_lockfile,
         feature_checker,
         node_ipc,
+        disable_deprecated_api_warning,
       }),
     }
   }
@@ -588,6 +591,7 @@ impl CliMainWorkerFactory {
           .maybe_binary_npm_command_name
           .clone(),
         node_ipc_fd: shared.node_ipc,
+        disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -786,6 +790,7 @@ fn create_web_worker_callback(
           .maybe_binary_npm_command_name
           .clone(),
         node_ipc_fd: None,
+        disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

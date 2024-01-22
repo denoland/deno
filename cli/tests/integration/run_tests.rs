@@ -756,10 +756,7 @@ itest!(env_file {
 
 itest!(env_file_missing {
   args: "run --env=missing --allow-env run/env_file.ts",
-  output_str: Some(
-    "error: Unable to load 'missing' environment variable file\n"
-  ),
-  exit_code: 1,
+  output: "run/env_file_missing.out",
 });
 
 itest!(_091_use_define_for_class_fields {
@@ -1561,17 +1558,6 @@ itest!(top_level_for_await {
 itest!(top_level_for_await_ts {
   args: "run --quiet run/top_level_await/top_level_for_await.ts",
   output: "run/top_level_await/top_level_for_await.out",
-});
-
-itest!(unstable_disabled {
-  args: "run --reload --check run/unstable.ts",
-  exit_code: 1,
-  output: "run/unstable_disabled.out",
-});
-
-itest!(unstable_enabled {
-  args: "run --quiet --reload --unstable-fs run/unstable.ts",
-  output: "run/unstable_enabled.out",
 });
 
 itest!(unstable_disabled_js {
@@ -4934,4 +4920,26 @@ itest!(unstable_temporal_api_missing_flag {
   output: "run/unstable_temporal_api/missing_flag.out",
   http_server: false,
   exit_code: 1,
+});
+
+itest!(warn_on_deprecated_api {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_with_flag {
+  args: "run -A --quiet run/warn_on_deprecated_api/main.js",
+  output: "run/warn_on_deprecated_api/main_disabled_flag.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(warn_on_deprecated_api_with_env_var {
+  args: "run -A run/warn_on_deprecated_api/main.js",
+  envs: vec![("DENO_NO_DEPRECATION_WARNINGS".to_string(), "1".to_string())],
+  output: "run/warn_on_deprecated_api/main_disabled_env.out",
+  http_server: true,
+  exit_code: 0,
 });

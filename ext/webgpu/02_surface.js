@@ -16,6 +16,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -166,8 +167,28 @@ function createCanvasContext(options) {
   return canvasContext;
 }
 
-function presentGPUCanvasContext(ctx) {
-  ctx[_present]();
+// External webgpu surfaces
+
+// TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
+class UnsafeWindowSurface {
+  #ctx;
+  #surfaceRid;
+
+  constructor(system, win, display) {
+    this.#surfaceRid = ops.op_webgpu_surface_create(system, win, display);
+  }
+
+  getContext(context) {
+    if (context !== "webgpu") {
+      throw new TypeError("Only 'webgpu' context is supported.");
+    }
+    this.#ctx = createCanvasContext({ surfaceRid: this.#surfaceRid });
+    return this.#ctx;
+  }
+
+  present() {
+    this.#ctx[_present]();
+  }
 }
 
-export { createCanvasContext, GPUCanvasContext, presentGPUCanvasContext };
+export { GPUCanvasContext, UnsafeWindowSurface };
