@@ -603,7 +603,7 @@ impl CliFactory {
       // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
       // of granular --unstable-* flags.
       // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-      if self.options.unstable() {
+      if self.options.legacy_unstable_flag() {
         checker.enable_legacy_unstable();
       }
       let unstable_features = self.options.unstable_features();
@@ -709,7 +709,7 @@ impl CliFactory {
         .options
         .unsafely_ignore_certificate_errors()
         .clone(),
-      unstable: self.options.unstable(),
+      unstable: self.options.legacy_unstable_flag(),
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
     })
   }

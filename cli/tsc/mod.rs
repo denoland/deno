@@ -94,6 +94,7 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
+    "deno.canvas",
     "deno.crypto",
     "deno.broadcast_channel",
     "deno.net",

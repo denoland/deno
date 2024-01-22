@@ -401,8 +401,11 @@ pub fn main() {
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
       _ => {
-        if flags.unstable
-          || flags.unstable_features.contains(&"temporal".to_string())
+        if flags.unstable_config.legacy_flag_enabled
+          || flags
+            .unstable_config
+            .features
+            .contains(&"temporal".to_string())
         {
           vec!["--harmony-temporal".to_string()]
         } else {
