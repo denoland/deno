@@ -1543,7 +1543,7 @@ fn auto_discover_lock_file() {
 
   let output = context
     .new_command()
-    .args("run --unstable -A npm:@denotest/bin/cli-esm test")
+    .args("run -A npm:@denotest/bin/cli-esm test")
     .run();
   output
     .assert_matches_text(
