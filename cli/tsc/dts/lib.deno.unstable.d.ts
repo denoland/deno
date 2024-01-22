@@ -545,8 +545,6 @@ declare namespace Deno {
     definition: Fn;
 
     constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
-    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
