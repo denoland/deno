@@ -499,6 +499,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
   use deno_config::ConfigFlag;
   use std::process::Command;
@@ -647,7 +648,10 @@ mod tests {
 
     create_install_shim(
       Flags {
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         ..Flags::default()
       },
       InstallFlags {

@@ -409,11 +409,11 @@ pub enum CaData {
   Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
 )]
 pub struct UnstableConfig {
-  pub legacy_flag_enabled: bool,
-  pub bare_node_builtins: bool,
+  pub legacy_flag_enabled: bool, // --unstable
+  pub bare_node_builtins: bool,  // --unstable-bare-node-builts
   pub byonm: bool,
   pub sloppy_imports: bool,
-  pub features: Vec<String>,
+  pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -4206,7 +4206,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string()
         )),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         log_level: Some(Level::Error),
         ..Flags::default()
       }
@@ -7061,7 +7064,10 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         no_prompt: true,
         no_npm: true,
         no_remote: true,
@@ -8196,7 +8202,10 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         log_level: Some(log::Level::Error),
         ..Flags::default()
       }
@@ -8293,7 +8302,10 @@ mod tests {
           },
           watch: Default::default(),
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         no_npm: true,
         no_remote: true,
         type_check_mode: TypeCheckMode::Local,
@@ -8437,7 +8449,7 @@ mod tests {
 
   #[test]
   fn jupyter() {
-    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable"]);
+    let r = flags_from_vec(svec!["deno", "jupyter"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8446,12 +8458,11 @@ mod tests {
           kernel: false,
           conn_file: None,
         }),
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable", "--install"]);
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8460,7 +8471,6 @@ mod tests {
           kernel: false,
           conn_file: None,
         }),
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -8468,7 +8478,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "jupyter",
-      "--unstable",
       "--kernel",
       "--conn",
       "path/to/conn/file"
@@ -8481,7 +8490,6 @@ mod tests {
           kernel: true,
           conn_file: Some(PathBuf::from("path/to/conn/file")),
         }),
-        unstable: true,
         ..Flags::default()
       }
     );
