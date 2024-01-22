@@ -6450,6 +6450,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     "imports": {
       "print_hello": "http://localhost:4545/subdir/print_hello.ts",
       "chalk": "npm:chalk@~5",
+      "nested/": "npm:/@denotest/types-exports-subpaths@1/nested/",
       "types-exports-subpaths/": "npm:/@denotest/types-exports-subpaths@1/"
     }
   }"#;
@@ -6470,6 +6471,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
           "import _test1 from 'npm:chalk@^5.0';\n",
           "import chalk from 'npm:chalk@~5';\n",
           "import chalk from 'npm:chalk@~5';\n",
+          "import {entryB} from 'npm:@denotest/types-exports-subpaths@1/nested/entry-b';\n",
           "import {printHello} from 'print_hello';\n",
           "\n",
         ),
@@ -6483,6 +6485,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "arguments": [
         [
           "npm:@denotest/types-exports-subpaths@1/client",
+          "npm:@denotest/types-exports-subpaths@1/nested/entry-b",
           "npm:chalk@^5.0",
           "npm:chalk@~5",
           "http://localhost:4545/subdir/print_hello.ts",
@@ -6821,6 +6824,54 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }]
       }
     }])
+  );
+
+  // try auto-import with npm package with sub-path on value side of import map
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/nested_path.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "entry",
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/nested_path.ts",
+    (0, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "entryB")
+    .unwrap();
+
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "entryB",
+      "labelDetails": {
+        "description": "nested/entry-b",
+      },
+      "kind": 3,
+      "detail": "function entryB(): \"b\"",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import { entryB } from \"nested/entry-b\";\n\n"
+        }
+      ]
+    })
   );
 }
 
@@ -9008,12 +9059,27 @@ fn lsp_workspace_symbol() {
       "text": "export class B {\n  fieldC: string;\n  fieldD: string;\n}\n",
     }
   }));
-  let res = client.write_request(
+  let mut res = client.write_request(
     "workspace/symbol",
     json!({
       "query": "field"
     }),
   );
+
+  // Replace `range` fields with `null` values. These are not important
+  // for assertion and require to be updated if we change unstable APIs.
+  for obj in res.as_array_mut().unwrap().iter_mut() {
+    *obj
+      .as_object_mut()
+      .unwrap()
+      .get_mut("location")
+      .unwrap()
+      .as_object_mut()
+      .unwrap()
+      .get_mut("range")
+      .unwrap() = Value::Null;
+  }
+
   assert_eq!(
     res,
     json!([
@@ -9022,16 +9088,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file.ts",
-          "range": {
-            "start": {
-              "line": 1,
-              "character": 2
-            },
-            "end": {
-              "line": 1,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "A"
       },
@@ -9040,16 +9097,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file.ts",
-          "range": {
-            "start": {
-              "line": 2,
-              "character": 2
-            },
-            "end": {
-              "line": 2,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "A"
       },
@@ -9058,16 +9106,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": {
-              "line": 1,
-              "character": 2
-            },
-            "end": {
-              "line": 1,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "B"
       },
@@ -9076,16 +9115,7 @@ fn lsp_workspace_symbol() {
         "kind": 8,
         "location": {
           "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": {
-              "line": 2,
-              "character": 2
-            },
-            "end": {
-              "line": 2,
-              "character": 17
-            }
-          }
+          "range": null,
         },
         "containerName": "B"
       },
@@ -9094,16 +9124,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3165,
-              "character": 4
-            },
-            "end": {
-              "line": 3165,
-              "character": 55
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9112,16 +9133,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3335,
-              "character": 4
-            },
-            "end": {
-              "line": 3335,
-              "character": 47
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9130,16 +9142,7 @@ fn lsp_workspace_symbol() {
         "kind": 11,
         "location": {
           "uri": "deno:/asset/lib.decorators.d.ts",
-          "range": {
-            "start": {
-              "line": 343,
-              "character": 0
-            },
-            "end": {
-              "line": 385,
-              "character": 1
-            }
-          }
+          "range": null,
         },
         "containerName": ""
       },
@@ -9148,16 +9151,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3143,
-              "character": 4
-            },
-            "end": {
-              "line": 3146,
-              "character": 26
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9166,16 +9160,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3313,
-              "character": 4
-            },
-            "end": {
-              "line": 3316,
-              "character": 26
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9184,16 +9169,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3439,
-              "character": 4
-            },
-            "end": {
-              "line": 3439,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainDate"
       },
@@ -9202,16 +9178,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3602,
-              "character": 4
-            },
-            "end": {
-              "line": 3602,
-              "character": 43
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainDateTime"
       },
@@ -9220,16 +9187,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3651,
-              "character": 4
-            },
-            "end": {
-              "line": 3651,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainMonthDay"
       },
@@ -9238,16 +9196,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3770,
-              "character": 4
-            },
-            "end": {
-              "line": 3770,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainTime"
       },
@@ -9256,16 +9205,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3923,
-              "character": 4
-            },
-            "end": {
-              "line": 3923,
-              "character": 39
-            }
-          }
+          "range": null,
         },
         "containerName": "PlainYearMonth"
       },
@@ -9274,16 +9214,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 4082,
-              "character": 4
-            },
-            "end": {
-              "line": 4082,
-              "character": 43
-            }
-          }
+          "range": null,
         },
         "containerName": "ZonedDateTime"
       },
@@ -9292,16 +9223,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3166,
-              "character": 4
-            },
-            "end": {
-              "line": 3169,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9310,16 +9232,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3336,
-              "character": 4
-            },
-            "end": {
-              "line": 3339,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9328,16 +9241,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3151,
-              "character": 4
-            },
-            "end": {
-              "line": 3154,
-              "character": 30
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9346,16 +9250,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3321,
-              "character": 4
-            },
-            "end": {
-              "line": 3324,
-              "character": 30
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9364,16 +9259,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3355,
-              "character": 2
-            },
-            "end": {
-              "line": 3360,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       },
@@ -9382,16 +9268,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3466,
-              "character": 2
-            },
-            "end": {
-              "line": 3477,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       },
@@ -9400,16 +9277,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3671,
-              "character": 2
-            },
-            "end": {
-              "line": 3678,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       },
@@ -9418,16 +9286,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3147,
-              "character": 4
-            },
-            "end": {
-              "line": 3150,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "CalendarProtocol"
       },
@@ -9436,16 +9295,7 @@ fn lsp_workspace_symbol() {
         "kind": 6,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3317,
-              "character": 4
-            },
-            "end": {
-              "line": 3320,
-              "character": 31
-            }
-          }
+          "range": null,
         },
         "containerName": "Calendar"
       },
@@ -9454,16 +9304,7 @@ fn lsp_workspace_symbol() {
         "kind": 5,
         "location": {
           "uri": "deno:/asset/lib.deno.unstable.d.ts",
-          "range": {
-            "start": {
-              "line": 3952,
-              "character": 2
-            },
-            "end": {
-              "line": 3965,
-              "character": 4
-            }
-          }
+          "range": null,
         },
         "containerName": "Temporal"
       }
