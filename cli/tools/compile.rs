@@ -184,9 +184,9 @@ async fn resolve_compile_executable_output_path(
       out_path = out_path.to_path_buf();
     }
     Some(out_path)
-    } else {
-      None
-    };
+  } else {
+    None
+  };
 
   if output_flag.is_none() {
     output_path = infer_name_from_url(&module_specifier)

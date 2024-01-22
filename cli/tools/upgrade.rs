@@ -388,7 +388,8 @@ pub async fn upgrade(
   } else {
     None
   };
-  let output_exe_path = full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+  let output_exe_path =
+    full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
   let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
     let permissions = metadata.permissions();
@@ -527,7 +528,8 @@ pub async fn upgrade(
       print_release_notes(version::deno(), &install_version);
     }
   } else {
-    let output_exe_path = full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+    let output_exe_path =
+      full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
     let output_result = if *output_exe_path == current_exe_path {
       replace_exe(&new_exe_path, output_exe_path)
     } else {

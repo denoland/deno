@@ -167,7 +167,7 @@ pub fn path_has_trailing_slash(path: &str) -> bool {
     path.ends_with('\\')
   } else {
     path.ends_with('/')
-  } 
+  }
 }
 
 /// Gets a path with the specified file stem suffix.
@@ -242,7 +242,7 @@ pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
 
 #[cfg(test)]
 mod test {
-use super::*;
+  use super::*;
 
   #[test]
   fn test_is_script_ext() {
