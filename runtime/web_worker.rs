@@ -490,19 +490,13 @@ impl WebWorker {
     ];
 
     for extension in &mut extensions {
-      #[cfg(not(any(
-        feature = "__runtime_js_sources",
-        feature = "dont_use_runtime_snapshot"
-      )))]
+      #[cfg(not(feature = "__runtime_js_sources"))]
       {
         extension.js_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(any(
-        feature = "__runtime_js_sources",
-        feature = "dont_use_runtime_snapshot"
-      ))]
+      #[cfg(feature = "__runtime_js_sources")]
       {
         use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
