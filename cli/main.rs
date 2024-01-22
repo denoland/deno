@@ -344,19 +344,19 @@ pub fn main() {
     };
 
     // TODO(bartlomieju): remove when `--unstable` flag is removed.
-    if flags.unstable {
-      eprintln!(
-        "⚠️  {}",
-        colors::yellow(
-          "The `--unstable` flag is deprecated and will be removed in Deno 2.0, use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-        )
-      );
-
+    if flags.unstable_config.legacy_flag_enabled {
       if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
         eprintln!(
           "⚠️  {}",
           colors::yellow(
-            "The `--unstable` flag has no effect with `deno check`, Use `--unstable-*` instead."
+            "The `--unstable` is not needed for `deno check` anymore."
+          )
+        );
+      } else {
+        eprintln!(
+          "⚠️  {}",
+          colors::yellow(
+            "The `--unstable` flag is deprecated and will be removed in Deno 2.0, use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
           )
         );
       }
