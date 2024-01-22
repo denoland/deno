@@ -33,6 +33,7 @@ use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::PackageJsonDepsProvider;
+use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -137,8 +138,6 @@ pub enum NodeModules {
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
-  pub unstable: bool,
-  pub unstable_features: Vec<String>,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
   pub location: Option<Url>,
@@ -151,6 +150,7 @@ pub struct Metadata {
   pub entrypoint: ModuleSpecifier,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
+  pub unstable_config: UnstableConfig,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -543,8 +543,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
-      unstable: cli_options.unstable(),
-      unstable_features: cli_options.unstable_features(),
       seed: cli_options.seed(),
       location: cli_options.location_flag().clone(),
       permissions: cli_options.permissions_options(),
@@ -560,6 +558,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       node_modules,
       disable_deprecated_api_warning: cli_options
         .disable_deprecated_api_warning,
+      unstable_config: UnstableConfig {
+        legacy_flag_enabled: cli_options.legacy_unstable_flag(),
+        bare_node_builtins: cli_options.unstable_bare_node_builtins(),
+        byonm: cli_options.unstable_byonm(),
+        sloppy_imports: cli_options.unstable_sloppy_imports(),
+        features: cli_options.unstable_features(),
+      },
     };
 
     write_binary_bytes(
