@@ -40,6 +40,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
+use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
@@ -263,7 +264,14 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);
-      } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
+      } else if let Some(args::LockfileError::IntegrityCheckFailed(e)) =
+        error.downcast_ref::<args::LockfileError>()
+      {
+        error_string = e.to_string();
+        error_code = 10;
+      } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
+        error.downcast_ref::<SnapshotFromLockfileError>()
+      {
         error_string = e.to_string();
         error_code = 10;
       }
@@ -359,8 +367,11 @@ pub fn main() {
       // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
       DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
       _ => {
-        if flags.unstable
-          || flags.unstable_features.contains(&"temporal".to_string())
+        if flags.unstable_config.legacy_flag_enabled
+          || flags
+            .unstable_config
+            .features
+            .contains(&"temporal".to_string())
         {
           vec!["--harmony-temporal".to_string()]
         } else {

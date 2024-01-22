@@ -504,6 +504,10 @@ impl ModuleGraphBuilder {
             format!("jsr:{}", to),
           );
         }
+        for (name, deps) in graph.packages.package_deps() {
+          lockfile
+            .insert_package_deps(name.to_string(), deps.map(|s| s.to_string()));
+        }
       }
     }
 

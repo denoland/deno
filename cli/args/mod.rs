@@ -1344,6 +1344,10 @@ impl CliOptions {
     self.flags.no_npm
   }
 
+  pub fn no_config(&self) -> bool {
+    self.flags.config_flag == deno_config::ConfigFlag::Disabled
+  }
+
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
       allow_env: self.flags.allow_env.clone(),
@@ -1409,12 +1413,12 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable(&self) -> bool {
-    self.flags.unstable
+  pub fn legacy_unstable_flag(&self) -> bool {
+    self.flags.unstable_config.legacy_flag_enabled
   }
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
-    self.flags.unstable_bare_node_builtins
+    self.flags.unstable_config.bare_node_builtins
       || self
         .maybe_config_file()
         .as_ref()
@@ -1423,7 +1427,7 @@ impl CliOptions {
   }
 
   pub fn unstable_byonm(&self) -> bool {
-    self.flags.unstable_byonm
+    self.flags.unstable_config.byonm
       || NPM_PROCESS_STATE
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
@@ -1436,7 +1440,7 @@ impl CliOptions {
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
-    self.flags.unstable_sloppy_imports
+    self.flags.unstable_config.sloppy_imports
       || self
         .maybe_config_file()
         .as_ref()
@@ -1451,7 +1455,7 @@ impl CliOptions {
       .map(|c| c.json.unstable.clone())
       .unwrap_or_default();
 
-    from_config_file.extend_from_slice(&self.flags.unstable_features);
+    from_config_file.extend_from_slice(&self.flags.unstable_config.features);
     from_config_file
   }
 

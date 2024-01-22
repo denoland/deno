@@ -1004,7 +1004,7 @@ dependencies = [
  "libz-sys",
  "log",
  "lsp-types",
- "monch 0.5.0",
+ "monch",
  "napi_sym",
  "nix 0.26.2",
  "notify",
@@ -1352,9 +1352,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.63.3"
+version = "0.63.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7cf16929b6a267be4bc535877303a3a36b3595b6b27543baa07d3b77b679d92"
+checksum = "be751db3da720bcd35d42f9c0967a04cafd52d554d79262426d1c00179b0c085"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1365,7 +1365,7 @@ dependencies = [
  "import_map",
  "indexmap",
  "log",
- "monch 0.4.3",
+ "monch",
  "once_cell",
  "parking_lot 0.12.1",
  "regex",
@@ -1478,9 +1478,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.17.2"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cd29f62e6dec60e585f579df3e9c2fc562aadf881319152974bc442a9042077"
+checksum = "dfe06eda519ed05b69da567bcba1d728c482fd553ddaa2ffe008468158da6de0"
 dependencies = [
  "ring",
  "serde",
@@ -1606,9 +1606,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.15.3"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "718b0b55031643de7808f8b426661b22a685820f1f459e028776bcc49e07b881"
+checksum = "376262760b173ff01f8f5d05d58a64f6d863472396afb5582590fa0949342854"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1616,7 +1616,7 @@ dependencies = [
  "deno_semver",
  "futures",
  "log",
- "monch 0.4.3",
+ "monch",
  "serde",
  "thiserror",
 ]
@@ -1706,7 +1706,7 @@ version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b49e14effd9df8ed261f7a1a34ac19bbaf0fa940c59bd19a6d8313cf41525e1c"
 dependencies = [
- "monch 0.5.0",
+ "monch",
  "once_cell",
  "serde",
  "thiserror",
@@ -1722,7 +1722,7 @@ dependencies = [
  "anyhow",
  "futures",
  "glob",
- "monch 0.5.0",
+ "monch",
  "os_pipe",
  "path-dedot",
  "tokio",
@@ -2349,9 +2349,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.57.0"
+version = "0.58.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e081e749cb42d7e52b9a066564b86c70e586614d5de684080a2be861f35a0721"
+checksum = "214f3a524473bb2c76385c02fdada6c2791ba5e07e9ac72a6c1e373d665b1680"
 dependencies = [
  "anyhow",
  "base64",
@@ -3774,12 +3774,6 @@ dependencies = [
  "wasi",
  "windows-sys 0.48.0",
 ]
-
-[[package]]
-name = "monch"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4519a88847ba2d5ead3dc53f1060ec6a571de93f325d9c5c4968147382b1cbc3"
 
 [[package]]
 name = "monch"
@@ -6173,7 +6167,7 @@ dependencies = [
  "lazy-regex",
  "libc",
  "lsp-types",
- "monch 0.5.0",
+ "monch",
  "nix 0.26.2",
  "once_cell",
  "os_pipe",
