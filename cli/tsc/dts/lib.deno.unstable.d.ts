@@ -3,6 +3,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
+/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 
@@ -766,6 +767,31 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   *  Creates a presentable WebGPU surface from given window and
+   *  display handles.
+   *
+   *  The parameters correspond to the table below:
+   *
+   *  | system            | winHandle     | displayHandle   |
+   *  | ----------------- | ------------- | --------------- |
+   *  | "cocoa" (macOS)   | `NSView*`     | -               |
+   *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
+   *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
+   *
+   * @category WebGPU
+   */
+  export class UnsafeWindowSurface {
+    constructor(
+      system: "cocoa" | "win32" | "x11",
+      windowHandle: UnsafePointerView,
+      displayHandle: UnsafePointerView | null,
+    );
+    getContext(context: "webgpu"): GPUCanvasContext;
+    present(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * These are unstable options which can be used with {@linkcode Deno.run}.
    *
    * @category Sub Process
@@ -1131,34 +1157,6 @@ declare namespace Deno {
    * @category File System
    */
   export function funlockSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Allows "hijacking" the connection that the request is associated with. This
-   * can be used to implement protocols that build on top of HTTP (eg.
-   * {@linkcode WebSocket}).
-   *
-   * The returned promise returns underlying connection and first packet
-   * received. The promise shouldn't be awaited before responding to the
-   * `request`, otherwise event loop might deadlock.
-   *
-   * ```ts
-   * function handler(req: Request): Response {
-   *   Deno.upgradeHttp(req).then(([conn, firstPacket]) => {
-   *     // ...
-   *   });
-   *   return new Response(null, { status: 101 });
-   * }
-   * ```
-   *
-   * This method can only be called on requests originating the
-   * {@linkcode Deno.serveHttp} server.
-   *
-   * @category HTTP Server
-   */
-  export function upgradeHttp(
-    request: Request,
-  ): Promise<[Deno.Conn, Uint8Array]>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

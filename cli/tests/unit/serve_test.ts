@@ -2567,10 +2567,9 @@ function makeTempData(size: number) {
 
 async function makeTempFile(size: number) {
   const tmpFile = await Deno.makeTempFile();
-  const file = await Deno.open(tmpFile, { write: true, read: true });
+  using file = await Deno.open(tmpFile, { write: true, read: true });
   const data = makeTempData(size);
   await file.write(data);
-  file.close();
 
   return await Deno.open(tmpFile, { write: true, read: true });
 }

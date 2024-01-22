@@ -53,7 +53,6 @@ delete Object.prototype.__proto__;
     "listen",
     "listenDatagram",
     "openKv",
-    "upgradeHttp",
     "umask",
   ]);
   const unstableMsgSuggestion =
