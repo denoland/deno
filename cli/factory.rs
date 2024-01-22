@@ -44,6 +44,8 @@ use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::import_map::deno_json_deps;
+use crate::util::import_map::import_map_deps;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -54,12 +56,14 @@ use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
 use deno_graph::GraphKind;
+use deno_lockfile::WorkspaceMemberConfig;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
@@ -289,10 +293,84 @@ impl CliFactory {
   }
 
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
-    self
-      .services
-      .lockfile
-      .get_or_init(|| self.options.maybe_lockfile())
+    self.services.lockfile.get_or_init(|| {
+      let maybe_lockfile = self.options.maybe_lockfile();
+
+      // initialize the lockfile with the workspace's configuration
+      if let Some(lockfile) = &maybe_lockfile {
+        let package_json_deps = self
+          .package_json_deps_provider()
+          .reqs()
+          .map(|reqs| reqs.into_iter().map(|s| format!("npm:{}", s)).collect())
+          .unwrap_or_default();
+        let mut lockfile = lockfile.lock();
+        let config = match self.options.maybe_workspace_config() {
+          Some(workspace_config) => deno_lockfile::WorkspaceConfig {
+            root: WorkspaceMemberConfig {
+              package_json_deps,
+              dependencies: import_map_deps(
+                &workspace_config.base_import_map_value,
+              )
+              .into_iter()
+              .map(|req| req.to_string())
+              .collect(),
+            },
+            members: workspace_config
+              .members
+              .iter()
+              .map(|member| {
+                (
+                  member.package_name.clone(),
+                  WorkspaceMemberConfig {
+                    package_json_deps: Default::default(),
+                    dependencies: deno_json_deps(&member.config_file)
+                      .into_iter()
+                      .map(|req| req.to_string())
+                      .collect(),
+                  },
+                )
+              })
+              .collect(),
+          },
+          None => deno_lockfile::WorkspaceConfig {
+            root: WorkspaceMemberConfig {
+              package_json_deps,
+              dependencies: self
+                .options
+                .maybe_config_file()
+                .as_ref()
+                .map(|config| {
+                  deno_json_deps(config)
+                    .into_iter()
+                    .map(|req| req.to_string())
+                    .collect()
+                })
+                .unwrap_or_default(),
+            },
+            members: Default::default(),
+          },
+        };
+        lockfile.set_workspace_config(
+          deno_lockfile::SetWorkspaceConfigOptions {
+            no_npm: self.options.no_npm(),
+            no_config: self.options.no_config(),
+            config,
+            nv_to_jsr_url: |nv| {
+              let nv = PackageNv::from_str(nv).ok()?;
+              Some(
+                deno_graph::source::recommended_registry_package_url(
+                  crate::args::deno_registry_url(),
+                  &nv,
+                )
+                .to_string(),
+              )
+            },
+          },
+        );
+      }
+
+      maybe_lockfile
+    })
   }
 
   pub async fn npm_resolver(
@@ -320,7 +398,7 @@ impl CliFactory {
               Some(snapshot) => {
                 CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
               }
-              None => match self.maybe_lockfile() {
+              None => match self.maybe_lockfile().as_ref() {
                 Some(lockfile) => {
                   CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
                     lockfile.clone(),

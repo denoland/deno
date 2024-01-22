@@ -1347,6 +1347,10 @@ impl CliOptions {
     self.flags.no_npm
   }
 
+  pub fn no_config(&self) -> bool {
+    self.flags.config_flag == deno_config::ConfigFlag::Disabled
+  }
+
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
       allow_env: self.flags.allow_env.clone(),
