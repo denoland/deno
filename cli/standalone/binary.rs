@@ -151,13 +151,6 @@ pub struct Metadata {
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
-  // NOTE(bartlomieju): keep these in sync with `cli/args/flags.rs` otherwise
-  // some unstable features might not be enabled in standalone binaries.
-  // pub unstable: bool,
-  // pub unstable_bare_node_builtins: bool,
-  // pub unstable_byonm: bool,
-  // pub unstable_sloppy_imports: bool,
-  // pub unstable_features: Vec<String>,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
