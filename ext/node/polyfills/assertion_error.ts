@@ -163,7 +163,7 @@ export function createErrDiff(
       // If the stderr is a tty and the input length is lower than the current
       // columns per line, add a mismatch indicator below the output. If it is
       // not a tty, use a default value of 80 characters.
-      const maxLength = io.stderr.isatty() ? getConsoleWidth() : 80;
+      const maxLength = io.stderr.isTerminal() ? getConsoleWidth() : 80;
       if (inputLength < maxLength) {
         while (actualRaw[i] === expectedRaw[i]) {
           i++;
@@ -406,7 +406,7 @@ export class AssertionError extends Error {
     if (message != null) {
       super(String(message));
     } else {
-      if (io.stderr.isatty()) {
+      if (io.stderr.isTerminal()) {
         // Reset on each call to make sure we handle dynamically set environment
         // variables correct.
         if (Deno.noColor) {

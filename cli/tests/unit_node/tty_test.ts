@@ -32,6 +32,6 @@ Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
 });
 
 Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
-  assert(Deno.stdin.isatty() === process.stdin.isTTY);
-  assert(Deno.stdout.isatty() === process.stdout.isTTY);
+  assert(Deno.stdin.isTerminal() === process.stdin.isTTY);
+  assert(Deno.stdout.isTerminal() === process.stdout.isTTY);
 });
