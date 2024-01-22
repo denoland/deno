@@ -26,7 +26,7 @@ impl<'a> ImportMapUnfurler<'a> {
   ) -> (String, Vec<String>) {
     let mut diagnostics = Vec::new();
     let mut text_changes = Vec::new();
-    let module_info = DefaultModuleAnalyzer::module_info(&parsed_source);
+    let module_info = DefaultModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
@@ -34,7 +34,7 @@ impl<'a> ImportMapUnfurler<'a> {
         let resolved = self.import_map.resolve(specifier, url);
         if let Ok(resolved) = resolved {
           text_changes.push(deno_ast::TextChange {
-            range: to_range(&parsed_source, range),
+            range: to_range(parsed_source, range),
             new_text: make_relative_to(url, &resolved),
           });
         }
@@ -52,7 +52,7 @@ impl<'a> ImportMapUnfurler<'a> {
           let success = try_unfurl_dynamic_dep(
             self.import_map,
             url,
-            &parsed_source,
+            parsed_source,
             dep,
             &mut text_changes,
           );
@@ -208,8 +208,8 @@ mod tests {
   use pretty_assertions::assert_eq;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
-    let media_type = MediaType::from_specifier(&specifier);
-    let parse_result = deno_ast::parse_module(deno_ast::ParseParams {
+    let media_type = MediaType::from_specifier(specifier);
+    deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.to_string(),
       media_type,
       capture_tokens: false,
@@ -217,8 +217,7 @@ mod tests {
       scope_analysis: false,
       text_info: deno_ast::SourceTextInfo::new(source_code.into()),
     })
-    .unwrap();
-    parse_result
+    .unwrap()
   }
 
   #[test]
