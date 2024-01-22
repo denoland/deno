@@ -2722,15 +2722,6 @@ fn permission_args(app: Command) -> Command {
         .help(ALLOW_ALL_HELP),
     )
     .arg(
-      Arg::new("prompt")
-        .long("prompt")
-        .action(ArgAction::SetTrue)
-        .hide(true)
-        .help(
-          "deprecated: Fallback to prompt if required permission wasn't passed",
-        ),
-    )
-    .arg(
       Arg::new("no-prompt")
         .long("no-prompt")
         .action(ArgAction::SetTrue)
