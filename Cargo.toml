@@ -12,6 +12,7 @@ members = [
   "test_util",
   "ext/broadcast_channel",
   "ext/cache",
+  "ext/canvas",
   "ext/console",
   "ext/cron",
   "ext/crypto",
@@ -58,6 +59,7 @@ denokv_remote = "0.5.0"
 # exts
 deno_broadcast_channel = { version = "0.126.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.64.0", path = "./ext/cache" }
+deno_canvas = { version = "0.1.0", path = "./ext/canvas" }
 deno_console = { version = "0.132.0", path = "./ext/console" }
 deno_cron = { version = "0.12.0", path = "./ext/cron" }
 deno_crypto = { version = "0.146.0", path = "./ext/crypto" }
