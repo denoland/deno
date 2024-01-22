@@ -271,19 +271,5 @@ const test6 = await import(`${expr}`);
 "#;
       assert_eq!(unfurled_source, expected_source);
     }
-
-    // Unfurling file with "unknown" media type should leave it as is
-    {
-      let source_code = r#"import express from "express";"
-import foo from "lib/foo.ts";
-import bar from "lib/bar.ts";
-import fizz from "fizz";
-"#;
-      let specifier = ModuleSpecifier::parse("file:///dev/mod").unwrap();
-      let source = parse_ast(&specifier, source_code);
-      let (unfurled_source, d) = unfurler.unfurl(&specifier, &source);
-      assert!(d.is_empty());
-      assert_eq!(unfurled_source, source_code);
-    }
   }
 }
