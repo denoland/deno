@@ -25,6 +25,7 @@ mod tsc;
 mod util;
 mod version;
 mod worker;
+mod diagnostics;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
