@@ -725,7 +725,11 @@ impl CliOptions {
 
     if let Some(env_file_name) = &flags.env_file {
       if (from_filename(env_file_name)).is_err() {
-        bail!("Unable to load '{env_file_name}' environment variable file")
+        log::info!(
+          "{} The `--env` flag was used, but the dotenv file '{}' was not found.",
+          colors::yellow("Warning"),
+          env_file_name
+        );
       }
     }
 
@@ -799,26 +803,11 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    if self.flags.unstable
-      || !self.flags.unstable_features.is_empty()
-      || self
-        .maybe_config_file
-        .as_ref()
-        .map(|f| !f.json.unstable.is_empty())
-        .unwrap_or(false)
-    {
-      TsTypeLib::UnstableDenoWindow
-    } else {
-      TsTypeLib::DenoWindow
-    }
+    TsTypeLib::DenoWindow
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {
-    if self.flags.unstable {
-      TsTypeLib::UnstableDenoWorker
-    } else {
-      TsTypeLib::DenoWorker
-    }
+    TsTypeLib::DenoWorker
   }
 
   pub fn cache_setting(&self) -> CacheSetting {

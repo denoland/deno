@@ -65,7 +65,7 @@ function getDenoTests() {
 }
 
 async function updateToDo() {
-  const file = await Deno.open(new URL("./TODO.md", import.meta.url), {
+  using file = await Deno.open(new URL("./TODO.md", import.meta.url), {
     write: true,
     create: true,
     truncate: true,
@@ -88,7 +88,6 @@ Total: ${missingTests.length}
       ),
     );
   }
-  file.close();
 }
 
 async function clearTests() {

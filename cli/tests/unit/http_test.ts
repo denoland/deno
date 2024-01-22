@@ -950,9 +950,8 @@ Deno.test(
   { permissions: { net: true, write: true, read: true } },
   async function httpServerCorrectSizeResponse() {
     const tmpFile = await Deno.makeTempFile();
-    const file = await Deno.open(tmpFile, { write: true, read: true });
+    using file = await Deno.open(tmpFile, { write: true, read: true });
     await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
-    file.close();
 
     let httpConn: Deno.HttpConn;
     const listener = Deno.listen({ port: listenPort });
