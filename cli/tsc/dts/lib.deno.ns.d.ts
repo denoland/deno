@@ -5028,8 +5028,8 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console.
    *
-   * @deprecated This symbol is deprecated since 1.9. Use
-   * `Symbol.for("Deno.customInspect")` instead.
+   * @deprecated Use `Symbol.for("Deno.customInspect")` instead. This symbol
+   * will be removed in Deno 2.0.
    *
    * @category Console and Debugging
    */
