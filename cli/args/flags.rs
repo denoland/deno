@@ -30,37 +30,8 @@ use super::flags_net;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
-  pub ignore: Vec<PathBuf>,
-  pub include: Vec<PathBuf>,
-}
-
-impl FileFlags {
-  pub fn with_absolute_paths(self, base: &Path) -> Self {
-    fn to_absolute_path(path: PathBuf, base: &Path) -> PathBuf {
-      // todo(dsherret): don't store URLs in PathBufs
-      if path.starts_with("http:")
-        || path.starts_with("https:")
-        || path.starts_with("file:")
-      {
-        path
-      } else {
-        base.join(path)
-      }
-    }
-
-    Self {
-      include: self
-        .include
-        .into_iter()
-        .map(|p| to_absolute_path(p, base))
-        .collect(),
-      ignore: self
-        .ignore
-        .into_iter()
-        .map(|p| to_absolute_path(p, base))
-        .collect(),
-    }
-  }
+  pub ignore: Vec<String>,
+  pub include: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -75,7 +46,7 @@ pub struct BenchFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub source_file: String,
-  pub out_file: Option<PathBuf>,
+  pub out_file: Option<String>,
   pub watch: Option<WatchFlags>,
 }
 
@@ -181,7 +152,7 @@ pub struct FmtFlags {
 impl FmtFlags {
   pub fn is_stdin(&self) -> bool {
     let args = &self.files.include;
-    args.len() == 1 && args[0].to_string_lossy() == "-"
+    args.len() == 1 && args[0] == "-"
   }
 }
 
@@ -233,7 +204,7 @@ pub struct LintFlags {
 impl LintFlags {
   pub fn is_stdin(&self) -> bool {
     let args = &self.files.include;
-    args.len() == 1 && args[0].to_string_lossy() == "-"
+    args.len() == 1 && args[0] == "-"
   }
 }
 
@@ -327,8 +298,8 @@ pub struct VendorFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
-  pub directory: String,
   pub token: Option<String>,
+  pub dry_run: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -434,6 +405,17 @@ pub enum CaData {
   Bytes(Vec<u8>),
 }
 
+#[derive(
+  Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
+)]
+pub struct UnstableConfig {
+  pub legacy_flag_enabled: bool, // --unstable
+  pub bare_node_builtins: bool,  // --unstable-bare-node-builts
+  pub byonm: bool,
+  pub sloppy_imports: bool,
+  pub features: Vec<String>, // --unstabe-kv --unstable-cron
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -489,12 +471,7 @@ pub struct Flags {
   pub reload: bool,
   pub seed: Option<u64>,
   pub strace_ops: Option<Vec<String>>,
-  pub unstable: bool,
-  pub unstable_bare_node_builtins: bool,
-  pub unstable_byonm: bool,
-  pub unstable_sloppy_imports: bool,
-  pub unstable_workspaces: bool,
-  pub unstable_features: Vec<String>,
+  pub unstable_config: UnstableConfig,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
 }
@@ -706,8 +683,12 @@ impl Flags {
     use DenoSubcommand::*;
 
     match &self.subcommand {
-      Fmt(FmtFlags { files, .. }) => Some(files.include.clone()),
-      Lint(LintFlags { files, .. }) => Some(files.include.clone()),
+      Fmt(FmtFlags { files, .. }) => {
+        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
+      }
+      Lint(LintFlags { files, .. }) => {
+        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
+      }
       Run(RunFlags { script, .. }) => {
         if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
           if module_specifier.scheme() == "file"
@@ -730,6 +711,7 @@ impl Flags {
       Task(TaskFlags {
         cwd: Some(path), ..
       }) => {
+        // todo(dsherret): Why is this canonicalized? Document why.
         // attempt to resolve the config file from the task subcommand's
         // `--cwd` when specified
         match canonicalize_path(&PathBuf::from(path)) {
@@ -889,20 +871,20 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
   let mut flags = Flags::default();
 
   if matches.get_flag("unstable") {
-    flags.unstable = true;
+    flags.unstable_config.legacy_flag_enabled = true;
   }
 
   for (name, _, _) in crate::UNSTABLE_GRANULAR_FLAGS {
     if matches.get_flag(&format!("unstable-{}", name)) {
-      flags.unstable_features.push(name.to_string());
+      flags.unstable_config.features.push(name.to_string());
     }
   }
 
-  flags.unstable_bare_node_builtins =
+  flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_byonm = matches.get_flag("unstable-byonm");
-  flags.unstable_sloppy_imports = matches.get_flag("unstable-sloppy-imports");
-  flags.unstable_workspaces = matches.get_flag("unstable-workspaces");
+  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_config.sloppy_imports =
+    matches.get_flag("unstable-sloppy-imports");
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -1030,15 +1012,6 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true),
-    )
-    .arg(
-      Arg::new("unstable-workspaces")
-        .long("unstable-workspaces")
-        .help("Enable unstable 'workspaces' feature")
-        .env("DENO_UNSTABLE_WORKSPACES")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true),
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -1134,8 +1107,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
             .num_args(1..)
             .use_value_delimiter(true)
             .require_equals(true)
-            .help("Ignore files")
-            .value_parser(value_parser!(PathBuf)),
+            .help("Ignore files"),
         )
         .arg(
           Arg::new("filter")
@@ -1149,7 +1121,6 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
           Arg::new("files")
             .help("List of file names to run")
             .num_args(..)
-            .value_parser(value_parser!(PathBuf))
             .action(ArgAction::Append),
         )
         .arg(
@@ -1186,11 +1157,7 @@ If no output file is given, the output is written to standard output:
             .required(true)
             .value_hint(ValueHint::FilePath),
         )
-        .arg(
-          Arg::new("out_file")
-            .value_parser(value_parser!(PathBuf))
-            .value_hint(ValueHint::FilePath),
-        )
+        .arg(Arg::new("out_file").value_hint(ValueHint::FilePath))
         .arg(watch_arg(false))
         .arg(no_clear_screen_arg())
         .arg(executable_ext_arg())
@@ -1301,6 +1268,7 @@ supported in canary.
         Arg::new("output")
           .long("output")
           .short('o')
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
           .value_parser(value_parser!(PathBuf))
           .help("Output file (defaults to $PWD/<inferred-name>)")
           .value_hint(ValueHint::FilePath),
@@ -1424,6 +1392,7 @@ Generate html reports from lcov:
           Arg::new("output")
             .requires("lcov")
             .long("output")
+            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
             .help("Output file (defaults to stdout) for lcov")
             .long_help(
@@ -1451,7 +1420,6 @@ Generate html reports from lcov:
         .arg(
           Arg::new("files")
             .num_args(0..)
-            .value_parser(value_parser!(PathBuf))
             .action(ArgAction::Append)
             .value_hint(ValueHint::AnyPath),
         )
@@ -1531,6 +1499,7 @@ Show documentation for runtime built-ins:
             .action(ArgAction::Set)
             .require_equals(true)
             .value_hint(ValueHint::DirPath)
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
         )
         .arg(
@@ -1661,7 +1630,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .arg(
           Arg::new("ignore")
             .long("ignore")
-            .value_parser(value_parser!(PathBuf))
             .num_args(1..)
             .use_value_delimiter(true)
             .require_equals(true)
@@ -1670,7 +1638,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         )
         .arg(
           Arg::new("files")
-            .value_parser(value_parser!(PathBuf))
             .num_args(1..)
             .action(ArgAction::Append)
             .required(false)
@@ -1873,6 +1840,7 @@ fn jupyter_subcommand() -> Command {
       Arg::new("conn")
         .long("conn")
         .help("Path to JSON file describing connection parameters, provided by Jupyter")
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
@@ -1998,7 +1966,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
           Arg::new("ignore")
             .long("ignore")
             .num_args(1..)
-            .value_parser(value_parser!(PathBuf))
             .use_value_delimiter(true)
             .require_equals(true)
             .help("Ignore linting particular source files")
@@ -2019,7 +1986,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         )
         .arg(
           Arg::new("files")
-            .value_parser(value_parser!(PathBuf))
             .num_args(1..)
             .action(ArgAction::Append)
             .required(false)
@@ -2138,7 +2104,6 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("ignore")
         .long("ignore")
         .num_args(1..)
-        .value_parser(value_parser!(PathBuf))
         .use_value_delimiter(true)
         .require_equals(true)
         .help("Ignore files")
@@ -2226,7 +2191,6 @@ Directory arguments are expanded to all contained files matching the glob
         .help("List of file names to run")
         .num_args(0..)
         .action(ArgAction::Append)
-        .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
@@ -2293,6 +2257,7 @@ update to a different location, use the --output flag
           Arg::new("output")
             .long("output")
             .help("The path to output the updated version to")
+            // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
             .value_parser(value_parser!(PathBuf))
             .value_hint(ValueHint::FilePath),
         )
@@ -2347,6 +2312,7 @@ Remote modules and multiple modules may also be specified:
         Arg::new("output")
           .long("output")
           .help("The directory to output the vendored modules to")
+          // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
           .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath),
       )
@@ -2372,22 +2338,19 @@ Remote modules and multiple modules may also be specified:
 fn publish_subcommand() -> Command {
   Command::new("publish")
     .hide(true)
-    .about("Unstable preview feature: Publish a package")
+    .about("Unstable preview feature: Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
       cmd.arg(
-        Arg::new("directory")
-          .help(
-            "The directory to the package, or workspace of packages to publish",
-          )
-          .default_missing_value(".")
-          .value_hint(ValueHint::DirPath)
-          .required(true),
-      )
-      .arg(
         Arg::new("token")
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
+      )
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Prepare the package for publishing performing all checks and validations without uploading")
+          .action(ArgAction::SetTrue),
       )
     })
 }
@@ -2583,6 +2546,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_READ_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2594,6 +2558,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_READ_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2605,6 +2570,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_WRITE_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2616,6 +2582,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_WRITE_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2726,6 +2693,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(ALLOW_FFI_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2737,6 +2705,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PATH")
         .help(DENY_FFI_HELP)
+        // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -2986,6 +2955,7 @@ fn hmr_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
+      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
       .value_parser(value_parser!(PathBuf))
       .use_value_delimiter(true)
       .require_equals(true)
@@ -3012,6 +2982,7 @@ fn watch_arg(takes_files: bool) -> Arg {
     arg
       .value_name("FILES")
       .num_args(0..)
+      // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
       .value_parser(value_parser!(PathBuf))
       .use_value_delimiter(true)
       .require_equals(true)
@@ -3103,6 +3074,7 @@ fn lock_arg() -> Arg {
 
 If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
+    // todo(dsherret): remove value_parser!(PathBuf) and instead parse as string
     .value_parser(value_parser!(PathBuf))
     .value_hint(ValueHint::FilePath)
 }
@@ -3207,7 +3179,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let json = matches.get_flag("json");
 
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3220,7 +3192,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .extend(matches.remove_many::<String>("script_arg").unwrap());
   }
 
-  let include = if let Some(files) = matches.remove_many::<PathBuf>("files") {
+  let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
   } else {
     Vec::new()
@@ -3245,7 +3217,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let source_file = matches.remove_one::<String>("source_file").unwrap();
 
   let out_file =
-    if let Some(out_file) = matches.remove_one::<PathBuf>("out_file") {
+    if let Some(out_file) = matches.remove_one::<String>("out_file") {
       flags.allow_write = Some(vec![]);
       Some(out_file)
     } else {
@@ -3333,12 +3305,11 @@ fn completions_parse(
 }
 
 fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let default_files = vec![PathBuf::from("coverage")];
-  let files = match matches.remove_many::<PathBuf>("files") {
+  let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
-    None => default_files,
+    None => vec!["coverage".to_string()], // default
   };
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3461,11 +3432,11 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
   ext_arg_parse(flags, matches);
 
-  let include = match matches.remove_many::<PathBuf>("files") {
+  let include = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3560,11 +3531,11 @@ fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
-  let files = match matches.remove_many::<PathBuf>("files") {
+  let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3679,7 +3650,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   // interactive prompts, unless done by user code
   flags.no_prompt = true;
 
-  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+  let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
     None => vec![],
   };
@@ -3738,7 +3709,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     None
   };
 
-  let include = if let Some(files) = matches.remove_many::<PathBuf>("files") {
+  let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
   } else {
     Vec::new()
@@ -3821,8 +3792,8 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
-    directory: matches.remove_one::<String>("directory").unwrap(),
     token: matches.remove_one("token"),
+    dry_run: matches.get_flag("dry-run"),
   });
 }
 
@@ -4235,7 +4206,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string()
         )),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         log_level: Some(Level::Error),
         ..Flags::default()
       }
@@ -4655,10 +4629,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
           use_tabs: None,
@@ -4784,8 +4755,8 @@ mod tests {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
           files: FileFlags {
-            include: vec![PathBuf::from("foo.ts")],
-            ignore: vec![PathBuf::from("bar.js")],
+            include: vec!["foo.ts".to_string()],
+            ignore: vec!["bar.js".to_string()],
           },
           use_tabs: None,
           line_width: None,
@@ -4838,7 +4809,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
           files: FileFlags {
-            include: vec![PathBuf::from("foo.ts")],
+            include: vec!["foo.ts".to_string()],
             ignore: vec![],
           },
           use_tabs: None,
@@ -4929,10 +4900,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string(),],
             ignore: vec![],
           },
           rules: false,
@@ -4959,10 +4927,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -4990,10 +4955,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -5019,10 +4981,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
             include: vec![],
-            ignore: vec![
-              PathBuf::from("script_1.ts"),
-              PathBuf::from("script_2.ts")
-            ],
+            ignore: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           },
           rules: false,
           maybe_rules_tags: None,
@@ -5116,7 +5075,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("script_1.ts")],
+            include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -5144,7 +5103,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("script_1.ts")],
+            include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -5173,7 +5132,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("script_1.ts")],
+            include: vec!["script_1.ts".to_string()],
             ignore: vec![],
           },
           rules: false,
@@ -6104,7 +6063,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js")),
+          out_file: Some("bundle.js".to_string()),
           watch: Default::default(),
         }),
         allow_write: Some(vec![]),
@@ -6124,7 +6083,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js")),
+          out_file: Some("bundle.js".to_string()),
           watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -7094,7 +7053,7 @@ mod tests {
           filter: Some("- foo".to_string()),
           allow_none: true,
           files: FileFlags {
-            include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
+            include: vec!["dir1/".to_string(), "dir2/".to_string()],
             ignore: vec![],
           },
           shuffle: None,
@@ -7105,7 +7064,10 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         no_prompt: true,
         no_npm: true,
         no_remote: true,
@@ -7423,7 +7385,7 @@ mod tests {
           allow_none: false,
           shuffle: None,
           files: FileFlags {
-            include: vec![PathBuf::from("./")],
+            include: vec!["./".to_string()],
             ignore: vec![],
           },
           concurrent_jobs: None,
@@ -7938,7 +7900,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("foo.json")],
+            include: vec!["foo.json".to_string()],
             ignore: vec![],
           },
           include: vec![r"^file:".to_string()],
@@ -7964,7 +7926,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("foo.json")],
+            include: vec!["foo.json".to_string()],
             ignore: vec![],
           },
           include: vec![r"^file:".to_string()],
@@ -7985,7 +7947,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
           files: FileFlags {
-            include: vec![PathBuf::from("coverage")],
+            include: vec!["coverage".to_string()],
             ignore: vec![],
           },
           include: vec![r"^file:".to_string()],
@@ -8023,7 +7985,7 @@ mod tests {
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
+      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
@@ -8033,7 +7995,7 @@ mod tests {
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
+      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
     );
   }
 
@@ -8240,7 +8202,10 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         log_level: Some(log::Level::Error),
         ..Flags::default()
       }
@@ -8332,12 +8297,15 @@ mod tests {
           json: true,
           no_run: true,
           files: FileFlags {
-            include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
+            include: vec!["dir1/".to_string(), "dir2/".to_string()],
             ignore: vec![],
           },
           watch: Default::default(),
         }),
-        unstable: true,
+        unstable_config: UnstableConfig {
+          legacy_flag_enabled: true,
+          ..Default::default()
+        },
         no_npm: true,
         no_remote: true,
         type_check_mode: TypeCheckMode::Local,
@@ -8481,7 +8449,7 @@ mod tests {
 
   #[test]
   fn jupyter() {
-    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable"]);
+    let r = flags_from_vec(svec!["deno", "jupyter"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8490,12 +8458,11 @@ mod tests {
           kernel: false,
           conn_file: None,
         }),
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable", "--install"]);
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8504,7 +8471,6 @@ mod tests {
           kernel: false,
           conn_file: None,
         }),
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -8512,7 +8478,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "jupyter",
-      "--unstable",
       "--kernel",
       "--conn",
       "path/to/conn/file"
@@ -8525,7 +8490,6 @@ mod tests {
           kernel: true,
           conn_file: Some(PathBuf::from("path/to/conn/file")),
         }),
-        unstable: true,
         ..Flags::default()
       }
     );

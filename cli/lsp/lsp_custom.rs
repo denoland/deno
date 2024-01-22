@@ -62,6 +62,25 @@ pub struct DiagnosticBatchNotificationParams {
 
 #[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum DenoConfigurationChangeType {
+  Added,
+  Changed,
+  Removed,
+}
+
+impl DenoConfigurationChangeType {
+  pub fn from_file_change_type(file_event: lsp::FileChangeType) -> Self {
+    match file_event {
+      lsp::FileChangeType::CREATED => Self::Added,
+      lsp::FileChangeType::CHANGED => Self::Changed,
+      lsp::FileChangeType::DELETED => Self::Removed,
+      _ => Self::Changed, // non-exhaustable enum
+    }
+  }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum DenoConfigurationType {
   DenoJson,
   PackageJson,
@@ -70,8 +89,9 @@ pub enum DenoConfigurationType {
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DenoConfigurationChangeEvent {
-  #[serde(flatten)]
-  pub file_event: lsp::FileEvent,
+  pub uri: lsp::Url,
+  #[serde(rename = "type")]
+  pub typ: DenoConfigurationChangeType,
   pub configuration_type: DenoConfigurationType,
 }
 

@@ -1540,6 +1540,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use deno_config::glob::FilePatterns;
   use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
@@ -1640,6 +1641,11 @@ let c: number = "a";
       Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
     ts_server.start(None);
+    let lint_options = LintOptions {
+      rules: Default::default(),
+      files: FilePatterns::new_with_base(temp_dir.path().to_path_buf()),
+      reporter_kind: Default::default(),
+    };
 
     // test enabled
     {
@@ -1647,7 +1653,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        &Default::default(),
+        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
@@ -1679,7 +1685,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        &Default::default(),
+        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);

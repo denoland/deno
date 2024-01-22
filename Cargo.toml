@@ -12,6 +12,7 @@ members = [
   "test_util",
   "ext/broadcast_channel",
   "ext/cache",
+  "ext/canvas",
   "ext/console",
   "ext/cron",
   "ext/crypto",
@@ -40,12 +41,12 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.31.6", features = ["transpiling"] }
-deno_core = { version = "0.243.0" }
+deno_ast = { version = "1.0.1", features = ["transpiling"] }
+deno_core = { version = "0.248.0" }
 
-deno_runtime = { version = "0.138.0", path = "./runtime" }
-napi_sym = { version = "0.60.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.124.0", path = "./bench_util" }
+deno_runtime = { version = "0.140.0", path = "./runtime" }
+napi_sym = { version = "0.62.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.126.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.17.2"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
@@ -56,27 +57,28 @@ denokv_sqlite = { default-features = false, version = "0.5.0" }
 denokv_remote = "0.5.0"
 
 # exts
-deno_broadcast_channel = { version = "0.124.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.62.0", path = "./ext/cache" }
-deno_console = { version = "0.130.0", path = "./ext/console" }
-deno_cron = { version = "0.10.0", path = "./ext/cron" }
-deno_crypto = { version = "0.144.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.154.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.117.0", path = "./ext/ffi" }
-deno_fs = { version = "0.40.0", path = "./ext/fs" }
-deno_http = { version = "0.127.0", path = "./ext/http" }
-deno_io = { version = "0.40.0", path = "./ext/io" }
-deno_net = { version = "0.122.0", path = "./ext/net" }
-deno_node = { version = "0.67.0", path = "./ext/node" }
-deno_kv = { version = "0.38.0", path = "./ext/kv" }
-deno_tls = { version = "0.117.0", path = "./ext/tls" }
-deno_url = { version = "0.130.0", path = "./ext/url" }
-deno_web = { version = "0.161.0", path = "./ext/web" }
-deno_webgpu = { version = "0.97.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.130.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.135.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.125.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.60.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.126.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.64.0", path = "./ext/cache" }
+deno_canvas = { version = "0.1.0", path = "./ext/canvas" }
+deno_console = { version = "0.132.0", path = "./ext/console" }
+deno_cron = { version = "0.12.0", path = "./ext/cron" }
+deno_crypto = { version = "0.146.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.156.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.119.0", path = "./ext/ffi" }
+deno_fs = { version = "0.42.0", path = "./ext/fs" }
+deno_http = { version = "0.129.0", path = "./ext/http" }
+deno_io = { version = "0.42.0", path = "./ext/io" }
+deno_net = { version = "0.124.0", path = "./ext/net" }
+deno_node = { version = "0.69.0", path = "./ext/node" }
+deno_kv = { version = "0.40.0", path = "./ext/kv" }
+deno_tls = { version = "0.119.0", path = "./ext/tls" }
+deno_url = { version = "0.132.0", path = "./ext/url" }
+deno_web = { version = "0.163.0", path = "./ext/web" }
+deno_webgpu = { version = "0.99.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.132.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.137.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.127.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.62.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -117,7 +119,7 @@ libz-sys = { version = "1.1", default-features = false }
 log = "=0.4.20"
 lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
-monch = "=0.4.3"
+monch = "=0.5.0"
 notify = "=5.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
@@ -134,10 +136,11 @@ lazy-regex = "3"
 reqwest = { version = "=0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.21.8"
+rustls = "0.21.10"
 rustls-pemfile = "1.0.0"
-rustls-tokio-stream = "=0.2.17"
+rustls-tokio-stream = "=0.2.20"
 rustls-webpki = "0.101.4"
+rustyline = "=13.0.0"
 webpki-roots = "0.25.2"
 scopeguard = "1.2.0"
 saffron = "=0.1.0"

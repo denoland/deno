@@ -2,6 +2,7 @@
 
 pub use deno_broadcast_channel;
 pub use deno_cache;
+pub use deno_canvas;
 pub use deno_console;
 pub use deno_core;
 pub use deno_cron;

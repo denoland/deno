@@ -1,24 +1,29 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+const {
+  BadResourcePrototype,
+  InterruptedPrototype,
+} = core;
+const {
+  op_fs_events_open,
+  op_fs_events_poll,
+} = core.ensureFastOps();
 const {
   ArrayIsArray,
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
 } = primordials;
+
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
-const {
-  op_fs_events_poll,
-} = core.ensureFastOps();
 
 class FsWatcher {
   #rid = 0;
 
   constructor(paths, options) {
     const { recursive } = options;
-    this.#rid = ops.op_fs_events_open({ recursive, paths });
+    this.#rid = op_fs_events_open({ recursive, paths });
   }
 
   get rid() {

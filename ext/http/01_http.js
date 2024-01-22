@@ -1,7 +1,41 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+const {
+  BadResourcePrototype,
+  InterruptedPrototype,
+} = core;
+const {
+  op_http_accept,
+  op_http_headers,
+  op_http_shutdown,
+  op_http_upgrade_websocket,
+  op_http_websocket_accept_header,
+  op_http_write,
+  op_http_write_headers,
+  op_http_write_resource,
+} = core.ensureFastOps();
+const {
+  ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ObjectPrototypeIsPrototypeOf,
+  SafeSet,
+  SafeSetIterator,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIncludes,
+  StringPrototypeSplit,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
+  Symbol,
+  SymbolAsyncIterator,
+  TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  Uint8Array,
+} = primordials;
+
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
@@ -39,34 +73,6 @@ import {
 } from "ext:deno_web/06_streams.js";
 import { serve } from "ext:deno_http/00_serve.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
-const {
-  ArrayPrototypeIncludes,
-  ArrayPrototypeMap,
-  ArrayPrototypePush,
-  ObjectPrototypeIsPrototypeOf,
-  SafeSet,
-  SafeSetIterator,
-  SetPrototypeAdd,
-  SetPrototypeDelete,
-  StringPrototypeCharCodeAt,
-  StringPrototypeIncludes,
-  StringPrototypeSplit,
-  StringPrototypeToLowerCase,
-  StringPrototypeToUpperCase,
-  Symbol,
-  SymbolAsyncIterator,
-  TypeError,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  Uint8Array,
-} = primordials;
-const {
-  op_http_accept,
-  op_http_shutdown,
-  op_http_write,
-  op_http_upgrade_websocket,
-  op_http_write_headers,
-  op_http_write_resource,
-} = core.ensureFastOps();
 
 const connErrorSymbol = Symbol("connError");
 
@@ -146,7 +152,7 @@ class HttpConn {
     const innerRequest = newInnerRequest(
       method,
       url,
-      () => ops.op_http_headers(streamRid),
+      () => op_http_headers(streamRid),
       body !== null ? new InnerBody(body) : null,
       false,
     );
@@ -427,7 +433,7 @@ function upgradeWebSocket(request, options = {}) {
     );
   }
 
-  const accept = ops.op_http_websocket_accept_header(websocketKey);
+  const accept = op_http_websocket_accept_header(websocketKey);
 
   const r = newInnerResponse(101);
   r.headerList = [

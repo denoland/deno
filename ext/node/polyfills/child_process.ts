@@ -6,6 +6,14 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core, internals } from "ext:core/mod.js";
+const {
+  op_node_child_ipc_pipe,
+} = core.ensureFastOps();
+const {
+  op_npm_process_state,
+} = core.ensureFastOps(true);
+
 import {
   ChildProcess,
   ChildProcessOptions,
@@ -47,9 +55,6 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
-
-const { core } = globalThis.__bootstrap;
-const ops = core.ops;
 
 const MAX_BUFFER = 1024 * 1024;
 
@@ -151,8 +156,7 @@ export function fork(
   options.shell = false;
 
   Object.assign(options.env ??= {}, {
-    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: core.ops
-      .op_npm_process_state(),
+    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: op_npm_process_state(),
   });
 
   return spawn(options.execPath, args, options);
@@ -824,13 +828,12 @@ export function execFileSync(
 }
 
 function setupChildProcessIpcChannel() {
-  const fd = ops.op_node_child_ipc_pipe();
+  const fd = op_node_child_ipc_pipe();
   if (typeof fd != "number" || fd < 0) return;
   setupChannel(process, fd);
 }
 
-globalThis.__bootstrap.internals.__setupChildProcessIpcChannel =
-  setupChildProcessIpcChannel;
+internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
 
 export default {
   fork,

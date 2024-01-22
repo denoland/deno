@@ -152,6 +152,7 @@ mod ts {
     op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
+    op_crate_libs.insert("deno.canvas", deno_canvas::get_declaration());
     op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
     op_crate_libs.insert(
       "deno.broadcast_channel",
@@ -374,13 +375,16 @@ fn main() {
     panic!("Cross compiling with snapshot is not supported.");
   }
 
-  let symbols_path = std::path::Path::new("napi").join(
-    format!("generated_symbol_exports_list_{}.def", env::consts::OS).as_str(),
-  )
-  .canonicalize()
-  .expect(
-    "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
-  );
+  let symbols_file_name = match env::consts::OS {
+    "android" => "generated_symbol_exports_list_linux.def".to_string(),
+    os => format!("generated_symbol_exports_list_{}.def", os),
+  };
+  let symbols_path = std::path::Path::new("napi")
+    .join(symbols_file_name)
+    .canonicalize()
+    .expect(
+        "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
+    );
 
   #[cfg(target_os = "windows")]
   println!(
@@ -412,6 +416,12 @@ fn main() {
       );
     }
   }
+
+  #[cfg(target_os = "android")]
+  println!(
+    "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path.display()
+  );
 
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();

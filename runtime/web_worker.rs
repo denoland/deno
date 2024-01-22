@@ -6,6 +6,7 @@ use crate::permissions::PermissionsContainer;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::import_meta_resolve_callback;
+use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -29,7 +30,7 @@ use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
-use deno_core::ModuleCode;
+use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -398,7 +399,7 @@ impl WebWorker {
     });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/build.rs`, `runtime/worker.rs` and `runtime/snapshot.rs`!
+    // `runtime/worker.rs` and `runtime/snapshot.rs`!
 
     let mut extensions = vec![
       // Web APIs
@@ -410,6 +411,7 @@ impl WebWorker {
         Some(main_module.clone()),
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
+      deno_canvas::deno_canvas::init_ops_and_esm(),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
@@ -488,14 +490,16 @@ impl WebWorker {
       ops::web_worker::deno_web_worker::init_ops_and_esm(),
     ];
 
+    #[cfg(__runtime_js_sources)]
+    assert!(cfg!(not(feature = "only_snapshotted_js_sources")), "'__runtime_js_sources' is incompatible with 'only_snapshotted_js_sources'.");
+
     for extension in &mut extensions {
-      #[cfg(not(feature = "__runtime_js_sources"))]
-      {
+      if options.startup_snapshot.is_some() {
         extension.js_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_files = std::borrow::Cow::Borrowed(&[]);
         extension.esm_entry_point = None;
       }
-      #[cfg(feature = "__runtime_js_sources")]
+      #[cfg(not(feature = "only_snapshotted_js_sources"))]
       {
         use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
@@ -509,8 +513,8 @@ impl WebWorker {
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
-    options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+    #[cfg(feature = "only_snapshotted_js_sources")]
+    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     // Hook up the summary metrics if the user or subcommand requested them
     let (op_summary_metrics, op_metrics_factory_fn) =
@@ -526,9 +530,7 @@ impl WebWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: options
-        .startup_snapshot
-        .or_else(crate::js::deno_isolate_init),
+      startup_snapshot: options.startup_snapshot,
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -539,6 +541,9 @@ impl WebWorker {
       op_metrics_factory_fn,
       import_meta_resolve_callback: Some(Box::new(
         import_meta_resolve_callback,
+      )),
+      validate_import_attributes_cb: Some(Box::new(
+        validate_import_attributes_callback,
       )),
       ..Default::default()
     });
@@ -649,7 +654,7 @@ impl WebWorker {
   pub fn execute_script(
     &mut self,
     name: &'static str,
-    source_code: ModuleCode,
+    source_code: ModuleCodeString,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())

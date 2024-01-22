@@ -9,6 +9,8 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
+  ArrayPrototypePop,
+  ArrayPrototypeShift,
   DateNow,
   Error,
   ErrorPrototype,
@@ -23,6 +25,10 @@ const {
   ObjectValues,
   PromisePrototypeThen,
   PromiseResolve,
+  SafeSet,
+  StringPrototypeIncludes,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   Symbol,
   SymbolIterator,
   TypeError,
@@ -88,6 +94,93 @@ ObjectDefineProperties(Symbol, {
 
 let windowIsClosing = false;
 let globalThis_;
+
+let deprecatedApiWarningDisabled = false;
+const ALREADY_WARNED_DEPRECATED = new SafeSet();
+
+function warnOnDeprecatedApi(apiName, stack, suggestion) {
+  if (deprecatedApiWarningDisabled) {
+    return;
+  }
+
+  if (ALREADY_WARNED_DEPRECATED.has(apiName + stack)) {
+    return;
+  }
+
+  // If we haven't warned yet, let's do some processing of the stack trace
+  // to make it more useful.
+  const stackLines = StringPrototypeSplit(stack, "\n");
+  ArrayPrototypeShift(stackLines);
+  while (true) {
+    // Filter out internal frames at the top of the stack - they are not useful
+    // to the user.
+    if (
+      StringPrototypeIncludes(stackLines[0], "(ext:") ||
+      StringPrototypeIncludes(stackLines[0], "(node:")
+    ) {
+      ArrayPrototypeShift(stackLines);
+    } else {
+      break;
+    }
+  }
+  // Now remove the last frame if it's coming from "ext:core" - this is most likely
+  // event loop tick or promise handler calling a user function - again not
+  // useful to the user.
+  if (
+    StringPrototypeIncludes(stackLines[stackLines.length - 1], "(ext:core/")
+  ) {
+    ArrayPrototypePop(stackLines);
+  }
+
+  let isFromRemoteDependency = false;
+  const firstStackLine = stackLines[0];
+  if (firstStackLine && !StringPrototypeIncludes(firstStackLine, "file:")) {
+    isFromRemoteDependency = true;
+  }
+
+  ALREADY_WARNED_DEPRECATED.add(apiName + stack);
+  console.error(
+    "%cWarning",
+    "color: yellow; font-weight: bold;",
+  );
+  console.error(
+    `%c\u251c Use of deprecated "${apiName}" API.`,
+    "color: yellow;",
+  );
+  console.error("%c\u2502", "color: yellow;");
+  console.error(
+    "%c\u251c This API will be removed in Deno 2.0. Make sure to upgrade to a stable API before then.",
+    "color: yellow;",
+  );
+  console.error("%c\u2502", "color: yellow;");
+  console.error(
+    `%c\u251c Suggestion: ${suggestion}`,
+    "color: yellow;",
+  );
+  if (isFromRemoteDependency) {
+    console.error("%c\u2502", "color: yellow;");
+    console.error(
+      `%c\u251c Suggestion: It appears this API is used by a remote dependency.`,
+      "color: yellow;",
+    );
+    console.error(
+      "%c\u2502             Try upgrading to the latest version of that dependency.",
+      "color: yellow;",
+    );
+  }
+
+  console.error("%c\u2502", "color: yellow;");
+  console.error("%c\u2514 Stack trace:", "color: yellow;");
+  for (let i = 0; i < stackLines.length; i++) {
+    console.error(
+      `%c  ${i == stackLines.length - 1 ? "\u2514" : "\u251c"}\u2500 ${
+        StringPrototypeTrim(stackLines[i])
+      }`,
+      "color: yellow;",
+    );
+  }
+  console.error();
+}
 
 function windowClose() {
   if (!windowIsClosing) {
@@ -344,6 +437,8 @@ function runtimeStart(
 }
 
 core.setUnhandledPromiseRejectionHandler(processUnhandledPromiseRejection);
+core.setHandledPromiseRejectionHandler(processRejectionHandled);
+
 // Notification that the core received an unhandled promise rejection that is about to
 // terminate the runtime. If we can handle it, attempt to do so.
 function processUnhandledPromiseRejection(promise, reason) {
@@ -375,6 +470,20 @@ function processUnhandledPromiseRejection(promise, reason) {
   }
 
   return false;
+}
+
+function processRejectionHandled(promise, reason) {
+  const rejectionHandledEvent = new event.PromiseRejectionEvent(
+    "rejectionhandled",
+    { promise, reason },
+  );
+
+  // Note that the handler may throw, causing a recursive "error" event
+  globalThis_.dispatchEvent(rejectionHandledEvent);
+
+  if (typeof internals.nodeProcessRejectionHandledCallback !== "undefined") {
+    internals.nodeProcessRejectionHandledCallback(rejectionHandledEvent);
+  }
 }
 
 let hasBootstrapped = false;
@@ -416,7 +525,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, warnOnDeprecatedApi });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -451,8 +560,10 @@ function bootstrapMainRuntime(runtimeOptions) {
     3: inspectFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
+    7: shouldDisableDeprecatedApiWarning,
   } = runtimeOptions;
 
+  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -577,8 +688,10 @@ function bootstrapWorkerRuntime(
     4: enableTestingFeaturesFlag,
     5: hasNodeModulesDir,
     6: maybeBinaryNpmCommandName,
+    7: shouldDisableDeprecatedApiWarning,
   } = runtimeOptions;
 
+  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 

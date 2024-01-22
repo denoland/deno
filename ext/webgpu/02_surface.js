@@ -7,10 +7,20 @@
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  op_webgpu_surface_configure,
+  op_webgpu_surface_get_current_texture,
+  op_webgpu_surface_present,
+} = core.ensureFastOps();
+const {
+  ObjectPrototypeIsPrototypeOf,
+  Symbol,
+  SymbolFor,
+  TypeError,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-const { Symbol, SymbolFor, ObjectPrototypeIsPrototypeOf } = primordials;
 import { loadWebGPU, webgpu } from "ext:deno_webgpu/00_init.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
@@ -52,7 +62,7 @@ class GPUCanvasContext {
       context: "configuration.device",
     });
 
-    const { err } = ops.op_webgpu_surface_configure({
+    const { err } = op_webgpu_surface_configure({
       surfaceRid: this[_surfaceRid],
       deviceRid: device.rid,
       format: configuration.format,
@@ -91,7 +101,7 @@ class GPUCanvasContext {
       return this[_currentTexture];
     }
 
-    const { rid } = ops.op_webgpu_surface_get_current_texture(
+    const { rid } = op_webgpu_surface_get_current_texture(
       device.rid,
       this[_surfaceRid],
     );
@@ -127,7 +137,7 @@ class GPUCanvasContext {
       prefix,
       context: "this",
     });
-    ops.op_webgpu_surface_present(device.rid, this[_surfaceRid]);
+    op_webgpu_surface_present(device.rid, this[_surfaceRid]);
     this[_currentTexture].destroy();
     this[_currentTexture] = undefined;
   }
@@ -157,8 +167,28 @@ function createCanvasContext(options) {
   return canvasContext;
 }
 
-function presentGPUCanvasContext(ctx) {
-  ctx[_present]();
+// External webgpu surfaces
+
+// TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
+class UnsafeWindowSurface {
+  #ctx;
+  #surfaceRid;
+
+  constructor(system, win, display) {
+    this.#surfaceRid = ops.op_webgpu_surface_create(system, win, display);
+  }
+
+  getContext(context) {
+    if (context !== "webgpu") {
+      throw new TypeError("Only 'webgpu' context is supported.");
+    }
+    this.#ctx = createCanvasContext({ surfaceRid: this.#surfaceRid });
+    return this.#ctx;
+  }
+
+  present() {
+    this.#ctx[_present]();
+  }
 }
 
-export { createCanvasContext, GPUCanvasContext, presentGPUCanvasContext };
+export { GPUCanvasContext, UnsafeWindowSurface };

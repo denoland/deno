@@ -2,8 +2,8 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fmt::Write as _;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
@@ -164,14 +165,14 @@ impl LspNpmConfigHash {
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StateNpmSnapshot {
   pub node_resolver: Arc<NodeResolver>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
 }
 
 /// Snapshot of the state used by TSC.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
@@ -237,6 +238,7 @@ pub struct Inner {
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
+  initial_cwd: PathBuf,
   http_client: Arc<HttpClient>,
   task_queue: LanguageServerTaskQueue,
   /// Handles module registries, which allow discovery of modules
@@ -527,6 +529,9 @@ impl Inner {
       diagnostics_state.clone(),
     );
     let assets = Assets::new(ts_server.clone());
+    let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
+      panic!("Could not resolve current working directory")
+    });
 
     Self {
       assets,
@@ -538,13 +543,14 @@ impl Inner {
       diagnostics_server,
       documents,
       http_client,
+      initial_cwd: initial_cwd.clone(),
       maybe_global_cache_path: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
       maybe_package_json: None,
-      fmt_options: Default::default(),
+      fmt_options: FmtOptions::new_with_base(initial_cwd.clone()),
       task_queue: Default::default(),
-      lint_options: Default::default(),
+      lint_options: LintOptions::new_with_base(initial_cwd),
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
@@ -874,6 +880,7 @@ impl Inner {
 
     let npm_resolver = create_npm_resolver(
       &deno_dir,
+      &self.initial_cwd,
       &self.http_client,
       self.config.maybe_config_file(),
       self.config.maybe_lockfile(),
@@ -1043,15 +1050,13 @@ impl Inner {
 
   async fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.config.clear_config_file();
-    self.fmt_options = Default::default();
-    self.lint_options = Default::default();
+    self.fmt_options = FmtOptions::new_with_base(self.initial_cwd.clone());
+    self.lint_options = LintOptions::new_with_base(self.initial_cwd.clone());
     if let Some(config_file) = self.get_config_file()? {
-      // this doesn't need to be an actual directory because flags is specified as `None`
-      let dummy_args_cwd = PathBuf::from("/");
       let lint_options = config_file
         .to_lint_config()
         .and_then(|maybe_lint_config| {
-          LintOptions::resolve(maybe_lint_config, None, &dummy_args_cwd)
+          LintOptions::resolve(maybe_lint_config, None, &self.initial_cwd)
         })
         .map_err(|err| {
           anyhow!("Unable to update lint configuration: {:?}", err)
@@ -1059,7 +1064,7 @@ impl Inner {
       let fmt_options = config_file
         .to_fmt_config()
         .and_then(|maybe_fmt_config| {
-          FmtOptions::resolve(maybe_fmt_config, None, &dummy_args_cwd)
+          FmtOptions::resolve(maybe_fmt_config, None, &self.initial_cwd)
         })
         .map_err(|err| {
           anyhow!("Unable to update formatter configuration: {:?}", err)
@@ -1126,7 +1131,7 @@ impl Inner {
       "experimentalDecorators": true,
       "isolatedModules": true,
       "jsx": "react",
-      "lib": ["deno.ns", "deno.window"],
+      "lib": ["deno.ns", "deno.window", "deno.unstable"],
       "module": "esnext",
       "moduleDetection": "force",
       "noEmit": true,
@@ -1137,14 +1142,6 @@ impl Inner {
       // TODO(@kitsonk) remove for Deno 1.15
       "useUnknownInCatchVariables": false,
     }));
-    let config = &self.config;
-    let workspace_settings = config.workspace_settings();
-    if workspace_settings.unstable {
-      let unstable_libs = json!({
-        "lib": ["deno.ns", "deno.window", "deno.unstable"]
-      });
-      tsconfig.merge(&unstable_libs);
-    }
     if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
       self.client.show_message(MessageType::WARNING, err);
     }
@@ -1156,6 +1153,7 @@ impl Inner {
 
 async fn create_npm_resolver(
   deno_dir: &DenoDir,
+  initial_cwd: &Path,
   http_client: &Arc<HttpClient>,
   maybe_config_file: Option<&ConfigFile>,
   maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
@@ -1169,9 +1167,7 @@ async fn create_npm_resolver(
   create_cli_npm_resolver_for_lsp(if is_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
-      root_node_modules_dir: std::env::current_dir()
-        .unwrap()
-        .join("node_modules"),
+      root_node_modules_dir: initial_cwd.join("node_modules"),
     })
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
@@ -1356,8 +1352,11 @@ impl Inner {
 
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
-      enabled_paths: self.config.get_enabled_paths(),
-      disabled_paths: self.config.get_disabled_paths(),
+      file_patterns: FilePatterns {
+        base: self.initial_cwd.clone(),
+        include: Some(self.config.get_enabled_paths()),
+        exclude: self.config.get_disabled_paths(),
+      },
       document_preload_limit: self
         .config
         .workspace_settings()
@@ -1427,7 +1426,6 @@ impl Inner {
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
-          self.ts_server.increment_project_version();
           self.send_diagnostics_update();
           self.send_testing_update();
         }
@@ -1472,7 +1470,6 @@ impl Inner {
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
-      self.ts_server.increment_project_version();
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1525,7 +1522,6 @@ impl Inner {
     self.refresh_documents_config().await;
 
     self.diagnostics_server.invalidate_all();
-    self.ts_server.increment_project_version();
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -1640,7 +1636,10 @@ impl Inner {
           .iter()
           .filter(|e| files_to_check.contains(&e.uri))
           .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-            file_event: e.clone(),
+            uri: e.uri.clone(),
+            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+              e.typ,
+            ),
             configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
           }),
       );
@@ -1671,7 +1670,10 @@ impl Inner {
           .iter()
           .filter(|e| files_to_check.contains(&e.uri))
           .map(|e| lsp_custom::DenoConfigurationChangeEvent {
-            file_event: e.clone(),
+            uri: e.uri.clone(),
+            typ: lsp_custom::DenoConfigurationChangeType::from_file_change_type(
+              e.typ,
+            ),
             configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
           }),
       );
@@ -3314,6 +3316,30 @@ impl tower_lsp::LanguageServer for LanguageServer {
         );
         ls.maybe_testing_server = Some(test_server);
       }
+
+      let mut config_events = vec![];
+      if let Some(config_file) = ls.config.maybe_config_file() {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          uri: config_file.specifier.clone(),
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+        });
+      }
+      if let Some(package_json) = &ls.maybe_package_json {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          uri: package_json.specifier(),
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
+        });
+      }
+      if !config_events.is_empty() {
+        ls.client.send_did_change_deno_configuration_notification(
+          lsp_custom::DidChangeDenoConfigurationNotificationParams {
+            changes: config_events,
+          },
+        );
+      }
+
       (ls.client.clone(), ls.http_client.clone())
     };
 
@@ -3388,7 +3414,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
       inner.refresh_npm_specifiers().await;
       let specifiers = inner.documents.dependents(&specifier);
       inner.diagnostics_server.invalidate(&specifiers);
-      inner.ts_server.increment_project_version();
       inner.send_diagnostics_update();
       inner.send_testing_update();
     }
@@ -3479,7 +3504,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut ls = self.0.write().await;
       ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
-      ls.ts_server.increment_project_version();
       ls.send_diagnostics_update();
     }
     performance.measure(mark);
@@ -3705,7 +3729,7 @@ impl Inner {
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
-      std::env::current_dir().with_context(|| "Failed getting cwd.")?,
+      self.initial_cwd.clone(),
       self.config.maybe_config_file().cloned(),
       self.config.maybe_lockfile().cloned(),
       self.maybe_package_json.clone(),

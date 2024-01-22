@@ -41,6 +41,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -148,6 +149,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     original_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
+    _requested_module_type: RequestedModuleType,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let is_data_uri = get_source_from_data_url(original_specifier).ok();
     if let Some((source, _)) = is_data_uri {
@@ -485,10 +487,10 @@ pub async fn run(
     // TODO(bartlomieju): enable, once we deprecate `--unstable` in favor
     // of granular --unstable-* flags.
     // feature_checker.set_warn_cb(Box::new(crate::unstable_warn_cb));
-    if metadata.unstable {
+    if metadata.unstable_config.legacy_flag_enabled {
       checker.enable_legacy_unstable();
     }
-    for feature in metadata.unstable_features {
+    for feature in metadata.unstable_config.features {
       // `metadata` is valid for the whole lifetime of the program, so we
       // can leak the string here.
       checker.enable_feature(feature.leak());
@@ -533,10 +535,11 @@ pub async fn run(
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
-      unstable: metadata.unstable,
+      unstable: metadata.unstable_config.legacy_flag_enabled,
       maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
     },
     None,
+    metadata.disable_deprecated_api_warning,
   );
 
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
