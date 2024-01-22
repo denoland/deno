@@ -5291,7 +5291,8 @@ declare namespace Deno {
    * request from a remote client.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode serve} instead.
+   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
+   * Deno 2.0.
    */
   export interface RequestEvent {
     /** The request from the client in the form of the web platform
@@ -5312,7 +5313,8 @@ declare namespace Deno {
    * requests on the HTTP server connection.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode serve} instead.
+   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
+   * Deno 2.0.
    */
   export interface HttpConn extends AsyncIterable<RequestEvent>, Disposable {
     /** The resource ID associated with this connection. Generally users do not
@@ -5378,7 +5380,8 @@ declare namespace Deno {
    * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
-   * @deprecated Use {@linkcode serve} instead.
+   * @deprecated Use {@linkcode Deno.serve} instead. This will be removed in
+   * Deno 2.0.
    */
   export function serveHttp(conn: Conn): HttpConn;
 
