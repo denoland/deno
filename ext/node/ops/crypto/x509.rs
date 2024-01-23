@@ -3,10 +3,7 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::OpState;
-use deno_core::Resource;
-
-use std::borrow::Cow;
+use deno_core::v8;
 
 use x509_parser::der_parser::asn1_rs::Any;
 use x509_parser::der_parser::asn1_rs::Tag;
@@ -48,17 +45,11 @@ impl std::ops::Deref for Certificate {
   }
 }
 
-impl Resource for Certificate {
-  fn name(&self) -> Cow<str> {
-    "x509Certificate".into()
-  }
-}
-
-#[op2(fast)]
-pub fn op_node_x509_parse(
-  state: &mut OpState,
+#[op2]
+pub fn op_node_x509_parse<'s>(
+  scope: &'s mut v8::HandleScope,
   #[buffer] buf: &[u8],
-) -> Result<u32, AnyError> {
+) -> Result<v8::Local<'s, v8::Object>, AnyError> {
   let pem = match pem::parse_x509_pem(buf) {
     Ok((_, pem)) => Some(pem),
     Err(_) => None,
@@ -76,32 +67,25 @@ pub fn op_node_x509_parse(
     cert: unsafe { std::mem::transmute(cert) },
     pem,
   };
-  let rid = state.resource_table.add(cert);
-  Ok(rid)
+
+  let obj = deno_core::cppgc::make_cppgc_object(scope, cert);
+  Ok(obj)
 }
 
 #[op2(fast)]
-pub fn op_node_x509_ca(
-  state: &mut OpState,
-  rid: u32,
-) -> Result<bool, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+pub fn op_node_x509_ca(rid: v8::Local<v8::Object>) -> Result<bool, AnyError> {
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(cert.is_ca())
 }
 
 #[op2(fast)]
 pub fn op_node_x509_check_email(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
   #[string] email: &str,
 ) -> Result<bool, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
 
   let subject = cert.subject();
   if subject
@@ -137,65 +121,50 @@ pub fn op_node_x509_check_email(
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<Option<String>, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(cert.fingerprint::<sha1::Sha1>())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint256(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<Option<String>, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(cert.fingerprint::<sha2::Sha256>())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_fingerprint512(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<Option<String>, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(cert.fingerprint::<sha2::Sha512>())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_issuer(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(x509name_to_string(cert.issuer(), oid_registry())?)
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_subject(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(x509name_to_string(cert.subject(), oid_registry())?)
 }
 
@@ -262,39 +231,30 @@ fn x509name_to_string(
 #[op2]
 #[string]
 pub fn op_node_x509_get_valid_from(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(cert.validity().not_before.to_string())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_valid_to(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   Ok(cert.validity().not_after.to_string())
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_serial_number(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<String, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
   let mut s = cert.serial.to_str_radix(16);
   s.make_ascii_uppercase();
   Ok(s)
@@ -302,13 +262,10 @@ pub fn op_node_x509_get_serial_number(
 
 #[op2(fast)]
 pub fn op_node_x509_key_usage(
-  state: &mut OpState,
-  rid: u32,
+  rid: v8::Local<v8::Object>,
 ) -> Result<u16, AnyError> {
-  let cert = state
-    .resource_table
-    .get::<Certificate>(rid)
-    .map_err(|_| bad_resource_id())?;
+  let cert = deno_core::cppgc::unwrap_cppgc_object::<Certificate>(rid)
+    .ok_or_else(bad_resource_id)?;
 
   let key_usage = cert
     .extensions()
