@@ -4,7 +4,6 @@ use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::standalone::is_standalone_binary;
-use crate::util::path::path_has_trailing_slash;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -173,7 +172,7 @@ async fn resolve_compile_executable_output_path(
   let output_flag = compile_flags.output.clone();
   let mut output_path = if let Some(out) = output_flag.as_ref() {
     let mut out_path = PathBuf::from(out);
-    if path_has_trailing_slash(out) {
+    if out.ends_with('/') || out.ends_with('\\') {
       if let Some(infer_file_name) = infer_name_from_url(&module_specifier)
         .await
         .map(PathBuf::from)

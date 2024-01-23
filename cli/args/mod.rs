@@ -1484,15 +1484,8 @@ impl CliOptions {
       ..
     }) = &self.flags.subcommand
     {
-      for path in paths {
-        let converted_path = PathBuf::from(path);
-        if converted_path.is_absolute() {
-          full_paths.push(converted_path);
-        } else {
-          full_paths.push(self.initial_cwd().join(path));
-        }
-      }
-    };
+      full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
+    }
 
     if let Ok(Some(import_map_path)) = self
       .resolve_import_map_specifier()
@@ -1728,14 +1721,8 @@ fn convert_option_str_to_path_buf(
 ) -> Option<Vec<PathBuf>> {
   if let Some(allow_ffi_paths) = &flag {
     let mut full_paths = Vec::new();
-    for path in allow_ffi_paths {
-      let path = PathBuf::from(path);
-      if path.is_absolute() {
-        full_paths.push(path);
-      } else {
-        full_paths.push(initial_cwd.join(path));
-      }
-    }
+    full_paths
+      .extend(allow_ffi_paths.iter().map(|path| initial_cwd.join(path)));
     Some(full_paths)
   } else {
     None

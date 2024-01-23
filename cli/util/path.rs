@@ -160,16 +160,6 @@ pub fn relative_specifier(
   })
 }
 
-/// This function checks if input path has trailing slash or not. If input path
-/// has trailing slash it will return true else it will return false.
-pub fn path_has_trailing_slash(path: &str) -> bool {
-  if cfg!(windows) {
-    path.ends_with('\\')
-  } else {
-    path.ends_with('/')
-  }
-}
-
 /// Gets a path with the specified file stem suffix.
 ///
 /// Ex. `file.ts` with suffix `_2` returns `file_2.ts`
@@ -390,30 +380,6 @@ mod test {
         expected,
         "from: \"{from_str}\" to: \"{to_str}\""
       );
-    }
-  }
-
-  #[test]
-  fn test_path_has_trailing_slash() {
-    #[cfg(not(windows))]
-    {
-      run_test("/Users/johndoe/Desktop/deno-project/target/", true);
-      run_test(r"/Users/johndoe/deno-project/target//", true);
-      run_test("/Users/johndoe/Desktop/deno-project", false);
-      run_test(r"/Users/johndoe/deno-project\", false);
-    }
-
-    #[cfg(windows)]
-    {
-      run_test(r"C:\test\deno-project\", true);
-      run_test(r"C:\test\deno-project\\", true);
-      run_test(r"C:\test\file.txt", false);
-      run_test(r"C:\test\file.txt/", false);
-    }
-
-    fn run_test(path_str: &str, expected: bool) {
-      let result = path_has_trailing_slash(path_str);
-      assert_eq!(result, expected);
     }
   }
 

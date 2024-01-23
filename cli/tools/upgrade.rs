@@ -378,16 +378,9 @@ pub async fn upgrade(
   let factory = CliFactory::from_flags(flags).await?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
-  let full_path_output_flag = if let Some(output) = upgrade_flags.output {
-    let output = PathBuf::from(output);
-    if output.is_relative() {
-      Some(factory.cli_options().initial_cwd().join(output))
-    } else {
-      Some(output)
-    }
-  } else {
-    None
-  };
+  let full_path_output_flag = upgrade_flags
+    .output
+    .map(|output| factory.cli_options().initial_cwd().join(output));
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
