@@ -1,5 +1,5 @@
-other [WILDCARD]other.ts false
-main [WILDCARD]main.ts true
+other [WILDCARD]other.ts false [WILDCARD]other.ts [WILDCARD]
+main [WILDCARD]main.ts true [WILDCARD]main.ts [WILDCARD]
 Resolving ./foo.js file:///[WILDCARD]/foo.js
 Resolving bare from import map https://example.com/
 Resolving https://example.com/rewrite from import map https://example.com/rewritten
